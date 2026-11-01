@@ -26,3 +26,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-01 | S13: routines: schedules, missed and skipped runs, run now, calendar | Implementer | 009, 005 |
 | 2026-11-01 | S14: workflows: canvas editor, run engine, triggers, approvals, run history | Implementer | 010, 005 |
 | 2026-11-01 | S15: system notifications by kind, mutes, status island with Allow on approvals, click opens the message | Implementer | 015, 007 |
+| 2026-11-02 | Fix: workflows page keeps the same inner padding as the other pages | Implementer | — |
