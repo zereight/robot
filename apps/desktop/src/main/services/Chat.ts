@@ -11,18 +11,23 @@ import {
   type MessageStatus,
   messageFiles,
   messageText,
+  type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
-import { type StreamEvent, streamChat, type Turn } from "../providers/chat.ts"
+import { type AgentEvent, runAgent } from "../providers/agent.ts"
+import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
 import { Tasks } from "./Tasks.ts"
+import type { ToolContext } from "./Tools.ts"
+import { Tools } from "./Tools.ts"
 
 interface MessageRow {
   id: string
@@ -49,6 +54,8 @@ interface AgentModelRow {
   model_name: string | null
   model_effort: string | null
   workspace: string
+  permission: PermissionLevel
+  memory_enabled: number
 }
 
 export interface ChatService {
@@ -114,8 +121,32 @@ const toMessage = (row: MessageRow): ChatMessage => ({
 })
 
 /** Adds a stream event to the parts. Returns true when a new part starts (a part boundary). */
-export const applyEvent = (parts: MessagePart[], event: StreamEvent): boolean => {
+export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => {
   if (event.type === "usage") return false
+  if (event.type === "tool") {
+    const id = event.call.id
+    const index = parts.findIndex((p) => p.kind === "tool" && p.id === id)
+    const existing = parts[index]
+    const base = {
+      kind: "tool" as const,
+      id,
+      name: event.call.name,
+      label: toolLabel(event.call.name, event.call.input),
+      input: event.call.input,
+    }
+    const next: MessagePart = {
+      ...base,
+      state: event.state,
+      output: event.state === "running" ? "" : event.output,
+      ...(existing?.kind === "tool" && existing.memoryId ? { memoryId: existing.memoryId } : {}),
+    }
+    if (index >= 0) {
+      parts[index] = next
+      return false
+    }
+    parts.push(next)
+    return true
+  }
   const last = parts.at(-1)
   if (last && last.kind === event.type) {
     parts[parts.length - 1] = { kind: event.type, text: last.text + event.text }
@@ -123,6 +154,18 @@ export const applyEvent = (parts: MessagePart[], event: StreamEvent): boolean =>
   }
   parts.push({ kind: event.type, text: event.text })
   return true
+}
+
+/** A short line for a tool card, from the tool name and its arguments. */
+export const toolLabel = (name: string, input: string) => {
+  let args: Record<string, unknown> = {}
+  try {
+    args = JSON.parse(input || "{}") as Record<string, unknown>
+  } catch {}
+  const first = ["path", "command", "url", "query", "question", "text"]
+    .map((k) => args[k])
+    .find((v): v is string => typeof v === "string")
+  return first ? `${name}: ${first.replace(/\s+/g, " ").slice(0, 80)}` : name
 }
 
 export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat") {
@@ -134,6 +177,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const providers = yield* Providers
       const activity = yield* Activity
       const tasks = yield* Tasks
+      const tools = yield* Tools
+      const memory = yield* Memory
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
@@ -144,7 +189,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const agentRow = (agentId: string) =>
         db.get<AgentModelRow>(
-          "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort, workspace FROM agent WHERE id = ?",
+          "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort, workspace, permission, memory_enabled FROM agent WHERE id = ?",
           agentId,
         )
       const messageRow = (id: string) =>
@@ -268,7 +313,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (row) emitMessage({ ...row, parts: JSON.stringify(parts) })
         }
 
-        const onEvent = (event: StreamEvent) =>
+        const onEvent = (event: AgentEvent) =>
           Effect.sync(() => {
             if (event.type === "usage") {
               usage.input = event.input ?? usage.input
@@ -292,15 +337,69 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             return yield* new AppError({ code: "provider_not_connected" })
           }
           const connection = yield* providers.connection(agent.model_account_id)
-          const events = streamChat({
-            connection,
-            model: agent.model_name,
-            effort: agent.model_effort,
-            system: agent.instructions,
-            turns: buildTurns(agentId, reply.id),
+          const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
+          const system = [
+            agent.instructions,
+            `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
+            remembered.length > 0
+              ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n")
+          const changePart = (
+            callId: string,
+            change: (p: Extract<MessagePart, { kind: "tool" }>) => MessagePart,
+          ) => {
+            // After a stop the reply is saved as stopped, and a late change must not undo that.
+            if (controller.signal.aborted) return
+            const index = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
+            const part = parts[index]
+            if (part?.kind !== "tool") return
+            parts[index] = change(part)
+            save("streaming")
+            publish()
+          }
+          const context: ToolContext = {
+            agentId,
+            workspace: agent.workspace,
+            permission: agent.permission,
             signal: controller.signal,
-          })
-          yield* Stream.fromAsyncIterable(events, (e) => e).pipe(Stream.runForEach(onEvent))
+            onWaiting: (callId, ask) => {
+              tasks.setWaiting(task.id, ask !== null)
+              changePart(callId, (p) => {
+                const { ask: _drop, ...rest } = p
+                return ask ? { ...rest, state: "waiting", ask } : { ...rest, state: "running" }
+              })
+            },
+            onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
+          }
+          const events = runAgent(
+            {
+              connection,
+              model: agent.model_name,
+              effort: agent.model_effort,
+              system,
+              turns: buildTurns(agentId, reply.id),
+              tools: tools.defs(agent.memory_enabled === 1),
+              signal: controller.signal,
+            },
+            (call) => tools.execute(context, call),
+          )
+          // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
+          const closing: AsyncIterable<AgentEvent> = {
+            [Symbol.asyncIterator]: () => {
+              const it = events[Symbol.asyncIterator]()
+              return {
+                next: () => it.next(),
+                return: (value?: unknown) => {
+                  controller.abort()
+                  return it.return?.(value) ?? Promise.resolve({ done: true, value: undefined })
+                },
+              }
+            },
+          }
+          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(Stream.runForEach(onEvent))
         })
 
         activity.setWorking(agentId, agent.server_id, true)
@@ -308,6 +407,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
+              // A step that did not finish cannot keep a running mark or a question card.
+              for (const [i, part] of parts.entries()) {
+                if (part.kind !== "tool" || (part.state !== "running" && part.state !== "waiting"))
+                  continue
+                const { ask: _ask, ...rest } = part
+                parts[i] = { ...rest, state: "failed" }
+              }
               if (Exit.isSuccess(exit)) save("done")
               else if (Cause.hasInterruptsOnly(exit.cause)) save("stopped")
               else {

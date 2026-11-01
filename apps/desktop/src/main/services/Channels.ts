@@ -25,7 +25,8 @@ import {
   type TaskState,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
-import { type StreamEvent, streamChat, type Turn } from "../providers/chat.ts"
+import { type AgentEvent, runAgent } from "../providers/agent.ts"
+import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { Agents } from "./Agents.ts"
 import { applyEvent } from "./Chat.ts"
@@ -314,7 +315,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             id,
           )
         }
-        const onEvent = (event: StreamEvent) =>
+        const onEvent = (event: AgentEvent) =>
           Effect.sync(() => {
             if (event.type === "usage") {
               usage.input = event.input ?? usage.input
@@ -342,14 +343,18 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           if (!o.agent.model_account_id || !o.agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
           const connection = yield* providers.connection(o.agent.model_account_id)
-          const events = streamChat({
-            connection,
-            model: o.agent.model_name,
-            effort: o.agent.model_effort,
-            system: o.system,
-            turns: o.turns,
-            signal: controller.signal,
-          })
+          // Channels have no tools in this version; a call fails with a note.
+          const events = runAgent(
+            {
+              connection,
+              model: o.agent.model_name,
+              effort: o.agent.model_effort,
+              system: o.system,
+              turns: o.turns,
+              signal: controller.signal,
+            },
+            async () => ({ output: "Tools are not available in channels.", failed: true }),
+          )
           yield* Stream.fromAsyncIterable(events, (e) => e).pipe(Stream.runForEach(onEvent))
         })
 

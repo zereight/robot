@@ -40,6 +40,8 @@ const removedAgent = (name: string): Agent => ({
   section: "agents",
   archived: true,
   state: "offline",
+  permission: "ask_risky",
+  memoryEnabled: false,
   createdAt: 0,
 })
 

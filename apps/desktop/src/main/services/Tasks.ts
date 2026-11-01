@@ -60,6 +60,8 @@ export interface TasksService {
     agentId: string,
     work: Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E, R>
+  /** Marks a running task as waiting for the user, or running again. */
+  setWaiting(taskId: string, waiting: boolean): void
   /** Records which message holds the reply of a task. */
   setMessage(taskId: string, messageId: string): void
   /** Stops a task and its children. Stopping a finished task does nothing. */
@@ -265,6 +267,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       return Tasks.of({
         create,
         run,
+        setWaiting: (taskId, waiting) => {
+          const current = row(taskId)
+          if (current && (current.state === "running" || current.state === "waiting"))
+            setState(taskId, current.agent_id, waiting ? "waiting" : "running")
+        },
         setMessage: (taskId, messageId) =>
           db.run("UPDATE task SET message_id = ? WHERE id = ?", messageId, taskId),
         stop,
