@@ -38,7 +38,13 @@
   background: var(--c-border);
 }
 
+.view {
+  animation: view-in var(--motion-fast) var(--ease-out);
+}
+
+/* Highlights come on fast and fade out slowly. */
 .row {
+  transition: background var(--motion-slow) var(--ease-out);
   position: relative;
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
@@ -53,25 +59,18 @@
 .row:hover,
 .row:focus-within {
   background: var(--c-hover);
+  transition-duration: var(--motion-fast);
 }
 
+/* A new message rises in. Rows loaded from history do not move. */
+.row[data-enter="true"] {
+  animation: row-in var(--motion-medium) var(--ease-out);
+}
+
+/* The quoted message lights up for a moment after a reply jump, then fades back. */
 .row[data-flash="true"] {
-  animation: flash 1.2s var(--ease-out);
-}
-
-:root[data-reduce-motion="true"] .row[data-flash="true"] {
-  animation: none;
-  outline: 2px solid var(--c-focus);
-}
-
-@keyframes flash {
-  0%,
-  40% {
-    background: var(--c-selected);
-  }
-  100% {
-    background: transparent;
-  }
+  background: var(--c-selected);
+  transition-duration: 0s;
 }
 
 .avatar {
@@ -165,7 +164,14 @@
   position: absolute;
   right: 16px;
   top: -14px;
-  display: none;
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(2px);
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out),
+    visibility 0s linear var(--motion-fast);
   gap: 2px;
   padding: 2px;
   background: var(--c-elevated);
@@ -176,7 +182,10 @@
 
 .row:hover .actions,
 .row:focus-within .actions {
-  display: flex;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
 }
 
 .thinking {
@@ -302,12 +311,21 @@
 }
 
 .floatButton {
+  animation: float-in var(--motion-medium) var(--ease-out);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
   border: 1px solid var(--c-border);
   background: var(--c-elevated);
   border-radius: 999px;
   padding: 4px 12px;
   font-weight: 500;
   font-size: 0.85rem;
+}
+
+.floatButton:active,
+.sendButton:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
 .floatButton:hover {
@@ -327,6 +345,7 @@
 }
 
 .queueItem {
+  animation: float-in var(--motion-medium) var(--ease-out);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -351,6 +370,7 @@
 }
 
 .quote {
+  animation: float-in var(--motion-medium) var(--ease-out);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -400,6 +420,10 @@
 }
 
 .sendButton {
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
   width: 32px;
   height: 32px;
   border-radius: var(--radius-s);
@@ -409,6 +433,11 @@
   background: var(--c-accent);
   color: var(--c-accent-text);
   flex-shrink: 0;
+}
+
+/* Send and stop swap places; the new icon turns in. */
+.sendButton svg {
+  animation: icon-in var(--motion-medium) var(--ease-out);
 }
 
 .sendButton:disabled {
@@ -557,4 +586,44 @@
   border-radius: var(--radius-m);
   display: block;
   margin: 6px 0;
+}
+
+/* Opened thinking and tool details slide down a little. */
+.thinking[open] p,
+.tool[open] .toolBody {
+  animation: unfold var(--motion-medium) var(--ease-out);
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes float-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes icon-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6) rotate(-45deg);
+  }
 }

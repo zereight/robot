@@ -13,6 +13,7 @@ import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { Presence } from "../ui/Presence.tsx"
 import styles from "./shell.module.css"
 
 const initials = (name: string) => name.trim().slice(0, 1).toUpperCase() || "?"
@@ -92,20 +93,22 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
           <Settings size={20} />
         </button>
       </div>
-      <Show when={addOpen()}>
-        <Dialog
-          label={t("rail.addServer")}
-          onClose={() => setAddOpen(false)}
-          testId="add-server-dialog"
-        >
-          <p>{t("rail.addServer.later")}</p>
-          <div class={styles.dialogActions}>
-            <Button variant="primary" onClick={() => setAddOpen(false)}>
-              {t("rail.ok")}
-            </Button>
-          </div>
-        </Dialog>
-      </Show>
+      <Presence when={addOpen()}>
+        {() => (
+          <Dialog
+            label={t("rail.addServer")}
+            onClose={() => setAddOpen(false)}
+            testId="add-server-dialog"
+          >
+            <p>{t("rail.addServer.later")}</p>
+            <div class={styles.dialogActions}>
+              <Button variant="primary" onClick={() => setAddOpen(false)}>
+                {t("rail.ok")}
+              </Button>
+            </div>
+          </Dialog>
+        )}
+      </Presence>
     </nav>
   )
 }
