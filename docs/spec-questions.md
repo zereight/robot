@@ -68,3 +68,9 @@ implementer made to continue. A spec author answers by changing the spec.
 | 010 | How does a condition step choose a branch? | It tests whether the input contains a text, ignoring case. Yes and No are separate outputs. A step with no active input is Skipped. |
 | 010 | What do the "post message" and "approval" steps do? | Post puts a note in a channel. Approval waits for the user to approve or reject in the editor. Reject fails the run. |
 | 010 | Which agent chat shows the prompt of a workflow step? | The chat of that agent, as a message. The task has the source Workflow. |
+| 015 | When does a system notification show? | Only while no window of the app has the focus. The do-not-disturb of the system is respected by the system. |
+| 015 | What is a "mention in a channel"? | A finished reply of an agent that holds `@you` or `@user` as a word. |
+| 015 | Which place does a failed task open? | The channel for a channel task, otherwise the agent chat. A routine failure counts as "routine failed". |
+| 015 | What is the default of the island, and where is it set? | "Always", on macOS only, in Settings > Notifications. Other choices: only for attention, off. |
+| 015 | What shows on the island for a question? | The question and "Open app". Only approvals have Allow and Deny on the island. |
+| 015 | How is a mute chosen? | One select per server and per channel in Settings > Notifications: not muted, 1 hour, 8 hours, 1 day, until turned back on. |

@@ -1,4 +1,5 @@
 import { Schema, Struct } from "effect"
+import { ISLAND_MODES } from "./notifications.ts"
 
 export const Language = Schema.Literals(["system", "en", "ko"])
 export const Theme = Schema.Literals(["system", "dark", "light"])
@@ -17,6 +18,17 @@ export const Settings = Schema.Struct({
   workspaceRoot: Schema.String,
   /** True once the user finished or skipped the first start guide. */
   firstRunDone: Schema.Boolean,
+  /** Which kinds of system notification are on. */
+  notifyKinds: Schema.Struct({
+    reply: Schema.Boolean,
+    mention: Schema.Boolean,
+    approval: Schema.Boolean,
+    question: Schema.Boolean,
+    task_failed: Schema.Boolean,
+    routine_failed: Schema.Boolean,
+  }),
+  /** The status island of macOS. */
+  island: Schema.Literals(ISLAND_MODES),
 })
 export type Settings = typeof Settings.Type
 
@@ -32,6 +44,15 @@ export const defaultSettings: Settings = {
   startAtLogin: false,
   workspaceRoot: "",
   firstRunDone: false,
+  notifyKinds: {
+    reply: true,
+    mention: true,
+    approval: true,
+    question: true,
+    task_failed: true,
+    routine_failed: true,
+  },
+  island: "always",
 }
 
 export type Locale = "en" | "ko"

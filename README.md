@@ -222,11 +222,11 @@ Unclear spec points and the choices made for them are in
 | Milestone | Scope | State |
 | --- | --- | --- |
 | **M1** | Window, agents, direct chat, providers, settings, local data | Done in alpha. Next: M2 |
-| **M2** | Channels, split work, tasks page | In review |
-| **M3** | Workspace tools, approvals, browser, memory | In review |
-| **M4** | Routines and workflows | In review |
+| **M2** | Channels, split work, tasks page | Done in alpha.3 |
+| **M3** | Workspace tools, approvals, browser, memory | Done in alpha.3 |
+| **M4** | Routines and workflows | Done in alpha.3 |
 | **M5** | Phone app (Expo) and desktop link | Planned |
-| **M6** | Notifications and status island | Planned |
+| **M6** | Notifications and status island | In review |
 
 ## Contributing
 
