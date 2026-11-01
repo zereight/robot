@@ -63,8 +63,10 @@ export const testPlatform = () => {
       trashed.push(path)
     },
     browser: (agentId) => {
-      let page = pages.get(agentId)
-      if (!page) pages.set(agentId, (page = fakeBrowser(agentId)))
+      const known = pages.get(agentId)
+      if (known) return known
+      const page = fakeBrowser(agentId)
+      pages.set(agentId, page)
       return page
     },
   }
