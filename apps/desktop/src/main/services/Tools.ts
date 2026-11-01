@@ -19,6 +19,7 @@ import {
 import { Context, Effect, Layer } from "effect"
 import type { ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall, ToolDef } from "../providers/chat.ts"
+import type { ApprovalRequest } from "../runtimes/types.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { Memory } from "./Memory.ts"
@@ -39,6 +40,11 @@ export interface ToolsService {
   /** The tools that an agent may call. Memory tools are left out when memory is off. */
   defs(memoryEnabled: boolean): readonly ToolDef[]
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
+  /**
+   * Asks about a step that a vendor program wants to take, by the permission level and the risk.
+   * Resolves true to go on and false when the user denies. Rejects when the turn stops.
+   */
+  approval(context: ToolContext, request: ApprovalRequest): Promise<boolean>
   /** Answers a card that waits. Unknown cards are ignored. */
   respond(agentId: string, callId: string, answer: string): Effect.Effect<void>
   /** Whether the browser window of an agent is open, and whether the user holds the controls. */
@@ -444,6 +450,16 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               return { output: "The user denied this step.", failed: true }
             if (ctx.signal.aborted) throw error
             return { output: error instanceof Error ? error.message : String(error), failed: true }
+          }
+        },
+        approval: async (ctx, request) => {
+          try {
+            const call = { id: request.callId, name: "", input: "" }
+            await approve(ctx, call, request.risky, request.key, request.summary)
+            return true
+          } catch (error) {
+            if (error instanceof Denied) return false
+            throw error
           }
         },
         browserState: (agentId) => ({

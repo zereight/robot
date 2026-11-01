@@ -227,6 +227,10 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO channel_member SELECT * FROM imp.channel_member")
               db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
+              // The sign-in of a vendor program belongs to the other computer. Connect again.
+              db.run(
+                "UPDATE provider_account SET off = 1 WHERE kind IN ('claude_code', 'codex', 'muse', 'pi')",
+              )
               db.run("INSERT INTO message SELECT * FROM imp.message")
               db.run("INSERT INTO memory SELECT * FROM imp.memory")
               db.run("INSERT INTO agent_allow SELECT * FROM imp.agent_allow")

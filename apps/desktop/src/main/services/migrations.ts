@@ -220,4 +220,7 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (kind, id)
   );
   `,
+  `
+  ALTER TABLE provider_account ADD COLUMN off INTEGER NOT NULL DEFAULT 0;
+  `,
 ]

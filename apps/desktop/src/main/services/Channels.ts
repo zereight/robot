@@ -28,7 +28,7 @@ import {
   type TaskState,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
-import { type AgentEvent, runAgent } from "../providers/agent.ts"
+import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { Agents } from "./Agents.ts"
@@ -365,7 +365,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const stream = Effect.gen(function* () {
           if (!o.agent.model_account_id || !o.agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
-          const connection = yield* providers.connection(o.agent.model_account_id)
           const useTools = o.tools === true
           const changePart = (
             callId: string,
@@ -404,9 +403,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             },
             onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
           }
-          const events = runAgent(
+          const events = yield* providers.events(
+            o.agent.model_account_id,
             {
-              connection,
               model: o.agent.model_name,
               effort: o.agent.model_effort,
               system: useTools
@@ -415,11 +414,17 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               turns: o.turns,
               ...(useTools ? { tools: tools.defs(o.agent.memory_enabled === 1) } : {}),
               signal: controller.signal,
+              workspace: o.agent.workspace,
+              permission: o.agent.permission,
+              useTools,
             },
-            async (call) =>
-              useTools
-                ? tools.execute(context, call)
-                : { output: "Tools are not available here.", failed: true },
+            {
+              execute: async (call) =>
+                useTools
+                  ? tools.execute(context, call)
+                  : { output: "Tools are not available here.", failed: true },
+              approve: (request) => tools.approval(context, request),
+            },
           )
           // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
           const closing: AsyncIterable<AgentEvent> = {

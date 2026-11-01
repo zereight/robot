@@ -13,6 +13,7 @@ import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Routines } from "./services/Routines.ts"
+import { Runtimes } from "./services/Runtimes.ts"
 import type { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
@@ -44,7 +45,8 @@ export const appLayer = (options: AppLayerOptions) => {
     Servers.layer(options.localServerName),
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
-  const providers = Providers.layer.pipe(Layer.provideMerge(stores))
+  const runtimes = Runtimes.layer.pipe(Layer.provideMerge(stores))
+  const providers = Providers.layer.pipe(Layer.provideMerge(runtimes))
   const notifier = Notifier.layer.pipe(Layer.provideMerge(providers))
   const memory = Memory.layer.pipe(Layer.provideMerge(notifier))
   const tools = Tools.layer.pipe(Layer.provideMerge(memory))

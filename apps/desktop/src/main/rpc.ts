@@ -14,6 +14,7 @@ import {
   type RpcMethod,
   type RpcOutput,
   type RpcResult,
+  RUNTIME_KINDS,
   redactSecrets,
   SettingsPatch,
   UiStatePatch,
@@ -37,6 +38,7 @@ import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Routines } from "./services/Routines.ts"
+import { Runtimes } from "./services/Runtimes.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Tasks } from "./services/Tasks.ts"
@@ -63,6 +65,7 @@ const decode =
 
 const ById = Schema.Struct({ id: Schema.String })
 const ByAccount = Schema.Struct({ accountId: Schema.String })
+const ByRuntime = Schema.Struct({ kind: Schema.Literals(RUNTIME_KINDS) })
 const ByAgent = Schema.Struct({ agentId: Schema.String })
 const MessageText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MESSAGE_MAX))
 const done = Effect.as(undefined)
@@ -190,6 +193,23 @@ export const handlers: Handlers = {
   "providers.models": (input) =>
     decode(ByAccount)(input).pipe(
       Effect.flatMap(({ accountId }) => Providers.use((p) => p.models(accountId))),
+    ),
+  "runtimes.status": (input) =>
+    decode(ByRuntime)(input).pipe(
+      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.status(kind))),
+    ),
+  "runtimes.install": (input) =>
+    decode(ByRuntime)(input).pipe(
+      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.install(kind))),
+    ),
+  "runtimes.signIn": (input) =>
+    decode(ByRuntime)(input).pipe(
+      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.signIn(kind))),
+    ),
+  "runtimes.cancel": (input) =>
+    decode(ByRuntime)(input).pipe(
+      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.cancel(kind))),
+      Effect.as(undefined),
     ),
   "files.pick": () => Platform.use((p) => Effect.promise(() => p.pickFiles())),
   "data.export": () => Data.use((d) => d.export()),

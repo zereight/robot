@@ -101,6 +101,25 @@ describe("export and import", () => {
     expect(bDb.get<{ parts: string }>("SELECT parts FROM message")?.parts).toContain("[redacted]")
   })
 
+  test("a subscription account comes back switched off; the program stays as it is", async () => {
+    const out = join(testPlatform().dataDir, "export-runtime.zip")
+    const a = app({ save: out })
+    const dbA = await a.run(Database.use((d) => Effect.succeed(d)))
+    dbA.run(
+      "INSERT INTO provider_account (id, kind, name, base_url, created_at) VALUES ('r1', 'claude_code', 'Claude', '', 1)",
+    )
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const dbB = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(dbB.get<{ off: number }>("SELECT off FROM provider_account WHERE id = 'r1'")?.off).toBe(
+      1,
+    )
+    const accounts = await b.run(Providers.use((p) => p.list))
+    expect(accounts.find((x) => x.id === "r1")?.connected).toBe(false)
+  })
+
   test("import refuses an app that already has an agent, and a file that is not an export", async () => {
     const dir = testPlatform().dataDir
     const junk = join(dir, "junk.zip")

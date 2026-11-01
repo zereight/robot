@@ -9,7 +9,13 @@ import type {
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
 import type { MemoryItem } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
-import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
+import type {
+  ModelInfo,
+  ProviderAccount,
+  ProviderConnect,
+  RuntimeKind,
+  RuntimeStatus,
+} from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Task, TaskDetail } from "./task.ts"
@@ -73,6 +79,14 @@ export interface RpcMethods {
   "providers.disconnect": { input: { accountId: string }; output: undefined }
   "providers.remove": { input: { accountId: string }; output: undefined }
   "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
+  /** Looks at the vendor program on this computer again, and returns what it finds. */
+  "runtimes.status": { input: { kind: RuntimeKind }; output: RuntimeStatus }
+  /** Downloads the vendor program into the app. Ends when the download is done or failed. */
+  "runtimes.install": { input: { kind: RuntimeKind }; output: RuntimeStatus }
+  /** Opens the vendor sign-in in the browser. Ends when the user is signed in, or gave up. */
+  "runtimes.signIn": { input: { kind: RuntimeKind }; output: RuntimeStatus }
+  /** Ends a running download or sign-in. */
+  "runtimes.cancel": { input: { kind: RuntimeKind }; output: undefined }
   /** Opens the system file dialog. Returns the chosen full paths; none when cancelled. */
   "files.pick": { input: undefined; output: readonly string[] }
   /** Asks where to save, then writes the archive. `path` is null when cancelled. */
@@ -173,6 +187,8 @@ export interface RpcEvents {
   /** `serverId` is "*" when agents of every server may have changed. */
   "agents.changed": { serverId: string }
   "providers.changed": Record<string, never>
+  /** A vendor program was found, downloaded, signed in to, or reports new limits. */
+  "runtimes.changed": RuntimeStatus
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
   "browser.changed": { agentId: string }

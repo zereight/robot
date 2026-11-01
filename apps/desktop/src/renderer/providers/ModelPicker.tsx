@@ -110,7 +110,7 @@ export const ModelPicker = (props: {
               <For each={models()?.list}>
                 {(m) => (
                   <option value={m.id} selected={m.id === model()}>
-                    {m.label}
+                    {m.labelKey ? t(m.labelKey) : m.label}
                   </option>
                 )}
               </For>
