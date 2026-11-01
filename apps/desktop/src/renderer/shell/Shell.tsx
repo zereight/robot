@@ -1,6 +1,6 @@
-import type { MessageKey, Page, Place, PlaceRef } from "@robot/shared"
+import type { MessageKey, Page, Place, PlaceRef, SectionId } from "@robot/shared"
 import { PanelRight, PanelRightClose } from "lucide-solid"
-import { createSignal, type JSX, Match, Show, Switch } from "solid-js"
+import { createMemo, createSignal, type JSX, Match, Show, Switch, untrack } from "solid-js"
 import { HelpPage } from "../pages/HelpPage.tsx"
 import { SettingsPage, type SettingsSection } from "../settings/SettingsPage.tsx"
 import { useApp } from "../state/app.tsx"
@@ -18,8 +18,12 @@ export interface PlaceView {
 
 export interface ShellProps {
   face?: (place: Place) => JSX.Element
-  /** Draws an open place. Returns nothing when the place does not exist. */
+  /** True when the place still exists. */
+  placeExists?: (ref: PlaceRef) => boolean
+  /** Draws an open place. Called once each time the open place changes. */
   renderPlace?: (ref: PlaceRef) => PlaceView | undefined
+  /** A button at the end of a place list section header. */
+  sectionAction?: (section: SectionId) => JSX.Element
   /** Draws pages that later features own. */
   pages?: Partial<Record<Page, () => JSX.Element>>
   settingsSections?: Partial<Record<SettingsSection, () => JSX.Element>>
@@ -37,10 +41,17 @@ export const Shell = (props: ShellProps) => {
   const ui = useUi()
   const [settingsOpen, setSettingsOpen] = createSignal(false)
 
-  const view = () => {
+  // A string key, so the view is made again only when another place opens or this one goes.
+  const openKey = createMemo(() => {
     const ref = ui.place()
-    return ref ? props.renderPlace?.(ref) : undefined
-  }
+    return ref && props.placeExists?.(ref) ? `${ref.kind}:${ref.id}` : undefined
+  })
+  const view = createMemo(() => {
+    const key = openKey()
+    if (!key) return undefined
+    const [kind, id] = key.split(":") as [PlaceRef["kind"], string]
+    return untrack(() => props.renderPlace?.({ kind, id }))
+  })
 
   const PanelToggle = () => (
     <Show when={!ui.narrow()}>
@@ -77,7 +88,10 @@ export const Shell = (props: ShellProps) => {
           </main>
         }
       >
-        <PlaceList {...(props.face ? { face: props.face } : {})} />
+        <PlaceList
+          {...(props.face ? { face: props.face } : {})}
+          {...(props.sectionAction ? { sectionAction: props.sectionAction } : {})}
+        />
         <main class={styles.main} data-testid="conversation">
           <Switch>
             <Match when={ui.ui.page === "chats"}>

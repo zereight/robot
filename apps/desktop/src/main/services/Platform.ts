@@ -12,6 +12,8 @@ export interface PlatformService {
   openPath(path: string): Promise<void>
   setStartAtLogin(enabled: boolean): void
   setThemeSource(theme: "system" | "dark" | "light"): void
+  /** Moves a file or folder to the system trash. */
+  trash(path: string): Promise<void>
 }
 
 export class Platform extends Context.Service<Platform, PlatformService>()("robot/main/Platform") {}

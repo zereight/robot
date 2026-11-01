@@ -1,3 +1,4 @@
+import type { Agent, AgentCreate, AgentPatch } from "./agents.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 
@@ -32,12 +33,22 @@ export interface RpcMethods {
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
   "ui.get": { input: undefined; output: UiState }
   "ui.update": { input: UiStatePatch; output: UiState }
+  "agents.list": { input: { serverId: string; archived: boolean }; output: readonly Agent[] }
+  "agents.get": { input: { id: string }; output: Agent }
+  "agents.create": { input: AgentCreate; output: Agent }
+  "agents.update": { input: { id: string; patch: AgentPatch }; output: Agent }
+  "agents.duplicate": { input: { id: string; suffix: string }; output: Agent }
+  "agents.archive": { input: { id: string }; output: Agent }
+  "agents.restore": { input: { id: string }; output: Agent }
+  "agents.delete": { input: { id: string }; output: undefined }
+  "agents.setFaceImage": { input: { id: string; dataUrl: string | null }; output: Agent }
 }
 
 /** Events that the main process pushes to the renderer. */
 export interface RpcEvents {
   "settings.changed": Settings
   "places.changed": { serverId: string }
+  "agents.changed": { serverId: string }
 }
 
 export type RpcMethod = keyof RpcMethods
