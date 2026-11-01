@@ -33,6 +33,11 @@ export const ModelPicker = (props: {
   const current = () => models()?.list.find((m) => m.id === model())
   const efforts = () => current()?.efforts ?? []
 
+  // The account list can arrive after the picker opens, for example right after a connect.
+  createEffect(() => {
+    const first = providers.accounts()[0]
+    if (first && !accountId()) setAccountId(first.id)
+  })
   // Pick the first model when the account changes and the old model is not in its list.
   createEffect(
     on(models, (result) => {

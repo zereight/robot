@@ -15,7 +15,7 @@ import styles from "./providers.module.css"
 const kinds: readonly ProviderKind[] = ["openai", "anthropic", "custom"]
 
 /** Add a new account, or give a new key to an existing one. */
-const ConnectForm = (props: { account?: ProviderAccount; onDone: () => void }) => {
+export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => void }) => {
   const { t } = useApp()
   const [kind, setKind] = createSignal<ProviderKind>(props.account?.kind ?? "openai")
   const [name, setName] = createSignal(props.account?.name ?? "")

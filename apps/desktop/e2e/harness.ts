@@ -31,6 +31,8 @@ export const launch = async (
       ROBOT_USER_DATA: userData,
       // Secrets go to a file next to the data folder, not inside it, like a keychain would.
       ROBOT_TEST_SECRETS: `${userData}-secrets.json`,
+      // Tests skip the first start guide. A test of the guide sets this to an empty string.
+      ROBOT_SKIP_FIRST_RUN: "1",
       ...env,
     } as Record<string, string>,
   })
