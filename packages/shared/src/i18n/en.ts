@@ -399,6 +399,11 @@ export const en = {
   "agents.memory.source.agent": "Agent",
   "error.memory_not_found": "This memory item does not exist any more.",
   "agents.memory.edit": "Edit",
+  "browser.agents": "The agent uses the browser",
+  "browser.yours": "You control the browser",
+  "browser.takeOver": "Take control",
+  "browser.giveBack": "Give back",
+  "browser.close": "Close browser",
 } as const
 
 export type MessageKey = keyof typeof en

@@ -265,3 +265,43 @@ describe("memory", () => {
     expect(await s.run(Memory.use((m) => m.list(s.agent.id)))).toEqual([])
   })
 })
+
+describe("browser", () => {
+  test("pages open, read and act; the user holds the controls; stop closes the window", async () => {
+    const s = await setup("full")
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    expect(s.t.browserLog).toContain(`${s.agent.id}:open https://example.com/a`)
+    const state = await s.run(Tools.use((x) => Effect.succeed(x.browserState(s.agent.id))))
+    expect(state).toEqual({ open: true, control: false })
+    await s.send(call("browser_read", {}))
+    await s.finished()
+    expect((await s.toolPart())?.output).toContain("Text of https://example.com/a")
+
+    // While the user holds the controls, a step waits; giving back lets it go on.
+    await s.run(Tools.use((x) => Effect.sync(() => x.setBrowserControl(s.agent.id, true))))
+    await s.send(call("browser_click", { selector: "#go" }))
+    await Bun.sleep(500)
+    expect(s.t.browserLog.some((l) => l.endsWith("click #go"))).toBe(false)
+    await s.run(Tools.use((x) => Effect.sync(() => x.setBrowserControl(s.agent.id, false))))
+    await s.finished()
+    expect(s.t.browserLog.some((l) => l.endsWith("click #go"))).toBe(true)
+
+    // Stop while the user holds the controls closes the window within 2 seconds.
+    await s.run(Tools.use((x) => Effect.sync(() => x.setBrowserControl(s.agent.id, true))))
+    await s.send(call("browser_click", { selector: "#again" }))
+    await Bun.sleep(300)
+    const started = Date.now()
+    await s.run(Chat.use((c) => c.stop(s.agent.id)))
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(s.t.browserLog.at(-1)).toBe(`${s.agent.id}:close`)
+  })
+
+  test("a non-web address fails without opening", async () => {
+    const s = await setup("full")
+    await s.send(call("browser_open", { url: "file:///etc/passwd" }))
+    await s.finished()
+    expect((await s.toolPart())?.state).toBe("failed")
+    expect(s.t.browserLog).toEqual([])
+  })
+})

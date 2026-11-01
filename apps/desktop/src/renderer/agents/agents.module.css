@@ -227,3 +227,11 @@
   flex: 1;
   overflow-wrap: anywhere;
 }
+
+.browserBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+  color: var(--c-text-muted);
+}

@@ -1,10 +1,84 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs"
 import { basename, join } from "node:path"
 import { app, BrowserWindow, clipboard, dialog, nativeTheme, shell } from "electron"
-import type { PlatformService } from "./services/Platform.ts"
+import type { BrowserPage, PlatformService } from "./services/Platform.ts"
 
 /** True when an end-to-end test runs the app. The app then leaves system settings alone. */
 export const isTestRun = Boolean(process.env.ROBOT_USER_DATA)
+
+const PAGE_TEXT_MAX = 20_000
+
+/** One window per agent. Its session is kept on disk, so logins stay between runs. */
+const electronBrowser = (agentId: string): BrowserPage => {
+  let win: BrowserWindow | undefined
+  const listeners: (() => void)[] = []
+  const live = () => (win && !win.isDestroyed() ? win : undefined)
+  const need = () => {
+    const w = live()
+    if (!w) throw new Error("The browser is not open. Open a page first.")
+    return w
+  }
+  const run = async <T>(code: string): Promise<T> =>
+    need().webContents.executeJavaScript(code, true)
+  return {
+    isOpen: () => live() !== undefined,
+    open: async (url) => {
+      let w = live()
+      if (!w) {
+        w = new BrowserWindow({
+          width: 1100,
+          height: 800,
+          title: "ROBot browser",
+          webPreferences: {
+            partition: `persist:agent-${agentId}`,
+            sandbox: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        })
+        const created = w
+        created.webContents.setWindowOpenHandler(({ url: next }) => {
+          void created.loadURL(next)
+          return { action: "deny" }
+        })
+        created.on("closed", () => {
+          win = undefined
+          for (const l of listeners) l()
+        })
+        win = created
+      }
+      await w.loadURL(url)
+      return { url: w.webContents.getURL(), title: w.webContents.getTitle() }
+    },
+    read: async () => {
+      const w = need()
+      const text = await run<string>("document.body ? document.body.innerText : ''")
+      return {
+        url: w.webContents.getURL(),
+        title: w.webContents.getTitle(),
+        text: text.slice(0, PAGE_TEXT_MAX),
+      }
+    },
+    click: async (selector) => {
+      const found = await run<boolean>(
+        `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.click(); return true })()`,
+      )
+      if (!found) throw new Error(`No element matches ${selector}`)
+    },
+    type: async (selector, text) => {
+      const found = await run<boolean>(
+        `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.focus(); e.value = ${JSON.stringify(text)}; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true })()`,
+      )
+      if (!found) throw new Error(`No element matches ${selector}`)
+    },
+    close: () => live()?.destroy(),
+    onClosed: (l) => {
+      listeners.push(l)
+    },
+  }
+}
+
+const browsers = new Map<string, BrowserPage>()
 
 export const electronPlatform = (): PlatformService => {
   const dataDir = app.getPath("userData")
@@ -86,6 +160,13 @@ export const electronPlatform = (): PlatformService => {
         return
       }
       await shell.trashItem(path)
+    },
+    browser: (agentId) => {
+      const known = browsers.get(agentId)
+      if (known) return known
+      const page = electronBrowser(agentId)
+      browsers.set(agentId, page)
+      return page
     },
   }
 }
