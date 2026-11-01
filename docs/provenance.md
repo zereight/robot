@@ -27,3 +27,5 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-01 | S14: workflows: canvas editor, run engine, triggers, approvals, run history | Implementer | 010, 005 |
 | 2026-11-01 | S15: system notifications by kind, mutes, status island with Allow on approvals, click opens the message | Implementer | 015, 007 |
 | 2026-11-02 | Fix: workflows page keeps the same inner padding as the other pages | Implementer | — |
+| 2026-11-02 | S17: subscription accounts: Claude Code and Codex run as the vendor's own program with the user's own sign-in; find, download with checksum, sign in, plan limits, approval cards | Implementer | 006, 007, 013, 014 |
+| 2026-11-02 | S17: Muse Code and pi added as runtimes. Written from the output of `muse` and `pi` (`--help`, `usage --json`, `exec --json`, `--mode json`, `--list-models`) as run on the machine, and the public package page of pi (MIT). No code of other apps was read | Implementer | 006, 007 |

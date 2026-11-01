@@ -1,0 +1,297 @@
+import { describe, expect, test } from "bun:test"
+import type { AgentEvent } from "../providers/agent.ts"
+import {
+  claudeArgs,
+  claudeFailure,
+  describeRequest,
+  type Mapped,
+  mapClaudeMessage,
+  newStreamState,
+  parseClaudeStatus,
+  parseVersion,
+} from "./claude.ts"
+import type { RuntimeRun } from "./types.ts"
+
+const run = (patch: Partial<RuntimeRun> = {}): RuntimeRun => ({
+  bin: "claude",
+  model: "sonnet",
+  effort: null,
+  system: "Be brief.",
+  prompt: "Hi",
+  workspace: "/work/bo",
+  permission: "ask_risky",
+  useTools: true,
+  signal: new AbortController().signal,
+  approve: async () => true,
+  onLimits: () => {},
+  ...patch,
+})
+
+const events = (mapped: Mapped[]): AgentEvent[] =>
+  mapped.flatMap((m) => (m.kind === "event" ? [m.event] : []))
+
+describe("claude status", () => {
+  test("a subscription sign-in is read from the status text", () => {
+    const login = parseClaudeStatus(
+      JSON.stringify({
+        loggedIn: true,
+        authMethod: "claude.ai",
+        apiProvider: "firstParty",
+        email: "a@b.c",
+        subscriptionType: "max",
+      }),
+    )
+    expect(login).toEqual({ signedIn: true, method: "subscription", user: "a@b.c", plan: "max" })
+  })
+
+  test("a sign-in with a console key or a cloud is not a subscription", () => {
+    expect(parseClaudeStatus('{"loggedIn":true,"authMethod":"console"}').method).toBe("api_key")
+    expect(
+      parseClaudeStatus('{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"bedrock"}')
+        .method,
+    ).toBe("api_key")
+  })
+
+  test("no sign-in, and text that is not JSON, both read as signed out", () => {
+    expect(parseClaudeStatus('{"loggedIn":false}').signedIn).toBe(false)
+    expect(parseClaudeStatus("Not logged in").signedIn).toBe(false)
+    expect(parseClaudeStatus("").method).toBeNull()
+  })
+
+  test("the version is the first number with three parts", () => {
+    expect(parseVersion("2.1.316 (Claude Code)")).toBe("2.1.316")
+    expect(parseVersion("codex-cli 0.166.0")).toBe("0.166.0")
+    expect(parseVersion("nothing")).toBeNull()
+  })
+})
+
+describe("claude stream", () => {
+  test("text and thinking come from the partial messages", () => {
+    const state = newStreamState()
+    const delta = (d: object) =>
+      mapClaudeMessage(
+        { type: "stream_event", event: { type: "content_block_delta", index: 0, delta: d } },
+        state,
+      )
+    expect(events(delta({ type: "text_delta", text: "po" }))).toEqual([
+      { type: "text", text: "po" },
+    ])
+    expect(events(delta({ type: "thinking_delta", thinking: "hm" }))).toEqual([
+      { type: "thinking", text: "hm" },
+    ])
+    expect(delta({ type: "input_json_delta", partial_json: "{" })).toEqual([])
+  })
+
+  test("the complete message adds no text twice, but shows each tool call once", () => {
+    const state = newStreamState()
+    const assistant = {
+      type: "assistant",
+      message: {
+        content: [
+          { type: "text", text: "Working" },
+          { type: "tool_use", id: "t1", name: "Bash", input: { command: "ls" } },
+        ],
+      },
+    }
+    const first = events(mapClaudeMessage(assistant, state))
+    expect(first).toEqual([
+      {
+        type: "tool",
+        state: "running",
+        call: { id: "t1", name: "Bash", input: '{"command":"ls"}' },
+      },
+    ])
+    expect(mapClaudeMessage(assistant, state)).toEqual([])
+  })
+
+  test("a tool result finishes the card; an error result fails it", () => {
+    const state = newStreamState()
+    mapClaudeMessage(
+      {
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "t1", name: "Read", input: {} }] },
+      },
+      state,
+    )
+    const done = events(
+      mapClaudeMessage(
+        {
+          type: "user",
+          message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "text" }] },
+        },
+        state,
+      ),
+    )
+    expect(done[0]).toMatchObject({ type: "tool", state: "done", output: "text" })
+    const failed = events(
+      mapClaudeMessage(
+        {
+          type: "user",
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "t1",
+                is_error: true,
+                content: [{ type: "text", text: "denied" }],
+              },
+            ],
+          },
+        },
+        state,
+      ),
+    )
+    expect(failed[0]).toMatchObject({ state: "failed", output: "denied" })
+  })
+
+  test("work of a helper agent is left out of the reply", () => {
+    const state = newStreamState()
+    expect(
+      mapClaudeMessage(
+        {
+          type: "stream_event",
+          parent_tool_use_id: "x",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "hidden" } },
+        },
+        state,
+      ),
+    ).toEqual([])
+  })
+
+  test("a permission request names the call that asks", () => {
+    const [m] = mapClaudeMessage(
+      {
+        type: "control_request",
+        request_id: "r1",
+        request: {
+          subtype: "can_use_tool",
+          tool_name: "Bash",
+          tool_use_id: "t1",
+          input: { command: "touch a" },
+        },
+      },
+      newStreamState(),
+    )
+    expect(m).toEqual({
+      kind: "permission",
+      requestId: "r1",
+      toolUseId: "t1",
+      tool: "Bash",
+      input: { command: "touch a" },
+    })
+  })
+
+  test("limits keep their windows, in ms, and tell when requests are refused", () => {
+    const [m] = mapClaudeMessage(
+      {
+        type: "rate_limit_event",
+        rate_limit_info: {
+          status: "rejected",
+          resetsAt: 1_700_000_000,
+          unifiedWindows: {
+            five_hour: { utilization: 1, resetsAt: 1_700_000_000, status: "rejected" },
+            seven_day: { utilization: 0.4, resetsAt: 1_700_500_000, status: "allowed" },
+          },
+        },
+      },
+      newStreamState(),
+    )
+    expect(m).toEqual({
+      kind: "limits",
+      rejected: true,
+      resetsAt: 1_700_000_000_000,
+      limits: [
+        { window: "five_hour", used: 1, resetsAt: 1_700_000_000_000 },
+        { window: "seven_day", used: 0.4, resetsAt: 1_700_500_000_000 },
+      ],
+    })
+  })
+
+  test("the result counts cached input too", () => {
+    const [m] = mapClaudeMessage(
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "pong",
+        usage: {
+          input_tokens: 2,
+          cache_creation_input_tokens: 3161,
+          cache_read_input_tokens: 10,
+          output_tokens: 4,
+        },
+      },
+      newStreamState(),
+    )
+    expect(m).toEqual({ kind: "result", ok: true, text: "pong", input: 3173, output: 4 })
+  })
+})
+
+describe("claude permission rules", () => {
+  const ws = "/work/bo"
+  test("a command is risky by the rules of the app", () => {
+    expect(describeRequest("c", "Bash", { command: "sudo ls" }, ws)).toMatchObject({
+      risky: true,
+      key: "run_command:sudo",
+    })
+    expect(describeRequest("c", "Bash", { command: "touch a.txt" }, ws)).toMatchObject({
+      risky: false,
+      key: "run_command:touch",
+      summary: "touch a.txt",
+    })
+  })
+
+  test("a file inside the workspace is not risky, outside it is", () => {
+    expect(describeRequest("c", "Write", { file_path: "/work/bo/a.txt" }, ws).risky).toBe(false)
+    expect(describeRequest("c", "Write", { file_path: "notes/a.txt" }, ws).risky).toBe(false)
+    const out = describeRequest("c", "Read", { file_path: "/etc/hosts" }, ws)
+    expect(out).toMatchObject({ risky: true, key: "read_file:outside" })
+  })
+
+  test("other tools are not risky and keep one key each", () => {
+    expect(describeRequest("c", "WebFetch", { url: "https://a.b" }, ws)).toMatchObject({
+      risky: false,
+      key: "fetch_url",
+    })
+    expect(describeRequest("c", "mcp__x__y", { a: 1 }, ws).key).toBe("tool:mcp__x__y")
+  })
+})
+
+describe("claude run", () => {
+  test("the arguments keep the user's own settings and servers out", () => {
+    const args = claudeArgs(run())
+    expect(args).toContain("--strict-mcp-config")
+    expect(
+      args.slice(args.indexOf("--setting-sources"), args.indexOf("--setting-sources") + 2),
+    ).toEqual(["--setting-sources", ""])
+    expect(args).toContain("--no-session-persistence")
+    expect(args.slice(args.indexOf("--model"), args.indexOf("--model") + 2)).toEqual([
+      "--model",
+      "sonnet",
+    ])
+    expect(args).not.toContain("--effort")
+    expect(args).toContain("AskUserQuestion")
+  })
+
+  test("effort and instructions are passed; a text-only turn has no tools", () => {
+    const args = claudeArgs(run({ effort: "high", useTools: false }))
+    expect(args.slice(args.indexOf("--effort"), args.indexOf("--effort") + 2)).toEqual([
+      "--effort",
+      "high",
+    ])
+    expect(args.slice(args.indexOf("--tools"), args.indexOf("--tools") + 2)).toEqual([
+      "--tools",
+      "",
+    ])
+    expect(args).toContain("Be brief.")
+  })
+
+  test("an error result becomes a failure that the user can act on", () => {
+    expect(claudeFailure("You've hit your limit ∙ resets 3pm", 5000)).toMatchObject({
+      code: "provider_limit",
+      resetsAt: 5000,
+    })
+    expect(claudeFailure("Please run /login", null).code).toBe("runtime_signed_out")
+    expect(claudeFailure("boom", null).code).toBe("provider_error")
+  })
+})

@@ -1,8 +1,10 @@
 import {
   defaultBaseUrls,
+  isRuntimeKind,
   type MessageKey,
   type ProviderAccount,
   type ProviderKind,
+  type RuntimeKind,
 } from "@robot/shared"
 import { createSignal, For, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -11,13 +13,24 @@ import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { Button } from "../ui/controls.tsx"
 import styles from "./providers.module.css"
+import { isReady, RuntimePanel, RuntimeSummary } from "./RuntimePanel.tsx"
 
-const kinds: readonly ProviderKind[] = ["openai", "anthropic", "custom"]
+/** The subscriptions come first: they are what most users have. */
+const kinds: readonly ProviderKind[] = [
+  "claude_code",
+  "codex",
+  "muse",
+  "pi",
+  "openai",
+  "anthropic",
+  "custom",
+]
 
 /** Add a new account, or give a new key to an existing one. */
 export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => void }) => {
   const { t } = useApp()
-  const [kind, setKind] = createSignal<ProviderKind>(props.account?.kind ?? "openai")
+  const [kind, setKind] = createSignal<ProviderKind>(props.account?.kind ?? "claude_code")
+  const [ready, setReady] = createSignal(false)
   const [name, setName] = createSignal(props.account?.name ?? "")
   const [baseUrl, setBaseUrl] = createSignal(props.account?.baseUrl ?? defaultBaseUrls.openai)
   const [apiKey, setApiKey] = createSignal("")
@@ -35,13 +48,20 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
     setBusy(true)
     setError(undefined)
     try {
-      await call("providers.connect", {
-        ...(props.account ? { accountId: props.account.id } : {}),
-        kind: kind(),
-        name: name().trim() || t(`providers.kind.${kind()}` as MessageKey),
-        baseUrl: baseUrl().trim(),
-        apiKey: apiKey().trim(),
-      })
+      const account = props.account ? { accountId: props.account.id } : {}
+      const accountName = name().trim() || t(`providers.kind.${kind()}` as MessageKey)
+      await call(
+        "providers.connect",
+        isRuntimeKind(kind())
+          ? { ...account, kind: kind(), name: accountName }
+          : {
+              ...account,
+              kind: kind(),
+              name: accountName,
+              baseUrl: baseUrl().trim(),
+              apiKey: apiKey().trim(),
+            },
+      )
       setApiKey("")
       props.onDone()
     } catch (e) {
@@ -76,28 +96,39 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
           data-testid="provider-name"
         />
       </label>
-      <label class={styles.field}>
-        <span class={styles.label}>{t("providers.baseUrl")}</span>
-        <input
-          class={styles.input}
-          value={baseUrl()}
-          onInput={(e) => setBaseUrl(e.currentTarget.value)}
-          data-testid="provider-base-url"
-          spellcheck={false}
-        />
-      </label>
-      <label class={styles.field}>
-        <span class={styles.label}>{t("providers.apiKey")}</span>
-        <input
-          class={styles.input}
-          type="password"
-          autocomplete="off"
-          value={apiKey()}
-          onInput={(e) => setApiKey(e.currentTarget.value)}
-          data-testid="provider-api-key"
-        />
-        <span class={styles.hint}>{t("providers.apiKey.hint")}</span>
-      </label>
+      <Show
+        when={isRuntimeKind(kind())}
+        fallback={
+          <>
+            <label class={styles.field}>
+              <span class={styles.label}>{t("providers.baseUrl")}</span>
+              <input
+                class={styles.input}
+                value={baseUrl()}
+                onInput={(e) => setBaseUrl(e.currentTarget.value)}
+                data-testid="provider-base-url"
+                spellcheck={false}
+              />
+            </label>
+            <label class={styles.field}>
+              <span class={styles.label}>{t("providers.apiKey")}</span>
+              <input
+                class={styles.input}
+                type="password"
+                autocomplete="off"
+                value={apiKey()}
+                onInput={(e) => setApiKey(e.currentTarget.value)}
+                data-testid="provider-api-key"
+              />
+              <span class={styles.hint}>{t("providers.apiKey.hint")}</span>
+            </label>
+          </>
+        }
+      >
+        <Show when={kind()} keyed>
+          {(k) => <RuntimePanel kind={k as RuntimeKind} onReady={setReady} />}
+        </Show>
+      </Show>
       <Show when={error()}>
         {(err) => (
           <div class={styles.error} role="alert" data-testid="provider-error">
@@ -110,7 +141,9 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
         <Button
           variant="primary"
           type="submit"
-          disabled={busy() || !apiKey().trim() || !baseUrl().trim()}
+          disabled={
+            busy() || (isRuntimeKind(kind()) ? !ready() : !apiKey().trim() || !baseUrl().trim())
+          }
           data-testid="provider-submit"
         >
           {busy() ? t("providers.checking") : t("providers.connect")}
@@ -138,8 +171,16 @@ const AccountItem = (props: { account: ProviderAccount }) => {
       <div class={styles.itemMain}>
         <div class={styles.itemName}>{props.account.name}</div>
         <div class={styles.itemMeta}>
-          {t(`providers.kind.${props.account.kind}` as MessageKey)} · {props.account.baseUrl}
+          {t(`providers.kind.${props.account.kind}` as MessageKey)}
+          {props.account.baseUrl ? ` · ${props.account.baseUrl}` : ""}
         </div>
+        <Show when={props.account.runtime}>
+          {(runtime) => (
+            <Show when={isReady(runtime())}>
+              <RuntimeSummary status={runtime()} />
+            </Show>
+          )}
+        </Show>
         <Show when={note()}>
           {(n) => (
             <div

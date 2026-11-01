@@ -18,7 +18,7 @@ import {
   type TaskSource,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
-import { type AgentEvent, runAgent } from "../providers/agent.ts"
+import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { Activity } from "./Activity.ts"
@@ -173,7 +173,7 @@ export const toolLabel = (name: string, input: string) => {
   try {
     args = JSON.parse(input || "{}") as Record<string, unknown>
   } catch {}
-  const first = ["path", "command", "url", "query", "question", "text"]
+  const first = ["path", "file_path", "command", "url", "query", "pattern", "question", "text"]
     .map((k) => args[k])
     .find((v): v is string => typeof v === "string")
   return first ? `${name}: ${first.replace(/\s+/g, " ").slice(0, 80)}` : name
@@ -360,7 +360,6 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (!agent.model_account_id || !agent.model_name) {
             return yield* new AppError({ code: "provider_not_connected" })
           }
-          const connection = yield* providers.connection(agent.model_account_id)
           const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
           const system = [
             agent.instructions,
@@ -409,17 +408,23 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             },
             onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
           }
-          const events = runAgent(
+          const events = yield* providers.events(
+            agent.model_account_id,
             {
-              connection,
               model: agent.model_name,
               effort: agent.model_effort,
               system,
               turns: buildTurns(agentId, reply.id),
               tools: tools.defs(agent.memory_enabled === 1),
               signal: controller.signal,
+              workspace: agent.workspace,
+              permission: agent.permission,
+              useTools: true,
             },
-            (call) => tools.execute(context, call),
+            {
+              execute: (call) => tools.execute(context, call),
+              approve: (request) => tools.approval(context, request),
+            },
           )
           // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
           const closing: AsyncIterable<AgentEvent> = {
@@ -506,18 +511,19 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const isRunning = (agentId: string) => FiberMap.has(workers, agentId)
 
       const usableAgent = (agentId: string) =>
-        Effect.suspend(() => {
+        Effect.gen(function* () {
           const agent = agentRow(agentId)
           if (!agent || agent.archived_at !== null)
-            return Effect.fail(new AppError({ code: "agent_not_found" }))
+            return yield* new AppError({ code: "agent_not_found" })
+          // A vendor program may have been signed out since the last look; this looks again.
           if (
             !agent.model_account_id ||
             !agent.model_name ||
-            !providers.isConnected(agent.model_account_id)
+            !(yield* providers.verify(agent.model_account_id))
           ) {
-            return Effect.fail(new AppError({ code: "provider_not_connected" }))
+            return yield* new AppError({ code: "provider_not_connected" })
           }
-          return Effect.succeed(agent)
+          return agent
         })
 
       const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
