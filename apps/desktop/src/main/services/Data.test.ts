@@ -8,6 +8,7 @@ import { Agents } from "./Agents.ts"
 import { copyAttachments } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
+import { Knowledge } from "./Knowledge.ts"
 import { Providers } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
@@ -99,6 +100,69 @@ describe("export and import", () => {
     expect(existsSync(join(list[0]?.workspace ?? "", "attachments", "note.txt"))).toBe(true)
     const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
     expect(bDb.get<{ parts: string }>("SELECT parts FROM message")?.parts).toContain("[redacted]")
+  })
+
+  test("knowledge is in the archive: articles without keys, sources as they are, and the changes", async () => {
+    const out = join(testPlatform().dataDir, "export-knowledge.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const agent = await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const save = (title: string, body: string) =>
+      a.run(Knowledge.use((k) => k.save(agent.id, { file: null, title, summary: "s", body })))
+    await save("Alpha", "First article.")
+    await save("Beta", "See [[Alpha]].")
+    const source =
+      "A binary-like source.\u0000\u0001\nwith a key sk-source-0123456789abcdefgh inside.\n"
+    await a.run(Knowledge.use((k) => k.addSource(agent.id, { name: "data.bin", data: source })))
+    // Another app puts a key in an article. The archive must not carry it.
+    writeFileSync(
+      join(agent.workspace, "Knowledge", "Alpha.md"),
+      `---\ntitle: Alpha\nsummary: s\n---\n\nKey ${KEY} here.\n`,
+    )
+    expect((await a.run(Data.use((d) => d.export()))).files).toBe(3)
+
+    const entries = unzipSync(readFileSync(out))
+    expect(Object.keys(entries).sort()).toEqual(
+      [
+        "README.txt",
+        `knowledge/${agent.id}/Alpha.md`,
+        `knowledge/${agent.id}/Beta.md`,
+        `knowledge/${agent.id}/sources/data.bin`,
+        "meta.json",
+        "robot.db",
+      ].sort(),
+    )
+    for (const [name, data] of Object.entries(entries))
+      if (!name.endsWith("data.bin")) expect(Buffer.from(data).includes(KEY)).toBe(false)
+    // A source is copied byte for byte.
+    expect(Buffer.from(entries[`knowledge/${agent.id}/sources/data.bin`] ?? []).toString()).toBe(
+      source,
+    )
+    expect(Buffer.from(entries[`knowledge/${agent.id}/Alpha.md`] ?? []).toString()).toContain(
+      "[redacted]",
+    )
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const restored = (await b.run(Agents.use((x) => x.list(bLocal.id, false))))[0]
+    expect(restored).toBeDefined()
+    const view = await b.run(Knowledge.use((k) => k.list(restored?.id ?? "")))
+    expect(view.articles.map((x) => x.title)).toEqual(["Alpha", "Beta"])
+    expect(view.sources.map((x) => x.name)).toEqual(["data.bin"])
+    expect(
+      readFileSync(join(restored?.workspace ?? "", "Knowledge", "sources", "data.bin"), "utf8"),
+    ).toBe(source)
+    // The restored folder matches the records: nothing shows as a new change.
+    const changes = await b.run(Knowledge.use((k) => k.changes(restored?.id ?? "")))
+    expect(changes.length).toBeGreaterThanOrEqual(2)
+    expect(changes.every((c) => c.actor === "user")).toBe(true)
+    const again = await b.run(Knowledge.use((k) => k.changes(restored?.id ?? "")))
+    expect(again.map((c) => c.id)).toEqual(changes.map((c) => c.id))
   })
 
   test("a subscription account comes back switched off; the program stays as it is", async () => {

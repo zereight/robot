@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto"
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,7 +12,7 @@ import {
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
-import { type ChatMessage, redactSecrets } from "@robot/shared"
+import { type ChatMessage, KNOWLEDGE_FOLDER, KNOWLEDGE_SOURCES, redactSecrets } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { unzipSync, zipSync } from "fflate"
 import { Agents } from "./Agents.ts"
@@ -41,6 +43,8 @@ This archive holds the data of one ROBot app. It has no keys or tokens.
 robot.db            The database (SQLite). Servers, agents, chats, accounts and settings.
 meta.json           The version of this format and of the database.
 attachments/<id>/   Files that were attached to chats, one folder per agent id.
+knowledge/<id>/     The articles of agent knowledge (Markdown files) and, in the folder
+                    sources, the sources as they were kept. One folder per agent id.
 
 Text that looks like a key or a token was replaced with [redacted] in the chats.
 To restore it, choose Settings > Data > Import in an empty ROBot. Accounts come back
@@ -56,6 +60,29 @@ const filesIn = (dir: string) =>
         .filter((e) => e.isFile())
         .map((e) => e.name)
     : []
+
+/** The knowledge of one agent as files: articles at the top, sources in one folder. */
+const knowledgeFiles = (workspace: string) => {
+  const root = join(workspace, KNOWLEDGE_FOLDER)
+  const out: { rel: string; data: Buffer; article: boolean }[] = []
+  const read = (dir: string, prefix: string, article: boolean) => {
+    if (!existsSync(dir)) return
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || entry.name.startsWith(".")) continue
+      if (article && !/\.md$/i.test(entry.name)) continue
+      out.push({
+        rel: `${prefix}${entry.name}`,
+        data: readFileSync(join(dir, entry.name)),
+        article,
+      })
+    }
+  }
+  read(root, "", true)
+  read(join(root, KNOWLEDGE_SOURCES), `${KNOWLEDGE_SOURCES}/`, false)
+  return out
+}
+
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
 
 export class Data extends Context.Service<Data, DataService>()("robot/main/Data") {
   static readonly layer = Layer.effect(
@@ -111,6 +138,30 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                   row.id,
                 )
             }
+            // The articles are text, so a key in them is hidden like a key in a chat. The hash
+            // follows the hidden text, so that the restored files match their records.
+            for (const row of out
+              .prepare("SELECT agent_id, file, content FROM knowledge_file")
+              .all() as {
+              agent_id: string
+              file: string
+              content: string
+            }[]) {
+              const text = redactSecrets(row.content, known)
+              out
+                .prepare(
+                  "UPDATE knowledge_file SET content = ?, hash = ? WHERE agent_id = ? AND file = ?",
+                )
+                .run(text, sha256(text), row.agent_id, row.file)
+            }
+            for (const row of out.prepare("SELECT id, earlier FROM knowledge_change").all() as {
+              id: string
+              earlier: string | null
+            }[])
+              if (row.earlier !== null)
+                out
+                  .prepare("UPDATE knowledge_change SET earlier = ? WHERE id = ?")
+                  .run(redactSecrets(row.earlier, known), row.id)
             for (const row of out.prepare("SELECT id, text FROM memory").all() as {
               id: string
               text: string
@@ -157,6 +208,13 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                 const dir = join(agent.workspace, "attachments")
                 for (const name of filesIn(dir)) {
                   entries[`attachments/${agent.id}/${name}`] = readFileSync(join(dir, name))
+                  files++
+                }
+                // Articles are text and lose their keys. Sources are copied as they are.
+                for (const file of knowledgeFiles(agent.workspace)) {
+                  entries[`knowledge/${agent.id}/${file.rel}`] = file.article
+                    ? utf8(redactSecrets(file.data.toString("utf8"), known))
+                    : file.data
                   files++
                 }
               }
@@ -233,6 +291,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               )
               db.run("INSERT INTO message SELECT * FROM imp.message")
               db.run("INSERT INTO memory SELECT * FROM imp.memory")
+              db.run("INSERT INTO knowledge_file SELECT * FROM imp.knowledge_file")
+              db.run("INSERT INTO knowledge_change SELECT * FROM imp.knowledge_change")
               db.run("INSERT INTO agent_allow SELECT * FROM imp.agent_allow")
               db.run("INSERT INTO task SELECT * FROM imp.task")
               db.run(
@@ -267,14 +327,41 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               .all<{ id: string; workspace: string }>("SELECT id, workspace FROM agent")
               .map((a) => [a.id, a.workspace]),
           )
+          const plain = (name: string | undefined): name is string =>
+            !!name && SAFE_NAME.test(name) && name !== "." && name !== ".." && !name.startsWith(".")
           for (const [path, data] of Object.entries(entries)) {
             const [root, agentId, name, ...rest] = path.split("/")
             const workspace = agentId ? workspaces.get(agentId) : undefined
-            if (root !== "attachments" || rest.length > 0 || !name || !workspace) continue
-            if (!SAFE_NAME.test(name) || name === "." || name === "..") continue
-            const dir = join(workspace, "attachments")
-            mkdirSync(dir, { recursive: true })
-            writeFileSync(join(dir, name), data)
+            if (!workspace) continue
+            if (root === "attachments") {
+              if (
+                rest.length > 0 ||
+                !name ||
+                !SAFE_NAME.test(name) ||
+                name === "." ||
+                name === ".."
+              )
+                continue
+              const dir = join(workspace, "attachments")
+              mkdirSync(dir, { recursive: true })
+              writeFileSync(join(dir, name), data)
+            } else if (root === "knowledge") {
+              // An article is one file at the top; a source is one file in the sources folder.
+              const [first, second, ...deeper] = [name, ...rest]
+              const isSource = first === KNOWLEDGE_SOURCES && plain(second) && deeper.length === 0
+              const isArticle = rest.length === 0 && plain(first) && /\.md$/i.test(first)
+              if (!isSource && !isArticle) continue
+              const dir = isSource
+                ? join(workspace, KNOWLEDGE_FOLDER, KNOWLEDGE_SOURCES)
+                : join(workspace, KNOWLEDGE_FOLDER)
+              mkdirSync(dir, { recursive: true })
+              const target = join(dir, (isSource ? second : first) as string)
+              // A source that is there already is read-only, so it goes first.
+              rmSync(target, { force: true })
+              writeFileSync(target, data)
+              // A source never changes.
+              if (isSource) chmodSync(target, 0o444)
+            }
           }
         } catch (error) {
           return yield* new AppError({ code: "import_invalid", detail: String(error) })
