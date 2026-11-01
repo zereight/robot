@@ -78,9 +78,9 @@ test("motion: short, calm, and off with reduce motion", async () => {
   // Opened again during the previous exit, the form is fresh.
   await expect(page.getByTestId("agent-name")).toHaveValue("")
   await freezeAt(page, 0.1)
-  await shot(page, "motion-01-dialog-10")
+  await shot(page, "motion-01-dialog-10", { moving: true })
   await freezeAt(page, 0.5)
-  await shot(page, "motion-02-dialog-50")
+  await shot(page, "motion-02-dialog-50", { moving: true })
   await page.evaluate(() => {
     for (const a of document.getAnimations()) a.finish()
   })
