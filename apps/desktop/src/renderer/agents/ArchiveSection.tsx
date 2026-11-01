@@ -1,6 +1,6 @@
 import type { Agent } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
-import { errorKey } from "../lib/errors.ts"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -20,7 +20,7 @@ export const ArchiveSection = () => {
   )
   onCleanup(window.robot.on("agents.changed", () => void refetch()))
   const [confirm, setConfirm] = createSignal<Agent>()
-  const [error, setError] = createSignal<ReturnType<typeof errorKey>>()
+  const [error, setError] = createSignal<ErrorText>()
 
   const remove = async (agent: Agent) => {
     setError(undefined)
@@ -28,7 +28,7 @@ export const ArchiveSection = () => {
       await call("agents.delete", { id: agent.id })
       setConfirm(undefined)
     } catch (e) {
-      setError(errorKey(e))
+      setError(describeError(e))
     }
   }
 
@@ -71,9 +71,9 @@ export const ArchiveSection = () => {
             <h2 class={styles.title}>{t("agents.delete.title", { name: agent().name })}</h2>
             <p>{t("agents.delete.body")}</p>
             <Show when={error()}>
-              {(key) => (
+              {(err) => (
                 <div class={styles.error} role="alert">
-                  {t(key())}
+                  {t(err().key, err().params)}
                 </div>
               )}
             </Show>

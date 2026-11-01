@@ -1,4 +1,5 @@
 import type { Agent, AgentCreate, AgentPatch } from "./agents.ts"
+import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 
@@ -42,13 +43,21 @@ export interface RpcMethods {
   "agents.restore": { input: { id: string }; output: Agent }
   "agents.delete": { input: { id: string }; output: undefined }
   "agents.setFaceImage": { input: { id: string; dataUrl: string | null }; output: Agent }
+  "providers.list": { input: undefined; output: readonly ProviderAccount[] }
+  "providers.connect": { input: ProviderConnect; output: ProviderAccount }
+  "providers.check": { input: { accountId: string }; output: undefined }
+  "providers.disconnect": { input: { accountId: string }; output: undefined }
+  "providers.remove": { input: { accountId: string }; output: undefined }
+  "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
 }
 
 /** Events that the main process pushes to the renderer. */
 export interface RpcEvents {
   "settings.changed": Settings
   "places.changed": { serverId: string }
+  /** `serverId` is "*" when agents of every server may have changed. */
   "agents.changed": { serverId: string }
+  "providers.changed": Record<string, never>
 }
 
 export type RpcMethod = keyof RpcMethods
