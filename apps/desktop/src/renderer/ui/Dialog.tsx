@@ -1,17 +1,19 @@
 import { onCleanup, onMount, type ParentProps } from "solid-js"
 import { Portal } from "solid-js/web"
 import styles from "../shell/shell.module.css"
+import { useClosing } from "./Presence.tsx"
 
 /** A modal box. Escape and a click outside close it. */
 export const Dialog = (
   props: ParentProps<{ label: string; onClose: () => void; testId?: string }>,
 ) => {
   let box: HTMLDivElement | undefined
+  const closing = useClosing()
   onMount(() => {
     const previous = document.activeElement as HTMLElement | null
     box?.querySelector<HTMLElement>("button, input, textarea, select")?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !closing()) {
         event.stopPropagation()
         props.onClose()
       }
@@ -26,6 +28,7 @@ export const Dialog = (
     <Portal>
       <div
         class={styles.dialogBackdrop}
+        data-closing={closing()}
         onPointerDown={(e) => e.target === e.currentTarget && props.onClose()}
       >
         <div

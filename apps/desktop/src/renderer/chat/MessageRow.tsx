@@ -23,6 +23,8 @@ export interface MessageRowProps {
   first: boolean
   canEdit: boolean
   flash: boolean
+  /** Plays the arrival motion. */
+  enter: boolean
   quoted: ChatMessage | undefined
   onReply: () => void
   onJumpTo: (messageId: string) => void
@@ -116,6 +118,7 @@ export const MessageRow = (props: MessageRowProps) => {
       class={styles.row}
       data-first={props.first}
       data-flash={props.flash}
+      data-enter={props.enter}
       data-message-id={props.message.id}
       data-author={props.message.author}
       data-status={props.message.status}

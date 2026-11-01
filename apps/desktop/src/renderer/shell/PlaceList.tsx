@@ -8,9 +8,19 @@ import {
   type SectionId,
 } from "@robot/shared"
 import { ChevronDown, Hash } from "lucide-solid"
-import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js"
+import {
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  onMount,
+  type ParentProps,
+  Show,
+} from "solid-js"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
+import { Presence, useClosing } from "../ui/Presence.tsx"
 import styles from "./shell.module.css"
 
 export interface PlaceListProps {
@@ -20,6 +30,16 @@ export interface PlaceListProps {
 }
 
 const rowSelector = "[data-place-row]"
+
+/** The rows of one section. Grows open and shrinks closed. */
+const SectionBody = (props: ParentProps) => {
+  const closing = useClosing()
+  return (
+    <div class={styles.sectionBody} data-closing={closing()}>
+      {props.children}
+    </div>
+  )
+}
 
 export const PlaceList = (props: PlaceListProps) => {
   const app = useApp()
@@ -154,52 +174,58 @@ export const PlaceList = (props: PlaceListProps) => {
                       </button>
                       {props.sectionAction?.(section.id)}
                     </div>
-                    <Show when={!collapsed()}>
-                      <Show
-                        when={section.places.length > 0}
-                        fallback={
-                          <div class={styles.sectionEmpty}>
-                            {t(`places.empty.${section.id}` as MessageKey)}
-                          </div>
-                        }
-                      >
-                        <For each={section.places}>
-                          {(place) => {
-                            const selected = () =>
-                              ui.ui.page === "chats" &&
-                              ui.place()?.kind === place.kind &&
-                              ui.place()?.id === place.id
-                            return (
-                              <button
-                                type="button"
-                                class={styles.row}
-                                data-place-row
-                                data-testid={`place-${place.kind}-${place.id}`}
-                                data-unread={place.unread > 0}
-                                aria-current={selected()}
-                                aria-label={accessibleName(place)}
-                                onClick={() => ui.selectPlace({ kind: place.kind, id: place.id })}
-                              >
-                                <span class={styles.mark}>
-                                  {place.kind === "channel" ? (
-                                    <Hash size={18} />
-                                  ) : (
-                                    props.face?.(place)
-                                  )}
-                                  <Show when={place.working}>
-                                    <span class={styles.workingDot} data-testid="working-dot" />
-                                  </Show>
-                                </span>
-                                <span class={styles.rowName}>{place.name}</span>
-                                <Show when={place.unread > 0}>
-                                  <span class={styles.badge}>{place.unread}</span>
-                                </Show>
-                              </button>
-                            )
-                          }}
-                        </For>
-                      </Show>
-                    </Show>
+                    <Presence when={!collapsed()}>
+                      {() => (
+                        <SectionBody>
+                          <Show
+                            when={section.places.length > 0}
+                            fallback={
+                              <div class={styles.sectionEmpty}>
+                                {t(`places.empty.${section.id}` as MessageKey)}
+                              </div>
+                            }
+                          >
+                            <For each={section.places}>
+                              {(place) => {
+                                const selected = () =>
+                                  ui.ui.page === "chats" &&
+                                  ui.place()?.kind === place.kind &&
+                                  ui.place()?.id === place.id
+                                return (
+                                  <button
+                                    type="button"
+                                    class={styles.row}
+                                    data-place-row
+                                    data-testid={`place-${place.kind}-${place.id}`}
+                                    data-unread={place.unread > 0}
+                                    aria-current={selected()}
+                                    aria-label={accessibleName(place)}
+                                    onClick={() =>
+                                      ui.selectPlace({ kind: place.kind, id: place.id })
+                                    }
+                                  >
+                                    <span class={styles.mark}>
+                                      {place.kind === "channel" ? (
+                                        <Hash size={18} />
+                                      ) : (
+                                        props.face?.(place)
+                                      )}
+                                      <Show when={place.working}>
+                                        <span class={styles.workingDot} data-testid="working-dot" />
+                                      </Show>
+                                    </span>
+                                    <span class={styles.rowName}>{place.name}</span>
+                                    <Show when={place.unread > 0}>
+                                      <span class={styles.badge}>{place.unread}</span>
+                                    </Show>
+                                  </button>
+                                )
+                              }}
+                            </For>
+                          </Show>
+                        </SectionBody>
+                      )}
+                    </Presence>
                   </section>
                 </Show>
               )

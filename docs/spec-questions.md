@@ -32,3 +32,5 @@ implementer made to continue. A spec author answers by changing the spec.
 | 003 | Does Markdown allow raw HTML, and where do links and images go? | Raw HTML shows as plain text. Links open in the system browser (http, https, mailto only). Images load only from https addresses. |
 | 003 | Attach (flow 4) and Approve (flow 6) | Attach comes in slice S7. Approve needs agent tools (007), which are not in M1. |
 | 003 | What makes a chat unread in the place list? | An agent reply that ends while the chat is not open. Opening the chat clears the count. |
+| 000 | Which parts of the window move, and how? | Dialogs and settings fade and rise in (200 ms) and fade out (120 ms). New messages rise in; history does not move. The activity panel slides, sections fold, badges and the working dot pop in, the send and stop icons turn in, hover actions fade. Buttons press in a little. Every motion is under 300 ms; only the "Working…" line loops (003). Reduce motion sets every duration to 0. |
+| 003 | How does the quoted message "flash"? | It takes the selected colour at once and fades back after about 1.3 s. Each fade is under 300 ms. |
