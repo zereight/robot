@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
-import { AgentCreate, copyName, faceFromName, nameKey } from "./agents.ts"
+import {
+  AGENT_NAME_MAX,
+  AgentCreate,
+  charLength,
+  copyName,
+  faceFromName,
+  nameKey,
+  SUGGESTED_NAME_COUNT,
+  suggestName,
+} from "./agents.ts"
+import { catalogues, type MessageKey } from "./i18n/index.ts"
 
 describe("agents", () => {
   test("names are 1 to 40 characters after trimming", () => {
@@ -37,5 +47,76 @@ describe("agents", () => {
 
   test("the same name gives the same face", () => {
     expect(faceFromName("Ada")).toEqual(faceFromName("Ada"))
+  })
+
+  describe("name suggestions", () => {
+    const names = ["Nova", "Orbit", "Pixel"]
+    const none = () => false
+
+    test("picks a name from the list, by the random number", () => {
+      expect(suggestName(names, none, "", () => 0)).toBe("Nova")
+      expect(suggestName(names, none, "", () => 0.5)).toBe("Orbit")
+      expect(suggestName(names, none, "", () => 0.999999)).toBe("Pixel")
+    })
+
+    test("skips taken names, ignoring case", () => {
+      const used = new Set(["nova", "pixel"])
+      const taken = (n: string) => used.has(nameKey(n))
+      for (const r of [0, 0.5, 0.999999])
+        expect(suggestName(names, taken, "", () => r)).toBe("Orbit")
+    })
+
+    test("gives a new name each time: it skips the name in the field", () => {
+      expect(suggestName(names, none, "NOVA", () => 0)).toBe("Orbit")
+      expect(suggestName(names, none, " orbit ", () => 0.5)).toBe("Pixel")
+    })
+
+    test("adds a number when the only free name is the one in the field", () => {
+      const taken = (n: string) => ["orbit", "pixel"].includes(nameKey(n))
+      expect(suggestName(names, taken, "Nova", () => 0)).toBe("Nova 2")
+    })
+
+    test("adds a number when every name is taken", () => {
+      const used = new Set(names.map(nameKey))
+      const taken = (n: string) => used.has(nameKey(n))
+      expect(suggestName(names, taken, "", () => 0)).toBe("Nova 2")
+      used.add("nova 2")
+      expect(suggestName(names, taken, "", () => 0)).toBe("Nova 3")
+    })
+
+    test("a numbered name stays within 40 characters", () => {
+      const long = ["x".repeat(AGENT_NAME_MAX)]
+      const name = suggestName(
+        long,
+        (n) => nameKey(n) === nameKey(long[0] ?? ""),
+        "",
+        () => 0,
+      )
+      expect(charLength(name)).toBe(AGENT_NAME_MAX)
+      expect(name.endsWith(" 2")).toBe(true)
+    })
+
+    test("returns an empty name for an empty list", () => {
+      expect(suggestName([], none, "")).toBe("")
+    })
+
+    for (const [locale, catalogue] of Object.entries(catalogues)) {
+      test(`${locale} has ${SUGGESTED_NAME_COUNT} valid, different suggested names`, () => {
+        const list = Array.from(
+          { length: SUGGESTED_NAME_COUNT },
+          (_, i) => catalogue[`agents.suggest.name.${i + 1}` as MessageKey],
+        )
+        expect(list.every((n) => typeof n === "string")).toBe(true)
+        for (const n of list) {
+          expect(n).toBe(n.trim())
+          expect(charLength(n)).toBeGreaterThanOrEqual(1)
+          expect(charLength(n)).toBeLessThanOrEqual(AGENT_NAME_MAX)
+        }
+        expect(new Set(list.map(nameKey)).size).toBe(SUGGESTED_NAME_COUNT)
+        expect(
+          Object.keys(catalogue).filter((k) => k.startsWith("agents.suggest.name.")).length,
+        ).toBe(SUGGESTED_NAME_COUNT)
+      })
+    }
   })
 })

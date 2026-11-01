@@ -11,15 +11,21 @@ import {
   type Face as FaceValue,
   faceFromName,
   type MessageKey,
+  nameKey,
   PERMISSION_LEVELS,
   type PermissionLevel,
+  SUGGESTED_NAME_COUNT,
+  suggestName,
 } from "@robot/shared"
-import { createSignal, For, Index, Show } from "solid-js"
+import { Dices } from "lucide-solid"
+import { createSignal, createUniqueId, For, Index, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
+import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useApp } from "../state/app.tsx"
-import { Button, Segmented, Switch } from "../ui/controls.tsx"
+import { useUi } from "../state/ui.tsx"
+import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import styles from "./agents.module.css"
 import { Face, faceColour } from "./Face.tsx"
 import { MemoryPanel } from "./MemoryPanel.tsx"
@@ -55,6 +61,8 @@ const Counter = (props: { used: number; max: number }) => {
 
 export const AgentForm = (props: AgentFormProps) => {
   const { t } = useApp()
+  const ui = useUi()
+  const nameId = createUniqueId()
   const [template, setTemplate] = createSignal<AgentTemplate | "blank">("blank")
   const [name, setName] = createSignal(props.agent?.name ?? "")
   const [role, setRole] = createSignal(props.agent?.role ?? "")
@@ -86,6 +94,30 @@ export const AgentForm = (props: AgentFormProps) => {
       setRole(t(`template.${next}.role` as MessageKey))
       setInstructions(t(`template.${next}.instructions` as MessageKey))
     }
+  }
+
+  /**
+   * Puts a random name in the field. Names of active and archived agents on the server are
+   * skipped, because both count for the rule that names are unique (002).
+   */
+  const suggest = async () => {
+    const serverId = ui.server()?.id
+    const used = new Set<string>()
+    if (serverId) {
+      try {
+        const lists = await Promise.all([
+          call("agents.list", { serverId, archived: false }),
+          call("agents.list", { serverId, archived: true }),
+        ])
+        for (const agent of lists.flat()) used.add(nameKey(agent.name))
+      } catch {
+        // The server still checks the name when the agent is made.
+      }
+    }
+    const names = Array.from({ length: SUGGESTED_NAME_COUNT }, (_, i) =>
+      t(`agents.suggest.name.${i + 1}` as MessageKey),
+    )
+    setName(suggestName(names, (candidate) => used.has(nameKey(candidate)), name()))
   }
 
   const submit = async (event: SubmitEvent) => {
@@ -147,19 +179,33 @@ export const AgentForm = (props: AgentFormProps) => {
         </div>
       </Show>
 
-      <label class={styles.field}>
+      <div class={styles.field}>
         <span class={styles.fieldTop}>
-          <span class={styles.label}>{t("agents.field.name")}</span>
+          <label class={styles.label} for={nameId}>
+            {t("agents.field.name")}
+          </label>
           <Counter used={nameLength()} max={AGENT_NAME_MAX} />
         </span>
-        <input
-          class={styles.input}
-          value={name()}
-          onInput={(e) => setName(e.currentTarget.value)}
-          data-testid="agent-name"
-          autofocus
-        />
-      </label>
+        <div class={styles.nameRow}>
+          <input
+            id={nameId}
+            class={`${styles.input} ${styles.grow}`}
+            value={name()}
+            onInput={(e) => setName(e.currentTarget.value)}
+            data-testid="agent-name"
+            autofocus
+          />
+          <Show when={!props.agent}>
+            <IconButton
+              label={t("agents.suggestName")}
+              onClick={suggest}
+              data-testid="agent-name-suggest"
+            >
+              <Dices size={18} aria-hidden="true" />
+            </IconButton>
+          </Show>
+        </div>
+      </div>
 
       <label class={styles.field}>
         <span class={styles.fieldTop}>
