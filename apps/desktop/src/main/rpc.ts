@@ -27,6 +27,7 @@ import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Tasks } from "./services/Tasks.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
 
@@ -178,6 +179,22 @@ export const handlers: Handlers = {
   "files.pick": () => Platform.use((p) => Effect.promise(() => p.pickFiles())),
   "data.export": () => Data.use((d) => d.export()),
   "data.restore": () => Data.use((d) => d.import()),
+  "tasks.list": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Tasks.use((t) => t.list(serverId))),
+    ),
+  "tasks.get": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Tasks.use((t) => t.get(id)))),
+  "tasks.stop": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Tasks.use((t) => t.stop(id))),
+      done,
+    ),
+  "tasks.retry": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Tasks.use((t) => t.retry(id))),
+      done,
+    ),
   "usage.summary": (input) =>
     decode(
       Schema.Struct({

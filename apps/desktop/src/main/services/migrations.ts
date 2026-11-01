@@ -74,4 +74,24 @@ export const migrations: readonly string[] = [
   CREATE INDEX message_agent ON message (agent_id, created_at);
   ALTER TABLE agent ADD COLUMN last_read_at INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  CREATE TABLE task (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    prompt TEXT NOT NULL,
+    label TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_id TEXT,
+    parent_id TEXT,
+    retry_of TEXT,
+    message_id TEXT,
+    state TEXT NOT NULL,
+    error_code TEXT,
+    error_detail TEXT,
+    created_at INTEGER NOT NULL,
+    started_at INTEGER,
+    finished_at INTEGER
+  );
+  CREATE INDEX task_agent ON task (agent_id, created_at);
+  `,
 ]
