@@ -162,8 +162,10 @@ export const electronPlatform = (): PlatformService => {
       await shell.trashItem(path)
     },
     browser: (agentId) => {
-      let page = browsers.get(agentId)
-      if (!page) browsers.set(agentId, (page = electronBrowser(agentId)))
+      const known = browsers.get(agentId)
+      if (known) return known
+      const page = electronBrowser(agentId)
+      browsers.set(agentId, page)
       return page
     },
   }
