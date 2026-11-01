@@ -27,14 +27,27 @@ export class Usage extends Context.Service<Usage, UsageService>()("robot/main/Us
         summary: (serverId, days, now = Date.now()) =>
           Effect.sync(() =>
             db.all<UsageRow>(
-              `SELECT date(m.finished_at / 1000, 'unixepoch', 'localtime') AS day,
-                      a.id AS agentId, a.name AS agentName, COUNT(*) AS replies,
-                      SUM(m.input_tokens) AS inputTokens, SUM(m.output_tokens) AS outputTokens
-               FROM message m JOIN agent a ON a.id = m.agent_id
-               WHERE a.server_id = ? AND m.author = 'agent' AND m.status = 'done'
-                 AND m.finished_at >= ? AND m.finished_at < ?
-               GROUP BY day, a.id
-               ORDER BY day DESC, a.name`,
+              `SELECT day, agentId, agentName, SUM(replies) AS replies,
+                      SUM(inputTokens) AS inputTokens, SUM(outputTokens) AS outputTokens
+               FROM (
+                 SELECT date(m.finished_at / 1000, 'unixepoch', 'localtime') AS day,
+                        a.id AS agentId, a.name AS agentName, 1 AS replies,
+                        m.input_tokens AS inputTokens, m.output_tokens AS outputTokens
+                 FROM message m JOIN agent a ON a.id = m.agent_id
+                 WHERE a.server_id = ? AND m.author = 'agent' AND m.status = 'done'
+                   AND m.finished_at >= ? AND m.finished_at < ?
+                 UNION ALL
+                 SELECT date(m.finished_at / 1000, 'unixepoch', 'localtime'),
+                        a.id, a.name, 1, m.input_tokens, m.output_tokens
+                 FROM channel_message m JOIN agent a ON a.id = m.agent_id
+                 WHERE a.server_id = ? AND m.author = 'agent' AND m.status = 'done'
+                   AND m.finished_at >= ? AND m.finished_at < ?
+               )
+               GROUP BY day, agentId
+               ORDER BY day DESC, agentName`,
+              serverId,
+              rangeStart(days, now),
+              now + DAY_MS,
               serverId,
               rangeStart(days, now),
               now + DAY_MS,

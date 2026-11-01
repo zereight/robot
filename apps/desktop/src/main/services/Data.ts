@@ -100,6 +100,17 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                   .prepare("UPDATE task SET prompt = ?, label = ? WHERE id = ?")
                   .run(redactSecrets(task.prompt, known), redactSecrets(task.label, known), task.id)
               })
+            for (const row of out
+              .prepare("SELECT id, parts, error_detail FROM channel_message")
+              .all() as { id: string; parts: string; error_detail: string | null }[]) {
+              out
+                .prepare("UPDATE channel_message SET parts = ?, error_detail = ? WHERE id = ?")
+                .run(
+                  redactSecrets(row.parts, known),
+                  row.error_detail === null ? null : redactSecrets(row.error_detail, known),
+                  row.id,
+                )
+            }
             const update = out.prepare(
               "UPDATE message SET parts = ?, error_detail = ? WHERE id = ?",
             )
@@ -189,14 +200,20 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           try {
             db.transaction(() => {
               // The imported agents move to this computer's server.
-              const columns = db
-                .all<{ name: string }>("SELECT name FROM pragma_table_info('agent')")
-                .map((c) => c.name)
-              db.run(
-                `INSERT INTO agent (${columns.join(", ")})
-                 SELECT ${columns.map((c) => (c === "server_id" ? "?" : c)).join(", ")} FROM imp.agent`,
-                local.id,
-              )
+              const copyToServer = (table: string) => {
+                const columns = db
+                  .all<{ name: string }>(`SELECT name FROM pragma_table_info('${table}')`)
+                  .map((c) => c.name)
+                db.run(
+                  `INSERT INTO ${table} (${columns.join(", ")})
+                   SELECT ${columns.map((c) => (c === "server_id" ? "?" : c)).join(", ")} FROM imp.${table}`,
+                  local.id,
+                )
+              }
+              copyToServer("agent")
+              copyToServer("channel")
+              db.run("INSERT INTO channel_member SELECT * FROM imp.channel_member")
+              db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               db.run("INSERT INTO message SELECT * FROM imp.message")
               db.run("INSERT INTO task SELECT * FROM imp.task")
