@@ -13,4 +13,13 @@ export const migrations: readonly string[] = [
     value TEXT NOT NULL
   );
   `,
+  `
+  CREATE TABLE server (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  `,
 ]

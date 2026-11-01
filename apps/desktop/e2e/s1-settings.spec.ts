@@ -107,6 +107,6 @@ test("settings: language, theme and text size apply at once and survive a restar
 test("settings: the system language is used until the user picks one", async () => {
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
   await expect(page.locator("html")).toHaveAttribute("lang", "ko")
-  await expect(page.getByTestId("open-settings")).toHaveText("설정 열기")
+  await expect(page.getByTestId("open-settings")).toHaveAttribute("aria-label", "설정")
   await app.close()
 })
