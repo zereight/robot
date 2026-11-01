@@ -47,6 +47,9 @@ and its role line. Nothing moves.
 
 - The conversation is stored locally as each part arrives, so a crash loses at most the part
   that was streaming.
+- After an app restart, a reply that was streaming is marked as stopped. The exception is a reply
+  whose task still waits for an approval or a question (see 005): it keeps its place and goes on
+  after the user answers.
 - Scrolling up stops auto-scroll. A "Jump to latest" button brings it back.
 
 ## Acceptance
