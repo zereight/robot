@@ -1,6 +1,12 @@
-import { type Agent, type ChatMessage, messageText, type QueuedMessage } from "@robot/shared"
-import { Pencil, SendHorizontal, Square, X } from "lucide-solid"
-import { createSignal, For, Show } from "solid-js"
+import {
+  type Agent,
+  ATTACH_MAX,
+  type ChatMessage,
+  messageText,
+  type QueuedMessage,
+} from "@robot/shared"
+import { Paperclip, Pencil, SendHorizontal, Square, X } from "lucide-solid"
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
@@ -47,6 +53,11 @@ const QueueItem = (props: { agentId: string; item: QueuedMessage }) => {
           autofocus
         />
       </Show>
+      <Show when={props.item.files.length > 0}>
+        <span class={styles.queueLabel}>
+          {t("chat.queue.files", { count: props.item.files.length })}
+        </span>
+      </Show>
       <IconButton
         label={t("chat.queue.edit")}
         onClick={() => (editing() ? save() : setEditing(true))}
@@ -69,7 +80,24 @@ export const Composer = (props: ComposerProps) => {
   const { t } = useApp()
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
+  const [files, setFiles] = createSignal<string[]>([])
   let input: HTMLTextAreaElement | undefined
+  let dropZone: HTMLDivElement | undefined
+  // Files dropped on the message box are attached. The box is no control, so the listeners
+  // are added here and the box gets no interactive role.
+  onMount(() => {
+    const over = (e: DragEvent) => e.preventDefault()
+    const drop = (e: DragEvent) => {
+      e.preventDefault()
+      addFiles([...(e.dataTransfer?.files ?? [])].map((f) => window.robot.pathForFile(f)))
+    }
+    dropZone?.addEventListener("dragover", over)
+    dropZone?.addEventListener("drop", drop)
+    onCleanup(() => {
+      dropZone?.removeEventListener("dragover", over)
+      dropZone?.removeEventListener("drop", drop)
+    })
+  })
 
   const resize = () => {
     if (!input) return
@@ -77,17 +105,33 @@ export const Composer = (props: ComposerProps) => {
     input.style.height = `${input.scrollHeight}px`
   }
 
+  const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path
+  const addFiles = (paths: readonly string[]) => {
+    const merged = [...new Set([...files(), ...paths.filter(Boolean)])]
+    if (merged.length > ATTACH_MAX) setError({ key: "error.too_many_files" })
+    setFiles(merged.slice(0, ATTACH_MAX))
+  }
+  const pick = async () => {
+    try {
+      addFiles(await call("files.pick"))
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+
   const send = async () => {
     const value = text().trim()
-    if (!value) return
+    if (!value && files().length === 0) return
     setError(undefined)
     try {
       await call("chat.send", {
         agentId: props.agent.id,
         text: value,
         replyTo: props.replyTo?.id ?? null,
+        files: [...files()],
       })
       setText("")
+      setFiles([])
       queueMicrotask(resize)
       props.onCancelReply()
       props.onSent()
@@ -158,7 +202,28 @@ export const Composer = (props: ComposerProps) => {
             </div>
           )}
         </Show>
-        <div class={styles.box}>
+        <Show when={files().length > 0}>
+          <ul class={styles.chips} aria-label={t("chat.attach.list")} data-testid="attachments">
+            <For each={files()}>
+              {(path) => (
+                <li class={styles.chip} data-testid="attachment-chip">
+                  <span class={styles.chipName}>{fileName(path)}</span>
+                  <IconButton
+                    label={t("chat.attach.remove", { name: fileName(path) })}
+                    onClick={() => setFiles(files().filter((p) => p !== path))}
+                    data-testid="attachment-remove"
+                  >
+                    <X size={12} />
+                  </IconButton>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Show>
+        <div class={styles.box} ref={dropZone}>
+          <IconButton label={t("chat.attach")} onClick={pick} data-testid="composer-attach">
+            <Paperclip size={16} />
+          </IconButton>
           <textarea
             ref={input}
             class={styles.input}
@@ -181,7 +246,7 @@ export const Composer = (props: ComposerProps) => {
                 class={styles.sendButton}
                 aria-label={t("chat.send")}
                 title={t("chat.send")}
-                disabled={!text().trim()}
+                disabled={!text().trim() && files().length === 0}
                 onClick={send}
                 data-testid="composer-send"
               >

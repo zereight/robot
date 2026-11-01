@@ -269,6 +269,28 @@ export const en = {
   "firstRun.back": "Back",
   "firstRun.skip": "Skip",
   "firstRun.skipAll": "Skip the guide",
+
+  "chat.attach": "Attach files",
+  "chat.attach.remove": "Remove {name}",
+  "chat.attach.list": "Attached files",
+  "chat.queue.files": "{count} files",
+  "settings.data.export": "Export data",
+  "settings.data.export.hint":
+    "One archive with your chats, agents and attachments. Keys are not included.",
+  "settings.data.export.button": "Export",
+  "settings.data.exported": "Saved to {path}",
+  "settings.data.restore": "Import data",
+  "settings.data.restore.hint":
+    "Restores an export into an app that has no agents or accounts yet.",
+  "settings.data.restore.button": "Import",
+  "settings.data.restoreed":
+    "Restored {agents} agents and {messages} messages. Sign in to your accounts again.",
+  "error.too_many_files": "You can attach up to 10 files to one message.",
+  "error.file_too_large": "{detail} is larger than 20 MB.",
+  "error.file_unreadable": "A file could not be read: {detail}",
+  "error.import_not_empty": "Import works only in an app without agents and accounts.",
+  "error.import_invalid": "This file is not a ROBot export.",
+  "error.import_version": "This export comes from a different version of ROBot.",
 } as const
 
 export type MessageKey = keyof typeof en

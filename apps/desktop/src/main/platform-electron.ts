@@ -27,6 +27,42 @@ export const electronPlatform = (): PlatformService => {
         : await dialog.showOpenDialog(options)
       return result.canceled ? undefined : result.filePaths[0]
     },
+    pickFiles: async () => {
+      if (isTestRun && process.env.ROBOT_TEST_PICK_FILES)
+        return JSON.parse(process.env.ROBOT_TEST_PICK_FILES) as string[]
+      const options = {
+        properties: ["openFile", "multiSelections"] as ("openFile" | "multiSelections")[],
+      }
+      const parent = BrowserWindow.getFocusedWindow()
+      const result = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled ? [] : result.filePaths
+    },
+    pickSavePath: async (defaultName) => {
+      if (isTestRun && process.env.ROBOT_TEST_SAVE_PATH) return process.env.ROBOT_TEST_SAVE_PATH
+      const options = {
+        defaultPath: join(app.getPath("documents"), defaultName),
+        filters: [{ name: "ROBot export", extensions: ["zip"] }],
+      }
+      const parent = BrowserWindow.getFocusedWindow()
+      const result = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options)
+      return result.canceled ? undefined : result.filePath
+    },
+    pickArchive: async () => {
+      if (isTestRun && process.env.ROBOT_TEST_OPEN_PATH) return process.env.ROBOT_TEST_OPEN_PATH
+      const options = {
+        filters: [{ name: "ROBot export", extensions: ["zip"] }],
+        properties: ["openFile"] as "openFile"[],
+      }
+      const parent = BrowserWindow.getFocusedWindow()
+      const result = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled ? undefined : result.filePaths[0]
+    },
     openPath: async (path) => {
       mkdirSync(path, { recursive: true })
       await shell.openPath(path)

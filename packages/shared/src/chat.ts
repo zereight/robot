@@ -2,6 +2,13 @@ import { Schema } from "effect"
 
 export type MessagePart =
   | { readonly kind: "text"; readonly text: string }
+  | {
+      readonly kind: "file"
+      readonly name: string
+      /** Where the copy is, relative to the agent's workspace folder. */
+      readonly path: string
+      readonly size: number
+    }
   | { readonly kind: "thinking"; readonly text: string }
   | {
       readonly kind: "tool"
@@ -35,19 +42,27 @@ export interface ChatMessage {
   readonly editedAt: number | null
 }
 
+export type FilePart = Extract<MessagePart, { kind: "file" }>
+
 export interface QueuedMessage {
   readonly id: string
   readonly text: string
+  readonly files: readonly FilePart[]
   readonly replyTo: string | null
 }
 
 export const MESSAGE_MAX = 100_000
 export const QUEUE_MAX = 10
+export const ATTACH_MAX = 10
+export const ATTACH_BYTES = 20 * 1024 * 1024
 
 export const ChatSend = Schema.Struct({
   agentId: Schema.String,
-  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MESSAGE_MAX)),
+  /** May be empty when files are attached. */
+  text: Schema.String.check(Schema.isMaxLength(MESSAGE_MAX)),
   replyTo: Schema.NullOr(Schema.String),
+  /** Full paths of files to copy into the agent's workspace. */
+  files: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(ATTACH_MAX))),
 })
 export type ChatSend = typeof ChatSend.Type
 
@@ -57,6 +72,9 @@ export const messageText = (message: Pick<ChatMessage, "parts">) =>
     .filter((p): p is Extract<MessagePart, { kind: "text" }> => p.kind === "text")
     .map((p) => p.text)
     .join("")
+
+export const messageFiles = (message: Pick<ChatMessage, "parts">) =>
+  message.parts.filter((p): p is FilePart => p.kind === "file")
 
 /** Rows from one sender within this time join under one header. */
 export const GROUP_WINDOW_MS = 5 * 60 * 1000

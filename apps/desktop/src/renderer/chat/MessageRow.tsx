@@ -4,6 +4,7 @@ import {
   catalogues,
   type MessageKey,
   type MessagePart,
+  messageFiles,
   messageText,
 } from "@robot/shared"
 import { Copy, Pencil, Reply, User, Wrench } from "lucide-solid"
@@ -13,7 +14,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
-import { formatTime } from "./format.ts"
+import { fileSize, formatTime } from "./format.ts"
 import { Markdown } from "./Markdown.tsx"
 
 export interface MessageRowProps {
@@ -189,7 +190,25 @@ export const MessageRow = (props: MessageRowProps) => {
         >
           <Show
             when={isAgent()}
-            fallback={<p class={styles.userText}>{messageText(props.message)}</p>}
+            fallback={
+              <>
+                <Show when={messageText(props.message)}>
+                  <p class={styles.userText}>{messageText(props.message)}</p>
+                </Show>
+                <Show when={messageFiles(props.message).length > 0}>
+                  <ul class={styles.chips} data-testid="message-files">
+                    <For each={messageFiles(props.message)}>
+                      {(file) => (
+                        <li class={styles.chip} title={file.path} data-testid="message-file">
+                          <span class={styles.chipName}>{file.name}</span>
+                          <span class={styles.chipSize}>{fileSize(file.size)}</span>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </Show>
+              </>
+            }
           >
             <For each={props.message.parts}>
               {(part, index) => (
