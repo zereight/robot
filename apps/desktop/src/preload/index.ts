@@ -1,4 +1,5 @@
-import { EVENT_CHANNEL, INVOKE_CHANNEL, type RobotBridge } from "@robot/shared"
+// A sandboxed preload cannot load packages, so it imports only plain constants and types.
+import { EVENT_CHANNEL, INVOKE_CHANNEL, type RobotBridge } from "@robot/shared/ipc"
 import { contextBridge, ipcRenderer } from "electron"
 
 const bridge: RobotBridge = {

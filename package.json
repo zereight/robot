@@ -12,7 +12,7 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun test --pass-with-no-tests packages apps/desktop/src",
+    "test": "bun test --pass-with-no-tests packages apps/desktop/src apps/desktop/scripts",
     "e2e": "bun run --cwd apps/desktop e2e"
   },
   "devDependencies": {

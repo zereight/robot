@@ -1,0 +1,17 @@
+import { Context } from "effect"
+
+/** Things that need the operating system. The real one uses Electron; tests use a fake. */
+export interface PlatformService {
+  readonly appName: string
+  readonly appVersion: string
+  readonly platform: string
+  readonly dataDir: string
+  readonly defaultWorkspaceRoot: string
+  systemLocale(): string
+  pickFolder(defaultPath: string): Promise<string | undefined>
+  openPath(path: string): Promise<void>
+  setStartAtLogin(enabled: boolean): void
+  setThemeSource(theme: "system" | "dark" | "light"): void
+}
+
+export class Platform extends Context.Service<Platform, PlatformService>()("robot/main/Platform") {}
