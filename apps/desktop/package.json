@@ -19,6 +19,7 @@
   "bundled": [
     "@robot/shared",
     "effect",
+    "fflate",
     "lucide-solid",
     "marked",
     "solid-js"
@@ -31,6 +32,7 @@
     "electron": "^45.2.1",
     "electron-builder": "26.18.0",
     "electron-vite": "^6.0.0",
+    "fflate": "^0.8.3",
     "lucide-solid": "^1.66.0",
     "marked": "^18.1.2",
     "solid-js": "^1.9.18",

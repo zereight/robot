@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto"
+import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs"
+import { basename, extname, join } from "node:path"
 import {
+  ATTACH_BYTES,
+  ATTACH_MAX,
   type ChatMessage,
   type ChatSend,
+  type FilePart,
   type MessagePart,
   type MessageStatus,
+  messageFiles,
   messageText,
   QUEUE_MAX,
   type QueuedMessage,
@@ -41,6 +47,7 @@ interface AgentModelRow {
   model_account_id: string | null
   model_name: string | null
   model_effort: string | null
+  workspace: string
 }
 
 export interface ChatService {
@@ -61,6 +68,34 @@ export interface ChatService {
 const EMIT_EVERY_MS = 50
 const SAVE_EVERY_MS = 500
 const QUOTE_MAX = 500
+
+/** Copies the files into the `attachments` folder of a workspace. A name that is taken gets a number. */
+export const copyAttachments = (workspace: string, paths: readonly string[]): FilePart[] => {
+  if (paths.length > ATTACH_MAX) throw new AppError({ code: "too_many_files" })
+  const sources = paths.map((path) => {
+    let size = 0
+    try {
+      const info = statSync(path)
+      if (!info.isFile()) throw new Error("not a file")
+      size = info.size
+    } catch {
+      throw new AppError({ code: "file_unreadable", detail: basename(path) })
+    }
+    if (size > ATTACH_BYTES) throw new AppError({ code: "file_too_large", detail: basename(path) })
+    return { path, size }
+  })
+  const dir = join(workspace, "attachments")
+  mkdirSync(dir, { recursive: true })
+  return sources.map(({ path, size }) => {
+    const base = basename(path)
+    const ext = extname(base)
+    const stem = base.slice(0, base.length - ext.length)
+    let name = base
+    for (let n = 2; existsSync(join(dir, name)); n++) name = `${stem} (${n})${ext}`
+    copyFileSync(path, join(dir, name))
+    return { kind: "file", name, path: `attachments/${name}`, size }
+  })
+}
 
 const toMessage = (row: MessageRow): ChatMessage => ({
   id: row.id,
@@ -105,7 +140,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const agentRow = (agentId: string) =>
         db.get<AgentModelRow>(
-          "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort FROM agent WHERE id = ?",
+          "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort, workspace FROM agent WHERE id = ?",
           agentId,
         )
       const messageRow = (id: string) =>
@@ -130,6 +165,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         text: string,
         replyTo: string | null,
         model: string | null,
+        files: readonly FilePart[] = [],
       ) => {
         const id = randomUUID()
         db.run(
@@ -138,7 +174,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           id,
           agentId,
           author,
-          JSON.stringify(author === "user" ? [{ kind: "text", text }] : []),
+          JSON.stringify(
+            author === "user" ? [...(text ? [{ kind: "text", text }] : []), ...files] : [],
+          ),
           author === "user" ? "done" : "streaming",
           replyTo,
           model,
@@ -164,7 +202,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   .map((line) => `> ${line}`)
                   .join("\n")}\n\n`
               : ""
-            return { role: r.author === "user" ? "user" : "assistant", content: quote + text }
+            const files = messageFiles(toMessage(r))
+              .map((f) => `[Attached file: ${f.path}]`)
+              .join("\n")
+            return {
+              role: r.author === "user" ? "user" : "assistant",
+              content: quote + [text, files].filter(Boolean).join("\n\n"),
+            }
           })
 
       const runTurn = Effect.fn("Chat.runTurn")(function* (agentId: string) {
@@ -279,7 +323,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             const next = queues.get(agentId)?.shift()
             if (!next) return
             emitQueue(agentId)
-            insertMessage(agentId, "user", next.text, next.replyTo, null)
+            insertMessage(agentId, "user", next.text, next.replyTo, null, next.files)
           }
         })
 
@@ -303,16 +347,26 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
 
       const send = Effect.fn("Chat.send")(function* (input: ChatSend) {
-        yield* usableAgent(input.agentId)
+        const agent = yield* usableAgent(input.agentId)
+        const paths = input.files ?? []
+        if (!input.text.trim() && paths.length === 0)
+          return yield* new AppError({ code: "invalid_input" })
+        const isFull = (queues.get(input.agentId)?.length ?? 0) >= QUEUE_MAX
+        if ((yield* isRunning(input.agentId)) && isFull)
+          return yield* new AppError({ code: "queue_full" })
+        const files = yield* Effect.try({
+          try: () => copyAttachments(agent.workspace, paths),
+          catch: (e) => (e instanceof AppError ? e : new AppError({ code: "file_unreadable" })),
+        })
         if (yield* isRunning(input.agentId)) {
           const queue = queues.get(input.agentId) ?? []
           if (queue.length >= QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
-          queue.push({ id: randomUUID(), text: input.text, replyTo: input.replyTo })
+          queue.push({ id: randomUUID(), text: input.text, replyTo: input.replyTo, files })
           queues.set(input.agentId, queue)
           emitQueue(input.agentId)
           return { queued: true }
         }
-        insertMessage(input.agentId, "user", input.text, input.replyTo, null)
+        insertMessage(input.agentId, "user", input.text, input.replyTo, null, files)
         yield* kick(input.agentId)
         return { queued: false }
       })
@@ -324,7 +378,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const next = queues.get(agentId)?.shift()
         if (next) {
           emitQueue(agentId)
-          insertMessage(agentId, "user", next.text, next.replyTo, null)
+          insertMessage(agentId, "user", next.text, next.replyTo, null, next.files)
           yield* kick(agentId)
         }
       })
@@ -359,7 +413,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         db.transaction(() => {
           db.run(
             "UPDATE message SET parts = ?, edited_at = ? WHERE id = ?",
-            JSON.stringify([{ kind: "text", text }]),
+            JSON.stringify([{ kind: "text", text }, ...messageFiles(toMessage(target))]),
             Date.now(),
             messageId,
           )

@@ -268,4 +268,25 @@ export const ko: Record<MessageKey, string> = {
   "firstRun.back": "이전",
   "firstRun.skip": "건너뛰기",
   "firstRun.skipAll": "안내 건너뛰기",
+
+  "chat.attach": "파일 첨부",
+  "chat.attach.remove": "{name} 빼기",
+  "chat.attach.list": "첨부한 파일",
+  "chat.queue.files": "파일 {count}개",
+  "settings.data.export": "데이터 내보내기",
+  "settings.data.export.hint":
+    "대화, 에이전트, 첨부 파일을 보관 파일 하나로 저장해요. 키는 포함되지 않아요.",
+  "settings.data.export.button": "내보내기",
+  "settings.data.exported": "{path}에 저장했어요.",
+  "settings.data.restore": "데이터 가져오기",
+  "settings.data.restore.hint": "에이전트와 계정이 아직 없는 앱에서 내보낸 파일을 복원해요.",
+  "settings.data.restore.button": "가져오기",
+  "settings.data.restoreed":
+    "에이전트 {agents}개와 메시지 {messages}개를 복원했어요. 계정은 다시 로그인해 주세요.",
+  "error.too_many_files": "메시지 하나에 파일을 최대 10개까지 첨부할 수 있어요.",
+  "error.file_too_large": "{detail} 파일이 20 MB보다 커요.",
+  "error.file_unreadable": "파일을 읽을 수 없어요: {detail}",
+  "error.import_not_empty": "에이전트와 계정이 없는 앱에서만 가져올 수 있어요.",
+  "error.import_invalid": "ROBot에서 내보낸 파일이 아니에요.",
+  "error.import_version": "다른 버전의 ROBot에서 내보낸 파일이에요.",
 }

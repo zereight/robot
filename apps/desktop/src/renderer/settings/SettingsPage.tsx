@@ -1,4 +1,4 @@
-import type { LicenseEntry, MessageKey } from "@robot/shared"
+import type { LicenseEntry, MessageKey, MessageParams } from "@robot/shared"
 import { X } from "lucide-solid"
 import {
   createResource,
@@ -12,6 +12,7 @@ import {
   Show,
   Switch as SwitchCase,
 } from "solid-js"
+import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
@@ -147,10 +148,73 @@ const Appearance = () => {
 const Data = () => {
   const app = useApp()
   const { t } = app
+  const [note, setNote] = createSignal<{ key: MessageKey; params?: MessageParams }>()
+  const [failed, setFailed] = createSignal(false)
+  const run = async (
+    action: () => Promise<{ key: MessageKey; params?: MessageParams } | undefined>,
+  ) => {
+    setNote(undefined)
+    setFailed(false)
+    try {
+      setNote(await action())
+    } catch (e) {
+      setFailed(true)
+      setNote(describeError(e))
+    }
+  }
   return (
-    <Row label={t("settings.data.folder")} hint={app.info.dataDir} testId="setting-data-folder">
-      <Button onClick={() => call("data.openFolder")}>{t("settings.data.open")}</Button>
-    </Row>
+    <>
+      <Row label={t("settings.data.folder")} hint={app.info.dataDir} testId="setting-data-folder">
+        <Button onClick={() => call("data.openFolder")}>{t("settings.data.open")}</Button>
+      </Row>
+      <Row
+        label={t("settings.data.export")}
+        hint={t("settings.data.export.hint")}
+        testId="setting-export"
+      >
+        <Button
+          data-testid="data-export"
+          onClick={() =>
+            run(async () => {
+              const result = await call("data.export")
+              return result.path
+                ? { key: "settings.data.exported", params: { path: result.path } }
+                : undefined
+            })
+          }
+        >
+          {t("settings.data.export.button")}
+        </Button>
+      </Row>
+      <Row
+        label={t("settings.data.restore")}
+        hint={t("settings.data.restore.hint")}
+        testId="setting-restore"
+      >
+        <Button
+          data-testid="data-restore"
+          onClick={() =>
+            run(async () => {
+              const result = await call("data.restore")
+              return result ? { key: "settings.data.restoreed", params: result } : undefined
+            })
+          }
+        >
+          {t("settings.data.restore.button")}
+        </Button>
+      </Row>
+      <Show when={note()}>
+        {(n) => (
+          <p
+            class={styles.hint}
+            role={failed() ? "alert" : "status"}
+            data-testid={failed() ? "data-error" : "data-note"}
+          >
+            {t(n().key, n().params)}
+          </p>
+        )}
+      </Show>
+    </>
   )
 }
 

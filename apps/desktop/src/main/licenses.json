@@ -20,6 +20,11 @@
     "license": "MIT"
   },
   {
+    "name": "fflate",
+    "version": "0.8.3",
+    "license": "MIT"
+  },
+  {
     "name": "lucide-solid",
     "version": "1.66.0",
     "license": "ISC"
