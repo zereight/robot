@@ -41,6 +41,8 @@ export interface TaskInput {
   readonly parentId?: string | null
   readonly retryOf?: string | null
   readonly messageId?: string | null
+  /** A label of its own. Without it the label comes from the prompt. */
+  readonly label?: string
 }
 
 /** Starts the work again for a failed or cancelled task of one source. */
@@ -150,6 +152,13 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           id,
         )
         changed(agentId)
+        // The place list shows a working dot on a channel, and a channel shows its plan steps.
+        const source = db.get<{ source: string; source_id: string | null }>(
+          "SELECT source, source_id FROM task WHERE id = ?",
+          id,
+        )
+        if (source?.source === "channel" && source.source_id)
+          bus.emit("channels.changed", { channelId: source.source_id })
       }
 
       const create = (input: TaskInput) =>
@@ -161,7 +170,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             id,
             input.agentId,
             input.prompt,
-            taskLabel(input.prompt),
+            input.label ? taskLabel(input.label) : taskLabel(input.prompt),
             input.source,
             input.sourceId,
             input.parentId ?? null,
@@ -171,6 +180,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           )
           stops.set(id, Deferred.makeUnsafe<void>())
           changed(input.agentId)
+          if (input.source === "channel" && input.sourceId)
+            bus.emit("channels.changed", { channelId: input.sourceId })
           return toTask(row(id) as TaskRow)
         })
 
@@ -242,10 +253,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
 
       const resultOf = (task: Task) => {
         if (!task.messageId) return ""
-        const found = db.get<{ parts: string }>(
-          "SELECT parts FROM message WHERE id = ?",
-          task.messageId,
-        )
+        const found =
+          db.get<{ parts: string }>("SELECT parts FROM message WHERE id = ?", task.messageId) ??
+          db.get<{ parts: string }>(
+            "SELECT parts FROM channel_message WHERE id = ?",
+            task.messageId,
+          )
         return found ? messageText({ parts: JSON.parse(found.parts) }).slice(0, RESULT_MAX) : ""
       }
 

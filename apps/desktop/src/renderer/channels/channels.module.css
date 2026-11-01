@@ -1,0 +1,218 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: min(460px, 80vw);
+}
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.hint {
+  font-size: 0.8rem;
+  color: var(--c-text-muted);
+  margin: 0;
+}
+.input {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 6px 8px;
+}
+.input:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+.memberList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+.error {
+  color: var(--c-danger);
+  font-size: 0.85rem;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spacer {
+  flex: 1;
+}
+
+.hash {
+  color: var(--c-text-muted);
+  font-weight: 600;
+}
+.headerName {
+  font-weight: 600;
+}
+.divider {
+  width: 1px;
+  height: 16px;
+  background: var(--c-border);
+  margin: 0 4px;
+}
+.topic {
+  color: var(--c-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.kindTag {
+  margin: -2px 0 4px 72px;
+  font-size: 0.75rem;
+  color: var(--c-text-muted);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 16px 8px 72px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 2px 10px 2px 6px;
+  font-size: 0.82rem;
+  transition: background var(--motion-fast) var(--ease-out);
+  animation: chip-in var(--motion-medium) var(--ease-out);
+}
+.chip:hover:not(:disabled) {
+  background: var(--c-hover);
+}
+.chip[data-state="failed"] {
+  border-color: var(--c-danger);
+}
+.chipLabel {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chipCount {
+  color: var(--c-text-muted);
+}
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 16px 8px 72px;
+}
+
+.panel {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+.panelTitle {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.card {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cardName {
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cardState {
+  font-size: 0.78rem;
+  color: var(--c-text-muted);
+}
+.card[data-state="working"] .cardState {
+  color: var(--c-success);
+}
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+.stepIcon {
+  display: inline-flex;
+  color: var(--c-text-muted);
+}
+.step[data-state="done"] .stepIcon {
+  color: var(--c-success);
+}
+.step[data-state="failed"] .stepIcon {
+  color: var(--c-danger);
+}
+.stepLabel {
+  flex: 1;
+  min-width: 0;
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+:root[data-reduce-motion="true"] .spin {
+  animation: none;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
