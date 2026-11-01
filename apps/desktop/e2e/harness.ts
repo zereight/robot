@@ -16,6 +16,22 @@ export interface Launched {
 
 export const freshUserData = () => mkdtempSync(join(tmpdir(), "robot-e2e-"))
 
+/**
+ * The window of the app. A test run can also open the status island, and which of the two windows
+ * Playwright reports first depends on the system, so the island page is skipped.
+ */
+const mainPage = async (app: ElectronApplication): Promise<Page> => {
+  const first = await app.firstWindow()
+  for (let tries = 0; tries < 100; tries++) {
+    for (const candidate of app.windows()) {
+      await candidate.waitForLoadState("domcontentloaded")
+      if (!candidate.url().includes("island.html")) return candidate
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  return first
+}
+
 export const launch = async (
   userData = freshUserData(),
   env: Record<string, string> = {},
@@ -36,8 +52,7 @@ export const launch = async (
       ...env,
     } as Record<string, string>,
   })
-  const page = await app.firstWindow()
-  await page.waitForLoadState("domcontentloaded")
+  const page = await mainPage(app)
   return { app, page, userData }
 }
 
