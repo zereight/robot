@@ -22,8 +22,10 @@ export const launch = async (
 ): Promise<Launched> => {
   // A parent shell can set ELECTRON_RUN_AS_NODE, which stops Electron from opening windows.
   const { ELECTRON_RUN_AS_NODE: _, ...base } = process.env
+  // ROBOT_E2E_APP points at a packaged app; without it the tests run the built sources.
+  const packaged = process.env.ROBOT_E2E_APP
   const app = await electron.launch({
-    args: [appDir],
+    ...(packaged ? { executablePath: packaged, args: [] } : { args: [appDir] }),
     env: {
       ...base,
       ROBOT_USER_DATA: userData,

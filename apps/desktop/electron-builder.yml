@@ -1,0 +1,52 @@
+# Packaging for macOS, Windows and Linux. See docs/release.md.
+appId: io.github.zereight.robot
+productName: ROBot
+copyright: Copyright © 2026 zereight
+directories:
+  output: ../../dist/desktop
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+  - "!**/*.map"
+asar: true
+asarUnpack:
+  - "**/*.node"
+artifactName: ROBot-${version}-${os}-${arch}.${ext}
+npmRebuild: false
+# The workspace name (@robot/desktop) is not a valid package or file name.
+extraMetadata:
+  name: robot
+publish: null
+
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.productivity
+  # Ad-hoc signature until a Developer ID is available. Apple silicon needs at least this.
+  identity: "-"
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  sign: false
+
+win:
+  target:
+    - nsis
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  executableName: robot
+  maintainer: zereight <noreply@github.com>
+  synopsis: Work with AI agents on your desktop.
