@@ -111,6 +111,13 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                   row.id,
                 )
             }
+            for (const row of out.prepare("SELECT id, text FROM memory").all() as {
+              id: string
+              text: string
+            }[])
+              out
+                .prepare("UPDATE memory SET text = ? WHERE id = ?")
+                .run(redactSecrets(row.text, known), row.id)
             const update = out.prepare(
               "UPDATE message SET parts = ?, error_detail = ? WHERE id = ?",
             )
@@ -216,6 +223,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               db.run("INSERT INTO message SELECT * FROM imp.message")
+              db.run("INSERT INTO memory SELECT * FROM imp.memory")
+              db.run("INSERT INTO agent_allow SELECT * FROM imp.agent_allow")
               db.run("INSERT INTO task SELECT * FROM imp.task")
               db.run(
                 "INSERT OR REPLACE INTO setting (key, value) SELECT key, value FROM imp.setting",

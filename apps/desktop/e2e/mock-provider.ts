@@ -31,6 +31,7 @@ const json = (res: ServerResponse, status: number, body: unknown) => {
 
 interface ChatBody {
   messages: { role: string; content: string }[]
+  tools?: unknown[]
 }
 
 export const MARKDOWN_REPLY = [
@@ -95,7 +96,32 @@ const plan = (body: ChatBody) => {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/** "TOOL name {json}" in the last user message makes the model call that tool once. */
+const toolCall = (body: ChatBody) => {
+  const last = body.messages.at(-1)
+  if (!body.tools || last?.role !== "user") return null
+  // Turns without an answer are merged, so the last request in the text counts.
+  const match = [...last.content.matchAll(/TOOL (\w+) (\{.*\})/g)].at(-1)
+  return match ? { name: match[1] as string, args: match[2] as string } : null
+}
+
 const openAiReply = async (res: ServerResponse, body: ChatBody) => {
+  const call = toolCall(body)
+  if (call) {
+    res.writeHead(200, { "content-type": "text/event-stream" })
+    const first = { index: 0, id: "call_1", function: { name: call.name, arguments: "" } }
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [first] } }] })}\n\n`)
+    const rest = { index: 0, function: { arguments: call.args } }
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
+    return res.end("data: [DONE]\n\n")
+  }
+  const finished = body.messages.at(-1)
+  if (finished?.role === "tool") {
+    res.writeHead(200, { "content-type": "text/event-stream" })
+    const text = `Tool said: ${String(finished.content).slice(0, 80)}`
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`)
+    return res.end("data: [DONE]\n\n")
+  }
   const p = plan(body)
   if (p.status === 429) {
     res.writeHead(429, { "content-type": "application/json", "retry-after": "120" })

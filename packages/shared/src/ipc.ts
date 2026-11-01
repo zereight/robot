@@ -7,9 +7,11 @@ import type {
   ChannelPatch,
 } from "./channels.ts"
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
+import type { MemoryItem } from "./memory.ts"
 import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Task, TaskDetail } from "./task.ts"
+import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
 
@@ -88,6 +90,15 @@ export interface RpcMethods {
   "channels.stop": { input: { channelId: string }; output: undefined }
   "channels.activity": { input: { channelId: string }; output: ChannelActivity }
   "channels.markRead": { input: { channelId: string }; output: undefined }
+  "memory.list": { input: { agentId: string; query?: string }; output: readonly MemoryItem[] }
+  "memory.add": { input: { agentId: string; text: string }; output: MemoryItem }
+  "memory.update": { input: { id: string; text: string }; output: MemoryItem }
+  "memory.delete": { input: { id: string }; output: undefined }
+  /** Answers an approval card (`allow`, `always`, `deny`) or a question card (the text). */
+  "tools.respond": {
+    input: { agentId: string; callId: string; answer: ApprovalAnswer | string }
+    output: undefined
+  }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
@@ -116,6 +127,7 @@ export interface RpcEvents {
   "agents.changed": { serverId: string }
   "providers.changed": Record<string, never>
   "tasks.changed": { serverId: string }
+  "memory.changed": { agentId: string }
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }
   "channel.message": ChannelMessage

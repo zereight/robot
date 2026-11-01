@@ -8,6 +8,7 @@ import {
   copyName,
   faceFromName,
   nameKey,
+  type PermissionLevel,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Activity } from "./Activity.ts"
@@ -31,6 +32,8 @@ interface AgentRow {
   model_name: string | null
   model_effort: string | null
   workspace: string
+  permission: PermissionLevel
+  memory_enabled: number
   archived_at: number | null
   created_at: number
 }
@@ -100,6 +103,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
               ? "idle"
               : "offline",
           createdAt: row.created_at,
+          permission: row.permission,
+          memoryEnabled: row.memory_enabled === 1,
         }
       }
 
@@ -191,6 +196,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           set("model_name", patch.model?.model ?? null)
           set("model_effort", patch.model?.effort ?? null)
         }
+        if (patch.permission !== undefined) set("permission", patch.permission)
+        if (patch.memoryEnabled !== undefined) set("memory_enabled", patch.memoryEnabled ? 1 : 0)
         set("updated_at", Date.now())
         db.run(`UPDATE agent SET ${sets.join(", ")} WHERE id = ?`, ...values, id)
         changed(row.server_id)

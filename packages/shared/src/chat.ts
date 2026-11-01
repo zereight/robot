@@ -17,10 +17,18 @@ export type MessagePart =
       readonly name: string
       /** A short line for the card, for example the file name. */
       readonly label: string
-      readonly state: "running" | "done" | "failed"
+      readonly state: "running" | "waiting" | "done" | "failed"
       readonly input: string
       readonly output: string
+      /** Set while the card waits for the user: an approval or a question. */
+      readonly ask?: ToolAsk
+      /** Set for a tool that saved a memory item, so the card can offer undo. */
+      readonly memoryId?: string
     }
+
+export type ToolAsk =
+  | { readonly kind: "approval"; readonly summary: string }
+  | { readonly kind: "question"; readonly question: string; readonly choices: readonly string[] }
 
 export type MessageStatus = "done" | "streaming" | "stopped" | "failed"
 

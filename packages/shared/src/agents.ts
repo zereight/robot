@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
 
 export const AGENT_NAME_MAX = 40
 export const AGENT_ROLE_MAX = 120
@@ -47,6 +48,9 @@ export interface Agent {
   readonly section: "agents"
   readonly archived: boolean
   readonly state: AgentState
+  readonly permission: PermissionLevel
+  /** When off, the agent does not read its memory. Items stay. */
+  readonly memoryEnabled: boolean
   readonly createdAt: number
 }
 
@@ -66,6 +70,8 @@ export const AgentPatch = Schema.Struct({
   instructions: Schema.optionalKey(Schema.String),
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
+  permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
+  memoryEnabled: Schema.optionalKey(Schema.Boolean),
 })
 export type AgentPatch = typeof AgentPatch.Type
 
