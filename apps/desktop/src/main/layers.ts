@@ -2,6 +2,7 @@ import { join } from "node:path"
 import { Layer } from "effect"
 import { Activity } from "./services/Activity.ts"
 import { Agents } from "./services/Agents.ts"
+import { Chat } from "./services/Chat.ts"
 import { Database } from "./services/Database.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Places } from "./services/Places.ts"
@@ -35,7 +36,7 @@ export const appLayer = (options: AppLayerOptions) => {
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
   const providers = Providers.layer.pipe(Layer.provideMerge(stores))
-  const agents = Agents.layer.pipe(Layer.provideMerge(providers))
+  const agents = Layer.mergeAll(Agents.layer, Chat.layer).pipe(Layer.provideMerge(providers))
   return Places.layer.pipe(Layer.provideMerge(agents))
 }
 

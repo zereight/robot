@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs"
 import { basename, join } from "node:path"
-import { app, BrowserWindow, dialog, nativeTheme, shell } from "electron"
+import { app, BrowserWindow, clipboard, dialog, nativeTheme, shell } from "electron"
 import type { PlatformService } from "./services/Platform.ts"
 
 /** True when an end-to-end test runs the app. The app then leaves system settings alone. */
@@ -38,6 +38,8 @@ export const electronPlatform = (): PlatformService => {
     setThemeSource: (theme) => {
       nativeTheme.themeSource = theme
     },
+    copyText: (text) => clipboard.writeText(text),
+    openExternal: (url) => shell.openExternal(url),
     trash: async (path) => {
       if (!existsSync(path)) return
       // Test runs keep the system trash clean: they move the folder inside the data folder.

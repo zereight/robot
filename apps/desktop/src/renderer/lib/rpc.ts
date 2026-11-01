@@ -11,7 +11,9 @@ export const call = async <M extends RpcMethod>(
   method: M,
   ...[input]: RpcInput<M> extends undefined ? [] : [RpcInput<M>]
 ): Promise<RpcOutput<M>> => {
-  const result = await window.robot.invoke(method, input as RpcInput<M>)
+  // Store values are proxies, which cannot cross the process boundary. Send plain copies.
+  const plain = input === undefined ? undefined : JSON.parse(JSON.stringify(input))
+  const result = await window.robot.invoke(method, plain as RpcInput<M>)
   if (!result.ok) throw new RpcFailure(result.error)
   return result.value
 }
