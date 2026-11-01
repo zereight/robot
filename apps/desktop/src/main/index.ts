@@ -7,6 +7,7 @@ import { appLayer } from "./layers.ts"
 import { electronPlatform } from "./platform-electron.ts"
 import { registerRpc } from "./rpc.ts"
 import { Platform } from "./services/Platform.ts"
+import { Secrets } from "./services/Secrets.ts"
 import { SettingsStore } from "./services/Settings.ts"
 
 // The data folder is "ROBot" in the system app data folder. Tests and portable runs can
@@ -27,6 +28,9 @@ const makeRuntime = () =>
       platform: electronPlatform(),
       localServerName: hostname().replace(/\.local$/, ""),
       emit: broadcast,
+      secrets: process.env.ROBOT_TEST_SECRETS
+        ? Secrets.file(process.env.ROBOT_TEST_SECRETS)
+        : Secrets.keychain,
     }),
   )
 

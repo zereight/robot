@@ -15,6 +15,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
+import { Providers } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
 
 interface AgentRow {
@@ -69,6 +70,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
       const settings = yield* SettingsStore
       const bus = yield* EventBus
       const activity = yield* Activity
+      const providers = yield* Providers
       const facesDir = join(platform.dataDir, "faces")
 
       const toAgent = (row: AgentRow): Agent => {
@@ -92,7 +94,11 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           workspace: row.workspace,
           section: "agents",
           archived: row.archived_at !== null,
-          state: activity.isWorking(row.id) ? "working" : "idle",
+          state: activity.isWorking(row.id)
+            ? "working"
+            : row.model_account_id && providers.isConnected(row.model_account_id)
+              ? "idle"
+              : "offline",
           createdAt: row.created_at,
         }
       }

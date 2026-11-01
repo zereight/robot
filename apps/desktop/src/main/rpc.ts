@@ -2,6 +2,7 @@ import {
   AgentCreate,
   AgentPatch,
   INVOKE_CHANNEL,
+  ProviderConnect,
   type RpcInput,
   type RpcMethod,
   type RpcOutput,
@@ -17,6 +18,7 @@ import { Agents } from "./services/Agents.ts"
 import { AppError } from "./services/errors.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
+import { Providers } from "./services/Providers.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -38,6 +40,7 @@ const decode =
     )
 
 const ById = Schema.Struct({ id: Schema.String })
+const ByAccount = Schema.Struct({ accountId: Schema.String })
 
 const applySystemSettings = Effect.fn("applySystemSettings")(function* (
   patch: typeof SettingsPatch.Type,
@@ -123,6 +126,30 @@ export const handlers: Handlers = {
   "agents.setFaceImage": (input) =>
     decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
       Effect.flatMap(({ id, dataUrl }) => Agents.use((a) => a.setFaceImage(id, dataUrl))),
+    ),
+  "providers.list": () => Providers.use((p) => p.list),
+  "providers.connect": (input) =>
+    decode(ProviderConnect)(input).pipe(
+      Effect.flatMap((data) => Providers.use((p) => p.connect(data))),
+    ),
+  "providers.check": (input) =>
+    decode(ByAccount)(input).pipe(
+      Effect.flatMap(({ accountId }) => Providers.use((p) => p.check(accountId))),
+      Effect.as(undefined),
+    ),
+  "providers.disconnect": (input) =>
+    decode(ByAccount)(input).pipe(
+      Effect.flatMap(({ accountId }) => Providers.use((p) => p.disconnect(accountId))),
+      Effect.as(undefined),
+    ),
+  "providers.remove": (input) =>
+    decode(ByAccount)(input).pipe(
+      Effect.flatMap(({ accountId }) => Providers.use((p) => p.remove(accountId))),
+      Effect.as(undefined),
+    ),
+  "providers.models": (input) =>
+    decode(ByAccount)(input).pipe(
+      Effect.flatMap(({ accountId }) => Providers.use((p) => p.models(accountId))),
     ),
 }
 

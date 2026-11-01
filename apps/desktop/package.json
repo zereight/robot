@@ -13,6 +13,7 @@
     "licenses": "bun scripts/licenses.ts"
   },
   "dependencies": {
+    "@napi-rs/keyring": "^2.1.2",
     "@robot/shared": "workspace:*",
     "effect": "^4.1.1",
     "lucide-solid": "^1.66.0",
