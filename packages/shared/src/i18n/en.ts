@@ -697,11 +697,19 @@ export const en = {
   "link.tile.remove": "Remove {name}",
   "link.tile.menu": "Menu of {name}",
   "link.openOnServer": "Open this on {name}.",
-  "link.from": "from {name}",
+  "link.fromDevice": "from {name}",
   "link.file.download": "Download {name}",
   "link.file.saved": "Saved",
   "link.noCache": "This is not saved on this device. Connect to {name} to see it.",
   "error.upload_gone": "The files were not sent. Try again.",
+
+  "chat.decision.allowed": "Allowed by {name}",
+  "chat.decision.denied": "Denied by {name}",
+  "connect.nearby": "Computers on this network that show a pairing code",
+  "connect.nearby.empty": "No computer shows a pairing code now.",
+  "connect.nearby.pick": "Use {name}",
+
+  "settings.notify.serverNamed": "Server {name}",
 } as const
 
 export type MessageKey = keyof typeof en

@@ -49,6 +49,8 @@ export interface PlaceTarget {
   readonly kind: "agent" | "channel"
   readonly id: string
   readonly messageId?: string
+  /** Set for a place on a linked server: the window opens that server first (spec 012). */
+  readonly serverId?: string
 }
 
 export interface IslandAgent {

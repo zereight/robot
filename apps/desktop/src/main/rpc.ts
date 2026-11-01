@@ -231,7 +231,7 @@ export const handlers: Handlers = {
       Effect.flatMap(({ session }) => Remote.use((r) => r.cancel(session))),
       done,
     ),
-  "devices.nearby": () => Effect.succeed([]),
+  "devices.nearby": () => Devices.use((d) => d.nearby()),
   // Saving a file of a linked server is carried out over the link, see `Remote.invoke`.
   "attachments.save": () => Effect.fail(new AppError({ code: "not_allowed" })),
   "places.list": (input) =>

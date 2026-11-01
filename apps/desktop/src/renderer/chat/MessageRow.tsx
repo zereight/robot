@@ -47,6 +47,7 @@ const Thinking = (props: { text: string; live: boolean }) => {
 
 const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "tool" }> }) => {
   const { t } = useApp()
+  const ui = useUi()
   const [answer, setAnswer] = createSignal("")
   const respond = (value: string) =>
     call("tools.respond", { agentId: props.agent.id, callId: props.part.id, answer: value })
@@ -58,6 +59,19 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
         <span class={styles.toolState} data-state={props.part.state}>
           {t(`chat.tool.${props.part.state}` as MessageKey)}
         </span>
+        <Show when={props.part.decision}>
+          {(decision) => (
+            <span
+              class={styles.fromDevice}
+              data-testid="tool-decision"
+              data-answer={decision().answer}
+            >
+              {decision().answer === "allow"
+                ? t("chat.decision.allowed", { name: decision().by })
+                : t("chat.decision.denied", { name: decision().by })}
+            </span>
+          )}
+        </Show>
       </summary>
       <div class={styles.toolBody}>
         <Show when={props.part.ask}>
@@ -77,9 +91,12 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                       >
                         {t("chat.tool.allow")}
                       </Button>
-                      <Button onClick={() => respond("always")} data-testid="ask-always">
-                        {t("chat.tool.always")}
-                      </Button>
+                      {/* A client cannot change what an agent may always do (spec 012). */}
+                      <Show when={!ui.linked()}>
+                        <Button onClick={() => respond("always")} data-testid="ask-always">
+                          {t("chat.tool.always")}
+                        </Button>
+                      </Show>
                       <Button onClick={() => respond("deny")} data-testid="ask-deny">
                         {t("chat.tool.deny")}
                       </Button>
@@ -282,7 +299,7 @@ export const MessageRow = (props: MessageRowProps) => {
                 <Show when={fromOther()}>
                   {(from) => (
                     <p class={styles.fromDevice} data-testid="from-device">
-                      {t("link.from", { name: from() })}
+                      {t("link.fromDevice", { name: from() })}
                     </p>
                   )}
                 </Show>

@@ -4,6 +4,7 @@ import { join } from "node:path"
 import type { ChatMessage, MessagePart } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
+import { CurrentActor } from "./actor.ts"
 import { Chat } from "./Chat.ts"
 import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
@@ -114,11 +115,18 @@ const setup = async (permission: "ask_all" | "ask_risky" | "full" = "ask_risky")
   const finished = () =>
     until(async () => (await reply())?.status !== "streaming" && !!(await reply()))
   const respond = (answer: string) => run(Tools.use((x) => x.respond(agent.id, "call_1", answer)))
+  /** The answer of a linked device: the request runs with that device as the actor. */
+  const respondAs = (name: string, answer: string) =>
+    run(
+      Tools.use((x) => x.respond(agent.id, "call_1", answer)).pipe(
+        Effect.provideService(CurrentActor, { id: `device-${name}`, name }),
+      ),
+    )
   const waitingCard = async () => {
     await until(async () => (await toolPart())?.state === "waiting")
     return (await toolPart())?.ask
   }
-  return { run, agent, local, send, reply, toolPart, finished, respond, waitingCard, t }
+  return { run, agent, local, send, reply, toolPart, finished, respond, respondAs, waitingCard, t }
 }
 
 const call = (name: string, args: object) => `CALL ${name} ${JSON.stringify(args)}`
@@ -166,6 +174,67 @@ describe("tools in a chat turn", () => {
     const part = await s.toolPart()
     expect(part).toMatchObject({ state: "failed", output: "The user denied this step." })
     expect((await s.reply())?.status).toBe("done")
+  })
+
+  test("an approval answered by a linked device says who: Allowed by, Denied by", async () => {
+    const s = await setup()
+    const keep = join(s.t.dataDir, "keep.txt")
+    const gone = join(s.t.dataDir, "gone2.txt")
+    writeFileSync(keep, "1")
+    writeFileSync(gone, "2")
+
+    await s.send(call("run_command", { command: `rm "${gone}"` }))
+    await s.waitingCard()
+    await s.respondAs("MacBook 1", "allow")
+    await s.finished()
+    expect(existsSync(gone)).toBe(false)
+    expect((await s.toolPart())?.decision).toEqual({ answer: "allow", by: "MacBook 1" })
+
+    await s.send(call("run_command", { command: `rm "${keep}"` }))
+    await until(async () => (await s.toolPart())?.state === "waiting")
+    await s.respondAs("MacBook 1", "deny")
+    await s.finished()
+    expect(existsSync(keep)).toBe(true)
+    expect((await s.toolPart())?.decision).toEqual({ answer: "deny", by: "MacBook 1" })
+  })
+
+  test("an approval answered in this window has no name; always-allow from a device is one allow, not remembered", async () => {
+    const s = await setup()
+    const first = join(s.t.dataDir, "w1.txt")
+    writeFileSync(first, "1")
+    await s.send(call("run_command", { command: `rm "${first}"` }))
+    await s.waitingCard()
+    await s.respond("allow")
+    await s.finished()
+    expect((await s.toolPart())?.decision).toBeUndefined()
+
+    const second = join(s.t.dataDir, "w2.txt")
+    writeFileSync(second, "2")
+    await s.send(call("run_command", { command: `rm "${second}"` }))
+    await until(async () => (await s.toolPart())?.state === "waiting")
+    await s.respondAs("Phone", "always")
+    await s.finished()
+    // The step runs, and the card says who allowed it.
+    expect(existsSync(second)).toBe(false)
+    expect((await s.toolPart())?.decision).toEqual({ answer: "allow", by: "Phone" })
+
+    // But a device cannot make "always": the next step of that kind asks again.
+    const third = join(s.t.dataDir, "w3.txt")
+    writeFileSync(third, "3")
+    await s.send(call("run_command", { command: `rm "${third}"` }))
+    expect(await s.waitingCard()).toMatchObject({ kind: "approval" })
+    expect(existsSync(third)).toBe(true)
+    await s.respond("deny")
+    await s.finished()
+  })
+
+  test("a question answered by a linked device gives its answer to the model", async () => {
+    const s = await setup()
+    await s.send(call("ask_user", { question: "Colour?", choices: ["red", "blue"] }))
+    expect(await s.waitingCard()).toMatchObject({ kind: "question" })
+    await s.respondAs("MacBook 1", "blue")
+    await s.finished()
+    expect((await s.toolPart())?.output).toBe("blue")
   })
 
   test("always allow remembers the step for this agent", async () => {

@@ -33,7 +33,7 @@ export const App = () => {
   // A click on a notification, or on the island, opens the place and shows the message.
   onCleanup(
     window.robot.on("app.openPlace", (target) => {
-      ui.selectPlace({ kind: target.kind, id: target.id })
+      ui.selectPlace({ kind: target.kind, id: target.id }, target.serverId ?? ui.localServer()?.id)
       setFocusMessage(target.messageId)
     }),
   )

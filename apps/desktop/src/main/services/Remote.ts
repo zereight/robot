@@ -21,6 +21,7 @@ import {
   type ServerEntry,
   UPLOAD_PREFIX,
   type UploadAck,
+  type WireNotice,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { cacheKey, LinkCache } from "../link/cache.ts"
@@ -32,6 +33,7 @@ import { DECISION_MS, type PairMessage, toPairDevice } from "../link/protocol.ts
 import { Devices, type LinkRow } from "./Devices.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
 import { Servers } from "./Servers.ts"
 
@@ -96,6 +98,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
       const bus = yield* EventBus
       const servers = yield* Servers
       const platform = yield* Platform
+      const notifier = yield* Notifier
       const identity = devices.identity
       const cache = new LinkCache(join(platform.dataDir, "link-cache"))
 
@@ -110,6 +113,26 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
       const serversChanged = () => {
         bus.emit("servers.changed", {})
         bus.emit("devices.changed", {})
+      }
+
+      /** A notice of a linked server shows by the settings of this computer, and names the server. */
+      const showNotice = (linkId: string, notice: WireNotice) => {
+        const link = devices.link(linkId)
+        if (!link?.serverId) return
+        const name = numberedNames(devices.outbound()).get(linkId) ?? link.name
+        notifier.notifyLinked({ linkId, serverId: link.serverId, serverName: name }, notice)
+      }
+
+      /** What waited while this computer was away still notifies, once, when the link is back. */
+      const catchUp = async (linkId: string) => {
+        try {
+          const waiting = (await connections.get(linkId)?.request("attention.list")) as
+            | WireNotice[]
+            | undefined
+          for (const notice of waiting ?? []) showNotice(linkId, notice)
+        } catch {
+          // A server that does not answer has nothing to catch up on.
+        }
       }
 
       const connect = (row: LinkRow) => {
@@ -129,6 +152,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               serversChanged()
             },
             onEvent: (event, payload) => {
+              if (event === "notice") showNotice(row.id, payload as WireNotice)
               cache.applyEvent(row.id, event, payload)
               // The window shows these. They do not go to the devices of this computer.
               if (event !== "notice" && event !== "revoked") bus.window(event as never, payload)
@@ -147,6 +171,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
                   bus.window(event, { serverId })
                 }
               }
+              void catchUp(row.id)
               for (const h of onlineHandlers) h(row.id)
             },
             onRevoked: () => {
@@ -154,6 +179,13 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               cache.delete(row.id)
               for (const h of removedHandlers) h(row.id)
               serversChanged()
+              // The window drops what it shows of that server: the lists read again and fail.
+              const serverId = devices.link(row.id)?.serverId
+              if (serverId) {
+                for (const event of ["places.changed", "agents.changed", "tasks.changed"] as const)
+                  bus.window(event, { serverId })
+                bus.window("channels.changed", { channelId: "" })
+              }
             },
           },
         })
@@ -297,6 +329,11 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
             const payload = method === "chat.send" ? await uploadFiles(connection, input) : input
             const value = await connection.request(method, payload)
             if (key) cache.set(link.id, key, value)
+            if (method === "tools.respond") {
+              // Answered here: a notice for it must not show again (spec 015).
+              const { agentId, callId } = input as { agentId: string; callId: string }
+              notifier.answeredLinked(link.id, agentId, callId)
+            }
             return ok(value)
           } catch (error) {
             if (

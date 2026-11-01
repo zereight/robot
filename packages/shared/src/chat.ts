@@ -24,6 +24,8 @@ export type MessagePart =
       readonly ask?: ToolAsk
       /** Set for a tool that saved a memory item, so the card can offer undo. */
       readonly memoryId?: string
+      /** Set when a linked device answered the approval: its answer and its name (spec 012). */
+      readonly decision?: { readonly answer: "allow" | "deny"; readonly by: string }
     }
 
 export type ToolAsk =

@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test"
+import type { WireNotice } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
@@ -263,5 +264,146 @@ describe("status island", () => {
     await until(async () => (await s.island()).attention !== null)
     expect(s.t.shell.shapes.at(-1)).toBe("hidden")
     await s.run(Chat.use((c) => c.stop(s.agent.id)))
+  })
+
+  test("an approval is pushed to linked devices once, with its call, and listed while it waits", async () => {
+    const s = await setup()
+    await s.send('TOOL run_command {"command":"sudo ls"}')
+    await until(async () => (await s.island()).attention !== null)
+    const pushed = s.t.events.filter((e) => e.event === "notice")
+    expect(pushed).toHaveLength(1)
+    expect(pushed[0]?.payload).toMatchObject({
+      kind: "approval",
+      callId: "call_1",
+      agentId: s.agent.id,
+      title: "Ada",
+      target: { kind: "agent", id: s.agent.id },
+    })
+    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.waitingNotices())))
+    expect(waiting).toHaveLength(1)
+    expect(waiting[0]).toMatchObject({ callId: "call_1", body: expect.stringContaining("sudo ls") })
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "call_1", "deny")))
+    await s.idle()
+    expect(await s.run(Notifier.use((n) => Effect.succeed(n.waitingNotices())))).toEqual([])
+    // The answer pushes no second approval. The reply that follows is a notice of its own.
+    const approvals = s.t.events.filter(
+      (e) => e.event === "notice" && (e.payload as WireNotice).kind === "approval",
+    )
+    expect(approvals).toHaveLength(1)
+  })
+
+  test("a reply is pushed to linked devices too", async () => {
+    const s = await setup()
+    await s.send("hello")
+    await s.idle()
+    expect(s.t.events.some((e) => e.event === "notice")).toBe(true)
+  })
+})
+
+describe("notices of a linked server", () => {
+  const source = { linkId: "link-1", serverId: "server-b", serverName: "MacBook 2" }
+  const notice = (over: Partial<WireNotice> = {}): WireNotice => ({
+    kind: "approval",
+    channelId: null,
+    title: "Ada",
+    body: "Run: ls",
+    target: { kind: "agent", id: "agent-1", messageId: "m1" },
+    callId: "c1",
+    agentId: "agent-1",
+    ...over,
+  })
+  /** A notice that has no call, such as a mention or a failed task. */
+  const plain = (over: Partial<WireNotice> = {}): WireNotice => {
+    const { callId: _call, agentId: _agent, ...rest } = notice()
+    return { ...rest, ...over }
+  }
+  const linked = (s: Awaited<ReturnType<typeof setup>>, n: WireNotice, from = source) =>
+    s.run(Notifier.use((x) => Effect.sync(() => x.notifyLinked(from, n))))
+
+  test("it shows by the settings of this computer and names the server", async () => {
+    const s = await setup()
+    await linked(s, notice({ callId: "focused" }))
+    expect(s.t.shell.notices).toHaveLength(0)
+    s.t.shell.focused = false
+    await linked(s, notice())
+    expect(s.t.shell.notices).toHaveLength(1)
+    expect(s.t.shell.notices[0]).toMatchObject({ title: "Ada · MacBook 2", body: "Run: ls" })
+  })
+
+  test("a click shows the window and opens the place on that server", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    await linked(s, notice())
+    s.t.shell.notices[0]?.click()
+    expect(s.t.shell.shown).toBe(1)
+    expect(s.t.events.find((e) => e.event === "app.openPlace")?.payload).toEqual({
+      kind: "agent",
+      id: "agent-1",
+      messageId: "m1",
+      serverId: "server-b",
+    })
+  })
+
+  test("a kind that is off sends nothing", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    await s.run(
+      SettingsStore.use((x) =>
+        x.update({
+          notifyKinds: {
+            reply: true,
+            mention: true,
+            approval: false,
+            question: true,
+            task_failed: true,
+            routine_failed: true,
+          },
+        }),
+      ),
+    )
+    await linked(s, notice())
+    expect(s.t.shell.notices).toHaveLength(0)
+    await linked(s, plain({ kind: "task_failed" }))
+    expect(s.t.shell.notices).toHaveLength(1)
+  })
+
+  test("a mute works per server: one computer muted, the other not", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    await s.run(Notifier.use((n) => n.setMute("server", "server-b", "1h")))
+    await linked(s, notice())
+    expect(s.t.shell.notices).toHaveLength(0)
+    await linked(s, notice({ callId: "c2" }), { ...source, linkId: "link-2", serverId: "server-c" })
+    expect(s.t.shell.notices).toHaveLength(1)
+    // This computer's own server is not muted by that.
+    await s.send("hello")
+    await s.idle()
+    expect(s.t.shell.notices).toHaveLength(2)
+  })
+
+  test("a mute of one channel on the server holds, the others still notify", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    await s.run(Notifier.use((n) => n.setMute("channel", "ch-1", "8h")))
+    await linked(s, plain({ kind: "mention", channelId: "ch-1" }))
+    expect(s.t.shell.notices).toHaveLength(0)
+    await linked(s, plain({ kind: "mention", channelId: "ch-2" }))
+    expect(s.t.shell.notices).toHaveLength(1)
+  })
+
+  test("a request that waits notifies once, and not again after it was answered here", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    await linked(s, notice())
+    await linked(s, notice())
+    expect(s.t.shell.notices).toHaveLength(1)
+
+    await s.run(Notifier.use((n) => Effect.sync(() => n.answeredLinked("link-1", "agent-1", "c9"))))
+    await linked(s, notice({ callId: "c9" }))
+    expect(s.t.shell.notices).toHaveLength(1)
+
+    // The same call id on another link is another request.
+    await linked(s, notice(), { ...source, linkId: "link-2" })
+    expect(s.t.shell.notices).toHaveLength(2)
   })
 })

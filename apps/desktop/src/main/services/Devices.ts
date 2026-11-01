@@ -15,6 +15,7 @@ import {
   LINK_PROTOCOL,
   MAX_CLIENTS,
   MAX_SERVERS,
+  type NearbyComputer,
   numberedNames,
   PAIR_CODE_LENGTH,
   PAIR_CODE_TRIES,
@@ -30,6 +31,7 @@ import {
 import { Context, Effect, Layer } from "effect"
 import { codeToW } from "../link/crypto/spake2.ts"
 import { deviceIdOf, fromB64, type Identity, loadIdentity } from "../link/identity.ts"
+import { Nearby, type OpenSocket } from "../link/nearby.ts"
 import { DECISION_MS, type JoinResult, type PairDevice } from "../link/protocol.ts"
 import { type ClientSession, type LinkHost, LinkServer, type ServerOffer } from "../link/server.ts"
 import { Uploads } from "../link/uploads.ts"
@@ -97,6 +99,8 @@ export interface DevicesOptions {
   readonly computerName: string
   /** The port to listen on. 0 lets the system choose. Without it: the saved port, then the default. */
   readonly port?: number
+  /** Opens the socket that finds and announces computers near. A test gives its own. */
+  readonly nearbySocket?: OpenSocket
 }
 
 export interface DevicesService {
@@ -138,6 +142,8 @@ export interface DevicesService {
   removeOutbound(id: string): void
   /** The addresses of this computer that other devices can use now. */
   addresses(): readonly PairingAddress[]
+  /** Computers on the network that show a pairing code now (spec 012). */
+  nearby(): Effect.Effect<readonly NearbyComputer[]>
   /** Calls `handler` when the table of links changed. */
   onLinks(handler: () => void): void
   bindDispatcher(dispatcher: LinkDispatcher): void
@@ -165,6 +171,7 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
           Effect.sync(() => rmSync(uploadRoot, { recursive: true, force: true })),
         )
         const servers = yield* Servers
+        const nearby = new Nearby(options.nearbySocket)
 
         const { identity, created } = loadIdentity(secrets)
         // A new identity means the keychain was empty (a copied data folder, a new computer).
@@ -331,6 +338,7 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
           o.ended = true
           lastEnded = reason
           clearTimeout(o.timer)
+          nearby.stop()
           bus.emit("devices.pairing", pairing())
         }
 
@@ -531,6 +539,7 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
           Effect.sync(() => {
             if (offer) clearTimeout(offer.timer)
             for (const p of pending.values()) clearTimeout(p.timer)
+            nearby.stop()
             server.close()
           }),
         )
@@ -593,6 +602,13 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
               if (offer) clearTimeout(offer.timer)
               offer = newOffer()
               lastEnded = null
+              // Only while the code is valid can a neighbour find this computer (spec 012).
+              nearby.advertise({
+                id: identity.id,
+                name: deviceName(),
+                port: server.port,
+                hosts: addresses().map((a) => a.address.replace(/:\d+$/, "")),
+              })
               const p = pairing()
               bus.emit("devices.pairing", p)
               changed()
@@ -693,6 +709,10 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
             linksChanged()
           },
           addresses,
+          nearby: () =>
+            Effect.promise(() =>
+              nearby.find(identity.id, Number(process.env.ROBOT_LINK_NEARBY_WAIT_MS) || undefined),
+            ),
           onLinks: (handler) => {
             linkHandlers.push(handler)
           },

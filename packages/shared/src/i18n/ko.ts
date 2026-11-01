@@ -690,9 +690,17 @@ export const ko: Record<MessageKey, string> = {
   "link.tile.remove": "{name} 삭제",
   "link.tile.menu": "{name} 메뉴",
   "link.openOnServer": "{name}에서 열어 주세요.",
-  "link.from": "{name}에서 보냄",
+  "link.fromDevice": "{name}에서 보냄",
   "link.file.download": "{name} 내려받기",
   "link.file.saved": "저장했어요",
   "link.noCache": "이 기기에는 저장되어 있지 않아요. {name}에 연결하면 볼 수 있어요.",
   "error.upload_gone": "파일을 보내지 못했어요. 다시 시도해 주세요.",
+
+  "chat.decision.allowed": "{name}이(가) 허용했어요",
+  "chat.decision.denied": "{name}이(가) 거부했어요",
+  "connect.nearby": "이 네트워크에서 연결 코드를 보여 주는 컴퓨터",
+  "connect.nearby.empty": "지금 연결 코드를 보여 주는 컴퓨터가 없어요.",
+  "connect.nearby.pick": "{name} 선택",
+
+  "settings.notify.serverNamed": "{name} 서버",
 }

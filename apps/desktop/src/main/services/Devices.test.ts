@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { type DevicesState, groupCode, type PairingState } from "@robot/shared"
 import { Effect } from "effect"
+import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { Devices } from "./Devices.ts"
 import { Remote } from "./Remote.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -62,11 +63,13 @@ const pair = async (server: Rt, client: Rt, twoWay = false) => {
 beforeAll(() => {
   process.env.ROBOT_LINK_ADDRESSES = "127.0.0.1"
   process.env.ROBOT_LINK_RETRY_MAX_MS = "300"
+  process.env.ROBOT_LINK_NEARBY_WAIT_MS = "80"
 })
 afterAll(async () => {
   for (const s of sides) await s.runtime.dispose()
   delete process.env.ROBOT_LINK_ADDRESSES
   delete process.env.ROBOT_LINK_RETRY_MAX_MS
+  delete process.env.ROBOT_LINK_NEARBY_WAIT_MS
 })
 
 describe("device link between two computers", () => {
@@ -316,5 +319,65 @@ describe("device link between two computers", () => {
     // Clearing the name takes the name of the computer again.
     const cleared = await a.runtime.runPromise(Devices.use((d) => d.update({ name: "" })))
     expect(cleared.self.name).toBe("A")
+  })
+
+  test("a computer is found on the network only while its code is valid", async () => {
+    const network = new MemoryNetwork()
+    const server = testRuntime({ name: "Server", network })
+    const client = testRuntime({ name: "Client", network })
+    sides.push(server, client)
+    const near = () => client.runtime.runPromise(Devices.use((d) => d.nearby()))
+
+    expect(await near()).toEqual([])
+    // Turning the switch on is not enough: only a shown code makes the computer visible.
+    await server.runtime.runPromise(Devices.use((d) => d.update({ accept: true })))
+    expect(await near()).toEqual([])
+
+    const pairing = await start(server)
+    const found = await near()
+    expect(found.map((f) => f.name)).toEqual(["Server"])
+    expect(found[0]?.address).toBe(`127.0.0.1:${pairing.addresses[0]?.address.split(":")[1]}`)
+    // The address that a neighbour gets is one that pairs.
+    const probed = await probe(client, { address: found[0]?.address, code: pairing.code })
+    expect(probed.name).toBe("Server")
+
+    await server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.pairStop())))
+    expect(await near()).toEqual([])
+    expect(network.openCount).toBe(0)
+  })
+
+  test("a computer is not found any more after one pairing, and not after its code ends", async () => {
+    const network = new MemoryNetwork()
+    const server = testRuntime({ name: "Server", network })
+    const client = testRuntime({ name: "Client", network })
+    const third = testRuntime({ name: "Third", network })
+    sides.push(server, client, third)
+    const near = (who: Rt) => who.runtime.runPromise(Devices.use((d) => d.nearby()))
+
+    const pairing = await start(server)
+    expect(await near(third)).toHaveLength(1)
+    const found = await probe(client, { link: pairing.link })
+    const done = finish(client, found.session, false)
+    await decide(server, true)
+    await done
+    expect(await near(third)).toEqual([])
+
+    process.env.ROBOT_LINK_CODE_TTL_MS = "250"
+    try {
+      await start(server)
+      expect(await near(third)).toHaveLength(1)
+      await new Promise((r) => setTimeout(r, 400))
+      expect(await near(third)).toEqual([])
+    } finally {
+      delete process.env.ROBOT_LINK_CODE_TTL_MS
+    }
+  })
+
+  test("the computer that shows the code does not list itself", async () => {
+    const network = new MemoryNetwork()
+    const server = testRuntime({ name: "Server", network })
+    sides.push(server)
+    await start(server)
+    expect(await server.runtime.runPromise(Devices.use((d) => d.nearby()))).toEqual([])
   })
 })

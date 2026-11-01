@@ -199,7 +199,9 @@ export const Composer = (props: ComposerProps) => {
               }
             >
               <span data-testid="composer-offline">
-                {t("link.state.offline", { name: ui.server()?.name ?? "" })}
+                {ui.server()?.state === "not_allowed"
+                  ? t("link.state.not_allowed", { name: ui.server()?.name ?? "" })
+                  : t("link.state.offline", { name: ui.server()?.name ?? "" })}
               </span>
             </Show>
           </div>

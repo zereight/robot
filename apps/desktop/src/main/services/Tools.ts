@@ -20,6 +20,7 @@ import { Context, Effect, Layer } from "effect"
 import type { ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall, ToolDef } from "../providers/chat.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
+import { CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { Memory } from "./Memory.ts"
@@ -34,6 +35,8 @@ export interface ToolContext {
   readonly onWaiting: (callId: string, ask: ToolAsk | null) => void
   /** Records the memory item that a call saved, so its card can offer undo. */
   readonly onMemory: (callId: string, memoryId: string) => void
+  /** Records that a linked device answered an approval, so its card can say who. */
+  readonly onDecision?: (callId: string, answer: "allow" | "deny", by: string) => void
 }
 
 export interface ToolsService {
@@ -193,7 +196,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
         return page
       }
-      const waiting = new Map<string, (answer: string) => void>()
+      /** The card that waits, by agent and call. The answer says which device gave it, if any. */
+      const waiting = new Map<string, (answer: string, by: string | null) => void>()
 
       const allowed = (agentId: string, key: string) =>
         db.get("SELECT 1 AS x FROM agent_allow WHERE agent_id = ? AND key = ?", agentId, key) !==
@@ -203,7 +207,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
 
       /** Waits for the user to answer a card. Rejects when the turn stops. */
       const wait = (ctx: ToolContext, callId: string, ask: ToolAsk) =>
-        new Promise<string>((resolveAnswer, reject) => {
+        new Promise<{ answer: string; by: string | null }>((resolveAnswer, reject) => {
           const id = `${ctx.agentId}:${callId}`
           const stop = () => {
             waiting.delete(id)
@@ -211,10 +215,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
           if (ctx.signal.aborted) return stop()
           ctx.signal.addEventListener("abort", stop, { once: true })
-          waiting.set(id, (answer) => {
+          waiting.set(id, (answer, by) => {
             waiting.delete(id)
             ctx.signal.removeEventListener("abort", stop)
-            resolveAnswer(answer)
+            resolveAnswer({ answer, by })
           })
           ctx.onWaiting(callId, ask)
         }).finally(() => ctx.onWaiting(callId, null))
@@ -228,9 +232,14 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         summary: string,
       ) => {
         if (!needsApproval(ctx.permission, risky) || allowed(ctx.agentId, key)) return
-        const answer = (await wait(ctx, call.id, { kind: "approval", summary })) as ApprovalAnswer
-        if (answer === "always") allow(ctx.agentId, key)
-        else if (answer !== "allow") throw new Denied()
+        const reply = await wait(ctx, call.id, { kind: "approval", summary })
+        const answer = reply.answer as ApprovalAnswer
+        if (reply.by) ctx.onDecision?.(call.id, answer === "deny" ? "deny" : "allow", reply.by)
+        // A linked device cannot change what an agent may always do (spec 012): its "always" is
+        // one "allow", and the next step asks again.
+        if (answer === "always") {
+          if (!reply.by) allow(ctx.agentId, key)
+        } else if (answer !== "allow") throw new Denied()
       }
 
       /** The real path of a file or of its nearest folder that exists, so symlinks count. */
@@ -418,8 +427,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const choices = Array.isArray(args.choices)
               ? args.choices.filter((c): c is string => typeof c === "string").slice(0, 8)
               : []
-            const answer = await wait(ctx, call.id, { kind: "question", question, choices })
-            return { output: answer, failed: false }
+            const reply = await wait(ctx, call.id, { kind: "question", question, choices })
+            return { output: reply.answer, failed: false }
           }
           case "browser_open":
           case "browser_read":
@@ -473,7 +482,11 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         },
         closeBrowser: (agentId) => platform.browser(agentId).close(),
         respond: (agentId, callId, answer) =>
-          Effect.sync(() => waiting.get(`${agentId}:${callId}`)?.(answer)),
+          Effect.gen(function* () {
+            // A linked device that answers is named on the card (spec 012).
+            const actor = yield* CurrentActor
+            waiting.get(`${agentId}:${callId}`)?.(answer, actor?.name ?? null)
+          }),
       })
     }),
   )

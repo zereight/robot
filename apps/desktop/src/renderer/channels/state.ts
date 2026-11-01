@@ -1,7 +1,7 @@
 import type { ChannelMessage } from "@robot/shared"
 import { createEffect, on, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
-import { call } from "../lib/rpc.ts"
+import { call, RpcFailure } from "../lib/rpc.ts"
 import { linkEpoch } from "../state/link.ts"
 
 /** The messages of one channel, kept in step with the main process. */
@@ -16,8 +16,13 @@ export const createChannelChat = (channelId: string) => {
         setState("messages", reconcile([...messages], { key: "id" }))
         setState("loaded", true)
       })
-      // A linked server that is offline and has nothing saved: the view stays empty.
-      .catch(() => setState("loaded", true))
+      // A linked server that is offline and has nothing saved: the view stays empty. One that
+      // removed this device takes its messages from the view too (spec 012).
+      .catch((error) => {
+        if (error instanceof RpcFailure && error.error.code === "not_allowed")
+          setState("messages", reconcile([], { key: "id" }))
+        setState("loaded", true)
+      })
   const offMessage = window.robot.on("channel.message", (message) => {
     if (message.channelId !== channelId) return
     setState(

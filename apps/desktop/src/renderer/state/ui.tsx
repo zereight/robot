@@ -40,6 +40,10 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
       if (states.get(s.id) !== "online" && s.state === "online" && states.has(s.id)) {
         linkEpoch.bump()
       }
+      // A server that removed this device: the open views drop what they hold of it.
+      if (states.get(s.id) !== "not_allowed" && s.state === "not_allowed" && states.has(s.id)) {
+        linkEpoch.bump()
+      }
       states.set(s.id, s.state)
     }
     setServers(reconcile([...next], { key: "id" }))
@@ -104,9 +108,10 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** The panel shows when the user wants it and the window is wide enough. */
     activityPanelVisible: () => ui.activityPanel && !narrow(),
     selectServer: (serverId: string) => update({ serverId }),
-    selectPlace: (ref: PlaceRef) => {
-      const id = server()?.id
-      if (id) update({ places: { ...ui.places, [id]: ref }, page: "chats" })
+    /** Opens a place. A notification names its server; without one, the server on screen. */
+    selectPlace: (ref: PlaceRef, serverId?: string) => {
+      const id = serverId ?? server()?.id
+      if (id) update({ serverId: id, places: { ...ui.places, [id]: ref }, page: "chats" })
     },
     selectPage: (page: Page) => update({ page }),
     toggleSection: (sectionId: string) =>

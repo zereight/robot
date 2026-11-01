@@ -154,6 +154,8 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       state: event.state,
       output: event.state === "running" ? "" : event.output,
       ...(existing?.kind === "tool" && existing.memoryId ? { memoryId: existing.memoryId } : {}),
+      // Who answered the approval stays on the card when the call ends (spec 012).
+      ...(existing?.kind === "tool" && existing.decision ? { decision: existing.decision } : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -426,6 +428,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               })
             },
             onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
+            onDecision: (callId, answer, by) =>
+              changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
           }
           const events = yield* providers.events(
             agent.model_account_id,

@@ -320,7 +320,9 @@ export const ChannelView = (props: { channel: Channel }) => {
       <div class={chat.composer}>
         <Show when={ui.serverOffline()}>
           <div class={chat.composerError} role="status" data-testid="channel-offline">
-            {t("link.state.offline", { name: ui.server()?.name ?? "" })}
+            {ui.server()?.state === "not_allowed"
+              ? t("link.state.not_allowed", { name: ui.server()?.name ?? "" })
+              : t("link.state.offline", { name: ui.server()?.name ?? "" })}
           </div>
         </Show>
         <Show when={error()}>

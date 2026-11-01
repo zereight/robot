@@ -23,6 +23,7 @@
     "fflate",
     "lucide-solid",
     "marked",
+    "multicast-dns",
     "solid-js",
     "uqr",
     "ws"
@@ -31,6 +32,7 @@
     "@noble/curves": "^2.4.0",
     "@playwright/test": "^1.64.1",
     "@robot/shared": "workspace:*",
+    "@types/multicast-dns": "^7.2.4",
     "@types/node": "24",
     "@types/ws": "^8.18.2",
     "effect": "^4.1.1",
@@ -40,6 +42,7 @@
     "fflate": "^0.8.3",
     "lucide-solid": "^1.66.0",
     "marked": "^18.1.2",
+    "multicast-dns": "^7.2.5",
     "solid-js": "^1.9.18",
     "uqr": "^0.1.3",
     "vite": "^8.3.5",

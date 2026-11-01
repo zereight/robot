@@ -1,5 +1,6 @@
 import { join } from "node:path"
 import { Layer } from "effect"
+import type { OpenSocket } from "./link/nearby.ts"
 import { Activity } from "./services/Activity.ts"
 import { Agents } from "./services/Agents.ts"
 import { Channels } from "./services/Channels.ts"
@@ -33,6 +34,8 @@ export interface AppLayerOptions {
   readonly secrets: Layer.Layer<Secrets>
   /** The port of the device link. Tests use 0 to let the system choose. */
   readonly linkPort?: number
+  /** Opens the socket that finds and announces computers near. Tests give a network in memory. */
+  readonly nearbySocket?: OpenSocket
 }
 
 /** Every main process service, wired together. */
@@ -52,6 +55,7 @@ export const appLayer = (options: AppLayerOptions) => {
   const devices = Devices.layer({
     computerName: options.localServerName,
     ...(options.linkPort !== undefined ? { port: options.linkPort } : {}),
+    ...(options.nearbySocket ? { nearbySocket: options.nearbySocket } : {}),
   }).pipe(Layer.provideMerge(stores))
   const runtimes = Runtimes.layer.pipe(Layer.provideMerge(devices))
   const providers = Providers.layer.pipe(Layer.provideMerge(runtimes))

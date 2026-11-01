@@ -341,6 +341,8 @@ describe("a computer that opens a linked server", () => {
     const clientId =
       (await a.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.state())))).clients[0]
         ?.id ?? ""
+    const countOf = (event: string) => b.events.filter((e) => e.event === event).length
+    const toldBefore = countOf("places.changed")
     await a.runtime.runPromise(Devices.use((d) => d.removeClient(clientId)))
     await waitFor(
       () => b.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.stateOf(entry.id)))),
@@ -348,5 +350,11 @@ describe("a computer that opens a linked server", () => {
     )
     const read = await invoke(b, local.id, "chat.history", { agentId: agent.id })
     expect(!read.ok && read.error.code).toBe("not_allowed")
+    // Cached reads are gone too: a list that was read before does not come back from disk.
+    const places = await invoke(b, local.id, "places.list", { serverId: local.id })
+    expect(!places.ok && places.error.code).toBe("not_allowed")
+    // The window is told to read its lists again, so it drops what it showed of that server.
+    expect(countOf("places.changed")).toBeGreaterThan(toldBefore)
+    expect(countOf("channels.changed")).toBeGreaterThan(0)
   })
 })

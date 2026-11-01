@@ -1,5 +1,5 @@
-import type { ConnectProbe } from "@robot/shared"
-import { Switch as Branch, createSignal, Match, Show } from "solid-js"
+import type { ConnectProbe, NearbyComputer } from "@robot/shared"
+import { Switch as Branch, createSignal, For, Match, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
@@ -8,6 +8,8 @@ import { Dialog } from "../ui/Dialog.tsx"
 import styles from "./devices.module.css"
 
 type Step = "enter" | "checking" | "ask" | "waiting"
+
+const NEARBY_EVERY_MS = 3000
 
 /** "Connect to a computer" (spec 012): a link, or an address and a code, then the two-way question. */
 export const ConnectDialog = (props: { onClose: () => void; onDone?: () => void }) => {
@@ -19,6 +21,40 @@ export const ConnectDialog = (props: { onClose: () => void; onDone?: () => void 
   const [found, setFound] = createSignal<ConnectProbe>()
   const [twoWay, setTwoWay] = createSignal(true)
   const [error, setError] = createSignal<ErrorText>()
+  const [near, setNear] = createSignal<readonly NearbyComputer[]>([])
+  const [searched, setSearched] = createSignal(false)
+  let codeInput: HTMLInputElement | undefined
+
+  // Computers near that show a code, while the user has not gone past the first step (spec 012).
+  onMount(() => {
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const search = async () => {
+      if (step() === "enter") {
+        try {
+          const list = await call("devices.nearby")
+          if (alive) {
+            setNear(list)
+            setSearched(true)
+          }
+        } catch {
+          if (alive) setSearched(true)
+        }
+      }
+      if (alive) timer = setTimeout(() => void search(), NEARBY_EVERY_MS)
+    }
+    void search()
+    onCleanup(() => {
+      alive = false
+      clearTimeout(timer)
+    })
+  })
+
+  const pick = (computer: NearbyComputer) => {
+    setLink("")
+    setAddress(computer.address)
+    codeInput?.focus()
+  }
 
   const probe = async () => {
     setError(undefined)
@@ -68,6 +104,35 @@ export const ConnectDialog = (props: { onClose: () => void; onDone?: () => void 
         <Branch>
           <Match when={step() === "enter" || step() === "checking"}>
             <p class={styles.hint}>{t("connect.intro")}</p>
+            <Show when={searched()}>
+              <div class={styles.nearby} data-testid="connect-nearby">
+                <span class={styles.fieldLabel}>{t("connect.nearby")}</span>
+                <Show
+                  when={near().length > 0}
+                  fallback={<span class={styles.hint}>{t("connect.nearby.empty")}</span>}
+                >
+                  <ul class={styles.nearbyList}>
+                    <For each={near()}>
+                      {(computer) => (
+                        <li>
+                          <button
+                            type="button"
+                            class={styles.nearbyItem}
+                            data-selected={address() === computer.address}
+                            aria-label={t("connect.nearby.pick", { name: computer.name })}
+                            onClick={() => pick(computer)}
+                            data-testid="connect-nearby-item"
+                          >
+                            <span>{computer.name}</span>
+                            <span class={styles.hint}>{computer.address}</span>
+                          </button>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </Show>
+              </div>
+            </Show>
             <label class={styles.field}>
               <span class={styles.fieldLabel}>{t("connect.link")}</span>
               <input
@@ -99,6 +164,7 @@ export const ConnectDialog = (props: { onClose: () => void; onDone?: () => void 
                 inputMode="numeric"
                 autocomplete="off"
                 maxLength={7}
+                ref={codeInput}
                 value={code()}
                 onInput={(e) => setCode(e.currentTarget.value)}
                 data-testid="connect-code"

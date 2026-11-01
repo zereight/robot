@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
+import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
 import type { BrowserPage, PlatformService } from "./Platform.ts"
 import { Secrets } from "./Secrets.ts"
@@ -93,7 +94,7 @@ export const testPlatform = () => {
 }
 
 /** The full app layer on an in-memory database, with recorded events. */
-export const testRuntime = (options: { name?: string } = {}) => {
+export const testRuntime = (options: { name?: string; network?: MemoryNetwork } = {}) => {
   const { platform, dataDir, trashed, browserLog, shell } = testPlatform()
   const events: { event: string; payload: unknown }[] = []
   const runtime = ManagedRuntime.make(
@@ -101,6 +102,7 @@ export const testRuntime = (options: { name?: string } = {}) => {
       platform,
       databaseFile: ":memory:",
       linkPort: 0,
+      nearbySocket: (options.network ?? new MemoryNetwork()).open,
       localServerName: options.name ?? "Test computer",
       emit: (event, payload) => events.push({ event, payload }),
       secrets: Secrets.memory,

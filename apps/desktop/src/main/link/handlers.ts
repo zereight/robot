@@ -9,6 +9,7 @@ import { Agents } from "../services/Agents.ts"
 import { CurrentActor } from "../services/actor.ts"
 import { Devices } from "../services/Devices.ts"
 import { AppError } from "../services/errors.ts"
+import { Notifier } from "../services/Notifier.ts"
 import { Platform } from "../services/Platform.ts"
 import { Servers } from "../services/Servers.ts"
 import { UploadError } from "./uploads.ts"
@@ -77,6 +78,9 @@ export const linkHandlers: Record<string, LinkHandler> = {
         protocol: LINK_PROTOCOL,
       } satisfies ServerSummary
     }),
+
+  /** The approvals and questions that wait now, for a device that connects (spec 015). */
+  "attention.list": () => Notifier.use((n) => E.sync(() => n.waitingNotices())),
 
   "attachment.upload": (input) =>
     E.gen(function* () {
