@@ -95,7 +95,13 @@ export const setMainWindow = (win: BrowserWindow) => {
   mainWindow = win
 }
 
-const ISLAND_SIZE = { bar: { width: 230, height: 34 }, attention: { width: 460, height: 132 } }
+/**
+ * The bar is wider than the camera notch, so the app mark and the faces sit in the two wings at
+ * each side of it. The card starts below the notch.
+ */
+const ISLAND_SIZE = { bar: { width: 340, height: 34 }, attention: { width: 460, height: 168 } }
+/** A menu bar this tall or taller means that the screen has a camera notch. */
+const NOTCH_MENU_BAR_MIN = 30
 let island: BrowserWindow | undefined
 
 /**
@@ -123,6 +129,8 @@ const setIslandShape = (shape: "hidden" | "bar" | "attention") => {
       skipTaskbar: true,
       focusable: false,
       show: false,
+      // Without this, macOS moves the window down, under the menu bar and the camera notch.
+      enableLargerThanScreen: true,
       title: "ROBot island",
       webPreferences: {
         preload: joinPath(import.meta.dirname, "../preload/index.cjs"),
@@ -137,11 +145,18 @@ const setIslandShape = (shape: "hidden" | "bar" | "attention") => {
     if (devUrl) void island.loadURL(`${devUrl}/island.html`)
     else void island.loadFile(joinPath(import.meta.dirname, "../renderer/island.html"))
   }
-  const { width, height } = ISLAND_SIZE[shape]
-  const bounds = screen.getPrimaryDisplay().bounds
+  const display = screen.getPrimaryDisplay()
+  const { bounds } = display
+  // The menu bar of a screen with a camera notch is as tall as the notch. The island joins the
+  // notch there. A screen without a notch keeps the island under the menu bar.
+  const menuBar = display.workArea.y - bounds.y
+  const notch = menuBar >= NOTCH_MENU_BAR_MIN ? menuBar : 0
+  const { width } = ISLAND_SIZE[shape]
+  const height =
+    shape === "bar" ? Math.max(ISLAND_SIZE.bar.height, notch) : ISLAND_SIZE[shape].height
   island.setBounds({
     x: Math.round(bounds.x + (bounds.width - width) / 2),
-    y: bounds.y,
+    y: notch > 0 ? bounds.y : bounds.y + menuBar,
     width,
     height,
   })

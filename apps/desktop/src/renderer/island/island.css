@@ -25,6 +25,11 @@ body,
   animation: appear 220ms ease-out;
 }
 
+/* The card starts below the camera notch. */
+.island[data-shape="attention"] {
+  padding-top: 38px;
+}
+
 .island[data-motion="off"] {
   animation: none;
 }
