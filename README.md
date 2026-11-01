@@ -221,7 +221,7 @@ Unclear spec points and the choices made for them are in
 
 | Milestone | Scope | State |
 | --- | --- | --- |
-| **M1** | Window, agents, direct chat, providers, settings, local data | In progress: first start, usage page, attachments and export are next |
+| **M1** | Window, agents, direct chat, providers, settings, local data | In progress: attachments, export and import, and hiding of secrets are next |
 | **M2** | Channels, split work, tasks page | Planned |
 | **M3** | Workspace tools, approvals, browser, memory | Planned |
 | **M4** | Routines and workflows | Planned |

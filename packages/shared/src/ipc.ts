@@ -3,6 +3,7 @@ import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
 import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
+import type { UsageRange, UsageRow } from "./usage.ts"
 
 /** Information about the running app. */
 export interface AppInfo {
@@ -53,6 +54,10 @@ export interface RpcMethods {
   "providers.disconnect": { input: { accountId: string }; output: undefined }
   "providers.remove": { input: { accountId: string }; output: undefined }
   "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
+  "usage.summary": {
+    input: { serverId: string; days: UsageRange }
+    output: readonly UsageRow[]
+  }
   "chat.history": {
     input: { agentId: string }
     output: { messages: readonly ChatMessage[]; queue: readonly QueuedMessage[] }

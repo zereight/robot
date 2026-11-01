@@ -6,6 +6,7 @@ import { app, BrowserWindow } from "electron"
 import { appLayer } from "./layers.ts"
 import { electronPlatform } from "./platform-electron.ts"
 import { registerRpc } from "./rpc.ts"
+import { Database } from "./services/Database.ts"
 import { Platform } from "./services/Platform.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { SettingsStore } from "./services/Settings.ts"
@@ -68,6 +69,15 @@ app.whenReady().then(async () => {
     Effect.gen(function* () {
       const settings = yield* SettingsStore.use((s) => s.get)
       yield* Platform.use((p) => Effect.sync(() => p.setThemeSource(settings.theme)))
+      // The first start guide is for new users. A data folder that already holds an agent or an
+      // account, or a test run that asks to skip it, counts as done.
+      if (!settings.firstRunDone) {
+        const db = yield* Database
+        const used =
+          db.get("SELECT 1 FROM agent LIMIT 1") || db.get("SELECT 1 FROM provider_account LIMIT 1")
+        if (used || process.env.ROBOT_SKIP_FIRST_RUN)
+          yield* SettingsStore.use((s) => s.update({ firstRunDone: true }))
+      }
     }),
   )
   registerRpc(runtime)

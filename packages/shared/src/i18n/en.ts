@@ -240,6 +240,35 @@ export const en = {
   "error.cannot_retry": "Only the last failed reply can be tried again.",
   "error.cannot_edit": "Only your last message can be changed.",
   "error.queue_item_gone": "This message was already sent.",
+
+  "usage.range": "Period",
+  "usage.range.7": "Last 7 days",
+  "usage.range.30": "Last 30 days",
+  "usage.empty": "No finished replies in this period yet.",
+  "usage.total": "Total",
+  "usage.byAgent": "By agent",
+  "usage.byDay": "By day",
+  "usage.col.agent": "Agent",
+  "usage.col.replies": "Replies",
+  "usage.col.input": "Input tokens",
+  "usage.col.output": "Output tokens",
+  "usage.note":
+    "Tokens are the counts that providers report. Providers do not report cost, so none is shown.",
+
+  "firstRun.title": "Welcome to ROBot",
+  "firstRun.step": "Step {current} of {total}",
+  "firstRun.look.title": "Language and theme",
+  "firstRun.look.body": "You can change both later in settings.",
+  "firstRun.account.title": "Connect a model account",
+  "firstRun.account.body":
+    "An agent needs a model account to reply. The key stays in your system keychain.",
+  "firstRun.account.connected": "Account connected: {name}",
+  "firstRun.agent.title": "Make your first agent",
+  "firstRun.agent.body": "Give it a name and a role. You can change them later.",
+  "firstRun.next": "Next",
+  "firstRun.back": "Back",
+  "firstRun.skip": "Skip",
+  "firstRun.skipAll": "Skip the guide",
 } as const
 
 export type MessageKey = keyof typeof en
