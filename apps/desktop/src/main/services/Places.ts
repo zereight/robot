@@ -1,6 +1,7 @@
 import { type ChatMessage, messageText, type PlaceSection } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Agents } from "./Agents.ts"
+import { Channels } from "./Channels.ts"
 import { Database } from "./Database.ts"
 
 export interface PlacesService {
@@ -16,6 +17,7 @@ export class Places extends Context.Service<Places, PlacesService>()("robot/main
     Effect.gen(function* () {
       const agents = yield* Agents
       const db = yield* Database
+      const channels = yield* Channels
 
       const lastMessage = (agentId: string) => {
         const row = db.get<{ parts: string }>(
@@ -37,9 +39,19 @@ export class Places extends Context.Service<Places, PlacesService>()("robot/main
 
       return Places.of({
         list: (serverId) =>
-          agents.list(serverId, false).pipe(
-            Effect.map((list): PlaceSection[] => [
-              { id: "channels", places: [] },
+          Effect.zip(agents.list(serverId, false), channels.list(serverId)).pipe(
+            Effect.map(([list, channelList]): PlaceSection[] => [
+              {
+                id: "channels",
+                places: channelList.map((c) => ({
+                  kind: "channel" as const,
+                  id: c.id,
+                  name: c.name,
+                  unread: c.unread,
+                  working: c.working,
+                  lastMessage: channels.lastMessage(c.id),
+                })),
+              },
               {
                 id: "agents",
                 places: list.map((a) => ({

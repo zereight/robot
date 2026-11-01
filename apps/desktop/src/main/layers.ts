@@ -2,6 +2,7 @@ import { join } from "node:path"
 import { Layer } from "effect"
 import { Activity } from "./services/Activity.ts"
 import { Agents } from "./services/Agents.ts"
+import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
@@ -43,7 +44,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const agents = Layer.mergeAll(Agents.layer, Chat.layer, Usage.layer).pipe(
     Layer.provideMerge(tasks),
   )
-  const places = Places.layer.pipe(Layer.provideMerge(agents))
+  const channels = Channels.layer.pipe(Layer.provideMerge(agents))
+  const places = Places.layer.pipe(Layer.provideMerge(channels))
   return Data.layer.pipe(Layer.provideMerge(places))
 }
 

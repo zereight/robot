@@ -1,4 +1,11 @@
 import type { Agent, AgentCreate, AgentPatch } from "./agents.ts"
+import type {
+  Channel,
+  ChannelActivity,
+  ChannelCreate,
+  ChannelMessage,
+  ChannelPatch,
+} from "./channels.ts"
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
 import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
@@ -66,6 +73,21 @@ export interface RpcMethods {
   "tasks.get": { input: { id: string }; output: TaskDetail }
   "tasks.stop": { input: { id: string }; output: undefined }
   "tasks.retry": { input: { id: string }; output: undefined }
+  "channels.list": { input: { serverId: string }; output: readonly Channel[] }
+  "channels.create": { input: ChannelCreate; output: Channel }
+  "channels.update": { input: { id: string; patch: ChannelPatch }; output: Channel }
+  "channels.delete": { input: { id: string }; output: undefined }
+  "channels.history": { input: { channelId: string }; output: readonly ChannelMessage[] }
+  /** Posts a job. `awaiting` is true when the user has to pick the member who takes it. */
+  "channels.send": { input: { channelId: string; text: string }; output: { awaiting: boolean } }
+  "channels.assign": {
+    input: { channelId: string; messageId: string; agentId: string }
+    output: undefined
+  }
+  /** Stops every running part and job of the channel. */
+  "channels.stop": { input: { channelId: string }; output: undefined }
+  "channels.activity": { input: { channelId: string }; output: ChannelActivity }
+  "channels.markRead": { input: { channelId: string }; output: undefined }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
@@ -94,6 +116,10 @@ export interface RpcEvents {
   "agents.changed": { serverId: string }
   "providers.changed": Record<string, never>
   "tasks.changed": { serverId: string }
+  /** The members, the plan steps or the state of a channel changed. */
+  "channels.changed": { channelId: string }
+  "channel.message": ChannelMessage
+  "channel.removed": { channelId: string; messageId: string }
   /** A new or changed message. While a reply streams, this comes many times. */
   "chat.message": ChatMessage
   "chat.removed": { agentId: string; messageId: string }
