@@ -11,15 +11,18 @@ import {
   type Face as FaceValue,
   faceFromName,
   type MessageKey,
+  PERMISSION_LEVELS,
+  type PermissionLevel,
 } from "@robot/shared"
 import { createSignal, For, Index, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useApp } from "../state/app.tsx"
-import { Button } from "../ui/controls.tsx"
+import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import styles from "./agents.module.css"
 import { Face, faceColour } from "./Face.tsx"
+import { MemoryPanel } from "./MemoryPanel.tsx"
 
 export interface AgentFormValues {
   name: string
@@ -27,6 +30,9 @@ export interface AgentFormValues {
   instructions: string
   face: FaceValue
   model: AgentModel | null
+  /** Only when an existing agent is edited. */
+  permission?: PermissionLevel
+  memoryEnabled?: boolean
 }
 
 export interface AgentFormProps {
@@ -56,6 +62,10 @@ export const AgentForm = (props: AgentFormProps) => {
   /** The face the user picked. Until then a new agent's face follows its name. */
   const [pickedFace, setPickedFace] = createSignal<FaceValue | undefined>(props.agent?.face)
   const [model, setModel] = createSignal<AgentModel | null>(props.agent?.model ?? null)
+  const [permission, setPermission] = createSignal<PermissionLevel>(
+    props.agent?.permission ?? "ask_risky",
+  )
+  const [memoryEnabled, setMemoryEnabled] = createSignal(props.agent?.memoryEnabled ?? true)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   let fileInput: HTMLInputElement | undefined
@@ -90,6 +100,7 @@ export const AgentForm = (props: AgentFormProps) => {
         instructions: instructions(),
         face: face(),
         model: model(),
+        ...(props.agent ? { permission: permission(), memoryEnabled: memoryEnabled() } : {}),
       })
     } catch (e) {
       setError(describeError(e))
@@ -238,6 +249,37 @@ export const AgentForm = (props: AgentFormProps) => {
         <span class={styles.label}>{t("agents.field.model")}</span>
         <ModelPicker value={model()} onChange={setModel} />
       </div>
+
+      <Show when={props.agent}>
+        {(agent) => (
+          <>
+            <div class={styles.field}>
+              <span class={styles.label}>{t("agents.field.permission")}</span>
+              <Segmented
+                label={t("agents.field.permission")}
+                value={permission()}
+                options={PERMISSION_LEVELS.map((value) => ({
+                  value,
+                  label: t(`agents.permission.${value}` as MessageKey),
+                }))}
+                onChange={setPermission}
+                testId="agent-permission"
+              />
+              <span class={styles.hint}>{t("agents.permission.hint")}</span>
+            </div>
+            <div class={styles.field}>
+              <span class={styles.label}>{t("agents.field.memory")}</span>
+              <Switch
+                label={t("agents.field.memory")}
+                checked={memoryEnabled()}
+                onChange={setMemoryEnabled}
+                testId="agent-memory-enabled"
+              />
+            </div>
+            <MemoryPanel agentId={agent().id} />
+          </>
+        )}
+      </Show>
 
       <Show when={error()}>
         {(err) => (

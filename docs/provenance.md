@@ -20,3 +20,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-01 | S7: file attachments, export and import of local data, hiding of secrets in logs and exports | Implementer | 003, 014 |
 | 2026-11-01 | S8: tasks: one task per agent turn, one task at a time per agent, stop, retry, restart rule, tasks page | Implementer | 005, 003 |
 | 2026-11-01 | S9: channels: create and edit, lead, @mentions, split jobs into parts, chips, summary, Now panel with plan steps, stop all | Implementer | 004, 005 |
+| 2026-11-01 | S10: agent tools (files, shell, search, fetch, ask), permission levels, approval and question cards, memory | Implementer | 003, 007, 008 |

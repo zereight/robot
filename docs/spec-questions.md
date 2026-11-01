@@ -53,3 +53,9 @@ implementer made to continue. A spec author answers by changing the spec.
 | 004 | Can a lead be removed while it works? | No. A member with an active part or job cannot be removed until it ends or the user stops it. Removing the lead clears the lead. |
 | 004 | Where is the channel section button? | A plus button on the Channels section header, like the one for agents. |
 | 004 | What does "Stop" do in a channel? | The send button turns into Stop while work runs. It stops every job and part of the channel. A step has its own stop button. |
+| 007 | Which tools does an agent have in this version? | Files (list, read, write, search), shell command, web fetch (GET), ask the user, save memory. The browser tool comes later. |
+| 007 | Which steps are "risky"? | `sudo`, installing software, sending data over the network, piping into a shell, and deleting outside the workspace. Reading or writing outside the workspace also asks. |
+| 007 | Do channels use tools? | Not yet. A tool call in a channel fails with a note. |
+| 007 | What happens to a card that waits when the turn stops? | The step is marked Failed and the card goes away. |
+| 008 | How does an agent choose which memory items to read? | Items that share words with the message, newest first, at most 20 items and 4000 characters. With fewer than 6 items, all are read. |
+| 008 | Where does the user change the permission level and memory? | In the agent profile dialog, with the memory list, search, add, edit and delete. |
