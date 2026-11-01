@@ -13,6 +13,12 @@ export const testPlatform = () => {
   /** What the fake browsers did, in order, as "agent:action". */
   const browserLog: string[] = []
   const pages = new Map<string, BrowserPage>()
+  const shell = {
+    focused: true,
+    notices: [] as { title: string; body: string; click: () => void }[],
+    shapes: [] as string[],
+    shown: 0,
+  }
   const fakeBrowser = (agentId: string): BrowserPage => {
     let open = false
     let url = ""
@@ -62,6 +68,16 @@ export const testPlatform = () => {
     trash: async (path) => {
       trashed.push(path)
     },
+    isFocused: () => shell.focused,
+    notify: (notice, click) => {
+      shell.notices.push({ ...notice, click })
+    },
+    showWindow: () => {
+      shell.shown++
+    },
+    setIslandShape: (shape) => {
+      shell.shapes.push(shape)
+    },
     browser: (agentId) => {
       const known = pages.get(agentId)
       if (known) return known
@@ -70,12 +86,12 @@ export const testPlatform = () => {
       return page
     },
   }
-  return { platform, dataDir, trashed, browserLog }
+  return { platform, dataDir, trashed, browserLog, shell }
 }
 
 /** The full app layer on an in-memory database, with recorded events. */
 export const testRuntime = () => {
-  const { platform, dataDir, trashed, browserLog } = testPlatform()
+  const { platform, dataDir, trashed, browserLog, shell } = testPlatform()
   const events: { event: string; payload: unknown }[] = []
   const runtime = ManagedRuntime.make(
     appLayer({
@@ -86,7 +102,7 @@ export const testRuntime = () => {
       secrets: Secrets.memory,
     }),
   )
-  return { runtime, dataDir, trashed, events, browserLog }
+  return { runtime, dataDir, trashed, events, browserLog, shell }
 }
 
 export type TestRuntime = ReturnType<typeof testRuntime>["runtime"]

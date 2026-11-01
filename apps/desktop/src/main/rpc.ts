@@ -6,6 +6,7 @@ import {
   ChatSend,
   INVOKE_CHANNEL,
   MESSAGE_MAX,
+  MUTE_CHOICES,
   ProviderConnect,
   RoutineInput,
   RoutinePatch,
@@ -28,8 +29,10 @@ import { Agents } from "./services/Agents.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
+import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
 import { Memory } from "./services/Memory.ts"
+import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
@@ -106,6 +109,7 @@ export const handlers: Handlers = {
       const patch = yield* decode(SettingsPatch)(input)
       const next = yield* SettingsStore.use((s) => s.update(patch))
       yield* applySystemSettings(patch)
+      if (patch.island !== undefined) yield* Notifier.use((n) => Effect.sync(() => n.refresh()))
       return next
     }),
   "settings.pickWorkspaceRoot": () =>
@@ -364,6 +368,49 @@ export const handlers: Handlers = {
   "workflows.runDetail": (input) =>
     decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
       Effect.flatMap(({ runId }) => Workflows.use((w) => w.runDetail(runId))),
+    ),
+  "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),
+  "notifications.setMute": (input) =>
+    decode(
+      Schema.Struct({
+        kind: Schema.Literals(["server", "channel"]),
+        id: Schema.String,
+        choice: Schema.Literals(MUTE_CHOICES),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ kind, id, choice }) => Notifier.use((n) => n.setMute(kind, id, choice))),
+      done,
+    ),
+  "island.get": () => Notifier.use((n) => Effect.succeed(n.island())),
+  "island.respond": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ agentId, callId, answer }) =>
+        Tools.use((t) => t.respond(agentId, callId, answer)),
+      ),
+      done,
+    ),
+  "island.openApp": (input) =>
+    decode(
+      Schema.Struct({
+        target: Schema.Struct({
+          kind: Schema.Literals(["agent", "channel"]),
+          id: Schema.String,
+          messageId: Schema.optionalKey(Schema.String),
+        }),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ target }) =>
+        Effect.gen(function* () {
+          const platform = yield* Platform
+          const bus = yield* EventBus
+          platform.showWindow()
+          // The window gets the place from the same event as a notification click.
+          bus.emit("app.openPlace", target)
+        }),
+      ),
+      done,
     ),
   "usage.summary": (input) =>
     decode(

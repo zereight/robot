@@ -23,7 +23,12 @@ export default defineConfig({
   renderer: {
     root: resolve(import.meta.dirname, "src/renderer"),
     build: {
-      rollupOptions: { input: resolve(import.meta.dirname, "src/renderer/index.html") },
+      rollupOptions: {
+        input: {
+          index: resolve(import.meta.dirname, "src/renderer/index.html"),
+          island: resolve(import.meta.dirname, "src/renderer/island.html"),
+        },
+      },
     },
     plugins: [solid()],
   },

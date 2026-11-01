@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { focusMessage, setFocusMessage } from "../state/focus.ts"
 import { Composer } from "./Composer.tsx"
 import styles from "./chat.module.css"
 import { formatDay, formatElapsed } from "./format.ts"
@@ -105,6 +106,16 @@ export const ChatView = (props: ChatViewProps) => {
     queueMicrotask(() => setFlashId(messageId))
     setTimeout(() => setFlashId((id) => (id === messageId ? undefined : id)), 1300)
   }
+  // A notification asked for a message: scroll to it when it is in the list.
+  createEffect(() => {
+    const id = focusMessage()
+    if (!id) return
+    setTimeout(() => {
+      jumpTo(id)
+      setFocusMessage(undefined)
+    }, 120)
+  })
+
   const goBack = () => {
     const top = backTo()
     if (scroller && top !== undefined) scroller.scrollTop = top

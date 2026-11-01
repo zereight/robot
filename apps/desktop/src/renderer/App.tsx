@@ -1,5 +1,5 @@
 import { Plus } from "lucide-solid"
-import { createSignal, Show } from "solid-js"
+import { createSignal, onCleanup, Show } from "solid-js"
 import { agentPlaceView } from "./agents/AgentChat.tsx"
 import { NewAgentDialog } from "./agents/AgentDialogs.tsx"
 import { ArchiveSection } from "./agents/ArchiveSection.tsx"
@@ -8,11 +8,14 @@ import { ChannelDialog } from "./channels/ChannelDialog.tsx"
 import { ChannelPanel } from "./channels/ChannelPanel.tsx"
 import { ChannelHeader, ChannelView } from "./channels/ChannelView.tsx"
 import { FirstRunDialog } from "./firstrun/FirstRun.tsx"
+import { NotificationsSection } from "./notifications/NotificationsSection.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
 import { useAgents } from "./state/agents.tsx"
 import { useApp } from "./state/app.tsx"
 import { useChannels } from "./state/channels.tsx"
+import { setFocusMessage } from "./state/focus.ts"
+import { useUi } from "./state/ui.tsx"
 import { TasksPage } from "./tasks/TasksPage.tsx"
 import { IconButton } from "./ui/controls.tsx"
 import { Presence } from "./ui/Presence.tsx"
@@ -24,6 +27,14 @@ export const App = () => {
   const { t } = app
   const agents = useAgents()
   const channels = useChannels()
+  const ui = useUi()
+  // A click on a notification, or on the island, opens the place and shows the message.
+  onCleanup(
+    window.robot.on("app.openPlace", (target) => {
+      ui.selectPlace({ kind: target.kind, id: target.id })
+      setFocusMessage(target.messageId)
+    }),
+  )
   const [newChannel, setNewChannel] = createSignal(false)
   const [newAgent, setNewAgent] = createSignal(false)
 
@@ -75,6 +86,7 @@ export const App = () => {
         settingsSections={{
           archive: () => <ArchiveSection />,
           providers: () => <ProvidersSection />,
+          notifications: () => <NotificationsSection />,
         }}
       />
       <Presence when={newAgent()}>

@@ -36,6 +36,14 @@ export interface PlatformService {
   openExternal(url: string): Promise<void>
   /** Moves a file or folder to the system trash. */
   trash(path: string): Promise<void>
+  /** True while a window of the app has the focus. */
+  isFocused(): boolean
+  /** Shows a system notification. `onClick` runs when the user clicks it. */
+  notify(notice: { title: string; body: string }, onClick: () => void): void
+  /** Brings the main window to the front. */
+  showWindow(): void
+  /** The shape of the status island on macOS. Other systems ignore it. */
+  setIslandShape(shape: "hidden" | "bar" | "attention"): void
   /** The browser window of an agent. The same agent always gets the same page object. */
   browser(agentId: string): BrowserPage
 }
