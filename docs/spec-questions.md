@@ -20,3 +20,7 @@ implementer made to continue. A spec author answers by changing the spec.
 | 002 | How many face shapes are there? | Six drawn characters. Ten hues. A new agent's face comes from its name until the user picks one. |
 | 002 | Is there a size limit for an uploaded face picture? | The app crops it to a 256 px square PNG; the stored file must be at most 1 MB. |
 | 002 | Where is the "New agent" button? | A plus button on the Agents section header in the place list. |
+| 006 | Which models take an effort level? The model lists do not say. | OpenAI: o-series and gpt-5 families. Anthropic: Claude 3.7 and later families (effort sets the thinking budget). Custom: none. |
+| 006 | Can the user change the base URL of OpenAI and Anthropic accounts? | Yes. The field starts with the vendor address. This also allows proxies. |
+| 006 | What does "Disconnect" leave behind? | The account stays in the list as "Not connected" with "Connect again". "Remove" deletes it and clears it from agents. |
+| 006 | What if the model list cannot be fetched? | The picker shows a text field for the model ID. |

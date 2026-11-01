@@ -22,7 +22,13 @@ export const launch = async (
   const { ELECTRON_RUN_AS_NODE: _, ...base } = process.env
   const app = await electron.launch({
     args: [appDir],
-    env: { ...base, ROBOT_USER_DATA: userData, ...env } as Record<string, string>,
+    env: {
+      ...base,
+      ROBOT_USER_DATA: userData,
+      // Secrets go to a file next to the data folder, not inside it, like a keychain would.
+      ROBOT_TEST_SECRETS: `${userData}-secrets.json`,
+      ...env,
+    } as Record<string, string>,
   })
   const page = await app.firstWindow()
   await page.waitForLoadState("domcontentloaded")

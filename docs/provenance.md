@@ -9,3 +9,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-01 | S1: local database, settings page, English and Korean catalogues, themes | Implementer | 013, 014 |
 | 2026-11-01 | S2: window layout: server rail, page buttons, place list, conversation area, activity panel | Implementer | 001 |
 | 2026-11-01 | S3: agents: create, templates, faces, edit, duplicate, archive, restore, delete | Implementer | 002, 003 (empty state) |
+| 2026-11-01 | S4: model accounts: connect with a key check, keychain storage, model and effort per agent, disconnect | Implementer | 006 |

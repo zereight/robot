@@ -1,6 +1,6 @@
 import type { Agent } from "@robot/shared"
 import { createSignal, Show } from "solid-js"
-import { errorKey } from "../lib/errors.ts"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -32,14 +32,14 @@ export const NewAgentDialog = (props: { onClose: () => void }) => {
 export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
-  const [error, setError] = createSignal<ReturnType<typeof errorKey>>()
+  const [error, setError] = createSignal<ErrorText>()
 
   const act = async (run: () => Promise<void>) => {
     setError(undefined)
     try {
       await run()
     } catch (e) {
-      setError(errorKey(e))
+      setError(describeError(e))
     }
   }
 
@@ -62,9 +62,9 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
         </span>
       </div>
       <Show when={error()}>
-        {(key) => (
+        {(err) => (
           <div class={styles.error} role="alert">
-            {t(key())}
+            {t(err().key, err().params)}
           </div>
         )}
       </Show>

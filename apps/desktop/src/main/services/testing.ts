@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import type { PlatformService } from "./Platform.ts"
+import { Secrets } from "./Secrets.ts"
 
 /** A platform for unit tests: a temp data folder and a trash list. */
 export const testPlatform = () => {
@@ -37,6 +38,7 @@ export const testRuntime = () => {
       databaseFile: ":memory:",
       localServerName: "Test computer",
       emit: (event, payload) => events.push({ event, payload }),
+      secrets: Secrets.memory,
     }),
   )
   return { runtime, dataDir, trashed, events }

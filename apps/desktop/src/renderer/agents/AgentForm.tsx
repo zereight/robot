@@ -3,6 +3,7 @@ import {
   AGENT_ROLE_MAX,
   AGENT_TEMPLATES,
   type Agent,
+  type AgentModel,
   type AgentTemplate,
   charLength,
   FACE_HUES,
@@ -12,8 +13,9 @@ import {
   type MessageKey,
 } from "@robot/shared"
 import { createSignal, For, Index, Show } from "solid-js"
-import { errorKey } from "../lib/errors.ts"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
+import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import styles from "./agents.module.css"
@@ -24,6 +26,7 @@ export interface AgentFormValues {
   role: string
   instructions: string
   face: FaceValue
+  model: AgentModel | null
 }
 
 export interface AgentFormProps {
@@ -52,7 +55,8 @@ export const AgentForm = (props: AgentFormProps) => {
   const [instructions, setInstructions] = createSignal(props.agent?.instructions ?? "")
   /** The face the user picked. Until then a new agent's face follows its name. */
   const [pickedFace, setPickedFace] = createSignal<FaceValue | undefined>(props.agent?.face)
-  const [error, setError] = createSignal<MessageKey>()
+  const [model, setModel] = createSignal<AgentModel | null>(props.agent?.model ?? null)
+  const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   let fileInput: HTMLInputElement | undefined
 
@@ -85,9 +89,10 @@ export const AgentForm = (props: AgentFormProps) => {
         role: role().trim(),
         instructions: instructions(),
         face: face(),
+        model: model(),
       })
     } catch (e) {
-      setError(errorKey(e))
+      setError(describeError(e))
     } finally {
       setBusy(false)
     }
@@ -99,7 +104,8 @@ export const AgentForm = (props: AgentFormProps) => {
     try {
       await props.onPicture(await squarePicture(file))
     } catch (e) {
-      setError(errorKey(e) === "error.unknown" ? "error.face_image_invalid" : errorKey(e))
+      const described = describeError(e)
+      setError(described.key === "error.unknown" ? { key: "error.face_image_invalid" } : described)
     }
   }
 
@@ -228,10 +234,15 @@ export const AgentForm = (props: AgentFormProps) => {
         </div>
       </div>
 
+      <div class={styles.field}>
+        <span class={styles.label}>{t("agents.field.model")}</span>
+        <ModelPicker value={model()} onChange={setModel} />
+      </div>
+
       <Show when={error()}>
-        {(key) => (
+        {(err) => (
           <div class={styles.error} role="alert" data-testid="agent-error">
-            {t(key())}
+            {t(err().key, err().params)}
           </div>
         )}
       </Show>
