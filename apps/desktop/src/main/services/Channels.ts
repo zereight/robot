@@ -16,6 +16,7 @@ import {
   messageText,
   type ParsedPlan,
   type PartChip,
+  type PermissionLevel,
   PLAN_STEPS_MAX,
   parseMentions,
   parsePlan,
@@ -35,6 +36,7 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Providers } from "./Providers.ts"
 import { Tasks } from "./Tasks.ts"
+import { type ToolContext, Tools } from "./Tools.ts"
 
 export interface ChannelsService {
   list(serverId: string): Effect.Effect<readonly Channel[]>
@@ -86,6 +88,9 @@ interface AgentRow {
   model_account_id: string | null
   model_name: string | null
   model_effort: string | null
+  workspace: string
+  permission: PermissionLevel
+  memory_enabled: number
 }
 
 const EMIT_EVERY_MS = 50
@@ -112,6 +117,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const bus = yield* EventBus
       const providers = yield* Providers
       const tasks = yield* Tasks
+      const tools = yield* Tools
       const agents = yield* Agents
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
@@ -130,8 +136,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         )
       const agentRow = (id: string) =>
         db.get<AgentRow>(
-          `SELECT id, name, instructions, archived_at, model_account_id, model_name, model_effort
-           FROM agent WHERE id = ?`,
+          `SELECT id, name, instructions, archived_at, model_account_id, model_name, model_effort,
+             workspace, permission, memory_enabled FROM agent WHERE id = ?`,
           id,
         )
       const hasActiveWork = (channelId: string) =>
@@ -274,6 +280,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         turns: Turn[]
         /** A reply that starts like JSON stays hidden until it ends: it can be a plan. */
         hideRaw?: boolean
+        /** The agent may use tools in this reply. Plans and summaries do not. */
+        tools?: boolean
       }) {
         const id = randomUUID()
         const parts: MessagePart[] = []
@@ -343,25 +351,77 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           if (!o.agent.model_account_id || !o.agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
           const connection = yield* providers.connection(o.agent.model_account_id)
-          // Channels have no tools in this version; a call fails with a note.
+          const useTools = o.tools === true
+          const changePart = (
+            callId: string,
+            change: (p: Extract<MessagePart, { kind: "tool" }>) => MessagePart,
+          ) => {
+            if (controller.signal.aborted) return
+            const index = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
+            const part = parts[index]
+            if (part?.kind !== "tool") return
+            parts[index] = change(part)
+            save("streaming")
+            emitMessage(id)
+          }
+          const context: ToolContext = {
+            agentId: o.agent.id,
+            workspace: o.agent.workspace,
+            permission: o.agent.permission,
+            signal: controller.signal,
+            onWaiting: (callId, ask) => {
+              tasks.setWaiting(o.taskId, ask !== null)
+              changePart(callId, (p) => {
+                const { ask: _drop, ...rest } = p
+                return ask ? { ...rest, state: "waiting", ask } : { ...rest, state: "running" }
+              })
+            },
+            onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
+          }
           const events = runAgent(
             {
               connection,
               model: o.agent.model_name,
               effort: o.agent.model_effort,
-              system: o.system,
+              system: useTools
+                ? `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`
+                : o.system,
               turns: o.turns,
+              ...(useTools ? { tools: tools.defs(o.agent.memory_enabled === 1) } : {}),
               signal: controller.signal,
             },
-            async () => ({ output: "Tools are not available in channels.", failed: true }),
+            async (call) =>
+              useTools
+                ? tools.execute(context, call)
+                : { output: "Tools are not available here.", failed: true },
           )
-          yield* Stream.fromAsyncIterable(events, (e) => e).pipe(Stream.runForEach(onEvent))
+          // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
+          const closing: AsyncIterable<AgentEvent> = {
+            [Symbol.asyncIterator]: () => {
+              const it = events[Symbol.asyncIterator]()
+              return {
+                next: () => it.next(),
+                return: (value?: unknown) => {
+                  controller.abort()
+                  return it.return?.(value) ?? Promise.resolve({ done: true, value: undefined })
+                },
+              }
+            },
+          }
+          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(Stream.runForEach(onEvent))
         })
 
         yield* stream.pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
+              // A step that did not finish cannot keep a running mark or a question card.
+              for (const [i, part] of parts.entries()) {
+                if (part.kind !== "tool" || (part.state !== "running" && part.state !== "waiting"))
+                  continue
+                const { ask: _ask, ...rest } = part
+                parts[i] = { ...rest, state: "failed" }
+              }
               if (Exit.isSuccess(exit)) save("done")
               else if (Cause.hasInterruptsOnly(exit.cause)) save("stopped")
               else {
@@ -413,6 +473,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               agent,
               taskId: task.id,
               kind,
+              tools: true,
               system: channelSystem(channel, agent),
               turns,
             })
