@@ -18,3 +18,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-01 | README: features, download, data folders, development, architecture, testing, release, roadmap, screenshots | Implementer | 000, 001, 002, 003, 006, 013, 014 |
 | 2026-11-01 | S6: first start guide (language, theme, model account, first agent) and usage page (replies and tokens per agent and day) | Implementer | 000, 006 |
 | 2026-11-01 | S7: file attachments, export and import of local data, hiding of secrets in logs and exports | Implementer | 003, 014 |
+| 2026-11-01 | S8: tasks: one task per agent turn, one task at a time per agent, stop, retry, restart rule, tasks page | Implementer | 005, 003 |

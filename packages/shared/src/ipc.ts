@@ -2,6 +2,7 @@ import type { Agent, AgentCreate, AgentPatch } from "./agents.ts"
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
 import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type { Task, TaskDetail } from "./task.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
 
@@ -60,6 +61,11 @@ export interface RpcMethods {
   "data.export": { input: undefined; output: { path: string | null; files: number } }
   /** Asks for an archive, then restores it into an empty app. `null` when cancelled. */
   "data.restore": { input: undefined; output: { agents: number; messages: number } | null }
+  /** The newest 500 tasks of a server. */
+  "tasks.list": { input: { serverId: string }; output: readonly Task[] }
+  "tasks.get": { input: { id: string }; output: TaskDetail }
+  "tasks.stop": { input: { id: string }; output: undefined }
+  "tasks.retry": { input: { id: string }; output: undefined }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
@@ -87,6 +93,7 @@ export interface RpcEvents {
   /** `serverId` is "*" when agents of every server may have changed. */
   "agents.changed": { serverId: string }
   "providers.changed": Record<string, never>
+  "tasks.changed": { serverId: string }
   /** A new or changed message. While a reply streams, this comes many times. */
   "chat.message": ChatMessage
   "chat.removed": { agentId: string; messageId: string }

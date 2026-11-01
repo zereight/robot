@@ -42,3 +42,7 @@ implementer made to continue. A spec author answers by changing the spec.
 | 003 | Can a message be only files? | Yes. A message needs text or at least one file. |
 | 014 | What does the export archive hold, and what is hidden? | A zip with the database, the attachments per agent, a readme and a format version. Text in chats that looks like a key or token, or equals a stored key, becomes "[redacted]". Attached files are copied as they are. |
 | 014 | When can data be imported? | Only into an app with no agents and no accounts, and only from the same data version. Agents join this computer's server. Accounts come back as "Not connected". |
+| 005 | Is every chat reply a task? | Yes. Each agent turn in a direct chat is one task with source "chat". The prompt is the last message of the user. |
+| 005 | What does Retry do for a chat task? | A failed reply is asked again. A stopped one is sent again as a new message. Either way, the new task links to the old one. |
+| 005 | Does a chat turn wait for another task of the same agent? | Yes. One agent runs one task at a time, across chats and channels. The waiting task shows as queued. |
+| 005 | How many tasks does the page list? | The newest 500 of the server. Filters and search work on this list. |

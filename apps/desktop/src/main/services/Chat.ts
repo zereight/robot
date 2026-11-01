@@ -22,6 +22,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Providers } from "./Providers.ts"
+import { Tasks } from "./Tasks.ts"
 
 interface MessageRow {
   id: string
@@ -132,6 +133,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const bus = yield* EventBus
       const providers = yield* Providers
       const activity = yield* Activity
+      const tasks = yield* Tasks
+      // Set when a task retry starts a turn, so the new task links to the old one.
+      const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
       const queues = new Map<string, QueuedMessage[]>()
 
@@ -215,6 +219,26 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const agent = agentRow(agentId)
         if (!agent) return
         const reply = insertMessage(agentId, "agent", "", null, agent.model_name)
+        const lastUser = rows(agentId)
+          .filter((r) => r.author === "user")
+          .at(-1)
+        const asked = lastUser ? toMessage(lastUser) : undefined
+        const prompt =
+          (asked
+            ? messageText(asked) ||
+              messageFiles(asked)
+                .map((f) => f.name)
+                .join(", ")
+            : "") || "(no text)"
+        const task = yield* tasks.create({
+          agentId,
+          prompt,
+          source: "chat",
+          sourceId: agentId,
+          messageId: reply.id,
+          retryOf: retryLinks.get(agentId) ?? null,
+        })
+        retryLinks.delete(agentId)
         const parts: MessagePart[] = []
         const usage = { input: 0, output: 0 }
         const controller = new AbortController()
@@ -280,7 +304,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
 
         activity.setWorking(agentId, agent.server_id, true)
-        yield* stream.pipe(
+        yield* tasks.run(task.id, agentId, stream).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
@@ -425,6 +449,23 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         emitMessage(messageRow(messageId) as MessageRow)
         yield* kick(agentId)
       })
+
+      tasks.onRetry("chat", (task) =>
+        Effect.suspend(() => {
+          retryLinks.set(task.agentId, task.id)
+          // A reply that failed is asked again. A stopped one has nothing to replace, so the
+          // question is sent again as a new message.
+          return retry(task.agentId, task.messageId ?? "").pipe(
+            Effect.catch(() => {
+              // Set before the send, because the turn can start at once.
+              retryLinks.set(task.agentId, task.id)
+              return Effect.asVoid(
+                send({ agentId: task.agentId, text: task.prompt, replyTo: null }),
+              )
+            }),
+          )
+        }),
+      )
 
       return Chat.of({
         history: (agentId) =>

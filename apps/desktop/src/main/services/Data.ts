@@ -91,6 +91,15 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               parts: string
               error_detail: string | null
             }[]
+            out
+              .prepare("SELECT id, prompt, label FROM task")
+              .all()
+              .forEach((t) => {
+                const task = t as { id: string; prompt: string; label: string }
+                out
+                  .prepare("UPDATE task SET prompt = ?, label = ? WHERE id = ?")
+                  .run(redactSecrets(task.prompt, known), redactSecrets(task.label, known), task.id)
+              })
             const update = out.prepare(
               "UPDATE message SET parts = ?, error_detail = ? WHERE id = ?",
             )
@@ -190,6 +199,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               )
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               db.run("INSERT INTO message SELECT * FROM imp.message")
+              db.run("INSERT INTO task SELECT * FROM imp.task")
               db.run(
                 "INSERT OR REPLACE INTO setting (key, value) SELECT key, value FROM imp.setting",
               )
