@@ -225,8 +225,8 @@ Unclear spec points and the choices made for them are in
 | **M2** | Channels, split work, tasks page | Done in alpha.3 |
 | **M3** | Workspace tools, approvals, browser, memory | Done in alpha.3 |
 | **M4** | Routines and workflows | Done in alpha.3 |
-| **M5** | Phone app (Expo) and desktop link | Planned |
-| **M6** | Notifications and status island | In review |
+| **M5** | Phone app (Expo) and desktop link | Deferred until the desktop app is finished and in use |
+| **M6** | Notifications and status island | Done (next release) |
 
 ## Contributing
 
