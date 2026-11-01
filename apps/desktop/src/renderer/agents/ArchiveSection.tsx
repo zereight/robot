@@ -6,6 +6,7 @@ import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { Presence } from "../ui/Presence.tsx"
 import styles from "./agents.module.css"
 import { Face } from "./Face.tsx"
 
@@ -61,14 +62,14 @@ export const ArchiveSection = () => {
           </For>
         </ul>
       </Show>
-      <Show when={confirm()}>
+      <Presence when={confirm()}>
         {(agent) => (
           <Dialog
-            label={t("agents.delete.title", { name: agent().name })}
+            label={t("agents.delete.title", { name: agent.name })}
             onClose={() => setConfirm(undefined)}
             testId="delete-confirm"
           >
-            <h2 class={styles.title}>{t("agents.delete.title", { name: agent().name })}</h2>
+            <h2 class={styles.title}>{t("agents.delete.title", { name: agent.name })}</h2>
             <p>{t("agents.delete.body")}</p>
             <Show when={error()}>
               {(err) => (
@@ -81,7 +82,7 @@ export const ArchiveSection = () => {
               <Button onClick={() => setConfirm(undefined)}>{t("agents.cancel")}</Button>
               <Button
                 variant="primary"
-                onClick={() => remove(agent())}
+                onClick={() => remove(agent)}
                 data-testid="delete-confirm-button"
               >
                 {t("agents.delete")}
@@ -89,7 +90,7 @@ export const ArchiveSection = () => {
             </div>
           </Dialog>
         )}
-      </Show>
+      </Presence>
     </div>
   )
 }

@@ -1,11 +1,12 @@
 import type { MessageKey, Page, Place, PlaceRef, SectionId } from "@robot/shared"
 import { PanelRight, PanelRightClose } from "lucide-solid"
-import { createMemo, type JSX, Match, Show, Switch, untrack } from "solid-js"
+import { createMemo, type JSX, Match, type ParentProps, Show, Switch, untrack } from "solid-js"
 import { HelpPage } from "../pages/HelpPage.tsx"
 import { SettingsPage, type SettingsSection } from "../settings/SettingsPage.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { IconButton } from "../ui/controls.tsx"
+import { Presence, useClosing } from "../ui/Presence.tsx"
 import { PlaceList } from "./PlaceList.tsx"
 import { ServerRail } from "./ServerRail.tsx"
 import styles from "./shell.module.css"
@@ -35,6 +36,24 @@ const Empty = (props: { title: string; body: string; testId: string }) => (
     <p>{props.body}</p>
   </div>
 )
+
+const ActivityPanel = (props: ParentProps) => {
+  const { t } = useApp()
+  const closing = useClosing()
+  return (
+    <aside
+      class={styles.panel}
+      aria-label={t("panel.title")}
+      data-closing={closing()}
+      data-testid="activity-panel"
+    >
+      <div class={styles.panelInner}>
+        <div class={styles.panelHeader}>{t("panel.title")}</div>
+        {props.children ?? <div class={styles.panelBody}>{t("panel.empty")}</div>}
+      </div>
+    </aside>
+  )
+}
 
 export const Shell = (props: ShellProps) => {
   const { t } = useApp()
@@ -133,14 +152,11 @@ export const Shell = (props: ShellProps) => {
             </Match>
           </Switch>
         </main>
-        <Show when={ui.ui.page === "chats" && ui.activityPanelVisible()}>
-          <aside class={styles.panel} aria-label={t("panel.title")} data-testid="activity-panel">
-            <div class={styles.panelHeader}>{t("panel.title")}</div>
-            {view()?.panel ?? <div class={styles.panelBody}>{t("panel.empty")}</div>}
-          </aside>
-        </Show>
+        <Presence when={ui.ui.page === "chats" && ui.activityPanelVisible()} exit="medium">
+          {() => <ActivityPanel>{view()?.panel}</ActivityPanel>}
+        </Presence>
       </Show>
-      <Show when={ui.settingsSection()} keyed>
+      <Presence when={ui.settingsSection()}>
         {(section) => (
           <SettingsPage
             initial={section as SettingsSection}
@@ -148,7 +164,7 @@ export const Shell = (props: ShellProps) => {
             {...(props.settingsSections ? { extra: props.settingsSections } : {})}
           />
         )}
-      </Show>
+      </Presence>
     </div>
   )
 }

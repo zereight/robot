@@ -1,5 +1,5 @@
 import { Plus } from "lucide-solid"
-import { createSignal, Show } from "solid-js"
+import { createSignal } from "solid-js"
 import { agentPlaceView } from "./agents/AgentChat.tsx"
 import { NewAgentDialog } from "./agents/AgentDialogs.tsx"
 import { ArchiveSection } from "./agents/ArchiveSection.tsx"
@@ -9,6 +9,7 @@ import { Shell } from "./shell/Shell.tsx"
 import { useAgents } from "./state/agents.tsx"
 import { useApp } from "./state/app.tsx"
 import { IconButton } from "./ui/controls.tsx"
+import { Presence } from "./ui/Presence.tsx"
 
 export const App = () => {
   const { t } = useApp()
@@ -40,9 +41,9 @@ export const App = () => {
           providers: () => <ProvidersSection />,
         }}
       />
-      <Show when={newAgent()}>
-        <NewAgentDialog onClose={() => setNewAgent(false)} />
-      </Show>
+      <Presence when={newAgent()}>
+        {() => <NewAgentDialog onClose={() => setNewAgent(false)} />}
+      </Presence>
     </>
   )
 }

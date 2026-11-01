@@ -49,6 +49,8 @@ export const ChatView = (props: ChatViewProps) => {
   const [replyTo, setReplyTo] = createSignal<ChatMessage>()
   const [atBottom, setAtBottom] = createSignal(true)
   const [flashId, setFlashId] = createSignal<string>()
+  // Messages made after the chat opened rise in; history stays still.
+  const openedAt = Date.now()
   const [backTo, setBackTo] = createSignal<number>()
   let scroller: HTMLDivElement | undefined
 
@@ -140,6 +142,7 @@ export const ChatView = (props: ChatViewProps) => {
                     first={startsGroup(previous(), message)}
                     canEdit={message.id === lastUserId() && !working()}
                     flash={flashId() === message.id}
+                    enter={message.createdAt >= openedAt}
                     quoted={message.replyTo ? byId().get(message.replyTo) : undefined}
                     onReply={() => setReplyTo(message)}
                     onJumpTo={jumpTo}
