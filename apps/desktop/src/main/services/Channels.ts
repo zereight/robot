@@ -9,10 +9,12 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   charLength,
+  islandSummary,
   MESSAGE_MAX,
   type MemberState,
   type MessagePart,
   type MessageStatus,
+  mentionsUser,
   messageText,
   type ParsedPlan,
   type PartChip,
@@ -34,6 +36,7 @@ import { applyEvent } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
@@ -129,6 +132,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const providers = yield* Providers
       const tasks = yield* Tasks
       const tools = yield* Tools
+      const notifier = yield* Notifier
       const agents = yield* Agents
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
@@ -382,6 +386,17 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             signal: controller.signal,
             onWaiting: (callId, ask) => {
               tasks.setWaiting(o.taskId, ask !== null)
+              if (ask)
+                notifier.attention({
+                  agentId: o.agent.id,
+                  serverId: o.channel.server_id,
+                  channelId: o.channel.id,
+                  callId,
+                  kind: ask.kind,
+                  summary: islandSummary(ask.kind === "approval" ? ask.summary : ask.question),
+                  target: { kind: "channel", id: o.channel.id, messageId: id },
+                })
+              else notifier.clearAttention(o.agent.id, callId)
               changePart(callId, (p) => {
                 const { ask: _drop, ...rest } = p
                 return ask ? { ...rest, state: "waiting", ask } : { ...rest, state: "running" }
@@ -426,6 +441,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
+              notifier.clearAgent(o.agent.id)
               // A step that did not finish cannot keep a running mark or a question card.
               for (const [i, part] of parts.entries()) {
                 if (part.kind !== "tool" || (part.state !== "running" && part.state !== "waiting"))
@@ -433,8 +449,19 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 const { ask: _ask, ...rest } = part
                 parts[i] = { ...rest, state: "failed" }
               }
-              if (Exit.isSuccess(exit)) save("done")
-              else if (Cause.hasInterruptsOnly(exit.cause)) save("stopped")
+              if (Exit.isSuccess(exit)) {
+                save("done")
+                const text = messageText({ parts })
+                if (mentionsUser(text))
+                  notifier.notify({
+                    kind: "mention",
+                    serverId: o.channel.server_id,
+                    channelId: o.channel.id,
+                    title: `${o.agent.name} · ${o.channel.name}`,
+                    body: text,
+                    target: { kind: "channel", id: o.channel.id, messageId: id },
+                  })
+              } else if (Cause.hasInterruptsOnly(exit.cause)) save("stopped")
               else {
                 const failure = Cause.squash(exit.cause)
                 if (failure instanceof ProviderFailure)

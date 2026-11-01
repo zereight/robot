@@ -212,4 +212,12 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (run_id, step_id)
   );
   `,
+  `
+  CREATE TABLE mute (
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    until INTEGER,
+    PRIMARY KEY (kind, id)
+  );
+  `,
 ]

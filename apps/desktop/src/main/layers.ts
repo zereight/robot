@@ -8,6 +8,7 @@ import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Memory } from "./services/Memory.ts"
+import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
@@ -44,7 +45,8 @@ export const appLayer = (options: AppLayerOptions) => {
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
   const providers = Providers.layer.pipe(Layer.provideMerge(stores))
-  const memory = Memory.layer.pipe(Layer.provideMerge(providers))
+  const notifier = Notifier.layer.pipe(Layer.provideMerge(providers))
+  const memory = Memory.layer.pipe(Layer.provideMerge(notifier))
   const tools = Tools.layer.pipe(Layer.provideMerge(memory))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
   const agents = Layer.mergeAll(Agents.layer, Chat.layer, Usage.layer).pipe(

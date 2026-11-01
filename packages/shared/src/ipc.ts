@@ -8,6 +8,7 @@ import type {
 } from "./channels.ts"
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
 import type { MemoryItem } from "./memory.ts"
+import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
@@ -132,6 +133,19 @@ export interface RpcMethods {
   }
   "workflows.runs": { input: { workflowId: string }; output: readonly WorkflowRun[] }
   "workflows.runDetail": { input: { runId: string }; output: WorkflowRunDetail }
+  "notifications.mutes": { input: undefined; output: readonly Mute[] }
+  "notifications.setMute": {
+    input: { kind: "server" | "channel"; id: string; choice: MuteChoice }
+    output: undefined
+  }
+  "island.get": { input: undefined; output: IslandState }
+  /** Answers the approval or question that the island shows. */
+  "island.respond": {
+    input: { agentId: string; callId: string; answer: string }
+    output: undefined
+  }
+  /** Opens the app at the place of the waiting step. */
+  "island.openApp": { input: { target: PlaceTarget }; output: undefined }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
@@ -165,6 +179,9 @@ export interface RpcEvents {
   "routines.changed": { serverId: string }
   "workflows.changed": { serverId: string }
   "workflows.run": { runId: string }
+  "island.state": IslandState
+  "app.openPlace": PlaceTarget
+  "notifications.changed": Record<string, never>
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }
   "channel.message": ChannelMessage

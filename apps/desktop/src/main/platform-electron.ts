@@ -1,6 +1,15 @@
-import { existsSync, mkdirSync, renameSync } from "node:fs"
-import { basename, join } from "node:path"
-import { app, BrowserWindow, clipboard, dialog, nativeTheme, shell } from "electron"
+import { appendFileSync, existsSync, mkdirSync, renameSync } from "node:fs"
+import { basename, join, join as joinPath } from "node:path"
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  Notification,
+  nativeTheme,
+  screen,
+  shell,
+} from "electron"
 import type { BrowserPage, PlatformService } from "./services/Platform.ts"
 
 /** True when an end-to-end test runs the app. The app then leaves system settings alone. */
@@ -79,6 +88,61 @@ const electronBrowser = (agentId: string): BrowserPage => {
 }
 
 const browsers = new Map<string, BrowserPage>()
+
+let mainWindow: BrowserWindow | undefined
+/** The window that holds the app. Notifications and the island bring it to the front. */
+export const setMainWindow = (win: BrowserWindow) => {
+  mainWindow = win
+}
+
+const ISLAND_SIZE = { bar: { width: 230, height: 34 }, attention: { width: 460, height: 132 } }
+let island: BrowserWindow | undefined
+
+/** The island is for macOS. A test run can ask for it on any system. */
+const islandAllowed = () => process.platform === "darwin" || Boolean(process.env.ROBOT_FORCE_ISLAND)
+
+const setIslandShape = (shape: "hidden" | "bar" | "attention") => {
+  if (!islandAllowed()) return
+  if (shape === "hidden") {
+    island?.hide()
+    return
+  }
+  if (!island || island.isDestroyed()) {
+    island = new BrowserWindow({
+      ...ISLAND_SIZE[shape],
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      hasShadow: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      focusable: false,
+      show: false,
+      title: "ROBot island",
+      webPreferences: {
+        preload: joinPath(import.meta.dirname, "../preload/index.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    })
+    island.setAlwaysOnTop(true, "screen-saver")
+    island.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    const devUrl = process.env.ELECTRON_RENDERER_URL
+    if (devUrl) void island.loadURL(`${devUrl}/island.html`)
+    else void island.loadFile(joinPath(import.meta.dirname, "../renderer/island.html"))
+  }
+  const { width, height } = ISLAND_SIZE[shape]
+  const bounds = screen.getPrimaryDisplay().bounds
+  island.setBounds({
+    x: Math.round(bounds.x + (bounds.width - width) / 2),
+    y: bounds.y,
+    width,
+    height,
+  })
+  island.showInactive()
+}
 
 export const electronPlatform = (): PlatformService => {
   const dataDir = app.getPath("userData")
@@ -161,6 +225,29 @@ export const electronPlatform = (): PlatformService => {
       }
       await shell.trashItem(path)
     },
+    isFocused: () =>
+      !(isTestRun && process.env.ROBOT_TEST_UNFOCUSED) &&
+      mainWindow !== undefined &&
+      !mainWindow.isDestroyed() &&
+      mainWindow.isFocused(),
+    notify: (notice, onClick) => {
+      if (isTestRun && process.env.ROBOT_TEST_NOTIFY_LOG) {
+        // A test run records notifications in a file, so no system notification pops up.
+        appendFileSync(process.env.ROBOT_TEST_NOTIFY_LOG, `${JSON.stringify(notice)}\n`)
+        return
+      }
+      if (!Notification.isSupported()) return
+      const n = new Notification(notice)
+      n.on("click", onClick)
+      n.show()
+    },
+    showWindow: () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    },
+    setIslandShape,
     browser: (agentId) => {
       const known = browsers.get(agentId)
       if (known) return known

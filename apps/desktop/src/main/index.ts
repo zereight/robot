@@ -4,9 +4,10 @@ import { EVENT_CHANNEL } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
 import { app, BrowserWindow } from "electron"
 import { appLayer } from "./layers.ts"
-import { electronPlatform } from "./platform-electron.ts"
+import { electronPlatform, setMainWindow } from "./platform-electron.ts"
 import { registerRpc } from "./rpc.ts"
 import { Database } from "./services/Database.ts"
+import { Notifier } from "./services/Notifier.ts"
 import { Platform } from "./services/Platform.ts"
 import { Secrets } from "./services/Secrets.ts"
 import { SettingsStore } from "./services/Settings.ts"
@@ -50,6 +51,7 @@ const createWindow = () => {
       sandbox: true,
     },
   })
+  setMainWindow(win)
   win.once("ready-to-show", () => win.show())
   // The window never navigates away from the app and never opens other windows.
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
@@ -82,6 +84,7 @@ app.whenReady().then(async () => {
   )
   registerRpc(runtime)
   createWindow()
+  await runtime.runPromise(Notifier.use((n) => Effect.sync(() => n.refresh())))
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
