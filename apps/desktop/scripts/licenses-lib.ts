@@ -12,7 +12,10 @@ interface Manifest {
   version: string
   license?: string | { type: string }
   dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
+  /** Packages that electron-vite bundles into the app. They are devDependencies but they ship. */
+  bundled?: string[]
   os?: string[]
   cpu?: string[]
 }
@@ -33,7 +36,7 @@ const locate = (name: string, from: string): string | undefined => {
 }
 
 /**
- * Lists every package that ships with the app: the runtime dependencies of `appDir`,
+ * Lists every package that ships with the app: the runtime and bundled dependencies of `appDir`,
  * their dependencies, and the Electron runtime. Workspace packages are walked but not listed.
  */
 export const collectLicenses = (appDir: string): License[] => {
@@ -51,7 +54,10 @@ export const collectLicenses = (appDir: string): License[] => {
         : (manifest.license?.type ?? "UNKNOWN")
     if (listed) seen.set(key, { name: manifest.name, version: manifest.version, license })
     if (!walk) return
-    const deps = { ...manifest.dependencies, ...manifest.optionalDependencies }
+    const bundled = Object.fromEntries(
+      (manifest.bundled ?? []).map((name) => [name, manifest.devDependencies?.[name] ?? ""]),
+    )
+    const deps = { ...manifest.dependencies, ...manifest.optionalDependencies, ...bundled }
     for (const [name, range] of Object.entries(deps)) {
       const found = locate(name, dir)
       if (found) visit(found, !range.startsWith("workspace:"))

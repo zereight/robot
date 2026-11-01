@@ -1,0 +1,133 @@
+name: Release
+
+# A tag `v<version>` builds, tests and attaches the apps to a draft release.
+# "Run workflow", and PRs that change packaging, build and test the same way without a release.
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - apps/desktop/electron-builder.yml
+      - apps/desktop/scripts/packaged-path.ts
+      - apps/desktop/package.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - name: Tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(jq -r .version apps/desktop/package.json)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $version"
+            exit 1
+          fi
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+
+  package:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-latest
+            target: --mac --arm64
+            arch: arm64
+          - name: macos-x64
+            os: macos-15-intel
+            target: --mac --x64
+            arch: x64
+          - name: windows-x64
+            os: windows-latest
+            target: --win --x64
+            arch: x64
+          - name: linux-x64
+            os: ubuntu-latest
+            target: --linux --x64
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - name: Install Electron system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb libnss3 libgbm1 libasound2t64 gnome-keyring
+      - name: Build and package
+        working-directory: apps/desktop
+        run: |
+          bun run build
+          bunx electron-builder ${{ matrix.target }} --publish never
+      - name: End-to-end tests against the packaged app
+        working-directory: apps/desktop
+        run: |
+          export ROBOT_E2E_APP="$(bun scripts/packaged-path.ts ${{ matrix.arch }})"
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run --auto-servernum bunx playwright test
+          else
+            bunx playwright test
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.name }}
+          path: |
+            dist/desktop/ROBot-*
+            !dist/desktop/*.blockmap
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-${{ matrix.name }}
+          path: build/e2e
+          retention-days: 7
+
+  release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: app-*
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release
+        run: sha256sum ROBot-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=(--draft --verify-tag --generate-notes --title "ROBot ${GITHUB_REF_NAME#v}")
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" release/*

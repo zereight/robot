@@ -19,6 +19,11 @@ Work goes in this order:
 - Desktop: Electron, SolidJS, Effect, Bun
 - Mobile: Expo (React Native)
 
+## Build and release
+
+`bun install`, then `bun run dev` to run the desktop app, or `bun run dist` to package it.
+Releases are described in [docs/release.md](docs/release.md).
+
 ## License
 
 [MIT](LICENSE). Dependencies must use licenses that are compatible with MIT.

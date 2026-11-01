@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
-import { resolve } from "node:path"
+import { readFileSync } from "node:fs"
+import { join, resolve } from "node:path"
 import shipped from "../src/main/licenses.json"
 import { collectLicenses } from "./licenses-lib.ts"
 
@@ -12,4 +13,21 @@ test("the shipped license list is up to date (run `bun run licenses`)", () => {
 
 test("every shipped dependency has an MIT-compatible license", () => {
   for (const entry of shipped) expect(entry.license).toMatch(allowed)
+})
+
+test("every package the app imports ships: it is a dependency or listed as bundled", () => {
+  const root = resolve(import.meta.dirname, "..")
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
+  const shipping = new Set([...Object.keys(pkg.dependencies), ...pkg.bundled, "electron"])
+  const imported = new Set<string>()
+  for (const file of new Bun.Glob("src/**/*.{ts,tsx}").scanSync(root)) {
+    if (file.includes(".test.")) continue
+    const source = readFileSync(join(root, file), "utf8")
+    for (const [, spec] of source.matchAll(/(?:from|import)\s*\(?\s*"([^".][^"]*)"/g)) {
+      if (!spec || spec.startsWith("node:")) continue
+      const parts = spec.split("/")
+      imported.add(spec.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] ?? spec))
+    }
+  }
+  expect([...imported].filter((name) => !shipping.has(name))).toEqual([])
 })

@@ -12,3 +12,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-01 | S4: model accounts: connect with a key check, keychain storage, model and effort per agent, disconnect | Implementer | 006 |
 | 2026-11-01 | S5: direct chat: streaming replies, stop, queue, reply jump, edit, retry, Markdown, unread counts | Implementer | 003 |
 | 2026-11-01 | Motion: enter and exit for dialogs, settings, panel, sections, messages and controls; all under 300 ms and off with reduce motion | Implementer | 000, 003, 013 |
+| 2026-11-01 | Release: packaging for macOS, Windows and Linux, packaged-app e2e, tag-driven draft releases, app icon | Implementer | 000 |
