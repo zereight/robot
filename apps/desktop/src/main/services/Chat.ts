@@ -63,6 +63,8 @@ interface AgentModelRow {
 export interface TaskOrigin {
   readonly source: TaskSource
   readonly sourceId: string
+  /** Called when the task of the message starts, with its id. */
+  readonly onStart?: (taskId: string) => void
 }
 
 export interface ChatService {
@@ -302,6 +304,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           retryOf: retryLinks.get(agentId) ?? null,
         })
         retryLinks.delete(agentId)
+        if (lastUser) origins.get(lastUser.id)?.onStart?.(task.id)
         const parts: MessagePart[] = []
         const usage = { input: 0, output: 0 }
         const controller = new AbortController()

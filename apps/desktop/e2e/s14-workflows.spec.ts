@@ -1,0 +1,121 @@
+import { expect, type Locator, type Page, test } from "@playwright/test"
+import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
+import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+
+const center = async (locator: Locator) => {
+  const box = await locator.boundingBox()
+  if (!box) throw new Error("no box")
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
+/** Drags from the output handle of one node to the body of another. */
+const connect = async (page: Page, from: number, to: number) => {
+  const nodes = page.getByTestId("wf-node")
+  const start = await center(nodes.nth(from).locator("[data-handle=out]").first())
+  const end = await center(nodes.nth(to))
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move((start.x + end.x) / 2, (start.y + end.y) / 2, { steps: 4 })
+  await page.mouse.move(end.x, end.y, { steps: 4 })
+  await page.mouse.up()
+}
+
+test("workflows: build, connect, zoom and pan, run, history, approval and read-only", async () => {
+  test.setTimeout(120_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1500, 1000)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await createAgent(page, "Ada")
+
+  // A channel for the final message.
+  await page.getByTestId("new-channel").click()
+  await page.getByTestId("channel-name").fill("Out")
+  await page.getByTestId("channel-member-Ada").check()
+  await page.getByTestId("channel-submit").click()
+  await expect(page.getByTestId("channel-header-name")).toHaveText("Out")
+
+  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
+  await expect(page.getByTestId("wf-list-empty")).toBeVisible()
+  await page.getByTestId("wf-new").click()
+  await expect(page.getByTestId("wf-empty")).toBeVisible()
+  await page.getByTestId("wf-name").fill("Haiku flow")
+
+  // Three steps: two agent steps and a post step.
+  await page.getByTestId("wf-add-agent").click()
+  await page.getByTestId("wf-step-prompt").fill("Write a haiku")
+  await page.getByTestId("wf-add-agent").click()
+  await page.getByTestId("wf-step-prompt").fill("Translate this: {{input}}")
+  await page.getByTestId("wf-add-post").click()
+  await page.getByTestId("wf-step-text").fill("Final: {{input}}")
+  await expect(page.getByTestId("wf-node")).toHaveCount(3)
+
+  // A drag moves a node.
+  const first = page.getByTestId("wf-node").first()
+  const before = await first.boundingBox()
+  const c = await center(first)
+  await page.mouse.move(c.x - 40, c.y)
+  await page.mouse.down()
+  await page.mouse.move(c.x - 40, c.y + 60, { steps: 4 })
+  await page.mouse.up()
+  const after = await first.boundingBox()
+  expect((after?.y ?? 0) - (before?.y ?? 0)).toBeGreaterThan(40)
+
+  await connect(page, 0, 1)
+  await connect(page, 1, 2)
+  await expect(page.getByTestId("wf-edge")).toHaveCount(2)
+  await shot(page, "s14-01-canvas")
+
+  // Zoom and pan.
+  await page.getByTestId("wf-zoom-out").click()
+  await expect(page.getByTestId("wf-canvas")).not.toHaveAttribute("data-zoom", "1.00")
+  const canvasBox = await page.getByTestId("wf-canvas").boundingBox()
+  await page.mouse.move((canvasBox?.x ?? 0) + 300, (canvasBox?.y ?? 0) + 300)
+  const panned = await page.getByTestId("wf-node").first().boundingBox()
+  await page.mouse.wheel(0, 60)
+  await expect
+    .poll(
+      async () =>
+        ((await page.getByTestId("wf-node").first().boundingBox())?.y ?? 0) < (panned?.y ?? 0),
+    )
+    .toBe(true)
+  await page.getByTestId("wf-zoom-in").click()
+
+  // Run: steps light up, the second step gets the first result.
+  await page.getByTestId("wf-run").click()
+  await expect(page.locator("[data-testid=wf-node][data-state=done]")).toHaveCount(3, {
+    timeout: 30_000,
+  })
+  await expect(page.getByTestId("wf-run-row")).toHaveCount(1)
+  await expect(page.getByTestId("wf-run-row")).toContainText("Done")
+  await page.getByTestId("wf-run-step").nth(1).locator("summary").click()
+  await expect(page.getByTestId("wf-run-step").nth(1)).toContainText("You said: Write a haiku")
+  await shot(page, "s14-02-run-done")
+
+  // The final message is in the channel.
+  await page.getByTestId("wf-back").click()
+  await expect(page.getByTestId("wf-card")).toHaveCount(1)
+
+  // An approval step waits; the editor is read-only; approve ends the run.
+  await page.getByTestId("wf-new").click()
+  await page.getByTestId("wf-name").fill("Gate")
+  await page.getByTestId("wf-add-approval").click()
+  await page.getByTestId("wf-add-post").click()
+  await page.getByTestId("wf-step-text").fill("approved")
+  await connect(page, 0, 1)
+  await page.getByTestId("wf-run").click()
+  await expect(page.locator("[data-testid=wf-node][data-state=waiting]")).toHaveCount(1, {
+    timeout: 15_000,
+  })
+  await expect(page.getByTestId("wf-readonly")).toBeVisible()
+  await expect(page.getByTestId("wf-name")).toBeDisabled()
+  await expect(page.getByTestId("wf-add-agent")).toBeDisabled()
+  await page.getByTestId("wf-node").first().click()
+  await shot(page, "s14-03-approval")
+  await page.getByTestId("wf-approve").click()
+  await expect(page.getByTestId("wf-readonly")).toHaveCount(0, { timeout: 15_000 })
+  await expect(page.locator("[data-testid=wf-node][data-state=done]")).toHaveCount(2)
+
+  await app.close()
+})

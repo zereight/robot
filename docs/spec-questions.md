@@ -59,3 +59,12 @@ implementer made to continue. A spec author answers by changing the spec.
 | 007 | What happens to a card that waits when the turn stops? | The step is marked Failed and the card goes away. |
 | 008 | How does an agent choose which memory items to read? | Items that share words with the message, newest first, at most 20 items and 4000 characters. With fewer than 6 items, all are read. |
 | 008 | Where does the user change the permission level and memory? | In the agent profile dialog, with the memory list, search, add, edit and delete. |
+| 007 | Where is the browser kept, and who holds the controls? | One window per agent, with its own saved session. The chat header shows "Take control" and "Give back". Steps of the agent wait while the user holds the controls. Stop closes the window at once. |
+| 007 | Can agents use tools in channels? | Yes, in replies of members. The lead's plan and summary use no tools. Cards show in the channel. |
+| 009 | Which reply counts as the missed run on wake? | The newest due run starts if it is under 12 hours late. Older due runs show as Missed. |
+| 009 | Where does a routine post when the place is a channel? | The agent answers the prompt in the channel. The agent must be a member. |
+| 009 | Does a paused routine count the pause as missed? | No. Resuming or editing a routine starts its checks from that moment. |
+| 010 | What does a prompt in a workflow step see? | `{{input}}` is the joined result of the steps before. `{{trigger}}` is the text that started the run. Without `{{input}}`, the input is added at the end of the prompt. |
+| 010 | How does a condition step choose a branch? | It tests whether the input contains a text, ignoring case. Yes and No are separate outputs. A step with no active input is Skipped. |
+| 010 | What do the "post message" and "approval" steps do? | Post puts a note in a channel. Approval waits for the user to approve or reject in the editor. Reject fails the run. |
+| 010 | Which agent chat shows the prompt of a workflow step? | The chat of that agent, as a message. The task has the source Workflow. |
