@@ -19,6 +19,7 @@ import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
+import { Workflows } from "./services/Workflows.ts"
 
 export interface AppLayerOptions {
   readonly platform: PlatformService
@@ -51,7 +52,8 @@ export const appLayer = (options: AppLayerOptions) => {
   )
   const channels = Channels.layer.pipe(Layer.provideMerge(agents))
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
-  const places = Places.layer.pipe(Layer.provideMerge(routines))
+  const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))
+  const places = Places.layer.pipe(Layer.provideMerge(workflows))
   return Data.layer.pipe(Layer.provideMerge(places))
 }
 

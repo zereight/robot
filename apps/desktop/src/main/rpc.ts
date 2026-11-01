@@ -17,6 +17,8 @@ import {
   SettingsPatch,
   UiStatePatch,
   USAGE_RANGES,
+  WorkflowInput,
+  WorkflowPatch,
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import { ipcMain } from "electron"
@@ -38,6 +40,7 @@ import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
+import { Workflows } from "./services/Workflows.ts"
 
 export type Services = AppServices
 
@@ -320,6 +323,47 @@ export const handlers: Handlers = {
       Effect.flatMap(({ serverId, from, to }) =>
         Routines.use((r) => r.calendar(serverId, from, to)),
       ),
+    ),
+  "workflows.list": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Workflows.use((w) => w.list(serverId))),
+    ),
+  "workflows.create": (input) =>
+    decode(WorkflowInput)(input).pipe(Effect.flatMap((v) => Workflows.use((w) => w.create(v)))),
+  "workflows.update": (input) =>
+    decode(Schema.Struct({ id: Schema.String, patch: WorkflowPatch }))(input).pipe(
+      Effect.flatMap(({ id, patch }) => Workflows.use((w) => w.update(id, patch))),
+    ),
+  "workflows.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Workflows.use((w) => w.remove(id))),
+      done,
+    ),
+  "workflows.run": (input) =>
+    decode(Schema.Struct({ id: Schema.String, triggerText: Schema.optionalKey(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap(({ id, triggerText }) => Workflows.use((w) => w.run(id, triggerText)))),
+  "workflows.stop": (input) =>
+    decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ runId }) => Workflows.use((w) => w.stop(runId))),
+      done,
+    ),
+  "workflows.approve": (input) =>
+    decode(
+      Schema.Struct({ runId: Schema.String, stepId: Schema.String, approved: Schema.Boolean }),
+    )(input).pipe(
+      Effect.flatMap(({ runId, stepId, approved }) =>
+        Workflows.use((w) => w.approve(runId, stepId, approved)),
+      ),
+      done,
+    ),
+  "workflows.runs": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Workflows.use((w) => w.runs(workflowId))),
+    ),
+  "workflows.runDetail": (input) =>
+    decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ runId }) => Workflows.use((w) => w.runDetail(runId))),
     ),
   "usage.summary": (input) =>
     decode(
