@@ -15,6 +15,8 @@ The user knows when an agent needs them or finishes, without watching the window
   link is online. The notification names the server. Mutes work per server, so the user can mute
   one computer and not the other. A request that a client already answered does not notify again
   on other devices.
+- The mute row in Settings → Notifications follows the server on screen: "This server" for this
+  computer, or "Server <name>" for a linked one.
 
 ## Status island (macOS, optional)
 
@@ -24,6 +26,7 @@ The user knows when an agent needs them or finishes, without watching the window
 - Attention: an approval or question expands the island with the agent face, a one-line summary
   and buttons to answer or open the app.
 - The user can turn it off, or show it only for attention.
+- The island shows work and requests of this computer only, not those of a linked server.
 
 ## Rules
 

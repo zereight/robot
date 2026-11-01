@@ -84,7 +84,8 @@ client shows it and sends commands.
 
 The page buttons that a client cannot use show a muted line: "Open this on <server name>."
 Permission levels of agents (007) are the same for every client: a client does not change them
-and cannot get around them.
+and cannot get around them. For this reason an approval card on a client has no "Always allow"
+choice. If a client sends one, the server takes it as one "Allow" and keeps no rule.
 
 ## Connection
 
@@ -124,7 +125,7 @@ Each server tile on a client shows one state:
 | Online | The tile as normal. |
 | Reconnecting | A muted tile and the line "Reconnecting". The app retries with backoff, at most 30 seconds between tries. |
 | Offline | A muted tile with an offline mark. The place list and the last messages show from the cache, marked "Offline". The message box is off and says "<server name> is offline." |
-| Not allowed | The server removed this device. The tile shows "Pair again". The cache is deleted. |
+| Not allowed | The server removed this device. The tile shows "Pair again". The cache is deleted, and the place list and the open conversation of that server are cleared. A strip above the view, and the line in the message box, say "<server name> removed this device." |
 | Update the app | One side has another protocol version. The text says which side must update. |
 
 Pairing errors are plain lines in the dialog: wrong code, code ended, the computer is not
@@ -142,8 +143,10 @@ accept connections, this is the same computer.
 - A message that came from another device shows a small muted line: "from <device name>". A
   card that a client answered shows "Allowed by <device name>" or "Denied by <device name>".
 - Two linked devices with the same name show with a number after the name.
-- A client cache holds the newest messages of each place it opened. It lives on the client, is
-  deleted with the link, and is never part of an export (014).
+- A client cache holds the newest 200 messages of each place that the user opened while the
+  server was online. A place that was never opened shows nothing while the server is offline.
+  The cache lives on the client, is deleted with the link, and is never part of an export
+  (014).
 - A server needs a running app to answer. A sleeping or closed computer is offline.
 
 ## Out of scope

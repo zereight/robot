@@ -27,5 +27,6 @@ The user sets the app up the way they like in one place.
 
 ## Acceptance
 
-- Switch to Korean: every screen shows Korean with no English left except names and code.
+- Switch to Korean: every screen shows Korean with no English left except names, code, and common acronyms (API,
+  URL, VPN).
 - Switch theme: all screens change, with text contrast of at least 4.5:1 in both themes.
