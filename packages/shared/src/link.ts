@@ -1,0 +1,339 @@
+/**
+ * The device link (spec 012): shared constants, the link text, and the shapes that the main
+ * process and the window use. The wire messages are here too, so a phone can speak the same
+ * protocol. Nothing in this file assumes that the client is a computer.
+ */
+
+/** The version of the wire protocol. Both sides must use the same number. */
+export const LINK_PROTOCOL = 1
+
+export const DEVICE_KINDS = ["computer", "phone"] as const
+export type DeviceKind = (typeof DEVICE_KINDS)[number]
+
+export const DEVICE_NAME_MAX = 40
+export const DEFAULT_LINK_PORT = 47800
+
+export const PAIR_CODE_LENGTH = 6
+export const PAIR_CODE_TTL_MS = 5 * 60 * 1000
+export const PAIR_CODE_TRIES = 5
+/** Devices that can open one computer, and servers that one device can open. */
+export const MAX_CLIENTS = 10
+export const MAX_SERVERS = 10
+/** The longest wait between two tries to reach a server. */
+export const RECONNECT_MAX_MS = 30_000
+
+/** `true` for a string of exactly six digits. */
+export const isPairCode = (text: string) => /^\d{6}$/.test(text)
+
+export interface Address {
+  readonly host: string
+  readonly port: number
+}
+
+const HOST =
+  /^(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*$/
+const IPV6 = /^[0-9A-Fa-f:]+$/
+
+/**
+ * Reads `host`, `host:port`, `[v6]` or `[v6]:port`. A bare IPv6 address (several colons) counts
+ * as a host with no port. Returns null when the text is not an address.
+ */
+export const parseAddress = (text: string, defaultPort = DEFAULT_LINK_PORT): Address | null => {
+  const value = text.trim()
+  if (!value) return null
+  const bracket = /^\[([0-9A-Fa-f:]+)\](?::(\d{1,5}))?$/.exec(value)
+  if (bracket) return withPort(bracket[1] ?? "", bracket[2], defaultPort)
+  if ((value.match(/:/g)?.length ?? 0) > 1) {
+    return IPV6.test(value) ? withPort(value, undefined, defaultPort) : null
+  }
+  const [host = "", port] = value.split(":")
+  if (port === "") return null
+  return HOST.test(host) ? withPort(host, port, defaultPort) : null
+}
+
+const withPort = (host: string, port: string | undefined, defaultPort: number): Address | null => {
+  const number = port === undefined ? defaultPort : Number(port)
+  return Number.isInteger(number) && number > 0 && number < 65536 ? { host, port: number } : null
+}
+
+export const formatAddress = (address: Address) =>
+  `${address.host.includes(":") ? `[${address.host}]` : address.host}:${address.port}`
+
+/** What the link text holds: the code, the name of the computer, and every address. */
+export interface LinkInvite {
+  readonly code: string
+  readonly name: string
+  readonly addresses: readonly string[]
+}
+
+export const formatLink = (invite: LinkInvite) => {
+  const query = new URLSearchParams()
+  query.set("code", invite.code)
+  if (invite.name) query.set("name", invite.name)
+  for (const address of invite.addresses) query.append("a", address)
+  return `robot://pair?${query.toString()}`
+}
+
+/** Reads a link text. Returns null when it is not one. */
+export const parseLink = (text: string): LinkInvite | null => {
+  let url: URL
+  try {
+    url = new URL(text.trim())
+  } catch {
+    return null
+  }
+  if (url.protocol !== "robot:" || url.hostname !== "pair") return null
+  const code = url.searchParams.get("code") ?? ""
+  const addresses = url.searchParams
+    .getAll("a")
+    .filter((a) => parseAddress(a) !== null)
+    .slice(0, 16)
+  if (!isPairCode(code) || addresses.length === 0) return null
+  return { code, name: (url.searchParams.get("name") ?? "").slice(0, DEVICE_NAME_MAX), addresses }
+}
+
+/** How a pairing code shows on screen: `123 456`. */
+export const groupCode = (code: string) => `${code.slice(0, 3)} ${code.slice(3)}`
+
+// ---------------------------------------------------------------------------------------------
+// What a client may ask of a server.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The requests that a server answers for a linked device. Everything else gets "not allowed"
+ * (spec 012, "What a client can do on a server"). `server.summary`, `chat.page`,
+ * `attachment.upload`, `attachment.download` and `attention.list` exist only on the link.
+ */
+export const CLIENT_METHODS = [
+  "server.summary",
+  "places.list",
+  "agents.list",
+  "agents.get",
+  "channels.list",
+  "channels.history",
+  "channels.send",
+  "channels.assign",
+  "channels.stop",
+  "channels.activity",
+  "channels.markRead",
+  "chat.page",
+  "chat.send",
+  "chat.stop",
+  "chat.retry",
+  "chat.edit",
+  "chat.queue.update",
+  "chat.queue.remove",
+  "chat.markRead",
+  "tools.respond",
+  "tasks.list",
+  "tasks.get",
+  "tasks.stop",
+  "attachment.upload",
+  "attachment.download",
+  "attention.list",
+] as const
+export type ClientMethod = (typeof CLIENT_METHODS)[number]
+
+export const isClientMethod = (method: string): method is ClientMethod =>
+  (CLIENT_METHODS as readonly string[]).includes(method)
+
+/** The events that a server pushes to every linked device. */
+export const PUSHED_EVENTS = [
+  "chat.message",
+  "chat.removed",
+  "chat.queue",
+  "channel.message",
+  "channel.removed",
+  "channels.changed",
+  "places.changed",
+  "agents.changed",
+  "tasks.changed",
+  "notice",
+  "revoked",
+] as const
+export type PushedEvent = (typeof PUSHED_EVENTS)[number]
+
+/** Newest messages of one place that a client asks for, and keeps in its cache. */
+export const MESSAGE_PAGE = 200
+
+/** Largest piece of a file in one request, before the base64 text. */
+export const FILE_CHUNK = 192 * 1024
+
+// ---------------------------------------------------------------------------------------------
+// Wire messages (inside the encrypted channel)
+// ---------------------------------------------------------------------------------------------
+
+export interface WireDevice {
+  readonly id: string
+  readonly name: string
+  readonly kind: DeviceKind
+}
+
+/** A message of the application protocol. `v` is the protocol version, `id` pairs a reply. */
+export type WireMessage =
+  | {
+      readonly v: number
+      readonly type: "request"
+      readonly id: number
+      readonly method: string
+      readonly input?: unknown
+    }
+  | {
+      readonly v: number
+      readonly type: "response"
+      readonly id: number
+      readonly ok: true
+      readonly value?: unknown
+    }
+  | {
+      readonly v: number
+      readonly type: "response"
+      readonly id: number
+      readonly ok: false
+      readonly error: { readonly code: string; readonly message: string }
+    }
+  | {
+      readonly v: number
+      readonly type: "event"
+      readonly id: number
+      readonly event: string
+      readonly payload?: unknown
+    }
+
+/** A system notice that a server pushes, so a client can show it by its own settings. */
+export interface WireNotice {
+  readonly kind: "reply" | "mention" | "approval" | "question" | "task_failed" | "routine_failed"
+  readonly channelId: string | null
+  readonly title: string
+  readonly body: string
+  readonly target: {
+    readonly kind: "agent" | "channel"
+    readonly id: string
+    readonly messageId?: string
+  }
+  /** For an approval or a question: the call that waits, so one answer ends the notice everywhere. */
+  readonly callId?: string
+  readonly agentId?: string
+}
+
+export interface ServerSummary {
+  readonly serverId: string
+  readonly deviceId: string
+  readonly name: string
+  readonly app: string
+  readonly protocol: number
+}
+
+// ---------------------------------------------------------------------------------------------
+// What the window sees
+// ---------------------------------------------------------------------------------------------
+
+/** The state of a linked server on a client (spec 012, States). */
+export type LinkState =
+  | "connecting"
+  | "online"
+  | "reconnecting"
+  | "offline"
+  | "not_allowed"
+  | "update_app"
+
+export interface DeviceSelf {
+  readonly id: string
+  readonly name: string
+  readonly kind: DeviceKind
+  readonly protocol: number
+  /** The name of the computer, used when the user clears the name. */
+  readonly computerName: string
+}
+
+/** A device that can open this computer. */
+export interface ClientEntry {
+  readonly id: string
+  readonly name: string
+  readonly kind: DeviceKind
+  readonly online: boolean
+  readonly since: number
+}
+
+/** A computer that this computer can open. */
+export interface ServerEntry {
+  readonly id: string
+  readonly serverId: string
+  readonly name: string
+  readonly addresses: readonly string[]
+  readonly state: LinkState
+  /** Which side must update the app, when the state is `update_app`. */
+  readonly updateSide: "this" | "server" | null
+  readonly since: number
+}
+
+export interface DevicesState {
+  readonly self: DeviceSelf
+  readonly accept: boolean
+  /** The port the app listens on, or null while it does not listen. */
+  readonly port: number | null
+  readonly clients: readonly ClientEntry[]
+  readonly servers: readonly ServerEntry[]
+}
+
+export type AddressLabel = "local" | "vpn"
+
+export interface PairingAddress {
+  readonly address: string
+  readonly label: AddressLabel
+}
+
+export type PairingEnd = "expired" | "tries" | "used" | "stopped"
+
+export interface PairingState {
+  /** True while a code is valid. */
+  readonly active: boolean
+  readonly code: string
+  readonly expiresAt: number
+  readonly addresses: readonly PairingAddress[]
+  readonly link: string
+  /** Why the last code ended, when no code is valid. */
+  readonly ended: PairingEnd | null
+}
+
+/** A device that asks to join and waits for Allow or Deny. */
+export interface JoinRequest {
+  readonly id: string
+  readonly name: string
+  readonly kind: DeviceKind
+  /** True when this computer can also open the device that asks. */
+  readonly twoWay: boolean
+}
+
+/** What the connect dialog learns once the code is right. */
+export interface ConnectProbe {
+  readonly session: string
+  readonly name: string
+  readonly kind: DeviceKind
+}
+
+/** A computer found on the network while it shows a pairing code. */
+export interface NearbyComputer {
+  readonly name: string
+  readonly address: string
+}
+
+/** A name that is not shared with another device in the list gets no number. */
+export const numberedNames = <T extends { readonly id: string; readonly name: string }>(
+  devices: readonly T[],
+): Map<string, string> => {
+  const totals = new Map<string, number>()
+  for (const d of devices) totals.set(d.name, (totals.get(d.name) ?? 0) + 1)
+  const seen = new Map<string, number>()
+  const out = new Map<string, string>()
+  for (const d of devices) {
+    if ((totals.get(d.name) ?? 0) < 2) {
+      out.set(d.id, d.name)
+      continue
+    }
+    const n = (seen.get(d.name) ?? 0) + 1
+    seen.set(d.name, n)
+    out.set(d.id, `${d.name} ${n}`)
+  }
+  return out
+}

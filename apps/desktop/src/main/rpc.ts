@@ -4,10 +4,12 @@ import {
   ChannelCreate,
   ChannelPatch,
   ChatSend,
+  DEVICE_NAME_MAX,
   INVOKE_CHANNEL,
   MESSAGE_MAX,
   MUTE_CHOICES,
   ProviderConnect,
+  parseAddress,
   RoutineInput,
   RoutinePatch,
   type RpcInput,
@@ -26,10 +28,14 @@ import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import { ipcMain } from "electron"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
+import { linkHandlers } from "./link/handlers.ts"
 import { Agents } from "./services/Agents.ts"
+import type { Actor } from "./services/actor.ts"
+import { CurrentActor } from "./services/actor.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
+import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
 import { Memory } from "./services/Memory.ts"
@@ -37,6 +43,7 @@ import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
+import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { Servers } from "./services/Servers.ts"
@@ -109,7 +116,10 @@ export const handlers: Handlers = {
   "settings.get": () => SettingsStore.use((s) => s.get),
   "settings.update": (input) =>
     Effect.gen(function* () {
-      const patch = yield* decode(SettingsPatch)(input)
+      const decoded = yield* decode(SettingsPatch)(input)
+      // The device name and the switch go through "devices.update", which also opens or closes
+      // the listener. The saved port is the app's own.
+      const { deviceName: _name, acceptLinks: _accept, linkPort: _port, ...patch } = decoded
       const next = yield* SettingsStore.use((s) => s.update(patch))
       yield* applySystemSettings(patch)
       if (patch.island !== undefined) yield* Notifier.use((n) => Effect.sync(() => n.refresh()))
@@ -131,7 +141,99 @@ export const handlers: Handlers = {
       yield* Effect.promise(() => p.openPath(p.dataDir))
       return undefined
     }),
-  "servers.list": () => Servers.use((s) => s.list),
+  "servers.list": () =>
+    Effect.gen(function* () {
+      const devices = yield* Devices
+      const local = yield* Servers.use((s) => s.list)
+      const linked = yield* Remote.use((r) => Effect.succeed(r.servers()))
+      // This computer shows under the name that linked devices see.
+      return [
+        ...local.map((s) => (s.kind === "local" ? { ...s, name: devices.deviceName() } : s)),
+        ...linked,
+      ]
+    }),
+  "servers.retry": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Remote.use((r) => Effect.sync(() => r.retry(serverId)))),
+      done,
+    ),
+  "devices.get": () =>
+    Effect.gen(function* () {
+      const devices = yield* Devices
+      const remote = yield* Remote
+      return { ...devices.state(), servers: remote.entries() }
+    }),
+  "devices.update": (input) =>
+    decode(
+      Schema.Struct({
+        name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(DEVICE_NAME_MAX))),
+        accept: Schema.optionalKey(Schema.Boolean),
+      }),
+    )(input).pipe(
+      Effect.flatMap((patch) => Devices.use((d) => d.update(patch))),
+      Effect.flatMap((state) =>
+        Remote.use((r) => Effect.succeed({ ...state, servers: r.entries() })),
+      ),
+    ),
+  "devices.pair.start": () => Devices.use((d) => d.pairStart()),
+  "devices.pair.get": () => Devices.use((d) => Effect.sync(() => d.pairing())),
+  "devices.pair.stop": () => Devices.use((d) => Effect.sync(() => d.pairStop())),
+  "devices.join.list": () => Devices.use((d) => Effect.sync(() => d.joins())),
+  "devices.join.decide": (input) =>
+    decode(Schema.Struct({ id: Schema.String, allow: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, allow }) => Devices.use((d) => d.decide(id, allow))),
+      done,
+    ),
+  "devices.client.remove": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Devices.use((d) => d.removeClient(id))),
+      done,
+    ),
+  "devices.server.remove": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Remote.use((r) => r.remove(id))),
+      done,
+    ),
+  "devices.server.setAddresses": (input) =>
+    decode(Schema.Struct({ id: Schema.String, addresses: Schema.Array(Schema.String) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, addresses }) =>
+        Effect.gen(function* () {
+          const list = addresses.map((a) => a.trim()).filter(Boolean)
+          if (list.length === 0 || list.length > 16 || list.some((a) => !parseAddress(a))) {
+            return yield* new AppError({ code: "invalid_address" })
+          }
+          const devices = yield* Devices
+          const remote = yield* Remote
+          yield* devices.setAddresses(id, list)
+          const entry = remote.entries().find((e) => e.id === id)
+          if (entry) remote.retry(entry.serverId)
+          return remote.entries().find((e) => e.id === id) ?? entry
+        }),
+      ),
+      Effect.flatMap((entry) =>
+        entry ? Effect.succeed(entry) : Effect.fail(new AppError({ code: "server_not_found" })),
+      ),
+    ),
+  "devices.connect.probe": (input) =>
+    decode(
+      Schema.Struct({
+        link: Schema.optionalKey(Schema.String),
+        address: Schema.optionalKey(Schema.String),
+        code: Schema.optionalKey(Schema.String),
+      }),
+    )(input).pipe(Effect.flatMap((v) => Remote.use((r) => r.probe(v)))),
+  "devices.connect.finish": (input) =>
+    decode(Schema.Struct({ session: Schema.String, twoWay: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ session, twoWay }) => Remote.use((r) => r.finish(session, twoWay))),
+    ),
+  "devices.connect.cancel": (input) =>
+    decode(Schema.Struct({ session: Schema.String }))(input).pipe(
+      Effect.flatMap(({ session }) => Remote.use((r) => r.cancel(session))),
+      done,
+    ),
+  "devices.nearby": () => Effect.succeed([]),
   "places.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Places.use((p) => p.list(serverId))),
@@ -492,10 +594,16 @@ export const runRequest = async (
   runtime: ManagedRuntime.ManagedRuntime<Services, never>,
   method: string,
   input: unknown,
+  actor: Actor | null = null,
 ): Promise<RpcResult<unknown>> => {
-  const handler = (handlers as Record<string, Handler<RpcMethod> | undefined>)[method]
+  const handler =
+    (actor ? linkHandlers[method] : undefined) ??
+    (handlers as Record<string, Handler<RpcMethod> | undefined>)[method]
   if (!handler) return { ok: false, error: { code: "unknown_method", message: method } }
-  const exit = await runtime.runPromiseExit(handler(input as never))
+  // The device that asks is known to the handlers: they record "from <device>" with it.
+  const exit = await runtime.runPromiseExit(
+    Effect.provideService(handler(input as never), CurrentActor, actor),
+  )
   if (Exit.isSuccess(exit)) return { ok: true, value: exit.value }
   const failure = exit.cause.reasons.find(Cause.isFailReason)
   if (failure) {
@@ -507,6 +615,14 @@ export const runRequest = async (
 }
 
 export const registerRpc = (runtime: ManagedRuntime.ManagedRuntime<Services, never>) => {
+  // Requests of linked devices run the same handlers, with the device as the actor.
+  void runtime.runPromise(
+    Devices.use((d) =>
+      Effect.sync(() =>
+        d.bindDispatcher((method, input, actor) => runRequest(runtime, method, input, actor)),
+      ),
+    ),
+  )
   ipcMain.handle(INVOKE_CHANNEL, (_event, method: string, input: unknown) =>
     runRequest(runtime, method, input),
   )

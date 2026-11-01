@@ -1,4 +1,5 @@
 import { Schema, Struct } from "effect"
+import type { LinkState } from "./link.ts"
 
 export const PlaceKind = Schema.Literals(["agent", "channel"])
 export type PlaceKind = typeof PlaceKind.Type
@@ -47,7 +48,12 @@ export const clampPlaceListWidth = (width: number) =>
 export interface Server {
   readonly id: string
   readonly name: string
-  readonly kind: "local"
+  /** `local` is this computer. `linked` is another computer that this one opens (spec 012). */
+  readonly kind: "local" | "linked"
+  /** The connection state of a linked server. Absent for this computer. */
+  readonly state?: LinkState
+  /** Which side must update the app, when the state is `update_app`. */
+  readonly updateSide?: "this" | "server" | null
 }
 
 /** One row in the place list. */

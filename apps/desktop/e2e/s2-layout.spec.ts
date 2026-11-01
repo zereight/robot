@@ -56,12 +56,12 @@ test("layout: rail, place list, panel, width and sections survive a restart", as
   await page.getByTestId("page-chats").click()
   await expect(page.getByTestId("no-place")).toBeVisible()
 
-  // Add server is not available yet and says so.
+  // The add button opens "Connect to a computer".
   await page.getByTestId("server-add").click()
-  await expect(page.getByTestId("add-server-dialog")).toBeVisible()
+  await expect(page.getByTestId("connect-dialog")).toBeVisible()
   await shot(page, "s2-02-add-server")
   await page.keyboard.press("Escape")
-  await expect(page.getByTestId("add-server-dialog")).toBeHidden()
+  await expect(page.getByTestId("connect-dialog")).toBeHidden()
   await shot(page, "s2-03-changed")
   await app.close()
 

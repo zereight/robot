@@ -6,12 +6,14 @@ import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
+import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
+import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import type { Secrets } from "./services/Secrets.ts"
@@ -29,6 +31,8 @@ export interface AppLayerOptions {
   readonly localServerName: string
   readonly emit: (event: string, payload: unknown) => void
   readonly secrets: Layer.Layer<Secrets>
+  /** The port of the device link. Tests use 0 to let the system choose. */
+  readonly linkPort?: number
 }
 
 /** Every main process service, wired together. */
@@ -45,7 +49,11 @@ export const appLayer = (options: AppLayerOptions) => {
     Servers.layer(options.localServerName),
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
-  const runtimes = Runtimes.layer.pipe(Layer.provideMerge(stores))
+  const devices = Devices.layer({
+    computerName: options.localServerName,
+    ...(options.linkPort !== undefined ? { port: options.linkPort } : {}),
+  }).pipe(Layer.provideMerge(stores))
+  const runtimes = Runtimes.layer.pipe(Layer.provideMerge(devices))
   const providers = Providers.layer.pipe(Layer.provideMerge(runtimes))
   const notifier = Notifier.layer.pipe(Layer.provideMerge(providers))
   const memory = Memory.layer.pipe(Layer.provideMerge(notifier))
@@ -58,7 +66,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))
   const places = Places.layer.pipe(Layer.provideMerge(workflows))
-  return Data.layer.pipe(Layer.provideMerge(places))
+  const remote = Remote.layer.pipe(Layer.provideMerge(places))
+  return Data.layer.pipe(Layer.provideMerge(remote))
 }
 
 export type AppServices = Layer.Success<ReturnType<typeof appLayer>>

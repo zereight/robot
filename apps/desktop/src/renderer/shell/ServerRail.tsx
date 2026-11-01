@@ -9,10 +9,9 @@ import {
   Workflow,
 } from "lucide-solid"
 import { createSignal, For, type JSX, Show } from "solid-js"
+import { ConnectDialog } from "../devices/ConnectDialog.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
-import { Button } from "../ui/controls.tsx"
-import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import styles from "./shell.module.css"
 
@@ -94,20 +93,7 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
         </button>
       </div>
       <Presence when={addOpen()}>
-        {() => (
-          <Dialog
-            label={t("rail.addServer")}
-            onClose={() => setAddOpen(false)}
-            testId="add-server-dialog"
-          >
-            <p>{t("rail.addServer.later")}</p>
-            <div class={styles.dialogActions}>
-              <Button variant="primary" onClick={() => setAddOpen(false)}>
-                {t("rail.ok")}
-              </Button>
-            </div>
-          </Dialog>
-        )}
+        {() => <ConnectDialog onClose={() => setAddOpen(false)} />}
       </Presence>
     </nav>
   )

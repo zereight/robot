@@ -7,6 +7,8 @@ import { Face } from "./agents/Face.tsx"
 import { ChannelDialog } from "./channels/ChannelDialog.tsx"
 import { ChannelPanel } from "./channels/ChannelPanel.tsx"
 import { ChannelHeader, ChannelView } from "./channels/ChannelView.tsx"
+import { DevicesSection } from "./devices/DevicesSection.tsx"
+import { JoinDialog } from "./devices/JoinDialog.tsx"
 import { FirstRunDialog } from "./firstrun/FirstRun.tsx"
 import { NotificationsSection } from "./notifications/NotificationsSection.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
@@ -86,6 +88,7 @@ export const App = () => {
         settingsSections={{
           archive: () => <ArchiveSection />,
           providers: () => <ProvidersSection />,
+          devices: () => <DevicesSection />,
           notifications: () => <NotificationsSection />,
         }}
       />
@@ -96,6 +99,7 @@ export const App = () => {
         {() => <ChannelDialog onClose={() => setNewChannel(false)} />}
       </Presence>
       <Presence when={!app.settings.firstRunDone}>{() => <FirstRunDialog />}</Presence>
+      <JoinDialog />
     </>
   )
 }

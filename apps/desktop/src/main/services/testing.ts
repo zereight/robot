@@ -90,14 +90,15 @@ export const testPlatform = () => {
 }
 
 /** The full app layer on an in-memory database, with recorded events. */
-export const testRuntime = () => {
+export const testRuntime = (options: { name?: string } = {}) => {
   const { platform, dataDir, trashed, browserLog, shell } = testPlatform()
   const events: { event: string; payload: unknown }[] = []
   const runtime = ManagedRuntime.make(
     appLayer({
       platform,
       databaseFile: ":memory:",
-      localServerName: "Test computer",
+      linkPort: 0,
+      localServerName: options.name ?? "Test computer",
       emit: (event, payload) => events.push({ event, payload }),
       secrets: Secrets.memory,
     }),

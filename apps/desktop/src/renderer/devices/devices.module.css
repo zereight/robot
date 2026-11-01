@@ -1,0 +1,181 @@
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.title {
+  margin: 20px 0 0;
+  font-size: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.count {
+  font-weight: 400;
+  color: var(--c-text-muted);
+  font-size: 0.85rem;
+}
+
+.hint {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: 0.85rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.itemMain {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.itemName {
+  font-weight: 500;
+}
+
+.itemMeta {
+  color: var(--c-text-muted);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.input,
+.textarea {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 6px 8px;
+  min-width: 0;
+}
+
+.input {
+  width: 100%;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-weight: 500;
+}
+
+.nameInput {
+  width: 220px;
+}
+
+.error {
+  margin: 0;
+  color: var(--c-danger);
+}
+
+.status {
+  margin: 0;
+  color: var(--c-text-muted);
+}
+
+.dialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(520px, 86vw);
+}
+
+.pairLayout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.pairInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.addressList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.addressLabel {
+  font-family: var(--font-sans);
+  color: var(--c-text-muted);
+  margin-left: 8px;
+}
+
+.divider {
+  color: var(--c-text-muted);
+  font-size: 0.85rem;
+}
+
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.qr {
+  flex-shrink: 0;
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  line-height: 0;
+}

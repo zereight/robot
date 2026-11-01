@@ -7,6 +7,15 @@ import type {
   ChannelPatch,
 } from "./channels.ts"
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
+import type {
+  ConnectProbe,
+  DevicesState,
+  JoinRequest,
+  NearbyComputer,
+  PairingState,
+  ServerEntry,
+  WireNotice,
+} from "./link.ts"
 import type { MemoryItem } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type {
@@ -60,7 +69,47 @@ export interface RpcMethods {
   "settings.update": { input: SettingsPatch; output: Settings }
   "settings.pickWorkspaceRoot": { input: undefined; output: Settings }
   "data.openFolder": { input: undefined; output: undefined }
+  /** This computer, then the linked computers it can open, with their connection states. */
   "servers.list": { input: undefined; output: readonly Server[] }
+  /** Tries a linked server at once, when it is not online. */
+  "servers.retry": { input: { serverId: string }; output: undefined }
+  "devices.get": { input: undefined; output: DevicesState }
+  /** Changes the name of this device, or "Let other devices connect". */
+  "devices.update": {
+    input: { name?: string; accept?: boolean }
+    output: DevicesState
+  }
+  /** Shows a new pairing code. Turns on "Let other devices connect". */
+  "devices.pair.start": { input: undefined; output: PairingState }
+  "devices.pair.get": { input: undefined; output: PairingState }
+  "devices.pair.stop": { input: undefined; output: PairingState }
+  /** Devices that wait for Allow or Deny. */
+  "devices.join.list": { input: undefined; output: readonly JoinRequest[] }
+  "devices.join.decide": { input: { id: string; allow: boolean }; output: undefined }
+  /** Ends the access of a device that can open this computer. */
+  "devices.client.remove": { input: { id: string }; output: undefined }
+  /** Ends the link to a computer that this computer can open. Deletes its cache. */
+  "devices.server.remove": { input: { id: string }; output: undefined }
+  "devices.server.setAddresses": {
+    input: { id: string; addresses: readonly string[] }
+    output: ServerEntry
+  }
+  /**
+   * First step of "Connect to a computer": proves the code to the computer. Give a link text, or
+   * an address and a code.
+   */
+  "devices.connect.probe": {
+    input: { link?: string | undefined; address?: string | undefined; code?: string | undefined }
+    output: ConnectProbe
+  }
+  /** Second step: asks the computer to allow this device. Ends when the user there decided. */
+  "devices.connect.finish": {
+    input: { session: string; twoWay: boolean }
+    output: ServerEntry
+  }
+  "devices.connect.cancel": { input: { session: string }; output: undefined }
+  /** Computers on this network that show a pairing code now. */
+  "devices.nearby": { input: undefined; output: readonly NearbyComputer[] }
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
   "ui.get": { input: undefined; output: UiState }
   "ui.update": { input: UiStatePatch; output: UiState }
@@ -183,6 +232,15 @@ export interface RpcMethods {
 /** Events that the main process pushes to the renderer. */
 export interface RpcEvents {
   "settings.changed": Settings
+  /** The device name, the switch, the linked devices or a connection state changed. */
+  "devices.changed": Record<string, never>
+  "devices.pairing": PairingState
+  /** A device asks to join (`request`), or an earlier request was decided (`closed`). */
+  "devices.join": { request?: JoinRequest; closed?: string }
+  /** The list of servers, or the state of one, changed. */
+  "servers.changed": Record<string, never>
+  /** A notice for a linked device. Windows ignore it; the link pushes it. */
+  notice: WireNotice
   "places.changed": { serverId: string }
   /** `serverId` is "*" when agents of every server may have changed. */
   "agents.changed": { serverId: string }

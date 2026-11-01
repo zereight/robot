@@ -223,4 +223,23 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE provider_account ADD COLUMN off INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  CREATE TABLE device_link (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    inbound INTEGER NOT NULL DEFAULT 0,
+    outbound INTEGER NOT NULL DEFAULT 0,
+    addresses TEXT NOT NULL DEFAULT '[]',
+    server_id TEXT,
+    position INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_seen INTEGER
+  );
+  ALTER TABLE message ADD COLUMN from_device TEXT;
+  ALTER TABLE message ADD COLUMN from_name TEXT;
+  ALTER TABLE channel_message ADD COLUMN from_device TEXT;
+  ALTER TABLE channel_message ADD COLUMN from_name TEXT;
+  `,
 ]
