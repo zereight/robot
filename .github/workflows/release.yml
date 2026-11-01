@@ -1,11 +1,17 @@
 name: Release
 
 # A tag `v<version>` builds, tests and attaches the apps to a draft release.
-# "Run workflow" builds and tests the same way without a release (dry run).
+# "Run workflow", and PRs that change packaging, build and test the same way without a release.
 on:
   push:
     tags: ["v*.*.*"]
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - apps/desktop/electron-builder.yml
+      - apps/desktop/scripts/packaged-path.ts
+      - apps/desktop/package.json
 
 permissions:
   contents: read

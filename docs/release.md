@@ -35,7 +35,8 @@ A failed run makes no release. Fix the cause on `main`, delete the tag
 ## Dry run
 
 Actions > Release > Run workflow builds and tests all four apps and keeps them as workflow
-artifacts for 14 days. It makes no release.
+artifacts for 14 days. It makes no release. A PR that changes the packaging files runs the same
+dry run.
 
 ## Local build
 
