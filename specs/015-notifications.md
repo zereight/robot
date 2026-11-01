@@ -24,6 +24,8 @@ The user knows when an agent needs them or finishes, without watching the window
 ## Rules
 
 - Do-not-disturb of the system is respected.
+- After an app restart, a task that still waits for an approval or a question (see 005) asks for
+  attention again, in the same way as a new request. It asks once.
 - Motion in the island is short (under 300 ms) and follows reduce motion.
 
 ## Acceptance

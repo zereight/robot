@@ -34,9 +34,22 @@ Each agent works in its own folder with real tools, and the user stays in contro
 - Browser data (cookies, logins) is kept per agent, on the computer.
 - A failed tool step shows its error in the card. It does not end the turn unless the agent
   stops.
+- An approval card or a question card stays after an app restart when its task can wait through
+  a restart (see 005). The card shows the same request as before, and it shows when the agent
+  asked. Until the user answers, nothing runs. After the answer, the agent goes on in the same
+  reply.
+- A card from a vendor agent runtime cannot stay after a restart, because the runtime ends with
+  the app. Its step is marked Failed and the card goes away.
+- Stop on a task that waited through a restart works as before: the step is marked Failed and the
+  card goes away.
 
 ## Acceptance
 
 - At "Ask for risky steps", `rm` of a file outside the workspace shows an approval card and does
   nothing until the user allows it.
 - Stop during browser work closes the page work within 2 seconds.
+- At "Ask for risky steps", `rm` of a file outside the workspace shows an approval card. Restart
+  the app: the same card shows again and the file is still there. Allow: the file is deleted and
+  the agent goes on in the same reply.
+- An agent asks a question with two choices. Restart the app: the question shows again with the
+  same choices. Pick one: the agent goes on with that answer.
