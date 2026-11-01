@@ -203,7 +203,7 @@ export const ChannelView = (props: { channel: Channel }) => {
         data-testid="chat-scroller"
       >
         <div class={chat.list} role="log" aria-label={t("chat.messages")}>
-          <div class={chat.start} data-testid="channel-start">
+          <div class={styles.start} data-testid="channel-start">
             <h2>#{props.channel.name}</h2>
             <p>{t("channels.start", { name: props.channel.name })}</p>
             <Show when={messages.loaded && messages.messages.length === 0}>
