@@ -219,6 +219,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               }
               copyToServer("agent")
               copyToServer("channel")
+              copyToServer("routine")
+              db.run("INSERT INTO routine_skip SELECT * FROM imp.routine_skip")
               db.run("INSERT INTO channel_member SELECT * FROM imp.channel_member")
               db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")

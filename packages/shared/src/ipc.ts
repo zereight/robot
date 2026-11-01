@@ -9,6 +9,7 @@ import type {
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
 import type { MemoryItem } from "./memory.ts"
 import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
+import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Task, TaskDetail } from "./task.ts"
 import type { ApprovalAnswer } from "./tools.ts"
@@ -103,6 +104,15 @@ export interface RpcMethods {
   /** The user takes the controls of the agent's browser, or gives them back. */
   "browser.control": { input: { agentId: string; control: boolean }; output: undefined }
   "browser.close": { input: { agentId: string }; output: undefined }
+  "routines.list": { input: { serverId: string }; output: readonly Routine[] }
+  "routines.create": { input: RoutineInput; output: Routine }
+  "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }
+  "routines.delete": { input: { id: string }; output: undefined }
+  "routines.runNow": { input: { id: string }; output: undefined }
+  "routines.calendar": {
+    input: { serverId: string; from: number; to: number }
+    output: readonly RoutineEntry[]
+  }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
@@ -133,6 +143,7 @@ export interface RpcEvents {
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
   "browser.changed": { agentId: string }
+  "routines.changed": { serverId: string }
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }
   "channel.message": ChannelMessage

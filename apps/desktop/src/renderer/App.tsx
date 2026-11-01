@@ -9,6 +9,7 @@ import { ChannelPanel } from "./channels/ChannelPanel.tsx"
 import { ChannelHeader, ChannelView } from "./channels/ChannelView.tsx"
 import { FirstRunDialog } from "./firstrun/FirstRun.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
+import { RoutinesView } from "./routines/RoutinesPage.tsx"
 import { Shell } from "./shell/Shell.tsx"
 import { useAgents } from "./state/agents.tsx"
 import { useApp } from "./state/app.tsx"
@@ -66,7 +67,11 @@ export const App = () => {
             </IconButton>
           )
         }
-        pages={{ usage: () => <UsagePage />, tasks: () => <TasksPage /> }}
+        pages={{
+          usage: () => <UsagePage />,
+          tasks: () => <TasksPage />,
+          workflows: () => <RoutinesView />,
+        }}
         settingsSections={{
           archive: () => <ArchiveSection />,
           providers: () => <ProvidersSection />,

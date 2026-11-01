@@ -7,6 +7,8 @@ import {
   INVOKE_CHANNEL,
   MESSAGE_MAX,
   ProviderConnect,
+  RoutineInput,
+  RoutinePatch,
   type RpcInput,
   type RpcMethod,
   type RpcOutput,
@@ -29,6 +31,7 @@ import { Memory } from "./services/Memory.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
+import { Routines } from "./services/Routines.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Tasks } from "./services/Tasks.ts"
@@ -289,6 +292,34 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
       Effect.flatMap(({ agentId }) => Tools.use((t) => Effect.sync(() => t.closeBrowser(agentId)))),
       done,
+    ),
+  "routines.list": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Routines.use((r) => r.list(serverId))),
+    ),
+  "routines.create": (input) =>
+    decode(RoutineInput)(input).pipe(Effect.flatMap((v) => Routines.use((r) => r.create(v)))),
+  "routines.update": (input) =>
+    decode(Schema.Struct({ id: Schema.String, patch: RoutinePatch }))(input).pipe(
+      Effect.flatMap(({ id, patch }) => Routines.use((r) => r.update(id, patch))),
+    ),
+  "routines.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Routines.use((r) => r.remove(id))),
+      done,
+    ),
+  "routines.runNow": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Routines.use((r) => r.runNow(id))),
+      done,
+    ),
+  "routines.calendar": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, from: Schema.Number, to: Schema.Number }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ serverId, from, to }) =>
+        Routines.use((r) => r.calendar(serverId, from, to)),
+      ),
     ),
   "usage.summary": (input) =>
     decode(
