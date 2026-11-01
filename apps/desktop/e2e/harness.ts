@@ -109,7 +109,10 @@ export const startRecording = async (page: Page, name: string) => {
   mkdirSync(framesDir, { recursive: true })
   const cdp = await page.context().newCDPSession(page)
   const frames: { file: string; at: number }[] = []
+  let recording = true
   cdp.on("Page.screencastFrame", (frame) => {
+    // A frame can arrive after the stop, when the folder is gone already.
+    if (!recording) return
     const file = join(framesDir, `${String(frames.length).padStart(5, "0")}.jpg`)
     writeFileSync(file, Buffer.from(frame.data, "base64"))
     frames.push({ file, at: frame.metadata.timestamp ?? Date.now() / 1000 })
@@ -117,6 +120,7 @@ export const startRecording = async (page: Page, name: string) => {
   })
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 85, everyNthFrame: 1 })
   return async () => {
+    recording = false
     await cdp.send("Page.stopScreencast").catch(() => {})
     if (frames.length < 2) return
     // Each frame shows until the next one, so pauses keep their real length.
