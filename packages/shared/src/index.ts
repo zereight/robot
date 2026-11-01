@@ -1,4 +1,5 @@
 export * from "./agents.ts"
+export * from "./chat.ts"
 export * from "./i18n/index.ts"
 export * from "./ipc.ts"
 export * from "./providers.ts"

@@ -1,22 +1,29 @@
 import type { Agent } from "@robot/shared"
 import {
   createContext,
+  createEffect,
   createMemo,
   createResource,
   onCleanup,
   type ParentProps,
   useContext,
 } from "solid-js"
+import { createStore, reconcile } from "solid-js/store"
 import { call } from "../lib/rpc.ts"
 import { useUi } from "./ui.tsx"
 
 const createAgentsState = () => {
   const ui = useUi()
-  const [agents, { refetch }] = createResource(
+  const [store, setStore] = createStore<{ list: Agent[] }>({ list: [] })
+  const [fetched, { refetch }] = createResource(
     () => ui.server()?.id,
     (serverId) => call("agents.list", { serverId, archived: false }),
-    { initialValue: [] as readonly Agent[] },
   )
+  createEffect(() => {
+    const next = fetched()
+    if (next) setStore("list", reconcile([...next], { key: "id" }))
+  })
+  const agents = () => store.list
   const off = window.robot.on("agents.changed", ({ serverId }) => {
     if (serverId === "*" || serverId === ui.server()?.id) void refetch()
   })

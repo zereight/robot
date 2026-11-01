@@ -24,3 +24,11 @@ implementer made to continue. A spec author answers by changing the spec.
 | 006 | Can the user change the base URL of OpenAI and Anthropic accounts? | Yes. The field starts with the vendor address. This also allows proxies. |
 | 006 | What does "Disconnect" leave behind? | The account stays in the list as "Not connected" with "Connect again". "Remove" deletes it and clears it from agents. |
 | 006 | What if the model list cannot be fetched? | The picker shows a text field for the model ID. |
+| 003 | How long can the queue be, and how long can a message be? | Up to 10 queued messages and 100,000 characters per message. More gives a plain error. |
+| 003 | Does Stop also cancel the queue? | No. Stop ends the current turn; the next queued message is then sent. |
+| 003 | What does "edit" on the user's last message do? | It saves the new text, removes the replies after it, and asks the agent again. Only when the agent is not working. |
+| 003 | Which failed turns can be retried? | Only the last reply, when it failed. Retry replaces the failed row. |
+| 003 | "Stored as each part arrives": how often? | The partial reply is written at most every 500 ms and when the turn ends. A turn still marked as streaming at start-up becomes "stopped". |
+| 003 | Does Markdown allow raw HTML, and where do links and images go? | Raw HTML shows as plain text. Links open in the system browser (http, https, mailto only). Images load only from https addresses. |
+| 003 | Attach (flow 4) and Approve (flow 6) | Attach comes in slice S7. Approve needs agent tools (007), which are not in M1. |
+| 003 | What makes a chat unread in the place list? | An agent reply that ends while the chat is not open. Opening the chat clears the count. |

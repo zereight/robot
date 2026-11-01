@@ -14,6 +14,7 @@ const rowNamed = (page: Page, name: string) =>
 
 const openProfile = async (page: Page, name: string) => {
   await rowNamed(page, name).click()
+  await expect(page.getByTestId("chat-start").locator("h2")).toHaveText(name)
   await page.getByTestId("chat-header-agent").click()
   await expect(page.getByTestId("agent-profile")).toBeVisible()
 }
@@ -50,7 +51,7 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   // Duplicate twice.
   await openProfile(page, "Ada")
   await page.getByTestId("agent-duplicate").click()
-  await expect(page.getByTestId("chat-start")).toContainText("Ada copy")
+  await expect(page.getByTestId("chat-start").locator("h2")).toHaveText("Ada copy")
   await openProfile(page, "Ada")
   await page.getByTestId("agent-duplicate").click()
   await expect(page.getByTestId("chat-start")).toContainText("Ada copy 2")
@@ -63,7 +64,7 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   await page.keyboard.press("ArrowDown")
   await page.keyboard.press("ArrowDown")
   await page.keyboard.press("Enter")
-  await expect(page.getByTestId("chat-start")).toContainText("Ada copy 2")
+  await expect(page.getByTestId("chat-start").locator("h2")).toHaveText("Ada copy 2")
   await page.getByTestId("place-search").fill("")
 
   // Edit: a taken name is refused; a free name is saved; a picture replaces the drawn face.
@@ -114,7 +115,7 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   await rowNamed(page, "Ada copy").click()
   await app.close()
   ;({ app, page } = await launch(userData, env))
-  await expect(page.getByTestId("chat-start")).toContainText("Ada copy")
+  await expect(page.getByTestId("chat-start").locator("h2")).toHaveText("Ada copy")
   await expect(rowNamed(page, "Ada copy")).toHaveAttribute("aria-current", "true")
   await shot(page, "s3-05-after-restart")
   await app.close()

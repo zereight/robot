@@ -9,6 +9,7 @@ import {
 } from "@robot/shared"
 import {
   createContext,
+  createEffect,
   createMemo,
   createResource,
   createSignal,
@@ -16,7 +17,7 @@ import {
   type ParentProps,
   useContext,
 } from "solid-js"
-import { createStore } from "solid-js/store"
+import { createStore, reconcile } from "solid-js/store"
 import { call } from "../lib/rpc.ts"
 
 export const loadUi = async () => {
@@ -38,11 +39,17 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
   }
 
   const server = createMemo(() => servers.find((s) => s.id === ui.serverId) ?? servers[0])
-  const [sections, { refetch: refetchPlaces }] = createResource(
+  // A store updated by id, so rows keep their elements (and focus) when the list reloads.
+  const [sectionStore, setSectionStore] = createStore<{ list: PlaceSection[] }>({ list: [] })
+  const [fetched, { refetch: refetchPlaces }] = createResource(
     () => server()?.id,
     (serverId) => call("places.list", { serverId }),
-    { initialValue: [] as readonly PlaceSection[] },
   )
+  createEffect(() => {
+    const next = fetched()
+    if (next) setSectionStore("list", reconcile([...next], { key: "id" }))
+  })
+  const sections = () => sectionStore.list
   const offPlaces = window.robot.on("places.changed", ({ serverId }) => {
     if (serverId === server()?.id) void refetchPlaces()
   })
@@ -53,6 +60,8 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     return id ? ui.places[id] : undefined
   })
   const narrow = () => width() < NARROW_WIDTH
+  /** The open settings section, or undefined when settings are closed. Not kept between runs. */
+  const [settingsSection, setSettingsSection] = createSignal<string>()
 
   return {
     ui,
@@ -62,6 +71,9 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     refetchPlaces,
     place,
     narrow,
+    settingsSection,
+    openSettings: (section = "general") => setSettingsSection(section),
+    closeSettings: () => setSettingsSection(undefined),
     /** The panel shows when the user wants it and the window is wide enough. */
     activityPanelVisible: () => ui.activityPanel && !narrow(),
     selectServer: (serverId: string) => update({ serverId }),

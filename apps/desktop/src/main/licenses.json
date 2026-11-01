@@ -25,6 +25,11 @@
     "license": "ISC"
   },
   {
+    "name": "marked",
+    "version": "18.1.2",
+    "license": "MIT"
+  },
+  {
     "name": "seroval",
     "version": "1.6.12",
     "license": "MIT"

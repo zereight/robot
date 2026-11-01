@@ -17,6 +17,7 @@
     "@robot/shared": "workspace:*",
     "effect": "^4.1.1",
     "lucide-solid": "^1.66.0",
+    "marked": "^18.1.2",
     "solid-js": "^1.9.18"
   },
   "devDependencies": {
