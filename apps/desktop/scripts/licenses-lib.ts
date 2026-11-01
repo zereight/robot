@@ -13,6 +13,8 @@ interface Manifest {
   license?: string | { type: string }
   dependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
+  os?: string[]
+  cpu?: string[]
 }
 
 const readManifest = (dir: string): Manifest =>
@@ -38,6 +40,9 @@ export const collectLicenses = (appDir: string): License[] => {
   const seen = new Map<string, License>()
   const visit = (dir: string, listed: boolean, walk = true) => {
     const manifest = readManifest(dir)
+    // Native builds for one platform carry the license of their parent package, which is listed.
+    // Leaving them out keeps the list the same on every platform.
+    if (manifest.os || manifest.cpu) return
     const key = `${manifest.name}@${manifest.version}`
     if (seen.has(key)) return
     const license =

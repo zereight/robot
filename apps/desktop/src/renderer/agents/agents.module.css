@@ -160,6 +160,15 @@
   color: var(--c-text-muted);
   font-size: 0.85rem;
   white-space: nowrap;
+  border: 0;
+  background: transparent;
+  padding: 4px 6px;
+  border-radius: var(--radius-s);
+}
+
+.headerModel:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
 }
 
 .start {

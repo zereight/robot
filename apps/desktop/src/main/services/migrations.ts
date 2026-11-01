@@ -44,4 +44,13 @@ export const migrations: readonly string[] = [
   );
   CREATE UNIQUE INDEX agent_name ON agent (server_id, name_key);
   `,
+  `
+  CREATE TABLE provider_account (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  `,
 ]

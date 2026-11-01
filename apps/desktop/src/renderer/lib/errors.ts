@@ -1,25 +1,20 @@
-import type { MessageKey } from "@robot/shared"
+import { catalogues, type MessageKey, type MessageParams } from "@robot/shared"
 import { RpcFailure } from "./rpc.ts"
 
-/** The translation key for an error from the main process. */
-export const errorKey = (error: unknown): MessageKey => {
-  if (error instanceof RpcFailure) {
-    const key = `error.${error.error.code}`
-    return (key in knownErrors ? key : "error.unknown") as MessageKey
-  }
-  return "error.unknown"
+export interface ErrorText {
+  readonly key: MessageKey
+  readonly params?: MessageParams
 }
 
-const knownErrors: Record<string, true> = Object.fromEntries(
-  [
-    "agent_name_taken",
-    "agent_not_found",
-    "agent_working",
-    "agent_not_archived",
-    "face_image_invalid",
-    "face_image_too_large",
-    "workspace_failed",
-    "trash_failed",
-    "invalid_input",
-  ].map((code) => [`error.${code}`, true]),
-)
+/** The translation key and values for an error from the main process. */
+export const describeError = (error: unknown): ErrorText => {
+  if (error instanceof RpcFailure) {
+    const key = `error.${error.error.code}`
+    if (key in catalogues.en)
+      return { key: key as MessageKey, params: { detail: error.error.message } }
+  }
+  return { key: "error.unknown" }
+}
+
+/** Only the key. For messages that take no values. */
+export const errorKey = (error: unknown): MessageKey => describeError(error).key

@@ -18,7 +18,7 @@ const createAgentsState = () => {
     { initialValue: [] as readonly Agent[] },
   )
   const off = window.robot.on("agents.changed", ({ serverId }) => {
-    if (serverId === ui.server()?.id) void refetch()
+    if (serverId === "*" || serverId === ui.server()?.id) void refetch()
   })
   onCleanup(off)
   const byId = createMemo(() => new Map(agents().map((a) => [a.id, a])))
