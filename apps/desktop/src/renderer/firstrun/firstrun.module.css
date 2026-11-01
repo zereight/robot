@@ -1,0 +1,64 @@
+.top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.step {
+  font-size: 0.85rem;
+  color: var(--c-text-muted);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: min(480px, 80vw);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.section h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.section p {
+  color: var(--c-text-muted);
+  margin: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ok {
+  color: var(--c-success);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spacer {
+  flex: 1;
+}

@@ -3,9 +3,15 @@ import { Portal } from "solid-js/web"
 import styles from "../shell/shell.module.css"
 import { useClosing } from "./Presence.tsx"
 
-/** A modal box. Escape and a click outside close it. */
+/** A modal box. Escape and a click outside close it, unless it is not dismissible. */
 export const Dialog = (
-  props: ParentProps<{ label: string; onClose: () => void; testId?: string }>,
+  props: ParentProps<{
+    label: string
+    onClose: () => void
+    testId?: string
+    /** False keeps the box open on Escape and on a click outside. */
+    dismissible?: boolean
+  }>,
 ) => {
   let box: HTMLDivElement | undefined
   const closing = useClosing()
@@ -13,7 +19,7 @@ export const Dialog = (
     const previous = document.activeElement as HTMLElement | null
     box?.querySelector<HTMLElement>("button, input, textarea, select")?.focus()
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !closing()) {
+      if (event.key === "Escape" && !closing() && props.dismissible !== false) {
         event.stopPropagation()
         props.onClose()
       }
@@ -29,7 +35,9 @@ export const Dialog = (
       <div
         class={styles.dialogBackdrop}
         data-closing={closing()}
-        onPointerDown={(e) => e.target === e.currentTarget && props.onClose()}
+        onPointerDown={(e) =>
+          e.target === e.currentTarget && props.dismissible !== false && props.onClose()
+        }
       >
         <div
           ref={box}

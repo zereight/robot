@@ -12,6 +12,7 @@ import type { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { UiStore } from "./services/UiStore.ts"
+import { Usage } from "./services/Usage.ts"
 
 export interface AppLayerOptions {
   readonly platform: PlatformService
@@ -36,7 +37,9 @@ export const appLayer = (options: AppLayerOptions) => {
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
   const providers = Providers.layer.pipe(Layer.provideMerge(stores))
-  const agents = Layer.mergeAll(Agents.layer, Chat.layer).pipe(Layer.provideMerge(providers))
+  const agents = Layer.mergeAll(Agents.layer, Chat.layer, Usage.layer).pipe(
+    Layer.provideMerge(providers),
+  )
   return Places.layer.pipe(Layer.provideMerge(agents))
 }
 

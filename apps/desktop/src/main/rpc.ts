@@ -11,6 +11,7 @@ import {
   type RpcResult,
   SettingsPatch,
   UiStatePatch,
+  USAGE_RANGES,
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import { ipcMain } from "electron"
@@ -25,6 +26,7 @@ import { Providers } from "./services/Providers.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { UiStore } from "./services/UiStore.ts"
+import { Usage } from "./services/Usage.ts"
 
 export type Services = AppServices
 
@@ -170,6 +172,15 @@ export const handlers: Handlers = {
   "providers.models": (input) =>
     decode(ByAccount)(input).pipe(
       Effect.flatMap(({ accountId }) => Providers.use((p) => p.models(accountId))),
+    ),
+  "usage.summary": (input) =>
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        days: Schema.Literals(USAGE_RANGES),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ serverId, days }) => Usage.use((u) => u.summary(serverId, days))),
     ),
   "chat.history": (input) =>
     decode(ByAgent)(input).pipe(
