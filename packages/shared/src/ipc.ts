@@ -15,6 +15,13 @@ import type { Task, TaskDetail } from "./task.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
+import type {
+  Workflow,
+  WorkflowInput,
+  WorkflowPatch,
+  WorkflowRun,
+  WorkflowRunDetail,
+} from "./workflows.ts"
 
 /** Information about the running app. */
 export interface AppInfo {
@@ -113,6 +120,18 @@ export interface RpcMethods {
     input: { serverId: string; from: number; to: number }
     output: readonly RoutineEntry[]
   }
+  "workflows.list": { input: { serverId: string }; output: readonly Workflow[] }
+  "workflows.create": { input: WorkflowInput; output: Workflow }
+  "workflows.update": { input: { id: string; patch: WorkflowPatch }; output: Workflow }
+  "workflows.delete": { input: { id: string }; output: undefined }
+  "workflows.run": { input: { id: string; triggerText?: string }; output: WorkflowRun }
+  "workflows.stop": { input: { runId: string }; output: undefined }
+  "workflows.approve": {
+    input: { runId: string; stepId: string; approved: boolean }
+    output: undefined
+  }
+  "workflows.runs": { input: { workflowId: string }; output: readonly WorkflowRun[] }
+  "workflows.runDetail": { input: { runId: string }; output: WorkflowRunDetail }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
@@ -144,6 +163,8 @@ export interface RpcEvents {
   "memory.changed": { agentId: string }
   "browser.changed": { agentId: string }
   "routines.changed": { serverId: string }
+  "workflows.changed": { serverId: string }
+  "workflows.run": { runId: string }
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }
   "channel.message": ChannelMessage

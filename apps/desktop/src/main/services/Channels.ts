@@ -49,6 +49,10 @@ export interface ChannelsService {
   send(channelId: string, text: string): Effect.Effect<{ awaiting: boolean }, AppError>
   assign(channelId: string, messageId: string, agentId: string): Effect.Effect<void, AppError>
   stopAll(channelId: string): Effect.Effect<void>
+  /** Puts a note in a channel, as a user message. It starts no job. */
+  post(channelId: string, text: string): Effect.Effect<void, AppError>
+  /** Calls `handler` for each message that the user sends to a channel. */
+  onUserMessage(handler: (channelId: string, text: string) => void): void
   /** A routine run: the agent answers the prompt in the channel. The task belongs to the routine. */
   runRoutine(
     channelId: string,
@@ -825,6 +829,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         placesChanged(row.server_id)
       })
 
+      const messageHandlers: ((channelId: string, text: string) => void)[] = []
+      const post = (channelId: string, text: string) =>
+        Effect.suspend(() => {
+          const channel = channelRow(channelId)
+          if (!channel) return Effect.fail(new AppError({ code: "channel_not_found" }))
+          insertUserMessage(channelId, text, false)
+          placesChanged(channel.server_id)
+          return Effect.void
+        })
+
       const send = Effect.fn("Channels.send")(function* (channelId: string, text: string) {
         const channel = channelRow(channelId)
         if (!channel) return yield* new AppError({ code: "channel_not_found" })
@@ -841,6 +855,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const awaiting = mentioned.length === 0 && lead === null
         insertUserMessage(channelId, value, awaiting)
         placesChanged(channel.server_id)
+        for (const handler of messageHandlers) handler(channelId, value)
         if (awaiting) return { awaiting: true }
         if (mentioned.length > 0) {
           for (const name of mentioned) {
@@ -936,6 +951,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         send,
         assign,
         stopAll,
+        post,
+        onUserMessage: (handler) => {
+          messageHandlers.push(handler)
+        },
         runRoutine,
         activity,
         markRead: (channelId) =>

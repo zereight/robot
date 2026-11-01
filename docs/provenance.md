@@ -21,3 +21,7 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-01 | S8: tasks: one task per agent turn, one task at a time per agent, stop, retry, restart rule, tasks page | Implementer | 005, 003 |
 | 2026-11-01 | S9: channels: create and edit, lead, @mentions, split jobs into parts, chips, summary, Now panel with plan steps, stop all | Implementer | 004, 005 |
 | 2026-11-01 | S10: agent tools (files, shell, search, fetch, ask), permission levels, approval and question cards, memory | Implementer | 003, 007, 008 |
+| 2026-11-01 | S11: browser tool, one window per agent, take control and give back, Stop closes it | Implementer | 007 |
+| 2026-11-01 | S12: tools in channel replies, with approval and question cards | Implementer | 004, 007 |
+| 2026-11-01 | S13: routines: schedules, missed and skipped runs, run now, calendar | Implementer | 009, 005 |
+| 2026-11-01 | S14: workflows: canvas editor, run engine, triggers, approvals, run history | Implementer | 010, 005 |
