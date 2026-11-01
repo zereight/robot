@@ -1,0 +1,164 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar > :last-child {
+  margin-inline-start: auto;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+}
+
+.card[data-enabled="false"] {
+  opacity: 0.6;
+}
+
+.cardMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hint {
+  color: var(--c-text-muted);
+  font-size: 0.8rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: min(520px, 90vw);
+  max-height: 80vh;
+  overflow: auto;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-main);
+  color: var(--c-text);
+  padding: 6px 8px;
+}
+
+.days {
+  display: flex;
+  gap: 4px;
+}
+
+.day {
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-main);
+  color: var(--c-text-muted);
+  padding: 4px 10px;
+}
+
+.day[aria-pressed="true"] {
+  border-color: var(--c-accent);
+  background: var(--c-selected);
+  color: var(--c-text);
+}
+
+.list {
+  margin: 0;
+  padding-inline-start: 18px;
+}
+
+.error {
+  color: var(--c-danger);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.dayCell {
+  min-height: 90px;
+  padding: 4px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  font-size: 0.75rem;
+  overflow: hidden;
+}
+
+.calendar[data-mode="month"] .dayCell {
+  min-height: 70px;
+}
+
+.dayCell[data-today="true"] {
+  border-color: var(--c-accent);
+}
+
+.dayHead {
+  color: var(--c-text-muted);
+  margin-bottom: 2px;
+}
+
+.entry {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--c-selected);
+  margin-bottom: 2px;
+}
+
+.entry[data-state="done"] {
+  background: color-mix(in srgb, var(--c-accent) 20%, transparent);
+}
+
+.entry[data-state="failed"],
+.entry[data-state="missed"] {
+  background: color-mix(in srgb, var(--c-danger) 20%, transparent);
+}
+
+.entry[data-state="planned"] {
+  background: transparent;
+  border: 1px dashed var(--c-border);
+}
+
+.entryState {
+  color: var(--c-text-muted);
+}
