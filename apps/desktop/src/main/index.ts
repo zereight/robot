@@ -50,6 +50,11 @@ const createWindow = () => {
     },
   })
   win.once("ready-to-show", () => win.show())
+  // The window never navigates away from the app and never opens other windows.
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
+  win.webContents.on("will-navigate", (event, url) => {
+    if (url !== win.webContents.getURL()) event.preventDefault()
+  })
   const devUrl = process.env.ELECTRON_RENDERER_URL
   if (devUrl) void win.loadURL(devUrl)
   else void win.loadFile(join(import.meta.dirname, "../renderer/index.html"))

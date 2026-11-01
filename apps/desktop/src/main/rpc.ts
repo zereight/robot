@@ -1,7 +1,9 @@
 import {
   AgentCreate,
   AgentPatch,
+  ChatSend,
   INVOKE_CHANNEL,
+  MESSAGE_MAX,
   ProviderConnect,
   type RpcInput,
   type RpcMethod,
@@ -15,6 +17,7 @@ import { ipcMain } from "electron"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
 import { Agents } from "./services/Agents.ts"
+import { Chat } from "./services/Chat.ts"
 import { AppError } from "./services/errors.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
@@ -41,6 +44,9 @@ const decode =
 
 const ById = Schema.Struct({ id: Schema.String })
 const ByAccount = Schema.Struct({ accountId: Schema.String })
+const ByAgent = Schema.Struct({ agentId: Schema.String })
+const MessageText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MESSAGE_MAX))
+const done = Effect.as(undefined)
 
 const applySystemSettings = Effect.fn("applySystemSettings")(function* (
   patch: typeof SettingsPatch.Type,
@@ -64,6 +70,20 @@ export const handlers: Handlers = {
       }
     }),
   "app.licenses": () => Effect.succeed(licenses),
+  "app.copy": (input) =>
+    decode(Schema.Struct({ text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ text }) => Platform.use((p) => Effect.sync(() => p.copyText(text)))),
+      done,
+    ),
+  "app.openExternal": (input) =>
+    decode(Schema.Struct({ url: Schema.String }))(input).pipe(
+      Effect.flatMap(({ url }) =>
+        /^(https?:|mailto:)/i.test(url)
+          ? Platform.use((p) => Effect.promise(() => p.openExternal(url)))
+          : Effect.fail(new AppError({ code: "invalid_input" })),
+      ),
+      done,
+    ),
   "settings.get": () => SettingsStore.use((s) => s.get),
   "settings.update": (input) =>
     Effect.gen(function* () {
@@ -150,6 +170,50 @@ export const handlers: Handlers = {
   "providers.models": (input) =>
     decode(ByAccount)(input).pipe(
       Effect.flatMap(({ accountId }) => Providers.use((p) => p.models(accountId))),
+    ),
+  "chat.history": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) => Chat.use((c) => c.history(agentId))),
+    ),
+  "chat.send": (input) =>
+    decode(ChatSend)(input).pipe(Effect.flatMap((data) => Chat.use((c) => c.send(data)))),
+  "chat.stop": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) => Chat.use((c) => c.stop(agentId))),
+      done,
+    ),
+  "chat.retry": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, messageId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, messageId }) => Chat.use((c) => c.retry(agentId, messageId))),
+      done,
+    ),
+  "chat.edit": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, messageId: Schema.String, text: MessageText }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ agentId, messageId, text }) =>
+        Chat.use((c) => c.edit(agentId, messageId, text)),
+      ),
+      done,
+    ),
+  "chat.queue.update": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, itemId: Schema.String, text: MessageText }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ agentId, itemId, text }) =>
+        Chat.use((c) => c.updateQueued(agentId, itemId, text)),
+      ),
+      done,
+    ),
+  "chat.queue.remove": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, itemId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, itemId }) => Chat.use((c) => c.removeQueued(agentId, itemId))),
+      done,
+    ),
+  "chat.markRead": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) => Chat.use((c) => c.markRead(agentId))),
+      done,
     ),
 }
 

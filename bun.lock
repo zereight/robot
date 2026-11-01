@@ -18,6 +18,7 @@
         "@robot/shared": "workspace:*",
         "effect": "^4.1.1",
         "lucide-solid": "^1.66.0",
+        "marked": "^18.1.2",
         "solid-js": "^1.9.18",
       },
       "devDependencies": {
@@ -312,6 +313,8 @@
     "lucide-solid": ["lucide-solid@1.66.0", "", { "peerDependencies": { "solid-js": "^1.4.7" } }, "sha512-4XTuWxPFdUz2ADXgkqxI0qOm6LdNQimEax6vwkwWMaBlIR5DYnUcYZkaTieedSpnzsFGPn5nEma1KQfd7/hMlQ=="],
 
     "magic-string": ["magic-string@1.4.5", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.6.0" } }, "sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w=="],
+
+    "marked": ["marked@18.1.2", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-DfOnvLAQ6WYeWxWO1u4RyFOeqyHup6dks5PPqnoFiooU7ipRvidO/2j8plhAHIiZg574E9ZlzSjUiPMLAzFkgg=="],
 
     "merge-anything": ["merge-anything@5.1.7", "", { "dependencies": { "is-what": "^4.1.8" } }, "sha512-eRtbOb1N5iyH0tkQDAoQ4Ipsp/5qSR79Dzrz8hEPxRX10RWWR/iQXdoKmBSRCThY1Fh5EhISDtpSc93fpxUniQ=="],
 

@@ -1,4 +1,5 @@
 import type { Agent, AgentCreate, AgentPatch } from "./agents.ts"
+import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
 import type { ModelInfo, ProviderAccount, ProviderConnect } from "./providers.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
@@ -26,6 +27,9 @@ export interface LicenseEntry {
 export interface RpcMethods {
   "app.info": { input: undefined; output: AppInfo }
   "app.licenses": { input: undefined; output: readonly LicenseEntry[] }
+  "app.copy": { input: { text: string }; output: undefined }
+  /** Opens an http, https or mailto link in the system browser. */
+  "app.openExternal": { input: { url: string }; output: undefined }
   "settings.get": { input: undefined; output: Settings }
   "settings.update": { input: SettingsPatch; output: Settings }
   "settings.pickWorkspaceRoot": { input: undefined; output: Settings }
@@ -49,6 +53,20 @@ export interface RpcMethods {
   "providers.disconnect": { input: { accountId: string }; output: undefined }
   "providers.remove": { input: { accountId: string }; output: undefined }
   "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
+  "chat.history": {
+    input: { agentId: string }
+    output: { messages: readonly ChatMessage[]; queue: readonly QueuedMessage[] }
+  }
+  "chat.send": { input: ChatSend; output: { queued: boolean } }
+  "chat.stop": { input: { agentId: string }; output: undefined }
+  "chat.retry": { input: { agentId: string; messageId: string }; output: undefined }
+  "chat.edit": { input: { agentId: string; messageId: string; text: string }; output: undefined }
+  "chat.queue.update": {
+    input: { agentId: string; itemId: string; text: string }
+    output: undefined
+  }
+  "chat.queue.remove": { input: { agentId: string; itemId: string }; output: undefined }
+  "chat.markRead": { input: { agentId: string }; output: undefined }
 }
 
 /** Events that the main process pushes to the renderer. */
@@ -58,6 +76,10 @@ export interface RpcEvents {
   /** `serverId` is "*" when agents of every server may have changed. */
   "agents.changed": { serverId: string }
   "providers.changed": Record<string, never>
+  /** A new or changed message. While a reply streams, this comes many times. */
+  "chat.message": ChatMessage
+  "chat.removed": { agentId: string; messageId: string }
+  "chat.queue": { agentId: string; queue: readonly QueuedMessage[] }
 }
 
 export type RpcMethod = keyof RpcMethods

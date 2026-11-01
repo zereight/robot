@@ -1,6 +1,6 @@
 import type { MessageKey, Page, Place, PlaceRef, SectionId } from "@robot/shared"
 import { PanelRight, PanelRightClose } from "lucide-solid"
-import { createMemo, createSignal, type JSX, Match, Show, Switch, untrack } from "solid-js"
+import { createMemo, type JSX, Match, Show, Switch, untrack } from "solid-js"
 import { HelpPage } from "../pages/HelpPage.tsx"
 import { SettingsPage, type SettingsSection } from "../settings/SettingsPage.tsx"
 import { useApp } from "../state/app.tsx"
@@ -39,7 +39,6 @@ const Empty = (props: { title: string; body: string; testId: string }) => (
 export const Shell = (props: ShellProps) => {
   const { t } = useApp()
   const ui = useUi()
-  const [settingsOpen, setSettingsOpen] = createSignal(false)
 
   // A string key, so the view is made again only when another place opens or this one goes.
   const openKey = createMemo(() => {
@@ -75,7 +74,7 @@ export const Shell = (props: ShellProps) => {
       style={{ "--list-width": `${ui.ui.placeListWidth}px` }}
       data-testid="app-root"
     >
-      <ServerRail onOpenSettings={() => setSettingsOpen(true)} />
+      <ServerRail onOpenSettings={() => ui.openSettings()} />
       <Show
         when={ui.server()}
         fallback={
@@ -103,6 +102,7 @@ export const Shell = (props: ShellProps) => {
               <div class={styles.body}>
                 <Show
                   when={view()}
+                  keyed
                   fallback={
                     <Empty
                       title={t("main.noPlace.title")}
@@ -111,7 +111,7 @@ export const Shell = (props: ShellProps) => {
                     />
                   }
                 >
-                  {(v) => v().body}
+                  {(v) => v.body}
                 </Show>
               </div>
             </Match>
@@ -140,11 +140,14 @@ export const Shell = (props: ShellProps) => {
           </aside>
         </Show>
       </Show>
-      <Show when={settingsOpen()}>
-        <SettingsPage
-          onClose={() => setSettingsOpen(false)}
-          {...(props.settingsSections ? { extra: props.settingsSections } : {})}
-        />
+      <Show when={ui.settingsSection()} keyed>
+        {(section) => (
+          <SettingsPage
+            initial={section as SettingsSection}
+            onClose={ui.closeSettings}
+            {...(props.settingsSections ? { extra: props.settingsSections } : {})}
+          />
+        )}
       </Show>
     </div>
   )

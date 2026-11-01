@@ -1,20 +1,21 @@
 import type { Agent, AgentModel } from "@robot/shared"
 import { createSignal, Show } from "solid-js"
+import { ChatView } from "../chat/ChatView.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import type { PlaceView } from "../shell/Shell.tsx"
 import { useApp } from "../state/app.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { AgentProfileDialog } from "./AgentDialogs.tsx"
 import styles from "./agents.module.css"
 import { Face } from "./Face.tsx"
 
-const Header = (props: { agent: Agent }) => {
+const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
   const { t } = useApp()
   const [open, setOpen] = createSignal(false)
-  const [picking, setPicking] = createSignal(false)
   return (
     <>
       <button
@@ -31,7 +32,7 @@ const Header = (props: { agent: Agent }) => {
         type="button"
         class={styles.headerModel}
         aria-label={t("model.choose")}
-        onClick={() => setPicking(true)}
+        onClick={() => props.setPicking(true)}
         data-testid="chat-header-model"
       >
         {props.agent.model?.model ?? t("agents.noModel")}
@@ -39,8 +40,8 @@ const Header = (props: { agent: Agent }) => {
       <Show when={open()}>
         <AgentProfileDialog agent={props.agent} onClose={() => setOpen(false)} />
       </Show>
-      <Show when={picking()}>
-        <ModelDialog agent={props.agent} onClose={() => setPicking(false)} />
+      <Show when={props.picking}>
+        <ModelDialog agent={props.agent} onClose={() => props.setPicking(false)} />
       </Show>
     </>
   )
@@ -96,8 +97,25 @@ const Start = (props: { agent: Agent }) => {
 export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | undefined => {
   const current = agent()
   if (!current) return undefined
+  const ui = useUi()
+  const [picking, setPicking] = createSignal(false)
   return {
-    header: <Show when={agent()}>{(a) => <Header agent={a()} />}</Show>,
-    body: <Show when={agent()}>{(a) => <Start agent={a()} />}</Show>,
+    header: (
+      <Show when={agent()}>
+        {(a) => <Header agent={a()} picking={picking()} setPicking={setPicking} />}
+      </Show>
+    ),
+    body: (
+      <Show when={agent()}>
+        {(a) => (
+          <ChatView
+            agent={a()}
+            start={<Start agent={a()} />}
+            onConnect={() => ui.openSettings("providers")}
+            onChooseModel={() => setPicking(true)}
+          />
+        )}
+      </Show>
+    ),
   }
 }

@@ -53,4 +53,25 @@ export const migrations: readonly string[] = [
     created_at INTEGER NOT NULL
   );
   `,
+  `
+  CREATE TABLE message (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    author TEXT NOT NULL,
+    parts TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_code TEXT,
+    error_detail TEXT,
+    error_resets_at INTEGER,
+    reply_to TEXT,
+    model TEXT,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    finished_at INTEGER,
+    edited_at INTEGER
+  );
+  CREATE INDEX message_agent ON message (agent_id, created_at);
+  ALTER TABLE agent ADD COLUMN last_read_at INTEGER NOT NULL DEFAULT 0;
+  `,
 ]
