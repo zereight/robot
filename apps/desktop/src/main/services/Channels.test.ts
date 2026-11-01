@@ -1,4 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import type { ChannelMessage } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
@@ -35,7 +37,35 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as { messages: { role: string; content: string }[] }
+    const body = (await req.json()) as {
+      messages: { role: string; content: string }[]
+      tools?: unknown[]
+    }
+    const lastMessage = body.messages.at(-1)
+    if (lastMessage?.role === "tool")
+      return sse([
+        { delay: 0, data: delta(`Tool result: ${lastMessage.content}`) },
+        { delay: 0, data: "[DONE]" },
+      ])
+    const call = /TOOL (\w+) (\{.*\})/.exec(lastMessage?.content ?? "")
+    if (call && body.tools)
+      return sse([
+        {
+          delay: 0,
+          data: {
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    { index: 0, id: "call_1", function: { name: call[1], arguments: call[2] } },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        { delay: 0, data: "[DONE]" },
+      ])
     const last = (body.messages.at(-1)?.content ?? "").split("\n").at(-1) ?? ""
     if (last.includes("FAIL")) return Response.json({ error: { message: "boom" } }, { status: 500 })
     let reply = `Echo: ${last}`
@@ -276,5 +306,33 @@ describe("channel settings", () => {
     expect(updated).toMatchObject({ topic: "New", leadId: null, memberIds: [s.bo.id, s.cy.id] })
     await s.run(Channels.use((c) => c.remove(s.channel.id)))
     expect(await s.run(Channels.use((c) => c.list(s.local.id)))).toEqual([])
+  })
+})
+
+describe("tools in channels", () => {
+  test("a member writes a file in its workspace and the card shows in the channel", async () => {
+    const s = await setup({ lead: false })
+    await s.send(`@Bo TOOL write_file ${JSON.stringify({ path: "out.txt", content: "hi" })}`)
+    await s.idle()
+    const list = await s.history()
+    const reply = list.find((m) => m.author === "agent")
+    const part = reply?.parts.find((p) => p.kind === "tool")
+    expect(part).toMatchObject({ name: "write_file", state: "done" })
+    expect(readFileSync(join(s.bo.workspace, "out.txt"), "utf8")).toBe("hi")
+  })
+
+  test("a risky step waits for the user; the task shows waiting; stop ends it", async () => {
+    const s = await setup({ lead: false })
+    await s.send(`@Bo TOOL run_command ${JSON.stringify({ command: "sudo ls" })}`)
+    await until(async () => (await s.tasks()).some((t) => t.state === "waiting"))
+    const waiting = (await s.history())
+      .find((m) => m.author === "agent")
+      ?.parts.find((p) => p.kind === "tool")
+    expect(waiting).toMatchObject({ state: "waiting", ask: { kind: "approval" } })
+    await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
+    await s.idle()
+    const ended = (await s.history()).find((m) => m.author === "agent")
+    expect(ended?.status).toBe("stopped")
+    expect(ended?.parts.find((p) => p.kind === "tool")).toMatchObject({ state: "failed" })
   })
 })
