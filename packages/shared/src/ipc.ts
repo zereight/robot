@@ -99,6 +99,10 @@ export interface RpcMethods {
     input: { agentId: string; callId: string; answer: ApprovalAnswer | string }
     output: undefined
   }
+  "browser.state": { input: { agentId: string }; output: { open: boolean; control: boolean } }
+  /** The user takes the controls of the agent's browser, or gives them back. */
+  "browser.control": { input: { agentId: string; control: boolean }; output: undefined }
+  "browser.close": { input: { agentId: string }; output: undefined }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
@@ -128,6 +132,7 @@ export interface RpcEvents {
   "providers.changed": Record<string, never>
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
+  "browser.changed": { agentId: string }
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }
   "channel.message": ChannelMessage
