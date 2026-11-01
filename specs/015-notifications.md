@@ -11,6 +11,10 @@ The user knows when an agent needs them or finishes, without watching the window
 - Each kind can be turned off. A server or a channel can be muted for 1 hour, 8 hours, 1 day, or
   until turned back on.
 - Clicking a notification opens the place and scrolls to the message.
+- A computer that has a linked server open (012) shows the same kinds for that server while the
+  link is online. The notification names the server. Mutes work per server, so the user can mute
+  one computer and not the other. A request that a client already answered does not notify again
+  on other devices.
 
 ## Status island (macOS, optional)
 

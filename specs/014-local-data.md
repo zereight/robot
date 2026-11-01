@@ -9,13 +9,17 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - One local database file holds servers, agents, conversations, tasks, routines, workflows,
   memory and settings. Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
-- The database is the source of truth. Nothing remote is a cache of it.
+- The database is the source of truth. Nothing remote is a cache of it. A device that opens a
+  linked server (012) keeps a local cache of recent messages for offline reading. The cache is
+  deleted when the link ends and is never exported.
 - The app never sends conversation content, files, or commands anywhere except the model provider
-  an agent uses and the pages an agent visits.
+  an agent uses, the pages an agent visits, and the devices that the user linked (012). Traffic
+  to a linked device is end-to-end encrypted.
 - No analytics that contain content. Crash reports, if the user turns them on, contain no
   messages, paths with user names, or secrets.
 - Secrets (keys, tokens) are in the system keychain. Logs and exports redact anything that looks
-  like a secret.
+  like a secret. The keys of device links are secrets. A linked device never receives provider
+  keys.
 
 ## Export and backup
 

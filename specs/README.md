@@ -19,7 +19,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 009 | [Routines: scheduled jobs, calendar, missed runs](009-routines.md) | Draft |
 | 010 | [Workflows: a graph of steps and triggers](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, read and send, notifications](011-phone-app.md) | Draft |
-| 012 | [Desktop-to-phone link: messages, identity, offline behaviour](012-desktop-phone-link.md) | Draft |
+| 012 | [Device link: pair phones and computers, messages, identity, offline behaviour](012-device-link.md) | Draft |
 | 013 | [Settings, themes and languages (English, Korean)](013-settings.md) | Draft |
 | 014 | [Local data, privacy, secrets and export](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
@@ -32,7 +32,8 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M2 | 004, 005 | Channels, split work, tasks page |
 | M3 | 007, 008 | Workspace tools, approvals, browser, memory |
 | M4 | 009, 010 | Routines and workflows |
-| M5 | 011, 012 | Phone app and link |
+| M5a | 012, 001, 013, 014, 015 | Link between computers, on one network or through a VPN |
+| M5b | 011, 012 | Phone app that pairs with one or more computers |
 | M6 | 015 | Notifications and status island |
 
 ## Template

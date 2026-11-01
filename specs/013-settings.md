@@ -11,7 +11,8 @@ The user sets the app up the way they like in one place.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
-- **Devices**: pairing and paired phones, see 012.
+- **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
+  that can open this computer, and the computers this computer can open, see 012.
 - **Notifications**: see 015.
 - **Archive**: archived agents and channels with restore and delete.
 - **Data**: open data folder, export, see 014.
@@ -22,7 +23,7 @@ The user sets the app up the way they like in one place.
 - Every visible string comes from a translation catalogue with English and Korean. Korean uses
   polite informal speech.
 - Changes apply at once, without a restart.
-- Settings are local to the computer.
+- Settings are local to the computer. A linked device never changes them.
 
 ## Acceptance
 
