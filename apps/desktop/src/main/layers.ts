@@ -3,6 +3,7 @@ import { Layer } from "effect"
 import { Activity } from "./services/Activity.ts"
 import { Agents } from "./services/Agents.ts"
 import { Chat } from "./services/Chat.ts"
+import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Places } from "./services/Places.ts"
@@ -40,7 +41,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const agents = Layer.mergeAll(Agents.layer, Chat.layer, Usage.layer).pipe(
     Layer.provideMerge(providers),
   )
-  return Places.layer.pipe(Layer.provideMerge(agents))
+  const places = Places.layer.pipe(Layer.provideMerge(agents))
+  return Data.layer.pipe(Layer.provideMerge(places))
 }
 
 export type AppServices = Layer.Success<ReturnType<typeof appLayer>>

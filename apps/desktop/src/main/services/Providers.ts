@@ -27,7 +27,7 @@ export interface ProvidersService {
   isConnected(accountId: string): boolean
 }
 
-const secretKey = (accountId: string) => `provider:${accountId}`
+export const secretKey = (accountId: string) => `provider:${accountId}`
 
 export const toAppError = (error: unknown) =>
   error instanceof ProviderFailure

@@ -54,6 +54,12 @@ export interface RpcMethods {
   "providers.disconnect": { input: { accountId: string }; output: undefined }
   "providers.remove": { input: { accountId: string }; output: undefined }
   "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
+  /** Opens the system file dialog. Returns the chosen full paths; none when cancelled. */
+  "files.pick": { input: undefined; output: readonly string[] }
+  /** Asks where to save, then writes the archive. `path` is null when cancelled. */
+  "data.export": { input: undefined; output: { path: string | null; files: number } }
+  /** Asks for an archive, then restores it into an empty app. `null` when cancelled. */
+  "data.restore": { input: undefined; output: { agents: number; messages: number } | null }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
@@ -105,6 +111,8 @@ export interface RpcError {
 /** The bridge that the preload script exposes on `window.robot`. */
 export interface RobotBridge {
   invoke<M extends RpcMethod>(method: M, input: RpcInput<M>): Promise<RpcResult<RpcOutput<M>>>
+  /** The full path of a file that the user dropped on the window. Empty when unknown. */
+  pathForFile(file: File): string
   on<E extends RpcEvent>(event: E, listener: (payload: RpcEvents[E]) => void): () => void
 }
 
