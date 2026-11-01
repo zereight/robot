@@ -1,4 +1,5 @@
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 
 /** Information about the running app. */
 export interface AppInfo {
@@ -27,11 +28,16 @@ export interface RpcMethods {
   "settings.update": { input: SettingsPatch; output: Settings }
   "settings.pickWorkspaceRoot": { input: undefined; output: Settings }
   "data.openFolder": { input: undefined; output: undefined }
+  "servers.list": { input: undefined; output: readonly Server[] }
+  "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
+  "ui.get": { input: undefined; output: UiState }
+  "ui.update": { input: UiStatePatch; output: UiState }
 }
 
 /** Events that the main process pushes to the renderer. */
 export interface RpcEvents {
   "settings.changed": Settings
+  "places.changed": { serverId: string }
 }
 
 export type RpcMethod = keyof RpcMethods
