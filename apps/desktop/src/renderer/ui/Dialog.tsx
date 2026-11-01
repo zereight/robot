@@ -19,7 +19,11 @@ export const Dialog = (
   const closing = useClosing()
   onMount(() => {
     const previous = document.activeElement as HTMLElement | null
-    box?.querySelector<HTMLElement>("button, input, textarea, select")?.focus()
+    // A field that asks for focus gets it. Else the first control does.
+    const first =
+      box?.querySelector<HTMLElement>("[autofocus]") ??
+      box?.querySelector<HTMLElement>("button, input, textarea, select")
+    first?.focus()
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !closing() && props.dismissible !== false) {
         event.stopPropagation()

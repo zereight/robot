@@ -32,6 +32,8 @@ const knowledgeDir = (userData: string) => {
 const openKnowledge = async (page: Page) => {
   await page.getByTestId("chat-header-agent").click()
   await expect(page.getByTestId("agent-profile")).toBeVisible()
+  // The tabs do not take the focus from the name field.
+  await expect(page.getByTestId("agent-profile").getByTestId("agent-name")).toBeFocused()
   await page.getByTestId("profile-tabs").getByText("Knowledge").click()
   await expect(page.getByTestId("knowledge-page")).toBeVisible()
 }
