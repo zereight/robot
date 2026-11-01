@@ -54,7 +54,8 @@ export const shot = async (page: Page, name: string, options: { moving?: boolean
 export const resizeWindow = (app: ElectronApplication, width: number, height: number) =>
   app.evaluate(
     ({ BrowserWindow }, size) => {
-      const win = BrowserWindow.getAllWindows()[0]
+      // The island and browser windows are not the app window; it is the one that has the app title.
+      const win = BrowserWindow.getAllWindows().find((w) => w.getTitle() === "ROBot")
       win?.setContentSize(size.width, size.height)
     },
     { width, height },

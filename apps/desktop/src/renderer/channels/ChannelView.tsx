@@ -18,6 +18,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { focusMessage, setFocusMessage } from "../state/focus.ts"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ChannelDialog } from "./ChannelDialog.tsx"
@@ -156,6 +157,16 @@ export const ChannelView = (props: { channel: Channel }) => {
     queueMicrotask(() => setFlashId(id))
     setTimeout(() => setFlashId((cur) => (cur === id ? undefined : cur)), 1300)
   }
+
+  // A notification asked for a message: scroll to it when it is in the list.
+  createEffect(() => {
+    const id = focusMessage()
+    if (!id) return
+    setTimeout(() => {
+      jump(id)
+      setFocusMessage(undefined)
+    }, 120)
+  })
 
   const act = async (run: () => Promise<unknown>) => {
     setError(undefined)

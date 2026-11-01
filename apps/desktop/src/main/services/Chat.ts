@@ -7,6 +7,7 @@ import {
   type ChatMessage,
   type ChatSend,
   type FilePart,
+  islandSummary,
   type MessagePart,
   type MessageStatus,
   messageFiles,
@@ -25,6 +26,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Memory } from "./Memory.ts"
+import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Tasks } from "./Tasks.ts"
 import type { ToolContext } from "./Tools.ts"
@@ -188,6 +190,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const tasks = yield* Tasks
       const tools = yield* Tools
       const memory = yield* Memory
+      const notifier = yield* Notifier
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
@@ -388,6 +391,17 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             signal: controller.signal,
             onWaiting: (callId, ask) => {
               tasks.setWaiting(task.id, ask !== null)
+              if (ask)
+                notifier.attention({
+                  agentId,
+                  serverId: agent.server_id,
+                  channelId: null,
+                  callId,
+                  kind: ask.kind,
+                  summary: islandSummary(ask.kind === "approval" ? ask.summary : ask.question),
+                  target: { kind: "agent", id: agentId, messageId: reply.id },
+                })
+              else notifier.clearAttention(agentId, callId)
               changePart(callId, (p) => {
                 const { ask: _drop, ...rest } = p
                 return ask ? { ...rest, state: "waiting", ask } : { ...rest, state: "running" }
@@ -428,6 +442,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
+              notifier.clearAgent(agentId)
               // A step that did not finish cannot keep a running mark or a question card.
               for (const [i, part] of parts.entries()) {
                 if (part.kind !== "tool" || (part.state !== "running" && part.state !== "waiting"))
@@ -435,8 +450,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 const { ask: _ask, ...rest } = part
                 parts[i] = { ...rest, state: "failed" }
               }
-              if (Exit.isSuccess(exit)) save("done")
-              else if (Cause.hasInterruptsOnly(exit.cause)) save("stopped")
+              if (Exit.isSuccess(exit)) {
+                save("done")
+                notifier.notify({
+                  kind: "reply",
+                  serverId: agent.server_id,
+                  title: agent.name,
+                  body: messageText({ parts }),
+                  target: { kind: "agent", id: agentId, messageId: reply.id },
+                })
+              } else if (Cause.hasInterruptsOnly(exit.cause)) save("stopped")
               else {
                 const failure = Cause.squash(exit.cause)
                 if (failure instanceof ProviderFailure) {

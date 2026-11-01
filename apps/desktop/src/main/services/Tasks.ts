@@ -13,6 +13,7 @@ import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Notifier } from "./Notifier.ts"
 
 interface TaskRow {
   id: string
@@ -103,6 +104,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
     Effect.gen(function* () {
       const db = yield* Database
       const bus = yield* EventBus
+      const notifier = yield* Notifier
       const activity = yield* Activity
       const slots = new Map<string, Semaphore.Semaphore>()
       const stops = new Map<string, Deferred.Deferred<void>>()
@@ -154,6 +156,25 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           id,
         )
         changed(agentId)
+        if (state === "failed" && error?.code !== "app_stopped") {
+          const task = row(id)
+          const agent = db.get<{ server_id: string; name: string }>(
+            "SELECT server_id, name FROM agent WHERE id = ?",
+            agentId,
+          )
+          if (task && agent)
+            notifier.notify({
+              kind: task.source === "routine" ? "routine_failed" : "task_failed",
+              serverId: agent.server_id,
+              channelId: task.source === "channel" ? task.source_id : null,
+              title: agent.name,
+              body: task.label || task.prompt,
+              target:
+                task.source === "channel" && task.source_id
+                  ? { kind: "channel", id: task.source_id }
+                  : { kind: "agent", id: agentId },
+            })
+        }
         // The place list shows a working dot on a channel, and a channel shows its plan steps.
         const source = db.get<{ source: string; source_id: string | null }>(
           "SELECT source, source_id FROM task WHERE id = ?",
