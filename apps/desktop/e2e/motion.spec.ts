@@ -16,7 +16,10 @@ interface Seen {
   infinite: boolean
 }
 
-/** Records every animation and transition that starts, from inside the page. */
+/**
+ * Records every animation and transition that starts, from inside the page. The start events are
+ * heard as well as the frames, so a slow runner that skips frames does not hide a short motion.
+ */
 const watchMotion = (page: Page) =>
   page.evaluate(() => {
     const seen: Seen[] = []
@@ -36,9 +39,14 @@ const watchMotion = (page: Page) =>
           infinite: timing?.iterations === Number.POSITIVE_INFINITY,
         })
       }
-      requestAnimationFrame(record)
     }
-    record()
+    const loop = () => {
+      record()
+      requestAnimationFrame(loop)
+    }
+    window.addEventListener("animationstart", record, true)
+    window.addEventListener("transitionrun", record, true)
+    loop()
   })
 
 const seenMotion = (page: Page) =>

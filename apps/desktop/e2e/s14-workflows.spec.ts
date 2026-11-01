@@ -8,16 +8,31 @@ const center = async (locator: Locator) => {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 }
 
-/** Drags from the output handle of one node to the body of another. */
+/**
+ * Drags from the output handle of one node to the body of another. A real mouse drag can miss on a
+ * slow runner, so the drag is tried again until the number of edges grows.
+ */
 const connect = async (page: Page, from: number, to: number) => {
   const nodes = page.getByTestId("wf-node")
-  const start = await center(nodes.nth(from).locator("[data-handle=out]").first())
-  const end = await center(nodes.nth(to))
-  await page.mouse.move(start.x, start.y)
-  await page.mouse.down()
-  await page.mouse.move((start.x + end.x) / 2, (start.y + end.y) / 2, { steps: 4 })
-  await page.mouse.move(end.x, end.y, { steps: 4 })
-  await page.mouse.up()
+  const edges = page.getByTestId("wf-edge")
+  const count = await edges.count()
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const start = await center(nodes.nth(from).locator("[data-handle=out]").first())
+    const end = await center(nodes.nth(to))
+    await page.mouse.move(start.x, start.y)
+    await page.mouse.down()
+    await page.mouse.move((start.x + end.x) / 2, (start.y + end.y) / 2, { steps: 4 })
+    await page.mouse.move(end.x, end.y, { steps: 4 })
+    await page.mouse.up()
+    if (attempt === 3) break
+    try {
+      await expect(edges).toHaveCount(count + 1, { timeout: 1500 })
+      return
+    } catch {
+      // Try the drag again.
+    }
+  }
+  await expect(edges).toHaveCount(count + 1)
 }
 
 test("workflows: build, connect, zoom and pan, run, history, approval and read-only", async () => {

@@ -98,8 +98,12 @@ export const setMainWindow = (win: BrowserWindow) => {
 const ISLAND_SIZE = { bar: { width: 230, height: 34 }, attention: { width: 460, height: 132 } }
 let island: BrowserWindow | undefined
 
-/** The island is for macOS. A test run can ask for it on any system. */
-const islandAllowed = () => process.platform === "darwin" || Boolean(process.env.ROBOT_FORCE_ISLAND)
+/**
+ * The island is for macOS. A test run has no island unless the test asks for it, on any system,
+ * so that an extra window does not change the focus in the other tests.
+ */
+const islandAllowed = () =>
+  isTestRun ? Boolean(process.env.ROBOT_FORCE_ISLAND) : process.platform === "darwin"
 
 const setIslandShape = (shape: "hidden" | "bar" | "attention") => {
   if (!islandAllowed()) return
@@ -231,9 +235,10 @@ export const electronPlatform = (): PlatformService => {
       !mainWindow.isDestroyed() &&
       mainWindow.isFocused(),
     notify: (notice, onClick) => {
-      if (isTestRun && process.env.ROBOT_TEST_NOTIFY_LOG) {
-        // A test run records notifications in a file, so no system notification pops up.
-        appendFileSync(process.env.ROBOT_TEST_NOTIFY_LOG, `${JSON.stringify(notice)}\n`)
+      if (isTestRun) {
+        // A test run never shows a system notification. A test that asks for a log gets one.
+        if (process.env.ROBOT_TEST_NOTIFY_LOG)
+          appendFileSync(process.env.ROBOT_TEST_NOTIFY_LOG, `${JSON.stringify(notice)}\n`)
         return
       }
       if (!Notification.isSupported()) return
