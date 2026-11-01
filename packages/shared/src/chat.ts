@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { KnowledgeNote } from "./knowledge.ts"
 
 export type MessagePart =
   | { readonly kind: "text"; readonly text: string }
@@ -24,11 +25,29 @@ export type MessagePart =
       readonly ask?: ToolAsk
       /** Set for a tool that saved a memory item, so the card can offer undo. */
       readonly memoryId?: string
+      /** Set for a knowledge tool: what it read or changed, so the card can show it. */
+      readonly knowledge?: KnowledgeNote
     }
 
 export type ToolAsk =
   | { readonly kind: "approval"; readonly summary: string }
   | { readonly kind: "question"; readonly question: string; readonly choices: readonly string[] }
+  /** The agent wants to change an article that the user edited last. Old and new text show side by side. */
+  | {
+      readonly kind: "article"
+      readonly title: string
+      readonly before: string
+      /** Null when the article would be deleted. */
+      readonly after: string | null
+    }
+
+/** The text that the status island shows for a card that waits. */
+export const askSummary = (ask: ToolAsk) =>
+  ask.kind === "approval" ? ask.summary : ask.kind === "question" ? ask.question : ask.title
+
+/** The kind of a card for the status island: an article card is an approval. */
+export const askKind = (ask: ToolAsk): "approval" | "question" =>
+  ask.kind === "question" ? "question" : "approval"
 
 export type MessageStatus = "done" | "streaming" | "stopped" | "failed"
 

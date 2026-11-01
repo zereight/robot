@@ -1,0 +1,171 @@
+import { describe, expect, test } from "bun:test"
+import {
+  articleFileName,
+  articleLimit,
+  articleLinks,
+  cleanLine,
+  contentsLine,
+  contentsList,
+  formatArticleFile,
+  KNOWLEDGE_CHARS_MAX,
+  KNOWLEDGE_LINES_MAX,
+  knowledgeFindings,
+  parseArticleFile,
+  sourceFileName,
+  titleKey,
+  withLinks,
+} from "./knowledge.ts"
+
+describe("limits", () => {
+  test("title 1 to 80, summary up to 160, body up to 20,000", () => {
+    expect(articleLimit("", "", "")).toBe("knowledge_title_invalid")
+    expect(articleLimit("   ", "", "")).toBe("knowledge_title_invalid")
+    expect(articleLimit("a".repeat(80), "", "")).toBeNull()
+    expect(articleLimit("a".repeat(81), "", "")).toBe("knowledge_title_invalid")
+    expect(articleLimit("t", "s".repeat(160), "")).toBeNull()
+    expect(articleLimit("t", "s".repeat(161), "")).toBe("knowledge_summary_long")
+    expect(articleLimit("t", "", "b".repeat(20_000))).toBeNull()
+    expect(articleLimit("t", "", "b".repeat(20_001))).toBe("knowledge_body_long")
+  })
+
+  test("length counts characters a person sees, not UTF-16 units", () => {
+    expect(articleLimit("😀".repeat(80), "", "")).toBeNull()
+    expect(articleLimit("😀".repeat(81), "", "")).toBe("knowledge_title_invalid")
+  })
+
+  test("the title key ignores case, spaces and normal form", () => {
+    expect(titleKey("  Vite   Config ")).toBe(titleKey("vite config"))
+    expect(titleKey("Café")).toBe(titleKey("Cafe\u0301"))
+    expect(cleanLine("a\n b\t c")).toBe("a b c")
+  })
+})
+
+describe("article files", () => {
+  test("a file is read back as it was written", () => {
+    const text = formatArticleFile({
+      title: "Vite config",
+      summary: "How the build is set up.",
+      body: "# Build\n\nSee [[Deploy]].\n\n---\n\nEnd.",
+      sources: ["report.pdf", "notes (2).txt"],
+      extra: ["tags: build"],
+    })
+    expect(parseArticleFile("Vite config.md", text)).toEqual({
+      title: "Vite config",
+      summary: "How the build is set up.",
+      body: "# Build\n\nSee [[Deploy]].\n\n---\n\nEnd.",
+      sources: ["report.pdf", "notes (2).txt"],
+      extra: ["tags: build"],
+    })
+  })
+
+  test("a file with no header is an article: file name, first line, whole text", () => {
+    const parsed = parseArticleFile("Idea.md", "# Idea\n\nA plain note.\nMore.\n")
+    expect(parsed.title).toBe("Idea")
+    expect(parsed.summary).toBe("A plain note.")
+    expect(parsed.body).toBe("# Idea\n\nA plain note.\nMore.")
+    expect(parsed.sources).toEqual([])
+  })
+
+  test("line endings of Windows and a byte order mark do not matter", () => {
+    const parsed = parseArticleFile("x.md", "\uFEFF---\r\ntitle: T\r\nsummary: S\r\n---\r\n\r\nBody\r\n")
+    expect(parsed).toMatchObject({ title: "T", summary: "S", body: "Body" })
+  })
+
+  test("a header that never closes is part of the text", () => {
+    expect(parseArticleFile("x.md", "---\ntitle: T\nBody").title).toBe("x")
+  })
+})
+
+describe("links", () => {
+  test("links are the titles in [[double brackets]], each once", () => {
+    expect(articleLinks("See [[A]] and [[ b ]] and [[a]] and [[]].")).toEqual(["A", "b"])
+  })
+
+  test("links that the body does not name yet are added to its end", () => {
+    expect(withLinks("Text [[A]].", ["a", "B"])).toBe("Text [[A]].\n\nSee also: [[B]]")
+    expect(withLinks("Text.", [])).toBe("Text.")
+  })
+})
+
+describe("file names", () => {
+  const none = () => false
+  test("unsafe characters go and the name ends in .md", () => {
+    expect(articleFileName("a/b:c?", none)).toBe("a b c.md")
+    expect(articleFileName("..hidden.", none)).toBe("hidden.md")
+    expect(articleFileName("한글 제목", none)).toBe("한글 제목.md")
+    expect(articleFileName("///", none)).toBe("article.md")
+    expect(articleFileName("CON", none)).toBe("CON_.md")
+  })
+
+  test("a taken name gets a number", () => {
+    const taken = new Set(["a.md", "a (2).md"])
+    expect(articleFileName("a", (n) => taken.has(n))).toBe("a (3).md")
+  })
+
+  test("a source name has no path", () => {
+    expect(sourceFileName("../../etc/passwd", none)).toBe("passwd")
+    expect(sourceFileName("C:\\dir\\report.pdf", none)).toBe("report.pdf")
+    const taken = new Set(["report.pdf"])
+    expect(sourceFileName("report.pdf", (n) => taken.has(n))).toBe("report (2).pdf")
+  })
+})
+
+describe("contents list", () => {
+  const entry = (n: number, summary = "summary", updatedAt = n) => ({
+    title: `Article ${String(n).padStart(3, "0")}`,
+    summary,
+    updatedAt,
+  })
+
+  test("a list that fits is given whole, by title", () => {
+    const { lines, omitted } = contentsList([entry(2), entry(1)], "anything")
+    expect(lines).toEqual(["- Article 001: summary", "- Article 002: summary"])
+    expect(omitted).toBe(0)
+    expect(contentsLine({ title: "T", summary: "", updatedAt: 0 })).toBe("- T")
+  })
+
+  test("at most 100 lines; words of the message first, then the newest", () => {
+    const entries = Array.from({ length: 150 }, (_, i) => entry(i + 1))
+    // Article 007 is old, but the message names its words.
+    entries[6] = { title: "Deploy pipeline", summary: "steps of the release", updatedAt: 0 }
+    const { lines, omitted } = contentsList(entries, "How does the deploy pipeline work?")
+    expect(lines).toHaveLength(KNOWLEDGE_LINES_MAX)
+    expect(omitted).toBe(50)
+    expect(lines[0]).toBe("- Deploy pipeline: steps of the release")
+    // The rest are the newest: 150 down.
+    expect(lines[1]).toBe("- Article 150: summary")
+    expect(lines).not.toContain("- Article 001: summary")
+  })
+
+  test("at most 6,000 characters", () => {
+    const entries = Array.from({ length: 60 }, (_, i) => entry(i + 1, "x".repeat(150)))
+    const { lines } = contentsList(entries, "")
+    const size = lines.reduce((sum, l) => sum + l.length + 1, 0)
+    expect(size).toBeLessThanOrEqual(KNOWLEDGE_CHARS_MAX)
+    expect(lines.length).toBeLessThan(60)
+    expect(lines[0]).toContain("Article 060")
+  })
+
+  test("a word also matches a Korean noun with a particle", () => {
+    const entries = Array.from({ length: 120 }, (_, i) => entry(i + 1))
+    entries[0] = { title: "배포 절차", summary: "릴리스 순서", updatedAt: 0 }
+    expect(contentsList(entries, "배포는 어떻게 해?").lines[0]).toBe("- 배포 절차: 릴리스 순서")
+  })
+})
+
+describe("findings", () => {
+  test("broken links, articles nobody links to, articles with no source", () => {
+    const found = knowledgeFindings([
+      { title: "A", body: "See [[B]] and [[Gone]].", sources: ["s.txt"] },
+      { title: "B", body: "Back to [[a]].", sources: [] },
+      { title: "C", body: "Alone [[C]].", sources: [] },
+    ])
+    expect(found.missingLinks).toEqual([{ from: "A", to: "Gone" }])
+    expect(found.unlinked).toEqual(["C"])
+    expect(found.noSource).toEqual(["B", "C"])
+  })
+
+  test("one article alone is not reported as unlinked", () => {
+    expect(knowledgeFindings([{ title: "A", body: "", sources: [] }]).unlinked).toEqual([])
+  })
+})

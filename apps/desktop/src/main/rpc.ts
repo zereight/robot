@@ -32,6 +32,7 @@ import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
+import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
@@ -294,6 +295,74 @@ export const handlers: Handlers = {
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Memory.use((m) => m.remove(id))),
       done,
+    ),
+  "knowledge.list": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, query: Schema.optionalKey(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap(({ agentId, query }) => Knowledge.use((k) => k.list(agentId, query)))),
+  "knowledge.get": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, file: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, file }) => Knowledge.use((k) => k.get(agentId, file))),
+    ),
+  "knowledge.save": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        file: Schema.NullOr(Schema.String),
+        title: Schema.String,
+        summary: Schema.String,
+        body: Schema.String,
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, ...article }) => Knowledge.use((k) => k.save(agentId, article))),
+    ),
+  "knowledge.delete": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, file: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, file }) => Knowledge.use((k) => k.remove(agentId, file))),
+      done,
+    ),
+  "knowledge.deleteSource": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, name }) => Knowledge.use((k) => k.removeSource(agentId, name))),
+      done,
+    ),
+  "knowledge.openSource": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, name }) =>
+        Effect.gen(function* () {
+          const path = yield* Knowledge.use((k) => k.sourcePath(agentId, name))
+          yield* Platform.use((p) => Effect.promise(() => p.openPath(path)))
+        }),
+      ),
+      done,
+    ),
+  "knowledge.openFolder": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) =>
+        Effect.gen(function* () {
+          const folder = yield* Knowledge.use((k) => k.folder(agentId))
+          if (!folder.exists) return yield* new AppError({ code: "knowledge_not_found" })
+          yield* Platform.use((p) => Effect.promise(() => p.openPath(folder.path)))
+        }),
+      ),
+      done,
+    ),
+  "knowledge.changes": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) => Knowledge.use((k) => k.changes(agentId))),
+    ),
+  "knowledge.change": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, changeId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, changeId }) => Knowledge.use((k) => k.change(agentId, changeId))),
+    ),
+  "knowledge.undo": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, changeId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, changeId }) => Knowledge.use((k) => k.undo(agentId, changeId))),
+      done,
+    ),
+  "knowledge.findings": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) => Knowledge.use((k) => k.findings(agentId))),
     ),
   "tools.respond": (input) =>
     decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(

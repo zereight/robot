@@ -7,6 +7,7 @@ import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
@@ -49,7 +50,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const providers = Providers.layer.pipe(Layer.provideMerge(runtimes))
   const notifier = Notifier.layer.pipe(Layer.provideMerge(providers))
   const memory = Memory.layer.pipe(Layer.provideMerge(notifier))
-  const tools = Tools.layer.pipe(Layer.provideMerge(memory))
+  const knowledge = Knowledge.layer.pipe(Layer.provideMerge(memory))
+  const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
   const agents = Layer.mergeAll(Agents.layer, Chat.layer, Usage.layer).pipe(
     Layer.provideMerge(tasks),
