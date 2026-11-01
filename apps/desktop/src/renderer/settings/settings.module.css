@@ -5,6 +5,26 @@
   grid-template-columns: minmax(180px, 240px) 1fr;
   background: var(--c-main);
   z-index: 10;
+  animation: page-in var(--motion-medium) var(--ease-out);
+}
+
+.page[data-closing="true"] {
+  animation: page-out var(--motion-fast) var(--ease-in) forwards;
+  pointer-events: none;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+}
+
+@keyframes page-out {
+  to {
+    opacity: 0;
+    transform: scale(0.99);
+  }
 }
 
 .nav {

@@ -9,6 +9,7 @@ import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { Presence } from "../ui/Presence.tsx"
 import { AgentProfileDialog } from "./AgentDialogs.tsx"
 import styles from "./agents.module.css"
 import { Face } from "./Face.tsx"
@@ -37,12 +38,12 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
       >
         {props.agent.model?.model ?? t("agents.noModel")}
       </button>
-      <Show when={open()}>
-        <AgentProfileDialog agent={props.agent} onClose={() => setOpen(false)} />
-      </Show>
-      <Show when={props.picking}>
-        <ModelDialog agent={props.agent} onClose={() => props.setPicking(false)} />
-      </Show>
+      <Presence when={open()}>
+        {() => <AgentProfileDialog agent={props.agent} onClose={() => setOpen(false)} />}
+      </Presence>
+      <Presence when={props.picking}>
+        {() => <ModelDialog agent={props.agent} onClose={() => props.setPicking(false)} />}
+      </Presence>
     </>
   )
 }

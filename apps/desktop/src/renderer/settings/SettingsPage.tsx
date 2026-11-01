@@ -15,6 +15,7 @@ import {
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
+import { useClosing } from "../ui/Presence.tsx"
 import styles from "./settings.module.css"
 
 export const sections = [
@@ -194,6 +195,7 @@ export const SettingsPage = (props: {
   /** Extra section bodies supplied by later features. */
   extra?: Partial<Record<SettingsSection, () => JSX.Element>>
 }) => {
+  const closing = useClosing()
   const app = useApp()
   const { t } = app
   const [section, setSection] = createSignal<SettingsSection>(props.initial ?? "general")
@@ -201,14 +203,20 @@ export const SettingsPage = (props: {
 
   onMount(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose()
+      if (event.key === "Escape" && !closing()) props.onClose()
     }
     window.addEventListener("keydown", onKey)
     onCleanup(() => window.removeEventListener("keydown", onKey))
   })
 
   return (
-    <div class={styles.page} role="dialog" aria-label={t("settings.title")} data-testid="settings">
+    <div
+      class={styles.page}
+      role="dialog"
+      aria-label={t("settings.title")}
+      data-closing={closing()}
+      data-testid="settings"
+    >
       <nav class={styles.nav} aria-label={t("settings.title")}>
         <div class={styles.navTitle}>{t("settings.title")}</div>
         <For each={sections}>

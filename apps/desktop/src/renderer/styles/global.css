@@ -13,13 +13,18 @@
   --radius-m: 8px;
   --motion-fast: 120ms;
   --motion-medium: 200ms;
+  --motion-slow: 260ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* Lets height move to and from "auto" (section lists). */
+  interpolate-size: allow-keywords;
 }
 
 /* Every transition and animation uses these durations, so reduce motion stops them all. */
 :root[data-reduce-motion="true"] {
   --motion-fast: 0ms;
   --motion-medium: 0ms;
+  --motion-slow: 0ms;
 }
 
 html,
