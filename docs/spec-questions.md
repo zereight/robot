@@ -46,3 +46,10 @@ implementer made to continue. A spec author answers by changing the spec.
 | 005 | What does Retry do for a chat task? | A failed reply is asked again. A stopped one is sent again as a new message. Either way, the new task links to the old one. |
 | 005 | Does a chat turn wait for another task of the same agent? | Yes. One agent runs one task at a time, across chats and channels. The waiting task shows as queued. |
 | 005 | How many tasks does the page list? | The newest 500 of the server. Filters and search work on this list. |
+| 004 | How does a lead split a job? | The lead gets rules in its system text and answers with one JSON object (plan sentence and up to 8 parts with member, label and prompt). A reply that does not parse, or names no member, is an ordinary answer. The app then shows the plan message, starts the parts at once, and asks the lead for one summary when all parts have ended, also when some failed. |
+| 004 | Do parts run at the same time? | Parts of different members run together. Parts of one member wait in its queue (005). |
+| 004 | What does the user see when no lead exists and there is no mention? | The job shows with a row of member buttons. The user picks one; that member answers. |
+| 004 | What happens with several mentions? | Each mentioned member answers. The lead does not read the job. |
+| 004 | Can a lead be removed while it works? | No. A member with an active part or job cannot be removed until it ends or the user stops it. Removing the lead clears the lead. |
+| 004 | Where is the channel section button? | A plus button on the Channels section header, like the one for agents. |
+| 004 | What does "Stop" do in a channel? | The send button turns into Stop while work runs. It stops every job and part of the channel. A step has its own stop button. |

@@ -3,6 +3,7 @@ import { render } from "solid-js/web"
 import { App } from "./App.tsx"
 import { AgentsProvider } from "./state/agents.tsx"
 import { AppProvider, loadInitial, useApp } from "./state/app.tsx"
+import { ChannelsProvider } from "./state/channels.tsx"
 import { ProvidersProvider } from "./state/providers.tsx"
 import { loadUi, UiProvider } from "./state/ui.tsx"
 import { applyAppearance } from "./theme/apply.ts"
@@ -23,7 +24,9 @@ if (root) {
           <Appearance />
           <ProvidersProvider>
             <AgentsProvider>
-              <App />
+              <ChannelsProvider>
+                <App />
+              </ChannelsProvider>
             </AgentsProvider>
           </ProvidersProvider>
         </UiProvider>

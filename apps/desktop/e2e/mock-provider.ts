@@ -56,6 +56,30 @@ const failedOnce = new Set<string>()
 const plan = (body: ChatBody) => {
   const last = body.messages.at(-1)?.content ?? ""
   const text = last.split("\n").at(-1) ?? ""
+  // A lead that splits a job answers with a plan. The members are Bo and Cy.
+  if (text.includes("split two"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "Two parts",
+          parts: [
+            { member: "Bo", label: "Write the intro", prompt: "Write the intro" },
+            { member: "Cy", label: "Check the facts", prompt: "Check the facts" },
+          ],
+        }),
+      ],
+      delay: 0,
+    }
+  if (text.includes("split long"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "One long part",
+          parts: [{ member: "Bo", label: "Long work", prompt: "go slow on the long work" }],
+        }),
+      ],
+      delay: 0,
+    }
   if (text.includes("slow"))
     return { chunks: Array.from({ length: 60 }, (_, i) => `word${i} `), delay: 50 }
   if (text.includes("markdown")) return { chunks: [MARKDOWN_REPLY], delay: 0 }

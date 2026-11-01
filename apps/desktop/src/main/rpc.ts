@@ -1,6 +1,8 @@
 import {
   AgentCreate,
   AgentPatch,
+  ChannelCreate,
+  ChannelPatch,
   ChatSend,
   INVOKE_CHANNEL,
   MESSAGE_MAX,
@@ -19,6 +21,7 @@ import { ipcMain } from "electron"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
 import { Agents } from "./services/Agents.ts"
+import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
 import { AppError } from "./services/errors.ts"
@@ -193,6 +196,54 @@ export const handlers: Handlers = {
   "tasks.retry": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Tasks.use((t) => t.retry(id))),
+      done,
+    ),
+  "channels.list": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Channels.use((c) => c.list(serverId))),
+    ),
+  "channels.create": (input) =>
+    decode(ChannelCreate)(input).pipe(
+      Effect.flatMap((data) => Channels.use((c) => c.create(data))),
+    ),
+  "channels.update": (input) =>
+    decode(Schema.Struct({ id: Schema.String, patch: ChannelPatch }))(input).pipe(
+      Effect.flatMap(({ id, patch }) => Channels.use((c) => c.update(id, patch))),
+    ),
+  "channels.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Channels.use((c) => c.remove(id))),
+      done,
+    ),
+  "channels.history": (input) =>
+    decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ channelId }) => Channels.use((c) => c.history(channelId))),
+    ),
+  "channels.send": (input) =>
+    decode(Schema.Struct({ channelId: Schema.String, text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ channelId, text }) => Channels.use((c) => c.send(channelId, text))),
+    ),
+  "channels.assign": (input) =>
+    decode(
+      Schema.Struct({ channelId: Schema.String, messageId: Schema.String, agentId: Schema.String }),
+    )(input).pipe(
+      Effect.flatMap(({ channelId, messageId, agentId }) =>
+        Channels.use((c) => c.assign(channelId, messageId, agentId)),
+      ),
+      done,
+    ),
+  "channels.stop": (input) =>
+    decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ channelId }) => Channels.use((c) => c.stopAll(channelId))),
+      done,
+    ),
+  "channels.activity": (input) =>
+    decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ channelId }) => Channels.use((c) => c.activity(channelId))),
+    ),
+  "channels.markRead": (input) =>
+    decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ channelId }) => Channels.use((c) => c.markRead(channelId))),
       done,
     ),
   "usage.summary": (input) =>

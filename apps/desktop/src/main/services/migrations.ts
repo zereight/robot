@@ -94,4 +94,44 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX task_agent ON task (agent_id, created_at);
   `,
+  `
+  CREATE TABLE channel (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES server (id),
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    lead_agent_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    last_read_at INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE UNIQUE INDEX channel_name ON channel (server_id, name_key);
+  CREATE TABLE channel_member (
+    channel_id TEXT NOT NULL REFERENCES channel (id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (channel_id, agent_id)
+  );
+  CREATE TABLE channel_message (
+    id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL REFERENCES channel (id) ON DELETE CASCADE,
+    author TEXT NOT NULL,
+    agent_id TEXT,
+    kind TEXT NOT NULL DEFAULT 'text',
+    parts TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_code TEXT,
+    error_detail TEXT,
+    error_resets_at INTEGER,
+    task_id TEXT,
+    awaiting INTEGER NOT NULL DEFAULT 0,
+    model TEXT,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    finished_at INTEGER
+  );
+  CREATE INDEX channel_message_channel ON channel_message (channel_id, created_at);
+  `,
 ]
