@@ -627,3 +627,36 @@
     transform: scale(0.6) rotate(-45deg);
   }
 }
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 260px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-elevated);
+  font-size: 0.85rem;
+  animation: float-in var(--motion-medium) var(--ease-out);
+}
+
+.chipName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipSize {
+  color: var(--c-text-muted);
+  padding-right: 6px;
+}

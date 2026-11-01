@@ -9,6 +9,7 @@ import {
   type RpcMethod,
   type RpcOutput,
   type RpcResult,
+  redactSecrets,
   SettingsPatch,
   UiStatePatch,
   USAGE_RANGES,
@@ -19,6 +20,7 @@ import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
 import { Agents } from "./services/Agents.ts"
 import { Chat } from "./services/Chat.ts"
+import { Data } from "./services/Data.ts"
 import { AppError } from "./services/errors.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
@@ -173,6 +175,9 @@ export const handlers: Handlers = {
     decode(ByAccount)(input).pipe(
       Effect.flatMap(({ accountId }) => Providers.use((p) => p.models(accountId))),
     ),
+  "files.pick": () => Platform.use((p) => Effect.promise(() => p.pickFiles())),
+  "data.export": () => Data.use((d) => d.export()),
+  "data.restore": () => Data.use((d) => d.import()),
   "usage.summary": (input) =>
     decode(
       Schema.Struct({
@@ -243,7 +248,7 @@ export const runRequest = async (
     const error = failure.error
     return { ok: false, error: { code: error.code, message: error.detail ?? error.code } }
   }
-  console.error(`request ${method} failed`, Cause.pretty(exit.cause))
+  console.error(`request ${method} failed`, redactSecrets(Cause.pretty(exit.cause)))
   return { ok: false, error: { code: "internal", message: "Unexpected error" } }
 }
 

@@ -9,6 +9,12 @@ export interface PlatformService {
   readonly defaultWorkspaceRoot: string
   systemLocale(): string
   pickFolder(defaultPath: string): Promise<string | undefined>
+  /** Full paths of files that the user picks. Empty when cancelled. */
+  pickFiles(): Promise<string[]>
+  /** Where to save an archive, or undefined when cancelled. */
+  pickSavePath(defaultName: string): Promise<string | undefined>
+  /** An archive to open, or undefined when cancelled. */
+  pickArchive(): Promise<string | undefined>
   openPath(path: string): Promise<void>
   setStartAtLogin(enabled: boolean): void
   setThemeSource(theme: "system" | "dark" | "light"): void
