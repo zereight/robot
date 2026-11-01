@@ -49,6 +49,13 @@ export interface ChannelsService {
   send(channelId: string, text: string): Effect.Effect<{ awaiting: boolean }, AppError>
   assign(channelId: string, messageId: string, agentId: string): Effect.Effect<void, AppError>
   stopAll(channelId: string): Effect.Effect<void>
+  /** A routine run: the agent answers the prompt in the channel. The task belongs to the routine. */
+  runRoutine(
+    channelId: string,
+    agentId: string,
+    prompt: string,
+    routineId: string,
+  ): Effect.Effect<void, AppError>
   activity(channelId: string): Effect.Effect<ChannelActivity>
   markRead(channelId: string): Effect.Effect<void>
   /** The text of the newest message of a channel, for the place list. */
@@ -479,6 +486,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             })
           }),
         )
+
+      const runRoutine = (channelId: string, agentId: string, prompt: string, routineId: string) =>
+        Effect.gen(function* () {
+          const channel = channelRow(channelId)
+          const agent = agentRow(agentId)
+          if (!channel || !agent || agent.archived_at !== null)
+            return yield* new AppError({ code: "agent_not_found" })
+          const task = yield* tasks.create({
+            agentId,
+            prompt,
+            source: "routine",
+            sourceId: routineId,
+          })
+          yield* background(memberTurn(channel, agent, task, prompt))
+        })
 
       const startDirect = (
         channel: ChannelRow,
@@ -914,6 +936,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         send,
         assign,
         stopAll,
+        runRoutine,
         activity,
         markRead: (channelId) =>
           Effect.sync(() => {

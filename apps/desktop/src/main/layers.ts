@@ -11,6 +11,7 @@ import { Memory } from "./services/Memory.ts"
 import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
+import { Routines } from "./services/Routines.ts"
 import type { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
@@ -49,7 +50,8 @@ export const appLayer = (options: AppLayerOptions) => {
     Layer.provideMerge(tasks),
   )
   const channels = Channels.layer.pipe(Layer.provideMerge(agents))
-  const places = Places.layer.pipe(Layer.provideMerge(channels))
+  const routines = Routines.layer.pipe(Layer.provideMerge(channels))
+  const places = Places.layer.pipe(Layer.provideMerge(routines))
   return Data.layer.pipe(Layer.provideMerge(places))
 }
 
