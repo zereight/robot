@@ -29,4 +29,5 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-02 | Fix: workflows page keeps the same inner padding as the other pages | Implementer | — |
 | 2026-11-02 | S17: subscription accounts: Claude Code and Codex run as the vendor's own program with the user's own sign-in; find, download with checksum, sign in, plan limits, approval cards | Implementer | 006, 007, 013, 014 |
 | 2026-11-02 | S17: Muse Code and pi added as runtimes. Written from the output of `muse` and `pi` (`--help`, `usage --json`, `exec --json`, `--mode json`, `--list-models`) as run on the machine, and the public package page of pi (MIT). No code of other apps was read | Implementer | 006, 007 |
+| 2026-11-02 | Approval and question cards stay after an app restart; the task waits and goes on after the answer | Spec author | 005, 007, 003, 010, 015 |
 | 2026-11-02 | Random name suggestion in the new agent form | Implementer | 002 |

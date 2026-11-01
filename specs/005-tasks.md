@@ -24,10 +24,21 @@ and workflows.
 - A task waiting for the user (an approval or a question) does not block other agents.
 - Stopping a parent stops its children.
 - Retry makes a new task with the same prompt and links it to the old one.
-- After an app restart, tasks that were running are marked failed with the reason "The app
-  stopped", and the user can retry them.
+- After an app restart, a task that waits for an approval or a question still waits. The card
+  shows again (see 007). This holds only when the task has no parent task, is not part of a
+  workflow run (see 010), and does not use a vendor agent runtime (see 006).
+- A task that waited through a restart keeps the place of its agent. Other tasks for that agent
+  wait behind it, as before the restart. It does not block other agents. It has no time limit.
+  The user can stop it at any time.
+- After an app restart, every other task that was running or queued is marked failed with the
+  reason "The app stopped", and the user can retry it. This includes a task that waits for the
+  user for any other reason, for example while the user holds the browser.
 
 ## Acceptance
 
 - Start two tasks for one agent: the second waits until the first ends.
 - Restart during a task: it shows as failed with the restart reason and can be retried.
+- A task waits for an approval. Restart the app: the task is still waiting, and its card shows
+  again. Allow the step: the task goes on.
+- A task waits for an approval, and a second task for the same agent is queued. Restart the app:
+  the first task still waits. The second task shows as failed with the restart reason.
