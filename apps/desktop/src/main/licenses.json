@@ -1,0 +1,37 @@
+[
+  {
+    "name": "csstype",
+    "version": "3.2.3",
+    "license": "MIT"
+  },
+  {
+    "name": "effect",
+    "version": "4.1.1",
+    "license": "MIT"
+  },
+  {
+    "name": "electron",
+    "version": "45.2.1",
+    "license": "MIT"
+  },
+  {
+    "name": "lucide-solid",
+    "version": "1.66.0",
+    "license": "ISC"
+  },
+  {
+    "name": "seroval",
+    "version": "1.6.12",
+    "license": "MIT"
+  },
+  {
+    "name": "seroval-plugins",
+    "version": "1.6.12",
+    "license": "MIT"
+  },
+  {
+    "name": "solid-js",
+    "version": "1.9.18",
+    "license": "MIT"
+  }
+]
