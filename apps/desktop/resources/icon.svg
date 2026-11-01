@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img">
+  <title>ROBot</title>
+  <!-- ROBot app mark: a flat robot face on the accent colour. 824 px tile, 100 px margin. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#4f66d9"/>
+  <path d="M512 252 V318" stroke="#ffffff" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="512" cy="236" r="30" fill="#ffffff"/>
+  <rect x="252" y="318" width="520" height="440" rx="150" fill="#ffffff"/>
+  <rect x="370" y="466" width="64" height="88" rx="22" fill="#1b1d23"/>
+  <rect x="590" y="466" width="64" height="88" rx="22" fill="#1b1d23"/>
+  <path d="M424 632 Q512 690 600 632" stroke="#1b1d23" stroke-width="34" fill="none" stroke-linecap="round"/>
+</svg>
