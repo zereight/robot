@@ -1,5 +1,5 @@
-import { mkdirSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync, mkdirSync, renameSync } from "node:fs"
+import { basename, join } from "node:path"
 import { app, BrowserWindow, dialog, nativeTheme, shell } from "electron"
 import type { PlatformService } from "./services/Platform.ts"
 
@@ -37,6 +37,17 @@ export const electronPlatform = (): PlatformService => {
     },
     setThemeSource: (theme) => {
       nativeTheme.themeSource = theme
+    },
+    trash: async (path) => {
+      if (!existsSync(path)) return
+      // Test runs keep the system trash clean: they move the folder inside the data folder.
+      if (isTestRun) {
+        const bin = join(dataDir, "test-trash")
+        mkdirSync(bin, { recursive: true })
+        renameSync(path, join(bin, `${Date.now()}-${basename(path)}`))
+        return
+      }
+      await shell.trashItem(path)
     },
   }
 }

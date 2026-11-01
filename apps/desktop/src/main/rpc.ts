@@ -1,4 +1,6 @@
 import {
+  AgentCreate,
+  AgentPatch,
   INVOKE_CHANNEL,
   type RpcInput,
   type RpcMethod,
@@ -11,6 +13,7 @@ import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import { ipcMain } from "electron"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
+import { Agents } from "./services/Agents.ts"
 import { AppError } from "./services/errors.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
@@ -33,6 +36,8 @@ const decode =
     Schema.decodeUnknownEffect(schema)(input).pipe(
       Effect.mapError((e) => new AppError({ code: "invalid_input", detail: e.message })),
     )
+
+const ById = Schema.Struct({ id: Schema.String })
 
 const applySystemSettings = Effect.fn("applySystemSettings")(function* (
   patch: typeof SettingsPatch.Type,
@@ -89,6 +94,35 @@ export const handlers: Handlers = {
   "ui.update": (input) =>
     decode(UiStatePatch)(input).pipe(
       Effect.flatMap((patch) => UiStore.use((s) => s.update(patch))),
+    ),
+  "agents.list": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, archived: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ serverId, archived }) => Agents.use((a) => a.list(serverId, archived))),
+    ),
+  "agents.get": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.get(id)))),
+  "agents.create": (input) =>
+    decode(AgentCreate)(input).pipe(Effect.flatMap((data) => Agents.use((a) => a.create(data)))),
+  "agents.update": (input) =>
+    decode(Schema.Struct({ id: Schema.String, patch: AgentPatch }))(input).pipe(
+      Effect.flatMap(({ id, patch }) => Agents.use((a) => a.update(id, patch))),
+    ),
+  "agents.duplicate": (input) =>
+    decode(
+      Schema.Struct({ id: Schema.String, suffix: Schema.String.check(Schema.isMaxLength(20)) }),
+    )(input).pipe(Effect.flatMap(({ id, suffix }) => Agents.use((a) => a.duplicate(id, suffix)))),
+  "agents.archive": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.archive(id)))),
+  "agents.restore": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.restore(id)))),
+  "agents.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Agents.use((a) => a.remove(id))),
+      Effect.as(undefined),
+    ),
+  "agents.setFaceImage": (input) =>
+    decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
+      Effect.flatMap(({ id, dataUrl }) => Agents.use((a) => a.setFaceImage(id, dataUrl))),
     ),
 }
 

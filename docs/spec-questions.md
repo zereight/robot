@@ -15,3 +15,8 @@ implementer made to continue. A spec author answers by changing the spec.
 | 001 | What does the help button open? | A help page with the keyboard shortcuts. |
 | 001 | What does the activity panel show for a direct chat? | A muted line "Nothing is running." until tasks exist (M2). |
 | 001 | How wide is the rail when the window is 800 px or wider? | 72 px. Under 800 px it is 56 px. |
+| 002 | The copy suffix " copy" is interface text. Is it translated? | Yes. English " copy", Korean " 사본". The acceptance test runs in English. |
+| 002 | Do archived agents count for the unique-name rule? | Yes, so that restore never makes two agents with one name. The rule ignores case. |
+| 002 | How many face shapes are there? | Six drawn characters. Ten hues. A new agent's face comes from its name until the user picks one. |
+| 002 | Is there a size limit for an uploaded face picture? | The app crops it to a 256 px square PNG; the stored file must be at most 1 MB. |
+| 002 | Where is the "New agent" button? | A plus button on the Agents section header in the place list. |

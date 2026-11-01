@@ -5,6 +5,7 @@ import {
   PLACE_LIST_MAX,
   PLACE_LIST_MIN,
   type Place,
+  type SectionId,
 } from "@robot/shared"
 import { ChevronDown, Hash } from "lucide-solid"
 import { createMemo, createSignal, For, type JSX, onCleanup, onMount, Show } from "solid-js"
@@ -15,6 +16,7 @@ import styles from "./shell.module.css"
 export interface PlaceListProps {
   /** Draws the face of an agent place. Later features supply it. */
   face?: (place: Place) => JSX.Element
+  sectionAction?: (section: SectionId) => JSX.Element
 }
 
 const rowSelector = "[data-place-row]"
@@ -137,18 +139,21 @@ export const PlaceList = (props: PlaceListProps) => {
               return (
                 <Show when={!searching() || section.places.length > 0}>
                   <section data-testid={`section-${section.id}`}>
-                    <button
-                      type="button"
-                      class={styles.sectionHeader}
-                      aria-expanded={!collapsed()}
-                      onClick={() => ui.toggleSection(section.id)}
-                      data-testid={`section-toggle-${section.id}`}
-                    >
-                      <span class={styles.chevron}>
-                        <ChevronDown size={12} />
-                      </span>
-                      {t(`places.section.${section.id}` as MessageKey)}
-                    </button>
+                    <div class={styles.sectionTop}>
+                      <button
+                        type="button"
+                        class={styles.sectionHeader}
+                        aria-expanded={!collapsed()}
+                        onClick={() => ui.toggleSection(section.id)}
+                        data-testid={`section-toggle-${section.id}`}
+                      >
+                        <span class={styles.chevron}>
+                          <ChevronDown size={12} />
+                        </span>
+                        {t(`places.section.${section.id}` as MessageKey)}
+                      </button>
+                      {props.sectionAction?.(section.id)}
+                    </div>
                     <Show when={!collapsed()}>
                       <Show
                         when={section.places.length > 0}
