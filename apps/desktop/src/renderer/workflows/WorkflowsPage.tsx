@@ -2,6 +2,7 @@ import type { MessageKey, Workflow } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { RoutinesView } from "../routines/RoutinesPage.tsx"
+import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
@@ -74,7 +75,7 @@ export const WorkflowsPage = () => {
   const [tab, setTab] = createSignal<"routines" | "workflows">("routines")
   const [open, setOpen] = createSignal<{ workflow: Workflow | null }>()
   return (
-    <div class={styles.page} data-testid="workflows-page">
+    <div class={`${shell.page} ${styles.page}`} data-testid="workflows-page">
       <Show
         when={open()}
         fallback={
