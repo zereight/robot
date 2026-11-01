@@ -1,5 +1,7 @@
 import { join } from "node:path"
 import { Layer } from "effect"
+import { Activity } from "./services/Activity.ts"
+import { Agents } from "./services/Agents.ts"
 import { Database } from "./services/Database.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Places } from "./services/Places.ts"
@@ -26,9 +28,10 @@ export const appLayer = (options: AppLayerOptions) => {
     SettingsStore.layer,
     UiStore.layer,
     Servers.layer(options.localServerName),
-    Places.layer,
-  )
-  return stores.pipe(Layer.provideMerge(base))
+    Activity.layer,
+  ).pipe(Layer.provideMerge(base))
+  const agents = Agents.layer.pipe(Layer.provideMerge(stores))
+  return Places.layer.pipe(Layer.provideMerge(agents))
 }
 
 export type AppServices = Layer.Success<ReturnType<typeof appLayer>>

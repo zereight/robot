@@ -153,7 +153,13 @@
   padding: 4px 8px 12px;
 }
 
+.sectionTop {
+  display: flex;
+  align-items: flex-end;
+}
+
 .sectionHeader {
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -410,7 +416,7 @@
   border: 1px solid var(--c-border);
   border-radius: var(--radius-m);
   padding: 20px;
-  max-width: 380px;
+  max-width: min(580px, 92vw);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -418,6 +424,7 @@
 
 .dialog p {
   margin: 0;
+  max-width: 400px;
 }
 
 .dialogActions {
