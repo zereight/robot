@@ -14,6 +14,7 @@ import {
   type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
+  type TaskSource,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
@@ -58,12 +59,18 @@ interface AgentModelRow {
   memory_enabled: number
 }
 
+/** Where the task of a message comes from, when it is not the chat itself (a routine). */
+export interface TaskOrigin {
+  readonly source: TaskSource
+  readonly sourceId: string
+}
+
 export interface ChatService {
   history(
     agentId: string,
   ): Effect.Effect<{ messages: readonly ChatMessage[]; queue: readonly QueuedMessage[] }>
   /** Sends at once when the agent is free; otherwise puts the message in the queue. */
-  send(input: ChatSend): Effect.Effect<{ queued: boolean }, AppError>
+  send(input: ChatSend, origin?: TaskOrigin): Effect.Effect<{ queued: boolean }, AppError>
   stop(agentId: string): Effect.Effect<void>
   retry(agentId: string, messageId: string): Effect.Effect<void, AppError>
   edit(agentId: string, messageId: string, text: string): Effect.Effect<void, AppError>
@@ -183,6 +190,17 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
       const queues = new Map<string, QueuedMessage[]>()
+      /** Origins of user messages and queued items, by their ids. */
+      const origins = new Map<string, TaskOrigin>()
+      /** Writes a queued item as a message, and moves its origin to the message. */
+      const insertQueued = (agentId: string, next: QueuedMessage) => {
+        const row = insertMessage(agentId, "user", next.text, next.replyTo, null, next.files)
+        const origin = origins.get(next.id)
+        if (origin) {
+          origins.delete(next.id)
+          origins.set(row.id, origin)
+        }
+      }
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
       db.run("UPDATE message SET status = 'stopped' WHERE status = 'streaming'")
@@ -278,8 +296,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const task = yield* tasks.create({
           agentId,
           prompt,
-          source: "chat",
-          sourceId: agentId,
+          source: (lastUser ? origins.get(lastUser.id)?.source : undefined) ?? "chat",
+          sourceId: (lastUser ? origins.get(lastUser.id)?.sourceId : undefined) ?? agentId,
           messageId: reply.id,
           retryOf: retryLinks.get(agentId) ?? null,
         })
@@ -453,7 +471,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             const next = queues.get(agentId)?.shift()
             if (!next) return
             emitQueue(agentId)
-            insertMessage(agentId, "user", next.text, next.replyTo, null, next.files)
+            insertQueued(agentId, next)
           }
         })
 
@@ -476,7 +494,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           return Effect.succeed(agent)
         })
 
-      const send = Effect.fn("Chat.send")(function* (input: ChatSend) {
+      const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
         const agent = yield* usableAgent(input.agentId)
         const paths = input.files ?? []
         if (!input.text.trim() && paths.length === 0)
@@ -491,12 +509,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (yield* isRunning(input.agentId)) {
           const queue = queues.get(input.agentId) ?? []
           if (queue.length >= QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
-          queue.push({ id: randomUUID(), text: input.text, replyTo: input.replyTo, files })
+          const item = { id: randomUUID(), text: input.text, replyTo: input.replyTo, files }
+          if (origin) origins.set(item.id, origin)
+          queue.push(item)
           queues.set(input.agentId, queue)
           emitQueue(input.agentId)
           return { queued: true }
         }
-        insertMessage(input.agentId, "user", input.text, input.replyTo, null, files)
+        const row = insertMessage(input.agentId, "user", input.text, input.replyTo, null, files)
+        if (origin) origins.set(row.id, origin)
         yield* kick(input.agentId)
         return { queued: false }
       })
@@ -508,7 +529,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const next = queues.get(agentId)?.shift()
         if (next) {
           emitQueue(agentId)
-          insertMessage(agentId, "user", next.text, next.replyTo, null, next.files)
+          insertQueued(agentId, next)
           yield* kick(agentId)
         }
       })

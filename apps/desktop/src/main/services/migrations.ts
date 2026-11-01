@@ -153,4 +153,26 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX memory_agent ON memory (agent_id, created_at);
   `,
+  `
+  CREATE TABLE routine (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    schedule TEXT NOT NULL,
+    channel_id TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_checked_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE routine_skip (
+    id TEXT PRIMARY KEY,
+    routine_id TEXT NOT NULL REFERENCES routine (id) ON DELETE CASCADE,
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL
+  );
+  CREATE INDEX routine_skip_at ON routine_skip (routine_id, at);
+  `,
 ]
