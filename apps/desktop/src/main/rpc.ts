@@ -274,6 +274,22 @@ export const handlers: Handlers = {
       ),
       done,
     ),
+  "browser.state": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Tools.use((t) => Effect.succeed(t.browserState(agentId)))),
+    ),
+  "browser.control": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, control: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ agentId, control }) =>
+        Tools.use((t) => Effect.sync(() => t.setBrowserControl(agentId, control))),
+      ),
+      done,
+    ),
+  "browser.close": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Tools.use((t) => Effect.sync(() => t.closeBrowser(agentId)))),
+      done,
+    ),
   "usage.summary": (input) =>
     decode(
       Schema.Struct({

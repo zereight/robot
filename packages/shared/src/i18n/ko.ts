@@ -396,4 +396,9 @@ export const ko: Record<MessageKey, string> = {
   "agents.memory.source.agent": "에이전트",
   "error.memory_not_found": "이 메모리 항목이 더 이상 없습니다.",
   "agents.memory.edit": "수정",
+  "browser.agents": "에이전트가 브라우저를 사용 중",
+  "browser.yours": "사용자가 브라우저를 조작 중",
+  "browser.takeOver": "직접 조작",
+  "browser.giveBack": "돌려주기",
+  "browser.close": "브라우저 닫기",
 }

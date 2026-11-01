@@ -1,5 +1,19 @@
 import { Context } from "effect"
 
+/** One browser window of one agent. Cookies and logins stay with the agent, on this computer. */
+export interface BrowserPage {
+  isOpen(): boolean
+  /** Opens the window if needed and loads the address. */
+  open(url: string): Promise<{ url: string; title: string }>
+  read(): Promise<{ url: string; title: string; text: string }>
+  click(selector: string): Promise<void>
+  type(selector: string, text: string): Promise<void>
+  /** Closes the window at once. */
+  close(): void
+  /** Calls back when the window is closed, by the agent, by Stop or by the user. */
+  onClosed(listener: () => void): void
+}
+
 /** Things that need the operating system. The real one uses Electron; tests use a fake. */
 export interface PlatformService {
   readonly appName: string
@@ -22,6 +36,8 @@ export interface PlatformService {
   openExternal(url: string): Promise<void>
   /** Moves a file or folder to the system trash. */
   trash(path: string): Promise<void>
+  /** The browser window of an agent. The same agent always gets the same page object. */
+  browser(agentId: string): BrowserPage
 }
 
 export class Platform extends Context.Service<Platform, PlatformService>()("robot/main/Platform") {}
