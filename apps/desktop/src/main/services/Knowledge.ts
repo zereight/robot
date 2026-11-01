@@ -519,7 +519,11 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
           timers.delete(agentId)
           // The end of the turn reads the folder.
           if ((busy.get(agentId) ?? 0) > 0) return
-          if (!agentInfo(agentId)) return unwatch(agentId)
+          if (!agentInfo(agentId)) {
+            // The agent is gone, with its workspace.
+            cache.delete(agentId)
+            return unwatch(agentId)
+          }
           try {
             scan(agentId, "user")
           } catch {

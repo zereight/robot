@@ -683,3 +683,60 @@
   background: var(--c-main);
   color: var(--c-text);
 }
+
+/* Knowledge: a compact card for a read, a muted line for a change. */
+.knowledgeRead {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+  padding: 3px 10px;
+  margin: 4px 0;
+  font-size: 0.85rem;
+  color: var(--c-text-muted);
+}
+
+.knowledgeLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 2px 0;
+  color: var(--c-text-muted);
+  font-size: 0.85rem;
+}
+
+.knowledgeFailed {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0;
+  padding: 6px 10px;
+  max-width: 560px;
+  border: 1px solid var(--c-danger);
+  border-radius: var(--radius-m);
+  color: var(--c-danger);
+  font-size: 0.88rem;
+}
+
+.knowledgeError {
+  color: var(--c-danger);
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.compare pre {
+  margin: 4px 0;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  max-height: 240px;
+  overflow: auto;
+}

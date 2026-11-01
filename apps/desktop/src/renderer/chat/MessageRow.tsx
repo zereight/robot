@@ -2,14 +2,17 @@ import {
   type Agent,
   type ChatMessage,
   catalogues,
+  type KnowledgeNote,
   type MessageKey,
   type MessagePart,
   messageFiles,
   messageText,
+  type ToolAsk,
 } from "@robot/shared"
-import { Copy, Pencil, Reply, User, Wrench } from "lucide-solid"
-import { createSignal, For, Match, Show, Switch } from "solid-js"
+import { BookOpen, Copy, Pencil, Reply, User, Wrench } from "lucide-solid"
+import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -61,64 +64,96 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
         <Show when={props.part.ask}>
           {(ask) => (
             <div class={styles.ask} data-testid="ask-card">
-              <Show
-                when={ask().kind === "question" ? ask() : undefined}
-                fallback={
-                  <>
-                    <div>{t("chat.tool.approval")}</div>
-                    <pre>{(ask() as { summary: string }).summary}</pre>
-                    <div class={styles.askActions}>
-                      <Button
-                        variant="primary"
-                        onClick={() => respond("allow")}
-                        data-testid="ask-allow"
-                      >
-                        {t("chat.tool.allow")}
-                      </Button>
-                      <Button onClick={() => respond("always")} data-testid="ask-always">
-                        {t("chat.tool.always")}
-                      </Button>
-                      <Button onClick={() => respond("deny")} data-testid="ask-deny">
-                        {t("chat.tool.deny")}
-                      </Button>
-                    </div>
-                  </>
-                }
-              >
-                {(question) => (
-                  <>
-                    <div>{(question() as { question: string }).question}</div>
-                    <div class={styles.askActions}>
-                      <For each={(question() as { choices: readonly string[] }).choices}>
-                        {(choice) => (
-                          <Button onClick={() => respond(choice)} data-testid="ask-choice">
-                            {choice}
+              <Switch>
+                <Match when={ask().kind === "article" ? ask() : undefined}>
+                  {(article) => {
+                    const a = () => article() as Extract<ToolAsk, { kind: "article" }>
+                    return (
+                      <div data-testid="ask-article">
+                        <div>{t("chat.knowledge.protect", { title: a().title })}</div>
+                        <div class={styles.compare}>
+                          <section>
+                            <div class={styles.time}>{t("chat.knowledge.protect.now")}</div>
+                            <pre data-testid="ask-before">{a().before}</pre>
+                          </section>
+                          <section>
+                            <div class={styles.time}>{t("chat.knowledge.protect.new")}</div>
+                            <pre data-testid="ask-after">
+                              {a().after ?? t("chat.knowledge.protect.deleted")}
+                            </pre>
+                          </section>
+                        </div>
+                        <div class={styles.askActions}>
+                          <Button
+                            variant="primary"
+                            onClick={() => respond("allow")}
+                            data-testid="ask-allow"
+                          >
+                            {t("chat.tool.allow")}
                           </Button>
-                        )}
-                      </For>
-                    </div>
-                    <form
-                      class={styles.askActions}
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        if (answer().trim()) respond(answer().trim())
-                      }}
+                          <Button onClick={() => respond("deny")} data-testid="ask-deny">
+                            {t("chat.tool.deny")}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  }}
+                </Match>
+                <Match when={ask().kind === "question" ? ask() : undefined}>
+                  {(question) => (
+                    <>
+                      <div>{(question() as { question: string }).question}</div>
+                      <div class={styles.askActions}>
+                        <For each={(question() as { choices: readonly string[] }).choices}>
+                          {(choice) => (
+                            <Button onClick={() => respond(choice)} data-testid="ask-choice">
+                              {choice}
+                            </Button>
+                          )}
+                        </For>
+                      </div>
+                      <form
+                        class={styles.askActions}
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          if (answer().trim()) respond(answer().trim())
+                        }}
+                      >
+                        <input
+                          class={styles.askInput}
+                          value={answer()}
+                          placeholder={t("chat.tool.answer")}
+                          aria-label={t("chat.tool.answer")}
+                          onInput={(e) => setAnswer(e.currentTarget.value)}
+                          data-testid="ask-input"
+                        />
+                        <Button type="submit" variant="primary" data-testid="ask-send">
+                          {t("chat.tool.send")}
+                        </Button>
+                      </form>
+                    </>
+                  )}
+                </Match>
+                <Match when={ask().kind === "approval"}>
+                  <div>{t("chat.tool.approval")}</div>
+                  <pre>{(ask() as { summary: string }).summary}</pre>
+                  <div class={styles.askActions}>
+                    <Button
+                      variant="primary"
+                      onClick={() => respond("allow")}
+                      data-testid="ask-allow"
                     >
-                      <input
-                        class={styles.askInput}
-                        value={answer()}
-                        placeholder={t("chat.tool.answer")}
-                        aria-label={t("chat.tool.answer")}
-                        onInput={(e) => setAnswer(e.currentTarget.value)}
-                        data-testid="ask-input"
-                      />
-                      <Button type="submit" variant="primary" data-testid="ask-send">
-                        {t("chat.tool.send")}
-                      </Button>
-                    </form>
-                  </>
-                )}
-              </Show>
+                      {t("chat.tool.allow")}
+                    </Button>
+                    <Button onClick={() => respond("always")} data-testid="ask-always">
+                      {t("chat.tool.always")}
+                    </Button>
+                    <Button onClick={() => respond("deny")} data-testid="ask-deny">
+                      {t("chat.tool.deny")}
+                    </Button>
+                  </div>
+                </Match>
+              </Switch>
             </div>
           )}
         </Show>
@@ -139,6 +174,127 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
         </Show>
       </div>
     </details>
+  )
+}
+
+type ToolPart = Extract<MessagePart, { kind: "tool" }>
+
+const FAILED_KEY: Record<string, MessageKey> = {
+  read_article: "chat.knowledge.failed.read",
+  write_article: "chat.knowledge.failed.write",
+  delete_article: "chat.knowledge.failed.delete",
+  add_source: "chat.knowledge.failed.source",
+}
+
+/** What a knowledge tool did: a compact card for a read, a muted line with undo for a change. */
+const KnowledgeLine = (props: { agent: Agent; part: ToolPart; note: KnowledgeNote }) => {
+  const { t } = useApp()
+  const [tick, setTick] = createSignal(0)
+  const [error, setError] = createSignal<ErrorText>()
+  onCleanup(
+    window.robot.on("knowledge.changed", (e) => {
+      if (e.agentId === props.agent.id) setTick((n) => n + 1)
+    }),
+  )
+  const changeId = () => (props.note.kind === "write" ? props.note.changeId : undefined)
+  // The change list keeps 50 changes. An older change has no undo.
+  const [change] = createResource(
+    () => {
+      const id = changeId()
+      return id ? { id, tick: tick() } : undefined
+    },
+    ({ id }) => call("knowledge.change", { agentId: props.agent.id, changeId: id }),
+  )
+  const undo = async () => {
+    const id = changeId()
+    if (!id) return
+    setError(undefined)
+    try {
+      await call("knowledge.undo", { agentId: props.agent.id, changeId: id })
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+  const reason = (code: string) => {
+    const key = `error.${code}` as MessageKey
+    return key in catalogues.en ? t(key) : t("error.unknown")
+  }
+  return (
+    <Switch>
+      <Match when={props.note.kind === "read" ? props.note : undefined}>
+        {(note) => (
+          <div class={styles.knowledgeRead} data-testid="knowledge-read-card">
+            <BookOpen size={14} />
+            <span>{t("chat.knowledge.read", { title: (note() as { title: string }).title })}</span>
+          </div>
+        )}
+      </Match>
+      <Match when={props.note.kind === "write" ? props.note : undefined}>
+        {(note) => (
+          <div class={styles.knowledgeLine} data-testid="knowledge-line">
+            <span>
+              {t(
+                (note() as { change: string }).change === "delete"
+                  ? "chat.knowledge.deleted"
+                  : "chat.knowledge.updated",
+                { title: (note() as { title: string }).title },
+              )}
+            </span>
+            <Show when={change()}>
+              {(c) => (
+                <Show
+                  when={!c().undone}
+                  fallback={
+                    <span data-testid="knowledge-undone">{t("chat.knowledge.undone")}</span>
+                  }
+                >
+                  <Button onClick={undo} data-testid="knowledge-undo">
+                    {t("chat.knowledge.undo")}
+                  </Button>
+                </Show>
+              )}
+            </Show>
+            <Show when={error()}>
+              {(err) => (
+                <span class={styles.knowledgeError} role="alert">
+                  {t(err().key, err().params)}
+                </span>
+              )}
+            </Show>
+          </div>
+        )}
+      </Match>
+      <Match when={props.note.kind === "source" ? props.note : undefined}>
+        {(note) => (
+          <div class={styles.knowledgeLine} data-testid="knowledge-source-line">
+            <span>{t("chat.knowledge.source", { name: (note() as { name: string }).name })}</span>
+          </div>
+        )}
+      </Match>
+      <Match when={props.note.kind === "failed" ? props.note : undefined}>
+        {(note) => (
+          <div class={styles.knowledgeFailed} role="alert" data-testid="knowledge-failed">
+            <span>
+              {t(FAILED_KEY[props.part.name] ?? "chat.knowledge.failed.write", {
+                title: (note() as { title: string }).title,
+              })}
+            </span>
+            <span>{reason((note() as { code: string }).code)}</span>
+          </div>
+        )}
+      </Match>
+    </Switch>
+  )
+}
+
+/** A tool step: a knowledge line when the tool is done, otherwise the plain card. */
+const ToolStep = (props: { agent: Agent; part: ToolPart }) => {
+  const note = () =>
+    props.part.state === "done" || props.part.state === "failed" ? props.part.knowledge : undefined
+  return (
+    <Show when={note()} fallback={<ToolCard agent={props.agent} part={props.part} />}>
+      {(n) => <KnowledgeLine agent={props.agent} part={props.part} note={n()} />}
+    </Show>
   )
 }
 
@@ -300,7 +456,7 @@ export const MessageRow = (props: MessageRowProps) => {
                     />
                   </Match>
                   <Match when={part.kind === "tool"}>
-                    <ToolCard
+                    <ToolStep
                       agent={props.agent}
                       part={part as Extract<MessagePart, { kind: "tool" }>}
                     />

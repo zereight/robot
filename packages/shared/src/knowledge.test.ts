@@ -67,7 +67,10 @@ describe("article files", () => {
   })
 
   test("line endings of Windows and a byte order mark do not matter", () => {
-    const parsed = parseArticleFile("x.md", "\uFEFF---\r\ntitle: T\r\nsummary: S\r\n---\r\n\r\nBody\r\n")
+    const parsed = parseArticleFile(
+      "x.md",
+      "\uFEFF---\r\ntitle: T\r\nsummary: S\r\n---\r\n\r\nBody\r\n",
+    )
     expect(parsed).toMatchObject({ title: "T", summary: "S", body: "Body" })
   })
 

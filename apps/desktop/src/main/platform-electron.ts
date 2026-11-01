@@ -174,6 +174,7 @@ export const electronPlatform = (): PlatformService => {
     defaultWorkspaceRoot: join(dataDir, "workspaces"),
     systemLocale: () => process.env.ROBOT_SYSTEM_LOCALE ?? app.getLocale(),
     pickFolder: async (defaultPath) => {
+      if (isTestRun && process.env.ROBOT_TEST_PICK_FOLDER) return process.env.ROBOT_TEST_PICK_FOLDER
       const parent = BrowserWindow.getFocusedWindow()
       const options = {
         defaultPath,
@@ -221,7 +222,14 @@ export const electronPlatform = (): PlatformService => {
       return result.canceled ? undefined : result.filePaths[0]
     },
     openPath: async (path) => {
-      mkdirSync(path, { recursive: true })
+      // A folder that is not there yet is made. A file is opened as it is.
+      if (!existsSync(path)) mkdirSync(path, { recursive: true })
+      // Test runs open no window. A test that wants to see the path names a log file.
+      if (isTestRun) {
+        if (process.env.ROBOT_TEST_OPEN_LOG)
+          appendFileSync(process.env.ROBOT_TEST_OPEN_LOG, `${path}\n`)
+        return
+      }
       await shell.openPath(path)
     },
     setStartAtLogin: (enabled) => {

@@ -11,6 +11,8 @@ export const Dialog = (
     testId?: string
     /** False keeps the box open on Escape and on a click outside. */
     dismissible?: boolean
+    /** A wide box, for a page with two panes. */
+    wide?: boolean
   }>,
 ) => {
   let box: HTMLDivElement | undefined
@@ -45,6 +47,7 @@ export const Dialog = (
           role="dialog"
           aria-modal="true"
           aria-label={props.label}
+          data-wide={props.wide ? "true" : undefined}
           data-testid={props.testId}
         >
           {props.children}
