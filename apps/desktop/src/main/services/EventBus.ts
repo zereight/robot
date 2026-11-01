@@ -7,6 +7,11 @@ export interface EventBusService {
   emit<E extends RpcEvent>(event: E, payload: RpcEvents[E]): void
   /** Calls `listener` for every event, after the windows got it. Used to push events to linked devices. */
   tap(listener: EventTap): void
+  /**
+   * Sends an event to the windows only. The events of a linked server use this: they are not for
+   * the devices that are linked to this computer.
+   */
+  window(event: RpcEvent, payload: unknown): void
 }
 
 const make = (send: EventTap): EventBusService => {
@@ -19,6 +24,7 @@ const make = (send: EventTap): EventBusService => {
     tap: (listener) => {
       taps.push(listener)
     },
+    window: (event, payload) => send(event, payload),
   }
 }
 

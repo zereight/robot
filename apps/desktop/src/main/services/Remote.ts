@@ -1,17 +1,29 @@
 import { randomUUID } from "node:crypto"
+import { closeSync, openSync, readSync, statSync, writeFileSync } from "node:fs"
+import { basename, join } from "node:path"
 import {
+  ATTACH_BYTES,
+  ATTACH_MAX,
   type ConnectProbe,
+  type DownloadChunk,
+  FILE_CHUNK,
+  isCachedMethod,
   isPairCode,
+  isRoutedMethod,
   LINK_PROTOCOL,
   type LinkState,
   MAX_SERVERS,
   numberedNames,
   parseAddress,
   parseLink,
+  type RpcResult,
   type Server,
   type ServerEntry,
+  UPLOAD_PREFIX,
+  type UploadAck,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
+import { cacheKey, LinkCache } from "../link/cache.ts"
 import type { Conn, SecureChannel } from "../link/channel.ts"
 import { LinkError, openAny, pairWithCode } from "../link/client.ts"
 import { Connection } from "../link/connection.ts"
@@ -20,6 +32,7 @@ import { DECISION_MS, type PairMessage, toPairDevice } from "../link/protocol.ts
 import { Devices, type LinkRow } from "./Devices.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Platform } from "./Platform.ts"
 import { Servers } from "./Servers.ts"
 
 export interface RemoteService {
@@ -45,6 +58,11 @@ export interface RemoteService {
   stateOf(linkId: string): LinkState
   /** Asks a linked server. Rejects with a `LinkError`. */
   request(linkId: string, method: string, input?: unknown): Promise<unknown>
+  /**
+   * A call of the window for a linked server. It goes over the link when the server is online,
+   * and reads come from the cache when it is not. Never rejects.
+   */
+  invoke(serverId: string, method: string, input: unknown): Promise<RpcResult<unknown>>
   /** Calls `handler` for every event that a linked server pushes. */
   onEvent(handler: (linkId: string, event: string, payload: unknown) => void): void
   /** Calls `handler` when a link ends, so its cache can go. */
@@ -77,7 +95,9 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
       const devices = yield* Devices
       const bus = yield* EventBus
       const servers = yield* Servers
+      const platform = yield* Platform
       const identity = devices.identity
+      const cache = new LinkCache(join(platform.dataDir, "link-cache"))
 
       const connections = new Map<string, Connection>()
       const sides = new Map<string, "this" | "server" | null>()
@@ -109,13 +129,29 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               serversChanged()
             },
             onEvent: (event, payload) => {
+              cache.applyEvent(row.id, event, payload)
+              // The window shows these. They do not go to the devices of this computer.
+              if (event !== "notice" && event !== "revoked") bus.window(event as never, payload)
               for (const h of eventHandlers) h(row.id, event, payload)
             },
             onOnline: (info) => {
               devices.touchServer(row.id, info)
+              // What happened while the server was away is not known: the window reads again.
+              const serverId = devices.link(row.id)?.serverId
+              if (serverId) {
+                for (const event of [
+                  "places.changed",
+                  "agents.changed",
+                  "tasks.changed",
+                ] as const) {
+                  bus.window(event, { serverId })
+                }
+              }
               for (const h of onlineHandlers) h(row.id)
             },
             onRevoked: () => {
+              // "Not allowed": the cache of the server goes with the link.
+              cache.delete(row.id)
               for (const h of removedHandlers) h(row.id)
               serversChanged()
             },
@@ -132,6 +168,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
           connection.stop()
           connections.delete(id)
           sides.delete(id)
+          cache.delete(id)
         }
         for (const row of wanted.values()) if (!connections.has(row.id)) connect(row)
         serversChanged()
@@ -141,6 +178,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
       for (const row of devices.outbound()) connect(row)
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
+          cache.flush()
           for (const c of connections.values()) c.stop()
           for (const p of probes.values()) {
             clearTimeout(p.timer)
@@ -166,6 +204,117 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
       }
 
       const entryOf = (id: string) => entries().find((e) => e.id === id)
+
+      const ok = (value: unknown): RpcResult<unknown> => ({ ok: true, value })
+      const failure = (code: string, message = code): RpcResult<unknown> => ({
+        ok: false,
+        error: { code, message },
+      })
+
+      /** Sends the files of a message to the server in pieces, and gives the tokens back. */
+      const uploadFiles = async (connection: Connection, input: unknown) => {
+        const paths = (input as { files?: readonly string[] }).files ?? []
+        if (paths.length === 0) return input
+        if (paths.length > ATTACH_MAX) throw new LinkError("too_many_files")
+        const tokens: string[] = []
+        for (const path of paths) {
+          let size = 0
+          try {
+            const info = statSync(path)
+            if (!info.isFile()) throw new Error("not a file")
+            size = info.size
+          } catch {
+            throw new LinkError("file_unreadable", basename(path))
+          }
+          if (size > ATTACH_BYTES) throw new LinkError("file_too_large", basename(path))
+          const uploadId = randomUUID()
+          const fd = openSync(path, "r")
+          try {
+            let offset = 0
+            let token: string | null = null
+            for (;;) {
+              const length = Math.min(FILE_CHUNK, size - offset)
+              const buffer = Buffer.alloc(length)
+              if (length > 0) readSync(fd, buffer, 0, length, offset)
+              const done = offset + length >= size
+              const ack = (await connection.request("attachment.upload", {
+                uploadId,
+                name: basename(path),
+                offset,
+                data: buffer.toString("base64"),
+                done,
+              })) as UploadAck
+              offset += length
+              token = ack.token
+              if (done) break
+            }
+            if (!token?.startsWith(UPLOAD_PREFIX)) throw new LinkError("internal")
+            tokens.push(token)
+          } finally {
+            closeSync(fd)
+          }
+        }
+        return { ...(input as object), files: tokens }
+      }
+
+      /** "Save as": asks where, then pulls the file from the server piece by piece. */
+      const saveFile = async (linkId: string, input: unknown): Promise<RpcResult<unknown>> => {
+        const { agentId, path, name } = input as { agentId: string; path: string; name: string }
+        const connection = connections.get(linkId)
+        if (!connection || stateOf(linkId) !== "online") return failure("offline")
+        const target = await platform.pickSavePath(String(name))
+        if (!target) return ok({ saved: false })
+        const parts: Buffer[] = []
+        let offset = 0
+        for (;;) {
+          const chunk = (await connection.request("attachment.download", {
+            agentId,
+            path,
+            offset,
+          })) as DownloadChunk
+          const bytes = Buffer.from(chunk.data, "base64")
+          parts.push(bytes)
+          offset += bytes.length
+          if (chunk.done || bytes.length === 0) break
+        }
+        writeFileSync(target, Buffer.concat(parts))
+        return ok({ saved: true })
+      }
+
+      const invoke = async (
+        serverId: string,
+        method: string,
+        input: unknown,
+      ): Promise<RpcResult<unknown>> => {
+        const link = devices.outbound().find((r) => r.serverId === serverId)
+        if (!link) return failure("server_not_found")
+        if (!isRoutedMethod(method)) return failure("not_allowed")
+        const key = isCachedMethod(method) ? cacheKey(method, input) : undefined
+        const connection = connections.get(link.id)
+        if (connection && stateOf(link.id) === "online") {
+          try {
+            if (method === "attachments.save") return await saveFile(link.id, input)
+            const payload = method === "chat.send" ? await uploadFiles(connection, input) : input
+            const value = await connection.request(method, payload)
+            if (key) cache.set(link.id, key, value)
+            return ok(value)
+          } catch (error) {
+            if (
+              error instanceof LinkError &&
+              error.code !== "offline" &&
+              error.code !== "timeout"
+            ) {
+              return failure(error.code, error.detail ?? error.code)
+            }
+            // The connection broke during the call: a read can still come from the cache.
+          }
+        }
+        if (key) {
+          const hit = cache.get(link.id, key)
+          if (hit !== undefined) return ok(hit)
+        }
+        return failure(stateOf(link.id) === "not_allowed" ? "not_allowed" : "offline")
+      }
 
       return Remote.of({
         probe: (input) =>
@@ -309,6 +458,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               const state = stateOf(r.id)
               return {
                 id: r.serverId as string,
+                linkId: r.id,
                 name: names.get(r.id) ?? r.name,
                 kind: "linked" as const,
                 state,
@@ -321,6 +471,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
             connections.get(linkId)?.stop()
             connections.delete(linkId)
             sides.delete(linkId)
+            cache.delete(linkId)
             for (const h of removedHandlers) h(linkId)
             devices.removeOutbound(linkId)
           }),
@@ -330,6 +481,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
         },
         linkOfServer: (serverId) => devices.outbound().find((r) => r.serverId === serverId),
         stateOf,
+        invoke,
         request: (linkId, method, input) => {
           const connection = connections.get(linkId)
           if (!connection) return Promise.reject(new LinkError("offline"))

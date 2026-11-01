@@ -1,7 +1,8 @@
 import type { ChannelMessage } from "@robot/shared"
-import { onCleanup } from "solid-js"
+import { createEffect, on, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { call } from "../lib/rpc.ts"
+import { linkEpoch } from "../state/link.ts"
 
 /** The messages of one channel, kept in step with the main process. */
 export const createChannelChat = (channelId: string) => {
@@ -10,10 +11,13 @@ export const createChannelChat = (channelId: string) => {
     messages: [],
   })
   const load = () =>
-    call("channels.history", { channelId }).then((messages) => {
-      setState("messages", reconcile([...messages], { key: "id" }))
-      setState("loaded", true)
-    })
+    call("channels.history", { channelId })
+      .then((messages) => {
+        setState("messages", reconcile([...messages], { key: "id" }))
+        setState("loaded", true)
+      })
+      // A linked server that is offline and has nothing saved: the view stays empty.
+      .catch(() => setState("loaded", true))
   const offMessage = window.robot.on("channel.message", (message) => {
     if (message.channelId !== channelId) return
     setState(
@@ -43,5 +47,7 @@ export const createChannelChat = (channelId: string) => {
     clearTimeout(timer)
   })
   void load()
+  // A linked server that came back: read what happened while it was away.
+  createEffect(on(linkEpoch.value, () => void load(), { defer: true }))
   return state
 }

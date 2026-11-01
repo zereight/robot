@@ -8,6 +8,7 @@ import {
   type UiStatePatch,
 } from "@robot/shared"
 import {
+  createComputed,
   createContext,
   createEffect,
   createMemo,
@@ -18,15 +19,32 @@ import {
   useContext,
 } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
-import { call } from "../lib/rpc.ts"
+import { call, setActiveServer } from "../lib/rpc.ts"
+import { linkEpoch } from "./link.ts"
 
 export const loadUi = async () => {
   const [ui, servers] = await Promise.all([call("ui.get"), call("servers.list")])
   return { ui, servers }
 }
 
-const createUiState = (initial: UiState, servers: readonly Server[]) => {
+const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
   const [ui, setUi] = createStore<UiState>(initial)
+  // The linked servers come and go, and change state. A store keeps the rows (and their focus).
+  const [servers, setServers] = createStore<Server[]>([...initialServers])
+  const states = new Map<string, string | undefined>()
+  for (const s of initialServers) states.set(s.id, s.state)
+  const reloadServers = async () => {
+    const next = await call("servers.list")
+    // A server that came online again may have changed while it was away: open views read again.
+    for (const s of next) {
+      if (states.get(s.id) !== "online" && s.state === "online" && states.has(s.id)) {
+        linkEpoch.bump()
+      }
+      states.set(s.id, s.state)
+    }
+    setServers(reconcile([...next], { key: "id" }))
+  }
+  onCleanup(window.robot.on("servers.changed", () => void reloadServers()))
   const [width, setWidth] = createSignal(window.innerWidth)
   const onResize = () => setWidth(window.innerWidth)
   window.addEventListener("resize", onResize)
@@ -39,11 +57,16 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
   }
 
   const server = createMemo(() => servers.find((s) => s.id === ui.serverId) ?? servers[0])
+  // Calls that a linked server answers go to that server (see `call`).
+  createComputed(() => setActiveServer(server()?.id))
+  const localServer = createMemo(() => servers.find((s) => s.kind === "local"))
+  /** True for a computer that this one opens over the link, and is not online now. */
+  const serverOffline = () => server()?.kind === "linked" && server()?.state !== "online"
   // A store updated by id, so rows keep their elements (and focus) when the list reloads.
   const [sectionStore, setSectionStore] = createStore<{ list: PlaceSection[] }>({ list: [] })
   const [fetched, { refetch: refetchPlaces }] = createResource(
     () => server()?.id,
-    (serverId) => call("places.list", { serverId }),
+    (serverId) => call("places.list", { serverId }).catch(() => []),
   )
   createEffect(() => {
     const next = fetched()
@@ -67,6 +90,10 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     ui,
     servers,
     server,
+    /** This computer, also when a linked server is open. Settings about this computer use it. */
+    localServer,
+    linked: () => server()?.kind === "linked",
+    serverOffline,
     sections,
     refetchPlaces,
     place,

@@ -1,5 +1,7 @@
 import { randomInt, randomUUID } from "node:crypto"
-import { networkInterfaces } from "node:os"
+import { mkdtempSync, rmSync } from "node:fs"
+import { networkInterfaces, tmpdir } from "node:os"
+import { join as joinPath } from "node:path"
 import {
   type ClientEntry,
   DEFAULT_LINK_PORT,
@@ -30,6 +32,7 @@ import { codeToW } from "../link/crypto/spake2.ts"
 import { deviceIdOf, fromB64, type Identity, loadIdentity } from "../link/identity.ts"
 import { DECISION_MS, type JoinResult, type PairDevice } from "../link/protocol.ts"
 import { type ClientSession, type LinkHost, LinkServer, type ServerOffer } from "../link/server.ts"
+import { Uploads } from "../link/uploads.ts"
 import type { Actor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -99,6 +102,8 @@ export interface DevicesOptions {
 export interface DevicesService {
   readonly identity: Identity
   readonly selfId: string
+  /** Files that linked devices upload, until "send message" uses them. */
+  readonly uploads: Uploads
   /** The name that linked devices see. */
   deviceName(): string
   self(): WireDevice
@@ -154,6 +159,11 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
         const secrets = yield* Secrets
         const settings = yield* SettingsStore
         const platform = yield* Platform
+        const uploadRoot = mkdtempSync(joinPath(tmpdir(), "robot-uploads-"))
+        const uploads = new Uploads(uploadRoot)
+        yield* Effect.addFinalizer(() =>
+          Effect.sync(() => rmSync(uploadRoot, { recursive: true, force: true })),
+        )
         const servers = yield* Servers
 
         const { identity, created } = loadIdentity(secrets)
@@ -450,6 +460,8 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
             session.channel.onClose(() => {
               if (sessions.get(session.device.id) === session) {
                 sessions.delete(session.device.id)
+                // Files that were not used by a message go with the connection.
+                uploads.discardDevice(session.device.id)
                 changed()
               }
             })
@@ -558,6 +570,7 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
         return Devices.of({
           identity,
           selfId: identity.id,
+          uploads,
           deviceName,
           self,
           state,

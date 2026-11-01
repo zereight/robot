@@ -51,29 +51,52 @@ const BrowserControls = (props: { agentId: string }) => {
 
 const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
   const { t } = useApp()
+  const ui = useUi()
   const [open, setOpen] = createSignal(false)
   return (
     <>
-      <button
-        type="button"
-        class={styles.headerName}
-        aria-label={t("agents.openProfile", { name: props.agent.name })}
-        onClick={() => setOpen(true)}
-        data-testid="chat-header-agent"
+      <Show
+        when={!ui.linked()}
+        fallback={
+          // A client does not edit the agents of a server (spec 012): the name is only shown.
+          <span class={styles.headerName} data-testid="chat-header-agent" data-readonly="true">
+            <Face face={props.agent.face} image={props.agent.faceImage} size={24} />
+            <span>{props.agent.name}</span>
+          </span>
+        }
       >
-        <Face face={props.agent.face} image={props.agent.faceImage} size={24} />
-        <span>{props.agent.name}</span>
-      </button>
-      <button
-        type="button"
-        class={styles.headerModel}
-        aria-label={t("model.choose")}
-        onClick={() => props.setPicking(true)}
-        data-testid="chat-header-model"
+        <button
+          type="button"
+          class={styles.headerName}
+          aria-label={t("agents.openProfile", { name: props.agent.name })}
+          onClick={() => setOpen(true)}
+          data-testid="chat-header-agent"
+        >
+          <Face face={props.agent.face} image={props.agent.faceImage} size={24} />
+          <span>{props.agent.name}</span>
+        </button>
+      </Show>
+      <Show
+        when={!ui.linked()}
+        fallback={
+          <span class={styles.headerModel} data-testid="chat-header-model" data-readonly="true">
+            {props.agent.model?.model ?? t("agents.noModel")}
+          </span>
+        }
       >
-        {props.agent.model?.model ?? t("agents.noModel")}
-      </button>
-      <BrowserControls agentId={props.agent.id} />
+        <button
+          type="button"
+          class={styles.headerModel}
+          aria-label={t("model.choose")}
+          onClick={() => props.setPicking(true)}
+          data-testid="chat-header-model"
+        >
+          {props.agent.model?.model ?? t("agents.noModel")}
+        </button>
+      </Show>
+      <Show when={!ui.linked()}>
+        <BrowserControls agentId={props.agent.id} />
+      </Show>
       <Presence when={open()}>
         {() => <AgentProfileDialog agent={props.agent} onClose={() => setOpen(false)} />}
       </Presence>

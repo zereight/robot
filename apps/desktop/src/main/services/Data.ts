@@ -86,6 +86,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           db.run("VACUUM INTO ?", copy)
           const out = new DatabaseSync(copy)
           try {
+            // The links of this computer stay on it: an export holds no device keys or addresses.
+            out.exec("DELETE FROM device_link")
             const rows = out.prepare("SELECT id, parts, error_detail FROM message").all() as {
               id: string
               parts: string

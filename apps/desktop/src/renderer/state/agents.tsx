@@ -17,7 +17,7 @@ const createAgentsState = () => {
   const [store, setStore] = createStore<{ list: Agent[] }>({ list: [] })
   const [fetched, { refetch }] = createResource(
     () => ui.server()?.id,
-    (serverId) => call("agents.list", { serverId, archived: false }),
+    (serverId) => call("agents.list", { serverId, archived: false }).catch(() => []),
   )
   createEffect(() => {
     const next = fetched()

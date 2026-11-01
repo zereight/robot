@@ -16,7 +16,7 @@ const createChannelsState = () => {
   const [store, setStore] = createStore<{ list: Channel[] }>({ list: [] })
   const [fetched, { refetch }] = createResource(
     () => ui.server()?.id,
-    (serverId) => call("channels.list", { serverId }),
+    (serverId) => call("channels.list", { serverId }).catch(() => []),
   )
   createEffect(() => {
     const next = fetched()

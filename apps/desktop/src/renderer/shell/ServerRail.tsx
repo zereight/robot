@@ -1,17 +1,22 @@
-import type { Page } from "@robot/shared"
+import type { MessageKey, Page, Server } from "@robot/shared"
 import {
   ChartColumn,
   CircleHelp,
   ListChecks,
+  LoaderCircle,
   MessagesSquare,
   Plus,
   Settings,
+  TriangleAlert,
+  WifiOff,
   Workflow,
 } from "lucide-solid"
 import { createSignal, For, type JSX, Show } from "solid-js"
 import { ConnectDialog } from "../devices/ConnectDialog.tsx"
+import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
+import { ContextMenu } from "../ui/ContextMenu.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import styles from "./shell.module.css"
 
@@ -21,6 +26,11 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
   const [addOpen, setAddOpen] = createSignal(false)
+  const [menu, setMenu] = createSignal<{ server: Server; x: number; y: number }>()
+
+  /** The state of a linked server as one word, for the label of its tile. */
+  const stateWord = (server: Server) =>
+    server.kind === "linked" && server.state ? t(`devices.state.${server.state}` as MessageKey) : ""
 
   const PageButton = (p: { page: Page; label: string; icon: JSX.Element }) => (
     <button
@@ -41,18 +51,49 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
       <div class={styles.railGroup}>
         <For each={ui.servers}>
           {(server) => (
-            <div class={styles.tileWrap} data-selected={ui.server()?.id === server.id}>
+            <div
+              class={styles.tileWrap}
+              data-selected={ui.server()?.id === server.id}
+              data-kind={server.kind}
+              data-state={server.state}
+            >
               <button
                 type="button"
                 class={styles.tile}
-                aria-label={server.name}
+                aria-label={
+                  server.kind === "linked"
+                    ? t("link.tile.label", { name: server.name, state: stateWord(server) })
+                    : server.name
+                }
                 aria-pressed={ui.server()?.id === server.id}
-                title={server.name}
+                title={
+                  server.kind === "linked"
+                    ? t("link.tile.label", { name: server.name, state: stateWord(server) })
+                    : server.name
+                }
                 data-testid="server-tile"
+                data-name={server.name}
+                data-state={server.state}
                 onClick={() => ui.selectServer(server.id)}
+                onContextMenu={(e) => {
+                  if (server.kind !== "linked") return
+                  e.preventDefault()
+                  setMenu({ server, x: e.clientX, y: e.clientY })
+                }}
               >
                 {initials(server.name)}
               </button>
+              <Show when={server.kind === "linked" && server.state && server.state !== "online"}>
+                <span class={styles.tileMark} data-mark={server.state} aria-hidden="true">
+                  {server.state === "connecting" || server.state === "reconnecting" ? (
+                    <LoaderCircle size={10} class={styles.spin ?? ""} />
+                  ) : server.state === "offline" ? (
+                    <WifiOff size={10} />
+                  ) : (
+                    <TriangleAlert size={10} />
+                  )}
+                </span>
+              </Show>
             </div>
           )}
         </For>
@@ -95,6 +136,29 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
       <Presence when={addOpen()}>
         {() => <ConnectDialog onClose={() => setAddOpen(false)} />}
       </Presence>
+      <Show when={menu()}>
+        {(open) => {
+          // Read once: the menu closes before its item runs, and `open` is empty then.
+          const { server, x, y } = open()
+          return (
+            <ContextMenu
+              x={x}
+              y={y}
+              label={t("link.tile.menu", { name: server.name })}
+              items={[
+                {
+                  label: t("link.tile.remove", { name: server.name }),
+                  testId: "server-tile-remove",
+                  run: () => {
+                    if (server.linkId) void call("devices.server.remove", { id: server.linkId })
+                  },
+                },
+              ]}
+              onClose={() => setMenu(undefined)}
+            />
+          )
+        }}
+      </Show>
     </nav>
   )
 }

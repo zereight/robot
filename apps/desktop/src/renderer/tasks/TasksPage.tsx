@@ -115,7 +115,11 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   {t("tasks.stop")}
                 </Button>
               </Show>
-              <Show when={d().task.state === "failed" || d().task.state === "cancelled"}>
+              <Show
+                when={
+                  !ui.linked() && (d().task.state === "failed" || d().task.state === "cancelled")
+                }
+              >
                 <Button
                   onClick={() => act(() => call("tasks.retry", { id: d().task.id }))}
                   data-testid="task-retry"
@@ -148,7 +152,7 @@ export const TasksPage = () => {
   const [openId, setOpenId] = createSignal<string>()
   const [tasks, { refetch }] = createResource(
     () => ui.server()?.id,
-    (serverId) => call("tasks.list", { serverId }),
+    (serverId) => call("tasks.list", { serverId }).catch(() => []),
     { initialValue: [] },
   )
   onCleanup(

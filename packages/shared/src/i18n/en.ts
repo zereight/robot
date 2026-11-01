@@ -686,6 +686,22 @@ export const en = {
   "error.offline": "This server is offline.",
   "error.timeout": "The server did not answer in time.",
   "error.not_allowed": "Not allowed. Open this on the computer that runs the agents.",
+
+  "link.state.connecting": "Connecting to {name}…",
+  "link.state.reconnecting": "Reconnecting to {name}…",
+  "link.state.offline": "{name} is offline.",
+  "link.state.offline.cache": "Offline. This shows what was saved the last time.",
+  "link.state.not_allowed": "{name} removed this device.",
+  "link.pairAgain": "Pair again",
+  "link.tile.label": "{name} ({state})",
+  "link.tile.remove": "Remove {name}",
+  "link.tile.menu": "Menu of {name}",
+  "link.openOnServer": "Open this on {name}.",
+  "link.from": "from {name}",
+  "link.file.download": "Download {name}",
+  "link.file.saved": "Saved",
+  "link.noCache": "This is not saved on this device. Connect to {name} to see it.",
+  "error.upload_gone": "The files were not sent. Try again.",
 } as const
 
 export type MessageKey = keyof typeof en

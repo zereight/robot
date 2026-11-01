@@ -32,6 +32,7 @@ import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { Agents } from "./Agents.ts"
+import { type Actor, CurrentActor } from "./actor.ts"
 import { applyEvent } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -92,6 +93,7 @@ interface MessageRow {
   awaiting: number
   model: string | null
   created_at: number
+  from_name: string | null
 }
 
 interface AgentRow {
@@ -217,6 +219,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         model: row.model,
         createdAt: row.created_at,
         editedAt: null,
+        fromDevice: row.from_name,
         taskId: row.task_id,
         awaiting: row.awaiting === 1,
         chips: chipsFor(row),
@@ -229,17 +232,24 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       }
       const placesChanged = (serverId: string) => bus.emit("places.changed", { serverId })
 
-      const insertUserMessage = (channelId: string, text: string, awaiting: boolean) => {
+      const insertUserMessage = (
+        channelId: string,
+        text: string,
+        awaiting: boolean,
+        from: Actor | null = null,
+      ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO channel_message (id, channel_id, author, parts, status, awaiting, created_at, finished_at)
-           VALUES (?, ?, 'user', ?, 'done', ?, ?, ?)`,
+          `INSERT INTO channel_message (id, channel_id, author, parts, status, awaiting, created_at, finished_at, from_device, from_name)
+           VALUES (?, ?, 'user', ?, 'done', ?, ?, ?, ?, ?)`,
           id,
           channelId,
           JSON.stringify([{ kind: "text", text }]),
           awaiting ? 1 : 0,
           Date.now(),
           Date.now(),
+          from?.id ?? null,
+          from?.name ?? null,
         )
         emitMessage(id)
         return id
@@ -872,6 +882,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         })
 
       const send = Effect.fn("Channels.send")(function* (channelId: string, text: string) {
+        const sender = yield* CurrentActor
         const channel = channelRow(channelId)
         if (!channel) return yield* new AppError({ code: "channel_not_found" })
         const value = text.trim()
@@ -885,7 +896,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         )
         const lead = toChannel(channel).leadId
         const awaiting = mentioned.length === 0 && lead === null
-        insertUserMessage(channelId, value, awaiting)
+        insertUserMessage(channelId, value, awaiting, sender)
         placesChanged(channel.server_id)
         for (const handler of messageHandlers) handler(channelId, value)
         if (awaiting) return { awaiting: true }

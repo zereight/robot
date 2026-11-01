@@ -5,7 +5,6 @@ import {
   ChannelPatch,
   ChatSend,
   DEVICE_NAME_MAX,
-  INVOKE_CHANNEL,
   MESSAGE_MAX,
   MUTE_CHOICES,
   ProviderConnect,
@@ -25,10 +24,9 @@ import {
   WorkflowPatch,
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
-import { ipcMain } from "electron"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
-import { linkHandlers } from "./link/handlers.ts"
+import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { Agents } from "./services/Agents.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
@@ -234,6 +232,8 @@ export const handlers: Handlers = {
       done,
     ),
   "devices.nearby": () => Effect.succeed([]),
+  // Saving a file of a linked server is carried out over the link, see `Remote.invoke`.
+  "attachments.save": () => Effect.fail(new AppError({ code: "not_allowed" })),
   "places.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Places.use((p) => p.list(serverId))),
@@ -601,9 +601,12 @@ export const runRequest = async (
     (handlers as Record<string, Handler<RpcMethod> | undefined>)[method]
   if (!handler) return { ok: false, error: { code: "unknown_method", message: method } }
   // The device that asks is known to the handlers: they record "from <device>" with it.
-  const exit = await runtime.runPromiseExit(
-    Effect.provideService(handler(input as never), CurrentActor, actor),
-  )
+  // A linked device names its files by the tokens of its uploads, never by a path.
+  const run =
+    actor && method === "chat.send"
+      ? withUploads(actor, input, (mapped) => handler(mapped as never))
+      : handler(input as never)
+  const exit = await runtime.runPromiseExit(Effect.provideService(run, CurrentActor, actor))
   if (Exit.isSuccess(exit)) return { ok: true, value: exit.value }
   const failure = exit.cause.reasons.find(Cause.isFailReason)
   if (failure) {
@@ -614,16 +617,34 @@ export const runRequest = async (
   return { ok: false, error: { code: "internal", message: "Unexpected error" } }
 }
 
-export const registerRpc = (runtime: ManagedRuntime.ManagedRuntime<Services, never>) => {
-  // Requests of linked devices run the same handlers, with the device as the actor.
-  void runtime.runPromise(
+/**
+ * Lets requests of linked devices run the same handlers, with the device as the actor. The app and
+ * the unit tests both call this when they make their runtime.
+ */
+export const bindLinkDispatcher = (runtime: ManagedRuntime.ManagedRuntime<Services, never>) =>
+  runtime.runPromise(
     Devices.use((d) =>
       Effect.sync(() =>
         d.bindDispatcher((method, input, actor) => runRequest(runtime, method, input, actor)),
       ),
     ),
   )
-  ipcMain.handle(INVOKE_CHANNEL, (_event, method: string, input: unknown) =>
-    runRequest(runtime, method, input),
-  )
+
+/**
+ * A call of the window. A call for a linked server goes over the link; when the id is not a linked
+ * server (it is this computer), the call runs here.
+ */
+export const runWindowRequest = async (
+  runtime: ManagedRuntime.ManagedRuntime<Services, never>,
+  method: string,
+  input: unknown,
+  server?: string,
+): Promise<RpcResult<unknown>> => {
+  if (server && typeof server === "string") {
+    const remote = await runtime.runPromise(
+      Remote.use((r) => Effect.promise(() => r.invoke(server, method, input))),
+    )
+    if (remote.ok || remote.error.code !== "server_not_found") return remote
+  }
+  return runRequest(runtime, method, input)
 }

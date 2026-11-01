@@ -22,6 +22,7 @@ import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { Activity } from "./Activity.ts"
+import { type Actor, CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -45,6 +46,8 @@ interface MessageRow {
   model: string | null
   created_at: number
   edited_at: number | null
+  from_device: string | null
+  from_name: string | null
 }
 
 interface AgentModelRow {
@@ -129,6 +132,7 @@ const toMessage = (row: MessageRow): ChatMessage => ({
   model: row.model,
   createdAt: row.created_at,
   editedAt: row.edited_at,
+  fromDevice: row.from_name,
 })
 
 /** Adds a stream event to the parts. Returns true when a new part starts (a part boundary). */
@@ -197,9 +201,21 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const queues = new Map<string, QueuedMessage[]>()
       /** Origins of user messages and queued items, by their ids. */
       const origins = new Map<string, TaskOrigin>()
+      /** The linked device that sent a queued item, by the id of the item (spec 012). */
+      const senders = new Map<string, Actor>()
       /** Writes a queued item as a message, and moves its origin to the message. */
       const insertQueued = (agentId: string, next: QueuedMessage) => {
-        const row = insertMessage(agentId, "user", next.text, next.replyTo, null, next.files)
+        const sender = senders.get(next.id)
+        senders.delete(next.id)
+        const row = insertMessage(
+          agentId,
+          "user",
+          next.text,
+          next.replyTo,
+          null,
+          next.files,
+          sender ?? null,
+        )
         const origin = origins.get(next.id)
         if (origin) {
           origins.delete(next.id)
@@ -238,11 +254,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         replyTo: string | null,
         model: string | null,
         files: readonly FilePart[] = [],
+        from: Actor | null = null,
       ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           agentId,
           author,
@@ -253,6 +270,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           replyTo,
           model,
           Date.now(),
+          from?.id ?? null,
+          from?.name ?? null,
         )
         const row = messageRow(id) as MessageRow
         emitMessage(row)
@@ -527,6 +546,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
 
       const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
+        const sender = yield* CurrentActor
         const agent = yield* usableAgent(input.agentId)
         const paths = input.files ?? []
         if (!input.text.trim() && paths.length === 0)
@@ -543,12 +563,21 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (queue.length >= QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
           const item = { id: randomUUID(), text: input.text, replyTo: input.replyTo, files }
           if (origin) origins.set(item.id, origin)
+          if (sender) senders.set(item.id, sender)
           queue.push(item)
           queues.set(input.agentId, queue)
           emitQueue(input.agentId)
           return { queued: true }
         }
-        const row = insertMessage(input.agentId, "user", input.text, input.replyTo, null, files)
+        const row = insertMessage(
+          input.agentId,
+          "user",
+          input.text,
+          input.replyTo,
+          null,
+          files,
+          sender,
+        )
         if (origin) origins.set(row.id, origin)
         yield* kick(input.agentId)
         return { queued: false }

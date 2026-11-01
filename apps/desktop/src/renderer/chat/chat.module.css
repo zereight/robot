@@ -683,3 +683,10 @@
   background: var(--c-main);
   color: var(--c-text);
 }
+
+/* "from <device name>" under a message that another linked device sent. */
+.fromDevice {
+  margin: 2px 0 0;
+  color: var(--c-text-muted);
+  font-size: 0.8rem;
+}

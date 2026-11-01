@@ -15,7 +15,7 @@ export const ArchiveSection = () => {
   const { t } = useApp()
   const ui = useUi()
   const [archived, { refetch }] = createResource(
-    () => ui.server()?.id,
+    () => ui.localServer()?.id,
     (serverId) => call("agents.list", { serverId, archived: true }),
     { initialValue: [] as readonly Agent[] },
   )

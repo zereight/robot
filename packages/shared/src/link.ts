@@ -116,7 +116,7 @@ export const CLIENT_METHODS = [
   "channels.stop",
   "channels.activity",
   "channels.markRead",
-  "chat.page",
+  "chat.history",
   "chat.send",
   "chat.stop",
   "chat.retry",
@@ -133,6 +133,39 @@ export const CLIENT_METHODS = [
   "attention.list",
 ] as const
 export type ClientMethod = (typeof CLIENT_METHODS)[number]
+
+/**
+ * What the window asks a linked server for: the methods the server answers to a client, minus the
+ * two that only exist on the link, plus the ones that this computer carries out for the window.
+ * The window sends the id of the server with these, and the app sends them over the link.
+ */
+export const ROUTED_METHODS = [
+  ...CLIENT_METHODS.filter(
+    (m) => m !== "server.summary" && m !== "attachment.upload" && m !== "attachment.download",
+  ),
+  "attachments.save",
+] as const
+export type RoutedMethod = (typeof ROUTED_METHODS)[number]
+
+export const isRoutedMethod = (method: string): method is RoutedMethod =>
+  (ROUTED_METHODS as readonly string[]).includes(method)
+
+/** Reads that a client keeps in its cache, so a server that is offline still shows them. */
+export const CACHED_METHODS = [
+  "places.list",
+  "agents.list",
+  "agents.get",
+  "channels.list",
+  "channels.history",
+  "chat.history",
+  "tasks.list",
+  "tasks.get",
+] as const
+export const isCachedMethod = (method: string) =>
+  (CACHED_METHODS as readonly string[]).includes(method)
+
+/** Page buttons that a client cannot use on a linked server (spec 012, "What a client can do"). */
+export const CLIENT_BLOCKED_PAGES = ["workflows", "usage"] as const
 
 export const isClientMethod = (method: string): method is ClientMethod =>
   (CLIENT_METHODS as readonly string[]).includes(method)
@@ -158,6 +191,43 @@ export const MESSAGE_PAGE = 200
 
 /** Largest piece of a file in one request, before the base64 text. */
 export const FILE_CHUNK = 192 * 1024
+
+/**
+ * A client cannot name a path on the server. It uploads a file in pieces and gets a token; the
+ * token goes in the `files` of "send message", and the server maps it to the stored file.
+ */
+export const UPLOAD_PREFIX = "upload:"
+
+export interface UploadChunk {
+  readonly uploadId: string
+  readonly name: string
+  /** Bytes already sent. A piece must start where the last one ended. */
+  readonly offset: number
+  /** The piece as base64 text. */
+  readonly data: string
+  /** True for the last piece. */
+  readonly done: boolean
+}
+
+export interface UploadAck {
+  readonly size: number
+  /** Set after the last piece. */
+  readonly token: string | null
+}
+
+export interface DownloadRequest {
+  readonly agentId: string
+  /** The `path` of a file part of a message, for example `attachments/report.pdf`. */
+  readonly path: string
+  readonly offset: number
+}
+
+export interface DownloadChunk {
+  readonly size: number
+  readonly offset: number
+  readonly data: string
+  readonly done: boolean
+}
 
 // ---------------------------------------------------------------------------------------------
 // Wire messages (inside the encrypted channel)

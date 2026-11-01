@@ -48,6 +48,8 @@ export interface ChatMessage {
   readonly model: string | null
   readonly createdAt: number
   readonly editedAt: number | null
+  /** The name of the linked device that sent this message. Null for this computer (spec 012). */
+  readonly fromDevice: string | null
 }
 
 export type FilePart = Extract<MessagePart, { kind: "file" }>

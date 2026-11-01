@@ -111,6 +111,11 @@ export interface RpcMethods {
   /** Computers on this network that show a pairing code now. */
   "devices.nearby": { input: undefined; output: readonly NearbyComputer[] }
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
+  /** Saves a file of a message of a linked server to this computer. Asks where to save it. */
+  "attachments.save": {
+    input: { agentId: string; path: string; name: string }
+    output: { saved: boolean }
+  }
   "ui.get": { input: undefined; output: UiState }
   "ui.update": { input: UiStatePatch; output: UiState }
   "agents.list": { input: { serverId: string; archived: boolean }; output: readonly Agent[] }
@@ -283,7 +288,12 @@ export interface RpcError {
 
 /** The bridge that the preload script exposes on `window.robot`. */
 export interface RobotBridge {
-  invoke<M extends RpcMethod>(method: M, input: RpcInput<M>): Promise<RpcResult<RpcOutput<M>>>
+  /** `server` is the linked server that the call is for. Absent: this computer. */
+  invoke<M extends RpcMethod>(
+    method: M,
+    input: RpcInput<M>,
+    server?: string,
+  ): Promise<RpcResult<RpcOutput<M>>>
   /** The full path of a file that the user dropped on the window. Empty when unknown. */
   pathForFile(file: File): string
   on<E extends RpcEvent>(event: E, listener: (payload: RpcEvents[E]) => void): () => void

@@ -7,11 +7,13 @@ import {
   messageFiles,
   messageText,
 } from "@robot/shared"
-import { Copy, Pencil, Reply, User, Wrench } from "lucide-solid"
+import { Copy, Download, Pencil, Reply, User, Wrench } from "lucide-solid"
 import { createSignal, For, Match, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { useDevices } from "../state/devices.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
 import { fileSize, formatTime } from "./format.ts"
@@ -171,8 +173,16 @@ const FailedRow = (props: { message: ChatMessage; onRetry: () => void }) => {
 export const MessageRow = (props: MessageRowProps) => {
   const app = useApp()
   const { t } = app
+  const ui = useUi()
+  const devices = useDevices()
   const [editing, setEditing] = createSignal(false)
   const [draft, setDraft] = createSignal("")
+  const [savedFile, setSavedFile] = createSignal<string>()
+  /** A message from another linked device shows its name. This device does not name itself. */
+  const fromOther = () => {
+    const from = props.message.fromDevice
+    return from && from !== devices.state()?.self.name ? from : undefined
+  }
   const isAgent = () => props.message.author === "agent"
   const name = () => (isAgent() ? props.agent.name : t("chat.you"))
   const time = () => formatTime(app.locale(), props.message.createdAt)
@@ -269,6 +279,13 @@ export const MessageRow = (props: MessageRowProps) => {
                 <Show when={messageText(props.message)}>
                   <p class={styles.userText}>{messageText(props.message)}</p>
                 </Show>
+                <Show when={fromOther()}>
+                  {(from) => (
+                    <p class={styles.fromDevice} data-testid="from-device">
+                      {t("link.from", { name: from() })}
+                    </p>
+                  )}
+                </Show>
                 <Show when={messageFiles(props.message).length > 0}>
                   <ul class={styles.chips} data-testid="message-files">
                     <For each={messageFiles(props.message)}>
@@ -276,6 +293,28 @@ export const MessageRow = (props: MessageRowProps) => {
                         <li class={styles.chip} title={file.path} data-testid="message-file">
                           <span class={styles.chipName}>{file.name}</span>
                           <span class={styles.chipSize}>{fileSize(file.size)}</span>
+                          <Show when={ui.linked()}>
+                            <IconButton
+                              label={t("link.file.download", { name: file.name })}
+                              disabled={ui.serverOffline()}
+                              onClick={async () => {
+                                const result = await call("attachments.save", {
+                                  agentId: props.message.agentId,
+                                  path: file.path,
+                                  name: file.name,
+                                }).catch(() => undefined)
+                                if (result?.saved) setSavedFile(file.path)
+                              }}
+                              data-testid="message-file-download"
+                            >
+                              <Download size={12} />
+                            </IconButton>
+                            <Show when={savedFile() === file.path}>
+                              <span class={styles.chipSize} data-testid="message-file-saved">
+                                {t("link.file.saved")}
+                              </span>
+                            </Show>
+                          </Show>
                         </li>
                       )}
                     </For>

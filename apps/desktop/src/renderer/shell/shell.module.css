@@ -552,3 +552,63 @@
     transform: scale(0.6);
   }
 }
+
+/* A linked server that is not online shows muted, with a small mark (spec 012, States). */
+.tileWrap[data-state="reconnecting"] .tile,
+.tileWrap[data-state="offline"] .tile,
+.tileWrap[data-state="not_allowed"] .tile,
+.tileWrap[data-state="update_app"] .tile {
+  opacity: 0.5;
+}
+
+.tileMark {
+  position: absolute;
+  right: calc(50% - var(--tile) / 2 - 2px);
+  bottom: -2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--c-rail);
+  color: var(--c-text);
+  pointer-events: none;
+}
+
+.tileMark[data-mark="not_allowed"],
+.tileMark[data-mark="update_app"] {
+  color: var(--c-danger);
+}
+
+.spin {
+  /* A turn takes four slow motions, so reduce motion (a duration of 0) stops it. */
+  animation: spin calc(var(--motion-slow) * 4) linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The strip above a linked server that is not online. */
+.serverNotice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--c-sidebar);
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text-muted);
+  font-size: 0.9rem;
+}
+
+.serverNotice[data-state="not_allowed"],
+.serverNotice[data-state="update_app"] {
+  color: var(--c-text);
+}
+
+.pageNotice {
+  padding: 24px;
+  color: var(--c-text-muted);
+}

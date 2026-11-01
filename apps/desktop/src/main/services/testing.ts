@@ -3,6 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
+import { bindLinkDispatcher } from "../rpc.ts"
 import type { BrowserPage, PlatformService } from "./Platform.ts"
 import { Secrets } from "./Secrets.ts"
 
@@ -18,6 +19,8 @@ export const testPlatform = () => {
     notices: [] as { title: string; body: string; click: () => void }[],
     shapes: [] as string[],
     shown: 0,
+    /** What "Save as" answers. Undefined means the user cancelled. */
+    savePath: undefined as string | undefined,
   }
   const fakeBrowser = (agentId: string): BrowserPage => {
     let open = false
@@ -58,7 +61,7 @@ export const testPlatform = () => {
     systemLocale: () => "en-US",
     pickFolder: async () => undefined,
     pickFiles: async () => [],
-    pickSavePath: async () => undefined,
+    pickSavePath: async () => shell.savePath,
     pickArchive: async () => undefined,
     openPath: async () => {},
     setStartAtLogin: () => {},
@@ -103,6 +106,8 @@ export const testRuntime = (options: { name?: string } = {}) => {
       secrets: Secrets.memory,
     }),
   )
+  // The requests of linked devices run the real handlers, as in the app.
+  void bindLinkDispatcher(runtime)
   return { runtime, dataDir, trashed, events, browserLog, shell }
 }
 

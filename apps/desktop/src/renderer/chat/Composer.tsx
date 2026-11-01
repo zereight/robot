@@ -10,6 +10,7 @@ import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
 
@@ -78,6 +79,7 @@ const QueueItem = (props: { agentId: string; item: QueuedMessage }) => {
 
 export const Composer = (props: ComposerProps) => {
   const { t } = useApp()
+  const ui = useUi()
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
   const [files, setFiles] = createSignal<string[]>([])
@@ -151,7 +153,7 @@ export const Composer = (props: ComposerProps) => {
     }
   }
 
-  const blocked = () => props.agent.state === "offline"
+  const blocked = () => ui.serverOffline() || props.agent.state === "offline"
 
   return (
     <div class={styles.composer}>
@@ -166,22 +168,39 @@ export const Composer = (props: ComposerProps) => {
         when={!blocked()}
         fallback={
           <div class={styles.blocked} data-testid="composer-blocked">
-            <span>{props.agent.model ? t("chat.notConnected") : t("chat.noModel")}</span>
             <Show
-              when={props.agent.model}
+              when={ui.serverOffline()}
               fallback={
-                <Button
-                  variant="primary"
-                  onClick={props.onChooseModel}
-                  data-testid="composer-choose-model"
-                >
-                  {t("chat.chooseModel")}
-                </Button>
+                <>
+                  <span>{props.agent.model ? t("chat.notConnected") : t("chat.noModel")}</span>
+                  <Show when={!ui.linked()}>
+                    <Show
+                      when={props.agent.model}
+                      fallback={
+                        <Button
+                          variant="primary"
+                          onClick={props.onChooseModel}
+                          data-testid="composer-choose-model"
+                        >
+                          {t("chat.chooseModel")}
+                        </Button>
+                      }
+                    >
+                      <Button
+                        variant="primary"
+                        onClick={props.onConnect}
+                        data-testid="composer-connect"
+                      >
+                        {t("chat.connect")}
+                      </Button>
+                    </Show>
+                  </Show>
+                </>
               }
             >
-              <Button variant="primary" onClick={props.onConnect} data-testid="composer-connect">
-                {t("chat.connect")}
-              </Button>
+              <span data-testid="composer-offline">
+                {t("link.state.offline", { name: ui.server()?.name ?? "" })}
+              </span>
             </Show>
           </div>
         }

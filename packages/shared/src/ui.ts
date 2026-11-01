@@ -50,6 +50,8 @@ export interface Server {
   readonly name: string
   /** `local` is this computer. `linked` is another computer that this one opens (spec 012). */
   readonly kind: "local" | "linked"
+  /** The link of a linked server: the id that "Remove" in Settings > Devices uses. */
+  readonly linkId?: string
   /** The connection state of a linked server. Absent for this computer. */
   readonly state?: LinkState
   /** Which side must update the app, when the state is `update_app`. */
