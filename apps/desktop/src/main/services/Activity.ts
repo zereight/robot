@@ -12,13 +12,16 @@ export class Activity extends Context.Service<Activity, ActivityService>()("robo
     Activity,
     Effect.gen(function* () {
       const bus = yield* EventBus
-      const working = new Set<string>()
+      // A count, because a chat reply and a channel part can both be on one agent.
+      const working = new Map<string, number>()
       return Activity.of({
-        isWorking: (agentId) => working.has(agentId),
+        isWorking: (agentId) => (working.get(agentId) ?? 0) > 0,
         setWorking: (agentId, serverId, on) => {
-          if (on === working.has(agentId)) return
-          if (on) working.add(agentId)
-          else working.delete(agentId)
+          const before = working.get(agentId) ?? 0
+          const after = Math.max(0, before + (on ? 1 : -1))
+          if (after === 0) working.delete(agentId)
+          else working.set(agentId, after)
+          if (before > 0 === after > 0) return
           bus.emit("agents.changed", { serverId })
           bus.emit("places.changed", { serverId })
         },

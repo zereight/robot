@@ -9,6 +9,7 @@ import { ProvidersSection } from "./providers/ProvidersSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
 import { useAgents } from "./state/agents.tsx"
 import { useApp } from "./state/app.tsx"
+import { TasksPage } from "./tasks/TasksPage.tsx"
 import { IconButton } from "./ui/controls.tsx"
 import { Presence } from "./ui/Presence.tsx"
 import { UsagePage } from "./usage/UsagePage.tsx"
@@ -39,7 +40,7 @@ export const App = () => {
             </IconButton>
           ) : null
         }
-        pages={{ usage: () => <UsagePage /> }}
+        pages={{ usage: () => <UsagePage />, tasks: () => <TasksPage /> }}
         settingsSections={{
           archive: () => <ArchiveSection />,
           providers: () => <ProvidersSection />,

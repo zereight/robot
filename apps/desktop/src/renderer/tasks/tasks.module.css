@@ -1,0 +1,154 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--c-text-muted);
+}
+
+.select,
+.search {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 5px 8px;
+  min-width: 140px;
+}
+
+.search {
+  min-width: 200px;
+  margin-left: auto;
+}
+
+.muted {
+  color: var(--c-text-muted);
+  margin: 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--c-border);
+  text-align: left;
+  font-weight: 500;
+}
+
+.table thead th {
+  color: var(--c-text-muted);
+  font-size: 0.85rem;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rowButton {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-weight: 500;
+  text-align: left;
+  color: var(--c-text);
+  cursor: pointer;
+}
+
+.rowButton:hover {
+  text-decoration: underline;
+}
+
+.state {
+  font-size: 0.85rem;
+}
+
+.state[data-state="done"] {
+  color: var(--c-success);
+}
+
+.state[data-state="failed"] {
+  color: var(--c-danger);
+}
+
+.state[data-state="cancelled"],
+.state[data-state="queued"] {
+  color: var(--c-text-muted);
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: min(520px, 80vw);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.detail h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 8px 0 0;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.meta {
+  color: var(--c-text-muted);
+  margin: 0;
+}
+
+.text {
+  white-space: pre-wrap;
+  font-family: var(--font-sans);
+  margin: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  user-select: text;
+}
+
+.errorText {
+  color: var(--c-danger);
+  margin: 0;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.spacer {
+  flex: 1;
+}

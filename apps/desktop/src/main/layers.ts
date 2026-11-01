@@ -12,6 +12,7 @@ import { Providers } from "./services/Providers.ts"
 import type { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Tasks } from "./services/Tasks.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
 
@@ -38,8 +39,9 @@ export const appLayer = (options: AppLayerOptions) => {
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
   const providers = Providers.layer.pipe(Layer.provideMerge(stores))
+  const tasks = Tasks.layer.pipe(Layer.provideMerge(providers))
   const agents = Layer.mergeAll(Agents.layer, Chat.layer, Usage.layer).pipe(
-    Layer.provideMerge(providers),
+    Layer.provideMerge(tasks),
   )
   const places = Places.layer.pipe(Layer.provideMerge(agents))
   return Data.layer.pipe(Layer.provideMerge(places))

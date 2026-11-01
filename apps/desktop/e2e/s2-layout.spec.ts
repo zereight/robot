@@ -51,7 +51,7 @@ test("layout: rail, place list, panel, width and sections survive a restart", as
   // Pages.
   await page.getByTestId("page-help").click()
   await expect(page.getByTestId("help-page")).toBeVisible()
-  await page.getByTestId("page-tasks").click()
+  await page.getByTestId("page-workflows").click()
   await expect(page.getByTestId("page-later")).toBeVisible()
   await page.getByTestId("page-chats").click()
   await expect(page.getByTestId("no-place")).toBeVisible()
