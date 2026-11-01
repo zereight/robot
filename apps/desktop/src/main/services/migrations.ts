@@ -175,4 +175,41 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX routine_skip_at ON routine_skip (routine_id, at);
   `,
+  `
+  CREATE TABLE workflow (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    steps TEXT NOT NULL,
+    edges TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_checked_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE workflow_run (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL REFERENCES workflow (id) ON DELETE CASCADE,
+    state TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    trigger_text TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER
+  );
+  CREATE INDEX workflow_run_workflow ON workflow_run (workflow_id, started_at);
+  CREATE TABLE workflow_run_step (
+    run_id TEXT NOT NULL REFERENCES workflow_run (id) ON DELETE CASCADE,
+    step_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    state TEXT NOT NULL,
+    input TEXT NOT NULL DEFAULT '',
+    result TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    branch TEXT NOT NULL DEFAULT '',
+    task_id TEXT,
+    PRIMARY KEY (run_id, step_id)
+  );
+  `,
 ]
