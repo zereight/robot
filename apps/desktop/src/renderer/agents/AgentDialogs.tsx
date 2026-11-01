@@ -57,7 +57,7 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
         }}
       />
       <div class={styles.spread}>
-        <span class={styles.hint} title={props.agent.workspace}>
+        <span class={styles.hint} title={props.agent.workspace} data-user-data>
           {t("agents.workspace")}: {props.agent.workspace}
         </span>
       </div>
