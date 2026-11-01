@@ -53,6 +53,17 @@
   border-color: var(--c-focus);
 }
 
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
 .textarea {
   resize: vertical;
   min-height: 80px;
