@@ -39,9 +39,13 @@ export const launch = async (
   return { app, page, userData }
 }
 
-export const shot = async (page: Page, name: string) => {
+/** Saves a screenshot. Running motion is shown at its end unless `moving` keeps the frame as is. */
+export const shot = async (page: Page, name: string, options: { moving?: boolean } = {}) => {
   mkdirSync(shotsDir, { recursive: true })
-  await page.screenshot({ path: join(shotsDir, `${name}.png`) })
+  await page.screenshot({
+    path: join(shotsDir, `${name}.png`),
+    animations: options.moving ? "allow" : "disabled",
+  })
 }
 
 /** Resizes the app window to an outer size in px. */
