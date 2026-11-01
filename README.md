@@ -21,4 +21,4 @@ Work goes in this order:
 
 ## License
 
-No license is granted yet. All rights reserved until a `LICENSE` file is added.
+[MIT](LICENSE). Dependencies must use licenses that are compatible with MIT.
