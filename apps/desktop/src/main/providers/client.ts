@@ -1,8 +1,9 @@
-import type { ModelInfo, ProviderKind } from "@robot/shared"
+import type { ModelInfo, ProviderKind, RuntimeKind } from "@robot/shared"
 import { effortsFor } from "@robot/shared"
 
 export interface Connection {
-  readonly kind: ProviderKind
+  /** Agent runtimes have no connection: they have no key and no address. */
+  readonly kind: Exclude<ProviderKind, RuntimeKind>
   readonly baseUrl: string
   readonly apiKey: string
 }
@@ -10,7 +11,13 @@ export interface Connection {
 /** Why a request to a provider failed, in terms the user can act on. */
 export class ProviderFailure extends Error {
   constructor(
-    readonly code: "provider_auth" | "provider_unreachable" | "provider_error" | "provider_limit",
+    readonly code:
+      | "provider_auth"
+      | "provider_unreachable"
+      | "provider_error"
+      | "provider_limit"
+      /** The subscription sign-in of an agent runtime is gone or refused. */
+      | "runtime_signed_out",
     readonly detail?: string,
     /** When a usage limit resets, if the provider says. */
     readonly resetsAt?: number,
