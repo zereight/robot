@@ -34,7 +34,8 @@ A reviewer checks each spec against this list before an implementer receives it.
 ## Implementation rules
 
 - Write every file from the spec and public documentation only.
-- Dependencies come from public registries under licenses that allow use.
+- Dependencies come from public registries under MIT-compatible licenses (MIT, ISC, BSD,
+  Apache-2.0). No PolyForm, no copyleft that would bind the app.
 - Make new assets: icons from a public icon set, new avatars, new logo.
 - Write all interface text anew, in English and Korean.
 
