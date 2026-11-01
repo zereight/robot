@@ -12,8 +12,11 @@ const allowedLatin = new Set(["ROBot", "English"])
 const latinWords = async (page: Page, selector: string) => {
   const text = await page.locator(selector).evaluate((el) => {
     const clone = el.cloneNode(true) as HTMLElement
-    for (const skip of clone.querySelectorAll("[data-testid=licenses], [data-testid$=-folder] div div + div, [data-testid=setting-workspace-root] div div + div")) skip.remove()
-    return clone.innerText
+    for (const skip of clone.querySelectorAll(
+      "[data-testid=licenses], [data-testid$=-folder] div div + div, [data-testid=setting-workspace-root] div div + div",
+    ))
+      skip.remove()
+    return clone.textContent ?? ""
   })
   return (text.match(/[A-Za-z]{2,}/g) ?? []).filter((w) => !allowedLatin.has(w))
 }
@@ -29,7 +32,9 @@ const bodyContrast = (page: Page) =>
       return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
     }
     const style = getComputedStyle(document.body)
-    const [a, b] = [lum(parse(style.color)), lum(parse(style.backgroundColor))].sort((x, y) => y - x)
+    const [a, b] = [lum(parse(style.color)), lum(parse(style.backgroundColor))].sort(
+      (x, y) => y - x,
+    )
     return ((a ?? 0) + 0.05) / ((b ?? 0) + 0.05)
   })
 
@@ -53,7 +58,16 @@ test("settings: language, theme and text size apply at once and survive a restar
   await expect(page.getByTestId("settings-nav-general")).toHaveText("일반")
   await expect(page.locator("html")).toHaveAttribute("lang", "ko")
 
-  for (const section of ["general", "appearance", "providers", "devices", "notifications", "archive", "data", "about"]) {
+  for (const section of [
+    "general",
+    "appearance",
+    "providers",
+    "devices",
+    "notifications",
+    "archive",
+    "data",
+    "about",
+  ]) {
     await page.getByTestId(`settings-nav-${section}`).click()
     expect(await latinWords(page, "[data-testid=settings]"), `section ${section}`).toEqual([])
   }
