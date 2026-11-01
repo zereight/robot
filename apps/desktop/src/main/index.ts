@@ -1,11 +1,11 @@
+import { hostname } from "node:os"
 import { join } from "node:path"
 import { EVENT_CHANNEL } from "@robot/shared"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, ManagedRuntime } from "effect"
 import { app, BrowserWindow } from "electron"
+import { appLayer } from "./layers.ts"
 import { electronPlatform } from "./platform-electron.ts"
 import { registerRpc } from "./rpc.ts"
-import { Database } from "./services/Database.ts"
-import { EventBus } from "./services/EventBus.ts"
 import { Platform } from "./services/Platform.ts"
 import { SettingsStore } from "./services/Settings.ts"
 
@@ -21,16 +21,14 @@ const broadcast = (event: string, payload: unknown) => {
     win.webContents.send(EVENT_CHANNEL, event, payload)
 }
 
-const makeRuntime = () => {
-  const platform = electronPlatform()
-  const dataDir = app.getPath("userData")
-  const base = Layer.mergeAll(
-    platform,
-    Database.layer(join(dataDir, "robot.db")),
-    EventBus.layer(broadcast),
+const makeRuntime = () =>
+  ManagedRuntime.make(
+    appLayer({
+      platform: electronPlatform(),
+      localServerName: hostname().replace(/\.local$/, ""),
+      emit: broadcast,
+    }),
   )
-  return ManagedRuntime.make(SettingsStore.layer.pipe(Layer.provideMerge(base)))
-}
 
 const createWindow = () => {
   const win = new BrowserWindow({

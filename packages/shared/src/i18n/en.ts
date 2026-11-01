@@ -48,9 +48,47 @@ export const en = {
   "settings.about.licenses": "Open source licenses",
   "settings.about.licenses.count": "{count} packages",
 
-  "home.title": "Welcome to ROBot",
-  "home.body": "Your agents will show here.",
-  "home.openSettings": "Open settings",
+  "rail.label": "Servers and pages",
+  "rail.addServer": "Add a server",
+  "rail.addServer.later": "Connecting to another computer comes in a later version.",
+  "rail.ok": "OK",
+
+  "page.chats": "Agents and chats",
+  "page.workflows": "Workflows",
+  "page.tasks": "Tasks",
+  "page.usage": "Usage",
+  "page.help": "Help",
+  "page.settings": "Settings",
+  "page.later": "This page comes in a later version.",
+
+  "places.label": "Places",
+  "places.search": "Search",
+  "places.search.clear": "Clear search",
+  "places.section.channels": "Channels",
+  "places.section.agents": "Agents",
+  "places.empty.channels": "No channels yet.",
+  "places.empty.agents": "No agents yet.",
+  "places.noMatch": "No places match.",
+  "places.resize": "Resize place list",
+  "places.unread": "{count} unread",
+  "places.working": "Working",
+  "places.lastMessage": "Last message: {message}",
+
+  "panel.show": "Show activity panel",
+  "panel.hide": "Hide activity panel",
+  "panel.title": "Activity",
+  "panel.empty": "Nothing is running.",
+
+  "main.noPlace.title": "Pick a place",
+  "main.noPlace.body": "Choose an agent or a channel from the list.",
+  "main.noServer.title": "No server yet",
+  "main.noServer.body": "A server is a computer that runs your agents. Add one to start.",
+
+  "help.shortcuts": "Keyboard shortcuts",
+  "help.shortcut.search": "Search places",
+  "help.shortcut.move": "Move through places",
+  "help.shortcut.open": "Open the selected place",
+  "help.shortcut.clear": "Clear the search",
 } as const
 
 export type MessageKey = keyof typeof en
