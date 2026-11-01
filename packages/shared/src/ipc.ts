@@ -1,8 +1,19 @@
+import type { Settings, SettingsPatch } from "./settings.ts"
+
 /** Information about the running app. */
 export interface AppInfo {
   readonly name: string
   readonly version: string
   readonly platform: string
+  readonly systemLocale: string
+  readonly dataDir: string
+  readonly defaultWorkspaceRoot: string
+}
+
+export interface LicenseEntry {
+  readonly name: string
+  readonly version: string
+  readonly license: string
 }
 
 /**
@@ -11,10 +22,17 @@ export interface AppInfo {
  */
 export interface RpcMethods {
   "app.info": { input: undefined; output: AppInfo }
+  "app.licenses": { input: undefined; output: readonly LicenseEntry[] }
+  "settings.get": { input: undefined; output: Settings }
+  "settings.update": { input: SettingsPatch; output: Settings }
+  "settings.pickWorkspaceRoot": { input: undefined; output: Settings }
+  "data.openFolder": { input: undefined; output: undefined }
 }
 
 /** Events that the main process pushes to the renderer. */
-export type RpcEvents = Record<never, never>
+export interface RpcEvents {
+  "settings.changed": Settings
+}
 
 export type RpcMethod = keyof RpcMethods
 export type RpcInput<M extends RpcMethod> = RpcMethods[M]["input"]

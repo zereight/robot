@@ -1,10 +1,36 @@
 import { join } from "node:path"
+import { EVENT_CHANNEL } from "@robot/shared"
+import { Effect, Layer, ManagedRuntime } from "effect"
 import { app, BrowserWindow } from "electron"
+import { electronPlatform } from "./platform-electron.ts"
 import { registerRpc } from "./rpc.ts"
+import { Database } from "./services/Database.ts"
+import { EventBus } from "./services/EventBus.ts"
+import { Platform } from "./services/Platform.ts"
+import { SettingsStore } from "./services/Settings.ts"
 
-// Tests and portable runs can point the app at a separate data folder.
-const userDataOverride = process.env.ROBOT_USER_DATA
-if (userDataOverride) app.setPath("userData", userDataOverride)
+// The data folder is "ROBot" in the system app data folder. Tests and portable runs can
+// point the app at another folder.
+app.setName("ROBot")
+app.setPath("userData", process.env.ROBOT_USER_DATA ?? join(app.getPath("appData"), "ROBot"))
+if (process.env.ROBOT_SYSTEM_LOCALE)
+  app.commandLine.appendSwitch("lang", process.env.ROBOT_SYSTEM_LOCALE)
+
+const broadcast = (event: string, payload: unknown) => {
+  for (const win of BrowserWindow.getAllWindows())
+    win.webContents.send(EVENT_CHANNEL, event, payload)
+}
+
+const makeRuntime = () => {
+  const platform = electronPlatform()
+  const dataDir = app.getPath("userData")
+  const base = Layer.mergeAll(
+    platform,
+    Database.layer(join(dataDir, "robot.db")),
+    EventBus.layer(broadcast),
+  )
+  return ManagedRuntime.make(SettingsStore.layer.pipe(Layer.provideMerge(base)))
+}
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -28,11 +54,22 @@ const createWindow = () => {
   return win
 }
 
-app.whenReady().then(() => {
-  registerRpc()
+app.whenReady().then(async () => {
+  const runtime = makeRuntime()
+  // Keep native menus and dialogs in the chosen theme.
+  await runtime.runPromise(
+    Effect.gen(function* () {
+      const settings = yield* SettingsStore.use((s) => s.get)
+      yield* Platform.use((p) => Effect.sync(() => p.setThemeSource(settings.theme)))
+    }),
+  )
+  registerRpc(runtime)
   createWindow()
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+  app.on("will-quit", () => {
+    void runtime.dispose()
   })
 })
 
