@@ -223,8 +223,8 @@ Unclear spec points and the choices made for them are in
 | --- | --- | --- |
 | **M1** | Window, agents, direct chat, providers, settings, local data | Done in alpha. Next: M2 |
 | **M2** | Channels, split work, tasks page | In review |
-| **M3** | Workspace tools, approvals, browser, memory | Tools, approvals, memory in review. Browser not done |
-| **M4** | Routines and workflows | Planned |
+| **M3** | Workspace tools, approvals, browser, memory | In review |
+| **M4** | Routines and workflows | In review |
 | **M5** | Phone app (Expo) and desktop link | Planned |
 | **M6** | Notifications and status island | Planned |
 
