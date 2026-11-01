@@ -1,6 +1,7 @@
 import "./styles/global.css"
 import { render } from "solid-js/web"
 import { App } from "./App.tsx"
+import { AgentsProvider } from "./state/agents.tsx"
 import { AppProvider, loadInitial, useApp } from "./state/app.tsx"
 import { loadUi, UiProvider } from "./state/ui.tsx"
 import { applyAppearance } from "./theme/apply.ts"
@@ -19,7 +20,9 @@ if (root) {
       <AppProvider info={initial.info} settings={initial.settings}>
         <UiProvider ui={layout.ui} servers={layout.servers}>
           <Appearance />
-          <App />
+          <AgentsProvider>
+            <App />
+          </AgentsProvider>
         </UiProvider>
       </AppProvider>
     ),
