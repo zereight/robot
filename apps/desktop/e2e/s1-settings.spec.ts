@@ -18,7 +18,9 @@ const latinWords = async (page: Page, selector: string) => {
       skip.remove()
     return clone.textContent ?? ""
   })
-  return (text.match(/[A-Za-z]{2,}/g) ?? []).filter((w) => !allowedLatin.has(w))
+  // Version numbers are data, and a pre-release has letters ("0.1.0-alpha.1").
+  const words = text.replace(/\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?/g, "")
+  return (words.match(/[A-Za-z]{2,}/g) ?? []).filter((w) => !allowedLatin.has(w))
 }
 
 const bodyContrast = (page: Page) =>
