@@ -21,6 +21,8 @@ export const testPlatform = () => {
     openPath: async () => {},
     setStartAtLogin: () => {},
     setThemeSource: () => {},
+    copyText: () => {},
+    openExternal: async () => {},
     trash: async (path) => {
       trashed.push(path)
     },

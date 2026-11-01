@@ -29,6 +29,105 @@ const json = (res: ServerResponse, status: number, body: unknown) => {
   res.end(JSON.stringify(body))
 }
 
+interface ChatBody {
+  messages: { role: string; content: string }[]
+}
+
+export const MARKDOWN_REPLY = [
+  "## Plan",
+  "",
+  "- first step",
+  "- second step",
+  "",
+  "```ts",
+  "const answer = 42",
+  "```",
+  "",
+  "| Name | Value |",
+  "| --- | --- |",
+  "| a | 1 |",
+  "",
+  "See [the docs](https://example.com/docs) and <b>raw html</b>.",
+].join("\n")
+
+const failedOnce = new Set<string>()
+
+/** What the mock answers depends on the last user message. */
+const plan = (body: ChatBody) => {
+  const last = body.messages.at(-1)?.content ?? ""
+  const text = last.split("\n").at(-1) ?? ""
+  if (text.includes("slow"))
+    return { chunks: Array.from({ length: 60 }, (_, i) => `word${i} `), delay: 50 }
+  if (text.includes("markdown")) return { chunks: [MARKDOWN_REPLY], delay: 0 }
+  if (text.includes("think"))
+    return { thinking: "Weighing the options.", chunks: ["Decided."], delay: 0 }
+  if (text.includes("fail once") && !failedOnce.has(text)) {
+    failedOnce.add(text)
+    return { status: 500 }
+  }
+  if (text.includes("limit")) return { status: 429 }
+  return { chunks: ["Hello! ", "You said: ", text], delay: 30 }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+const openAiReply = async (res: ServerResponse, body: ChatBody) => {
+  const p = plan(body)
+  if (p.status === 429) {
+    res.writeHead(429, { "content-type": "application/json", "retry-after": "120" })
+    return res.end(JSON.stringify({ error: { message: "rate limited" } }))
+  }
+  if (p.status) return json(res, p.status, { error: { message: "mock server error" } })
+  res.writeHead(200, { "content-type": "text/event-stream" })
+  const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`)
+  if (p.thinking) send({ choices: [{ delta: { reasoning_content: p.thinking } }] })
+  for (const chunk of p.chunks ?? []) {
+    if (res.destroyed) return
+    send({ choices: [{ delta: { content: chunk } }] })
+    if (p.delay) await sleep(p.delay)
+  }
+  send({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 10 } })
+  res.end("data: [DONE]\n\n")
+}
+
+const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
+  const p = plan(body)
+  if (p.status)
+    return json(res, p.status === 429 ? 429 : 500, {
+      type: "error",
+      error: { message: "mock error" },
+    })
+  res.writeHead(200, { "content-type": "text/event-stream" })
+  const send = (event: string, data: unknown) =>
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  send("message_start", { type: "message_start", message: { usage: { input_tokens: 20 } } })
+  if (p.thinking) {
+    send("content_block_start", {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "thinking" },
+    })
+    send("content_block_delta", {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "thinking_delta", thinking: p.thinking },
+    })
+    send("content_block_stop", { type: "content_block_stop", index: 0 })
+  }
+  for (const chunk of p.chunks ?? []) {
+    if (res.destroyed) return
+    send("content_block_delta", {
+      type: "content_block_delta",
+      index: 1,
+      delta: { type: "text_delta", text: chunk },
+    })
+    if (p.delay) await sleep(p.delay)
+  }
+  send("message_delta", { type: "message_delta", usage: { output_tokens: 10 } })
+  send("message_stop", { type: "message_stop" })
+  res.end()
+}
+
 /**
  * A local model provider for end-to-end tests. It speaks the OpenAI-compatible API under
  * `/v1` and the Anthropic API under `/anthropic/v1`.
@@ -53,6 +152,8 @@ export const startMockProvider = async () => {
         data: [{ id: "claude-sonnet-4-5", display_name: "Claude Sonnet 4.5" }],
       })
     }
+    if (url.pathname === "/v1/chat/completions") return openAiReply(res, body as ChatBody)
+    if (url.pathname === "/anthropic/v1/messages") return anthropicReply(res, body as ChatBody)
     json(res, 404, { error: { message: "not found" } })
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
