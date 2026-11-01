@@ -228,7 +228,9 @@ test("subscription: Muse Code signs in from the app, shows the code, and answers
   test.setTimeout(120_000)
   const fake = makeFakeRuntimes()
   fake.setMuse({ loggedIn: false })
+  const openLog = join(fake.dir, "opened.log")
   const { app, page } = await launch(freshUserData(), {
+    ROBOT_TEST_OPEN_LOG: openLog,
     ROBOT_SYSTEM_LOCALE: "en-US",
     ROBOT_CLAUDE_BIN: "none",
     ROBOT_CODEX_BIN: "none",
@@ -242,16 +244,18 @@ test("subscription: Muse Code signs in from the app, shows the code, and answers
   await page.getByTestId("provider-kind").selectOption("muse")
   await expect(page.getByTestId("runtime-status")).toHaveText("Not signed in.")
   await expect(page.getByTestId("provider-submit")).toBeDisabled()
-  await page.getByTestId("runtime-sign-in").click()
+  await page.getByTestId("runtime-sign-in").click({ timeout: 10_000 })
   // The page and the code of the program are shown, so the user can compare them.
   await expect(page.getByTestId("runtime-code")).toContainText("WXYZ-1234")
   await expect(page.getByTestId("runtime-url")).toHaveText("https://auth.meta.com/device")
   await shot(page, "s17-08-muse-signing-in")
   await expect(page.getByTestId("runtime-status")).toHaveText("Signed in.", { timeout: 15_000 })
   await expect(page.getByTestId("runtime-plan")).toContainText("Muse Test Plan")
-  await page.getByTestId("provider-submit").click()
+  // The app opened the page of the sign-in for the user. A test run opens no browser.
+  expect(readFileSync(openLog, "utf8").trim()).toBe("https://auth.meta.com/device")
+  await page.getByTestId("provider-submit").click({ timeout: 10_000 })
   await expect(page.getByTestId("provider-status")).toHaveText("Connected")
-  await page.getByTestId("settings-close").click()
+  await page.getByTestId("settings-close").click({ timeout: 10_000 })
 
   await createAgent(page, "Mia")
   await send(page, "hello muse")

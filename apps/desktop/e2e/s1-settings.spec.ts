@@ -8,6 +8,8 @@ const chooseOption = (page: Page, group: string, value: string) =>
 
 /** Words that may stay in Latin letters in the Korean interface: names and code. */
 const allowedLatin = new Set(["ROBot", "English", "OpenAI", "Anthropic", "API", "URL"])
+// Names of products are not translated.
+const productNames = /Claude Code|Muse Code|Codex|\bpi\b/g
 
 const latinWords = async (page: Page, selector: string) => {
   const text = await page.locator(selector).evaluate((el) => {
@@ -19,7 +21,7 @@ const latinWords = async (page: Page, selector: string) => {
     return clone.textContent ?? ""
   })
   // Version numbers are data, and a pre-release has letters ("0.1.0-alpha.1").
-  const words = text.replace(/\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?/g, "")
+  const words = text.replace(/\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?/g, "").replace(productNames, "")
   return (words.match(/[A-Za-z]{2,}/g) ?? []).filter((w) => !allowedLatin.has(w))
 }
 

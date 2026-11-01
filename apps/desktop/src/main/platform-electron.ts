@@ -232,7 +232,15 @@ export const electronPlatform = (): PlatformService => {
       nativeTheme.themeSource = theme
     },
     copyText: (text) => clipboard.writeText(text),
-    openExternal: (url) => shell.openExternal(url),
+    openExternal: async (url) => {
+      // Test runs open no browser. A test that wants to see the address names a log file.
+      if (isTestRun) {
+        if (process.env.ROBOT_TEST_OPEN_LOG)
+          appendFileSync(process.env.ROBOT_TEST_OPEN_LOG, `${url}\n`)
+        return
+      }
+      await shell.openExternal(url)
+    },
     trash: async (path) => {
       if (!existsSync(path)) return
       // Test runs keep the system trash clean: they move the folder inside the data folder.
