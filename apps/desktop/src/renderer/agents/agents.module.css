@@ -207,3 +207,23 @@
   flex: 1;
   font-weight: 500;
 }
+
+.input {
+  flex: 1;
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--c-main);
+  color: var(--c-text);
+}
+
+.memoryRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.memoryText {
+  flex: 1;
+  overflow-wrap: anywhere;
+}

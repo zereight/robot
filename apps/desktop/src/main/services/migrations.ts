@@ -134,4 +134,23 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX channel_message_channel ON channel_message (channel_id, created_at);
   `,
+  `
+  ALTER TABLE agent ADD COLUMN permission TEXT NOT NULL DEFAULT 'ask_risky';
+  ALTER TABLE agent ADD COLUMN memory_enabled INTEGER NOT NULL DEFAULT 1;
+  CREATE TABLE agent_allow (
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    PRIMARY KEY (agent_id, key)
+  );
+  CREATE TABLE memory (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    source TEXT NOT NULL,
+    message_id TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX memory_agent ON memory (agent_id, created_at);
+  `,
 ]

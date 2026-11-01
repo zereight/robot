@@ -43,10 +43,13 @@ const Thinking = (props: { text: string; live: boolean }) => {
   )
 }
 
-const ToolCard = (props: { part: Extract<MessagePart, { kind: "tool" }> }) => {
+const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "tool" }> }) => {
   const { t } = useApp()
+  const [answer, setAnswer] = createSignal("")
+  const respond = (value: string) =>
+    call("tools.respond", { agentId: props.agent.id, callId: props.part.id, answer: value })
   return (
-    <details class={styles.tool} data-testid="tool-card">
+    <details class={styles.tool} data-testid="tool-card" open={props.part.state === "waiting"}>
       <summary>
         <Wrench size={14} />
         <span class={styles.toolLabel}>{props.part.label || props.part.name}</span>
@@ -55,6 +58,70 @@ const ToolCard = (props: { part: Extract<MessagePart, { kind: "tool" }> }) => {
         </span>
       </summary>
       <div class={styles.toolBody}>
+        <Show when={props.part.ask}>
+          {(ask) => (
+            <div class={styles.ask} data-testid="ask-card">
+              <Show
+                when={ask().kind === "question" ? ask() : undefined}
+                fallback={
+                  <>
+                    <div>{t("chat.tool.approval")}</div>
+                    <pre>{(ask() as { summary: string }).summary}</pre>
+                    <div class={styles.askActions}>
+                      <Button
+                        variant="primary"
+                        onClick={() => respond("allow")}
+                        data-testid="ask-allow"
+                      >
+                        {t("chat.tool.allow")}
+                      </Button>
+                      <Button onClick={() => respond("always")} data-testid="ask-always">
+                        {t("chat.tool.always")}
+                      </Button>
+                      <Button onClick={() => respond("deny")} data-testid="ask-deny">
+                        {t("chat.tool.deny")}
+                      </Button>
+                    </div>
+                  </>
+                }
+              >
+                {(question) => (
+                  <>
+                    <div>{(question() as { question: string }).question}</div>
+                    <div class={styles.askActions}>
+                      <For each={(question() as { choices: readonly string[] }).choices}>
+                        {(choice) => (
+                          <Button onClick={() => respond(choice)} data-testid="ask-choice">
+                            {choice}
+                          </Button>
+                        )}
+                      </For>
+                    </div>
+                    <form
+                      class={styles.askActions}
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        if (answer().trim()) respond(answer().trim())
+                      }}
+                    >
+                      <input
+                        class={styles.askInput}
+                        value={answer()}
+                        placeholder={t("chat.tool.answer")}
+                        aria-label={t("chat.tool.answer")}
+                        onInput={(e) => setAnswer(e.currentTarget.value)}
+                        data-testid="ask-input"
+                      />
+                      <Button type="submit" variant="primary" data-testid="ask-send">
+                        {t("chat.tool.send")}
+                      </Button>
+                    </form>
+                  </>
+                )}
+              </Show>
+            </div>
+          )}
+        </Show>
         <Show when={props.part.input}>
           <div class={styles.time}>{t("chat.tool.input")}</div>
           <pre>{props.part.input}</pre>
@@ -62,6 +129,13 @@ const ToolCard = (props: { part: Extract<MessagePart, { kind: "tool" }> }) => {
         <Show when={props.part.output}>
           <div class={styles.time}>{t("chat.tool.output")}</div>
           <pre>{props.part.output}</pre>
+        </Show>
+        <Show when={props.part.memoryId}>
+          {(id) => (
+            <Button onClick={() => call("memory.delete", { id: id() })} data-testid="memory-undo">
+              {t("chat.tool.undoMemory")}
+            </Button>
+          )}
         </Show>
       </div>
     </details>
@@ -226,7 +300,10 @@ export const MessageRow = (props: MessageRowProps) => {
                     />
                   </Match>
                   <Match when={part.kind === "tool"}>
-                    <ToolCard part={part as Extract<MessagePart, { kind: "tool" }>} />
+                    <ToolCard
+                      agent={props.agent}
+                      part={part as Extract<MessagePart, { kind: "tool" }>}
+                    />
                   </Match>
                 </Switch>
               )}

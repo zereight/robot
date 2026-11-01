@@ -25,12 +25,14 @@ import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
 import { AppError } from "./services/errors.ts"
+import { Memory } from "./services/Memory.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Tasks } from "./services/Tasks.ts"
+import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
 
@@ -244,6 +246,32 @@ export const handlers: Handlers = {
   "channels.markRead": (input) =>
     decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
       Effect.flatMap(({ channelId }) => Channels.use((c) => c.markRead(channelId))),
+      done,
+    ),
+  "memory.list": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, query: Schema.optionalKey(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap(({ agentId, query }) => Memory.use((m) => m.list(agentId, query)))),
+  "memory.add": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, text }) => Memory.use((m) => m.add(agentId, text, "user"))),
+    ),
+  "memory.update": (input) =>
+    decode(Schema.Struct({ id: Schema.String, text: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, text }) => Memory.use((m) => m.update(id, text))),
+    ),
+  "memory.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Memory.use((m) => m.remove(id))),
+      done,
+    ),
+  "tools.respond": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ agentId, callId, answer }) =>
+        Tools.use((t) => t.respond(agentId, callId, answer)),
+      ),
       done,
     ),
   "usage.summary": (input) =>
