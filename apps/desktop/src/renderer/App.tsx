@@ -4,15 +4,18 @@ import { agentPlaceView } from "./agents/AgentChat.tsx"
 import { NewAgentDialog } from "./agents/AgentDialogs.tsx"
 import { ArchiveSection } from "./agents/ArchiveSection.tsx"
 import { Face } from "./agents/Face.tsx"
+import { FirstRunDialog } from "./firstrun/FirstRun.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
 import { useAgents } from "./state/agents.tsx"
 import { useApp } from "./state/app.tsx"
 import { IconButton } from "./ui/controls.tsx"
 import { Presence } from "./ui/Presence.tsx"
+import { UsagePage } from "./usage/UsagePage.tsx"
 
 export const App = () => {
-  const { t } = useApp()
+  const app = useApp()
+  const { t } = app
   const agents = useAgents()
   const [newAgent, setNewAgent] = createSignal(false)
 
@@ -36,6 +39,7 @@ export const App = () => {
             </IconButton>
           ) : null
         }
+        pages={{ usage: () => <UsagePage /> }}
         settingsSections={{
           archive: () => <ArchiveSection />,
           providers: () => <ProvidersSection />,
@@ -44,6 +48,7 @@ export const App = () => {
       <Presence when={newAgent()}>
         {() => <NewAgentDialog onClose={() => setNewAgent(false)} />}
       </Presence>
+      <Presence when={!app.settings.firstRunDone}>{() => <FirstRunDialog />}</Presence>
     </>
   )
 }

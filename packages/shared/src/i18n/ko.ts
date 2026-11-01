@@ -239,4 +239,33 @@ export const ko: Record<MessageKey, string> = {
   "error.cannot_retry": "마지막으로 실패한 답변만 다시 시도할 수 있어요.",
   "error.cannot_edit": "마지막으로 보낸 내 메시지만 수정할 수 있어요.",
   "error.queue_item_gone": "이 메시지는 이미 보냈어요.",
+
+  "usage.range": "기간",
+  "usage.range.7": "최근 7일",
+  "usage.range.30": "최근 30일",
+  "usage.empty": "이 기간에는 완료된 답변이 아직 없어요.",
+  "usage.total": "합계",
+  "usage.byAgent": "에이전트별",
+  "usage.byDay": "날짜별",
+  "usage.col.agent": "에이전트",
+  "usage.col.replies": "답변",
+  "usage.col.input": "입력 토큰",
+  "usage.col.output": "출력 토큰",
+  "usage.note":
+    "토큰 수는 제공자가 알려 준 값이에요. 제공자가 비용을 알려 주지 않아서 비용은 표시하지 않아요.",
+
+  "firstRun.title": "ROBot에 오신 것을 환영해요",
+  "firstRun.step": "{total}단계 중 {current}단계",
+  "firstRun.look.title": "언어와 테마",
+  "firstRun.look.body": "두 가지 모두 나중에 설정에서 바꿀 수 있어요.",
+  "firstRun.account.title": "모델 계정 연결",
+  "firstRun.account.body":
+    "에이전트가 답하려면 모델 계정이 필요해요. 키는 시스템 키체인에 보관돼요.",
+  "firstRun.account.connected": "계정을 연결했어요: {name}",
+  "firstRun.agent.title": "첫 에이전트 만들기",
+  "firstRun.agent.body": "이름과 역할을 정해 주세요. 나중에 바꿀 수 있어요.",
+  "firstRun.next": "다음",
+  "firstRun.back": "이전",
+  "firstRun.skip": "건너뛰기",
+  "firstRun.skipAll": "안내 건너뛰기",
 }

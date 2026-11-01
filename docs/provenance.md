@@ -16,3 +16,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-01 | Release 0.1.0-alpha.1: first draft pre-release through the release workflow | Implementer | 000 |
 | 2026-11-01 | E2E screenshots show motion at its end; motion frames keep their moment | Implementer | 000 |
 | 2026-11-01 | README: features, download, data folders, development, architecture, testing, release, roadmap, screenshots | Implementer | 000, 001, 002, 003, 006, 013, 014 |
+| 2026-11-01 | S6: first start guide (language, theme, model account, first agent) and usage page (replies and tokens per agent and day) | Implementer | 000, 006 |

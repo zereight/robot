@@ -15,6 +15,8 @@ export const Settings = Schema.Struct({
   startAtLogin: Schema.Boolean,
   /** Folder where new agent workspaces are made. Empty means the default folder. */
   workspaceRoot: Schema.String,
+  /** True once the user finished or skipped the first start guide. */
+  firstRunDone: Schema.Boolean,
 })
 export type Settings = typeof Settings.Type
 
@@ -29,6 +31,7 @@ export const defaultSettings: Settings = {
   reduceMotion: "system",
   startAtLogin: false,
   workspaceRoot: "",
+  firstRunDone: false,
 }
 
 export type Locale = "en" | "ko"
