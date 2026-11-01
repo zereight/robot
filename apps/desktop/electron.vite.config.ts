@@ -2,15 +2,14 @@ import { resolve } from "node:path"
 import { defineConfig } from "electron-vite"
 import solid from "vite-plugin-solid"
 
-const bundled = { exclude: ["@robot/shared"] }
-
+// Only `dependencies` stay outside the bundle (native code). Everything in devDependencies is bundled.
 export default defineConfig({
   main: {
-    build: { externalizeDeps: bundled },
+    build: { externalizeDeps: true },
   },
   preload: {
     build: {
-      externalizeDeps: bundled,
+      externalizeDeps: true,
       rollupOptions: {
         output: { format: "cjs", entryFileNames: "[name].cjs" },
       },

@@ -10,23 +10,36 @@
     "typecheck": "tsc --noEmit -p .",
     "e2e": "electron-vite build && playwright test",
     "postinstall": "install-electron",
-    "licenses": "bun scripts/licenses.ts"
+    "licenses": "bun scripts/licenses.ts",
+    "dist": "electron-vite build && electron-builder --publish never"
   },
   "dependencies": {
-    "@napi-rs/keyring": "^2.1.2",
-    "@robot/shared": "workspace:*",
-    "effect": "^4.1.1",
-    "lucide-solid": "^1.66.0",
-    "marked": "^18.1.2",
-    "solid-js": "^1.9.18"
+    "@napi-rs/keyring": "^2.1.2"
   },
+  "bundled": [
+    "@robot/shared",
+    "effect",
+    "lucide-solid",
+    "marked",
+    "solid-js"
+  ],
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@robot/shared": "workspace:*",
     "@types/node": "24",
+    "effect": "^4.1.1",
     "electron": "^45.2.1",
+    "electron-builder": "26.18.0",
     "electron-vite": "^6.0.0",
+    "lucide-solid": "^1.66.0",
+    "marked": "^18.1.2",
+    "solid-js": "^1.9.18",
     "vite": "^8.3.5",
     "vite-plugin-solid": "^2.11.15"
   },
-  "productName": "ROBot"
+  "productName": "ROBot",
+  "description": "A desktop app where you work with AI agents.",
+  "author": "zereight",
+  "license": "MIT",
+  "homepage": "https://github.com/zereight/robot"
 }
