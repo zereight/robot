@@ -33,3 +33,13 @@ export const shot = async (page: Page, name: string) => {
   mkdirSync(shotsDir, { recursive: true })
   await page.screenshot({ path: join(shotsDir, `${name}.png`) })
 }
+
+/** Resizes the app window to an outer size in px. */
+export const resizeWindow = (app: ElectronApplication, width: number, height: number) =>
+  app.evaluate(
+    ({ BrowserWindow }, size) => {
+      const win = BrowserWindow.getAllWindows()[0]
+      win?.setContentSize(size.width, size.height)
+    },
+    { width, height },
+  )
