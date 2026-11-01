@@ -120,3 +120,70 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   await shot(page, "s3-05-after-restart")
   await app.close()
 })
+
+test("agents: a new agent can get a random name suggestion", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1200, 800)
+  const nameField = page.getByTestId("agent-name")
+  const suggest = page.getByTestId("agent-name-suggest")
+
+  // Each press fills the field with a new, valid name. A template name is replaced.
+  await page.getByTestId("new-agent").click()
+  await page.getByTestId("template-general").click()
+  await expect(nameField).toHaveValue("Assistant")
+  await suggest.click()
+  await expect(nameField).not.toHaveValue("Assistant")
+  let last = await nameField.inputValue()
+  expect(last.length).toBeGreaterThan(0)
+  expect([...last].length).toBeLessThanOrEqual(40)
+  for (let i = 0; i < 8; i++) {
+    await suggest.click()
+    await expect(nameField).not.toHaveValue(last)
+    last = await nameField.inputValue()
+  }
+  await expect(page.getByTestId("agent-submit")).toBeEnabled()
+  await shot(page, "s3-06-suggested-name")
+
+  // The suggested name makes an agent. Its name is then never suggested again.
+  const first = last
+  await page.getByTestId("agent-submit").click()
+  await expect(page.getByTestId("chat-start").locator("h2")).toHaveText(first)
+  await page.getByTestId("new-agent").click()
+  for (let i = 0; i < 60; i++) {
+    const before = await nameField.inputValue()
+    await suggest.click()
+    await expect(nameField).not.toHaveValue(before)
+    expect((await nameField.inputValue()).toLowerCase()).not.toBe(first.toLowerCase())
+  }
+  await page.keyboard.press("Escape")
+  await expect(page.getByTestId("new-agent-dialog")).toBeHidden()
+
+  // An archived agent still holds its name.
+  await page.getByTestId("chat-header-agent").click()
+  await expect(page.getByTestId("agent-profile")).toBeVisible()
+  await expect(suggest).toHaveCount(0)
+  await page.getByTestId("agent-archive").click()
+  await expect(page.getByTestId("no-place")).toBeVisible()
+  await page.getByTestId("new-agent").click()
+  for (let i = 0; i < 60; i++) {
+    const before = await nameField.inputValue()
+    await suggest.click()
+    await expect(nameField).not.toHaveValue(before)
+    expect((await nameField.inputValue()).toLowerCase()).not.toBe(first.toLowerCase())
+  }
+  await app.close()
+})
+
+test("agents: name suggestions are Korean words in the Korean interface", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  await resizeWindow(app, 1200, 800)
+  await page.getByTestId("new-agent").click()
+  await expect(page.getByTestId("agent-name-suggest")).toHaveAttribute(
+    "aria-label",
+    "이름 추천받기",
+  )
+  await page.getByTestId("agent-name-suggest").click()
+  await expect(page.getByTestId("agent-name")).toHaveValue(/^[가-힣]+$/)
+  await shot(page, "s3-07-suggested-name-ko")
+  await app.close()
+})

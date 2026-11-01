@@ -104,3 +104,34 @@ export const copyName = (name: string, suffix: string, taken: (candidate: string
 
 export const AGENT_TEMPLATES = ["general", "reviewer", "researcher"] as const
 export type AgentTemplate = (typeof AGENT_TEMPLATES)[number]
+
+/** How many suggested names each catalogue holds, under the keys `agents.suggest.name.1` to `.N`. */
+export const SUGGESTED_NAME_COUNT = 24
+
+/**
+ * Picks a random name for a new agent from a list of names.
+ * It skips names that are taken (see `nameKey`) and the name that is in the field now, so each
+ * press gives a new name. When every name is taken, it adds a number: "Nova 2", "Nova 3".
+ * `random` returns a number from 0 up to, but not including, 1.
+ */
+export const suggestName = (
+  names: readonly string[],
+  taken: (candidate: string) => boolean,
+  current: string,
+  random: () => number = Math.random,
+): string => {
+  const pick = <T>(items: readonly T[]) =>
+    items[Math.min(items.length - 1, Math.floor(random() * items.length))] as T
+  if (names.length === 0) return ""
+  const shown = nameKey(current)
+  const usable = (candidate: string) => nameKey(candidate) !== shown && !taken(candidate)
+  const free = names.filter(usable)
+  if (free.length > 0) return pick(free)
+  const base = pick(names)
+  for (let n = 2; ; n++) {
+    const tail = ` ${n}`
+    const room = AGENT_NAME_MAX - charLength(tail)
+    const candidate = [...base].slice(0, room).join("").trimEnd() + tail
+    if (usable(candidate)) return candidate
+  }
+}
