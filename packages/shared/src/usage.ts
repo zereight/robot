@@ -11,6 +11,11 @@ export interface UsageRow {
   readonly replies: number
   readonly inputTokens: number
   readonly outputTokens: number
+  /**
+   * The median "First reply" time in ms of the chat tasks of this agent that ended as done on this
+   * day (spec 005). Null when no such task has a known time.
+   */
+  readonly firstReplyMs: number | null
 }
 
 export interface UsageTotal {
