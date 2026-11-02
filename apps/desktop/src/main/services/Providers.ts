@@ -11,6 +11,7 @@ import { Context, Effect, Layer } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
 import { type Connection, keepEffort, listModels, ProviderFailure } from "../providers/client.ts"
 import type { TurnHooks, TurnInput } from "../providers/turn.ts"
+import { grantBridge } from "../runtimes/bridge.ts"
 import { buildBlocks, buildPrompt } from "../runtimes/prompt.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -201,28 +202,36 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           const kind = row.kind
           if (row.off !== 0) return yield* new AppError({ code: "provider_not_connected" })
           yield* checkRuntime(kind, false)
-          const turn = runtimes.run(kind, {
-            model: input.model,
-            effort: input.effort,
-            system: input.system,
-            prompt: buildPrompt(input.turns),
-            // Claude Code reads the start of a request from the cache of the model when its
-            // blocks are the same as in the turn before. The other programs get the text.
-            ...(kind === "claude_code" ? { blocks: buildBlocks(input.turns) } : {}),
-            workspace: input.workspace,
-            permission: input.permission,
-            useTools: input.useTools,
-            signal: input.signal,
-            approve: hooks.approve,
-          })
           return (async function* () {
+            // The program reaches the browser of the agent through the app, for this turn only.
+            // When the access cannot open, the turn goes on without the browser.
+            const grant =
+              input.useTools && hooks.bridge
+                ? await grantBridge(hooks.bridge).catch(() => undefined)
+                : undefined
             try {
-              yield* turn
+              yield* runtimes.run(kind, {
+                model: input.model,
+                effort: input.effort,
+                system: input.system,
+                prompt: buildPrompt(input.turns),
+                // Claude Code reads the start of a request from the cache of the model when its
+                // blocks are the same as in the turn before. The other programs get the text.
+                ...(kind === "claude_code" ? { blocks: buildBlocks(input.turns) } : {}),
+                workspace: input.workspace,
+                permission: input.permission,
+                useTools: input.useTools,
+                signal: input.signal,
+                approve: hooks.approve,
+                ...(grant ? { bridge: grant } : {}),
+              })
             } catch (error) {
               // The sign-in is gone: look again, so that the account shows the truth.
               if (error instanceof ProviderFailure && error.code === "runtime_signed_out")
                 runtimes.invalidate(kind)
               throw error
+            } finally {
+              grant?.release()
             }
           })()
         })

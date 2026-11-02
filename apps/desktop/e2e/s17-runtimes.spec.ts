@@ -109,6 +109,8 @@ test("subscription: Claude Code connects without a key, chats, and asks before a
   // The last report wins: the turn that hit the limit reported the window as full.
   await expect(page.getByTestId("runtime-limit").first()).toContainText("5-hour usage: 100% used")
   await expect(page.getByTestId("runtime-limit").last()).toContainText("Weekly usage: 40% used")
+  // The windows say when they were read.
+  await expect(page.getByTestId("runtime-limits-at")).toContainText("Usage read at")
   await shot(page, "s17-04-limits")
   await page.getByTestId("provider-disconnect").click()
   await expect(page.getByTestId("provider-status")).toHaveText("Not connected")

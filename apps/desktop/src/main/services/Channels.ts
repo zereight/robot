@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   askKind,
+  askStep,
   askSummary,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
@@ -11,7 +12,6 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   charLength,
-  islandSummary,
   MESSAGE_MAX,
   type MemberState,
   type MessagePart,
@@ -25,14 +25,18 @@ import {
   parseMentions,
   parsePlan,
   planText,
+  runningStepKind,
   stepLabel,
   type Task,
   type TaskState,
+  toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { bridgeToolName } from "../runtimes/bridge.ts"
+import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { applyEvent } from "./Chat.ts"
 import { Database } from "./Database.ts"
@@ -139,6 +143,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const tools = yield* Tools
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
+      const agentActivity = yield* Activity
       const agents = yield* Agents
       const sections = yield* Sections
 
@@ -354,6 +359,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               return
             }
             const boundary = applyEvent(parts, event)
+            agentActivity.setStep(o.agent.id, runningStepKind(parts))
             if (o.hideRaw && /^\s*[{`]/.test(messageText({ parts }))) hidden = true
             if (hidden) return
             const now = Date.now()
@@ -374,6 +380,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           if (!o.agent.model_account_id || !o.agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
           const useTools = o.tools === true
+          const isRuntime = providers.isRuntime(o.agent.model_account_id)
           const changePart = (
             callId: string,
             change: (p: Extract<MessagePart, { kind: "tool" }>) => MessagePart,
@@ -400,7 +407,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   channelId: o.channel.id,
                   callId,
                   kind: askKind(ask),
-                  summary: islandSummary(askSummary(ask)),
+                  summary: askSummary(ask),
+                  step: askStep(ask, toolNameOf(parts, callId)),
                   target: { kind: "channel", id: o.channel.id, messageId: id },
                 })
               else notifier.clearAttention(o.agent.id, callId)
@@ -425,7 +433,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                     knowledge.prompt(
                       o.agent.id,
                       o.turns.at(-1)?.content ?? "",
-                      providers.isRuntime(o.agent.model_account_id) ? "files" : "tools",
+                      isRuntime ? "files" : "tools",
                     ) ?? "",
                   ]
                     .filter(Boolean)
@@ -451,6 +459,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   ? tools.execute(context, call)
                   : { output: "Tools are not available here.", failed: true },
               approve: (request) => tools.approval(context, request),
+              // An agent runtime has no browser of its own. It calls the app for it.
+              ...(useTools && isRuntime
+                ? {
+                    bridge: tools.bridge(context, (event) => {
+                      if (!controller.signal.aborted) Effect.runSync(onEvent(event))
+                    }),
+                  }
+                : {}),
             },
           )
           // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
@@ -466,7 +482,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               }
             },
           }
-          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(Stream.runForEach(onEvent))
+          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(
+            // The program also reports its own calls of these tools. The app shows its own cards.
+            Stream.runForEach((event) =>
+              isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null
+                ? Effect.void
+                : onEvent(event),
+            ),
+          )
         })
 
         // A vendor program writes the Knowledge folder itself. The folder is read again after it.

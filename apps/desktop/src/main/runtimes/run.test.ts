@@ -1,8 +1,10 @@
 import { beforeAll, describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
-import { claudeLogin, claudeVersion, runClaude } from "./claude.ts"
+import { type BridgeHandler, grantBridge, MUSE_AUTH_VARIABLE } from "./bridge.ts"
+import { claudeLogin, claudeUsage, claudeVersion, runClaude } from "./claude.ts"
 import { codexLogin, runCodex } from "./codex.ts"
 import { runMuse } from "./muse.ts"
 import { piLogin } from "./pi.ts"
@@ -37,6 +39,16 @@ const collect = async (stream: AsyncGenerator<AgentEvent>) => {
 const text = (events: AgentEvent[]) =>
   events.flatMap((e) => (e.type === "text" ? [e.text] : [])).join("")
 
+/** The browser of the app, as a program sees it. */
+const browser: BridgeHandler & { calls: string[] } = {
+  calls: [],
+  tools: [{ name: "browser_read", description: "Read the page.", schema: { type: "object" } }],
+  call: async (name) => {
+    browser.calls.push(name)
+    return { output: "Text of the page", failed: false }
+  },
+}
+
 describe("claude program", () => {
   test("version and sign-in come from the program", async () => {
     fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "pro" })
@@ -49,6 +61,51 @@ describe("claude program", () => {
     })
     fake.setClaude({ loggedIn: false })
     expect((await claudeLogin(fake.claude)).signedIn).toBe(false)
+  })
+
+  test("the usage windows are asked without a turn, in a folder of their own", async () => {
+    fake.setClaude({
+      loggedIn: true,
+      authMethod: "claude.ai",
+      plan: "max",
+      usage: {
+        five_hour: { utilization: 12, resets_at: "2030-01-01T00:00:00Z" },
+        seven_day: { utilization: 40, resets_at: "2030-01-02T00:00:00Z" },
+      },
+    })
+    expect(await claudeUsage(fake.claude)).toEqual([
+      { window: "five_hour", used: 0.12, resetsAt: Date.parse("2030-01-01T00:00:00Z") },
+      { window: "seven_day", used: 0.4, resetsAt: Date.parse("2030-01-02T00:00:00Z") },
+    ])
+    const call = fake.claudeUsageCalls().findLast((c) => c.kind === "usage") as {
+      args: string[]
+      cwd: string
+    }
+    // No saved session, no servers of the user, no hooks of the user, no tools.
+    expect(call.args).toEqual(
+      expect.arrayContaining(["--no-session-persistence", "--strict-mcp-config", "--settings"]),
+    )
+    expect(call.args[call.args.indexOf("--settings") + 1]).toContain('"disableAllHooks":true')
+    expect(call.args.at(-2)).toBe("--tools")
+    expect(call.args.at(-1)).toBe("")
+    expect(call.cwd).not.toBe(process.cwd())
+    expect(call.cwd).toContain("robot-claude-probe")
+  })
+
+  test("the text of /usage is the second try, and a program that tells nothing gives null", async () => {
+    fake.setClaude({
+      loggedIn: true,
+      authMethod: "claude.ai",
+      usageText: "Current session: 7% used\nCurrent week (all models): 21% used\n",
+    })
+    expect(await claudeUsage(fake.claude)).toEqual([
+      { window: "five_hour", used: 0.07, resetsAt: null },
+      { window: "seven_day", used: 0.21, resetsAt: null },
+    ])
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai" })
+    expect(await claudeUsage(fake.claude)).toBeNull()
+    // A program that is not there tells nothing, and does not throw.
+    expect(await claudeUsage("/no/such/claude")).toBeNull()
   })
 
   test("a turn streams text, reports usage and limits", async () => {
@@ -107,6 +164,47 @@ describe("claude program", () => {
     const tool = events.filter((e) => e.type === "tool")
     expect(tool.map((e) => (e.type === "tool" ? e.state : ""))).toEqual(["running", "done"])
     expect(text(events)).toBe("It ran.")
+  })
+
+  test("the program reaches the browser of the app, and the app asks the user by itself", async () => {
+    browser.calls.length = 0
+    const grant = await grantBridge(browser)
+    const asked: string[] = []
+    try {
+      const events = await collect(
+        runClaude(
+          base(fake.claude, {
+            prompt: "BROWSER:browser_read",
+            bridge: grant,
+            approve: async (r) => {
+              asked.push(r.summary)
+              return true
+            },
+          }),
+        ),
+      )
+      expect(browser.calls).toEqual(["browser_read"])
+      // The step of the app is allowed at once. Its own card follows the permission level.
+      expect(asked).toEqual([])
+      expect(
+        events.flatMap((e) => (e.type === "tool" ? [`${e.state} ${e.call.name}`] : [])),
+      ).toEqual(["running mcp__robot__browser_read", "done mcp__robot__browser_read"])
+      expect(text(events)).toBe("Page: Text of the page")
+      // The token is in a file that is gone with the run, never in an argument.
+      const call = fake.claudeCalls().at(-1) as { args: string[] }
+      const file = call.args[call.args.indexOf("--mcp-config") + 1] ?? ""
+      expect(call.args.join(" ")).not.toContain(grant.token)
+      expect(call.args).toContain("--strict-mcp-config")
+      expect(existsSync(file)).toBe(false)
+    } finally {
+      grant.release()
+    }
+  })
+
+  test("a run without the access gets no server", async () => {
+    await collect(runClaude(base(fake.claude)))
+    const call = fake.claudeCalls().at(-1) as { args: string[] }
+    expect(call.args).not.toContain("--mcp-config")
   })
 
   test("a no from the user is passed on to the program", async () => {
@@ -168,6 +266,26 @@ describe("codex program", () => {
     const call = fake.codexCalls().at(-1) as { args: string[]; prompt: string }
     expect(call.prompt).toContain("Be brief.")
     expect(call.args).toContain("workspace-write")
+  })
+
+  test("the program is told how to start the app's server, with no token in the arguments", async () => {
+    const grant = await grantBridge(browser)
+    try {
+      await collect(runCodex(base(fake.codex, { model: "default", bridge: grant })))
+      const call = fake.codexCalls().at(-1) as { args: string[] }
+      const settings = call.args.filter((a) => a.startsWith("mcp_servers.robot."))
+      expect(settings.map((a) => a.split("=")[0])).toEqual([
+        "mcp_servers.robot.command",
+        "mcp_servers.robot.args",
+        "mcp_servers.robot.env.ELECTRON_RUN_AS_NODE",
+      ])
+      expect(call.args.join(" ")).not.toContain(grant.token)
+      // The last argument of the script is the file with the address and the token.
+      const args = JSON.parse(settings[1]?.slice("mcp_servers.robot.args=".length) ?? "[]")
+      expect(existsSync(args.at(-1))).toBe(false)
+    } finally {
+      grant.release()
+    }
   })
 
   test("a failed turn becomes a failure", async () => {
@@ -302,5 +420,22 @@ describe("muse program", () => {
     expect(fake.museCalls().length).toBe(before + 1)
     expect(call.args[0]).toBe("exec")
     expect(call.args).toContain("--disable-approval")
+  })
+
+  test("the host gets the server of the app, and the token only in its environment", async () => {
+    const grant = await grantBridge(browser)
+    try {
+      await collect(runMuse(ask({ bridge: grant })))
+      const call = fake.museCalls().at(-1) as { args: string[]; bridgeAuth: string | null }
+      const setting = call.args.find((a) => a.startsWith("mcpServers.robot=")) ?? ""
+      expect(JSON.parse(setting.slice("mcpServers.robot=".length))).toEqual({
+        url: grant.url,
+        headers: { Authorization: `\${${MUSE_AUTH_VARIABLE}}` },
+      })
+      expect(call.args.join(" ")).not.toContain(grant.token)
+      expect(call.bridgeAuth).toBe(`Bearer ${grant.token}`)
+    } finally {
+      grant.release()
+    }
   })
 })

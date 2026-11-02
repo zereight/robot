@@ -8,6 +8,8 @@ import { createInterface } from "node:readline"
 const dir = dirname(new URL(import.meta.url).pathname)
 const stateFile = join(dir, "claude-state.json")
 const callsFile = join(dir, "claude-calls.jsonl")
+// The looks at the usage have a file of their own: they run beside the turns, in any order.
+const usageCallsFile = join(dir, "claude-usage-calls.jsonl")
 const state = () =>
   existsSync(stateFile)
     ? JSON.parse(readFileSync(stateFile, "utf8"))
@@ -58,6 +60,18 @@ if (args[0] === "auth" && args[1] === "login") {
   process.exit(0)
 }
 
+// `claude -p "/usage"`: the program answers by itself, without a model. The state gives the text
+// in `usageText`; with none, the text has no window, like an account that the vendor does not report.
+if (args[0] === "-p" && args[1] === "/usage") {
+  appendFileSync(
+    usageCallsFile,
+    `${JSON.stringify({ kind: "usage-text", args, cwd: process.cwd() })}\n`,
+  )
+  const text = state().usageText ?? "You are currently using your subscription.\n"
+  out({ type: "result", subtype: "success", is_error: false, result: text, num_turns: 0 })
+  process.exit(0)
+}
+
 // A turn: the first line on stdin is the user's message.
 const lines = createInterface({ input: process.stdin })
 const waiting = new Map()
@@ -68,6 +82,28 @@ lines.on("line", (line) => {
   const msg = JSON.parse(line)
   if (msg.type === "control_response") {
     waiting.get(msg.response.request_id)?.(msg.response.response)
+    return
+  }
+  if (msg.type === "control_request" && msg.request?.subtype === "get_usage") {
+    // The state gives the windows in `usage`; with none, `rate_limits` is null, as when the
+    // vendor cannot be reached.
+    appendFileSync(
+      usageCallsFile,
+      `${JSON.stringify({ kind: "usage", args, cwd: process.cwd() })}\n`,
+    )
+    out({
+      type: "control_response",
+      response: {
+        subtype: "success",
+        request_id: msg.request_id,
+        response: {
+          session: { total_cost_usd: 0 },
+          subscription_type: state().plan ?? null,
+          rate_limits_available: true,
+          rate_limits: state().usage ?? null,
+        },
+      },
+    })
     return
   }
   if (msg.type === "user" && first) {
@@ -129,7 +165,45 @@ async function turn(content) {
     delta("Thinking slowly")
     await sleep(60_000)
   }
-  if (tool) {
+  const browser = /BROWSER:(\w+)(?: (\{.*\}))?/.exec(prompt)
+  if (browser) {
+    // A tool of the app: the program reads the server from the file it was given, and asks.
+    const server = JSON.parse(readFileSync(args[args.indexOf("--mcp-config") + 1], "utf8"))
+      .mcpServers.robot
+    const id = "toolu_fake_mcp"
+    const name = `mcp__robot__${browser[1]}`
+    out({ type: "assistant", message: { content: [{ type: "tool_use", id, name, input: {} }] } })
+    await new Promise((resolve) => {
+      waiting.set("req_mcp", resolve)
+      out({
+        type: "control_request",
+        request_id: "req_mcp",
+        request: { subtype: "can_use_tool", tool_name: name, tool_use_id: id, input: {} },
+      })
+    })
+    const reply = await (
+      await fetch(server.url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...server.headers },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: browser[1], arguments: JSON.parse(browser[2] ?? "{}") },
+        }),
+      })
+    ).json()
+    const text = reply.result.content.map((c) => c.text).join("\n")
+    out({
+      type: "user",
+      message: {
+        content: [
+          { type: "tool_result", tool_use_id: id, is_error: reply.result.isError, content: text },
+        ],
+      },
+    })
+    delta(`Page: ${text}`)
+  } else if (tool) {
     const command = tool[1].trim()
     const id = "toolu_fake1"
     out({

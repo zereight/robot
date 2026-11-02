@@ -6,6 +6,7 @@ import { createInterface } from "node:readline"
 import { EFFORTS, type ModelInfo, type PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { stage } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
@@ -163,16 +164,28 @@ export const piEfforts = async (
 /**
  * pi asks nothing before a step, so the permission level becomes the list of tools. "Ask for
  * everything" can look but not change. "Ask for risky steps" can also edit and write files, but
- * has no shell, which is where the risk is. "Full access" has every tool.
+ * has no shell, which is where the risk is. "Full access" has every tool. `extra` names tools of
+ * the app (the browser): a list of tools holds back tools of an extension that it does not name.
+ * The tools of the app ask the user by themselves, at the level of the agent.
  */
-export const piTools = (level: PermissionLevel, useTools: boolean): string[] => {
+export const piTools = (
+  level: PermissionLevel,
+  useTools: boolean,
+  extra: readonly string[] = [],
+): string[] => {
   if (!useTools) return ["--no-tools"]
-  if (level === "ask_all") return ["--tools", "read,grep,find,ls"]
-  if (level === "ask_risky") return ["--tools", "read,grep,find,ls,edit,write"]
+  if (level === "ask_all") return ["--tools", ["read", "grep", "find", "ls", ...extra].join(",")]
+  if (level === "ask_risky")
+    return ["--tools", ["read", "grep", "find", "ls", "edit", "write", ...extra].join(",")]
   return []
 }
 
-export const piArgs = (run: RuntimeRun, systemFile: string | null): string[] => {
+/** `extension` is the file that gives the program the tools of the app (see bridge.ts). */
+export const piArgs = (
+  run: RuntimeRun,
+  systemFile: string | null,
+  extension?: string,
+): string[] => {
   const args = [
     "-p",
     "--mode",
@@ -183,9 +196,14 @@ export const piArgs = (run: RuntimeRun, systemFile: string | null): string[] => 
     "--no-skills",
     "--no-prompt-templates",
     "--no-mcp",
+    ...(extension ? ["--extension", extension] : []),
     "--model",
     run.model,
-    ...piTools(run.permission, run.useTools),
+    ...piTools(
+      run.permission,
+      run.useTools,
+      run.bridge?.tools.map((t) => t.name),
+    ),
   ]
   if (run.effort) args.push("--thinking", run.effort)
   if (systemFile) args.push("--append-system-prompt", systemFile)
@@ -287,7 +305,8 @@ export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
     systemFile = join(scratch, "system.md")
     writeFileSync(systemFile, run.system, { mode: 0o600 })
   }
-  const child = spawn(run.bin, piArgs(run, systemFile), {
+  const staged = run.bridge ? stage(run.bridge) : null
+  const child = spawn(run.bin, piArgs(run, systemFile, staged?.piExtension), {
     cwd: run.workspace,
     env: env(),
     stdio: ["pipe", "pipe", "pipe"],
@@ -342,5 +361,6 @@ export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       clearTimeout(timer)
     }
     rmSync(scratch, { recursive: true, force: true })
+    staged?.remove()
   }
 }

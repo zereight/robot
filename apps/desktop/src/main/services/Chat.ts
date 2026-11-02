@@ -5,11 +5,11 @@ import {
   ATTACH_BYTES,
   ATTACH_MAX,
   askKind,
+  askStep,
   askSummary,
   type ChatMessage,
   type ChatSend,
   type FilePart,
-  islandSummary,
   type MessagePart,
   type MessageStatus,
   type ModelInfo,
@@ -18,14 +18,17 @@ import {
   type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
+  runningStepKind,
   type StepEffort,
   stepTurnEffort,
   type TaskSource,
+  toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
+import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -371,6 +374,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               return
             }
             const boundary = applyEvent(parts, event)
+            activity.setStep(agentId, runningStepKind(parts))
             const now = Date.now()
             if (boundary || now - lastSave >= SAVE_EVERY_MS) {
               save("streaming")
@@ -386,6 +390,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (!agent.model_account_id || !agent.model_name) {
             return yield* new AppError({ code: "provider_not_connected" })
           }
+          const isRuntime = providers.isRuntime(agent.model_account_id)
           const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
           // Claude Code reads the start of a request from the cache of the model, but only when
           // that start is the same as in the turn before. What the app tells it about this
@@ -401,7 +406,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const known = knowledge.prompt(
             agentId,
             asked ? messageText(asked) : "",
-            providers.isRuntime(agent.model_account_id) ? "files" : "tools",
+            isRuntime ? "files" : "tools",
           )
           const system = [
             agent.instructions,
@@ -438,7 +443,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   channelId: null,
                   callId,
                   kind: askKind(ask),
-                  summary: islandSummary(askSummary(ask)),
+                  summary: askSummary(ask),
+                  step: askStep(ask, toolNameOf(parts, callId)),
                   target: { kind: "agent", id: agentId, messageId: reply.id },
                 })
               else notifier.clearAttention(agentId, callId)
@@ -483,6 +489,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             {
               execute: (call) => tools.execute(context, call),
               approve: (request) => tools.approval(context, request),
+              // An agent runtime has no browser of its own. It calls the app for it, and the
+              // card of each call is the one that an API agent would show.
+              ...(isRuntime
+                ? {
+                    bridge: tools.bridge(context, (event) => {
+                      if (!controller.signal.aborted) Effect.runSync(onEvent(event))
+                    }),
+                  }
+                : {}),
             },
           )
           // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
@@ -498,7 +513,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               }
             },
           }
-          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(Stream.runForEach(onEvent))
+          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(
+            // The program also reports its own calls of these tools. The app shows its own cards.
+            Stream.runForEach((event) =>
+              isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null
+                ? Effect.void
+                : onEvent(event),
+            ),
+          )
         })
 
         activity.setWorking(agentId, agent.server_id, true)
@@ -522,6 +544,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 save("done")
                 notifier.notify({
                   kind: "reply",
+                  agentId,
                   serverId: agent.server_id,
                   title: agent.name,
                   body: messageText({ parts }),
