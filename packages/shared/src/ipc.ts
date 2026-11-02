@@ -227,6 +227,10 @@ export interface RpcMethods {
   }
   /** Opens the app at the place of the waiting step. */
   "island.openApp": { input: { target: PlaceTarget }; output: undefined }
+  /** The result card has ended: its time is over and the pointer is not on it. */
+  "island.dismissResult": { input: { id: number }; output: undefined }
+  /** The size that the island content needs, in px. The island window takes this size. */
+  "island.fit": { input: { width: number; height: number }; output: undefined }
   "usage.summary": {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]

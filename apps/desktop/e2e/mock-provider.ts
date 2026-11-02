@@ -84,12 +84,26 @@ const plan = (body: ChatBody) => {
       ],
       delay: 0,
     }
+  // A lead gives one part to Bo, who then works for a long time.
+  if (text.includes("split hold"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "One part that runs long",
+          parts: [{ member: "Bo", label: "Hold the line", prompt: "run long" }],
+        }),
+      ],
+      delay: 0,
+    }
   // "Check knowledge": the agent reports what the app found, line by line.
   if (last.includes("The app found this:")) {
     // What the app found is the lines up to the request that follows them.
     const found = last.split("The app found this:")[1]?.split("\n\n")[0]?.trim() ?? ""
     return { chunks: [`Report of the check:\n${found}`], delay: 0 }
   }
+  // Work that lasts about 30 seconds, for tests that look at agents while they work.
+  if (text.includes("run long"))
+    return { chunks: Array.from({ length: 600 }, (_, i) => `w${i} `), delay: 50 }
   if (text.includes("slow"))
     return { chunks: Array.from({ length: 60 }, (_, i) => `word${i} `), delay: 50 }
   if (text.includes("markdown")) return { chunks: [MARKDOWN_REPLY], delay: 0 }
