@@ -1,5 +1,23 @@
 import { describe, expect, test } from "bun:test"
-import { type IslandState, islandShape, isMuted, mentionsUser, muteUntil } from "./notifications.ts"
+import {
+  askStep,
+  attentionIndex,
+  attentionText,
+  firstLine,
+  formatRunTime,
+  type IslandAttention,
+  type IslandResult,
+  type IslandState,
+  islandShape,
+  isMuted,
+  isResultKind,
+  mentionsUser,
+  muteUntil,
+  type NotifyKind,
+  runningStepKind,
+  toolNameOf,
+  toolStepKind,
+} from "./notifications.ts"
 
 describe("mutes", () => {
   const now = 1_000_000
@@ -23,21 +41,144 @@ describe("mutes", () => {
   })
 })
 
-test("island shape follows the mode and attention", () => {
-  const base: IslandState = { mode: "always", working: [], count: 0, attention: null }
-  const attention = {
-    agentId: "a",
-    agent: { id: "a", name: "Ada", face: { shape: 0, hue: 0 } },
-    callId: "c",
-    kind: "approval",
-    summary: "rm x",
-    target: { kind: "agent", id: "a" },
-    always: true,
-  } as const
+const agent = { id: "a", name: "Ada", face: { shape: 0, hue: 0 } }
+const waiting = (callId: string, agentId = "a"): IslandAttention => ({
+  agentId,
+  agent,
+  callId,
+  kind: "approval",
+  summary: "rm x",
+  place: null,
+  step: "command",
+  always: true,
+  target: { kind: "agent", id: agentId },
+})
+const result: IslandResult = {
+  id: 1,
+  kind: "reply",
+  agent,
+  place: null,
+  line: "Done",
+  reason: null,
+  target: { kind: "agent", id: "a" },
+}
+
+test("island shape follows the mode, attention and a result", () => {
+  const base: IslandState = {
+    mode: "always",
+    working: [],
+    count: 0,
+    rows: [],
+    waiting: [],
+    result: null,
+  }
   expect(islandShape(base)).toBe("bar")
   expect(islandShape({ ...base, mode: "attention" })).toBe("hidden")
-  expect(islandShape({ ...base, mode: "attention", attention })).toBe("attention")
-  expect(islandShape({ ...base, mode: "off", attention })).toBe("hidden")
+  expect(islandShape({ ...base, mode: "attention", waiting: [waiting("c")] })).toBe("attention")
+  expect(islandShape({ ...base, mode: "off", waiting: [waiting("c")] })).toBe("hidden")
+  // The result card is for the mode "always". A request for attention comes before it.
+  expect(islandShape({ ...base, result })).toBe("result")
+  expect(islandShape({ ...base, mode: "attention", result })).toBe("hidden")
+  expect(islandShape({ ...base, result, waiting: [waiting("c")] })).toBe("attention")
+})
+
+describe("kinds of step", () => {
+  test("tool names of the app and of the vendor programs", () => {
+    expect(toolStepKind("read_file")).toBe("files")
+    expect(toolStepKind("Edit")).toBe("files")
+    expect(toolStepKind("file_change")).toBe("files")
+    expect(toolStepKind("run_command")).toBe("command")
+    expect(toolStepKind("Bash")).toBe("command")
+    expect(toolStepKind("shell")).toBe("command")
+    expect(toolStepKind("exec_command")).toBe("command")
+    expect(toolStepKind("fetch_url")).toBe("web")
+    expect(toolStepKind("WebSearch")).toBe("web")
+    expect(toolStepKind("browser_click")).toBe("browser")
+    expect(toolStepKind("mcp__files__read")).toBe("connection")
+    expect(toolStepKind("github.create_issue")).toBe("connection")
+    expect(toolStepKind("Task")).toBe("agent")
+    expect(toolStepKind("computer_click")).toBe("computer")
+  })
+  test("a name that is none of the kinds has no kind", () => {
+    expect(toolStepKind("save_memory")).toBeNull()
+    expect(toolStepKind("ask_user")).toBeNull()
+    expect(toolStepKind("")).toBeNull()
+    expect(toolStepKind("a/b.c")).toBeNull()
+  })
+  test("the step that runs is the last tool that has not ended", () => {
+    const tool = (name: string, state: "running" | "waiting" | "done" | "failed") =>
+      ({ kind: "tool", id: name, name, label: name, state, input: "", output: "" }) as const
+    expect(runningStepKind([])).toBeNull()
+    expect(runningStepKind([tool("read_file", "done"), tool("run_command", "running")])).toBe(
+      "command",
+    )
+    expect(runningStepKind([tool("run_command", "running"), tool("read_file", "done")])).toBe(
+      "command",
+    )
+    expect(runningStepKind([tool("run_command", "waiting")])).toBe("command")
+    expect(runningStepKind([tool("run_command", "done"), { kind: "text", text: "ok" }])).toBeNull()
+    expect(toolNameOf([tool("run_command", "running")], "run_command")).toBe("run_command")
+    expect(toolNameOf([tool("run_command", "running")], "other")).toBeUndefined()
+  })
+  test("a card that waits has a kind of step, a question has none", () => {
+    expect(askStep({ kind: "approval", summary: "x" }, "run_command")).toBe("command")
+    expect(askStep({ kind: "approval", summary: "x" }, undefined)).toBeNull()
+    expect(askStep({ kind: "question", question: "q", choices: [] }, "run_command")).toBeNull()
+    expect(askStep({ kind: "article", title: "t", before: "", after: null }, undefined)).toBe(
+      "files",
+    )
+  })
+})
+
+describe("text of the cards", () => {
+  test("an approval keeps 90 characters, a question 160", () => {
+    expect([...attentionText("approval", "x".repeat(200))]).toHaveLength(90)
+    expect(attentionText("approval", "x".repeat(200)).endsWith("…")).toBe(true)
+    expect([...attentionText("question", "q".repeat(200))]).toHaveLength(160)
+    expect(attentionText("question", "short  text\n  here")).toBe("short text here")
+    expect(attentionText("approval", "y".repeat(90))).toBe("y".repeat(90))
+  })
+  test("the line of a reply is its first line with text, at most 90 characters", () => {
+    expect(firstLine("Hello there\nSecond line")).toBe("Hello there")
+    expect(firstLine("\n\n  \r\nFirst\r\nSecond")).toBe("First")
+    expect(firstLine("")).toBe("")
+    expect([...firstLine("é".repeat(120))]).toHaveLength(90)
+  })
+  test("run time reads m:ss, and h:mm:ss after one hour", () => {
+    expect(formatRunTime(0)).toBe("0:00")
+    expect(formatRunTime(999)).toBe("0:00")
+    expect(formatRunTime(61_000)).toBe("1:01")
+    expect(formatRunTime(59 * 60_000 + 59_000)).toBe("59:59")
+    expect(formatRunTime(3_600_000)).toBe("1:00:00")
+    expect(formatRunTime(3_600_000 + 5 * 60_000 + 9_000)).toBe("1:05:09")
+    expect(formatRunTime(-5)).toBe("0:00")
+  })
+  test("only a reply and a failure make a result card", () => {
+    expect(
+      ["reply", "task_failed", "routine_failed"].every((k) => isResultKind(k as NotifyKind)),
+    ).toBe(true)
+    for (const k of ["mention", "approval", "question", "workflow_notice"] as const)
+      expect(isResultKind(k)).toBe(false)
+  })
+})
+
+describe("which request the attention card shows", () => {
+  const list = (...ids: string[]) => ids.map((id) => waiting(id))
+  test("the request that shows stays when others come or go", () => {
+    expect(attentionIndex(list("a", "b", "c"), 1, list("a", "b", "c", "d"))).toBe(1)
+    expect(attentionIndex(list("a", "b", "c"), 1, list("b", "c"))).toBe(0)
+    expect(attentionIndex(list("a", "b", "c"), 2, list("a", "c"))).toBe(1)
+  })
+  test("after an answer the card shows the next request at once", () => {
+    expect(attentionIndex(list("a", "b", "c"), 0, list("b", "c"))).toBe(0)
+    expect(attentionIndex(list("a", "b", "c"), 1, list("a", "c"))).toBe(1)
+    // The last one was answered: the card goes back to the one before.
+    expect(attentionIndex(list("a", "b", "c"), 2, list("a", "b"))).toBe(1)
+  })
+  test("an empty list shows the first place", () => {
+    expect(attentionIndex(list("a"), 0, [])).toBe(0)
+    expect(attentionIndex([], 0, list("a"))).toBe(0)
+  })
 })
 
 test("mentions of the user", () => {

@@ -129,13 +129,16 @@ test("sync tasks: an approval is answered on the other computer, one task per ag
     // The second computer gets a notice, and the island shows the card. The island there has no
     // "Always allow" for it, and the island of the first computer has.
     type Island = {
-      attention: { agent: { name: string }; kind: string; always: boolean } | null
+      waiting: { agent: { name: string }; kind: string; always: boolean; step: string | null }[]
     }
     const island = await rpc<Island>(two.page, "island.get")
-    expect(island.attention?.agent.name).toBe("Ada")
-    expect(island.attention?.kind).toBe("approval")
-    expect(island.attention?.always).toBe(false)
-    expect((await rpc<Island>(one.page, "island.get")).attention?.always).toBe(true)
+    expect(island.waiting).toHaveLength(1)
+    expect(island.waiting[0]?.agent.name).toBe("Ada")
+    expect(island.waiting[0]?.kind).toBe("approval")
+    expect(island.waiting[0]?.always).toBe(false)
+    const own = await rpc<Island>(one.page, "island.get")
+    expect(own.waiting).toHaveLength(1)
+    expect(own.waiting[0]?.always).toBe(true)
     await shot(two.page, "s23-02-card-on-two")
 
     // One task per agent: a message on the second computer waits for the task on the first.
@@ -158,10 +161,10 @@ test("sync tasks: an approval is answered on the other computer, one task per ag
       timeout: 15_000,
     })
     await expect
-      .poll(async () => (await rpc<{ attention: unknown }>(two.page, "island.get")).attention, {
+      .poll(async () => (await rpc<{ waiting: unknown[] }>(two.page, "island.get")).waiting, {
         timeout: 15_000,
       })
-      .toBeNull()
+      .toEqual([])
     // The task that waited runs on the second computer and ends.
     await expect
       .poll(

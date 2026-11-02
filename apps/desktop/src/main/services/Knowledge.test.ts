@@ -1181,7 +1181,7 @@ describe("the first save in a workspace that the user chose", () => {
       askedAt: expect.any(Number),
     })
     // The island offers no "Always allow" either: the answer would deny the step.
-    const island = await s.run(Notifier.use((n) => Effect.sync(() => n.island().attention)))
+    const island = await s.run(Notifier.use((n) => Effect.sync(() => n.island().waiting[0])))
     expect(island).toMatchObject({ kind: "approval", always: false })
     expect(existsSync(join(chosen, "Knowledge"))).toBe(false)
     await s.respond("deny")

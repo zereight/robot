@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync } from "node:fs"
 import { basename, join, join as joinPath } from "node:path"
+import type { IslandShape } from "@robot/shared"
 import {
   app,
   BrowserWindow,
@@ -97,12 +98,20 @@ export const setMainWindow = (win: BrowserWindow) => {
 
 /**
  * The bar is wider than the camera notch, so the app mark and the faces sit in the two wings at
- * each side of it. The card starts below the notch.
+ * each side of it. The cards start below the notch. These sizes are where a shape starts. Then
+ * the island page measures its content and the window takes that size.
  */
-const ISLAND_SIZE = { bar: { width: 340, height: 34 }, attention: { width: 460, height: 204 } }
+const ISLAND_SIZE: Record<Exclude<IslandShape, "hidden">, { width: number; height: number }> = {
+  bar: { width: 340, height: 34 },
+  attention: { width: 460, height: 204 },
+  result: { width: 460, height: 132 },
+}
+/** The window never gets a size outside this, whatever the page asks for. */
+const ISLAND_LIMIT = { width: [120, 640], height: [20, 560] } as const
 /** A menu bar this tall or taller means that the screen has a camera notch. */
 const NOTCH_MENU_BAR_MIN = 30
 let island: BrowserWindow | undefined
+let islandShapeNow: IslandShape = "hidden"
 
 /**
  * The island is for macOS. A test run has no island unless the test asks for it, on any system,
@@ -111,9 +120,34 @@ let island: BrowserWindow | undefined
 const islandAllowed = () =>
   isTestRun ? Boolean(process.env.ROBOT_FORCE_ISLAND) : process.platform === "darwin"
 
-const setIslandShape = (shape: "hidden" | "bar" | "attention") => {
+/** Puts the island window at the top centre of the screen, with the size of its content. */
+const placeIsland = (win: BrowserWindow, size: { width: number; height: number }) => {
+  const display = screen.getPrimaryDisplay()
+  const { bounds } = display
+  // The menu bar of a screen with a camera notch is as tall as the notch. The island joins the
+  // notch there. A screen without a notch keeps the island under the menu bar.
+  const menuBar = display.workArea.y - bounds.y
+  const notch = menuBar >= NOTCH_MENU_BAR_MIN ? menuBar : 0
+  const next = {
+    x: Math.round(bounds.x + (bounds.width - size.width) / 2),
+    y: notch > 0 ? bounds.y : bounds.y + menuBar,
+    width: size.width,
+    height: Math.max(size.height, notch),
+  }
+  const now = win.getBounds()
+  if (
+    now.x !== next.x ||
+    now.y !== next.y ||
+    now.width !== next.width ||
+    now.height !== next.height
+  )
+    win.setBounds(next)
+}
+
+const setIslandShape = (shape: IslandShape) => {
   if (!islandAllowed()) return
   if (shape === "hidden") {
+    islandShapeNow = "hidden"
     island?.hide()
     return
   }
@@ -144,23 +178,22 @@ const setIslandShape = (shape: "hidden" | "bar" | "attention") => {
     const devUrl = process.env.ELECTRON_RENDERER_URL
     if (devUrl) void island.loadURL(`${devUrl}/island.html`)
     else void island.loadFile(joinPath(import.meta.dirname, "../renderer/island.html"))
+    islandShapeNow = "hidden"
   }
-  const display = screen.getPrimaryDisplay()
-  const { bounds } = display
-  // The menu bar of a screen with a camera notch is as tall as the notch. The island joins the
-  // notch there. A screen without a notch keeps the island under the menu bar.
-  const menuBar = display.workArea.y - bounds.y
-  const notch = menuBar >= NOTCH_MENU_BAR_MIN ? menuBar : 0
-  const { width } = ISLAND_SIZE[shape]
-  const height =
-    shape === "bar" ? Math.max(ISLAND_SIZE.bar.height, notch) : ISLAND_SIZE[shape].height
-  island.setBounds({
-    x: Math.round(bounds.x + (bounds.width - width) / 2),
-    y: notch > 0 ? bounds.y : bounds.y + menuBar,
-    width,
-    height,
-  })
+  // A new shape starts at its own size. The page then fits the window to its content.
+  if (shape !== islandShapeNow) placeIsland(island, ISLAND_SIZE[shape])
+  islandShapeNow = shape
   island.showInactive()
+}
+
+const fitIsland = (size: { width: number; height: number }) => {
+  if (!island || island.isDestroyed() || islandShapeNow === "hidden") return
+  const clamp = (value: number, [min, max]: readonly [number, number]) =>
+    Math.min(max, Math.max(min, Math.ceil(Number.isFinite(value) ? value : min)))
+  placeIsland(island, {
+    width: clamp(size.width, ISLAND_LIMIT.width),
+    height: clamp(size.height, ISLAND_LIMIT.height),
+  })
 }
 
 export const electronPlatform = (): PlatformService => {
@@ -345,6 +378,7 @@ export const electronPlatform = (): PlatformService => {
       mainWindow.focus()
     },
     setIslandShape,
+    fitIsland,
     browser: (agentId) => {
       const known = browsers.get(agentId)
       if (known) return known

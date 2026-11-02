@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import {
   askAllowsAlways,
   askKind,
+  askStep,
   askSummary,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
@@ -12,7 +13,6 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   charLength,
-  islandSummary,
   MESSAGE_MAX,
   type MemberState,
   type MessagePart,
@@ -26,15 +26,18 @@ import {
   parseMentions,
   parsePlan,
   planText,
+  runningStepKind,
   stepLabel,
   type Task,
   type TaskState,
+  toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { bridgeToolName } from "../runtimes/bridge.ts"
+import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
 import { applyEvent } from "./Chat.ts"
@@ -150,6 +153,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const tools = yield* Tools
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
+      const agentActivity = yield* Activity
       const agents = yield* Agents
       const sections = yield* Sections
 
@@ -376,6 +380,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               return
             }
             const boundary = applyEvent(parts, event)
+            agentActivity.setStep(o.agent.id, runningStepKind(parts))
             if (o.hideRaw && /^\s*[{`]/.test(messageText({ parts }))) hidden = true
             if (hidden) return
             const now = Date.now()
@@ -424,7 +429,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   callId,
                   kind: askKind(ask),
                   always: askAllowsAlways(ask),
-                  summary: islandSummary(askSummary(ask)),
+                  summary: askSummary(ask),
+                  step: askStep(ask, toolNameOf(parts, callId)),
                   target: { kind: "channel", id: o.channel.id, messageId: id },
                 })
               else notifier.clearAttention(o.agent.id, callId)

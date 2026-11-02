@@ -224,18 +224,30 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             "SELECT server_id, name FROM agent WHERE id = ?",
             agentId,
           )
-          if (task && agent)
+          if (task && agent) {
+            // A routine that posts in a channel fails in that channel.
+            const channelId =
+              task.source === "channel"
+                ? task.source_id
+                : task.source === "routine" && task.source_id
+                  ? (db.get<{ channel_id: string | null }>(
+                      "SELECT channel_id FROM routine WHERE id = ?",
+                      task.source_id,
+                    )?.channel_id ?? null)
+                  : null
             notifier.notify({
               kind: task.source === "routine" ? "routine_failed" : "task_failed",
+              agentId,
               serverId: agent.server_id,
-              channelId: task.source === "channel" ? task.source_id : null,
+              channelId,
               title: agent.name,
               body: task.label || task.prompt,
-              target:
-                task.source === "channel" && task.source_id
-                  ? { kind: "channel", id: task.source_id }
-                  : { kind: "agent", id: agentId },
+              reason: { code: error?.code ?? "unknown", detail: error?.detail ?? "" },
+              target: channelId
+                ? { kind: "channel", id: channelId }
+                : { kind: "agent", id: agentId },
             })
+          }
         }
         // The place list shows a working dot on a channel, and a channel shows its plan steps.
         const source = db.get<{ source: string; source_id: string | null }>(

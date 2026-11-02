@@ -15,12 +15,12 @@ import { join, sep } from "node:path"
 import {
   ATTACH_BYTES,
   askKind,
+  askStep,
   askSummary,
   CLOCK_WARN_MS,
   COUNTED_KINDS,
   type DownloadChunk,
   GUARD_DELETE_MIN,
-  islandSummary,
   isSyncKind,
   type MessagePart,
   messageText,
@@ -439,7 +439,8 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
                 kind: askKind(part.ask),
                 // A computer cannot change what an agent may always do on the other one (019).
                 always: false,
-                summary: islandSummary(askSummary(part.ask)),
+                summary: askSummary(part.ask),
+                step: askStep(part.ask, part.name),
                 target: row.channel_id
                   ? { kind: "channel", id: row.channel_id, messageId: id }
                   : { kind: "agent", id: row.agent_id, messageId: id },

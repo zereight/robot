@@ -765,6 +765,16 @@ export const handlers: Handlers = {
       ),
       done,
     ),
+  "island.dismissResult": (input) =>
+    decode(Schema.Struct({ id: Schema.Number }))(input).pipe(
+      Effect.flatMap(({ id }) => Notifier.use((n) => Effect.sync(() => n.dismissResult(id)))),
+      done,
+    ),
+  "island.fit": (input) =>
+    decode(Schema.Struct({ width: Schema.Number, height: Schema.Number }))(input).pipe(
+      Effect.flatMap((size) => Platform.use((p) => Effect.sync(() => p.fitIsland(size)))),
+      done,
+    ),
   "usage.summary": (input) =>
     decode(
       Schema.Struct({

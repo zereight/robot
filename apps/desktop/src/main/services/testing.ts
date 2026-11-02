@@ -19,6 +19,7 @@ export const testPlatform = () => {
     focused: true,
     notices: [] as { title: string; body: string; click: () => void }[],
     shapes: [] as string[],
+    fits: [] as { width: number; height: number }[],
     shown: 0,
     /** What "Save as" answers. Undefined means the user cancelled. */
     savePath: undefined as string | undefined,
@@ -86,6 +87,9 @@ export const testPlatform = () => {
     },
     setIslandShape: (shape) => {
       shell.shapes.push(shape)
+    },
+    fitIsland: (size) => {
+      shell.fits.push(size)
     },
     browser: (agentId) => {
       const known = pages.get(agentId)

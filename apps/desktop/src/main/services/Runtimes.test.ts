@@ -1,13 +1,20 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { type ChatMessage, messageText, type PermissionLevel } from "@robot/shared"
+import {
+  type ChatMessage,
+  messageText,
+  type PermissionLevel,
+  type ToolStepKind,
+} from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes, sha256, tarGzOf } from "../../../e2e/fake-runtimes.ts"
 import { runRequest } from "../rpc.ts"
 import { type Ctx, KINDS } from "../sync/kinds.ts"
 import { parseOp } from "../sync/wire.ts"
+import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
+import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
@@ -527,8 +534,9 @@ describe("approvals of Muse Code answered from other devices", () => {
       summary: "rm /etc/robot-test",
     })
     // The island and the system notice show the same request.
-    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().attention)))
-    expect(waiting).toMatchObject({ callId: "tool-1", kind: "approval", always: true })
+    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().waiting)))
+    expect(waiting).toHaveLength(1)
+    expect(waiting[0]).toMatchObject({ callId: "tool-1", kind: "approval", always: true })
 
     // A linked device says "Always allow": the step runs once, and the card names the device.
     expect((await answer("Phone", "always")).ok).toBe(true)
@@ -664,8 +672,14 @@ describe("the browser step of a subscription agent, seen and answered from other
     // The card that waits, with its ask, is a card that the other computer takes.
     expect(await syncAccepts(s)).toBe(true)
     // The island and the system notice show the request, with the choice to always allow.
-    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().attention)))
-    expect(waiting).toMatchObject({ callId: "app-1", kind: "approval", always: true })
+    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().waiting)))
+    expect(waiting).toHaveLength(1)
+    expect(waiting[0]).toMatchObject({
+      callId: "app-1",
+      kind: "approval",
+      step: "browser",
+      always: true,
+    })
 
     // A linked device says "Always allow": the page opens once, and the card names the device.
     expect((await answer("Phone", "always")).ok).toBe(true)
@@ -702,5 +716,89 @@ describe("the browser step of a subscription agent, seen and answered from other
     expect(opened(s)).toBe(4)
     expect((await s.card())?.decision).toBeUndefined()
     expect(await syncAccepts(s)).toBe(true)
+  })
+})
+
+describe("the browser for a subscription: the status island", () => {
+  const open = 'BROWSER:browser_open {"url":"https://example.com/a"}'
+  type Setup = Awaited<ReturnType<typeof chatSetup>>
+  const island = (s: Setup) => s.run(Notifier.use((n) => Effect.succeed(n.island())))
+  /** The kind of step of the agent at each change, from now on. */
+  const watchSteps = async (s: Setup) => {
+    const steps: (ToolStepKind | null)[] = []
+    await s.run(
+      Activity.use((a) => Effect.sync(() => a.onChange(() => steps.push(a.stepOf(s.agent.id))))),
+    )
+    return steps
+  }
+
+  // The program reports its call as "mcp__robot__browser_open", and the app drops that report
+  // (see the filter in Chat and Channels). The kind of step comes from the card of the app.
+  // From the name of the program it would be "a connection".
+  test("a step of the browser says the browser, also while the user is asked", async () => {
+    const s = await chatSetup("claude_code", "ask_all")
+    const steps = await watchSteps(s)
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    const state = await island(s)
+    expect(state.waiting).toHaveLength(1)
+    expect(state.waiting[0]).toMatchObject({
+      kind: "approval",
+      agentId: s.agent.id,
+      callId: "app-1",
+      step: "browser",
+      place: null,
+    })
+    expect(state.rows[0]?.doing).toEqual({ kind: "tool", tool: "browser" })
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "allow")))
+    await s.settled()
+    expect(steps).toContain("browser")
+    expect(steps).not.toContain("connection")
+    // Nothing is left on the island when the turn ends.
+    await until(async () => (await island(s)).count === 0)
+    const after = await island(s)
+    expect(after.waiting).toEqual([])
+    expect(after.rows).toEqual([])
+  })
+
+  test("at Full access the step of the browser shows as the browser, and ends with the call", async () => {
+    const s = await chatSetup("claude_code", "full")
+    const steps = await watchSteps(s)
+    await s.send(open)
+    await s.settled()
+    await until(async () => (await island(s)).count === 0)
+    // The agent starts with no step, then the browser, then none again.
+    expect(steps.filter((x, i) => x !== steps[i - 1])).toEqual([null, "browser", null])
+  })
+
+  test("in a channel the request names the channel and the browser", async () => {
+    const s = await chatSetup("claude_code", "ask_all")
+    const channel = await s.run(
+      Channels.use((c) =>
+        c.create({
+          serverId: s.local.id,
+          name: "Ops",
+          topic: "",
+          memberIds: [s.agent.id],
+          leadId: null,
+        }),
+      ),
+    )
+    const steps = await watchSteps(s)
+    await s.run(Channels.use((c) => c.send(channel.id, `@Ada ${open}`)))
+    await until(async () => (await island(s)).waiting.length === 1)
+    const state = await island(s)
+    expect(state.waiting[0]).toMatchObject({
+      kind: "approval",
+      callId: "app-1",
+      step: "browser",
+      place: "Ops",
+    })
+    expect(state.rows[0]?.doing).toEqual({ kind: "tool", tool: "browser" })
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "allow")))
+    await until(async () => (await island(s)).count === 0)
+    expect((await island(s)).waiting).toEqual([])
+    expect(steps).toContain("browser")
+    expect(steps).not.toContain("connection")
   })
 })

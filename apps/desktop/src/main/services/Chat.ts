@@ -6,11 +6,11 @@ import {
   ATTACH_MAX,
   askAllowsAlways,
   askKind,
+  askStep,
   askSummary,
   type ChatMessage,
   type ChatSend,
   type FilePart,
-  islandSummary,
   type MessagePart,
   type MessageStatus,
   type ModelInfo,
@@ -19,11 +19,13 @@ import {
   type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
+  runningStepKind,
   type StepEffort,
   stepTurnEffort,
   type Task,
   type TaskSource,
   type ToolAsk,
+  toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
@@ -423,6 +425,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               return
             }
             const boundary = applyEvent(parts, event)
+            activity.setStep(agentId, runningStepKind(parts))
             const now = Date.now()
             if (boundary || now - lastSave >= SAVE_EVERY_MS) {
               save("streaming")
@@ -485,7 +488,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   callId,
                   kind: askKind(ask),
                   always: askAllowsAlways(ask),
-                  summary: islandSummary(askSummary(ask)),
+                  summary: askSummary(ask),
+                  step: askStep(ask, toolNameOf(parts, callId)),
                   target: { kind: "agent", id: agentId, messageId: reply.id },
                 })
               else notifier.clearAttention(agentId, callId)
@@ -594,6 +598,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 save("done")
                 notifier.notify({
                   kind: "reply",
+                  agentId,
                   serverId: agent.server_id,
                   title: agent.name,
                   body: messageText({ parts }),

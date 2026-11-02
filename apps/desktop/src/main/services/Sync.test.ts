@@ -1083,7 +1083,7 @@ describe("tasks, routines, workflows and files of two computers", () => {
     const attention = (rt: Rt) =>
       run(
         rt,
-        Notifier.use((n) => Effect.sync(() => n.island().attention)),
+        Notifier.use((n) => Effect.sync(() => n.island().waiting[0] ?? null)),
       )
     const notice = await waitFor(
       () => attention(a),
