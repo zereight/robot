@@ -27,6 +27,8 @@ export interface FakeRuntimes {
   setPi(state: Record<string, unknown>): void
   /** What each program was asked to do, one entry per call, oldest first. */
   claudeCalls(): Record<string, unknown>[]
+  /** The looks of Claude at the usage of the plan, oldest first. They are not turns. */
+  claudeUsageCalls(): Record<string, unknown>[]
   codexCalls(): Record<string, unknown>[]
   museCalls(): Record<string, unknown>[]
   piCalls(): Record<string, unknown>[]
@@ -66,6 +68,7 @@ export const makeFakeRuntimes = (): FakeRuntimes => {
     setClaude: (state) => writeFileSync(join(dir, "claude-state.json"), JSON.stringify(state)),
     setCodex: (state) => writeFileSync(join(dir, "codex-state.json"), JSON.stringify(state)),
     claudeCalls: () => calls(join(dir, "claude-calls.jsonl")),
+    claudeUsageCalls: () => calls(join(dir, "claude-usage-calls.jsonl")),
     codexCalls: () => calls(join(dir, "codex-calls.jsonl")),
   }
 }

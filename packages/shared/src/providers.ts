@@ -98,6 +98,8 @@ export interface RuntimeStatus {
   /** 0 to 1 while installing; null when unknown. */
   readonly progress: number | null
   readonly limits: readonly RuntimeLimit[]
+  /** When `limits` were read, in ms since the epoch. Null when they never were. */
+  readonly limitsAt: number | null
   /** The last problem of the install or the sign-in, in plain words. */
   readonly problem: string | null
   /** While a sign-in waits for the user: the page to open, and the code to compare there. */

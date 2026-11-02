@@ -67,6 +67,52 @@ describe("runtime accounts", () => {
     expect(status).toMatchObject({ source: "system", version: "9.9.9", user: "a@b.c", plan: "max" })
   })
 
+  test("the usage windows are read after the look; a failed read keeps the last ones", async () => {
+    const usage = {
+      five_hour: { utilization: 30, resets_at: "2099-01-01T00:00:00Z" },
+      seven_day: { utilization: 60, resets_at: "2099-01-02T00:00:00Z" },
+    }
+    const reads = () => fake.claudeUsageCalls().filter((c) => c.kind === "usage").length
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max", usage })
+    const t = testRuntime()
+    const first = await t.runtime.runPromise(Runtimes.use((r) => r.status("claude_code")))
+    // The look does not wait for the windows.
+    expect(first).toMatchObject({ signedIn: true, plan: "max" })
+    await until(
+      () =>
+        t.runtime.runSync(Runtimes.use((r) => Effect.sync(() => r.cached("claude_code")))).limits
+          .length === 2,
+    )
+    const read = t.runtime.runSync(Runtimes.use((r) => Effect.sync(() => r.cached("claude_code"))))
+    expect(read.limits.map((l) => [l.window, l.used])).toEqual([
+      ["five_hour", 0.3],
+      ["seven_day", 0.6],
+    ])
+    expect(read.limitsAt).toBeGreaterThan(Date.now() - 5000)
+
+    // The vendor tells nothing the next time: the windows stay, with the time they were read.
+    const before = reads()
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    await t.runtime.runPromise(Runtimes.use((r) => r.status("claude_code")))
+    await until(() => reads() > before)
+    await Bun.sleep(300)
+    const kept = t.runtime.runSync(Runtimes.use((r) => Effect.sync(() => r.cached("claude_code"))))
+    expect(kept.limits).toEqual(read.limits)
+    expect(kept.limitsAt).toBe(read.limitsAt)
+  })
+
+  test("no windows are asked of a program that is signed out or signed in with a key", async () => {
+    const reads = () => fake.claudeUsageCalls().filter((c) => c.kind === "usage").length
+    const before = reads()
+    fake.setClaude({ loggedIn: true, authMethod: "console" })
+    const t = testRuntime()
+    await t.runtime.runPromise(Runtimes.use((r) => r.status("claude_code")))
+    fake.setClaude({ loggedIn: false })
+    await t.runtime.runPromise(Runtimes.use((r) => r.status("claude_code")))
+    await Bun.sleep(300)
+    expect(reads()).toBe(before)
+  })
+
   test("a program that is signed out, or signed in with a key, or missing, is refused", async () => {
     const t = testRuntime()
     const connect = (kind: "claude_code" | "codex") =>

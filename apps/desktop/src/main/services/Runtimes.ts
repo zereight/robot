@@ -48,6 +48,7 @@ const blank = (kind: RuntimeKind): RuntimeStatus => ({
   busy: null,
   progress: null,
   limits: [],
+  limitsAt: null,
   problem: null,
   signInUrl: null,
   signInCode: null,
@@ -101,6 +102,28 @@ export class Runtimes extends Context.Service<Runtimes, RuntimesService>()("robo
         return version
       }
 
+      /** The kinds whose usage windows are being asked now. */
+      const reading = new Set<RuntimeKind>()
+
+      /**
+       * Asks the program for the usage windows, after the look has ended, so a slow answer does
+       * not hold the look. A program that cannot tell them leaves the last windows as they are,
+       * with the time they were read.
+       */
+      const readUsage = async (kind: RuntimeKind, path: string) => {
+        const ask = drivers[kind].usage
+        if (!ask || reading.has(kind)) return
+        reading.add(kind)
+        try {
+          const limits = await ask(path)
+          if (limits && limits.length > 0) put(kind, { limits, limitsAt: Date.now() })
+        } catch {
+          // The windows are extra. A failed question changes nothing.
+        } finally {
+          reading.delete(kind)
+        }
+      }
+
       const look = async (kind: RuntimeKind): Promise<RuntimeStatus> => {
         const found = findBinary(kind, { dataDir: platform.dataDir })
         const version = found ? await versionOf(kind, found.path) : null
@@ -114,6 +137,7 @@ export class Runtimes extends Context.Service<Runtimes, RuntimesService>()("robo
             progress: keep.progress,
             problem: keep.problem,
             limits: keep.limits,
+            limitsAt: keep.limitsAt,
             signInUrl: keep.signInUrl,
             signInCode: keep.signInCode,
           })
@@ -121,15 +145,17 @@ export class Runtimes extends Context.Service<Runtimes, RuntimesService>()("robo
         const login = await drivers[kind].login(found.path)
         looked.set(kind, Date.now())
         if (login.models) listed.set(kind, login.models)
-        return put(kind, {
+        const next = put(kind, {
           source: found.source,
           version,
           signedIn: login.signedIn,
           method: login.method,
           user: login.user,
           plan: login.plan,
-          ...(login.limits ? { limits: login.limits } : {}),
+          ...(login.limits ? { limits: login.limits, limitsAt: Date.now() } : {}),
         })
+        if (login.signedIn && login.method === "subscription") void readUsage(kind, found.path)
+        return next
       }
 
       const status = (kind: RuntimeKind) => {
@@ -249,7 +275,7 @@ export class Runtimes extends Context.Service<Runtimes, RuntimesService>()("robo
         run: (kind, input) => {
           const found = findBinary(kind, { dataDir: platform.dataDir })
           const onLimits = (limits: readonly RuntimeLimit[]) => {
-            if (limits.length > 0) put(kind, { limits })
+            if (limits.length > 0) put(kind, { limits, limitsAt: Date.now() })
           }
           return drivers[kind].run({ ...input, bin: found?.path ?? "", onLimits })
         },

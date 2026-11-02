@@ -8,6 +8,8 @@ import {
   mapClaudeMessage,
   newStreamState,
   parseClaudeStatus,
+  parseUsageReport,
+  parseUsageText,
   parseVersion,
 } from "./claude.ts"
 import type { RuntimeRun } from "./types.ts"
@@ -293,5 +295,88 @@ describe("claude run", () => {
     })
     expect(claudeFailure("Please run /login", null).code).toBe("runtime_signed_out")
     expect(claudeFailure("boom", null).code).toBe("provider_error")
+  })
+})
+
+describe("claude usage windows", () => {
+  test("the structured report gives the share used as 0 to 1 and the reset in ms", () => {
+    expect(
+      parseUsageReport({
+        rate_limits: {
+          five_hour: { utilization: 12, resets_at: "2030-01-01T00:00:00+00:00" },
+          seven_day: { utilization: 75.5, resets_at: "2030-01-02T00:00:00Z" },
+          seven_day_opus: null,
+        },
+      }),
+    ).toEqual([
+      { window: "five_hour", used: 0.12, resetsAt: Date.parse("2030-01-01T00:00:00Z") },
+      { window: "seven_day", used: 0.755, resetsAt: Date.parse("2030-01-02T00:00:00Z") },
+    ])
+  })
+
+  test("a window with no number is left out; a report with none is null", () => {
+    expect(
+      parseUsageReport({
+        rate_limits: {
+          five_hour: { utilization: null, resets_at: null },
+          seven_day: { utilization: 5 },
+        },
+      }),
+    ).toEqual([{ window: "seven_day", used: 0.05, resetsAt: null }])
+    expect(parseUsageReport({ rate_limits: null })).toBeNull()
+    expect(parseUsageReport("nothing")).toBeNull()
+    expect(parseUsageReport(undefined)).toBeNull()
+  })
+
+  const at = (month: number, day: number, hour: number, minute = 0) =>
+    new Date(2026, month, day, hour, minute).getTime()
+  const now = at(10, 2, 15)
+
+  test("the text of /usage gives the session and the week; other rows are left out", () => {
+    const text = [
+      "You are currently using your subscription to power your Claude Code usage",
+      "",
+      "Current session: 3% used · resets Nov 2 at 7:40pm (Asia/Seoul)",
+      "Current week (all models): 75% used · resets Nov 3 at 7am (Asia/Seoul)",
+      "Current week (Fable): 16% used · resets Nov 3 at 7am (Asia/Seoul)",
+      "",
+      "What's contributing to your usage?",
+      "  85%  Turn off custom-tools when you don't need it",
+    ].join("\n")
+    expect(parseUsageText(text, now, "Asia/Seoul")).toEqual([
+      { window: "five_hour", used: 0.03, resetsAt: at(10, 2, 19, 40) },
+      { window: "seven_day", used: 0.75, resetsAt: at(10, 3, 7) },
+    ])
+  })
+
+  test("a time with no date is today, or tomorrow when it is past", () => {
+    const text = "Current session: 40% used · resets 7pm (Asia/Seoul)"
+    expect(parseUsageText(text, now, "Asia/Seoul")?.[0]?.resetsAt).toBe(at(10, 2, 19))
+    expect(parseUsageText(text, at(10, 2, 20), "Asia/Seoul")?.[0]?.resetsAt).toBe(at(10, 3, 19))
+  })
+
+  test("a date that is long past is next year", () => {
+    const text = "Current week (all models): 10% used · resets Jan 5 at 9am (Asia/Seoul)"
+    const december = at(11, 30, 12)
+    expect(parseUsageText(text, december, "Asia/Seoul")?.[0]?.resetsAt).toBe(
+      new Date(2027, 0, 5, 9).getTime(),
+    )
+  })
+
+  test("a reset in another zone than ours is not placed, but the share is kept", () => {
+    const text = "Current session: 3% used · resets Nov 2 at 7:40pm (America/Denver)"
+    expect(parseUsageText(text, now, "Asia/Seoul")).toEqual([
+      { window: "five_hour", used: 0.03, resetsAt: null },
+    ])
+  })
+
+  test("a row with no reset, a share over 100, and text with no window", () => {
+    expect(parseUsageText("Current session: 130% used", now, "Asia/Seoul")).toEqual([
+      { window: "five_hour", used: 1, resetsAt: null },
+    ])
+    expect(
+      parseUsageText("You are currently using your subscription.", now, "Asia/Seoul"),
+    ).toBeNull()
+    expect(parseUsageText("", now, "Asia/Seoul")).toBeNull()
   })
 })
