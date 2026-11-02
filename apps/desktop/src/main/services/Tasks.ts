@@ -381,6 +381,20 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         return found ? messageText({ parts: JSON.parse(found.parts) }).slice(0, RESULT_MAX) : ""
       }
 
+      /** The messages that the user sent into the turn of the task (spec 003). */
+      const joinedOf = (task: Task) =>
+        task.messageId
+          ? db
+              .all<{ parts: string; created_at: number }>(
+                "SELECT parts, created_at FROM message WHERE joined_to = ? ORDER BY created_at, rowid",
+                task.messageId,
+              )
+              .map((r) => ({
+                text: messageText({ parts: JSON.parse(r.parts) }).slice(0, RESULT_MAX),
+                at: r.created_at,
+              }))
+          : []
+
       return Tasks.of({
         create,
         run,
@@ -436,7 +450,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               }
             }
             visit(taskId)
-            return Effect.succeed({ task, children, result: resultOf(task) })
+            return Effect.succeed({
+              task,
+              children,
+              result: resultOf(task),
+              joined: joinedOf(task),
+            })
           }),
         children: (parentId) => childRows(parentId).map((r) => toTask(r, remote)),
       })

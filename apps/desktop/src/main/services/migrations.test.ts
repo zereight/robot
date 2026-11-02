@@ -366,3 +366,17 @@ describe("the step of the action log", () => {
     expect(triggers).toEqual([])
   })
 })
+
+describe("the step of messages during a turn", () => {
+  test("it comes after the action log and adds the turn and the read time of a message", () => {
+    const step = migrations.findIndex((sql) => sql.includes("ADD COLUMN joined_to"))
+    expect(step).toBeGreaterThan(
+      migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log")),
+    )
+    const db = new DatabaseSync(":memory:")
+    db.exec("PRAGMA foreign_keys = ON")
+    migrate(db)
+    const columns = db.prepare("PRAGMA table_info(message)").all() as { name: string }[]
+    expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining(["joined_to", "read_at"]))
+  })
+})

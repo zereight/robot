@@ -470,6 +470,12 @@ export const migrations: readonly string[] = [
   CREATE INDEX action_log_at ON action_log (at);
   `,
   `
+  -- A message that the user sent into a running turn (spec 003): the reply of that turn, and the
+  -- time when the agent read the message. Both are empty for every other message.
+  ALTER TABLE message ADD COLUMN joined_to TEXT;
+  ALTER TABLE message ADD COLUMN read_at INTEGER;
+  `,
+  `
   -- Message search (spec 001). The text of the sent messages of chats and channels, in a table of
   -- its own, with an index that finds a part of a word without case (the trigram index). Triggers
   -- keep it in step with every write to the two message tables, also a write by sync, by an

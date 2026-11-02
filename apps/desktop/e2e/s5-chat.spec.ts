@@ -47,7 +47,11 @@ test("chat: send, stream, stop, queue, markdown, retry, reply, edit, restart", a
   await expect(agentMessages(page).nth(2)).toContainText("You said: again")
   await settled(page)
 
-  // Queue: a message sent while the agent works waits, can be edited, and goes when the turn ends.
+  // Queue: with "Wait in a queue", a message sent while the agent works waits, can be edited,
+  // and goes when the turn ends. The default, "Join the current turn", is tested in s38.
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("setting-during-turn").locator('label[data-value="queue"]').click()
+  await page.getByTestId("settings-close").click()
   await send(page, "slow once more")
   await expect(page.getByTestId("composer-stop")).toBeVisible()
   await send(page, "queued one")
