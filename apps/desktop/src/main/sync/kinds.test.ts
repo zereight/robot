@@ -235,6 +235,19 @@ const source = async () => {
       kind,
     )
   }
+  // The user sections are the layout of one computer: the agent and the channel are in one here.
+  sql(
+    "INSERT INTO place_section (id, server_id, kind, name, name_key, position, created_at) VALUES ('sec-1', ?, 'agent', 'Research', 'research', 0, ?)",
+    serverId,
+    NOW,
+  )
+  sql(
+    "INSERT INTO place_section (id, server_id, kind, name, name_key, position, created_at) VALUES ('sec-2', ?, 'channel', 'Teams', 'teams', 0, ?)",
+    serverId,
+    NOW,
+  )
+  sql("UPDATE agent SET place_section_id = 'sec-1' WHERE id = ?", ada.id)
+  sql("UPDATE channel SET place_section_id = 'sec-2' WHERE id = ?", channel.id)
   // The knowledge of the first agent: sync must not carry it.
   sql("UPDATE agent SET knowledge_enabled = 1 WHERE id = ?", ada.id)
   sql(
@@ -350,6 +363,22 @@ describe("one item of every kind is made from its first copy", () => {
     // The tool cards arrived with their asks and their knowledge notes.
     const parts = (KINDS.message.read(b, "msg-1")?.fields.parts ?? []) as { kind: string }[]
     expect(parts.length).toBe(8)
+
+    // The new agent and channel are in no user section here, and no section was made.
+    expect(
+      b.db
+        .all("SELECT id FROM agent WHERE place_section_id IS NOT NULL")
+        .concat(b.db.all("SELECT id FROM channel WHERE place_section_id IS NOT NULL")),
+    ).toEqual([])
+    expect(b.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM place_section")?.n).toBe(0)
+    expect(
+      b.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM agent WHERE section = 'agents'")?.n,
+    ).toBe(2)
+    expect(
+      watch.statements.filter(
+        (x) => /place_section/i.test(x) && /^(INSERT|UPDATE)/i.test(x.trim()),
+      ),
+    ).toEqual([])
 
     // The knowledge of the agent did not travel: no statement touched a knowledge table, and the
     // new agent has no article.
