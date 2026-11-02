@@ -18,6 +18,7 @@ import {
   RUNTIME_KINDS,
   redactSecrets,
   SettingsPatch,
+  SYNC_MODES,
   UiStatePatch,
   USAGE_RANGES,
   WorkflowInput,
@@ -46,6 +47,7 @@ import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -72,8 +74,26 @@ const ById = Schema.Struct({ id: Schema.String })
 const ByAccount = Schema.Struct({ accountId: Schema.String })
 const ByRuntime = Schema.Struct({ kind: Schema.Literals(RUNTIME_KINDS) })
 const ByAgent = Schema.Struct({ agentId: Schema.String })
+const FileOfMessage = Schema.Struct({
+  agentId: Schema.String,
+  path: Schema.String.check(Schema.isMaxLength(300)),
+  size: Schema.Number,
+  messageId: Schema.String,
+})
 const MessageText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MESSAGE_MAX))
 const done = Effect.as(undefined)
+const ByLink = Schema.Struct({ linkId: Schema.String })
+
+/**
+ * Answers an approval or a question card. A card of a task that runs on the other computer of a
+ * sync pair (spec 016) goes to that computer, as the answer of a client does.
+ */
+const answerCard = (agentId: string, callId: string, answer: string) =>
+  Sync.use((s) => s.respond(agentId, callId, answer)).pipe(
+    Effect.flatMap((sent) =>
+      sent ? Effect.void : Tools.use((t) => t.respond(agentId, callId, answer)),
+    ),
+  )
 
 const applySystemSettings = Effect.fn("applySystemSettings")(function* (
   patch: typeof SettingsPatch.Type,
@@ -232,6 +252,62 @@ export const handlers: Handlers = {
       done,
     ),
   "devices.nearby": () => Devices.use((d) => d.nearby()),
+  "sync.list": () => Sync.use((s) => Effect.sync(() => s.statuses())),
+  "sync.preview": (input) =>
+    decode(ByLink)(input).pipe(Effect.flatMap(({ linkId }) => Sync.use((s) => s.preview(linkId)))),
+  "sync.start": (input) =>
+    decode(Schema.Struct({ linkId: Schema.String, mode: Schema.Literals(SYNC_MODES) }))(input).pipe(
+      Effect.flatMap(({ linkId, mode }) => Sync.use((s) => s.start(linkId, mode))),
+    ),
+  "sync.cancelOffer": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.cancelOffer(linkId))),
+      done,
+    ),
+  "sync.pause": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.setPaused(linkId, true))),
+      done,
+    ),
+  "sync.resume": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.setPaused(linkId, false))),
+      done,
+    ),
+  "sync.stop": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.stop(linkId))),
+      done,
+    ),
+  "sync.dismiss": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.dismiss(linkId))),
+      done,
+    ),
+  "sync.requests": () => Sync.use((s) => Effect.sync(() => s.requests())),
+  "sync.decide": (input) =>
+    decode(Schema.Struct({ id: Schema.String, allow: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, allow }) => Sync.use((s) => s.decide(id, allow))),
+      done,
+    ),
+  "sync.changes": () => Sync.use((s) => Effect.sync(() => s.changes())),
+  "sync.guard": () => Sync.use((s) => Effect.sync(() => s.guard())),
+  "sync.guard.decide": (input) =>
+    decode(Schema.Struct({ remove: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ remove }) => Sync.use((s) => s.decideGuard(remove))),
+      done,
+    ),
+  "sync.file.here": (input) =>
+    decode(FileOfMessage)(input).pipe(
+      Effect.flatMap(({ agentId, path, size, messageId }) =>
+        Sync.use((s) => Effect.succeed(s.fileHere(agentId, path, size, messageId))),
+      ),
+    ),
+  "sync.file.open": (input) =>
+    decode(FileOfMessage)(input).pipe(
+      Effect.flatMap((file) => Sync.use((s) => s.openFile(file))),
+      done,
+    ),
   // Saving a file of a linked server is carried out over the link, see `Remote.invoke`.
   "attachments.save": () => Effect.fail(new AppError({ code: "not_allowed" })),
   "places.list": (input) =>
@@ -324,7 +400,7 @@ export const handlers: Handlers = {
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Tasks.use((t) => t.get(id)))),
   "tasks.stop": (input) =>
     decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Tasks.use((t) => t.stop(id))),
+      Effect.flatMap(({ id }) => Tasks.use((t) => t.stopAny(id))),
       done,
     ),
   "tasks.retry": (input) =>
@@ -401,9 +477,7 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
       input,
     ).pipe(
-      Effect.flatMap(({ agentId, callId, answer }) =>
-        Tools.use((t) => t.respond(agentId, callId, answer)),
-      ),
+      Effect.flatMap(({ agentId, callId, answer }) => answerCard(agentId, callId, answer)),
       done,
     ),
   "browser.state": (input) =>
@@ -442,6 +516,8 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => Routines.use((r) => r.runNow(id))),
       done,
     ),
+  "routines.runHere": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Routines.use((r) => r.runHere(id)))),
   "routines.calendar": (input) =>
     decode(Schema.Struct({ serverId: Schema.String, from: Schema.Number, to: Schema.Number }))(
       input,
@@ -469,6 +545,8 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ id: Schema.String, triggerText: Schema.optionalKey(Schema.String) }))(
       input,
     ).pipe(Effect.flatMap(({ id, triggerText }) => Workflows.use((w) => w.run(id, triggerText)))),
+  "workflows.runHere": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.runHere(id)))),
   "workflows.stop": (input) =>
     decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
       Effect.flatMap(({ runId }) => Workflows.use((w) => w.stop(runId))),
@@ -508,9 +586,7 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
       input,
     ).pipe(
-      Effect.flatMap(({ agentId, callId, answer }) =>
-        Tools.use((t) => t.respond(agentId, callId, answer)),
-      ),
+      Effect.flatMap(({ agentId, callId, answer }) => answerCard(agentId, callId, answer)),
       done,
     ),
   "island.openApp": (input) =>
@@ -551,7 +627,12 @@ export const handlers: Handlers = {
     decode(ChatSend)(input).pipe(Effect.flatMap((data) => Chat.use((c) => c.send(data)))),
   "chat.stop": (input) =>
     decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) => Chat.use((c) => c.stop(agentId))),
+      Effect.flatMap(({ agentId }) =>
+        // A reply that runs on the other computer of a sync pair is stopped there (spec 016).
+        Chat.use((c) => c.stop(agentId)).pipe(
+          Effect.andThen(Tasks.use((t) => t.stopRemoteFor(agentId))),
+        ),
+      ),
       done,
     ),
   "chat.retry": (input) =>

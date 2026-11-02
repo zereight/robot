@@ -31,6 +31,8 @@ export interface WorkflowsService {
   remove(id: string): Effect.Effect<void, AppError>
   /** Starts a run. The text is what a `{{trigger}}` in a prompt becomes. */
   run(id: string, triggerText?: string): Effect.Effect<WorkflowRun, AppError>
+  /** Moves a workflow of the other computer here: it runs here from now on (spec 016). */
+  runHere(id: string): Effect.Effect<Workflow, AppError>
   stop(runId: string): Effect.Effect<void>
   /** Answers an approval step that waits. */
   approve(runId: string, stepId: string, approved: boolean): Effect.Effect<void>
@@ -50,6 +52,7 @@ interface WorkflowRow {
   enabled: number
   last_checked_at: number
   created_at: number
+  runs_on: string | null
 }
 interface RunRow {
   id: string
@@ -111,14 +114,16 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const approvals = new Map<string, Deferred.Deferred<boolean>>()
 
       // A run that was going when the app closed did not finish.
+      // A run of the other computer (spec 016) is not ours to end: its own computer does.
+      const ours = "SELECT id FROM workflow_run WHERE origin IS NULL"
       db.run(
-        "UPDATE workflow_run_step SET state = 'failed', error = 'app_stopped' WHERE state IN ('running', 'waiting')",
+        `UPDATE workflow_run_step SET state = 'failed', error = 'app_stopped' WHERE state IN ('running', 'waiting') AND run_id IN (${ours})`,
       )
       db.run(
-        "UPDATE workflow_run_step SET state = 'skipped' WHERE state = 'pending' AND run_id IN (SELECT id FROM workflow_run WHERE state = 'running')",
+        `UPDATE workflow_run_step SET state = 'skipped' WHERE state = 'pending' AND run_id IN (SELECT id FROM workflow_run WHERE state = 'running' AND origin IS NULL)`,
       )
       db.run(
-        "UPDATE workflow_run SET state = 'failed', finished_at = ? WHERE state = 'running'",
+        "UPDATE workflow_run SET state = 'failed', finished_at = ? WHERE state = 'running' AND origin IS NULL",
         Date.now(),
       )
 
@@ -132,6 +137,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         enabled: r.enabled === 1,
         running: isRunning(r.id),
         createdAt: r.created_at,
+        runsOn: r.runs_on === null ? null : tasks.computerName(r.runs_on),
       })
       function isRunning(workflowId: string) {
         return (
@@ -415,7 +421,10 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
 
       const tick = (now: number) =>
         Effect.gen(function* () {
-          for (const r of db.all<WorkflowRow>("SELECT * FROM workflow WHERE enabled = 1")) {
+          // A workflow runs on one computer only (spec 016).
+          for (const r of db.all<WorkflowRow>(
+            "SELECT * FROM workflow WHERE enabled = 1 AND runs_on IS NULL",
+          )) {
             const wf = toWorkflow(r)
             if (wf.trigger.kind !== "schedule") continue
             const { start: at } = dueRuns(wf.trigger.schedule as Schedule, r.last_checked_at, now)
@@ -426,7 +435,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
 
       // A message in a channel can start a workflow, when it holds the text of the trigger.
       channels.onUserMessage((channelId, text) => {
-        for (const r of db.all<WorkflowRow>("SELECT * FROM workflow WHERE enabled = 1")) {
+        for (const r of db.all<WorkflowRow>(
+          "SELECT * FROM workflow WHERE enabled = 1 AND runs_on IS NULL",
+        )) {
           const wf = toWorkflow(r)
           const t = wf.trigger
           if (
@@ -528,7 +539,24 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           Effect.gen(function* () {
             const current = row(id)
             if (!current) return yield* new AppError({ code: "workflow_not_found" })
+            if (current.runs_on !== null) return yield* new AppError({ code: "workflow_elsewhere" })
             return yield* start(toWorkflow(current), "manual", triggerText)
+          }),
+        runHere: (id) =>
+          Effect.gen(function* () {
+            const current = row(id)
+            if (!current) return yield* new AppError({ code: "workflow_not_found" })
+            if (current.runs_on !== null) {
+              const now = Date.now()
+              db.run(
+                "UPDATE workflow SET runs_on = NULL, last_checked_at = ?, updated_at = ? WHERE id = ?",
+                now,
+                now,
+                id,
+              )
+              changed(current.server_id)
+            }
+            return toWorkflow(row(id) as WorkflowRow)
           }),
         stop: (runId) =>
           Effect.gen(function* () {

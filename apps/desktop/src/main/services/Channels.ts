@@ -57,6 +57,11 @@ export interface ChannelsService {
   post(channelId: string, text: string): Effect.Effect<void, AppError>
   /** Calls `handler` for each message that the user sends to a channel. */
   onUserMessage(handler: (channelId: string, text: string) => void): void
+  /**
+   * A user message that came from the other computer by sync (spec 016). It starts no job here.
+   * It tells the same handlers, so a workflow with a channel trigger can fire for it.
+   */
+  hearUserMessage(channelId: string, text: string): void
   /** A routine run: the agent answers the prompt in the channel. The task belongs to the routine. */
   runRoutine(
     channelId: string,
@@ -66,6 +71,8 @@ export interface ChannelsService {
   ): Effect.Effect<void, AppError>
   activity(channelId: string): Effect.Effect<ChannelActivity>
   markRead(channelId: string): Effect.Effect<void>
+  /** Tells the windows about a message that sync wrote, so an open channel shows it at once. */
+  announce(messageId: string): void
   /** The text of the newest message of a channel, for the place list. */
   lastMessage(channelId: string): string | null
 }
@@ -138,7 +145,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const agents = yield* Agents
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
-      db.run("UPDATE channel_message SET status = 'stopped' WHERE status = 'streaming'")
+      // A part that streams from the other computer (spec 016) is not ours to end.
+      db.run(
+        "UPDATE channel_message SET status = 'stopped' WHERE status = 'streaming' AND origin IS NULL",
+      )
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
@@ -968,6 +978,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         })
 
       return Channels.of({
+        announce: (messageId) => emitMessage(messageId),
         list: (serverId) =>
           Effect.sync(() =>
             db
@@ -997,6 +1008,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         post,
         onUserMessage: (handler) => {
           messageHandlers.push(handler)
+        },
+        hearUserMessage: (channelId, text) => {
+          for (const handler of messageHandlers) handler(channelId, text)
         },
         runRoutine,
         activity,

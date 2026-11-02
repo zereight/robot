@@ -16,6 +16,7 @@ import { Presence } from "../ui/Presence.tsx"
 import { ConnectDialog } from "./ConnectDialog.tsx"
 import styles from "./devices.module.css"
 import { PairDialog } from "./PairDialog.tsx"
+import { SyncRow } from "./SyncRow.tsx"
 
 const ClientRow = (props: { client: ClientEntry }) => {
   const { t } = useApp()
@@ -110,6 +111,9 @@ const ServerRow = (props: { entry: ServerEntry }) => {
             </Button>
             <Button onClick={() => setEditing(false)}>{t("devices.server.cancel")}</Button>
           </div>
+        </Show>
+        <Show when={!editing()}>
+          <SyncRow linkId={props.entry.id} name={props.entry.name} state={props.entry.state} />
         </Show>
       </div>
       <Show when={!editing()}>

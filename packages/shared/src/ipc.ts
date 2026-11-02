@@ -27,6 +27,14 @@ import type {
 } from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type {
+  SyncChangeEntry,
+  SyncGuard,
+  SyncMode,
+  SyncPreview,
+  SyncRequest,
+  SyncStatus,
+} from "./sync.ts"
 import type { Task, TaskDetail } from "./task.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
@@ -110,6 +118,38 @@ export interface RpcMethods {
   "devices.connect.cancel": { input: { session: string }; output: undefined }
   /** Computers on this network that show a pairing code now. */
   "devices.nearby": { input: undefined; output: readonly NearbyComputer[] }
+  /** The sync row of each computer this computer can open (spec 016). */
+  "sync.list": { input: undefined; output: readonly SyncStatus[] }
+  /** What both computers hold, for the start dialog. The other computer must be online. */
+  "sync.preview": { input: { linkId: string }; output: SyncPreview }
+  /** Asks the other computer to sync. Ends when the other user decided, or the user cancelled. */
+  "sync.start": { input: { linkId: string; mode: SyncMode }; output: SyncStatus }
+  /** Cancels a request that waits for Allow. */
+  "sync.cancelOffer": { input: { linkId: string }; output: undefined }
+  "sync.pause": { input: { linkId: string }; output: undefined }
+  "sync.resume": { input: { linkId: string }; output: undefined }
+  /** Stops syncing. Both computers keep all their data. */
+  "sync.stop": { input: { linkId: string }; output: undefined }
+  /** Closes the "<name> stopped syncing" or "did not allow" line. */
+  "sync.dismiss": { input: { linkId: string }; output: undefined }
+  /** Requests from other computers that wait for Allow or Deny. */
+  "sync.requests": { input: undefined; output: readonly SyncRequest[] }
+  "sync.decide": { input: { id: string; allow: boolean }; output: undefined }
+  /** The newest 100 changes that came from the other computer. */
+  "sync.changes": { input: undefined; output: readonly SyncChangeEntry[] }
+  /** Deletions that wait for a decision (spec 016, Delete). */
+  "sync.guard": { input: undefined; output: SyncGuard | null }
+  "sync.guard.decide": { input: { remove: boolean }; output: undefined }
+  /** True when the file of a message is on this computer. */
+  "sync.file.here": {
+    input: { agentId: string; path: string; size: number; messageId: string }
+    output: boolean
+  }
+  /** Opens the file of a message. A file that is not here is copied from the origin first. */
+  "sync.file.open": {
+    input: { agentId: string; path: string; size: number; messageId: string }
+    output: undefined
+  }
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
   /** Saves a file of a message of a linked server to this computer. Asks where to save it. */
   "attachments.save": {
@@ -184,6 +224,8 @@ export interface RpcMethods {
   "routines.create": { input: RoutineInput; output: Routine }
   "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }
   "routines.delete": { input: { id: string }; output: undefined }
+  /** Moves a routine of the other computer here: it runs here from now on (spec 016). */
+  "routines.runHere": { input: { id: string }; output: Routine }
   "routines.runNow": { input: { id: string }; output: undefined }
   "routines.calendar": {
     input: { serverId: string; from: number; to: number }
@@ -194,6 +236,8 @@ export interface RpcMethods {
   "workflows.update": { input: { id: string; patch: WorkflowPatch }; output: Workflow }
   "workflows.delete": { input: { id: string }; output: undefined }
   "workflows.run": { input: { id: string; triggerText?: string }; output: WorkflowRun }
+  /** Moves a workflow of the other computer here: it runs here from now on (spec 016). */
+  "workflows.runHere": { input: { id: string }; output: Workflow }
   "workflows.stop": { input: { runId: string }; output: undefined }
   "workflows.approve": {
     input: { runId: string; stepId: string; approved: boolean }
@@ -244,6 +288,10 @@ export interface RpcEvents {
   "devices.join": { request?: JoinRequest; closed?: string }
   /** The list of servers, or the state of one, changed. */
   "servers.changed": Record<string, never>
+  /** The sync row of a computer, a request to sync, or the change list changed. */
+  "sync.changed": Record<string, never>
+  /** A request to sync waits (`request`), or an earlier one ended (`closed`). */
+  "sync.request": { request?: SyncRequest; closed?: string }
   /** A notice for a linked device. Windows ignore it; the link pushes it. */
   notice: WireNotice
   "places.changed": { serverId: string }

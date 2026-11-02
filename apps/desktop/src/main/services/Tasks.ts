@@ -32,6 +32,7 @@ interface TaskRow {
   created_at: number
   started_at: number | null
   finished_at: number | null
+  origin: string | null
 }
 
 export interface TaskInput {
@@ -48,6 +49,19 @@ export interface TaskInput {
 
 /** Starts the work again for a failed or cancelled task of one source. */
 export type RetryHandler = (task: Task) => Effect.Effect<void, AppError>
+
+/**
+ * What the sync service tells the tasks about the other computer (spec 016). The tasks cannot
+ * ask the sync service themselves, because it is built after them.
+ */
+export interface RemoteTasks {
+  /** The name of the computer that has this id. */
+  nameOf(originId: string): string
+  /** The name of the other computer when it runs a task of this agent now and both are online. */
+  busyOn(agentId: string): string | null
+  /** Asks the computer where a task runs to stop it. */
+  stop(taskId: string, originId: string): Effect.Effect<void, AppError>
+}
 
 export interface TasksService {
   /** Makes a queued task. */
@@ -67,6 +81,14 @@ export interface TasksService {
   setMessage(taskId: string, messageId: string): void
   /** Stops a task and its children. Stopping a finished task does nothing. */
   stop(taskId: string): Effect.Effect<void>
+  /** Like `stop`, and a task of the other computer is stopped there (spec 016). */
+  stopAny(taskId: string): Effect.Effect<void, AppError>
+  /** Stops the tasks of this agent that run on the other computer (spec 016). Local ones stay. */
+  stopRemoteFor(agentId: string): Effect.Effect<void, AppError>
+  /** The sync service gives its view of the other computer. */
+  setRemote(remote: RemoteTasks): void
+  /** The name of the other computer with this id, for "Runs on <name>" (spec 016). */
+  computerName(originId: string): string
   retry(taskId: string): Effect.Effect<void, AppError>
   onRetry(source: TaskSource, handler: RetryHandler): void
   list(serverId: string): Effect.Effect<readonly Task[]>
@@ -80,7 +102,7 @@ const RESULT_MAX = 4000
 
 const SELECT = `SELECT t.*, a.name AS agent_name FROM task t JOIN agent a ON a.id = t.agent_id`
 
-const toTask = (row: TaskRow): Task => ({
+const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   id: row.id,
   agentId: row.agent_id,
   agentName: row.agent_name,
@@ -96,7 +118,13 @@ const toTask = (row: TaskRow): Task => ({
   createdAt: row.created_at,
   startedAt: row.started_at,
   finishedAt: row.finished_at,
+  originName: row.origin === null ? null : (remote?.nameOf(row.origin) ?? ""),
+  waitsFor:
+    row.state === "queued" && row.origin === null ? (remote?.busyOn(row.agent_id) ?? null) : null,
 })
+
+/** How often a task that waits for the other computer looks again. */
+const REMOTE_POLL_MS = 300
 
 export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Tasks") {
   static readonly layer = Layer.effect(
@@ -110,11 +138,13 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const stops = new Map<string, Deferred.Deferred<void>>()
       const live = new Set<string>()
       const retryHandlers = new Map<TaskSource, RetryHandler>()
+      let remote: RemoteTasks | undefined
 
-      // Work that was running when the app closed did not finish.
+      // Work that was running when the app closed did not finish. A task of the other computer
+      // (spec 016) is not ours to end: its own computer does.
       db.run(
         `UPDATE task SET state = 'failed', error_code = 'app_stopped', finished_at = ?
-         WHERE state IN ('queued', 'running', 'waiting')`,
+         WHERE state IN ('queued', 'running', 'waiting') AND origin IS NULL`,
         Date.now(),
       )
 
@@ -205,7 +235,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           changed(input.agentId)
           if (input.source === "channel" && input.sourceId)
             bus.emit("channels.changed", { channelId: input.sourceId })
-          return toTask(row(id) as TaskRow)
+          return toTask(row(id) as TaskRow, remote)
         })
 
       const run = <A, E, R>(taskId: string, agentId: string, work: Effect.Effect<A, E, R>) => {
@@ -217,10 +247,18 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           agentId,
         )?.server_id
         const guarded = slot(agentId).withPermits(1)(
-          Effect.suspend(() => {
+          Effect.gen(function* () {
+            // One task per agent across both computers (spec 016): while the other computer runs
+            // a task of this agent, this one stays queued.
+            let told = false
+            while (remote?.busyOn(agentId)) {
+              if (!told) changed(agentId)
+              told = true
+              yield* Effect.sleep(REMOTE_POLL_MS)
+            }
             setState(taskId, agentId, "running")
             if (serverId) activity.setWorking(agentId, serverId, true)
-            return work.pipe(
+            return yield* work.pipe(
               Effect.ensuring(
                 Effect.sync(() => {
                   if (serverId) activity.setWorking(agentId, serverId, false)
@@ -253,7 +291,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const stop = (taskId: string): Effect.Effect<void> =>
         Effect.gen(function* () {
           const current = row(taskId)
-          if (!current) return
+          // A task of the other computer is stopped there, never changed here.
+          if (!current || current.origin !== null) return
           // A task that has no run (for example one made but not started) ends at once.
           if (isActive(current.state)) {
             const signal = stops.get(taskId)
@@ -261,6 +300,13 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             else setState(taskId, current.agent_id, "cancelled")
           }
           for (const child of childRows(taskId)) yield* stop(child.id)
+        })
+
+      const stopAny = (taskId: string): Effect.Effect<void, AppError> =>
+        Effect.suspend(() => {
+          const current = row(taskId)
+          if (current?.origin == null || !remote) return stop(taskId)
+          return remote.stop(taskId, current.origin)
         })
 
       const retry = (taskId: string) =>
@@ -271,7 +317,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             return Effect.fail(new AppError({ code: "cannot_retry_task" }))
           const handler = retryHandlers.get(current.source)
           if (!handler) return Effect.fail(new AppError({ code: "cannot_retry_task" }))
-          return handler(toTask(current))
+          return handler(toTask(current, remote))
         })
 
       const resultOf = (task: Task) => {
@@ -296,6 +342,21 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         setMessage: (taskId, messageId) =>
           db.run("UPDATE task SET message_id = ? WHERE id = ?", messageId, taskId),
         stop,
+        stopAny,
+        stopRemoteFor: (agentId) =>
+          Effect.forEach(
+            db.all<{ id: string }>(
+              `SELECT id FROM task WHERE agent_id = ? AND origin IS NOT NULL AND parent_id IS NULL
+                 AND state IN ('queued', 'running', 'waiting')`,
+              agentId,
+            ),
+            (t) => stopAny(t.id),
+            { discard: true },
+          ),
+        setRemote: (hooks) => {
+          remote = hooks
+        },
+        computerName: (originId) => remote?.nameOf(originId) ?? "",
         retry,
         onRetry: (source, handler) => void retryHandlers.set(source, handler),
         list: (serverId) =>
@@ -305,24 +366,24 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
                 `${SELECT} WHERE a.server_id = ? ORDER BY t.created_at DESC, t.rowid DESC LIMIT ${LIST_MAX}`,
                 serverId,
               )
-              .map(toTask),
+              .map((r) => toTask(r, remote)),
           ),
         get: (taskId) =>
           Effect.suspend(() => {
             const current = row(taskId)
             if (!current) return Effect.fail(new AppError({ code: "task_not_found" }))
-            const task = toTask(current)
+            const task = toTask(current, remote)
             const children: Task[] = []
             const visit = (parentId: string) => {
               for (const child of childRows(parentId)) {
-                children.push(toTask(child))
+                children.push(toTask(child, remote))
                 visit(child.id)
               }
             }
             visit(taskId)
             return Effect.succeed({ task, children, result: resultOf(task) })
           }),
-        children: (parentId) => childRows(parentId).map(toTask),
+        children: (parentId) => childRows(parentId).map((r) => toTask(r, remote)),
       })
     }),
   )

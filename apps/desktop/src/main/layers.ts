@@ -20,6 +20,7 @@ import { Runtimes } from "./services/Runtimes.ts"
 import type { Secrets } from "./services/Secrets.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -71,7 +72,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))
   const places = Places.layer.pipe(Layer.provideMerge(workflows))
   const remote = Remote.layer.pipe(Layer.provideMerge(places))
-  return Data.layer.pipe(Layer.provideMerge(remote))
+  const data = Data.layer.pipe(Layer.provideMerge(remote))
+  return Sync.layer.pipe(Layer.provideMerge(data))
 }
 
 export type AppServices = Layer.Success<ReturnType<typeof appLayer>>
