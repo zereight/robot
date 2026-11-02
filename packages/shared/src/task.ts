@@ -30,7 +30,7 @@ export interface Task {
   readonly createdAt: number
   readonly startedAt: number | null
   readonly finishedAt: number | null
-  /** The name of the other computer where the task ran, when it came by sync (017). Null here. */
+  /** The name of the other computer where the task ran, when it came by sync (019). Null here. */
   readonly originName: string | null
   /** The name of the other computer whose task of this agent runs now, while this one waits. */
   readonly waitsFor: string | null

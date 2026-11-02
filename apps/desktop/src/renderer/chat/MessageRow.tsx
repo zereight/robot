@@ -52,7 +52,7 @@ const Thinking = (props: { text: string; live: boolean }) => {
 const ToolCard = (props: {
   agent: Agent
   part: Extract<MessagePart, { kind: "tool" }>
-  /** The name of the other computer when the task runs there (spec 017). */
+  /** The name of the other computer when the task runs there (spec 019). */
   from: string | undefined
 }) => {
   const app = useApp()
@@ -71,7 +71,7 @@ const ToolCard = (props: {
   }
   /** The card of a task on the other computer cannot be answered while that computer is away. */
   const away = () => props.from !== undefined && !devices.sync.pairOnline()
-  /** A computer cannot change what an agent may always do on another computer (spec 017). */
+  /** A computer cannot change what an agent may always do on another computer (spec 019). */
   const mayAlways = () => !ui.linked() && props.from === undefined
   return (
     <details class={styles.tool} data-testid="tool-card" open={props.part.state === "waiting"}>
@@ -272,7 +272,7 @@ const FileChip = (props: { message: ChatMessage; file: FilePart; from: string | 
     size: props.file.size,
     messageId: props.message.id,
   })
-  // A file of a message from the other computer may not be on this computer (spec 017).
+  // A file of a message from the other computer may not be on this computer (spec 019).
   const [here, { refetch }] = createResource(
     () => props.from !== undefined && !ui.linked(),
     (remote) => (remote ? call("sync.file.here", ask()).catch(() => true) : true),
@@ -358,7 +358,7 @@ const FAILED_KEY: Record<string, MessageKey> = {
 
 /**
  * What a knowledge tool did: a compact card for a read, a muted line with undo for a change.
- * Knowledge stays on the computer that runs the agent (012, 017): a client, and a message that
+ * Knowledge stays on the computer that runs the agent (012, 019): a client, and a message that
  * came from the other computer of a sync pair, show the line without undo.
  */
 const KnowledgeLine = (props: {

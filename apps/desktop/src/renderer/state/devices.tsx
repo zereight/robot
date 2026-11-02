@@ -32,7 +32,7 @@ const createDevicesState = () => {
     }),
   )
 
-  // Sync between two computers (spec 017).
+  // Sync between two computers (spec 019).
   const [syncList, { refetch: refetchSync }] = createResource(() => call("sync.list"))
   const [guard, { refetch: refetchGuard }] = createResource(() => call("sync.guard"))
   const [changes, { refetch: refetchChanges }] = createResource(() => call("sync.changes"))

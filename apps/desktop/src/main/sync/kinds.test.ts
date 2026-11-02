@@ -14,7 +14,7 @@ import type { Ctx, Fields } from "./kinds.ts"
 import { KIND_ORDER, KINDS } from "./kinds.ts"
 import { parseOp } from "./wire.ts"
 
-// What sync carries (spec 017) next to the data that other specs added later: the notes of a
+// What sync carries (spec 019) next to the data that other specs added later: the notes of a
 // workflow (010), the new kinds of steps, the cards that ask and the notes of knowledge tools
 // (016). Every kind is made from a first copy on a fresh database, and read back.
 

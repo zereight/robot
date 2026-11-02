@@ -130,7 +130,7 @@ const StartDialog = (props: { linkId: string; name: string; onClose: () => void 
   )
 }
 
-/** The sync line of one linked computer in Settings > Devices (spec 017, States). */
+/** The sync line of one linked computer in Settings > Devices (spec 019, States). */
 export const SyncRow = (props: { linkId: string; name: string; state: string }) => {
   const { t, locale } = useApp()
   const devices = useDevices()
@@ -317,7 +317,7 @@ export const SyncRow = (props: { linkId: string; name: string; state: string }) 
   )
 }
 
-/** The newest changes that came from the other computer (spec 017, Concepts). */
+/** The newest changes that came from the other computer (spec 019, Concepts). */
 const ChangeList = () => {
   const { t, locale } = useApp()
   const devices = useDevices()

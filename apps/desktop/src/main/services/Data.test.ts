@@ -281,7 +281,7 @@ describe("export and import", () => {
     ])
   })
 
-  test("the notes and steps of a workflow come back; the links, the sync records and the computer of a workflow stay out of the archive (spec 014, 012, 017)", async () => {
+  test("the notes and steps of a workflow come back; the links, the sync records and the computer of a workflow stay out of the archive (spec 014, 012, 019)", async () => {
     const out = join(testPlatform().dataDir, "export-link.zip")
     const a = app({ save: out })
     const local = await a.run(Servers.use((s) => s.local))

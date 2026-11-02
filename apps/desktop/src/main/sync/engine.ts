@@ -107,7 +107,7 @@ const lostTextId = (memoryId: string, loser: Stamp) =>
   `c${createHash("sha256").update(`lost|${memoryId}|${loser.l}.${loser.c}.${loser.n}`).digest("hex").slice(0, 31)}`
 
 /**
- * The data side of sync (spec 017): records the changes of this computer with stamps, hands them
+ * The data side of sync (spec 019): records the changes of this computer with stamps, hands them
  * out in order, and applies the changes of the other computer by the rules (newest change wins per
  * field, a deletion wins, a name stays unique, no text is lost). It holds no connection.
  */
@@ -920,7 +920,7 @@ export class SyncEngine {
 
   /**
    * The user chose Keep for items that the other computer deleted. They are made again with new
-   * stamps, so they go back to the other computer (spec 017, Delete). Their children go too.
+   * stamps, so they go back to the other computer (spec 019, Delete). Their children go too.
    */
   revive(kind: SyncKind, id: string) {
     this.#db.transaction(() => {

@@ -161,7 +161,7 @@ const askCheck = (v: unknown): boolean => {
       v.choices.every(str(1000))
     )
   }
-  // The agent wants to change an article that the user edited last (spec 017). The card holds the
+  // The agent wants to change an article that the user edited last (spec 019). The card holds the
   // old and the new text, so that the user can answer it on either computer.
   if (v.kind === "article") {
     return (
@@ -176,8 +176,8 @@ const askCheck = (v: unknown): boolean => {
 }
 
 /**
- * What a knowledge tool did, as it shows in the card of the message (spec 017). Only this line
- * travels with the message. The articles, the sources and the change list do not sync (017), so
+ * What a knowledge tool did, as it shows in the card of the message (spec 019). Only this line
+ * travels with the message. The articles, the sources and the change list do not sync (019), so
  * the other computer shows the line without an undo.
  */
 const knowledgeNoteCheck = (v: unknown): boolean => {
@@ -320,7 +320,7 @@ const insert = (db: DatabaseService, table: string, columns: Record<string, unkn
 const originColumn = (ctx: Ctx, wire: unknown) => (wire === ctx.self ? null : (wire as string))
 
 /**
- * Where a routine or workflow runs, from a new item of the other computer (spec 017). Only the
+ * Where a routine or workflow runs, from a new item of the other computer (spec 019). Only the
  * user of the computer that would run it can choose that, with "Run on this computer". So an
  * item that arrives for the first time and names this computer is stored as running on the other
  * computer.
@@ -1305,7 +1305,7 @@ const isSteps = strictly(
   >,
 )
 const isEdges = strictly(Schema.Array(EdgeSchema) as unknown as Schema.Codec<unknown, unknown>)
-/** The notes on the canvas of a workflow (spec 010). They sync with the workflow (017). */
+/** The notes on the canvas of a workflow (spec 010). They sync with the workflow (019). */
 const isNotes = strictly(
   Schema.Array(NoteSchema).check(Schema.isMaxLength(WORKFLOW_NOTES_MAX)) as unknown as Schema.Codec<
     unknown,

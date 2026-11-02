@@ -145,7 +145,7 @@ export const CLIENT_METHODS = [
   "memory.update",
   "memory.delete",
   "models.available",
-  // Sync between two computers (spec 017). Only the computer that is the sync peer may use them.
+  // Sync between two computers (spec 019). Only the computer that is the sync peer may use them.
   "sync.hello",
   "sync.counts",
   "sync.ids",
@@ -402,7 +402,7 @@ export interface ClientEntry {
   readonly since: number
   /** The switch "Can create and change agents". On while the two computers sync. */
   readonly canChange: boolean
-  /** True while the user cannot change the switch, because the computers sync (spec 017). */
+  /** True while the user cannot change the switch, because the computers sync (spec 019). */
   readonly canChangeLocked: boolean
 }
 

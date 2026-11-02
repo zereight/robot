@@ -1,5 +1,5 @@
 /**
- * Triggers that mark a row as changed, so sync can find it (spec 017). They only write while the
+ * Triggers that mark a row as changed, so sync can find it (spec 019). They only write while the
  * computer is in a sync pair. `id` is the SQL text of the sync id of the row.
  */
 const dirtyTriggers = (table: string, kind: string, id: (row: "NEW" | "OLD") => string) =>

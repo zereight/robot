@@ -60,7 +60,7 @@ export interface NotifierService {
   waitingNotices(): readonly WireNotice[]
   /**
    * An approval or a question waits: a notification and the island card. `from` names the other
-   * computer when the task runs there (spec 015, 017).
+   * computer when the task runs there (spec 015, 019).
    */
   attention(item: Omit<WaitingItem, "agent">, from?: string): void
   clearAttention(agentId: string, callId: string): void

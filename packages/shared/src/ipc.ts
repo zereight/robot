@@ -137,7 +137,7 @@ export interface RpcMethods {
   "devices.connect.cancel": { input: { session: string }; output: undefined }
   /** Computers on this network that show a pairing code now. */
   "devices.nearby": { input: undefined; output: readonly NearbyComputer[] }
-  /** The sync row of each computer this computer can open (spec 017). */
+  /** The sync row of each computer this computer can open (spec 019). */
   "sync.list": { input: undefined; output: readonly SyncStatus[] }
   /** What both computers hold, for the start dialog. The other computer must be online. */
   "sync.preview": { input: { linkId: string }; output: SyncPreview }
@@ -156,7 +156,7 @@ export interface RpcMethods {
   "sync.decide": { input: { id: string; allow: boolean }; output: undefined }
   /** The newest 100 changes that came from the other computer. */
   "sync.changes": { input: undefined; output: readonly SyncChangeEntry[] }
-  /** Deletions that wait for a decision (spec 017, Delete). */
+  /** Deletions that wait for a decision (spec 019, Delete). */
   "sync.guard": { input: undefined; output: SyncGuard | null }
   "sync.guard.decide": { input: { remove: boolean }; output: undefined }
   /** True when the file of a message is on this computer. */
@@ -291,7 +291,7 @@ export interface RpcMethods {
   "routines.create": { input: RoutineInput; output: Routine }
   "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }
   "routines.delete": { input: { id: string }; output: undefined }
-  /** Moves a routine of the other computer here: it runs here from now on (spec 017). */
+  /** Moves a routine of the other computer here: it runs here from now on (spec 019). */
   "routines.runHere": { input: { id: string }; output: Routine }
   "routines.runNow": { input: { id: string }; output: undefined }
   "routines.calendar": {
@@ -303,7 +303,7 @@ export interface RpcMethods {
   "workflows.update": { input: { id: string; patch: WorkflowPatch }; output: Workflow }
   "workflows.delete": { input: { id: string }; output: undefined }
   "workflows.run": { input: { id: string; triggerText?: string }; output: WorkflowRun }
-  /** Moves a workflow of the other computer here: it runs here from now on (spec 017). */
+  /** Moves a workflow of the other computer here: it runs here from now on (spec 019). */
   "workflows.runHere": { input: { id: string }; output: Workflow }
   "workflows.stop": { input: { runId: string }; output: undefined }
   "workflows.approve": {

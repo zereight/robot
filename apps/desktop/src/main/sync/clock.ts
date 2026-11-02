@@ -1,5 +1,5 @@
 /**
- * The order of changes (spec 017, Rules). Each change gets a stamp from a hybrid logical clock:
+ * The order of changes (spec 019, Rules). Each change gets a stamp from a hybrid logical clock:
  * the wall clock of the computer that made it, lifted above every stamp that this computer has
  * seen. So a change made after the user saw another change always has the larger stamp, and for
  * two changes made while the computers were apart the later wall time wins. Equal times break by a
@@ -50,7 +50,7 @@ export const readStamp = (value: unknown, limit: number): Stamp | undefined => {
 /**
  * How old a message of the other computer is when it arrives, on the clock of this computer.
  * `madeAt` is the time that the other computer wrote on it. `skew` is the other clock minus this
- * one, as the computers measured it when they connected (spec 017). So a clock that is wrong
+ * one, as the computers measured it when they connected (spec 019). So a clock that is wrong
  * does not make an old message look new, or a new one look old.
  */
 export const ageOnArrival = (madeAt: number, now: number, skew: number) => now - (madeAt - skew)

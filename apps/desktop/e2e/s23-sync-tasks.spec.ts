@@ -16,7 +16,7 @@ import {
   turnOnSync,
 } from "./sync-helpers.ts"
 
-// Tasks, routines, workflows and files of two computers that sync (spec 017, S23).
+// Tasks, routines, workflows and files of two computers that sync (spec 019, S23).
 interface TaskInfo {
   id: string
   state: string
@@ -32,7 +32,7 @@ const localServer = async (page: Page) =>
 const tasksOf = async (page: Page) =>
   rpc<TaskInfo[]>(page, "tasks.list", { serverId: await localServer(page) })
 
-/** The model account of the second computer is connected here: a key never crosses (spec 017). */
+/** The model account of the second computer is connected here: a key never crosses (spec 019). */
 const connectHere = async (page: Page) => {
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-providers").click()

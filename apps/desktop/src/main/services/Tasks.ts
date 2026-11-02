@@ -53,7 +53,7 @@ export interface TaskInput {
 export type RetryHandler = (task: Task) => Effect.Effect<void, AppError>
 
 /**
- * What the sync service tells the tasks about the other computer (spec 017). The tasks cannot
+ * What the sync service tells the tasks about the other computer (spec 019). The tasks cannot
  * ask the sync service themselves, because it is built after them.
  */
 export interface RemoteTasks {
@@ -89,13 +89,13 @@ export interface TasksService {
   setMessage(taskId: string, messageId: string): void
   /** Stops a task and its children. Stopping a finished task does nothing. */
   stop(taskId: string): Effect.Effect<void>
-  /** Like `stop`, and a task of the other computer is stopped there (spec 017). */
+  /** Like `stop`, and a task of the other computer is stopped there (spec 019). */
   stopAny(taskId: string): Effect.Effect<void, AppError>
-  /** Stops the tasks of this agent that run on the other computer (spec 017). Local ones stay. */
+  /** Stops the tasks of this agent that run on the other computer (spec 019). Local ones stay. */
   stopRemoteFor(agentId: string): Effect.Effect<void, AppError>
   /** The sync service gives its view of the other computer. */
   setRemote(remote: RemoteTasks): void
-  /** The name of the other computer with this id, for "Runs on <name>" (spec 017). */
+  /** The name of the other computer with this id, for "Runs on <name>" (spec 019). */
   computerName(originId: string): string
   retry(taskId: string): Effect.Effect<void, AppError>
   onRetry(source: TaskSource, handler: RetryHandler): void
@@ -171,7 +171,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         })
         .map((r) => r.id)
       // Work that was running when the app closed did not finish. A task of the other computer
-      // (spec 017) is not ours to end: its own computer does.
+      // (spec 019) is not ours to end: its own computer does.
       db.run(
         `UPDATE task SET state = 'failed', error_code = 'app_stopped', finished_at = ?
          WHERE state IN ('queued', 'running', 'waiting') AND origin IS NULL
@@ -285,7 +285,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         )?.server_id
         const guarded = slot(agentId).withPermits(1)(
           Effect.gen(function* () {
-            // One task per agent across both computers (spec 017): while the other computer runs
+            // One task per agent across both computers (spec 019): while the other computer runs
             // a task of this agent, this one stays queued.
             let told = false
             while (!options?.resumed && remote?.busyOn(agentId)) {

@@ -115,7 +115,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
             out.exec("PRAGMA secure_delete = ON")
             // The links of this computer stay on it: an export holds no device keys or addresses.
             out.exec("DELETE FROM device_link")
-            // Sync records belong to this pair of computers (spec 017). They are not exported.
+            // Sync records belong to this pair of computers (spec 019). They are not exported.
             for (const table of [
               "sync_pair",
               "sync_item",
