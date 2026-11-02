@@ -41,6 +41,48 @@ not type the same long request again.
    message. The chat row shows the text of the user with the chip above it. A click on the chip
    opens the instructions as they were sent, read only.
 
+## Teach a task
+
+Some tasks are easier to show than to write. The user does the task once in the browser of an
+agent, and the agent writes a draft skill from what the user did.
+
+1. The user picks "Teach a task" in the agent profile or in the menu of the chat header. A short
+   form asks what the result of the task is (1 to 500 characters), for example "Download this
+   week's report and put it in the reports folder". The user picks "Start".
+2. The browser of the agent (see 007) opens with the user in control. A bar at the top shows
+   "Teaching", the result text, the time, the number of steps, "Pause", "Stop teaching" and
+   "Cancel". The agent does not act while the user teaches.
+3. The app records each step of the user:
+   - a page that opens: its address and its title,
+   - a click: the role and the label of the control, or its visible text,
+   - text typed into a field: the label of the field and the text,
+   - a choice in a list, a key such as Enter or Tab, and a scroll. The app joins scrolls that
+     follow each other into one step.
+   For a password field, and for a field whose label names a password, a code, a token, a key
+   or a card number, the app records "Typed a secret into LABEL", never the text. Text that looks
+   like a secret (see 014) in an address or a label becomes `[redacted]`. While the recording is
+   paused, the app records nothing.
+4. A recording stops by itself at 300 steps or after 30 minutes, with a short line that says
+   why. The steps so far stay.
+5. "Stop teaching": the app gives the result text and the list of steps to the model of the
+   agent in one request, and asks for a draft skill. The chat shows a "Draft skill" card with
+   these fields, which the user can edit: the name, the description (when to use the skill), and
+   the instructions. The instructions hold the steps in plain words, what to check at the end,
+   and when to ask the user first. The card also shows the number of recorded steps.
+6. Save: the app makes the skill, as in flow 1, for this agent only, and turned on. The same
+   limits and checks apply. The card shows "Saved" and "Try it". "Try it" puts the chip of the
+   skill in the message box with the result text after it, and the user sends it.
+7. Discard, or "Cancel" during the recording: nothing is saved.
+
+- "Teach a task" needs the browser of the agent. It is not on the phone or on a linked device.
+- One recording at a time on a computer. While one runs, "Teach a task" is off for other agents,
+  with the reason.
+- While the user teaches, the agent cannot start a turn that uses its browser. Such a turn waits
+  until the recording ends.
+- A recording with no steps cannot make a draft. "Stop teaching" then says so and ends.
+- If the model request fails, the card shows the reason and "Try again". The recording stays
+  until the user saves or discards.
+
 ## States
 
 - No skills: the list shows one muted line that says what a skill is, and the "New skill"
@@ -88,3 +130,9 @@ not type the same long request again.
 - Make a skill with the name of an existing skill in other case: the form refuses it.
 - With 100 skills, the form for one more refuses to save.
 - Export, then import into an empty app: the skills are back.
+- Teach a task with a fake model on a local test page: open the page, click a button, type
+  "hello" into a field, type a password into a password field. Stop teaching: the request to the
+  model holds the click and "hello", holds "Typed a secret into Password", and does not hold the
+  password. The card shows a draft. Save: the skill exists for this agent only and is on.
+- Cancel during a recording: no skill and no draft exist.
+- Pause, then click: the click is not recorded.
