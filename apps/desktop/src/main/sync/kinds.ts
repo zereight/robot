@@ -1060,6 +1060,8 @@ interface TaskRow {
   created_at: number
   started_at: number | null
   finished_at: number | null
+  asked_at: number | null
+  first_reply_at: number | null
   origin: string | null
 }
 
@@ -1084,6 +1086,9 @@ const task: KindDef = {
     createdAt: { check: int },
     startedAt: { check: nullable(int) },
     finishedAt: { check: nullable(int) },
+    // The times of a task (spec 005). A computer of an older step has none, so they are optional.
+    askedAt: { check: nullable(int) },
+    firstReplyAt: { check: nullable(int) },
     origin: { check: str(64, 1) },
   },
   required: [
@@ -1111,6 +1116,7 @@ const task: KindDef = {
     "parentId",
     "retryOf",
     "createdAt",
+    "askedAt",
     "origin",
   ],
   count: (db) => q.count(db, "task"),
@@ -1133,6 +1139,8 @@ const task: KindDef = {
         createdAt: r.created_at,
         startedAt: r.started_at,
         finishedAt: r.finished_at,
+        askedAt: r.asked_at,
+        firstReplyAt: r.first_reply_at,
         origin: r.origin ?? ctx.self,
       },
       parent: { kind: "agent", id: r.agent_id },
@@ -1158,6 +1166,8 @@ const task: KindDef = {
       created_at: f.createdAt,
       started_at: f.startedAt,
       finished_at: f.finishedAt,
+      asked_at: f.askedAt ?? null,
+      first_reply_at: f.firstReplyAt ?? null,
       origin: originColumn(ctx, f.origin),
     })
     return true
@@ -1172,6 +1182,7 @@ const task: KindDef = {
         : {}),
       ...(f.startedAt !== undefined ? { started_at: f.startedAt } : {}),
       ...(f.finishedAt !== undefined ? { finished_at: f.finishedAt } : {}),
+      ...(f.firstReplyAt !== undefined ? { first_reply_at: f.firstReplyAt } : {}),
     })
   },
   remove: (ctx, id) => ctx.db.run("DELETE FROM task WHERE id = ?", id),

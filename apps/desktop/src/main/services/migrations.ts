@@ -478,6 +478,12 @@ export const migrations: readonly string[] = [
   CREATE INDEX import_checklist_workflow ON import_checklist (workflow_id);
   `,
   `
+  -- The times of a task (spec 005): when the message that started it was sent, and when the first
+  -- part of the reply that the user can see was stored. Both stay empty when they are not known.
+  ALTER TABLE task ADD COLUMN asked_at INTEGER;
+  ALTER TABLE task ADD COLUMN first_reply_at INTEGER;
+  `,
+  `
   -- Memory control (spec 008). None of this syncs (spec 019): no dirty trigger is made here, and
   -- the choice of an agent is not a field of the agent that sync carries.
   -- "now" is "Save at once", "ask" is "Ask me first".

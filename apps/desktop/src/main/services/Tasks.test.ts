@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
+import { taskTimes } from "@robot/shared"
 import { Deferred, Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
@@ -172,6 +173,125 @@ describe("Tasks", () => {
     expect(detail.task.error?.code).toBe("app_stopped")
     await second.dispose()
   })
+  test("the times of a task: wait, first reply and total (spec 005)", async () => {
+    const { run, agent } = await setup()
+    const ada = await agent("Ada")
+    const asked = Date.now() - 1000
+    const task = await run(
+      Tasks.use((t) =>
+        t.create({
+          agentId: ada.id,
+          prompt: "q",
+          source: "chat",
+          sourceId: ada.id,
+          askedAt: asked,
+        }),
+      ),
+    )
+    expect(task.askedAt).toBe(asked)
+    expect(task.firstReplyAt).toBeNull()
+    await run(
+      Tasks.use((t) =>
+        t.run(
+          task.id,
+          ada.id,
+          Effect.gen(function* () {
+            yield* Effect.sleep(30)
+            t.replied(task.id)
+            const first = (yield* t.get(task.id)).task.firstReplyAt
+            yield* Effect.sleep(10)
+            // Only the first reply counts.
+            t.replied(task.id)
+            expect((yield* t.get(task.id)).task.firstReplyAt).toBe(first)
+          }),
+        ),
+      ),
+    )
+    const done = (await run(Tasks.use((t) => t.get(task.id)))).task
+    const times = taskTimes(done)
+    expect(times.wait).toBeGreaterThanOrEqual(0)
+    expect(times.firstReply).toBeGreaterThanOrEqual(1030)
+    expect(times.total).toBeGreaterThanOrEqual(times.firstReply ?? 0)
+    // An ask time in the future is not possible: it is cut to the moment the task is made.
+    const later = await run(
+      Tasks.use((t) =>
+        t.create({
+          agentId: ada.id,
+          prompt: "q",
+          source: "chat",
+          sourceId: ada.id,
+          askedAt: Date.now() + 60_000,
+        }),
+      ),
+    )
+    expect(later.askedAt).toBe(later.createdAt)
+  })
+
+  test("a restart keeps the times that are known, and the total of a stopped task is not known", async () => {
+    const { platform, dataDir } = testPlatform()
+    const file = join(dataDir, "robot.db")
+    const open = () =>
+      ManagedRuntime.make(
+        appLayer({
+          platform,
+          databaseFile: file,
+          localServerName: "T",
+          emit: () => {},
+          secrets: Secrets.memory,
+        }),
+      )
+    const first = open()
+    const local = await first.runPromise(Servers.use((s) => s.local))
+    const ada = await first.runPromise(
+      Agents.use((a) =>
+        a.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const make = () =>
+      first.runPromise(
+        Tasks.use((t) =>
+          t.create({ agentId: ada.id, prompt: "p", source: "chat", sourceId: ada.id }),
+        ),
+      )
+    const finished = await make()
+    await first.runPromise(
+      Tasks.use((t) =>
+        t.run(
+          finished.id,
+          ada.id,
+          Effect.sync(() => t.replied(finished.id)),
+        ),
+      ),
+    )
+    const before = taskTimes((await first.runPromise(Tasks.use((t) => t.get(finished.id)))).task)
+    // A task that ran and had a reply when the app quit at once, with no time to end it.
+    const open1 = await make()
+    const now = Date.now()
+    await first.runPromise(
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.run(
+            "UPDATE task SET state = 'running', started_at = ?, first_reply_at = ? WHERE id = ?",
+            now,
+            now + 5,
+            open1.id,
+          ),
+        ),
+      ),
+    )
+    // The app closes in the middle of the task.
+    await first.dispose()
+    const second = open()
+    const after = (id: string) => second.runPromise(Tasks.use((t) => t.get(id)))
+    expect(taskTimes((await after(finished.id)).task)).toEqual(before)
+    const stopped = (await after(open1.id)).task
+    expect(stopped.error?.code).toBe("app_stopped")
+    expect(taskTimes(stopped).wait).not.toBeNull()
+    expect(taskTimes(stopped).firstReply).not.toBeNull()
+    expect(taskTimes(stopped).total).toBeNull()
+    await second.dispose()
+  })
+
   test("after a restart, a task that waits for the user waits on, unless it cannot (spec 005)", async () => {
     const { platform, dataDir } = testPlatform()
     const file = join(dataDir, "robot.db")
