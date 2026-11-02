@@ -166,6 +166,31 @@ const source = async () => {
       knowledge: { kind: "read", title: "Beta" },
       decision: { answer: "allow", by: "MacBook 2" },
     },
+    // A change from the chat, with its line and its Undo (spec 002).
+    {
+      kind: "tool",
+      id: "c10",
+      name: "settings",
+      label: "settings",
+      state: "done",
+      input: "",
+      output: "",
+      settings: {
+        changes: [
+          {
+            field: "model",
+            before: { accountId: "acc-1", model: "mock", effort: null },
+            after: { accountId: "acc-1", model: "o3-mini", effort: "high" },
+          },
+          { field: "instructions", before: "Be brief.", after: "Answer in Korean." },
+          { field: "theme", before: "system", after: "light" },
+          { field: "compactPlaces", before: false, after: true },
+          { field: "face", before: { shape: 0, hue: 1 }, after: { shape: 5, hue: 9 } },
+        ],
+        versionId: "iv-1",
+        undone: true,
+      },
+    },
     {
       kind: "tool",
       id: "c6",
@@ -251,6 +276,11 @@ const source = async () => {
   )
   sql(
     "INSERT INTO task (id, agent_id, prompt, label, source, state, created_at) VALUES ('task-1', ?, 'Do it', 'Job', 'chat', 'done', ?)",
+    ada.id,
+    NOW,
+  )
+  sql(
+    "INSERT INTO instruction_version (id, agent_id, text, source, created_at) VALUES ('iv-1', ?, 'Be brief.', 'chat', ?)",
     ada.id,
     NOW,
   )
@@ -415,7 +445,7 @@ describe("one item of every kind is made from its first copy", () => {
     ])
     // The tool cards arrived with their asks and their knowledge notes.
     const parts = (KINDS.message.read(b, "msg-1")?.fields.parts ?? []) as { kind: string }[]
-    expect(parts.length).toBe(11)
+    expect(parts.length).toBe(12)
 
     // The new agent and channel are in no user section here, and no section was made.
     expect(
@@ -709,6 +739,27 @@ describe("the cards that ask and the notes of knowledge tools in a message", () 
     bad({ memory: { kind: "undone", historyId: "h-1" } })
     bad({ memory: "saved" })
   })
+
+  test("the note of a change from the chat passes; a field that the agent may not change does not", () => {
+    const change = (field: string, before: unknown, after: unknown) => ({
+      settings: { changes: [{ field, before, after }] },
+    })
+    ok(change("name", "Ada", "Ava"))
+    ok(change("role", "", "Writer"))
+    ok(change("model", null, { accountId: "a", model: "m", effort: null }))
+    ok(change("language", "system", "ko"))
+    ok(change("reduceMotion", "on", "off"))
+    ok({ settings: { changes: [{ field: "name", before: "A", after: "B" }], undone: false } })
+    // The permission level is not a field of a change from the chat (spec 002).
+    bad(change("permission", "ask_risky", "full"))
+    bad(change("theme", "dark", "pink"))
+    bad(change("face", { shape: 0, hue: 0 }, { shape: 6, hue: 0 }))
+    bad(change("model", null, { accountId: "a", model: "m" }))
+    bad(change("compactPlaces", false, "yes"))
+    bad({ settings: { changes: [] } })
+    bad({ settings: { changes: [{ field: "name", before: "A", after: "B" }], extra: 1 } })
+    bad({ settings: { changes: [{ field: "name", before: "A", after: "B" }], undone: "yes" } })
+  })
 })
 
 describe("memory in a sync (spec 008, 019)", () => {
@@ -748,6 +799,24 @@ describe("memory in a sync (spec 008, 019)", () => {
     expect(Object.keys(KINDS.memory.fields).sort()).toEqual(
       ["agentId", "createdAt", "source", "text", "updatedAt"].sort(),
     )
+  })
+})
+
+describe("the instruction history crosses with its agent (spec 002, 019)", () => {
+  const version = (fields: Record<string, unknown>) => ({
+    k: "iversion",
+    i: "iv-1",
+    o: "dev-b",
+    f: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, { v, s: stamp }])),
+  })
+  const good = { agentId: "agent-1", text: "Be brief.", source: "chat", createdAt: NOW }
+  test("a version passes; a wrong source or text does not", () => {
+    expect(parseOp(version(good), NOW)).toBeDefined()
+    for (const source of ["profile", "device", "undo", "restore"])
+      expect(parseOp(version({ ...good, source }), NOW)).toBeDefined()
+    expect(parseOp(version({ ...good, source: "import" }), NOW)).toBeUndefined()
+    expect(parseOp(version({ ...good, text: 5 }), NOW)).toBeUndefined()
+    expect(parseOp(version({ ...good, createdAt: -1 }), NOW)).toBeUndefined()
   })
 })
 

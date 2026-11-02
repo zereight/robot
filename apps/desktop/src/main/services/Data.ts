@@ -50,7 +50,8 @@ const README = `ROBot export
 
 This archive holds the data of one ROBot app. It has no keys or tokens.
 
-robot.db            The database (SQLite). Servers, agents, chats, accounts and settings.
+robot.db            The database (SQLite). Servers, agents with their instruction history,
+                    chats, accounts and settings.
 meta.json           The version of this format and of the database.
 attachments/<id>/   Files that were attached to chats, one folder per agent id.
 knowledge/<id>/     The articles of agent knowledge (Markdown files) and, in the folder
@@ -212,6 +213,14 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               out
                 .prepare("UPDATE message SET context = ? WHERE id = ?")
                 .run(redactSecrets(row.context, known), row.id)
+            // The instruction history goes with its agent (spec 002), with keys hidden.
+            for (const row of out.prepare("SELECT id, text FROM instruction_version").all() as {
+              id: string
+              text: string
+            }[])
+              out
+                .prepare("UPDATE instruction_version SET text = ? WHERE id = ?")
+                .run(redactSecrets(row.text, known), row.id)
             for (const row of out.prepare("SELECT id, text FROM memory").all() as {
               id: string
               text: string
@@ -257,6 +266,25 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                     label: redactSecrets(p.label, known),
                     input: redactSecrets(p.input, known),
                     output: redactSecrets(p.output, known),
+                    // A change from the chat can hold the old and the new instructions.
+                    ...(p.settings
+                      ? {
+                          settings: {
+                            ...p.settings,
+                            changes: p.settings.changes.map((c) => ({
+                              ...c,
+                              before:
+                                typeof c.before === "string"
+                                  ? redactSecrets(c.before, known)
+                                  : c.before,
+                              after:
+                                typeof c.after === "string"
+                                  ? redactSecrets(c.after, known)
+                                  : c.after,
+                            })),
+                          },
+                        }
+                      : {}),
                   }
                 if (p.kind === "skill")
                   return { ...p, instructions: redactSecrets(p.instructions, known) }

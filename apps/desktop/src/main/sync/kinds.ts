@@ -9,6 +9,7 @@ import {
   EdgeSchema,
   FACE_HUES,
   FACE_SHAPES,
+  INSTRUCTION_SOURCES,
   isOutsideSource,
   KNOWLEDGE_TITLE_MAX,
   MEMORY_USER_TEXT_MAX,
@@ -240,6 +241,55 @@ const memoryNoteCheck = (v: unknown): boolean => {
   return false
 }
 
+const faceCheck = (v: unknown): boolean =>
+  isObject(v) &&
+  shape(["shape", "hue"])(v) &&
+  int(v.shape) &&
+  (v.shape as number) < FACE_SHAPES &&
+  int(v.hue) &&
+  (v.hue as number) < FACE_HUES
+
+const modelCheck = (v: unknown): boolean =>
+  isObject(v) &&
+  shape(["accountId", "model", "effort"])(v) &&
+  str(100, 1)(v.accountId) &&
+  str(300, 1)(v.model) &&
+  nullable(str(40))(v.effort)
+
+/** A value of one field that a change from the chat set, by the field (spec 002). */
+const SETTING_VALUE: Readonly<Record<string, (v: unknown) => boolean>> = {
+  name: str(AGENT_NAME_MAX * 4, 1),
+  role: str(AGENT_ROLE_MAX * 4),
+  instructions: str(TEXT_MAX),
+  face: faceCheck,
+  model: nullable(modelCheck),
+  language: oneOf(["system", "en", "ko"]),
+  theme: oneOf(["system", "dark", "light"]),
+  textSize: oneOf(["small", "default", "large"]),
+  compactPlaces: bool,
+  reduceMotion: oneOf(["system", "on", "off"]),
+}
+
+/**
+ * What a call of the settings tool changed (spec 002). The line and its Undo travel with the
+ * message, so the user can undo the change on either computer.
+ */
+const settingsNoteCheck = (v: unknown): boolean => {
+  if (!isObject(v) || !shape(["changes"], ["versionId", "undone"])(v)) return false
+  if (v.versionId !== undefined && !str(100, 1)(v.versionId)) return false
+  if (v.undone !== undefined && !bool(v.undone)) return false
+  return (
+    Array.isArray(v.changes) &&
+    v.changes.length >= 1 &&
+    v.changes.length <= 10 &&
+    v.changes.every((c) => {
+      if (!isObject(c) || !shape(["field", "before", "after"])(c)) return false
+      const check = typeof c.field === "string" ? SETTING_VALUE[c.field] : undefined
+      return check ? check(c.before) && check(c.after) : false
+    })
+  )
+}
+
 const partCheck = (v: unknown): boolean => {
   if (!isObject(v)) return false
   switch (v.kind) {
@@ -271,7 +321,7 @@ const partCheck = (v: unknown): boolean => {
       return (
         shape(
           ["kind", "id", "name", "label", "state", "input", "output"],
-          ["ask", "memoryId", "memory", "decision", "knowledge", "secret"],
+          ["ask", "memoryId", "memory", "decision", "knowledge", "secret", "settings"],
         )(v) &&
         str(200, 1)(v.id) &&
         str(200)(v.name) &&
@@ -284,6 +334,7 @@ const partCheck = (v: unknown): boolean => {
         (v.memory === undefined || memoryNoteCheck(v.memory)) &&
         (v.knowledge === undefined || knowledgeNoteCheck(v.knowledge)) &&
         (v.secret === undefined || oneOf(["saved", "cancelled"])(v.secret)) &&
+        (v.settings === undefined || settingsNoteCheck(v.settings)) &&
         (v.decision === undefined ||
           (isObject(v.decision) &&
             shape(["answer", "by"])(v.decision) &&
@@ -808,6 +859,58 @@ const memory: KindDef = {
     }),
   remove: (ctx, id) => ctx.db.run("DELETE FROM memory WHERE id = ?", id),
   label: (f) => [...String(f.text ?? "")].slice(0, 60).join(""),
+}
+
+// ------------------------------------------------------------------------------ instruction history
+
+interface VersionRow {
+  id: string
+  agent_id: string
+  text: string
+  source: string
+  created_at: number
+}
+
+/**
+ * A version of the instructions of an agent (spec 002). It goes with the agent (019). A version
+ * never changes; each computer drops its oldest versions over 50, and the drop syncs too.
+ */
+const iversion: KindDef = {
+  kind: "iversion",
+  rank: 3,
+  fields: {
+    agentId: { check: str(100, 1) },
+    text: { check: str(TEXT_MAX) },
+    source: { check: oneOf(INSTRUCTION_SOURCES) },
+    createdAt: { check: int },
+  },
+  required: ["agentId", "text", "source", "createdAt"],
+  fixed: ["agentId", "text", "source", "createdAt"],
+  count: (db) => q.count(db, "instruction_version"),
+  ids: (db, after, limit) => q.ids(db, "instruction_version", after, limit),
+  read: (ctx, id) => {
+    const r = ctx.db.get<VersionRow>("SELECT * FROM instruction_version WHERE id = ?", id)
+    if (!r) return undefined
+    return {
+      fields: { agentId: r.agent_id, text: r.text, source: r.source, createdAt: r.created_at },
+      parent: { kind: "agent", id: r.agent_id },
+      wall: r.created_at,
+    }
+  },
+  create: (ctx, id, f) => {
+    if (!has(ctx.db, "agent", f.agentId as string)) return false
+    insert(ctx.db, "instruction_version", {
+      id,
+      agent_id: f.agentId,
+      text: f.text,
+      source: f.source,
+      created_at: f.createdAt,
+    })
+    return true
+  },
+  write: () => {},
+  remove: (ctx, id) => ctx.db.run("DELETE FROM instruction_version WHERE id = ?", id),
+  label: (f) => [...String(f.text ?? "").replace(/\s+/g, " ")].slice(0, 60).join(""),
 }
 
 // ------------------------------------------------------------------------------ messages
@@ -1655,6 +1758,7 @@ export const KINDS: Readonly<Record<SyncKind, KindDef>> = {
   rskip,
   wrun,
   wstep,
+  iversion,
 }
 
 /** The kinds in the order in which they are copied: parents first. */
