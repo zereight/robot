@@ -156,7 +156,8 @@ const answer = (body: ChatBody): Plan => {
     failedOnce.add(text)
     return { status: 500 }
   }
-  if (text.includes("limit")) return { status: 429 }
+  // The word "limit" asks for a rate limit, unless it only quotes the reply of another agent.
+  if (text.includes("limit") && !last.startsWith("Reply from the agent")) return { status: 429 }
   return { chunks: ["Hello! ", "You said: ", text], delay: 30 }
 }
 
@@ -179,8 +180,37 @@ const toolCalls = (body: ChatBody) => {
   // Turns without an answer are merged, so the last request in the text counts.
   const match = [...last.content.matchAll(/TOOL (\w+) (\{.*\})/g)].at(-1)
   if (match) return [{ name: match[1] as string, args: match[2] as string }]
+  const long = longWork(body)
+  if (long.length > 0) return long
   return knowledgeRead(body)
 }
+
+const usersOf = (body: ChatBody) =>
+  body.messages.filter((m) => m.role === "user").map((m) => String(m.content))
+
+/** A call id that no other call has, so that each call of a long task has its own card. */
+let loopCalls = 0
+
+/**
+ * Words in the user messages make the model act in a long way:
+ *   "ENDLESS"           calls a tool after every result, without end
+ *   "PINGPONG with Bo"  sends a message to Bo; a message "from the agent X" that holds PINGPONG
+ *                       is answered with a message to X, without end
+ *   "FAILTOOL"          the request after the first tool result fails once for this text
+ */
+const longWork = (body: ChatBody) => {
+  const last = body.messages.at(-1)
+  if (!body.tools || last?.role !== "user") return []
+  const text = String(last.content)
+  if (text.includes("ENDLESS")) return [{ name: "list_files", args: "{}" }]
+  if (text.includes("PINGPONG") && body.tools.some((t) => t.function?.name === "send_message")) {
+    const to = /from the agent (\w+)/.exec(text)?.[1] ?? /PINGPONG with (\w+)/.exec(text)?.[1]
+    if (to) return [{ name: "send_message", args: JSON.stringify({ to, text: "PINGPONG" }) }]
+  }
+  return []
+}
+
+const failedAfterTool = new Set<string>()
 
 const wordsOf = (text: string) =>
   new Set(
@@ -231,6 +261,25 @@ const openAiReply = async (res: ServerResponse, body: ChatBody, sent: SentPart[]
   }
   const finished = body.messages.at(-1)
   if (finished?.role === "tool") {
+    const users = usersOf(body)
+    // The request of this turn is the last message of the user.
+    const lastAsk = users.at(-1) ?? ""
+    // A task that never ends: some text, then the next call, with an id of its own.
+    if (lastAsk.includes("ENDLESS")) {
+      res.writeHead(200, { "content-type": "text/event-stream" })
+      const id = `loop_${++loopCalls}`
+      const first = { index: 0, id, function: { name: "list_files", arguments: "" } }
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "Working. " } }] })}\n\n`)
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [first] } }] })}\n\n`)
+      const rest = { index: 0, function: { arguments: "{}" } }
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
+      return res.end("data: [DONE]\n\n")
+    }
+    // A model that fails after a tool step, once for each text.
+    if (lastAsk.includes("FAILTOOL") && !failedAfterTool.has(lastAsk)) {
+      failedAfterTool.add(lastAsk)
+      return json(res, 500, { error: { message: "mock server error" } })
+    }
     res.writeHead(200, { "content-type": "text/event-stream" })
     const output = String(finished.content)
     // An article that was read: the reply uses its text.
