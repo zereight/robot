@@ -304,5 +304,27 @@ test("subscription: pi lists its own models and has no sign-in in the app", asyn
   // The model comes from the list of pi, as "provider/model".
   expect(call.args[call.args.indexOf("--model") + 1]).toMatch(/^[\w-]+\/fake-(small|large)$/)
   expect(call.args).toContain("--no-session")
+
+  // The effort levels follow the model, as pi tells them: the small model does not think, and the
+  // large one takes a level that the old fixed list did not have.
+  await page.getByTestId("chat-header-model").click()
+  await page.getByTestId("model-model").selectOption("claude-bridge/fake-small")
+  await expect(page.getByTestId("model-effort")).toHaveCount(0)
+  await page.getByTestId("model-model").selectOption("anthropic/fake-large")
+  await expect(page.getByTestId("model-effort").locator("option")).toHaveText([
+    "Default",
+    "Low",
+    "Medium",
+    "High",
+    "Extra high",
+  ])
+  await page.getByTestId("model-effort").selectOption("xhigh")
+  await shot(page, "s17-10-pi-effort")
+  await page.getByTestId("model-save").click()
+  await send(page, "think hard")
+  await settled(page)
+  const thinking = fake.piCalls().at(-1) as { args: string[] }
+  expect(thinking.args[thinking.args.indexOf("--model") + 1]).toBe("anthropic/fake-large")
+  expect(thinking.args[thinking.args.indexOf("--thinking") + 1]).toBe("xhigh")
   await app.close()
 })

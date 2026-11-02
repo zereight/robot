@@ -4,6 +4,7 @@ import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { claudeLogin, claudeVersion, runClaude } from "./claude.ts"
 import { codexLogin, runCodex } from "./codex.ts"
+import { piLogin } from "./pi.ts"
 import type { RuntimeRun } from "./types.ts"
 
 let fake: FakeRuntimes
@@ -158,5 +159,27 @@ describe("codex program", () => {
   test("a failed turn becomes a failure", async () => {
     const error = await collect(runCodex(base(fake.codex, { prompt: "FAIL" }))).catch((e) => e)
     expect(error).toMatchObject({ code: "provider_limit" })
+  })
+})
+
+describe("pi program", () => {
+  test("each model has the levels that pi tells for it", async () => {
+    fake.setPi({ ready: true })
+    const login = await piLogin(fake.pi)
+    expect(login.signedIn).toBe(true)
+    const efforts = Object.fromEntries((login.models ?? []).map((m) => [m.id, m.efforts]))
+    // A model that does not think has none. The other one has "xhigh", which the fixed list lacks.
+    expect(efforts).toEqual({
+      "claude-bridge/fake-small": [],
+      "anthropic/fake-large": ["low", "medium", "high", "xhigh"],
+    })
+  })
+
+  test("when pi cannot tell the levels, a model that thinks keeps the usual three", async () => {
+    fake.setPi({ ready: true, noRpc: true })
+    const login = await piLogin(fake.pi)
+    const large = login.models?.find((m) => m.id === "anthropic/fake-large")
+    expect(large?.efforts).toEqual(["low", "medium", "high"])
+    fake.setPi({ ready: true })
   })
 })
