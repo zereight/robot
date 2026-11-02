@@ -1,4 +1,4 @@
-import type { Agent, AgentModel } from "@robot/shared"
+import { type Agent, type AgentModel, runtimeModel } from "@robot/shared"
 import { createResource, createSignal, onCleanup, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -6,6 +6,7 @@ import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import type { PlaceView } from "../shell/Shell.tsx"
 import { useApp } from "../state/app.tsx"
+import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -52,7 +53,15 @@ const BrowserControls = (props: { agentId: string }) => {
 
 const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
   const { t } = useApp()
+  const providers = useProviders()
   const [open, setOpen] = createSignal(false)
+  // A runtime model shows with its version. An API model shows its id, which has the version.
+  const modelName = () => {
+    const model = props.agent.model
+    if (!model) return t("agents.noModel")
+    const known = runtimeModel(providers.byId(model.accountId)?.kind, model.model)
+    return known?.labelKey ? t(known.labelKey) : (known?.label ?? model.model)
+  }
   return (
     <>
       <button
@@ -77,7 +86,7 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         onClick={() => props.setPicking(true)}
         data-testid="chat-header-model"
       >
-        {props.agent.model?.model ?? t("agents.noModel")}
+        {modelName()}
       </button>
       <BrowserControls agentId={props.agent.id} />
       <Presence when={open()}>

@@ -251,8 +251,30 @@ export const startMockProvider = async () => {
       return json(res, 200, { data: [{ id: "mock-fast" }, { id: "o3-mini" }] })
     }
     if (url.pathname === "/anthropic/v1/models") {
+      // As the real list does: a model says which effort levels it takes.
+      const level = { supported: true }
       return json(res, 200, {
-        data: [{ id: "claude-sonnet-4-5", display_name: "Claude Sonnet 4.5" }],
+        data: [
+          {
+            id: "claude-haiku-5-5",
+            display_name: "Claude Haiku 5.5",
+            capabilities: {
+              effort: {
+                supported: true,
+                low: level,
+                medium: level,
+                high: level,
+                xhigh: level,
+                max: level,
+              },
+            },
+          },
+          {
+            id: "claude-sonnet-4-5",
+            display_name: "Claude Sonnet 4.5",
+            capabilities: { effort: { supported: false } },
+          },
+        ],
       })
     }
     if (url.pathname === "/v1/chat/completions") return openAiReply(res, body as ChatBody)

@@ -57,7 +57,15 @@ test("subscription: Claude Code connects without a key, chats, and asks before a
 
   // A reply streams in from the program.
   await createAgent(page, "Ada")
-  await expect(page.getByTestId("chat-header-model")).toHaveText("opus")
+  // The model shows with its version, in the header and in the list.
+  await expect(page.getByTestId("chat-header-model")).toHaveText("Opus 5.5")
+  await page.getByTestId("chat-header-model").click()
+  await expect(page.getByTestId("model-model").locator("option")).toHaveText([
+    "Opus 5.5",
+    "Sonnet 5.5",
+    "Haiku 5.5",
+  ])
+  await page.getByTestId("model-save").click()
   await send(page, "hello")
   await settled(page)
   await expect(page.getByTestId("message").last()).toContainText("Echo: hello")
