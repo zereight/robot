@@ -45,6 +45,7 @@ These are in the code today and the specs now say something else.
 | 005, 019 | The task view shows the prompt, the steps, the messages, the child tasks and the three times. | It also shows the done test and the verdict of a part, and a list of moments (given, started, ended, decided, judged, closed). The fields sync. |
 | 002 | The agent profile lists no work. | The profile has a block "Recent work" with the last 20 tasks, their state in words, and the time since the last change. |
 | 002, 009, 017 | Three templates: general assistant, code reviewer, researcher. | Five starters: Assistant, Briefer, Researcher, Reviewer, Organizer. A starter can also make a paused routine and skills for the new agent. |
+| 002, 017 | Deleting an agent leaves a skill that was only for it. It is listed nowhere and counts in the limit of 100. | The delete removes the agent from the list of every skill. A skill that was only for it is deleted, and the confirm text says how many. |
 
 ## Slices
 
@@ -85,10 +86,11 @@ These are in the code today and the specs now say something else.
 | S51 | Verdicts in the check: the done test in the plan, the check of the lead (nudge, ask, nothing, the limit of 3 looks), the verdict "Met" or "Not met", the summary that waits for a nudge, the fields in the task view, and their sync. The check is not built yet. S51 builds only the check of S19. `@all`, the fast pick, the line "waits behind" and the archive of a channel stay in S19. | 004, 005, 019, 000 |
 | S52 | Work record: the list of moments in the task view, and the block "Recent work" in the agent profile with its words for what a task waits for. Needs S51 for the moment "Judged". | 005, 002 |
 | S53 | Starters: five starters with their own English and Korean text, the paused routine and the skills that a starter makes, the note in the chat when a part is not made, and the rule for a linked device. The limit of 50 routines is not built (S29): a starter checks it by itself, and the refusal in the form stays in S29. The storage of skills exists (it came with S45), but the Skills page and the command list are S31 and are not built. So the skills of a starter are made and counted, and the user cannot call them until S31 lands. | 002, 009, 017 |
+| S54 | Skills go with their only agent: the confirm text of the delete names the count, the agent leaves the list of every skill, and a skill that was only for it is deleted. It covers skills of starters and of "Teach a task". Archive changes nothing. | 002, 017 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
-S50 needs no code change in the app besides text, and can go first. S52 follows S51. S53 does not depend on S50 to S52.
+S50 needs no code change in the app besides text, and can go first. S52 follows S51. S53 does not depend on S50 to S52. S54 follows S53.
 
 ## Decided against
 
