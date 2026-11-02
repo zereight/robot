@@ -227,6 +227,14 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await expect(await plainNames(page, "agents")).toEqual(["Bo", "Cy"])
   await expect(page.getByTestId("chat-header-agent")).toContainText("Bo")
 
+  // "New section" opens a list that is closed, so that the name box shows.
+  await page.getByTestId("section-toggle-agents").click()
+  await expect(page.getByTestId("section-toggle-agents")).toHaveAttribute("aria-expanded", "false")
+  input = await startSection(page, "agents")
+  await expect(page.getByTestId("section-toggle-agents")).toHaveAttribute("aria-expanded", "true")
+  await input.press("Escape")
+  await expect(page.getByTestId("section-new-input")).toHaveCount(0)
+
   // A second section. Order: "Move up" is off for the first, "Move down" for the last.
   await makeSection(page, "agents", "Ops")
   const ops = userSection(page, "agents", "Ops")
