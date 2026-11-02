@@ -89,8 +89,8 @@ client shows it and sends commands.
 | Read messages, search places | Change model accounts, skills, connections and settings |
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
-| Answer approval cards and questions | Routines, workflows, usage page, the action log, knowledge of an agent (016) |
-| See the task list and task details; stop a task | Browser "Take control" |
+| Answer approval cards and questions | Routines, workflows, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |
+| See the task list and task details; stop a task | Browser "Take control"; accept or request changes on a part in review (004) |
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory | Export and import of data |
 
 A client sees the user sections of the server (001) and cannot make, rename, order or delete
@@ -120,8 +120,10 @@ button on a section, the agent profile, the channel settings, the memory list.
   each agent that a client creates or duplicates. A client cannot choose or change a folder. The
   profile on a client says "Workspace: on <server name>" and shows no path.
 - **Permission level:** an agent that a client creates starts at the level that the server uses
-  for new agents ("Ask for risky steps"). A client can set a stricter level. It cannot set a
-  looser one, and it cannot add an "Always allow" rule.
+  for new agents ("Ask for risky steps"). A client can set a stricter level. From the loosest to
+  the strictest, the levels are "Full access", "Ask for risky steps", "Ask for everything" and
+  "Read only" (007). A client cannot set a looser level, and it cannot add an "Always allow"
+  rule.
 - **Names:** the rules of 002 and 004 hold on the server. A name that is taken gives a plain
   error on the client.
 - **Working agents:** a client cannot archive an agent while it works. It stops the agent first.
