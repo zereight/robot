@@ -267,6 +267,8 @@ export type Mapped =
       readonly rejected: boolean
       readonly resetsAt: number | null
     }
+  /** The program began to read a message of the user that the app gave it with this id. */
+  | { readonly kind: "started"; readonly id: string }
   | {
       readonly kind: "result"
       readonly ok: boolean
@@ -358,6 +360,11 @@ export const mapClaudeMessage = (message: unknown, state: StreamState): Mapped[]
         },
       ]
     }
+    case "command_lifecycle":
+      // Each message on the input goes queued, then started, then completed (spec 003).
+      return msg.state === "started" && str(msg.command_uuid)
+        ? [{ kind: "started", id: str(msg.command_uuid) }]
+        : []
     case "rate_limit_event": {
       const info = "rate_limit_info" in msg ? obj(msg.rate_limit_info) : msg
       const windows = obj(info.unifiedWindows)
@@ -450,6 +457,8 @@ export const claudeArgs = (run: RuntimeRun, mcpConfig?: string): string[] => {
     "stream-json",
     "--verbose",
     "--include-partial-messages",
+    // The program tells when it begins to read each message on its input (spec 003).
+    ...(run.inbox ? ["--replay-user-messages"] : []),
     "--no-session-persistence",
     // Prompts for permission come to the app as messages, and the app answers them.
     "--permission-prompt-tool",
@@ -520,8 +529,29 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   let limitsResetAt: number | null = null
   let rejected = false
   let result: Extract<Mapped, { kind: "result" }> | undefined
+  /** The usage of the results before the last one, when messages of the user joined the turn. */
+  const earlier = { input: 0, output: 0 }
+  /**
+   * The messages of the user that the program has and did not begin to read. The program reads
+   * them after the tool step that runs, or after its reply, as a new request. Until then the turn
+   * of the app goes on, so the turn ends only at a result after all of them.
+   */
+  const handed = new Set<string>()
+  const hand = () => {
+    for (const message of run.inbox?.take() ?? []) {
+      handed.add(message.id)
+      send({
+        type: "user",
+        uuid: message.id,
+        message: { role: "user", content: [{ type: "text", text: message.text }] },
+      })
+    }
+  }
+  let unwatch: (() => void) | undefined
   try {
     send({ type: "user", message: { role: "user", content: claudeContent(run) } })
+    unwatch = run.inbox?.watch(hand)
+    hand()
     for await (const line of lines) {
       if (!line.trim()) continue
       let message: unknown
@@ -530,6 +560,7 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       } catch {
         continue
       }
+      let ended = false
       for (const mapped of mapClaudeMessage(message, state)) {
         if (mapped.kind === "event") yield mapped.event
         else if (mapped.kind === "limits") {
@@ -556,10 +587,22 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
                 : { behavior: "deny", message: "The user denied this step." },
             },
           })
-        } else result = mapped
+        } else if (mapped.kind === "started") {
+          if (handed.delete(mapped.id)) yield { type: "joined", id: mapped.id }
+        } else {
+          if (result) {
+            earlier.input += result.input
+            earlier.output += result.output
+          }
+          result = mapped
+          ended = true
+        }
       }
-      if (result) break
+      // A message that the program did not begin to read comes after this result.
+      if (ended && result && (handed.size === 0 || !result.ok)) break
     }
+    // A message that comes now waits for the next turn of the app.
+    unwatch?.()
     child.stdin.end()
     if (run.signal.aborted) return
     if (!result) {
@@ -570,8 +613,13 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       )
     }
     if (!result.ok) throw claudeFailure(result.text, rejected ? limitsResetAt : null)
-    yield { type: "usage", input: result.input, output: result.output }
+    yield {
+      type: "usage",
+      input: earlier.input + result.input,
+      output: earlier.output + result.output,
+    }
   } finally {
+    unwatch?.()
     run.signal.removeEventListener("abort", stop)
     child.stdin.end()
     if (child.exitCode === null) {

@@ -18,6 +18,8 @@ import { testPlatform, testRuntime } from "./testing.ts"
 
 const KEY = "sk-chat-test"
 let failNext = true
+/** The last message of each request that reached the model. */
+const asked: string[] = []
 /** What the server saw of the requests that it holds with no answer. */
 const held = { opened: 0, closed: 0 }
 
@@ -49,6 +51,7 @@ const server = Bun.serve({
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
     const body = (await req.json()) as { messages: { role: string; content: string }[] }
     const last = body.messages.at(-1)?.content ?? ""
+    asked.push(last)
     if (last.endsWith("fail") && failNext) {
       failNext = false
       return Response.json({ error: { message: "boom" } }, { status: 500 })
@@ -147,7 +150,12 @@ const setup = async () => {
         h.queue.length === 0
       )
     })
-  return { ...t, run, agent, local, history, send, settled }
+  const setDuringTurn = (duringTurn: "join" | "queue") =>
+    run(SettingsStore.use((s) => s.update({ duringTurn })))
+  /** Waits until the reply streams, so that the turn runs. */
+  const streaming = () =>
+    until(async () => messageText((await history()).messages[1] ?? { parts: [] }).length > 0)
+  return { ...t, run, agent, local, history, send, settled, setDuringTurn, streaming }
 }
 
 describe("Chat", () => {
@@ -190,6 +198,7 @@ describe("Chat", () => {
 
   test("a message sent while the agent works waits in the queue and goes when the turn ends", async () => {
     const t = await setup()
+    await t.setDuringTurn("queue")
     await t.send("go slow")
     expect((await t.send("second")).queued).toBe(true)
     const third = await t.send("third")
@@ -567,5 +576,99 @@ describe("Chat", () => {
       expect(Exit.isFailure(exit)).toBe(true)
       await second.dispose()
     })
+  })
+})
+
+describe("messages during a turn (spec 003)", () => {
+  test("a message joins the running turn: the agent reads it at the next step, in one reply", async () => {
+    const t = await setup()
+    await t.send("go slow")
+    await t.streaming()
+    expect((await t.send("Use b.txt instead")).queued).toBe(false)
+    const waiting = (await t.history()).messages.at(-1)
+    expect(waiting?.unread).toBe("waiting")
+    await t.settled()
+    const { messages } = await t.history()
+    expect(messages.map((m) => [m.author, m.status])).toEqual([
+      ["user", "done"],
+      ["agent", "done"],
+      ["user", "done"],
+    ])
+    // The muted line has gone, and no second turn started.
+    expect(messages[2]?.unread).toBeUndefined()
+    const reply = messageText(messages[1] as never)
+    expect(reply).toContain("w39")
+    expect(reply).toEndWith("\n\nEcho (4): Use b.txt instead")
+    expect(asked.filter((a) => a === "Use b.txt instead")).toHaveLength(1)
+    // The task of the turn lists the message.
+    const [task] = await t.run(Tasks.use((s) => s.list(t.local.id)))
+    expect(await t.run(Tasks.use((s) => s.list(t.local.id)))).toHaveLength(1)
+    const detail = await t.run(Tasks.use((s) => s.get(task?.id ?? "")))
+    expect(detail.joined.map((j) => j.text)).toEqual(["Use b.txt instead"])
+    expect(detail.joined[0]?.at).toBe(messages[2]?.createdAt as number)
+  })
+
+  test("a message deleted before the next step never reaches the model", async () => {
+    const t = await setup()
+    await t.send("go slow")
+    await t.streaming()
+    await t.send("forget this one")
+    const message = (await t.history()).messages.at(-1)
+    await t.run(Chat.use((c) => c.deleteUnread(t.agent.id, message?.id ?? "")))
+    await t.settled()
+    const { messages } = await t.history()
+    expect(messages).toHaveLength(2)
+    expect(asked.some((a) => a.includes("forget this one"))).toBe(false)
+    // A message that the agent read cannot be deleted.
+    const exit = await t.runtime.runPromiseExit(
+      Chat.use((c) => c.deleteUnread(t.agent.id, messages[0]?.id ?? "")),
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  test("after Stop, the messages that the agent did not read start the next turn as one", async () => {
+    const t = await setup()
+    await t.send("go slow")
+    await t.streaming()
+    await t.send("one")
+    await t.send("and two")
+    await t.run(Chat.use((c) => c.stop(t.agent.id)))
+    await t.settled()
+    const { messages } = await t.history()
+    expect(messages.map((m) => (m.author === "user" ? messageText(m) : m.status))).toEqual([
+      "go slow",
+      "stopped",
+      "one",
+      "and two",
+      "done",
+    ])
+    expect(messages.every((m) => m.unread === undefined)).toBe(true)
+    expect(messageText(messages[4] as never)).toBe("Echo (4): and two")
+    expect(asked.at(-1)).toBe("one\n\nand two")
+    const tasks = await t.run(Tasks.use((s) => s.list(t.local.id)))
+    expect(tasks[0]?.prompt).toBe("one\n\nand two")
+  })
+
+  test("with the queue setting, Send now puts a queued message into the turn", async () => {
+    const t = await setup()
+    await t.setDuringTurn("queue")
+    await t.send("go slow")
+    await t.streaming()
+    expect((await t.send("now please")).queued).toBe(true)
+    const [item] = (await t.history()).queue
+    expect((await t.history()).hold).toBeNull()
+    await t.run(Chat.use((c) => c.sendNow(t.agent.id, item?.id ?? "")))
+    expect((await t.history()).queue).toHaveLength(0)
+    await t.settled()
+    const { messages } = await t.history()
+    expect(messages.map((m) => m.author)).toEqual(["user", "agent", "user"])
+    expect(messageText(messages[1] as never)).toEndWith("Echo (4): now please")
+  })
+
+  test("a message that comes when the agent is free starts a turn as before", async () => {
+    const t = await setup()
+    expect((await t.send("hello")).queued).toBe(false)
+    await t.settled()
+    expect((await t.history()).messages.map((m) => m.unread)).toEqual([undefined, undefined])
   })
 })

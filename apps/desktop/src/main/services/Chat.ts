@@ -8,6 +8,7 @@ import {
   askKind,
   askStep,
   askSummary,
+  type ChatHistory,
   type ChatMessage,
   type ChatSend,
   type CutNotice,
@@ -26,7 +27,9 @@ import {
   type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
+  type QueueHold,
   runningStepKind,
+  runtimeTakesInput,
   type StepEffort,
   starterOf,
   stepTurnEffort,
@@ -42,6 +45,7 @@ import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { resumeOf } from "../providers/resume.ts"
+import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
 import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
@@ -78,6 +82,10 @@ interface MessageRow {
    * related to it then. They are kept so that the next turn sends the same text again.
    */
   context: string | null
+  /** The reply of the turn that this message joined (spec 003). Null for other messages. */
+  joined_to: string | null
+  /** When the agent read the message that joined a turn. Null until then. */
+  read_at: number | null
 }
 
 interface AgentModelRow {
@@ -118,13 +126,16 @@ export interface TaskOrigin {
 }
 
 export interface ChatService {
-  history(agentId: string): Effect.Effect<{
-    messages: readonly ChatMessage[]
-    queue: readonly QueuedMessage[]
-    cut: CutNotice | null
-  }>
-  /** Sends at once when the agent is free; otherwise puts the message in the queue. */
+  history(agentId: string): Effect.Effect<ChatHistory>
+  /**
+   * Sends at once when the agent is free. While it works, a message of the user joins the turn
+   * (spec 003), or waits in the queue by the setting, by the program, or when it has an origin.
+   */
   send(input: ChatSend, origin?: TaskOrigin): Effect.Effect<{ queued: boolean }, AppError>
+  /** Sends a queued message into the turn that runs now. */
+  sendNow(agentId: string, itemId: string): Effect.Effect<void, AppError>
+  /** Deletes a message that joined the turn and that the agent did not read. */
+  deleteUnread(agentId: string, messageId: string): Effect.Effect<void, AppError>
   stop(agentId: string): Effect.Effect<void>
   retry(agentId: string, messageId: string): Effect.Effect<void, AppError>
   edit(agentId: string, messageId: string, text: string): Effect.Effect<void, AppError>
@@ -133,6 +144,20 @@ export interface ChatService {
   markRead(agentId: string): Effect.Effect<void>
   /** Tells the windows about a message that sync wrote, so an open chat shows it at once. */
   announce(messageId: string): void
+}
+
+/** The turn that runs now for an agent, as far as messages of the user can join it (spec 003). */
+interface LiveTurn {
+  readonly replyId: string
+  /** Messages that wait for the next step, oldest first. They can still be deleted. */
+  readonly waiting: JoinedMessage[]
+  /** Messages that a program has and did not begin to read. They cannot be deleted. */
+  readonly handed: Set<string>
+  readonly watchers: Set<() => void>
+  /** The call of a question card that waits now, if any. */
+  question(): string | undefined
+  /** Marks the card of a question as answered by a message in the chat. */
+  answeredInChat(callId: string): void
 }
 
 /** How often a streaming reply is sent to the window and written to disk. */
@@ -170,7 +195,7 @@ export const copyAttachments = (workspace: string, paths: readonly string[]): Fi
   })
 }
 
-const toMessage = (row: MessageRow): ChatMessage => ({
+const toMessage = (row: MessageRow, unread?: "waiting" | "handed"): ChatMessage => ({
   id: row.id,
   agentId: row.agent_id,
   author: row.author,
@@ -184,11 +209,19 @@ const toMessage = (row: MessageRow): ChatMessage => ({
   createdAt: row.created_at,
   editedAt: row.edited_at,
   fromDevice: row.from_name,
+  ...(unread ? { unread } : {}),
 })
 
 /** Adds a stream event to the parts. Returns true when a new part starts (a part boundary). */
 export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => {
   if (event.type === "usage") return false
+  if (event.type === "joined") {
+    // What the agent writes after a message of the user starts a new paragraph.
+    const last = parts.at(-1)
+    if (last?.kind === "text" && last.text && !last.text.endsWith("\n"))
+      parts[parts.length - 1] = { kind: "text", text: `${last.text}\n\n` }
+    return false
+  }
   if (event.type === "tool") {
     const id = event.call.id
     const index = parts.findIndex((p) => p.kind === "tool" && p.id === id)
@@ -208,6 +241,7 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       // Who answered the approval stays on the card when the call ends (spec 012).
       ...(existing?.kind === "tool" && existing.decision ? { decision: existing.decision } : {}),
       ...(existing?.kind === "tool" && existing.knowledge ? { knowledge: existing.knowledge } : {}),
+      ...(existing?.kind === "tool" && existing.answeredInChat ? { answeredInChat: true } : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -261,11 +295,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const providers = yield* Providers
       const activity = yield* Activity
       const tasks = yield* Tasks
+      const settings = yield* SettingsStore
       const tools = yield* Tools
       const memory = yield* Memory
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
-      const settings = yield* SettingsStore
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
@@ -274,6 +308,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const origins = new Map<string, TaskOrigin>()
       /** The linked device that sent a queued item, by the id of the item (spec 012). */
       const senders = new Map<string, Actor>()
+      /** The running turn of each agent that messages can join (spec 003). */
+      const live = new Map<string, LiveTurn>()
+      /** Agents whose last turn ended with messages that the agent did not read. */
+      const unreadLeft = new Set<string>()
       /** Writes a queued item as a message, and moves its origin to the message. */
       const insertQueued = (agentId: string, next: QueuedMessage) => {
         const sender = senders.get(next.id)
@@ -305,6 +343,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         JSON.stringify(reviving.flatMap((t) => (t.messageId ? [t.messageId] : []))),
       )
 
+      // A message that joined a turn and was not read before the app closed is a plain message now.
+      db.run("UPDATE message SET joined_to = NULL WHERE joined_to IS NOT NULL AND read_at IS NULL")
+
       const agentRow = (agentId: string) =>
         db.get<AgentModelRow>(
           "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort, workspace, permission, memory_enabled FROM agent WHERE id = ?",
@@ -333,9 +374,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           found.map((r) => [r.message_id, isTaskProgress(r.progress) ? r.progress : null]),
         )
       }
-      /** A message as the windows get it: a failed reply also tells how far its turn went. */
+      /**
+       * A message as the windows get it: a message of the running turn says if it is unread, and a
+       * failed reply also tells how far its turn went.
+       */
       const present = (row: MessageRow, known?: Map<string, TaskProgress | null>): ChatMessage => {
-        const message = toMessage(row)
+        const message =
+          row.joined_to === null || row.read_at !== null
+            ? toMessage(row)
+            : toMessage(row, live.get(row.agent_id)?.handed.has(row.id) ? "handed" : "waiting")
         if (row.author !== "agent" || row.status !== "failed") return message
         const progress = (known ?? progressOf([row.id])).get(row.id)
         return progress ? { ...message, progress } : message
@@ -381,8 +428,21 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (agent) bus.emit("places.changed", { serverId: agent.server_id })
       }
       const emitMessage = (row: MessageRow) => bus.emit("chat.message", present(row))
+      /**
+       * The program of the agent that takes no input during a turn. Its messages wait in the queue
+       * whatever the setting says (spec 003).
+       */
+      const holdOf = (agentId: string): QueueHold | null => {
+        const account = agentRow(agentId)?.model_account_id
+        const kind = account ? providers.runtimeKind(account) : null
+        return kind && !runtimeTakesInput(kind) ? { runtime: kind } : null
+      }
       const emitQueue = (agentId: string) =>
-        bus.emit("chat.queue", { agentId, queue: queues.get(agentId) ?? [] })
+        bus.emit("chat.queue", {
+          agentId,
+          queue: queues.get(agentId) ?? [],
+          hold: holdOf(agentId),
+        })
 
       const insertMessage = (
         agentId: string,
@@ -392,11 +452,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         model: string | null,
         files: readonly FilePart[] = [],
         from: Actor | null = null,
+        joined: { readonly to: string; readonly readAt: number | null } | null = null,
       ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name, joined_to, read_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           agentId,
           author,
@@ -409,6 +470,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           Date.now(),
           from?.id ?? null,
           from?.name ?? null,
+          joined?.to ?? null,
+          joined?.readAt ?? null,
         )
         const row = messageRow(id) as MessageRow
         emitMessage(row)
@@ -416,33 +479,50 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return row
       }
 
+      /** The text of a message for the model. A reply quotes what it answers. */
+      const turnText = (r: MessageRow) => {
+        const text = messageText(toMessage(r))
+        const quoted = r.reply_to ? messageRow(r.reply_to) : undefined
+        const quote = quoted
+          ? `${messageText(toMessage(quoted))
+              .slice(0, QUOTE_MAX)
+              .split("\n")
+              .map((line) => `> ${line}`)
+              .join("\n")}\n\n`
+          : ""
+        const files = messageFiles(toMessage(r))
+          .map((f) => `[Attached file: ${f.path}]`)
+          .join("\n")
+        return quote + [text, files].filter(Boolean).join("\n\n")
+      }
+
       /**
-       * The conversation so far, as turns for the provider. A reply quotes what it answers.
-       * With `notes`, a message of the user brings the notes that it had when it was asked.
+       * The conversation so far, as turns for the provider. With `notes`, a message of the user
+       * brings the notes that it had when it was asked. A message that joined a turn and was read
+       * there goes before the reply of that turn, because the reply answers it too.
        */
-      const buildTurns = (agentId: string, exceptId: string, notes: boolean): Turn[] =>
-        rows(agentId)
-          .filter((r) => r.id !== exceptId && !(r.author === "agent" && r.status === "failed"))
-          .map((r) => {
-            const text = messageText(toMessage(r))
-            const quoted = r.reply_to ? messageRow(r.reply_to) : undefined
-            const quote = quoted
-              ? `${messageText(toMessage(quoted))
-                  .slice(0, QUOTE_MAX)
-                  .split("\n")
-                  .map((line) => `> ${line}`)
-                  .join("\n")}\n\n`
-              : ""
-            const files = messageFiles(toMessage(r))
-              .map((f) => `[Attached file: ${f.path}]`)
-              .join("\n")
-            const kept =
-              notes && r.author === "user" && r.context ? `\n\n${NOTES_LEAD}\n${r.context}` : ""
-            return {
-              role: r.author === "user" ? "user" : "assistant",
-              content: quote + [text, files].filter(Boolean).join("\n\n") + kept,
-            }
-          })
+      const buildTurns = (agentId: string, exceptId: string, notes: boolean): Turn[] => {
+        const kept = rows(agentId).filter(
+          (r) => r.id !== exceptId && !(r.author === "agent" && r.status === "failed"),
+        )
+        const replies = new Set(kept.filter((r) => r.author === "agent").map((r) => r.id))
+        const joinedTo = (r: MessageRow) =>
+          r.joined_to !== null && r.read_at !== null && replies.has(r.joined_to)
+            ? r.joined_to
+            : null
+        const ordered: MessageRow[] = []
+        for (const r of kept) {
+          if (joinedTo(r)) continue
+          if (r.author === "agent") ordered.push(...kept.filter((j) => joinedTo(j) === r.id))
+          ordered.push(r)
+        }
+        return ordered.map((r) => ({
+          role: r.author === "user" ? "user" : "assistant",
+          content:
+            turnText(r) +
+            (notes && r.author === "user" && r.context ? `\n\n${NOTES_LEAD}\n${r.context}` : ""),
+        }))
+      }
 
       /** Answers the last message. `resumed` is a task that waited through a restart: it goes on. */
       const runTurn = Effect.fn("Chat.runTurn")(function* (agentId: string, resumed?: Task) {
@@ -455,13 +535,24 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           .at(-1)
         const asked = lastUser ? toMessage(lastUser) : undefined
         const turnEffort = lastUser ? origins.get(lastUser.id)?.effort : undefined
+        const textOf = (m: ChatMessage) =>
+          messageText(m) ||
+          messageFiles(m)
+            .map((f) => f.name)
+            .join(", ")
+        // Messages that a stopped turn did not read come after its reply. The new turn answers
+        // all of them, as one request, in the order that the user sent them (spec 003).
+        const all = rows(agentId)
+        const lastReply = all.findLastIndex((r) => r.author === "agent" && r.id !== reply.id)
+        const open = all
+          .slice(lastReply + 1)
+          .filter((r) => r.author === "user" && r.joined_to === null)
         const prompt =
-          (asked
-            ? messageText(asked) ||
-              messageFiles(asked)
-                .map((f) => f.name)
-                .join(", ")
-            : "") || "(no text)"
+          (open.length > 1
+            ? open.map((r) => textOf(toMessage(r))).join("\n\n")
+            : asked
+              ? textOf(asked)
+              : "") || "(no text)"
         const task =
           resumed ??
           (yield* tasks.create({
@@ -500,6 +591,42 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
         let lastEmit = 0
         let lastSave = 0
+        // Messages that the user sends now join this turn (spec 003).
+        const turn: LiveTurn = {
+          replyId: reply.id,
+          waiting: [],
+          handed: new Set(),
+          watchers: new Set(),
+          question: () =>
+            parts.find(
+              (p): p is Extract<MessagePart, { kind: "tool" }> =>
+                p.kind === "tool" && p.state === "waiting" && p.ask?.kind === "question",
+            )?.id,
+          answeredInChat: (callId) => {
+            const index = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
+            const part = parts[index]
+            if (part?.kind !== "tool") return
+            parts[index] = { ...part, answeredInChat: true }
+            save("streaming")
+            publish()
+          },
+        }
+        const inbox: TurnInbox = {
+          take: () => {
+            const taken = turn.waiting.splice(0)
+            for (const message of taken) {
+              turn.handed.add(message.id)
+              const row = messageRow(message.id)
+              if (row) emitMessage(row)
+            }
+            return taken
+          },
+          watch: (ready) => {
+            turn.watchers.add(ready)
+            return () => turn.watchers.delete(ready)
+          },
+        }
+        live.set(agentId, turn)
 
         const save = (
           status: MessageStatus,
@@ -531,6 +658,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               usage.input = event.input ?? usage.input
               usage.output = event.output ?? usage.output
               return
+            }
+            if (event.type === "joined") {
+              // The agent read a message of the user: the muted line goes away.
+              turn.handed.delete(event.id)
+              db.run("UPDATE message SET read_at = ? WHERE id = ?", Date.now(), event.id)
+              const row = messageRow(event.id)
+              if (row) emitMessage(row)
             }
             const boundary = applyEvent(parts, event)
             activity.setStep(agentId, runningStepKind(parts))
@@ -659,6 +793,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               permission: agent.permission,
               useTools: true,
               ...(resume ? { resume } : {}),
+              inbox,
             },
             {
               execute: (call) => tools.execute(context, call),
@@ -701,6 +836,21 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             Effect.sync(() => {
               watch.stop()
               controller.abort()
+              live.delete(agentId)
+              // A message that the agent did not read starts the next turn (spec 003). It is a
+              // plain message after the reply now.
+              const unread = [...turn.waiting.map((m) => m.id), ...turn.handed]
+              if (unread.length > 0) {
+                db.run(
+                  "UPDATE message SET joined_to = NULL WHERE id IN (SELECT value FROM json_each(?))",
+                  JSON.stringify(unread),
+                )
+                for (const id of unread) {
+                  const row = messageRow(id)
+                  if (row) emitMessage(row)
+                }
+                unreadLeft.add(agentId)
+              }
               knowledge.end(agentId, writesFiles ? "agent" : "user")
               notifier.clearAgent(agentId)
               // A step that did not finish cannot keep a running mark or a question card.
@@ -757,6 +907,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           for (;;) {
             yield* runTurn(agentId, first)
             first = undefined
+            // Messages that the turn did not read go first: they are in the chat already.
+            if (unreadLeft.delete(agentId)) continue
             const next = queues.get(agentId)?.shift()
             if (!next) return
             emitQueue(agentId)
@@ -784,19 +936,73 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           return agent
         })
 
+      /**
+       * Puts a message of the user into the running turn (spec 003). While a question card waits,
+       * the message is its answer. Otherwise the agent reads it at the next step.
+       */
+      const join = Effect.fn("Chat.join")(function* (
+        agentId: string,
+        turn: LiveTurn,
+        message: {
+          readonly text: string
+          readonly replyTo: string | null
+          readonly files: readonly FilePart[]
+        },
+        sender: Actor | null,
+      ) {
+        const question = turn.question()
+        const row = insertMessage(
+          agentId,
+          "user",
+          message.text,
+          message.replyTo,
+          null,
+          message.files,
+          sender,
+          { to: turn.replyId, readAt: question ? Date.now() : null },
+        )
+        if (question) {
+          turn.answeredInChat(question)
+          yield* tools.respond(agentId, question, turnText(row))
+          return
+        }
+        turn.waiting.push({ id: row.id, text: turnText(row) })
+        for (const ready of [...turn.watchers]) ready()
+      })
+
+      /** True when a message that the user sends now joins the running turn of the agent. */
+      const joinable = (agentId: string) =>
+        Effect.gen(function* () {
+          const turn = live.get(agentId)
+          if (!turn || holdOf(agentId)) return undefined
+          return (yield* settings.get).duringTurn === "join" ? turn : undefined
+        })
+
       const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
         const sender = yield* CurrentActor
         const agent = yield* usableAgent(input.agentId)
         const paths = input.files ?? []
         if (!input.text.trim() && paths.length === 0)
           return yield* new AppError({ code: "invalid_input" })
+        // A routine or a workflow always starts new work; only the user joins a turn.
+        const turn = origin ? undefined : yield* joinable(input.agentId)
         const isFull = (queues.get(input.agentId)?.length ?? 0) >= QUEUE_MAX
-        if ((yield* isRunning(input.agentId)) && isFull)
+        if (!turn && (yield* isRunning(input.agentId)) && isFull)
           return yield* new AppError({ code: "queue_full" })
         const files = yield* Effect.try({
           try: () => copyAttachments(agent.workspace, paths),
           catch: (e) => (e instanceof AppError ? e : new AppError({ code: "file_unreadable" })),
         })
+        // The turn can have ended while the files were copied.
+        if (turn && live.get(input.agentId) === turn) {
+          yield* join(
+            input.agentId,
+            turn,
+            { text: input.text, replyTo: input.replyTo, files },
+            sender,
+          )
+          return { queued: false }
+        }
         if (yield* isRunning(input.agentId)) {
           const queue = queues.get(input.agentId) ?? []
           if (queue.length >= QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
@@ -825,6 +1031,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const stop = Effect.fn("Chat.stop")(function* (agentId: string) {
         const fiber = yield* FiberMap.get(workers, agentId)
         if (fiber._tag === "Some") yield* Fiber.interrupt(fiber.value)
+        // Messages that the turn did not read start the next turn (spec 003).
+        if (unreadLeft.delete(agentId)) {
+          yield* kick(agentId)
+          return
+        }
         // The turn has ended, so the next queued message goes now.
         const next = queues.get(agentId)?.shift()
         if (next) {
@@ -935,10 +1146,40 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             return {
               messages: presentAll(list),
               queue: queues.get(agentId) ?? [],
+              hold: holdOf(agentId),
               cut: cutOf(list),
             }
           }),
         send,
+        sendNow: (agentId, itemId) =>
+          Effect.gen(function* () {
+            const queue = queues.get(agentId) ?? []
+            const item = queue.find((q) => q.id === itemId)
+            if (!item) return yield* new AppError({ code: "queue_item_gone" })
+            const turn = live.get(agentId)
+            // A program that takes no input during a turn cannot get it now (spec 003).
+            if (!turn || holdOf(agentId)) return yield* new AppError({ code: "invalid_input" })
+            queues.set(
+              agentId,
+              queue.filter((q) => q.id !== itemId),
+            )
+            emitQueue(agentId)
+            const sender = senders.get(itemId) ?? null
+            senders.delete(itemId)
+            origins.delete(itemId)
+            yield* join(agentId, turn, item, sender)
+          }),
+        deleteUnread: (agentId, messageId) =>
+          Effect.suspend(() => {
+            const turn = live.get(agentId)
+            const index = turn?.waiting.findIndex((m) => m.id === messageId) ?? -1
+            if (!turn || index < 0) return Effect.fail(new AppError({ code: "message_read" }))
+            turn.waiting.splice(index, 1)
+            db.run("DELETE FROM message WHERE id = ?", messageId)
+            bus.emit("chat.removed", { agentId, messageId })
+            placesChanged(agentId)
+            return Effect.void
+          }),
         stop,
         retry,
         edit,
