@@ -2,6 +2,13 @@ export const PERMISSION_LEVELS = ["ask_all", "ask_risky", "full"] as const
 export type PermissionLevel = (typeof PERMISSION_LEVELS)[number]
 export const DEFAULT_PERMISSION: PermissionLevel = "ask_risky"
 
+/**
+ * True when `next` lets the agent do more without asking than `current` does. The order of
+ * `PERMISSION_LEVELS` is the order of care, strictest first.
+ */
+export const isLooser = (next: PermissionLevel, current: PermissionLevel) =>
+  PERMISSION_LEVELS.indexOf(next) > PERMISSION_LEVELS.indexOf(current)
+
 /** What the user answers to an approval card. */
 export type ApprovalAnswer = "allow" | "always" | "deny"
 

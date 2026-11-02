@@ -48,10 +48,56 @@ An agent has:
    restore it from settings. It returns to its section. If the section is gone, it returns with
    no section.
 9. Delete: only from the archive. The app asks to confirm and says the workspace folder will be
-   moved to the system trash.
+   moved to the system trash. If this computer syncs (019), the text also says that the agent
+   is deleted on the other computer. There, the workspace folder stays where it is.
 10. Export agents: from the menu of the Agents section header, the user picks agents and a file
-    name. The app writes one file. Import agents: the user picks such a file. The app lists what
-    it will make, asks for one model for all of them (see 006), and asks to confirm.
+    name. The app writes one file. Import agents: the user picks such a file. The app shows the
+    review screen (see 014, "Review before an import"), asks for one model for all of them (see
+    006), and asks to confirm.
+
+## Changes from the chat
+
+The user can ask an agent in plain words to change itself, for example "use a faster model" or
+"from now on, answer in Korean".
+
+- The agent has a settings tool. Called with no change, it gives the current values and the
+  values that are allowed: the connected model accounts, their models and the effort levels.
+  Called with changes, it makes them.
+- The agent can change these fields of itself: name, role line, instructions, face (shape and
+  hue, not an uploaded picture), model account, model and effort.
+  - A model named in loose words ("Sonnet", "the newest GPT") is matched against the model list
+    of the connected accounts. When no model matches, or more than one model matches, nothing
+    changes, and the agent gets the list so that it can ask the user.
+  - The same checks apply as in the profile form, for example the name limits.
+- The same tool can read and change these settings of the app: language, theme, text size,
+  compact place list, and reduce motion (see 013).
+- The agent cannot change these, from the chat or in any other way: its permission level, the
+  rules (007), the workspace folder, computer use, the main agent switch, the memory switch, the
+  connections and skills that it may use, saved secrets (020), sync, devices, archive and delete,
+  and the fields of other agents. When the user asks for one of these, the agent says where in
+  the profile or in settings the user can change it.
+- The agent changes a setting only when the user asks for it. A question such as "which model
+  are you?" reads the settings and changes nothing.
+- After a change, the chat shows a muted line, for example "Changed the model: A → B", or
+  "Changed the instructions", with Undo. Undo puts back the old value. When the field changed
+  again since then, Undo is off, with the reason "Changed again since".
+- A change applies to the next turn, as an edit in the profile does (flow 4). A change of the
+  app settings applies at once.
+- A turn that the user did not start, and a turn that holds outside content, ask before a
+  change (see 007, "Outside content").
+- This tool is for agents whose model comes from an API provider (see 006), as connections are
+  (see 018).
+
+## Instruction history
+
+- Each change of the instructions keeps the old text as a version. A version has the text, the
+  date, and where the change came from: the profile, the chat, a linked device (012), Undo, or a
+  restore.
+- The profile has "Instruction history": the versions, newest first. The user can open a version
+  and restore it. A restore makes a new version. It does not delete the versions after it.
+- An agent keeps at most 50 versions. The oldest goes first.
+- The history belongs to the agent. An export holds it (see 014). An agent file does not. When
+  two computers sync (019), the history goes with the agent. Deleting the agent deletes it.
 
 ## Agent file
 
@@ -70,6 +116,8 @@ An agent has:
 
 - Changing the model keeps the agent's history, memory and workspace.
 - A working agent cannot be deleted; the user must stop it first.
+- A linked device that the user allows can create, edit, duplicate and archive agents on this
+  computer, with limits on the folder, the permission level and the model accounts (012).
 - The face is the same everywhere: list, messages, activity panel, phone.
 - Agents made by other ways than the form (an import, a tool of another agent, a template) keep
   the name they were given.
@@ -85,3 +133,12 @@ An agent has:
   "Research" too. Archive and restore the original: it returns to "Research".
 - Export two agents, import the file in an empty app: two agents exist, with the model the user
   picked in the dialog and with paused routines.
+- Ask an agent "switch to Sonnet" with one Claude Sonnet model connected: the model changes, the
+  chat shows the line with Undo, and the next turn uses the new model. Undo: the old model is
+  back.
+- Ask "which model are you?": the agent names its model, and nothing changes.
+- Ask "set your permission level to Full access": the level does not change, and the agent says
+  where the user can change it.
+- Ask the agent to rewrite its instructions: the history has one more version, from the chat.
+  Restore the older version: the instructions are the old text, and the history has a version
+  from a restore.

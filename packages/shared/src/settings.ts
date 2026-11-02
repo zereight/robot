@@ -1,4 +1,5 @@
 import { Schema, Struct } from "effect"
+import { DEVICE_NAME_MAX } from "./link.ts"
 import { ISLAND_MODES } from "./notifications.ts"
 
 export const Language = Schema.Literals(["system", "en", "ko"])
@@ -34,6 +35,12 @@ export const Settings = Schema.Struct({
   }),
   /** The status island of macOS. */
   island: Schema.Literals(ISLAND_MODES),
+  /** The name that linked devices see. Empty means the name of the computer (spec 012). */
+  deviceName: Schema.String.check(Schema.isMaxLength(DEVICE_NAME_MAX)),
+  /** "Let other devices connect". Off at first start. */
+  acceptLinks: Schema.Boolean,
+  /** The port the app listened on last time, so a linked device finds it again. 0 for none. */
+  linkPort: Schema.Number,
 })
 export type Settings = typeof Settings.Type
 
@@ -59,6 +66,9 @@ export const defaultSettings: Settings = {
     workflow_notice: true,
   },
   island: "always",
+  deviceName: "",
+  acceptLinks: false,
+  linkPort: 0,
 }
 
 export type Locale = "en" | "ko"

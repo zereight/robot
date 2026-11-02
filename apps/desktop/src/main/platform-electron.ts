@@ -162,6 +162,9 @@ const electronBrowser = (agentId: string): BrowserPage => {
     },
     allowUserInput: (allowed) => {
       userInput = allowed
+      // A test run never moves the system focus: this call makes the app the active program.
+      // No test checks where the keys go.
+      if (isTestRun) return
       // The keys go where the control is: into the page, or back to the chat.
       const v = live()
       if (allowed) v?.webContents.focus()
@@ -395,6 +398,15 @@ export const electronPlatform = (): PlatformService => {
       }
       await shell.openPath(path)
     },
+    openFile: async (path) => {
+      // A test run writes the path to a log: no program starts.
+      if (isTestRun && process.env.ROBOT_TEST_OPEN_LOG) {
+        appendFileSync(process.env.ROBOT_TEST_OPEN_LOG, `${path}\n`)
+        return
+      }
+      const failure = await shell.openPath(path)
+      if (failure) throw new Error(failure)
+    },
     setStartAtLogin: (enabled) => {
       if (isTestRun || process.platform === "linux") return
       app.setLoginItemSettings({ openAtLogin: enabled })
@@ -423,11 +435,12 @@ export const electronPlatform = (): PlatformService => {
       }
       await shell.trashItem(path)
     },
-    isFocused: () =>
-      !(isTestRun && process.env.ROBOT_TEST_UNFOCUSED) &&
-      mainWindow !== undefined &&
-      !mainWindow.isDestroyed() &&
-      mainWindow.isFocused(),
+    isFocused: () => {
+      // A test run shows its window without the focus, so the system focus tells nothing there.
+      // The window counts as focused unless the test asks for the opposite.
+      if (isTestRun) return !process.env.ROBOT_TEST_UNFOCUSED
+      return mainWindow !== undefined && !mainWindow.isDestroyed() && mainWindow.isFocused()
+    },
     notify: (notice, onClick) => {
       if (isTestRun) {
         // A test run never shows a system notification. A test that asks for a log gets one.
@@ -443,6 +456,11 @@ export const electronPlatform = (): PlatformService => {
     showWindow: () => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       if (mainWindow.isMinimized()) mainWindow.restore()
+      if (isTestRun) {
+        // A test run never takes the focus from the user.
+        mainWindow.showInactive()
+        return
+      }
       mainWindow.show()
       mainWindow.focus()
     },

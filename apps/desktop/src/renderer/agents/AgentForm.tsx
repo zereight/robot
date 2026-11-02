@@ -11,6 +11,7 @@ import {
   FACE_SHAPES,
   type Face as FaceValue,
   faceFromName,
+  isLooser,
   type MessageKey,
   nameKey,
   PERMISSION_LEVELS,
@@ -37,8 +38,8 @@ export interface AgentFormValues {
   instructions: string
   face: FaceValue
   model: AgentModel | null
-  /** The user section of the Agents list, or null for "No section". */
-  sectionId: string | null
+  /** The user section of the Agents list, or null for "No section". A client sends none. */
+  sectionId?: string | null
   /** Only when an existing agent is edited. */
   permission?: PermissionLevel
   memoryEnabled?: boolean
@@ -65,6 +66,13 @@ const Counter = (props: { used: number; max: number }) => {
 export const AgentForm = (props: AgentFormProps) => {
   const { t } = useApp()
   const ui = useUi()
+  // On a linked server the same screen works with fewer fields (spec 012): no picture, no memory
+  // switch, no section, and a level that can only get stricter.
+  const remote = () => ui.linked()
+  const levels = () =>
+    remote() && props.agent
+      ? PERMISSION_LEVELS.filter((level) => !isLooser(level, (props.agent as Agent).permission))
+      : PERMISSION_LEVELS
   const nameId = createUniqueId()
   const [template, setTemplate] = createSignal<AgentTemplate | "blank">("blank")
   const [name, setName] = createSignal(props.agent?.name ?? "")
@@ -133,9 +141,16 @@ export const AgentForm = (props: AgentFormProps) => {
         instructions: instructions(),
         face: face(),
         model: model(),
-        // A section that was deleted while the form was open shows as "No section".
-        sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null,
-        ...(props.agent ? { permission: permission(), memoryEnabled: memoryEnabled() } : {}),
+        // A client has no sections (012). A section that was deleted while the form was open
+        // shows as "No section".
+        ...(remote()
+          ? {}
+          : { sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null }),
+        ...(props.agent && !remote()
+          ? { permission: permission(), memoryEnabled: memoryEnabled() }
+          : props.agent
+            ? { permission: permission() }
+            : {}),
       })
     } catch (e) {
       setError(describeError(e))
@@ -299,16 +314,18 @@ export const AgentForm = (props: AgentFormProps) => {
         <ModelPicker value={model()} onChange={setModel} />
       </div>
 
-      <div class={styles.field}>
-        <span class={styles.label}>{t("sections.field")}</span>
-        <SectionSelect
-          kind="agent"
-          value={sectionId()}
-          onChange={setSectionId}
-          class={styles.input}
-          testId="agent-section"
-        />
-      </div>
+      <Show when={!remote()}>
+        <div class={styles.field}>
+          <span class={styles.label}>{t("sections.field")}</span>
+          <SectionSelect
+            kind="agent"
+            value={sectionId()}
+            onChange={setSectionId}
+            class={styles.input}
+            testId="agent-section"
+          />
+        </div>
+      </Show>
 
       <Show when={props.agent}>
         {(agent) => (
@@ -318,7 +335,7 @@ export const AgentForm = (props: AgentFormProps) => {
               <Segmented
                 label={t("agents.field.permission")}
                 value={permission()}
-                options={PERMISSION_LEVELS.map((value) => ({
+                options={levels().map((value) => ({
                   value,
                   label: t(`agents.permission.${value}` as MessageKey),
                 }))}
@@ -326,16 +343,23 @@ export const AgentForm = (props: AgentFormProps) => {
                 testId="agent-permission"
               />
               <span class={styles.hint}>{t("agents.permission.hint")}</span>
+              <Show when={remote()}>
+                <span class={styles.hint} data-testid="agent-permission-stricter">
+                  {t("agents.permission.stricter")}
+                </span>
+              </Show>
             </div>
-            <div class={styles.field}>
-              <span class={styles.label}>{t("agents.field.memory")}</span>
-              <Switch
-                label={t("agents.field.memory")}
-                checked={memoryEnabled()}
-                onChange={setMemoryEnabled}
-                testId="agent-memory-enabled"
-              />
-            </div>
+            <Show when={!remote()}>
+              <div class={styles.field}>
+                <span class={styles.label}>{t("agents.field.memory")}</span>
+                <Switch
+                  label={t("agents.field.memory")}
+                  checked={memoryEnabled()}
+                  onChange={setMemoryEnabled}
+                  testId="agent-memory-enabled"
+                />
+              </div>
+            </Show>
             <MemoryPanel agentId={agent().id} />
           </>
         )}

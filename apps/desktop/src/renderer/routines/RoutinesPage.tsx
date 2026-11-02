@@ -356,6 +356,11 @@ export const RoutinesView = () => {
                   <span class={styles.hint}>
                     {r.agentName} · {words(r.schedule)}
                   </span>
+                  <Show when={r.runsOn !== null}>
+                    <span class={styles.hint} data-testid="routine-runs-on">
+                      {t("sync.runsOn", { name: r.runsOn || t("sync.anotherComputer") })}
+                    </span>
+                  </Show>
                   <Show when={r.nextRuns.length > 0}>
                     <span class={styles.hint} data-testid="routine-next">
                       {t("routines.next")}: {r.nextRuns.map(format).join(" / ")}
@@ -368,12 +373,24 @@ export const RoutinesView = () => {
                   onChange={(enabled) => call("routines.update", { id: r.id, patch: { enabled } })}
                   testId="routine-enabled"
                 />
-                <Button
-                  onClick={() => call("routines.runNow", { id: r.id })}
-                  data-testid="routine-run"
+                <Show
+                  when={r.runsOn === null}
+                  fallback={
+                    <Button
+                      onClick={() => call("routines.runHere", { id: r.id })}
+                      data-testid="routine-run-here"
+                    >
+                      {t("sync.runHere")}
+                    </Button>
+                  }
                 >
-                  {t("routines.runNow")}
-                </Button>
+                  <Button
+                    onClick={() => call("routines.runNow", { id: r.id })}
+                    data-testid="routine-run"
+                  >
+                    {t("routines.runNow")}
+                  </Button>
+                </Show>
                 <Button onClick={() => setEditing(r)} data-testid="routine-edit">
                   {t("agents.memory.edit")}
                 </Button>

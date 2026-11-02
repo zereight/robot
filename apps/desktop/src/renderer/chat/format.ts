@@ -3,6 +3,10 @@ import type { Locale } from "@robot/shared"
 export const formatTime = (locale: Locale, at: number) =>
   new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(at)
 
+/** A date and a time, for a record such as "Last changed by". */
+export const formatDateTime = (locale: Locale, at: number) =>
+  new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(at)
+
 export const formatDay = (
   locale: Locale,
   at: number,
@@ -32,7 +36,3 @@ export const fileSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
-
-/** A date and a time, for example "Nov 2, 2026, 3:04 PM". */
-export const formatDateTime = (locale: Locale, at: number) =>
-  new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(at)

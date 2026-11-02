@@ -25,18 +25,27 @@ export type MessagePart =
       readonly ask?: ToolAsk
       /** Set for a tool that saved a memory item, so the card can offer undo. */
       readonly memoryId?: string
+      /** Set when a linked device answered the approval: its answer and its name (spec 012). */
+      readonly decision?: { readonly answer: "allow" | "deny"; readonly by: string }
       /** Set for a knowledge tool: what it read or changed, so the card can show it. */
       readonly knowledge?: KnowledgeNote
     }
 
+/** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */
 export type ToolAsk =
   | {
       readonly kind: "approval"
       readonly summary: string
+      readonly askedAt?: number
       /** True when the card has no "Always allow": it asks again the next time. */
       readonly once?: boolean
     }
-  | { readonly kind: "question"; readonly question: string; readonly choices: readonly string[] }
+  | {
+      readonly kind: "question"
+      readonly question: string
+      readonly choices: readonly string[]
+      readonly askedAt?: number
+    }
   /** The agent wants to change an article that the user edited last. Old and new text show side by side. */
   | {
       readonly kind: "article"
@@ -44,6 +53,7 @@ export type ToolAsk =
       readonly before: string
       /** Null when the article would be deleted. */
       readonly after: string | null
+      readonly askedAt?: number
     }
 
 /** The text that the status island shows for a card that waits. */
@@ -53,6 +63,12 @@ export const askSummary = (ask: ToolAsk) =>
 /** The kind of a card for the status island: an article card is an approval. */
 export const askKind = (ask: ToolAsk): "approval" | "question" =>
   ask.kind === "question" ? "question" : "approval"
+
+/**
+ * Whether the card has the choice "Always allow for this agent" (spec 007): an approval, not the
+ * card that asks again each time. An article card and a question have none.
+ */
+export const askAllowsAlways = (ask: ToolAsk): boolean => ask.kind === "approval" && !ask.once
 
 export type MessageStatus = "done" | "streaming" | "stopped" | "failed"
 
@@ -72,6 +88,8 @@ export interface ChatMessage {
   readonly model: string | null
   readonly createdAt: number
   readonly editedAt: number | null
+  /** The name of the linked device that sent this message. Null for this computer (spec 012). */
+  readonly fromDevice: string | null
 }
 
 export type FilePart = Extract<MessagePart, { kind: "file" }>

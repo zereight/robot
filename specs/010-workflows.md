@@ -38,8 +38,9 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 5. Versions: the editor lists the versions of a workflow. The user opens one and can restore it.
    A restore also keeps the current graph as a version.
 6. Export workflows: from the menu of the Workflows page, the user picks workflows and a file
-   name. The app writes one file. Import workflows: the user picks such a file. The app lists
-   what it will make and which agent names it cannot find, and asks to confirm.
+   name. The app writes one file. Import workflows: the user picks such a file. The app shows the
+   review screen (see 014, "Review before an import"), with the agent names that it cannot find,
+   and asks to confirm.
 
 ## Workflow file
 
@@ -95,8 +96,11 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 ## Rules
 
 - A step starts when all its inputs are done.
-- A failed step stops the run unless the step is marked "Continue on failure".
+- A failed step stops the run unless the step is marked "Continue on failure". An agent step
+  whose task ends as Blocked (see 005) is a failed step, with the reason of the block.
 - A workflow cannot be edited while it runs; the editor shows it read-only until the run ends.
+- When two computers sync (019), a workflow runs on one computer only. The other computer shows
+  "Runs on <name>".
 - After an app restart, a run that was going is marked failed with the reason "The app
   stopped". This includes a run that waits at an approval step. Its tasks fail the same way,
   also a task that waits for an approval or a question (see 005).

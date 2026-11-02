@@ -28,6 +28,8 @@ export interface RoutinesService {
   remove(id: string): Effect.Effect<void>
   /** Starts a run at once, outside the schedule. */
   runNow(id: string): Effect.Effect<void, AppError>
+  /** Moves a routine of the other computer here: it runs here from now on (spec 019). */
+  runHere(id: string): Effect.Effect<Routine, AppError>
   /** Past, present and planned runs of all routines of a server between two times. */
   calendar(serverId: string, from: number, to: number): Effect.Effect<readonly RoutineEntry[]>
   /** Checks every routine at `now`. The scheduler calls it by the clock; tests call it by hand. */
@@ -46,6 +48,7 @@ interface Row {
   enabled: number
   last_checked_at: number
   created_at: number
+  runs_on: string | null
 }
 
 const SELECT = `SELECT r.*, a.name AS agent_name FROM routine r JOIN agent a ON a.id = r.agent_id`
@@ -79,7 +82,9 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           place: placeOf(r),
           enabled: r.enabled === 1,
           createdAt: r.created_at,
-          nextRuns: r.enabled === 1 ? runTimes(schedule, Date.now(), NEXT_COUNT) : [],
+          nextRuns:
+            r.enabled === 1 && r.runs_on === null ? runTimes(schedule, Date.now(), NEXT_COUNT) : [],
+          runsOn: r.runs_on === null ? null : tasks.computerName(r.runs_on),
         }
       }
       const row = (id: string) => db.get<Row>(`${SELECT} WHERE r.id = ?`, id)
@@ -128,7 +133,9 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
 
       const tick = (now: number) =>
         Effect.gen(function* () {
-          const rows = db.all<Row>(`${SELECT} WHERE r.enabled = 1`)
+          // A routine runs on one computer only (spec 019): the others do not run it, and a run
+          // that it misses there does not count as missed here.
+          const rows = db.all<Row>(`${SELECT} WHERE r.enabled = 1 AND r.runs_on IS NULL`)
           for (const r of rows) {
             const { start: at, missed } = dueRuns(
               JSON.parse(r.schedule) as Schedule,
@@ -149,16 +156,19 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
         })
 
       // The routine tasks that fail or stop can be tried again, as a run now.
+      // A retry of a task of the other computer runs here, whatever computer the routine runs on.
       tasks.onRetry("routine", (task) =>
         task.sourceId
-          ? runNow(task.sourceId)
+          ? runNow(task.sourceId, true)
           : Effect.fail(new AppError({ code: "invalid_input" })),
       )
 
-      const runNow = (id: string): Effect.Effect<void, AppError> =>
+      const runNow = (id: string, force = false): Effect.Effect<void, AppError> =>
         Effect.gen(function* () {
           const r = row(id)
           if (!r) return yield* new AppError({ code: "routine_not_found" })
+          if (r.runs_on !== null && !force)
+            return yield* new AppError({ code: "routine_elsewhere" })
           if (active(id)) return yield* new AppError({ code: "routine_running" })
           yield* start(r)
           changed(r.server_id)
@@ -233,7 +243,24 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             db.run("DELETE FROM routine WHERE id = ?", id)
             changed(current.server_id)
           }),
-        runNow,
+        runNow: (id) => runNow(id),
+        runHere: (id) =>
+          Effect.gen(function* () {
+            const current = row(id)
+            if (!current) return yield* new AppError({ code: "routine_not_found" })
+            if (current.runs_on !== null) {
+              // The check starts from now: nothing counts as missed for the time it ran elsewhere.
+              const now = Date.now()
+              db.run(
+                "UPDATE routine SET runs_on = NULL, last_checked_at = ?, updated_at = ? WHERE id = ?",
+                now,
+                now,
+                id,
+              )
+              changed(current.server_id)
+            }
+            return toRoutine(row(id) as Row)
+          }),
         calendar: (serverId, from, to) =>
           Effect.sync(() => {
             const out: RoutineEntry[] = []
@@ -271,7 +298,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                   state: s.kind,
                   taskId: null,
                 })
-              if (r.enabled === 1)
+              if (r.enabled === 1 && r.runs_on === null)
                 for (const at of runTimes(
                   JSON.parse(r.schedule) as Schedule,
                   Math.max(Date.now(), from - 1),

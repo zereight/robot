@@ -17,6 +17,8 @@ const task = (id: string, extra: Partial<Task> = {}): Task => ({
   createdAt: 0,
   startedAt: 100,
   finishedAt: 350,
+  originName: null,
+  waitsFor: null,
   ...extra,
 })
 

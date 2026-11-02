@@ -14,6 +14,9 @@ import { watchReactions } from "./agents/reactions.ts"
 import { ChannelDialog } from "./channels/ChannelDialog.tsx"
 import { ChannelPanel } from "./channels/ChannelPanel.tsx"
 import { ChannelHeader, ChannelView } from "./channels/ChannelView.tsx"
+import { DevicesSection } from "./devices/DevicesSection.tsx"
+import { JoinDialog } from "./devices/JoinDialog.tsx"
+import { SyncGuardDialog, SyncRequestDialog } from "./devices/SyncDialogs.tsx"
 import { FirstRunDialog } from "./firstrun/FirstRun.tsx"
 import { describeError, type ErrorText } from "./lib/errors.ts"
 import { call } from "./lib/rpc.ts"
@@ -43,12 +46,17 @@ export const App = () => {
   // A click on a notification, or on the island, opens the place and shows the message.
   onCleanup(
     window.robot.on("app.openPlace", (target) => {
-      ui.selectPlace({ kind: target.kind, id: target.id })
+      ui.selectPlace({ kind: target.kind, id: target.id }, target.serverId ?? ui.localServer()?.id)
       setFocusMessage(target.messageId)
     }),
   )
   // A notice from a workflow opens the page of workflows.
-  onCleanup(window.robot.on("app.openPage", ({ page }) => ui.selectPage(page)))
+  onCleanup(
+    window.robot.on("app.openPage", ({ page, serverId }) => {
+      if (serverId) ui.selectServer(serverId)
+      ui.selectPage(page)
+    }),
+  )
   const [newChannel, setNewChannel] = createSignal(false)
   const [newAgent, setNewAgent] = createSignal(false)
   const [exportAgents, setExportAgents] = createSignal(false)
@@ -91,30 +99,34 @@ export const App = () => {
           }
         }}
         sectionAction={(section) =>
-          section === "agents" ? (
+          // A client creates agents and channels on a server only when the server lets it (012).
+          // The menus (agent files, user sections) belong to this computer: a client has none.
+          !ui.canChange() ? null : section === "agents" ? (
             <>
-              <Menu
-                label={t("places.menu.agents")}
-                icon={<Ellipsis size={16} />}
-                testId="agents-menu"
-                items={[
-                  {
-                    label: t("agentFile.menu.export"),
-                    onSelect: () => setExportAgents(true),
-                    testId: "agents-menu-export",
-                  },
-                  {
-                    label: t("agentFile.menu.importFile"),
-                    onSelect: () => void startImport(),
-                    testId: "agents-menu-import-file",
-                  },
-                  {
-                    label: t("sections.new"),
-                    onSelect: () => ui.startNewSection("agent"),
-                    testId: "agents-menu-new-section",
-                  },
-                ]}
-              />
+              <Show when={!ui.linked()}>
+                <Menu
+                  label={t("places.menu.agents")}
+                  icon={<Ellipsis size={16} />}
+                  testId="agents-menu"
+                  items={[
+                    {
+                      label: t("agentFile.menu.export"),
+                      onSelect: () => setExportAgents(true),
+                      testId: "agents-menu-export",
+                    },
+                    {
+                      label: t("agentFile.menu.importFile"),
+                      onSelect: () => void startImport(),
+                      testId: "agents-menu-import-file",
+                    },
+                    {
+                      label: t("sections.new"),
+                      onSelect: () => ui.startNewSection("agent"),
+                      testId: "agents-menu-new-section",
+                    },
+                  ]}
+                />
+              </Show>
               <IconButton
                 label={t("agents.new")}
                 onClick={() => setNewAgent(true)}
@@ -125,18 +137,20 @@ export const App = () => {
             </>
           ) : (
             <>
-              <Menu
-                label={t("places.menu.channels")}
-                icon={<Ellipsis size={16} />}
-                testId="channels-menu"
-                items={[
-                  {
-                    label: t("sections.new"),
-                    onSelect: () => ui.startNewSection("channel"),
-                    testId: "channels-menu-new-section",
-                  },
-                ]}
-              />
+              <Show when={!ui.linked()}>
+                <Menu
+                  label={t("places.menu.channels")}
+                  icon={<Ellipsis size={16} />}
+                  testId="channels-menu"
+                  items={[
+                    {
+                      label: t("sections.new"),
+                      onSelect: () => ui.startNewSection("channel"),
+                      testId: "channels-menu-new-section",
+                    },
+                  ]}
+                />
+              </Show>
               <IconButton
                 label={t("channels.new")}
                 onClick={() => setNewChannel(true)}
@@ -155,6 +169,7 @@ export const App = () => {
         settingsSections={{
           archive: () => <ArchiveSection />,
           providers: () => <ProvidersSection />,
+          devices: () => <DevicesSection />,
           notifications: () => <NotificationsSection />,
         }}
       />
@@ -178,6 +193,9 @@ export const App = () => {
         {() => <ChannelDialog onClose={() => setNewChannel(false)} />}
       </Presence>
       <Presence when={!app.settings.firstRunDone}>{() => <FirstRunDialog />}</Presence>
+      <JoinDialog />
+      <SyncRequestDialog />
+      <SyncGuardDialog />
       <Toasts />
     </>
   )

@@ -19,6 +19,8 @@ The user connects the model accounts they already have, and each agent uses one 
 - **Account**: one sign-in or key. A provider can have more than one account; the user names them.
 - **Model list**: fetched from the provider when possible, with an effort level for models that
   support it.
+- **Readiness**: the state of an agent runtime on this computer. See "Readiness of an agent
+  runtime".
 
 ## Flows
 
@@ -40,6 +42,43 @@ The user connects the model accounts they already have, and each agent uses one 
      the value again.
    - A saved name that a later version of the app refuses is dropped when the list loads, so the
      list never becomes unreadable.
+6. Check and repair: on the row of an agent runtime, the user chooses "Check again" to see the
+   state, or "Repair" when the state is "Needs repair".
+
+## Readiness of an agent runtime
+
+The row of each agent runtime shows one state, as a tag with text. Colour alone is not enough.
+
+| State | Meaning |
+| --- | --- |
+| Checking | A check runs now. It is temporary and ends within 15 seconds in one of the other states. |
+| Ready | The program is on this computer, it starts and answers, and, if it has a sign-in, someone is signed in. |
+| Needs sign-in | The program starts and answers, and nobody is signed in. |
+| Needs repair | The app knows where the program is or was, and the check fails. |
+| Not installed | The app knows no place for the program and finds none. |
+
+- Found is not Ready. The check runs the program once, with no model turn. It asks only for the
+  version or the sign-in state. A program that does not answer is not Ready.
+- Needs repair covers a file that is gone or moved, a program that does not start, a program
+  that does not answer, and an answer that the app cannot read. The row says which, in plain
+  words.
+- Not installed shows the download button or the install note, as before.
+- The app checks when the Providers page opens, when the user chooses "Check again", after
+  Download, Repair and Sign in, and when a turn cannot start the program. In the last case the
+  state turns to Needs repair at once.
+- "Check again" changes nothing except the state that the row shows and the time of the check.
+- "Repair" is the only action that changes the program. It looks for the program again in the
+  places that the app already uses for it. For a program that the app downloaded, it downloads
+  the program again and checks the checksum. Then it checks the program. It never signs in,
+  signs out or removes a sign-in. When it fails, the row shows the reason and what the user can
+  do.
+- An agent keeps its runtime when the state is Needs repair or Not installed. Its message box is
+  disabled, as for "Provider not connected" (003), with a button: "Repair" or "Providers". A task
+  of that agent from a channel, a routine or a workflow fails at once with the state in words.
+  After the repair, Retry works.
+- Needs sign-in works as before.
+- A client of a linked server sees the state and has no buttons on the row (012). Sync does not
+  carry the state (019). Each computer has its own programs.
 
 ## Rules
 
@@ -51,7 +90,12 @@ The user connects the model accounts they already have, and each agent uses one 
 - A runtime that can report the size of the context at the end of a turn does so, so the context
   meter works (see 003).
 - When a provider says a usage limit is reached, the turn fails with that reason and the time it
-  resets, if known.
+  resets, if known. When a provider says the sign-in or key is not valid, the turn fails with that
+  reason. The page Today (021) uses these two reasons.
+- **Leftover programs**: when the app starts, it ends the vendor programs that it started in an
+  earlier run and that still run, for example after a crash. It ends only programs that it
+  started itself. It never ends a program that the user started.
+- A check of a runtime that hangs or crashes never delays a turn of another provider.
 
 ## Acceptance
 
@@ -61,3 +105,17 @@ The user connects the model accounts they already have, and each agent uses one 
 - Type the name of a variable that the app needs for itself: the row is refused.
 - Connect an API key, pick a model, get a reply. Disconnect: the chat shows the reconnect button.
 - No secret appears in the database file, the logs or an export.
+- A stand-in program answers the check: the row shows Ready. Remove the program and choose
+  "Check again": the row shows Needs repair, the message box of an agent on it is disabled with
+  "Repair". Put the program back and choose "Repair": the row shows Ready and the message box
+  works.
+- A stand-in program that exits at start gives Needs repair with a reason about the start. A
+  runtime that was never found gives Not installed.
+- The check makes no model turn: the stand-in program counts only a version or sign-in call.
+  "Repair" leaves the sign-in of the program as it was.
+- A check that does not end gives a state within 15 seconds. The row never stays at Checking.
+- Start a turn on a stand-in program, end the app with no warning, and start it again: the
+  stand-in program no longer runs. A program with the same name that the user started by hand
+  still runs.
+- A stand-in runtime never answers its check. A chat with an agent on an API account, opened at
+  that time, answers with no delay.

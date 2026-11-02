@@ -30,6 +30,10 @@ export interface Task {
   readonly createdAt: number
   readonly startedAt: number | null
   readonly finishedAt: number | null
+  /** The name of the other computer where the task ran, when it came by sync (019). Null here. */
+  readonly originName: string | null
+  /** The name of the other computer whose task of this agent runs now, while this one waits. */
+  readonly waitsFor: string | null
 }
 
 export interface TaskDetail {
@@ -57,6 +61,8 @@ export interface TaskFilter {
   readonly agentId?: string | undefined
   readonly source?: TaskSource | undefined
   readonly query?: string | undefined
+  /** `here` keeps the tasks of this computer. A name keeps the tasks of that other computer. */
+  readonly computer?: "here" | { readonly name: string } | undefined
 }
 
 /** Keeps tasks that match every set filter. The query matches the label, ignoring case. */
@@ -67,6 +73,10 @@ export const filterTasks = (tasks: readonly Task[], filter: TaskFilter) => {
       (!filter.state || t.state === filter.state) &&
       (!filter.agentId || t.agentId === filter.agentId) &&
       (!filter.source || t.source === filter.source) &&
+      (!filter.computer ||
+        (filter.computer === "here"
+          ? t.originName === null
+          : t.originName === filter.computer.name)) &&
       (!q || t.label.toLocaleLowerCase().includes(q)),
   )
 }

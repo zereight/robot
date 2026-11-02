@@ -24,13 +24,12 @@ The user gives an agent work in plain language and sees what the agent does whil
    The agent's reply streams in as it is made.
 2. Stop: while the agent works, the send button becomes a stop button. Stop ends the turn; the
    partial reply stays and is marked as stopped.
-3. Queue: if the user sends while the agent works, the message waits in a short queue above the
-   message box. The user can remove or edit a queued message before it is sent.
+3. Send while the agent works: see "Messages during a turn".
 4. Attach: the user drops or picks files and images. They show as chips in the message box and
    are copied into the agent's workspace when sent.
 5. Reply: the user picks "reply" on a message. A quote line shows above the box. The sent message
    links back; clicking the link scrolls to the quoted message and flashes it, and a "Back"
-   control returns to where the user was.
+   control returns to where the user was. A hit of message search (001) uses the same jump.
 6. Approve: when the agent asks for permission (see 007), an approval card shows in the chat with
    Allow and Deny. The agent waits until the user answers.
 7. Command picker: when the user types a slash as the first character of a message, a list opens
@@ -43,6 +42,35 @@ The user gives an agent work in plain language and sees what the agent does whil
    context meter. The app asks the model to replace the older part of the conversation with a
    summary, to free room in the context. A failure shows in the normal error line above the box.
 9. Continue after a restart: see "Rules".
+
+## Messages during a turn
+
+The user can change the course of a turn without stopping it.
+
+- A setting in General (see 013), "While an agent works, new messages", has two values: "Join the
+  current turn" (the default) and "Wait in a queue".
+- **Join the current turn**: a message that the user sends while the agent works shows in the
+  chat at once, with the muted line "Read at the next step". The agent reads it at the next step
+  of the same turn: when the tool step that runs now ends, or at once when no tool step runs. Then
+  the muted line goes away. The agent reads the message as a new request from the user, and can
+  change what it does. No second turn starts.
+  - Until the agent reads the message, the row has "Delete". A deleted message does not reach
+    the agent.
+  - While an approval card waits, the agent reads the message after the user answers the card,
+    or after Stop. The card stays open and the user can answer it at any time.
+  - While a question card waits, the message is the answer to the question. The card shows
+    "Answered in the chat" and the agent goes on with the message as its answer.
+  - A message that the agent did not read when the turn ends (for example after Stop) starts the
+    next turn, as one message in the order that the user sent them.
+- **Wait in a queue**: the message waits in a short queue above the message box. The user can
+  remove or edit a queued message before it is sent. Each queued message has "Send now", which
+  sends it into the current turn as with "Join the current turn".
+- An agent runtime from a vendor (see 006) takes a message during a turn only when its program
+  accepts input during a turn. When it does not, the message waits in the queue, whatever the
+  setting says, and one muted line above the queue says why. "Send now" is off there, with the
+  same reason.
+- This applies to direct chats and threads. In a channel (see 004), a message always starts new
+  work, as before.
 
 ## Context meter
 
@@ -83,7 +111,10 @@ and its role line. Nothing moves.
   The Korean phrases read as spoken Korean, not as a translation. For a turn started by a routine,
   the line names the routine. The stop button shows whenever this line shows, in every place
   where the agent works (chat, channel, routine, workflow).
-- Failed: an error row with the reason in plain words and a Retry button.
+- Failed: an error row with the reason in plain words and a Retry button. Retry shows the retry
+  note (see 005) when the first try ran steps that may have changed things. The row also tells
+  how far the turn went (see 005, "How far a turn went"). A turn that the app stopped because
+  it was silent (see 005) fails in this way too.
 - Provider not connected: the message box is disabled with a button to connect it.
 - Interrupted by a restart: see "Rules".
 
@@ -99,6 +130,12 @@ and its role line. Nothing moves.
   request. Its "Continue" button sends a short new message that asks the agent to go on. It does
   not send the old request again, so no side effect repeats unless the user chooses it. A stop by
   the user shows no notice.
+- If the cut request had not reached the model (see 005, "How far a turn went"), the notice says
+  so. It has the button "Send again" and no "Continue". "Send again" does what Retry does for the
+  task (005): it sends the same request again, because no step ran. On a linked device (012), it
+  asks the server to retry the task.
+- If the cut request had reached the model ("Sent" or "Started"), the notice shows the line of
+  005 for that progress, and keeps "Continue".
 - Scrolling up stops auto-scroll. A "Jump to latest" button brings it back.
 - For 3 seconds after a chat opens, an upward scroll that the reader did not cause (no wheel,
   touch, drag or key) returns the chat to the latest message, as long as the chat follows the
@@ -110,7 +147,15 @@ and its role line. Nothing moves.
 ## Acceptance
 
 - Send, stop mid-reply, send again: both turns are stored and the first is marked stopped.
-- A queued message is sent automatically when the turn ends.
+- With "Wait in a queue", a queued message is sent automatically when the turn ends.
+- With "Join the current turn" and an API provider: the agent runs a tool step that takes 3
+  seconds. The user sends "Use b.txt instead". The next request to the model holds this message,
+  the chat shows one turn only, and the line "Read at the next step" goes away.
+- Send a message during a turn and delete it before the step ends: the model never gets it.
+- A question card waits. The user sends "the second one": the card shows "Answered in the chat"
+  and the agent goes on with that text as its answer.
+- With a runtime that takes no input during a turn: the message waits in the queue, and the
+  line above the queue says why.
 - Type `/` first in the box: the list opens. Type `~/notes/todo`: no list opens.
 - Save a skill for an agent, open the chat, type `/` and the first letters of its name: the list
   shows the skill after the commands. Pick it: a chip with its name shows in the box (017).
@@ -118,4 +163,9 @@ and its role line. Nothing moves.
   the original has eight. Fork at a message of a running turn: the app refuses.
 - Restart the app while an agent works on a request: the chat shows the notice. Continue sends a
   short message and the notice leaves.
+- An agent works on a part of a channel job. This is another place, so the turn is not the turn of
+  the direct chat. The user sends a message in its direct chat. The message starts its own task,
+  and the task waits as queued, because an agent runs one task at a time (005). End the app at
+  once and start it again: the request had not reached the model. The notice says so and has "Send again". The button sends the same text, and the
+  agent answers it.
 - A chat of 200 messages opens at the latest message and stays there for the first 3 seconds.

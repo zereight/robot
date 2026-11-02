@@ -20,6 +20,7 @@ import {
   notifyBody,
   type PlaceTarget,
   type ToolStepKind,
+  type WireNotice,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Activity } from "./Activity.ts"
@@ -54,6 +55,11 @@ export interface WaitingInput {
   readonly summary: string
   /** For an approval, the kind of step. Null when it is not known. */
   readonly step: ToolStepKind | null
+  /**
+   * True when the approval card has the choice "Always allow for this agent". The island offers
+   * it only then, and never for a request of the other computer (`from`).
+   */
+  readonly always: boolean
   readonly target: PlaceTarget
 }
 
@@ -62,11 +68,37 @@ interface WaitingItem extends IslandAttention {
   readonly channelId: string | null
 }
 
+/** The linked server that a notice came from. */
+export interface NoticeSource {
+  readonly linkId: string
+  /** The id that the server has for itself: mutes are kept by it. */
+  readonly serverId: string
+  readonly serverName: string
+}
+
 export interface NotifierService {
   /** A system notification, when the kind is on, the place is not muted and no window has focus. */
   notify(notice: Notice): void
-  /** An approval or a question waits: a notification and the island card. */
-  attention(item: WaitingInput): void
+  /**
+   * A notice of a linked server (spec 012, 015). It shows by the settings of this computer: the
+   * kind, the focus of the window and the mute of that server or channel. It names the server, and
+   * it shows once for a request that waits, also when another device answered it.
+   */
+  notifyLinked(source: NoticeSource, notice: WireNotice): void
+  /** A request of a linked server was answered here: it must not notify again. */
+  answeredLinked(linkId: string, agentId: string, callId: string): void
+  /** The approvals and questions that wait now, for a linked device that connects. */
+  waitingNotices(): readonly WireNotice[]
+  /**
+   * An approval or a question waits: a notification and the island card. `from` names the other
+   * computer when the task runs there (spec 015, 019).
+   */
+  attention(item: WaitingInput, from?: string): void
+  /**
+   * Whether the island may take "Always allow" for this request. False for a request that is not
+   * known, and for a request of the other computer: the answer is then one "Allow" (spec 015, 019).
+   */
+  canAlways(agentId: string, callId: string): boolean
   clearAttention(agentId: string, callId: string): void
   clearAgent(agentId: string): void
   island(): IslandState
@@ -190,14 +222,35 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
       }
       activity.onChange(refresh)
 
-      const notify = (n: Notice) => {
+      const BODY = (text: string) => cut(text)
+
+      /** The body of a notice from a workflow is the first characters of the input as they are. */
+      const bodyOf = (n: Notice) =>
+        n.kind === "workflow_notice" ? notifyBody(n.body) : cut(n.body)
+
+      /** Linked devices get every notice and decide by their own settings. */
+      const push = (n: Notice, ids?: { callId: string; agentId: string }) =>
+        bus.emit("notice", {
+          kind: n.kind,
+          channelId: n.channelId ?? null,
+          title: n.title,
+          body: bodyOf(n),
+          ...(n.target ? { target: n.target } : {}),
+          ...(n.page ? { page: n.page } : {}),
+          ...(ids ? { callId: ids.callId, agentId: ids.agentId } : {}),
+        })
+
+      const notify = (n: Notice, ids?: { callId: string; agentId: string }, isNew = true) => {
+        if (isNew) push(n, ids)
+        show(n)
+      }
+
+      const show = (n: Notice) => {
         // A kind that was added after the setting was saved has no value and counts as on.
         if (current().notifyKinds[n.kind] === false) return
         if (platform.isFocused()) return
         if (isMuted(mutes(), n.serverId, n.channelId ?? null, Date.now())) return
-        // The body of a notice from a workflow is the first characters of the input as they are.
-        const body = n.kind === "workflow_notice" ? notifyBody(n.body) : cut(n.body)
-        platform.notify({ title: n.title, body }, () => {
+        platform.notify({ title: n.title, body: bodyOf(n) }, () => {
           platform.showWindow()
           if (n.page) bus.emit("app.openPage", { page: n.page })
           else if (n.target) bus.emit("app.openPlace", n.target)
@@ -225,9 +278,50 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         refresh()
       }
 
+      /** The requests of linked servers that were shown or answered, so none shows twice. */
+      const linkedSeen = new Set<string>()
+      const keyOf = (linkId: string, agentId: string, callId: string) =>
+        `${linkId}:${agentId}:${callId}`
+
       return Notifier.of({
-        notify,
-        attention: (input) => {
+        notify: (n) => notify(n),
+        notifyLinked: (source, notice) => {
+          if (notice.callId && notice.agentId) {
+            const key = keyOf(source.linkId, notice.agentId, notice.callId)
+            if (linkedSeen.has(key)) return
+            linkedSeen.add(key)
+          }
+          if (current().notifyKinds[notice.kind] === false) return
+          if (platform.isFocused()) return
+          if (isMuted(mutes(), source.serverId, notice.channelId, Date.now())) return
+          platform.notify(
+            {
+              title: `${notice.title} · ${source.serverName}`,
+              body: notice.kind === "workflow_notice" ? notifyBody(notice.body) : cut(notice.body),
+            },
+            () => {
+              platform.showWindow()
+              if (notice.page)
+                bus.emit("app.openPage", { page: notice.page, serverId: source.serverId })
+              else if (notice.target)
+                bus.emit("app.openPlace", { ...notice.target, serverId: source.serverId })
+            },
+          )
+        },
+        answeredLinked: (linkId, agentId, callId) => {
+          linkedSeen.add(keyOf(linkId, agentId, callId))
+        },
+        waitingNotices: () =>
+          waiting.map((w) => ({
+            kind: w.kind,
+            channelId: w.channelId,
+            title: w.agent.name,
+            body: BODY(w.summary),
+            target: w.target,
+            callId: w.callId,
+            agentId: w.agentId,
+          })),
+        attention: (input, from) => {
           const agent = agentInfo(input.agentId)
           if (!agent) return
           const { summary, ...rest } = input
@@ -236,6 +330,8 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
             agent,
             summary: attentionText(input.kind, summary),
             place: channelName(input.channelId),
+            // A request of the other computer never has "Always allow" here, whatever the caller says.
+            always: input.always && from === undefined,
           }
           const at = waiting.findIndex(
             (w) => w.agentId === item.agentId && w.callId === item.callId,
@@ -244,16 +340,22 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
           else waiting.push(item)
           // A request for attention replaces a result card at once.
           result = null
-          notify({
-            kind: item.kind,
-            serverId: item.serverId,
-            channelId: item.channelId,
-            title: item.agent.name,
-            body: summary,
-            target: item.target,
-          })
+          notify(
+            {
+              kind: item.kind,
+              serverId: item.serverId,
+              channelId: item.channelId,
+              title: from ? `${item.agent.name} · ${from}` : item.agent.name,
+              body: summary,
+              target: item.target,
+            },
+            { callId: item.callId, agentId: item.agentId },
+            at < 0,
+          )
           refresh()
         },
+        canAlways: (agentId, callId) =>
+          waiting.some((w) => w.agentId === agentId && w.callId === callId && w.always),
         clearAttention: (agentId, callId) => {
           const at = waiting.findIndex((w) => w.agentId === agentId && w.callId === callId)
           if (at < 0) return

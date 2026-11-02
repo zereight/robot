@@ -1,4 +1,5 @@
 import {
+  attentionAnswers,
   attentionIndex,
   catalogues,
   formatRunTime,
@@ -343,7 +344,7 @@ const Island = () => {
               {a().summary}
             </span>
             <div class="buttons">
-              <Show when={a().kind === "approval"}>
+              <Show when={attentionAnswers(a()).length > 0}>
                 <button
                   type="button"
                   class="primary"
@@ -352,13 +353,16 @@ const Island = () => {
                 >
                   {t("chat.tool.allow")}
                 </button>
-                <button
-                  type="button"
-                  data-testid="island-always"
-                  onClick={() => respond(a(), "always")}
-                >
-                  {t("chat.tool.always")}
-                </button>
+                {/* A request of the other computer, and a card that asks each time, have none. */}
+                <Show when={attentionAnswers(a()).includes("always")}>
+                  <button
+                    type="button"
+                    data-testid="island-always"
+                    onClick={() => respond(a(), "always")}
+                  >
+                    {t("chat.tool.always")}
+                  </button>
+                </Show>
                 <button
                   type="button"
                   data-testid="island-deny"

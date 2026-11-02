@@ -7,16 +7,23 @@ The user sets the app up the way they like in one place.
 ## Sections
 
 - **General**: language (English, Korean, or follow the system), start at login, default folder
-  for agent workspaces.
+  for agent workspaces, the step limit of a task (a whole number from 20 to 2000; the default is
+  300; see 005), "While an agent works, new messages" (see 003, "Messages during a turn"), and the
+  silent limit: how long a turn may show no sign of life before the app stops it (see 005). The
+  choices are 1, 5, 10 (default), 30 and 60 minutes, and Never.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
 - **Decision model**: the fast model for channel picks and computer use. See "Decision model".
 - **Roles**: the role lines of all agents. See "Roles".
-- **Permissions**: the rules that allow or deny steps, and the action log. See 007.
+- **Permissions**: the rules that allow or deny steps, the action log (see 007), the saved
+  secrets, and the switch "Allow saved secrets on this computer and the local network" (see
+  020).
 - **Skills**: the saved instructions that the user calls with a slash. See 017.
 - **Connections**: the outside tools that agents can use. See 018.
-- **Devices**: pairing and paired phones, see 012.
+- **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
+  that can open this computer, with the switch "Can create and change agents" for each, and the
+  computers this computer can open, see 012. Each linked computer has a sync row, see 019.
 - **Notifications**: see 015.
 - **Archive**: archived agents and channels with restore and delete.
 - **Data**: open data folder, open logs folder, export, see 014.
@@ -83,16 +90,19 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Every visible string comes from a translation catalogue with English and Korean. Korean uses
   polite informal speech.
 - Changes apply at once, without a restart.
-- Settings are local to the computer.
+- Settings are local to the computer. A linked device never changes them.
 
 ## Acceptance
 
-- Switch to Korean: every screen shows Korean with no English left except names and code.
+- Switch to Korean: every screen shows Korean with no English left except names, code, and common acronyms (API,
+  URL, VPN).
 - Switch theme: all screens change, with text contrast of at least 4.5:1 in both themes.
 - Choose "Local server" and type `http://example.com`: the app refuses the address. Type
   `http://127.0.0.1:8000`: the app accepts it.
 - Save a key for the decision model, reload the settings page: the page shows "saved" and not
   the key.
+- Change the silent limit to 30 minutes: a turn that starts after the change fails after 30 minutes
+  of silence and not after 10. Choose Never: a silent turn does not fail by itself.
 - Two agents have the role lines "Designer" and "designer": the Roles page shows one role with
   two agents. Rename it to the role line of a third agent: all three agents have one role.
 - Remove a role: its agents have an empty role line and keep their chats.

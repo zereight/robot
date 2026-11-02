@@ -5,12 +5,14 @@ import {
   ChannelCreate,
   ChannelPatch,
   ChatSend,
-  INVOKE_CHANNEL,
+  DEVICE_NAME_MAX,
+  isClientMethod,
   MESSAGE_MAX,
   MOVE_DIRECTIONS,
   MUTE_CHOICES,
   PlaceKind,
   ProviderConnect,
+  parseAddress,
   RoutineInput,
   RoutinePatch,
   type RpcInput,
@@ -22,20 +24,25 @@ import {
   SectionCreate,
   SettingsPatch,
   SIGN_IN_ID,
+  SYNC_MODES,
   UiStatePatch,
   USAGE_RANGES,
   WorkflowInput,
   WorkflowPatch,
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
-import { ipcMain } from "electron"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
+import { modelChoices } from "./link/changes.ts"
+import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
+import type { Actor } from "./services/actor.ts"
+import { CurrentActor } from "./services/actor.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
+import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
 import { Knowledge } from "./services/Knowledge.ts"
@@ -44,11 +51,13 @@ import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
+import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -80,8 +89,26 @@ const ByRuntime = Schema.Struct({
   signIn: Schema.optionalKey(Schema.NullOr(SignInId)),
 })
 const ByAgent = Schema.Struct({ agentId: Schema.String })
+const FileOfMessage = Schema.Struct({
+  agentId: Schema.String,
+  path: Schema.String.check(Schema.isMaxLength(300)),
+  size: Schema.Number,
+  messageId: Schema.String,
+})
 const MessageText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MESSAGE_MAX))
 const done = Effect.as(undefined)
+const ByLink = Schema.Struct({ linkId: Schema.String })
+
+/**
+ * Answers an approval or a question card. A card of a task that runs on the other computer of a
+ * sync pair (spec 019) goes to that computer, as the answer of a client does.
+ */
+const answerCard = (agentId: string, callId: string, answer: string) =>
+  Sync.use((s) => s.respond(agentId, callId, answer)).pipe(
+    Effect.flatMap((sent) =>
+      sent ? Effect.void : Tools.use((t) => t.respond(agentId, callId, answer)),
+    ),
+  )
 
 const applySystemSettings = Effect.fn("applySystemSettings")(function* (
   patch: typeof SettingsPatch.Type,
@@ -122,7 +149,10 @@ export const handlers: Handlers = {
   "settings.get": () => SettingsStore.use((s) => s.get),
   "settings.update": (input) =>
     Effect.gen(function* () {
-      const patch = yield* decode(SettingsPatch)(input)
+      const decoded = yield* decode(SettingsPatch)(input)
+      // The device name and the switch go through "devices.update", which also opens or closes
+      // the listener. The saved port is the app's own.
+      const { deviceName: _name, acceptLinks: _accept, linkPort: _port, ...patch } = decoded
       const next = yield* SettingsStore.use((s) => s.update(patch))
       yield* applySystemSettings(patch)
       if (patch.island !== undefined) yield* Notifier.use((n) => Effect.sync(() => n.refresh()))
@@ -144,7 +174,170 @@ export const handlers: Handlers = {
       yield* Effect.promise(() => p.openPath(p.dataDir))
       return undefined
     }),
-  "servers.list": () => Servers.use((s) => s.list),
+  "servers.list": () =>
+    Effect.gen(function* () {
+      const devices = yield* Devices
+      const local = yield* Servers.use((s) => s.list)
+      const linked = yield* Remote.use((r) => Effect.succeed(r.servers()))
+      // This computer shows under the name that linked devices see.
+      return [
+        ...local.map((s) => (s.kind === "local" ? { ...s, name: devices.deviceName() } : s)),
+        ...linked,
+      ]
+    }),
+  "servers.retry": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Remote.use((r) => Effect.sync(() => r.retry(serverId)))),
+      done,
+    ),
+  "devices.get": () =>
+    Effect.gen(function* () {
+      const devices = yield* Devices
+      const remote = yield* Remote
+      return { ...devices.state(), servers: remote.entries() }
+    }),
+  "devices.update": (input) =>
+    decode(
+      Schema.Struct({
+        name: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(DEVICE_NAME_MAX))),
+        accept: Schema.optionalKey(Schema.Boolean),
+      }),
+    )(input).pipe(
+      Effect.flatMap((patch) => Devices.use((d) => d.update(patch))),
+      Effect.flatMap((state) =>
+        Remote.use((r) => Effect.succeed({ ...state, servers: r.entries() })),
+      ),
+    ),
+  "devices.pair.start": () => Devices.use((d) => d.pairStart()),
+  "devices.pair.get": () => Devices.use((d) => Effect.sync(() => d.pairing())),
+  "devices.pair.stop": () => Devices.use((d) => Effect.sync(() => d.pairStop())),
+  "devices.join.list": () => Devices.use((d) => Effect.sync(() => d.joins())),
+  "devices.join.decide": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        allow: Schema.Boolean,
+        canChange: Schema.optionalKey(Schema.Boolean),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ id, allow, canChange }) =>
+        Devices.use((d) => d.decide(id, allow, canChange === true)),
+      ),
+      done,
+    ),
+  "devices.client.remove": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Devices.use((d) => d.removeClient(id))),
+      done,
+    ),
+  "devices.client.setChange": (input) =>
+    decode(Schema.Struct({ id: Schema.String, canChange: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, canChange }) => Devices.use((d) => d.setCanChange(id, canChange))),
+      done,
+    ),
+  "devices.server.remove": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Remote.use((r) => r.remove(id))),
+      done,
+    ),
+  "devices.server.setAddresses": (input) =>
+    decode(Schema.Struct({ id: Schema.String, addresses: Schema.Array(Schema.String) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, addresses }) =>
+        Effect.gen(function* () {
+          const list = addresses.map((a) => a.trim()).filter(Boolean)
+          if (list.length === 0 || list.length > 16 || list.some((a) => !parseAddress(a))) {
+            return yield* new AppError({ code: "invalid_address" })
+          }
+          const devices = yield* Devices
+          const remote = yield* Remote
+          yield* devices.setAddresses(id, list)
+          const entry = remote.entries().find((e) => e.id === id)
+          if (entry) remote.retry(entry.serverId)
+          return remote.entries().find((e) => e.id === id) ?? entry
+        }),
+      ),
+      Effect.flatMap((entry) =>
+        entry ? Effect.succeed(entry) : Effect.fail(new AppError({ code: "server_not_found" })),
+      ),
+    ),
+  "devices.connect.probe": (input) =>
+    decode(
+      Schema.Struct({
+        link: Schema.optionalKey(Schema.String),
+        address: Schema.optionalKey(Schema.String),
+        code: Schema.optionalKey(Schema.String),
+      }),
+    )(input).pipe(Effect.flatMap((v) => Remote.use((r) => r.probe(v)))),
+  "devices.connect.finish": (input) =>
+    decode(Schema.Struct({ session: Schema.String, twoWay: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ session, twoWay }) => Remote.use((r) => r.finish(session, twoWay))),
+    ),
+  "devices.connect.cancel": (input) =>
+    decode(Schema.Struct({ session: Schema.String }))(input).pipe(
+      Effect.flatMap(({ session }) => Remote.use((r) => r.cancel(session))),
+      done,
+    ),
+  "devices.nearby": () => Devices.use((d) => d.nearby()),
+  "sync.list": () => Sync.use((s) => Effect.sync(() => s.statuses())),
+  "sync.preview": (input) =>
+    decode(ByLink)(input).pipe(Effect.flatMap(({ linkId }) => Sync.use((s) => s.preview(linkId)))),
+  "sync.start": (input) =>
+    decode(Schema.Struct({ linkId: Schema.String, mode: Schema.Literals(SYNC_MODES) }))(input).pipe(
+      Effect.flatMap(({ linkId, mode }) => Sync.use((s) => s.start(linkId, mode))),
+    ),
+  "sync.cancelOffer": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.cancelOffer(linkId))),
+      done,
+    ),
+  "sync.pause": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.setPaused(linkId, true))),
+      done,
+    ),
+  "sync.resume": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.setPaused(linkId, false))),
+      done,
+    ),
+  "sync.stop": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.stop(linkId))),
+      done,
+    ),
+  "sync.dismiss": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.dismiss(linkId))),
+      done,
+    ),
+  "sync.requests": () => Sync.use((s) => Effect.sync(() => s.requests())),
+  "sync.decide": (input) =>
+    decode(Schema.Struct({ id: Schema.String, allow: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, allow }) => Sync.use((s) => s.decide(id, allow))),
+      done,
+    ),
+  "sync.changes": () => Sync.use((s) => Effect.sync(() => s.changes())),
+  "sync.guard": () => Sync.use((s) => Effect.sync(() => s.guard())),
+  "sync.guard.decide": (input) =>
+    decode(Schema.Struct({ remove: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ remove }) => Sync.use((s) => s.decideGuard(remove))),
+      done,
+    ),
+  "sync.file.here": (input) =>
+    decode(FileOfMessage)(input).pipe(
+      Effect.flatMap(({ agentId, path, size, messageId }) =>
+        Sync.use((s) => Effect.succeed(s.fileHere(agentId, path, size, messageId))),
+      ),
+    ),
+  "sync.file.open": (input) =>
+    decode(FileOfMessage)(input).pipe(
+      Effect.flatMap((file) => Sync.use((s) => s.openFile(file))),
+      done,
+    ),
+  // Saving a file of a linked server is carried out over the link, see `Remote.invoke`.
+  "attachments.save": () => Effect.fail(new AppError({ code: "not_allowed" })),
   "places.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Places.use((p) => p.list(serverId))),
@@ -216,6 +409,7 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
       Effect.flatMap(({ id, dataUrl }) => Agents.use((a) => a.setFaceImage(id, dataUrl))),
     ),
+  "models.available": () => modelChoices,
   "agentFile.export": (input) =>
     decode(Schema.Struct({ serverId: Schema.String, agentIds: Schema.Array(Schema.String) }))(
       input,
@@ -285,7 +479,7 @@ export const handlers: Handlers = {
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Tasks.use((t) => t.get(id)))),
   "tasks.stop": (input) =>
     decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Tasks.use((t) => t.stop(id))),
+      Effect.flatMap(({ id }) => Tasks.use((t) => t.stopAny(id))),
       done,
     ),
   "tasks.retry": (input) =>
@@ -431,9 +625,7 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
       input,
     ).pipe(
-      Effect.flatMap(({ agentId, callId, answer }) =>
-        Tools.use((t) => t.respond(agentId, callId, answer)),
-      ),
+      Effect.flatMap(({ agentId, callId, answer }) => answerCard(agentId, callId, answer)),
       done,
     ),
   "browser.state": (input) =>
@@ -491,6 +683,8 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => Routines.use((r) => r.runNow(id))),
       done,
     ),
+  "routines.runHere": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Routines.use((r) => r.runHere(id)))),
   "routines.calendar": (input) =>
     decode(Schema.Struct({ serverId: Schema.String, from: Schema.Number, to: Schema.Number }))(
       input,
@@ -518,6 +712,8 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ id: Schema.String, triggerText: Schema.optionalKey(Schema.String) }))(
       input,
     ).pipe(Effect.flatMap(({ id, triggerText }) => Workflows.use((w) => w.run(id, triggerText)))),
+  "workflows.runHere": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Workflows.use((w) => w.runHere(id)))),
   "workflows.stop": (input) =>
     decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
       Effect.flatMap(({ runId }) => Workflows.use((w) => w.stop(runId))),
@@ -569,8 +765,11 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
       input,
     ).pipe(
+      // The island takes "Always allow" only for a request that offers it. Else it is one "Allow".
       Effect.flatMap(({ agentId, callId, answer }) =>
-        Tools.use((t) => t.respond(agentId, callId, answer)),
+        Notifier.use((n) =>
+          Effect.succeed(answer === "always" && !n.canAlways(agentId, callId) ? "allow" : answer),
+        ).pipe(Effect.flatMap((safe) => answerCard(agentId, callId, safe))),
       ),
       done,
     ),
@@ -622,7 +821,12 @@ export const handlers: Handlers = {
     decode(ChatSend)(input).pipe(Effect.flatMap((data) => Chat.use((c) => c.send(data)))),
   "chat.stop": (input) =>
     decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) => Chat.use((c) => c.stop(agentId))),
+      Effect.flatMap(({ agentId }) =>
+        // A reply that runs on the other computer of a sync pair is stopped there (spec 019).
+        Chat.use((c) => c.stop(agentId)).pipe(
+          Effect.andThen(Tasks.use((t) => t.stopRemoteFor(agentId))),
+        ),
+      ),
       done,
     ),
   "chat.retry": (input) =>
@@ -665,10 +869,24 @@ export const runRequest = async (
   runtime: ManagedRuntime.ManagedRuntime<Services, never>,
   method: string,
   input: unknown,
+  actor: Actor | null = null,
 ): Promise<RpcResult<unknown>> => {
-  const handler = (handlers as Record<string, Handler<RpcMethod> | undefined>)[method]
+  // A linked device reaches only what the link lists (spec 012). This holds also when a caller of
+  // this function forgets to check, so a method that is not listed never gets to a window handler.
+  if (actor && !isClientMethod(method)) {
+    return { ok: false, error: { code: "not_allowed", message: "Not allowed" } }
+  }
+  const handler =
+    (actor ? linkHandlers[method] : undefined) ??
+    (handlers as Record<string, Handler<RpcMethod> | undefined>)[method]
   if (!handler) return { ok: false, error: { code: "unknown_method", message: method } }
-  const exit = await runtime.runPromiseExit(handler(input as never))
+  // The device that asks is known to the handlers: they record "from <device>" with it.
+  // A linked device names its files by the tokens of its uploads, never by a path.
+  const run =
+    actor && method === "chat.send"
+      ? withUploads(actor, input, (mapped) => handler(mapped as never))
+      : handler(input as never)
+  const exit = await runtime.runPromiseExit(Effect.provideService(run, CurrentActor, actor))
   if (Exit.isSuccess(exit)) return { ok: true, value: exit.value }
   const failure = exit.cause.reasons.find(Cause.isFailReason)
   if (failure) {
@@ -679,8 +897,34 @@ export const runRequest = async (
   return { ok: false, error: { code: "internal", message: "Unexpected error" } }
 }
 
-export const registerRpc = (runtime: ManagedRuntime.ManagedRuntime<Services, never>) => {
-  ipcMain.handle(INVOKE_CHANNEL, (_event, method: string, input: unknown) =>
-    runRequest(runtime, method, input),
+/**
+ * Lets requests of linked devices run the same handlers, with the device as the actor. The app and
+ * the unit tests both call this when they make their runtime.
+ */
+export const bindLinkDispatcher = (runtime: ManagedRuntime.ManagedRuntime<Services, never>) =>
+  runtime.runPromise(
+    Devices.use((d) =>
+      Effect.sync(() =>
+        d.bindDispatcher((method, input, actor) => runRequest(runtime, method, input, actor)),
+      ),
+    ),
   )
+
+/**
+ * A call of the window. A call for a linked server goes over the link; when the id is not a linked
+ * server (it is this computer), the call runs here.
+ */
+export const runWindowRequest = async (
+  runtime: ManagedRuntime.ManagedRuntime<Services, never>,
+  method: string,
+  input: unknown,
+  server?: string,
+): Promise<RpcResult<unknown>> => {
+  if (server && typeof server === "string") {
+    const remote = await runtime.runPromise(
+      Remote.use((r) => Effect.promise(() => r.invoke(server, method, input))),
+    )
+    if (remote.ok || remote.error.code !== "server_not_found") return remote
+  }
+  return runRequest(runtime, method, input)
 }

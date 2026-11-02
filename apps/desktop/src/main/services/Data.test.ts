@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { Effect, ManagedRuntime } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
@@ -15,6 +16,7 @@ import { Secrets } from "./Secrets.ts"
 import { Sections } from "./Sections.ts"
 import { Servers } from "./Servers.ts"
 import { testPlatform } from "./testing.ts"
+import { Workflows } from "./Workflows.ts"
 
 const KEY = "sk-export-test-0123456789abcdef"
 
@@ -289,6 +291,93 @@ describe("export and import", () => {
       ["Research", ["Ada"]],
       ["Ops", []],
     ])
+  })
+
+  test("the notes and steps of a workflow come back; the links, the sync records and the computer of a workflow stay out of the archive (spec 014, 012, 019)", async () => {
+    const out = join(testPlatform().dataDir, "export-link.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const flow = await a.run(
+      Workflows.use((w) =>
+        w.create({
+          serverId: local.id,
+          name: "Flow",
+          trigger: { kind: "manual" },
+          steps: [{ id: "n", kind: "notify", name: "Tell me", x: 0, y: 0, title: "Done" }],
+          edges: [],
+          notes: [{ id: "note-1", text: "Keep it short", tone: "blue", x: 3, y: 4 }],
+        }),
+      ),
+    )
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    db.run(
+      `INSERT INTO device_link (id, name, kind, public_key, position, created_at)
+       VALUES ('dev-x', 'Other computer', 'computer', 'PUBLIC-KEY-OF-THE-LINK', 0, 1)`,
+    )
+    db.run(
+      `INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+       VALUES (1, 'dev-x', 'Other computer', 'asker', 'merge', 'live', 1)`,
+    )
+    db.run("INSERT INTO sync_state (key, value) VALUES ('clock', 'state-of-the-pair')")
+    db.run("INSERT INTO sync_alias (peer_id, local_id) VALUES ('peer-agent', 'local-agent')")
+    db.run(
+      "INSERT INTO sync_change (at, kind, item_id, name, action) VALUES (1, 'agent', 'a', 'Ada', 'added')",
+    )
+    db.run("UPDATE workflow SET runs_on = 'dev-x'")
+    await a.run(Data.use((d) => d.export()))
+
+    const entries = unzipSync(readFileSync(out))
+    const file = join(testPlatform().dataDir, "exported.db")
+    writeFileSync(file, entries["robot.db"] ?? new Uint8Array())
+    expect(Buffer.from(entries["robot.db"] ?? []).includes("PUBLIC-KEY-OF-THE-LINK")).toBe(false)
+    const exported = new DatabaseSync(file)
+    try {
+      for (const table of [
+        "device_link",
+        "sync_pair",
+        "sync_item",
+        "sync_field",
+        "sync_tomb",
+        "sync_out",
+        "sync_dirty",
+        "sync_seen",
+        "sync_alias",
+        "sync_change",
+        "sync_state",
+      ]) {
+        const row = exported.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }
+        expect(row.n, table).toBe(0)
+      }
+      const wf = exported.prepare("SELECT runs_on, notes FROM workflow").get() as {
+        runs_on: string | null
+        notes: string
+      }
+      expect(wf.runs_on).toBeNull()
+      expect(JSON.parse(wf.notes)).toHaveLength(1)
+    } finally {
+      exported.close()
+    }
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const restored = (await b.run(Workflows.use((w) => w.list(bLocal.id)))).find(
+      (w) => w.id === flow.id,
+    )
+    expect(restored?.notes).toEqual([
+      { id: "note-1", text: "Keep it short", tone: "blue", x: 3, y: 4 },
+    ])
+    expect(restored?.steps.map((x) => x.kind)).toEqual(["notify"])
+    // It runs here: the computer that it belonged to is not in the archive.
+    expect(restored?.runsOn).toBeNull()
+    const bdb = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(bdb.get<{ n: number }>("SELECT COUNT(*) AS n FROM device_link")?.n).toBe(0)
+    expect(bdb.get<{ n: number }>("SELECT COUNT(*) AS n FROM sync_pair")?.n).toBe(0)
   })
 
   test("import refuses an app that already has an agent, and a file that is not an export", async () => {

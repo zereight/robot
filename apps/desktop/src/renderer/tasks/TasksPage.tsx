@@ -17,6 +17,7 @@ import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -67,6 +68,20 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 {t(`tasks.state.${d().task.state}` as MessageKey)}
               </span>
             </p>
+            <Show when={d().task.originName !== null}>
+              <p class={styles.meta} data-testid="task-detail-computer">
+                {t("tasks.detail.computer", {
+                  name: d().task.originName || t("sync.anotherComputer"),
+                })}
+              </p>
+            </Show>
+            <Show when={d().task.waitsFor}>
+              {(name) => (
+                <p class={styles.meta} data-testid="task-detail-waits">
+                  {t("tasks.waitsFor", { name: name() })}
+                </p>
+              )}
+            </Show>
             <Show when={d().task.retryOf}>
               <p class={styles.meta}>{t("tasks.retryOf")}</p>
             </Show>
@@ -115,7 +130,11 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   {t("tasks.stop")}
                 </Button>
               </Show>
-              <Show when={d().task.state === "failed" || d().task.state === "cancelled"}>
+              <Show
+                when={
+                  !ui.linked() && (d().task.state === "failed" || d().task.state === "cancelled")
+                }
+              >
                 <Button
                   onClick={() => act(() => call("tasks.retry", { id: d().task.id }))}
                   data-testid="task-retry"
@@ -144,11 +163,12 @@ export const TasksPage = () => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
+  const devices = useDevices()
   const [filter, setFilter] = createSignal<TaskFilter>({})
   const [openId, setOpenId] = createSignal<string>()
   const [tasks, { refetch }] = createResource(
     () => ui.server()?.id,
-    (serverId) => call("tasks.list", { serverId }),
+    (serverId) => call("tasks.list", { serverId }).catch(() => []),
     { initialValue: [] },
   )
   onCleanup(
@@ -157,6 +177,25 @@ export const TasksPage = () => {
     }),
   )
   const shown = createMemo(() => filterTasks(tasks(), filter()))
+  /** The names of the other computers that ran tasks. They show when this computer syncs. */
+  const computers = createMemo(() => [
+    ...new Set(tasks().flatMap((task) => (task.originName === null ? [] : [task.originName]))),
+  ])
+  const showComputers = () => computers().length > 0 || devices.sync.active() !== undefined
+  const computerOf = (task: Task) =>
+    task.originName === null
+      ? t("tasks.computer.here")
+      : task.originName || t("sync.anotherComputer")
+  const setComputer = (value: string) =>
+    setFilter({
+      ...filter(),
+      computer:
+        value === ""
+          ? undefined
+          : value === "here"
+            ? "here"
+            : { name: value.slice("name:".length) },
+    })
   const set = <K extends keyof TaskFilter>(key: K, value: TaskFilter[K] | "") =>
     setFilter({ ...filter(), [key]: value === "" ? undefined : value })
 
@@ -200,6 +239,24 @@ export const TasksPage = () => {
             </For>
           </select>
         </label>
+        <Show when={showComputers()}>
+          <label class={styles.filter}>
+            <span>{t("tasks.filter.computer")}</span>
+            <select
+              class={styles.select}
+              onChange={(e) => setComputer(e.currentTarget.value)}
+              data-testid="tasks-filter-computer"
+            >
+              <option value="">{t("tasks.filter.all")}</option>
+              <option value="here">{t("tasks.computer.here")}</option>
+              <For each={computers()}>
+                {(name) => (
+                  <option value={`name:${name}`}>{name || t("sync.anotherComputer")}</option>
+                )}
+              </For>
+            </select>
+          </label>
+        </Show>
         <input
           class={styles.search}
           type="search"
@@ -232,6 +289,9 @@ export const TasksPage = () => {
                 <th scope="col">{t("tasks.col.agent")}</th>
                 <th scope="col">{t("tasks.col.label")}</th>
                 <th scope="col">{t("tasks.col.source")}</th>
+                <Show when={showComputers()}>
+                  <th scope="col">{t("tasks.col.computer")}</th>
+                </Show>
                 <th scope="col">{t("tasks.col.state")}</th>
                 <th scope="col" class={styles.num}>
                   {t("tasks.col.duration")}
@@ -254,10 +314,20 @@ export const TasksPage = () => {
                       </button>
                     </th>
                     <td>{t(`tasks.source.${task.source}` as MessageKey)}</td>
+                    <Show when={showComputers()}>
+                      <td data-testid="task-computer">{computerOf(task)}</td>
+                    </Show>
                     <td>
                       <span class={styles.state} data-state={task.state} data-testid="task-state">
                         {t(`tasks.state.${task.state}` as MessageKey)}
                       </span>
+                      <Show when={task.waitsFor}>
+                        {(name) => (
+                          <div class={styles.muted} data-testid="task-waits">
+                            {t("tasks.waitsFor", { name: name() })}
+                          </div>
+                        )}
+                      </Show>
                     </td>
                     <td class={styles.num}>{duration(task)}</td>
                   </tr>

@@ -107,6 +107,11 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
                   {w.running ? ` · ${t("workflows.runState.running")}` : ""}
                   {w.enabled ? "" : ` · ${t("workflows.off")}`}
                 </span>
+                <Show when={w.runsOn !== null}>
+                  <span class={styles.hint} data-testid="wf-runs-on">
+                    {t("sync.runsOn", { name: w.runsOn || t("sync.anotherComputer") })}
+                  </span>
+                </Show>
               </div>
               <Switch
                 label={t("workflows.enabled.label", { name: w.name })}
@@ -114,13 +119,25 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
                 onChange={(enabled) => call("workflows.update", { id: w.id, patch: { enabled } })}
                 testId="wf-enabled"
               />
-              <Button
-                onClick={() => call("workflows.run", { id: w.id })}
-                disabled={w.running}
-                data-testid="wf-card-run"
+              <Show
+                when={w.runsOn === null}
+                fallback={
+                  <Button
+                    onClick={() => call("workflows.runHere", { id: w.id })}
+                    data-testid="wf-run-here"
+                  >
+                    {t("sync.runHere")}
+                  </Button>
+                }
               >
-                {t("workflows.run")}
-              </Button>
+                <Button
+                  onClick={() => call("workflows.run", { id: w.id })}
+                  disabled={w.running}
+                  data-testid="wf-card-run"
+                >
+                  {t("workflows.run")}
+                </Button>
+              </Show>
               <Button onClick={() => props.onOpen(w)} data-testid="wf-open">
                 {t("workflows.open")}
               </Button>

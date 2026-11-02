@@ -8,11 +8,16 @@ new user knows where to look.
 ## Concepts
 
 - **Server rail**: a narrow column at the far left edge of the window. One round tile per server,
-  then an add button. The selected server has a short bar at its left side.
-- **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, workflows,
-  tasks, usage. At the bottom: help and settings.
+  then an add button. The selected server has a short bar at its left side. The first tile is
+  this computer. Tiles of linked computers (012) follow in the order of pairing. A linked tile
+  shows the first letter of the computer's name and the connection state (012).
+- **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
+  (see 021), workflows, tasks, usage. At the bottom: help and settings. The Today button shows a
+  badge with the number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
+  above 99. It hides when a linked server is on the screen.
 - **Place list**: a column beside the rail. A search field at the top, then sections. A section has
-  a name and its places. A place is an agent (direct chat) or a channel.
+  a name and its places. A place is an agent (direct chat) or a channel. The search field also
+  searches messages (see "Message search").
 - **Built-in sections**: Channels, then Agents. They always exist. The user cannot rename,
   delete or move them.
 - **User section**: a group that the user makes inside Channels or inside Agents. It holds places
@@ -23,11 +28,16 @@ new user knows where to look.
 ## Flows
 
 1. The user clicks a server tile. The place list and the conversation change to that server.
+   On a linked computer, the places and the pages work as 012 says. The plus buttons on the
+   sections show only when that computer lets this device create and change agents.
 2. The user clicks a place. The conversation opens it. The place row shows as selected.
-3. The user types in search. The list shows only places whose name matches. Escape clears it.
+3. The user types in search. The list shows only places whose name matches, and a group of
+   matching messages (see "Message search"). Escape clears it.
 4. The user collapses a section by clicking its name. The app remembers this per section.
 5. The user hides or shows the activity panel with a header button. The app remembers this.
 6. The user drags the edge of the place list to change its width, between 200 and 400 px.
+7. The user clicks the add button on the rail. A dialog opens: "Connect to a computer" (012).
+   The user can also remove a linked tile with its context menu.
 
 ## User sections
 
@@ -78,10 +88,40 @@ The Channels section holds channel sections. The Agents section holds agent sect
   same ones. The open or closed state of a section belongs to the device (step 4 of "Flows"
   above).
 - Section names are text of the user. They are not translated.
-- Search (step 3 of "Flows" above) looks at place names only. A section with no match hides, and
-  a section with a match opens, also when it is collapsed.
+- The filter of places (step 3 of "Flows" above) looks at place names only. Messages have their
+  own group (see "Message search"). A section with no match hides, and a section with a match
+  opens, also when it is collapsed.
 - Up and down in the list move through the places that show, in the order shown. A collapsed
   section has no places that show.
+
+## Message search
+
+- The search field also looks inside messages. Under the sections, a group named "Messages"
+  lists the messages that match. The group shows only when the text has at least 2 characters
+  and at least one message matches.
+- The search covers the text of sent messages of the user and of agents, in direct chats (every
+  thread) and in channels, on the server on screen. It does not cover tool cards, thinking,
+  files, memory, queued messages, or places that are archived.
+- A message matches when it holds every word of the text. A word matches as a part of a word, so
+  "bud" finds "budget", and the last word matches while the user still types it. The order of
+  the words and the case of the letters do not matter. The app uses the first 6 words and ignores
+  the rest.
+- The first 20 hits show within 1 second when the server holds 50,000 messages.
+- Hits come newest first, 20 at a time. While more hits exist, the last row of the group is
+  "Show more". The app finds at most 200 hits. If more messages match, the group ends with a line
+  that asks the user to type more words.
+- A hit row shows the face or the `#` mark and the name of the place, the time, and a short
+  piece of the message around the first matching word, at most 120 characters, with "…" at a cut
+  end. The matching words are marked. The piece is plain text. The app does not read Markdown or HTML in it.
+- A click on a hit opens the place, and the thread that holds the message. The chat scrolls to
+  the message and flashes it, in the same way as a click on a quote (see 003). The "Back"
+  control returns to where the user was.
+- If the search runs for more than 300 ms, the group shows a muted "Searching…" line. If no place
+  and no message match, the list shows a muted "Nothing found." line.
+- On a linked server (012), the server runs the search. While the link is offline, the app
+  searches the cache of saved messages only, and a muted line says so.
+- When two computers sync (019), each computer searches its own copy.
+- The app keeps no list of past search texts. No log holds a search text (014).
 
 ## Place rows
 
@@ -105,6 +145,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 ## States
 
 - No server connected: the rail shows only the add button; the main area explains how to start.
+- A linked server that is offline: its tile is muted, and the place list shows the cached places
+  (012).
 - No places in a section: the section shows a short muted line, not an empty gap.
 
 ## Rules
@@ -116,7 +158,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 ## Acceptance
 
 - Selecting a server, then a place, opens the right conversation; the selection survives a
-  restart.
+  restart. This also holds for a linked computer.
+- The add button opens the connect dialog.
 - At 760 px width, the activity panel is hidden and the rail is 56 px wide.
 - Make the agent section "Research", then use "Move to section" on one agent: the agent shows
   under "Research" and not among the other agents. After a restart, it still does.
@@ -130,3 +173,11 @@ The Channels section holds channel sections. The Agents section holds agent sect
   No agent is deleted.
 - Type part of an agent name that is in a collapsed user section: the section opens and shows the
   agent. Escape clears the search and the section collapses again.
+- Send "The budget is 4200 euros" to an agent. Search "euros budget": the group "Messages" shows
+  the message with both words marked. A click opens the chat at that message and flashes it.
+  "Back" returns to the earlier place.
+- Search one letter: the group "Messages" does not show. Send a message that holds the text `<b>bold</b>`.
+  Search "bold": the hit shows the tags as plain text and does not make the word bold.
+- Archive the agent: its messages do not match any more. Restore it: they match again.
+- Cut the link to a linked server and search: only cached messages match, and a muted line says
+  this.

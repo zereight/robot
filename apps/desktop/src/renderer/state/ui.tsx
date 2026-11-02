@@ -11,6 +11,7 @@ import {
   type UiStatePatch,
 } from "@robot/shared"
 import {
+  createComputed,
   createContext,
   createEffect,
   createMemo,
@@ -21,15 +22,36 @@ import {
   useContext,
 } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
-import { call } from "../lib/rpc.ts"
+import { call, setActiveServer } from "../lib/rpc.ts"
+import { linkEpoch } from "./link.ts"
 
 export const loadUi = async () => {
   const [ui, servers] = await Promise.all([call("ui.get"), call("servers.list")])
   return { ui, servers }
 }
 
-const createUiState = (initial: UiState, servers: readonly Server[]) => {
+const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
   const [ui, setUi] = createStore<UiState>(initial)
+  // The linked servers come and go, and change state. A store keeps the rows (and their focus).
+  const [servers, setServers] = createStore<Server[]>([...initialServers])
+  const states = new Map<string, string | undefined>()
+  for (const s of initialServers) states.set(s.id, s.state)
+  const reloadServers = async () => {
+    const next = await call("servers.list")
+    // A server that came online again may have changed while it was away: open views read again.
+    for (const s of next) {
+      if (states.get(s.id) !== "online" && s.state === "online" && states.has(s.id)) {
+        linkEpoch.bump()
+      }
+      // A server that removed this device: the open views drop what they hold of it.
+      if (states.get(s.id) !== "not_allowed" && s.state === "not_allowed" && states.has(s.id)) {
+        linkEpoch.bump()
+      }
+      states.set(s.id, s.state)
+    }
+    setServers(reconcile([...next], { key: "id" }))
+  }
+  onCleanup(window.robot.on("servers.changed", () => void reloadServers()))
   const [width, setWidth] = createSignal(window.innerWidth)
   const onResize = () => setWidth(window.innerWidth)
   window.addEventListener("resize", onResize)
@@ -42,11 +64,16 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
   }
 
   const server = createMemo(() => servers.find((s) => s.id === ui.serverId) ?? servers[0])
+  // Calls that a linked server answers go to that server (see `call`).
+  createComputed(() => setActiveServer(server()?.id))
+  const localServer = createMemo(() => servers.find((s) => s.kind === "local"))
+  /** True for a computer that this one opens over the link, and is not online now. */
+  const serverOffline = () => server()?.kind === "linked" && server()?.state !== "online"
   // A store updated by id, so rows keep their elements (and focus) when the list reloads.
   const [sectionStore, setSectionStore] = createStore<{ list: PlaceSection[] }>({ list: [] })
   const [fetched, { refetch: refetchPlaces }] = createResource(
     () => server()?.id,
-    (serverId) => call("places.list", { serverId }),
+    (serverId) => call("places.list", { serverId }).catch(() => []),
   )
   createEffect(() => {
     const next = fetched()
@@ -67,6 +94,8 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
   const [newSectionKind, setNewSectionKind] = createSignal<PlaceKind>()
   /** A call to the server for the sections. A failure only reloads the list: it was stale. */
   const sectionCall = async (run: () => Promise<unknown>) => {
+    // The sections of a linked server are read only. These calls would change this computer.
+    if (server()?.kind === "linked") return
     try {
       await run()
     } catch {
@@ -83,6 +112,15 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     ui,
     servers,
     server,
+    /** This computer, also when a linked server is open. Settings about this computer use it. */
+    localServer,
+    linked: () => server()?.kind === "linked",
+    /**
+     * True when the user can create and change agents and channels of the open server: always on
+     * this computer, and on a linked server only while it is online and lets this device (012).
+     */
+    canChange: () => server()?.kind !== "linked" || server()?.canChange === true,
+    serverOffline,
     sections,
     refetchPlaces,
     place,
@@ -93,9 +131,10 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     /** The panel shows when the user wants it and the window is wide enough. */
     activityPanelVisible: () => ui.activityPanel && !narrow(),
     selectServer: (serverId: string) => update({ serverId }),
-    selectPlace: (ref: PlaceRef) => {
-      const id = server()?.id
-      if (id) update({ places: { ...ui.places, [id]: ref }, page: "chats" })
+    /** Opens a place. A notification names its server; without one, the server on screen. */
+    selectPlace: (ref: PlaceRef, serverId?: string) => {
+      const id = serverId ?? server()?.id
+      if (id) update({ serverId: id, places: { ...ui.places, [id]: ref }, page: "chats" })
     },
     selectPage: (page: Page) => update({ page }),
     toggleSection: (sectionId: string) =>
@@ -114,6 +153,7 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
       ),
     /** Opens the name box of a new section in the list of a kind. It opens a closed list first. */
     startNewSection: (kind: PlaceKind) => {
+      if (server()?.kind === "linked") return
       const builtIn = builtInSection(kind)
       if (ui.collapsed.includes(builtIn))
         update({ collapsed: ui.collapsed.filter((id) => id !== builtIn) })
@@ -123,12 +163,13 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     /** Makes a section. A refused name throws, so the name box can show why. */
     createSection: async (kind: PlaceKind, name: string) => {
       const serverId = server()?.id
-      if (!serverId) return
+      if (!serverId || server()?.kind === "linked") return
       await call("sections.create", { serverId, kind, name })
       setNewSectionKind(undefined)
     },
     /** A refused name throws, so the name box can show why. */
     renameSection: async (id: string, name: string) => {
+      if (server()?.kind === "linked") return
       await call("sections.rename", { id, name })
     },
     moveSection: (id: string, direction: MoveDirection) =>

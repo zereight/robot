@@ -22,6 +22,7 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { Notifier } from "./Notifier.ts"
 import { Providers, secretKey } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
@@ -625,6 +626,9 @@ describe("files are the truth", () => {
     await s.save("Alpha")
     const events = s.t.events
     const before = events.filter((e) => e.event === "knowledge.changed").length
+    // The system starts a watcher a moment after `watch` returns. A file that is written in that
+    // moment is not announced (seen on macOS), so the test lets the watcher start first.
+    await Bun.sleep(100)
     writeFileSync(join(s.folder, "Beta.md"), "# Beta\n\nNew.\n")
     await until(() => events.filter((e) => e.event === "knowledge.changed").length > before, 3000)
     expect((await s.list()).articles.map((a) => a.title)).toEqual(["Alpha", "Beta"])
@@ -1169,7 +1173,16 @@ describe("the first save in a workspace that the user chose", () => {
     await s.send(call("write_article", { title: "Alpha", body: "x" }))
     const ask = await s.waitingCard()
     // The card names the folder and has no "Always allow".
-    expect(ask).toEqual({ kind: "approval", summary: join(chosen, "Knowledge"), once: true })
+    // The card also holds the time when the agent asked (spec 007).
+    expect(ask).toEqual({
+      kind: "approval",
+      summary: join(chosen, "Knowledge"),
+      once: true,
+      askedAt: expect.any(Number),
+    })
+    // The island offers no "Always allow" either: the answer would deny the step.
+    const island = await s.run(Notifier.use((n) => Effect.sync(() => n.island().waiting[0])))
+    expect(island).toMatchObject({ kind: "approval", always: false })
     expect(existsSync(join(chosen, "Knowledge"))).toBe(false)
     await s.respond("deny")
     await s.finished()
@@ -1221,6 +1234,7 @@ describe("the first save in a workspace that the user chose", () => {
       kind: "approval",
       summary: join(chosen, "Knowledge"),
       once: true,
+      askedAt: expect.any(Number),
     })
     // "always" is not a choice of this card: it does not allow.
     await s.respond("always")
