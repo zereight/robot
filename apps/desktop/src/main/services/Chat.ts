@@ -61,7 +61,7 @@ import { AppError } from "./errors.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
-import { Providers } from "./Providers.ts"
+import { Providers, storedFailure } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
 import { closing, turnWatch } from "./silence.ts"
@@ -259,6 +259,12 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       ...(existing?.kind === "tool" && existing.answeredInChat ? { answeredInChat: true } : {}),
       ...(existing?.kind === "tool" && existing.secret ? { secret: existing.secret } : {}),
       ...(existing?.kind === "tool" && existing.settings ? { settings: existing.settings } : {}),
+      // A step that the level refused keeps its mark, so the card says why (spec 007).
+      ...(event.state !== "running" && event.refused
+        ? { refused: event.refused }
+        : existing?.kind === "tool" && existing.refused
+          ? { refused: existing.refused }
+          : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -850,6 +856,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             origin: { kind: "agent", id: agentId, messageId: reply.id },
             onDecision: (callId, answer, by) =>
               changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
+            onRefused: (callId, refused) => changePart(callId, (p) => ({ ...p, refused })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
             onSettings: (callId, note) => changePart(callId, (p) => ({ ...p, settings: note })),
@@ -969,11 +976,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               else {
                 const failure = Cause.squash(exit.cause)
                 if (failure instanceof ProviderFailure) {
-                  save("failed", {
-                    code: failure.code,
-                    detail: failure.detail ?? "",
-                    resetsAt: failure.resetsAt ?? null,
-                  })
+                  save("failed", storedFailure(failure))
                 } else if (failure instanceof AppError) {
                   save("failed", {
                     code: failure.code,
@@ -1025,6 +1028,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const name = model ? model.model : agent.model_name
           // A vendor program may have been signed out since the last look; this looks again.
           if (!accountId || !name || !(yield* providers.verify(accountId))) {
+            // A program that needs repair or is not installed fails with the state in words
+            // (spec 006). Any other reason is the account that is not connected.
+            const problem = accountId ? providers.runtimeProblem(accountId) : null
+            if (problem)
+              return yield* new AppError({
+                code:
+                  problem.state === "not_installed"
+                    ? "runtime_missing"
+                    : `runtime_repair_${problem.reason ?? "start"}`,
+              })
             return yield* new AppError({ code: "provider_not_connected" })
           }
           return agent

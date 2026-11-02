@@ -82,6 +82,8 @@ test("outside content: a memory save after a page fetch asks, Full access runs, 
 
   // At "Full access" the save runs with no question.
   await page.getByTestId("agent-permission").getByText("Full access").click()
+  // Full access asks the user to confirm first (007).
+  await page.getByTestId("full-access-use").click()
   await page.getByTestId("agent-submit").click()
   await send(page, tools(fetchPage, { name: "save_memory", args: { text: "Prices page read" } }))
   await settled(page)

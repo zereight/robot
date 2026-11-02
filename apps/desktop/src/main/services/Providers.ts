@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto"
 import {
+  isBlockingState,
   isRuntimeKind,
   type ModelInfo,
   type ProviderAccount,
   type ProviderConnect,
   type ProviderKind,
   type RuntimeKind,
+  type RuntimeProblem,
   runtimeHasSeparateSignIn,
   runtimeTakesInput,
 } from "@robot/shared"
@@ -62,6 +64,16 @@ export interface ProvidersService {
   /** Like `isConnected`, but looks at an agent runtime again when the last look is old. */
   verify(accountId: string): Effect.Effect<boolean>
   /**
+   * Why an agent on this account cannot work: its program needs repair or is not installed. Null
+   * for an API account, and for a program in any other state (spec 006).
+   */
+  runtimeProblem(accountId: string): RuntimeProblem | null
+  /**
+   * Whether an agent on this account can be at "Read only": an API account always can, because
+   * the app decides each step; a program can only when it has a read-only mode of its own (007).
+   */
+  readOnlySupported(accountId: string): Effect.Effect<boolean>
+  /**
    * The events of one turn, from whatever kind of account answers it: an API model with the
    * tools of the app, or an agent runtime with its own tools and permission prompts.
    */
@@ -84,8 +96,24 @@ export const checkWait = { ms: CHECK_WAIT_MS }
 
 export const toAppError = (error: unknown) =>
   error instanceof ProviderFailure
-    ? new AppError({ code: error.code, ...(error.detail ? { detail: error.detail } : {}) })
+    ? error.code === "runtime_start"
+      ? // The program did not start. The message names the state in words (spec 006).
+        new AppError({ code: `runtime_repair_${error.detail === "gone" ? "gone" : "start"}` })
+      : new AppError({ code: error.code, ...(error.detail ? { detail: error.detail } : {}) })
     : new AppError({ code: "provider_unreachable", detail: String(error) })
+
+/**
+ * What a failed reply keeps of a failure of the provider. A program that did not start keeps the
+ * state in words (spec 006); every other failure keeps its own code.
+ */
+export const storedFailure = (failure: ProviderFailure) => {
+  const error = toAppError(failure)
+  return {
+    code: error.code,
+    detail: error.detail ?? "",
+    resetsAt: failure.resetsAt ?? null,
+  }
+}
 
 export class Providers extends Context.Service<Providers, ProvidersService>()(
   "robot/main/Providers",
@@ -151,16 +179,34 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           }),
         )
 
-      /** A runtime must be on the computer, and signed in with a subscription. */
+      /**
+       * A runtime must be Ready: on the computer, answering, and signed in with a subscription.
+       * Any other state fails at once with the state in words (spec 006).
+       */
       const checkRuntime = (kind: RuntimeKind, signIn: string | null, fresh: boolean) =>
         Effect.gen(function* () {
           const status = yield* fresh
             ? runtimes.status(kind, signIn)
             : runtimes.statusIfStale(kind, signIn)
-          if (status.source === null) return yield* new AppError({ code: "runtime_missing" })
-          if (!status.signedIn) return yield* new AppError({ code: "runtime_not_signed_in" })
-          if (status.method !== "subscription")
-            return yield* new AppError({ code: "runtime_api_key_login" })
+          switch (status.state) {
+            case "ready":
+              return
+            case "not_installed":
+              return yield* new AppError({ code: "runtime_missing" })
+            case "needs_repair":
+              return yield* new AppError({ code: `runtime_repair_${status.reason ?? "start"}` })
+            case "needs_sign_in":
+              return yield* new AppError({
+                code:
+                  status.signedIn && status.method !== "subscription"
+                    ? "runtime_api_key_login"
+                    : "runtime_not_signed_in",
+              })
+            default:
+              // A check that is still on the way after its limit does not happen. If it did, the
+              // program has not answered.
+              return yield* new AppError({ code: "runtime_repair_answer" })
+          }
         })
 
       const connect = Effect.fn("Providers.connect")(function* (input: ProviderConnect) {
@@ -244,6 +290,12 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           const kind = row.kind
           if (row.off !== 0) return yield* new AppError({ code: "provider_not_connected" })
           yield* checkRuntime(kind, row.sign_in, false)
+          // "Read only" for a program means the mode of the program itself. When the app cannot
+          // show that the program has one, the turn does not start (spec 007).
+          if (input.permission === "read_only" && input.useTools) {
+            const mode = yield* runtimes.readOnly(kind)
+            if (!mode.supported) return yield* new AppError({ code: "read_only_unsupported" })
+          }
           return (async function* () {
             // The program reaches the browser of the agent through the app, for this turn only.
             // When the access cannot open, the turn goes on without the browser.
@@ -283,10 +335,13 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           })()
         })
 
-      /** Waits for a check, but not for longer than `CHECK_WAIT_MS`. */
-      const checked = (kind: RuntimeKind, signIn: string | null) =>
+      /**
+       * Waits for a check, but not for longer than `CHECK_WAIT_MS`. With `join` false, a check
+       * that is running is not joined: the state shows as "Checking" (spec 006).
+       */
+      const checked = (kind: RuntimeKind, signIn: string | null, join = true) =>
         Effect.raceFirst(
-          Effect.asVoid(runtimes.statusIfStale(kind, signIn)),
+          Effect.asVoid(runtimes.statusIfStale(kind, signIn, join)),
           Effect.sleep(checkWait.ms),
         )
 
@@ -298,7 +353,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
               "SELECT DISTINCT kind, sign_in FROM provider_account",
             )
             .flatMap((r) => (isRuntimeKind(r.kind) ? [{ kind: r.kind, signIn: r.sign_in }] : [])),
-          ({ kind, signIn }) => checked(kind, signIn),
+          ({ kind, signIn }) => checked(kind, signIn, false),
           { concurrency: "unbounded", discard: true },
         )
 
@@ -390,6 +445,20 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
         isConnected,
         isRuntime,
         runtimeKind,
+        runtimeProblem: (id) => {
+          const row = lookup(id)
+          if (!row || !isRuntimeKind(row.kind)) return null
+          const status = runtimes.cached(row.kind, row.sign_in)
+          return isBlockingState(status.state)
+            ? { kind: row.kind, state: status.state, reason: status.reason }
+            : null
+        },
+        readOnlySupported: (id) =>
+          Effect.suspend(() => {
+            const row = lookup(id)
+            if (!row || !isRuntimeKind(row.kind)) return Effect.succeed(true)
+            return runtimes.readOnly(row.kind).pipe(Effect.map((mode) => mode.supported))
+          }),
         verify: (id) =>
           Effect.gen(function* () {
             const row = lookup(id)

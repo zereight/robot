@@ -19,7 +19,12 @@ export class ProviderFailure extends Error {
       /** The model is overloaded and asks to try later. */
       | "provider_busy"
       /** The subscription sign-in of an agent runtime is gone or refused. */
-      | "runtime_signed_out",
+      | "runtime_signed_out"
+      /**
+       * The program of an agent runtime could not start. `detail` is the reason (`RepairReason`):
+       * the app sets the state of the program to "Needs repair" at once (spec 006).
+       */
+      | "runtime_start",
     readonly detail?: string,
     /** When a usage limit resets, if the provider says. */
     readonly resetsAt?: number,

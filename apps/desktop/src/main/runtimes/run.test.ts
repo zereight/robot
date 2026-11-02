@@ -284,7 +284,9 @@ describe("claude program", () => {
   test("a program that cannot start fails with a reason", async () => {
     const error = await collect(runClaude(base("/no/such/program"))).catch((e) => e)
     expect(error).toBeInstanceOf(ProviderFailure)
-    expect((error as ProviderFailure).code).toBe("provider_error")
+    // A program that cannot start is told apart from a model error: the state of the program
+    // turns to Needs repair at once (spec 006).
+    expect((error as ProviderFailure).code).toBe("runtime_start")
   })
 })
 

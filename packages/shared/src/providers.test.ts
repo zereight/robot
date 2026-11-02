@@ -2,9 +2,12 @@ import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
   effortsFor,
+  isBlockingState,
   isRuntimeKind,
   ProviderConnect,
+  RUNTIME_CHECK_MS,
   RUNTIME_KINDS,
+  RUNTIME_STATES,
   runtimeModel,
   runtimeModels,
   runtimeSupport,
@@ -153,5 +156,22 @@ describe("providers", () => {
     expect(runtimeSupport("codex")).toEqual({ install: "download", signIn: "app" })
     expect(runtimeSupport("muse")).toEqual({ install: "manual", signIn: "app" })
     expect(runtimeSupport("pi")).toEqual({ install: "manual", signIn: "manual" })
+  })
+})
+
+describe("the states of a runtime (spec 006)", () => {
+  test("a program has five states, and a check ends within 15 seconds", () => {
+    expect(RUNTIME_STATES).toEqual([
+      "checking",
+      "ready",
+      "needs_sign_in",
+      "needs_repair",
+      "not_installed",
+    ])
+    expect(RUNTIME_CHECK_MS).toBeLessThanOrEqual(15_000)
+  })
+
+  test("only Needs repair and Not installed stop an agent", () => {
+    expect(RUNTIME_STATES.filter(isBlockingState)).toEqual(["needs_repair", "not_installed"])
   })
 })

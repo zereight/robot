@@ -92,7 +92,13 @@ export const modelChoices = E.gen(function* () {
   for (const account of accounts) {
     if (!account.connected) continue
     const models = yield* providers.models(account.id).pipe(E.orElseSucceed(() => []))
-    out.push({ accountId: account.id, accountName: account.name, models })
+    out.push({
+      accountId: account.id,
+      accountName: account.name,
+      kind: account.kind,
+      readOnly: yield* providers.readOnlySupported(account.id),
+      models,
+    })
   }
   return out
 })

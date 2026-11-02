@@ -222,8 +222,15 @@ const ToolCard = (props: {
             ? t("chat.tool.searchChats")
             : props.part.label || props.part.name}
         </span>
-        <span class={styles.toolState} data-state={props.part.state}>
-          {t(`chat.tool.${props.part.state}` as MessageKey)}
+        {/* A step that the permission level refused says so (spec 007). */}
+        <span
+          class={styles.toolState}
+          data-state={props.part.refused ? "refused" : props.part.state}
+          data-testid="tool-state"
+        >
+          {props.part.refused
+            ? t("chat.tool.refusedReadOnly")
+            : t(`chat.tool.${props.part.state}` as MessageKey)}
         </span>
         <Show when={props.from}>
           {(from) => (

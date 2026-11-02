@@ -10,7 +10,7 @@ import {
   installRuntime,
   unpackFirstFile,
 } from "./install.ts"
-import { findBinary, managedPath } from "./locate.ts"
+import { findBinary, knownPlace, managedPath, rememberPlace } from "./locate.ts"
 
 const tmp = () => mkdtempSync(join(tmpdir(), "robot-install-test-"))
 const sha = (data: Uint8Array | string) => createHash("sha256").update(data).digest("hex")
@@ -285,5 +285,40 @@ describe("find the program", () => {
         extraDirs: [],
       }),
     ).toBeNull()
+  })
+})
+
+describe("the places where the app saw a program", () => {
+  test("a program that was never seen has no known place", () => {
+    expect(knownPlace(tmp(), "codex")).toBeNull()
+  })
+
+  test("a place that the app kept is known again, for each program on its own", () => {
+    const dir = tmp()
+    rememberPlace(dir, "codex", "/usr/local/bin/codex")
+    rememberPlace(dir, "claude_code", "/opt/claude")
+    expect(knownPlace(dir, "codex")).toBe("/usr/local/bin/codex")
+    expect(knownPlace(dir, "claude_code")).toBe("/opt/claude")
+    expect(knownPlace(dir, "muse")).toBeNull()
+    // The newest place wins.
+    rememberPlace(dir, "codex", "/elsewhere/codex")
+    expect(knownPlace(dir, "codex")).toBe("/elsewhere/codex")
+  })
+
+  test("a path that is only set in the environment is not a place that the app knew", () => {
+    const dir = tmp()
+    expect(
+      findBinary("codex", { dataDir: dir, env: { ROBOT_CODEX_BIN: join(dir, "nope") } }),
+    ).toBeNull()
+    expect(knownPlace(dir, "codex")).toBeNull()
+  })
+
+  test("a file of places that is broken is no memory, and does not break the look", () => {
+    const dir = tmp()
+    mkdirSync(join(dir, "runtimes"), { recursive: true })
+    writeFileSync(join(dir, "runtimes", "places.json"), "{ not json")
+    expect(knownPlace(dir, "codex")).toBeNull()
+    rememberPlace(dir, "codex", "/a/codex")
+    expect(knownPlace(dir, "codex")).toBe("/a/codex")
   })
 })
