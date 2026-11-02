@@ -304,6 +304,23 @@ export const ko: Record<MessageKey, string> = {
   "chat.queued": "보낼 차례를 기다리는 중",
   "chat.queue.edit": "대기 중인 메시지 수정",
   "chat.queue.remove": "대기 중인 메시지 삭제",
+  "chat.queue.sendNow": "지금 보내기",
+  "chat.unread": "다음 단계에서 읽어요",
+  "chat.unread.delete": "삭제",
+  "chat.hold.codex":
+    "Codex는 작업 중에 메시지를 읽지 못해요. 작업이 끝날 때까지 메시지가 여기서 기다려요.",
+  "chat.hold.muse":
+    "Muse Code는 작업 중에 메시지를 읽지 못해요. 작업이 끝날 때까지 메시지가 여기서 기다려요.",
+  "chat.hold.pi":
+    "pi는 작업 중에 메시지를 읽지 못해요. 작업이 끝날 때까지 메시지가 여기서 기다려요.",
+  "chat.tool.answeredInChat": "채팅으로 답했어요",
+  "settings.duringTurn": "에이전트가 일하는 동안 보낸 메시지",
+  "settings.duringTurn.hint":
+    "메시지로 지금 하는 일의 방향을 바꾸거나, 일이 끝날 때까지 기다리게 할 수 있어요.",
+  "settings.duringTurn.join": "지금 하는 일에 끼워 넣기",
+  "settings.duringTurn.queue": "대기열에서 기다리기",
+  "tasks.joined": "작업 중에 보낸 메시지",
+  "error.message_read": "에이전트가 이미 이 메시지를 읽었어요.",
   "chat.thinking": "생각하는 중…",
   "chat.thought": "생각",
   "chat.tool.running": "실행 중",
