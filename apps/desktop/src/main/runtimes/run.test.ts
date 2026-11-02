@@ -225,7 +225,7 @@ describe("muse program", () => {
       {
         callId: "tool-1",
         risky: true,
-        key: "run_command:delete_outside",
+        key: "run_command:rm /etc/robot-test",
         summary: "rm /etc/robot-test",
       },
     ])
