@@ -94,6 +94,9 @@ const createWindow = () => {
 }
 
 app.whenReady().then(async () => {
+  // A test run on macOS is a background program: no Dock icon and no place in Stage Manager.
+  // So a window that opens does not move the windows of the user.
+  if (isTestRun && process.platform === "darwin") app.setActivationPolicy("accessory")
   const runtime = makeRuntime()
   // Keep native menus and dialogs in the chosen theme.
   await runtime.runPromise(

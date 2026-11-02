@@ -13,8 +13,9 @@ Each agent works in its own folder with real tools, and the user stays in contro
   window, ask the user a question, message other agents, read and run workflows (see 010), search
   past chats (see "Searching past chats"), use the computer (see "Computer use"), and use the
   tools of the connections that the user added (see 018).
-- **Permission level** per agent: "Ask for everything", "Ask for risky steps" (default), or
-  "Full access". A linked device (012) can make the level stricter, never looser.
+- **Permission level** per agent: "Read only", "Ask for everything", "Ask for risky steps"
+  (default), or "Full access". The list goes from the strictest to the loosest level. A linked
+  device (012) can make the level stricter, never looser. See "Permission levels".
 - **Rule**: a saved decision that the user made. A rule can allow or deny a kind of step. See
   "Permission rules".
 - **Action log**: the list of the tool steps that the rules and the permission levels decided.
@@ -33,6 +34,32 @@ Each agent works in its own folder with real tools, and the user stays in contro
    control, then give it back. Stop ends the browser work at once.
 5. Other agents: see "Working with other agents".
 6. Computer use: see "Computer use".
+7. Level: the user picks the permission level in the agent profile or in the new agent form.
+   "Full access" asks for a confirm first (see "Permission levels").
+
+## Permission levels
+
+- **Read only**: the agent can read, list and search files, fetch web pages, ask the user a
+  question, save memory and list agents. These steps are refused: writing or deleting a file, a
+  shell command, a tool of a connection, the browser, computer use, "send message", and running
+  a workflow. A refused step shows a card with "Refused: read only". The agent gets the refusal
+  as a failed step, and the turn goes on. The action log has the step with the result Refused and
+  the permission level as the one who decided.
+- "Read only" comes before the rules. An Allow rule does not open a step that "Read only"
+  refuses.
+- **Full access** asks the user to confirm when the user picks it. The text says that the agent
+  changes files and runs commands without asking, and that Deny rules still apply. The buttons
+  are "Use Full access" and "Back". Back keeps the old level. No other level asks.
+- **Agent on a vendor runtime** (006): the level sets how the app starts the program. For "Read
+  only", the app uses a mode of the program in which the program itself blocks changes to files
+  and commands that change things. A mode that only asks the model to plan does not count. If the
+  program has no such mode, "Read only" is off in the picker for agents on that program, with the
+  muted line "<program> has no read-only mode." At "Read only", the browser of the app is
+  refused for these agents too.
+- The profile shows one line under the level. It tells in words how the level applies to the
+  runtime of that agent, for example which mode of the program the app sets. For an agent that
+  uses the tools of the app, it tells that the app decides each step.
+- A linked device can set "Read only" and every other stricter level (012).
 
 ## Working with other agents
 
@@ -40,6 +67,10 @@ Each agent works in its own folder with real tools, and the user stays in contro
   archived: name, role line and state.
 - The tool "send message" sends a text to one of them. This makes a task for that agent (see 005)
   with the source "another agent". An agent cannot send a message to itself or to an archived agent.
+- "Send message" fails when the chain of agent messages is at its limit (see 005, "Limits of a
+  task"). The sender gets the reason as a failed step. The main agent is told: when a send fails
+  for this reason, do not look for another way to pass the same work on. Tell the user what
+  stopped.
 - The reply of the receiver comes back to the sender as a new message in a later turn. The sender
   can end its turn after it sends, and it does not wait in a running turn.
 - Every agent is told to look for a teammate early when work needs a skill, a service or an
@@ -52,7 +83,7 @@ Each agent works in its own folder with real tools, and the user stays in contro
   teammate in the same turn, so that they work in parallel. Send a part that needs the result of
   another part only after that result arrives. Then end the turn. When every reply is in, merge
   them into one answer. The answer starts with the result, names the teammate for each part, and
-  marks a part that failed or got no reply. Do not do a part yourself when the role line of a
+  marks a part that failed, was blocked (with its reason), or got no reply. Do not do a part yourself when the role line of a
   teammate covers it. Do not send a part twice.
 
 ## Searching past chats
@@ -120,7 +151,8 @@ at all.
     `www.example.com`.
   - Tool of a connection: the name of the connection and the name of a tool, or the name of the
     connection and "any tool".
-- A step meets the rules in this order:
+- A step meets the level "Read only" first (see "Permission levels"). Then it meets the rules in
+  this order:
   1. A matching Deny rule refuses the step. This holds at every permission level, also at
      "Full access".
   2. Otherwise, a matching Allow rule lets the step run with no question. A step that a rule
@@ -153,6 +185,7 @@ The action log lets the user see what the agents did, and why a step ran or did 
     cut at 200 characters. For a tool of a connection the target holds no arguments.
   - Who decided: the permission level, an Allow rule, a Deny rule, the user on a card, or "a rule
     that cannot be read" followed by the user.
+  - For a file step, whether the step read or wrote.
   - The result: Ran, Failed, Refused, or Stopped.
   - An entry that a rule decided names the rule. The row opens the rules page on that rule. A rule
     that was deleted later shows its text, marked "Deleted".
@@ -170,7 +203,8 @@ The action log lets the user see what the agents did, and why a step ran or did 
   installing software, anything that uses `sudo`, and every call of a tool of a connection (see
   018).
 - An agent runtime from a vendor (see 006) uses the vendor's own permission prompts; the app shows
-  them as approval cards.
+  them as approval cards. The level of the agent also sets how the app starts the program (see
+  "Permission levels").
 - Browser data (cookies, logins) is kept per agent, on the computer. Duplicating an agent copies
   its saved browser session (see 002).
 - The list of browser tabs is read again when the browser window gets the focus, and when a press
@@ -222,3 +256,12 @@ The action log lets the user see what the agents did, and why a step ran or did 
 - Filter the log by result "Refused": it lists only the steps that a Deny rule stopped. A row
   opens the rule that stopped the step.
 - A target in the log never holds the arguments of a tool of a connection.
+- Set an API agent to "Read only". A file read works. A file write, a shell command and a browser
+  step each show "Refused: read only" and change nothing. Add an Allow rule for the command:
+  the command is still refused. The log has the refused steps with the result Refused.
+- Pick "Full access" in the profile: a confirm shows. "Back" keeps the old level. "Use Full
+  access" sets it. Pick "Ask for everything": no confirm shows.
+- An agent on a stand-in program with no read-only mode: "Read only" is off in the picker, and
+  the line says why. With a stand-in program that has such a mode, the app starts the program in
+  that mode at "Read only".
+- A file entry in the log says whether the step read or wrote.

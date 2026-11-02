@@ -24,9 +24,9 @@ service holds it.
 | --- | --- |
 | Agents | Face, name, role line, instructions, model choice, archive state. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Channels | Name, topic, members, lead, archive state. |
+| Channels | Name, topic, members, lead, the "Review parts" setting, archive state. |
 | Messages | Direct chats and channels, with tool cards, plan steps and reply chips. |
-| Tasks | State, result, and how far a failed turn went (005). They show on the tasks page with the name of the origin. |
+| Tasks | State (also in review and blocked), reason and result, and how far a failed turn went (005). They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent. |
 | Routines and workflows | The definition (for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
 | Read state | The last place that the user read in each chat. |
@@ -41,6 +41,7 @@ service holds it.
 | Skills (017) | Not in this version. A skill is saved on one computer, and the user makes it again on the other one. A message that used a skill keeps its chip and its copy of the instructions, and syncs with the message. |
 | Workspace folders and the files in them | They are large and belong to a computer. Use git or a file service. |
 | Browser windows and their sessions | They belong to a computer. |
+| The state of agent runtimes (006) | Each computer has its own programs and checks them itself. |
 | Settings, theme, language, notification choices, mutes | Settings are local (013). The silent limit (005) is one of them. |
 | Memory history, memory proposals and memory switches (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are on or off, and save at once or ask first. They are choices of one computer. A memory item that arrives by sync makes no history row. |
 | Usage numbers | They count what ran on this computer. |
@@ -93,7 +94,10 @@ off. "Stop syncing" returns the switch to the value that it had before sync bega
   and questions from the other computer. The answer goes to the origin, as a client answer
   does (012). If the origin is offline, the card shows "<name> is offline."
 - A message that came from the other computer never starts a task here.
-- Retry on a task from the other computer makes a new task that runs here.
+- Retry on a task from the other computer makes a new task that runs here. The retry note (005)
+  has no list of steps, because the action log stays on its computer.
+- The user decides a review (005) on the computer that owns the task. The other computer shows
+  "Decide on <name>".
 - A message or a card that was made on the other computer shows "from <device name>" (012).
 
 ### Routines and workflows

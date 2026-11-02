@@ -7,8 +7,10 @@ The user sets the app up the way they like in one place.
 ## Sections
 
 - **General**: language (English, Korean, or follow the system), start at login, default folder
-  for agent workspaces, and the silent limit: how long a turn may show no sign of life before the
-  app stops it (see 005). The choices are 1, 5, 10 (default), 30 and 60 minutes, and Never.
+  for agent workspaces, the step limit of a task (a whole number from 20 to 2000; the
+  default is 300; see 005), and the silent limit: how long a turn may show no sign of life
+  before the app stops it (see 005). The choices are 1, 5, 10 (default), 30 and 60 minutes,
+  and Never.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
