@@ -1,4 +1,5 @@
 import { type Agent, type AgentModel, runtimeModel } from "@robot/shared"
+import { Ellipsis } from "lucide-solid"
 import { createSignal, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -10,18 +11,29 @@ import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { Menu } from "../ui/Menu.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { AgentActivity } from "./AgentActivity.tsx"
 import { AgentProfileDialog } from "./AgentDialogs.tsx"
 import styles from "./agents.module.css"
 import { BrowserPane } from "./BrowserPane.tsx"
 import { Face } from "./Face.tsx"
+import {
+  closeTeachForm,
+  DraftCard,
+  openTeachForm,
+  TeachDialog,
+  teachBlocked,
+  teachFormFor,
+  useTeach,
+} from "./Teach.tsx"
 
 const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
   const { t } = useApp()
   const ui = useUi()
   const providers = useProviders()
   const [open, setOpen] = createSignal(false)
+  const teach = useTeach()
   // A runtime model shows with its version. An API model shows its id, which has the version.
   const modelName = () => {
     const model = props.agent.model
@@ -66,6 +78,35 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         >
           {modelName()}
         </button>
+      </Show>
+      {/* "Teach a task" needs the browser of this computer: a client has no menu (spec 017). */}
+      <Show when={!ui.linked()}>
+        <Menu
+          label={t("chat.menu")}
+          icon={<Ellipsis size={16} />}
+          testId="chat-header-menu"
+          items={[
+            {
+              label: t("teach.menu"),
+              onSelect: () => openTeachForm(props.agent.id),
+              disabled: teachBlocked(teach(), props.agent.id) !== undefined,
+              testId: "chat-menu-teach",
+            },
+            ...(() => {
+              const reason = teachBlocked(teach(), props.agent.id)
+              return reason
+                ? [
+                    {
+                      label: t(reason.key, reason.params),
+                      onSelect: () => {},
+                      heading: true,
+                      testId: "chat-menu-teach-reason",
+                    },
+                  ]
+                : []
+            })(),
+          ]}
+        />
       </Show>
       <Presence when={open()}>
         {() => <AgentProfileDialog agent={props.agent} onClose={() => setOpen(false)} />}
@@ -129,6 +170,14 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
   if (!current) return undefined
   const ui = useUi()
   const [picking, setPicking] = createSignal(false)
+  const teach = useTeach()
+  /** The draft skill card of this agent, while "Teach a task" has one (spec 017). */
+  const draft = (agentId: string) => {
+    const now = teach()
+    return now.phase !== "idle" && now.phase !== "recording" && now.agentId === agentId
+      ? now
+      : undefined
+  }
   return {
     header: (
       <Show when={agent()}>
@@ -150,8 +199,16 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
                 start={<Start agent={a()} />}
                 onConnect={() => ui.openSettings("providers")}
                 onChooseModel={() => setPicking(true)}
+                end={
+                  <Show when={!ui.linked() && draft(a().id)}>
+                    {(state) => <DraftCard state={state()} />}
+                  </Show>
+                }
               />
             </div>
+            <Presence when={!ui.linked() && teachFormFor() === a().id}>
+              {() => <TeachDialog agentId={a().id} onClose={closeTeachForm} />}
+            </Presence>
           </div>
         )}
       </Show>

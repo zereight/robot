@@ -24,8 +24,10 @@ import type { Secrets } from "./services/Secrets.ts"
 import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Skills } from "./services/Skills.ts"
 import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
+import { Teach } from "./services/Teach.ts"
 import { Today } from "./services/Today.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -59,6 +61,7 @@ export const appLayer = (options: AppLayerOptions) => {
     Servers.layer(options.localServerName),
     Sections.layer,
     Activity.layer,
+    Skills.layer,
   ).pipe(Layer.provideMerge(base))
   const devices = Devices.layer({
     computerName: options.localServerName,
@@ -78,7 +81,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const channels = Channels.layer.pipe(Layer.provideMerge(agents))
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))
-  const places = Places.layer.pipe(Layer.provideMerge(workflows))
+  const teach = Teach.layer.pipe(Layer.provideMerge(workflows))
+  const places = Places.layer.pipe(Layer.provideMerge(teach))
   const today = Today.layer.pipe(Layer.provideMerge(places))
   const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(today))
   const workflowFiles = WorkflowFiles.layer.pipe(Layer.provideMerge(agentFiles))

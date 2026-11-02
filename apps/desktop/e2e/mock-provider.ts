@@ -57,6 +57,25 @@ const failedOnce = new Set<string>()
 const plan = (body: ChatBody) => {
   const last = body.messages.at(-1)?.content ?? ""
   const text = last.split("\n").at(-1) ?? ""
+  // "Teach a task": the model writes a draft skill from the steps. A result that holds "fail
+  // draft" fails once, so the card shows "Try again".
+  if (text === "Reply with the JSON object only.") {
+    if (last.includes("fail draft") && !failedOnce.has(last)) {
+      failedOnce.add(last)
+      return { status: 500 }
+    }
+    return {
+      chunks: [
+        JSON.stringify({
+          name: "Greet on the test page",
+          description: "When the user wants the test page to say hello",
+          instructions:
+            "1. Open the test page.\n2. Press the button.\n3. Type hello into Name.\n4. Ask the user for the password.\nAt the end, check that the page says hello.",
+        }),
+      ],
+      delay: 0,
+    }
+  }
   // A condition in the mode "Ask a model": the model answers yes when the text holds "Hello".
   if (text === "Reply with yes or no only.")
     return { chunks: [last.includes("Hello") ? "Yes" : "No"], delay: 0 }
