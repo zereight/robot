@@ -644,7 +644,7 @@ export const ko: Record<MessageKey, string> = {
   "knowledge.folder.open": "폴더 열기",
   "knowledge.check": "지식 점검",
   "knowledge.check.hint":
-    "에이전트가 글을 읽고 문제를 대화에 알립니다. 말하기 전에는 아무것도 바꾸지 않습니다.",
+    "앱이 끊어진 링크, 다른 글이 링크하지 않는 글, 출처가 없는 글을 찾아 대화에 보냅니다. 그다음 에이전트가 모든 글을 읽고 서로 어긋나는 내용을 추가합니다. 말하기 전에는 아무것도 바꾸지 않습니다.",
   "knowledge.changes": "변경 내역",
   "knowledge.changes.empty": "아직 변경이 없습니다.",
   "knowledge.change.add": "추가",
@@ -656,8 +656,10 @@ export const ko: Record<MessageKey, string> = {
   "knowledge.change.undone": "되돌림",
   "knowledge.change.earlier": "이전 내용",
   "knowledge.skipped": "폴더의 파일 {count}개를 표시하지 않습니다. 다른 글과 제목이 같습니다.",
-  "knowledge.check.message":
-    "지식을 점검해 주세요. 모든 글을 읽고 다음을 알려 주세요: 없는 글로 가는 링크, 다른 글이 링크하지 않는 글, 출처가 없는 글, 서로 어긋나는 내용. 제가 말하기 전에는 아무것도 바꾸지 마세요.",
+  "knowledge.check.message": "지식을 점검해 주세요.",
+  "knowledge.check.request":
+    "모든 글을 읽어 주세요. 서로 어긋나는 내용을 찾아서, 앱이 찾은 내용과 함께 보고서에 적어 주세요. 제가 말하기 전에는 아무것도 바꾸지 마세요.",
+  "knowledge.check.more": "찾은 내용 {count}개는 이 목록에 없습니다.",
   "knowledge.check.found": "앱이 찾은 내용:",
   "knowledge.check.missing": "{from}에서 {to}(으)로 가는 링크가 있습니다. 이 글은 없습니다.",
   "knowledge.check.unlinked": "{title}을(를) 링크하는 다른 글이 없습니다.",

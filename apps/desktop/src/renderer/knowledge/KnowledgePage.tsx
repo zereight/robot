@@ -1,12 +1,11 @@
 import {
   type Agent,
   charLength,
+  checkMessage,
   KNOWLEDGE_BODY_MAX,
   KNOWLEDGE_SUMMARY_MAX,
   KNOWLEDGE_TITLE_MAX,
-  type KnowledgeFindings,
   type MessageKey,
-  type MessageParams,
 } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
@@ -17,32 +16,6 @@ import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import styles from "./knowledge.module.css"
-
-const FINDINGS_LINES_MAX = 100
-
-/** The text that the "Check knowledge" button sends: the request, and what the app found. */
-export const checkMessage = (
-  t: (key: MessageKey, params?: MessageParams) => string,
-  found: KnowledgeFindings,
-) => {
-  const lines = [
-    ...found.missingLinks
-      .slice(0, FINDINGS_LINES_MAX)
-      .map((l) => t("knowledge.check.missing", { from: l.from, to: l.to })),
-    ...found.unlinked
-      .slice(0, FINDINGS_LINES_MAX)
-      .map((title) => t("knowledge.check.unlinked", { title })),
-    ...found.noSource
-      .slice(0, FINDINGS_LINES_MAX)
-      .map((title) => t("knowledge.check.noSource", { title })),
-  ]
-  return [
-    t("knowledge.check.message"),
-    lines.length === 0
-      ? t("knowledge.check.clean")
-      : [t("knowledge.check.found"), ...lines.map((l) => `- ${l}`)].join("\n"),
-  ].join("\n\n")
-}
 
 interface Draft {
   /** The file of the article that is edited. Null for a new article. */
@@ -168,7 +141,12 @@ export const KnowledgePage = (props: { agent: Agent; onClose: () => void }) => {
             testId="knowledge-enabled"
           />
         </span>
-        <Button onClick={check} disabled={!canCheck()} data-testid="knowledge-check">
+        <Button
+          onClick={check}
+          disabled={!canCheck()}
+          title={t("knowledge.check.hint")}
+          data-testid="knowledge-check"
+        >
           {t("knowledge.check")}
         </Button>
         <Button

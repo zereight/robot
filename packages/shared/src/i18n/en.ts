@@ -648,7 +648,7 @@ export const en = {
   "knowledge.folder.open": "Open folder",
   "knowledge.check": "Check knowledge",
   "knowledge.check.hint":
-    "The agent reads the articles and reports problems in the chat. It changes nothing until you say so.",
+    "The app looks for broken links, articles that no other article links to, and articles with no source. It sends what it finds to the chat. The agent then reads all articles and adds statements that disagree. It changes nothing until you say so.",
   "knowledge.changes": "Changes",
   "knowledge.changes.empty": "No changes yet.",
   "knowledge.change.add": "Added",
@@ -661,8 +661,10 @@ export const en = {
   "knowledge.change.earlier": "Earlier text",
   "knowledge.skipped":
     "{count} files in the folder are not shown. Other articles have the same titles.",
-  "knowledge.check.message":
-    "Check knowledge. Read all articles, then report: links to articles that do not exist, articles that no other article links to, articles with no source, and statements that disagree. Change nothing until I say so.",
+  "knowledge.check.message": "Check knowledge.",
+  "knowledge.check.request":
+    "Read all articles. Find statements that disagree, and add them to a report with what the app found. Change nothing until I say so.",
+  "knowledge.check.more": "{count} more findings are not in this list.",
   "knowledge.check.found": "The app found this:",
   "knowledge.check.missing": "{from} links to {to}. This article does not exist.",
   "knowledge.check.unlinked": "No other article links to {title}.",

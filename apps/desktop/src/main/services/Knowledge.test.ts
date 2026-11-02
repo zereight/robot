@@ -1072,6 +1072,35 @@ describe("check", () => {
   })
 })
 
+describe("check, other cases", () => {
+  test("a source that the user deleted does not count; one article is not reported as unlinked", async () => {
+    const s = await setup()
+    await s.k((x) => x.addSource(s.agent.id, { name: "a.txt", data: "data" }))
+    await s.turn(call("write_article", { title: "Cited", body: "x", sources: ["a.txt"] }))
+    expect(await s.k((x) => x.findings(s.agent.id))).toEqual({
+      missingLinks: [],
+      unlinked: [],
+      noSource: [],
+    })
+    await s.k((x) => x.removeSource(s.agent.id, "a.txt"))
+    expect(await s.k((x) => x.findings(s.agent.id))).toEqual({
+      missingLinks: [],
+      unlinked: [],
+      noSource: ["Cited"],
+    })
+  })
+
+  test("with two articles, the one that no other article links to is reported", async () => {
+    const s = await setup()
+    await s.save("Alpha", "See [[Beta]].")
+    await s.save("Beta", "Text. [[Beta]]")
+    // A link to itself is not a link from another article.
+    const found = await s.k((x) => x.findings(s.agent.id))
+    expect(found.unlinked).toEqual(["Alpha"])
+    expect(found.missingLinks).toEqual([])
+  })
+})
+
 describe("archive and delete", () => {
   test("archiving keeps the knowledge; deleting the agent deletes it with the workspace", async () => {
     const s = await setup()

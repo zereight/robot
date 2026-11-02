@@ -1,4 +1,5 @@
 import { charLength } from "./agents.ts"
+import type { MessageKey, MessageParams } from "./i18n/index.ts"
 
 /** Name of the folder in the agent workspace, and of the folder for sources inside it. */
 export const KNOWLEDGE_FOLDER = "Knowledge"
@@ -371,4 +372,40 @@ export const knowledgeFindings = (articles: readonly FindingsInput[]): Knowledge
         : articles.filter((a) => !linkedFrom.has(titleKey(a.title))).map((a) => a.title),
     noSource: articles.filter((a) => a.sources.length === 0).map((a) => a.title),
   }
+}
+
+/** The most characters of the message that "Check knowledge" sends. A chat message has a limit. */
+const CHECK_CHARS_MAX = 90_000
+
+/**
+ * The message that "Check knowledge" sends in the chat, as the user: what the app found, then
+ * the request to read all articles and to add statements that disagree. Every finding is in it.
+ * Only a message that would be too long for a chat message ends with a line that counts the rest.
+ */
+export const checkMessage = (
+  t: (key: MessageKey, params?: MessageParams) => string,
+  found: KnowledgeFindings,
+) => {
+  const lines = [
+    ...found.missingLinks.map((l) => t("knowledge.check.missing", { from: l.from, to: l.to })),
+    ...found.unlinked.map((title) => t("knowledge.check.unlinked", { title })),
+    ...found.noSource.map((title) => t("knowledge.check.noSource", { title })),
+  ]
+  const kept: string[] = []
+  let chars = 0
+  for (const line of lines) {
+    if (chars + line.length + 4 > CHECK_CHARS_MAX) break
+    kept.push(line)
+    chars += line.length + 3
+  }
+  const rest = lines.length - kept.length
+  const report =
+    lines.length === 0
+      ? t("knowledge.check.clean")
+      : [
+          t("knowledge.check.found"),
+          ...kept.map((line) => `- ${line}`),
+          ...(rest > 0 ? [`- ${t("knowledge.check.more", { count: rest })}`] : []),
+        ].join("\n")
+  return [t("knowledge.check.message"), report, t("knowledge.check.request")].join("\n\n")
 }

@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test"
+import { MESSAGE_MAX } from "./chat.ts"
+import { translate } from "./i18n/index.ts"
 import {
   articleFileName,
   articleLimit,
   articleLinks,
+  checkMessage,
   cleanLine,
   contentsLine,
   contentsList,
@@ -245,5 +248,65 @@ describe("findings", () => {
 
   test("one article alone is not reported as unlinked", () => {
     expect(knowledgeFindings([{ title: "A", body: "", sources: [] }]).unlinked).toEqual([])
+  })
+})
+
+describe("the message of Check knowledge", () => {
+  const en = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]) =>
+    translate("en", key, params)
+  const ko = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]) =>
+    translate("ko", key, params)
+
+  test("the findings come first; then the request to read all articles and to add statements that disagree", () => {
+    const text = checkMessage(en, {
+      missingLinks: [{ from: "A", to: "Gone" }],
+      unlinked: ["C"],
+      noSource: ["B", "C"],
+    })
+    expect(text).toBe(
+      [
+        "Check knowledge.",
+        [
+          "The app found this:",
+          "- A links to Gone. This article does not exist.",
+          "- No other article links to C.",
+          "- B has no source.",
+          "- C has no source.",
+        ].join("\n"),
+        "Read all articles. Find statements that disagree, and add them to a report with what the app found. Change nothing until I say so.",
+      ].join("\n\n"),
+    )
+  })
+
+  test("with nothing found, the message says so and still asks for the read", () => {
+    const text = checkMessage(en, { missingLinks: [], unlinked: [], noSource: [] })
+    expect(text).toContain("The app found no broken link")
+    expect(text).toContain("Read all articles.")
+    expect(text).not.toContain("The app found this:")
+  })
+
+  test("every finding is in the message, also past 100 lines", () => {
+    const noSource = Array.from({ length: 500 }, (_, i) => `Article ${i}`)
+    const text = checkMessage(en, { missingLinks: [], unlinked: [], noSource })
+    expect(text.match(/has no source\./g)).toHaveLength(500)
+    expect(text).not.toContain("more findings")
+    expect(text.length).toBeLessThan(MESSAGE_MAX)
+  })
+
+  test("only a message that cannot fit in a chat message is cut, and the cut is said", () => {
+    const missingLinks = Array.from({ length: 4000 }, (_, i) => ({
+      from: `Article ${i} ${"x".repeat(40)}`,
+      to: `Gone ${i} ${"y".repeat(40)}`,
+    }))
+    const text = checkMessage(en, { missingLinks, unlinked: [], noSource: [] })
+    expect(text.length).toBeLessThan(MESSAGE_MAX)
+    expect(text).toMatch(/- \d+ more findings are not in this list\./)
+    expect(text.endsWith("Change nothing until I say so.")).toBe(true)
+  })
+
+  test("it is written in Korean for a Korean user", () => {
+    const text = checkMessage(ko, { missingLinks: [], unlinked: ["C"], noSource: [] })
+    expect(text.startsWith("지식을 점검해 주세요.")).toBe(true)
+    expect(text).toContain("- C을(를) 링크하는 다른 글이 없습니다.")
   })
 })
