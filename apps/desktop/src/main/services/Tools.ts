@@ -33,6 +33,9 @@ import {
   type PermissionLevel,
   parseOrigin,
   parseSecretAuth,
+  type RefusalReason,
+  readOnlyRefuses,
+  readOnlyRefusesKey,
   riskyReason,
   SECRET_CANCELLED,
   SECRET_FIELD_MAX,
@@ -82,6 +85,11 @@ export interface ToolContext {
   readonly origin?: MemoryOrigin
   /** Records that a linked device answered an approval, so its card can say who. */
   readonly onDecision?: (callId: string, answer: "allow" | "deny", by: string) => void
+  /**
+   * Records that the permission level refused the step of a vendor program, so its card says why.
+   * The steps of the app itself carry the mark in their outcome.
+   */
+  readonly onRefused?: (callId: string, reason: RefusalReason) => void
   /** Records what a knowledge call read or changed, so its card can show it and offer undo. */
   readonly onKnowledge: (callId: string, note: KnowledgeNote) => void
   /**
@@ -481,6 +489,13 @@ class SecretFailure extends Error {}
 const BODY_KINDS = ["json", "form", "text"] as const
 /** The extra headers of one request. */
 const SECRET_HEADERS_MAX = 50
+
+/**
+ * What the model reads when "Read only" refuses a step. The card shows its own translated text. The
+ * agent gets the refusal as a failed step, and the turn goes on (spec 007).
+ */
+const READ_ONLY_MESSAGE =
+  "Refused: this agent is at the permission level Read only. This step writes, runs a command or uses a tool that Read only does not allow. Read, list, search and fetch instead, or tell the user what you need."
 
 export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/Tools") {
   static readonly layer = Layer.effect(
@@ -1401,6 +1416,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
 
       const execute = async (ctx: ToolContext, call: ToolCall): Promise<ToolOutcome> => {
+        // "Read only" comes first: before approvals and before any rule. An Allow rule or a
+        // setting of another level cannot open a step that it refuses (spec 007).
+        if (readOnlyRefuses(ctx.permission, call.name))
+          return { output: READ_ONLY_MESSAGE, failed: true, refused: "read_only" }
         try {
           return await run(ctx, call)
         } catch (error) {
@@ -1441,6 +1460,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
                   state: outcome.failed ? "failed" : "done",
                   call,
                   output: outcome.output,
+                  ...(outcome.refused ? { refused: outcome.refused } : {}),
                 })
                 return outcome
               } catch (error) {
@@ -1452,6 +1472,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
         },
         approval: async (ctx, request) => {
+          // The program should not ask for a step that it was started without. If it does, "Read
+          // only" refuses it here too, and the card says so.
+          if (readOnlyRefusesKey(ctx.permission, request.key)) {
+            ctx.onRefused?.(request.callId, "read_only")
+            return false
+          }
           try {
             const call = { id: request.callId, name: "", input: "" }
             await approve(ctx, call, request.risky, request.key, request.summary)

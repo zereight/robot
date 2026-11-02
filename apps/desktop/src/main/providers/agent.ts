@@ -1,3 +1,4 @@
+import type { RefusalReason } from "@robot/shared"
 import {
   type ChatRequest,
   type ReplyBlock,
@@ -11,6 +12,8 @@ import type { TurnInbox } from "./turn.ts"
 export interface ToolOutcome {
   readonly output: string
   readonly failed: boolean
+  /** Set when the permission level refused the step, so the card says why (spec 007). */
+  readonly refused?: RefusalReason
 }
 
 /** A tool call as it shows in the reply, before and after it runs. */
@@ -21,6 +24,7 @@ export type ToolEvent =
       readonly state: "done" | "failed"
       readonly call: ToolCall
       readonly output: string
+      readonly refused?: RefusalReason
     }
 
 /** The agent read a message that the user sent into the turn (spec 003). */
@@ -106,6 +110,7 @@ export async function* runAgent(
         state: outcome.failed ? "failed" : "done",
         call,
         output: outcome.output,
+        ...(outcome.refused ? { refused: outcome.refused } : {}),
       }
       turns.push({ role: "tool", callId: call.id, name: call.name, content: outcome.output })
     }

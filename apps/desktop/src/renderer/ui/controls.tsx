@@ -4,6 +4,8 @@ import styles from "./controls.module.css"
 export interface SegmentOption<V extends string> {
   readonly value: V
   readonly label: string
+  /** An option that is off: it shows, but the user cannot pick it. */
+  readonly disabled?: boolean
 }
 
 let groupCount = 0
@@ -52,13 +54,18 @@ export const Segmented = <V extends string>(props: {
       <span class={styles.thumb} aria-hidden="true" ref={thumb} />
       <For each={props.options}>
         {(option) => (
-          <label class={styles.segment} data-value={option.value}>
+          <label
+            class={styles.segment}
+            data-value={option.value}
+            data-disabled={option.disabled ? "true" : undefined}
+          >
             <input
               type="radio"
               class={styles.hidden}
               name={name}
               value={option.value}
               checked={props.value === option.value}
+              disabled={option.disabled}
               onChange={() => props.onChange(option.value)}
             />
             {option.label}

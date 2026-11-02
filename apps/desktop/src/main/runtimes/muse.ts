@@ -11,13 +11,19 @@ import { bridgeToolName, museBridge } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
+import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { ApprovalRequest, Login, RuntimeRun } from "./types.ts"
 
 const env = () => runtimeEnv(process.env, undefined, "muse")
 
-export const museVersion = async (bin: string): Promise<string | null> => {
+export const museProbe = async (bin: string): Promise<VersionProbe> => {
   const done = await execute(bin, ["--version"], { env: env(), timeoutMs: 20_000 })
-  return done.code === 0 ? parseVersion(done.stdout) : null
+  return versionProbe(done, parseVersion(done.stdout))
+}
+
+export const museVersion = async (bin: string): Promise<string | null> => {
+  const probe = await museProbe(bin)
+  return "version" in probe ? probe.version : null
 }
 
 type Json = Record<string, unknown>
@@ -75,6 +81,16 @@ export const parseMuseUsage = (stdout: string, code: number | null): Login => {
 
 export const museLogin = async (bin: string): Promise<Login> => {
   const done = await execute(bin, ["usage", "--json"], { env: env(), timeoutMs: 30_000 })
+  const fail = loginFailure(done)
+  if (fail) return { signedIn: false, method: null, user: null, plan: null, fail }
+  // A good end with text that is not JSON is an answer that the app cannot read.
+  if (done.code === 0 && done.stdout.trim()) {
+    try {
+      JSON.parse(done.stdout)
+    } catch {
+      return { signedIn: false, method: null, user: null, plan: null, fail: "unreadable" }
+    }
+  }
   return parseMuseUsage(done.stdout, done.code)
 }
 
@@ -228,7 +244,8 @@ export const museFailure = (text: string): ProviderFailure => {
  */
 export const museSafety = (run: RuntimeRun): string[] => {
   if (!run.useTools) return ["--disable-write", "--disable-shell", "--disable-web-tools"]
-  if (run.permission === "ask_all") return ["--disable-write", "--disable-shell"]
+  if (run.permission === "ask_all" || run.permission === "read_only")
+    return ["--disable-write", "--disable-shell"]
   if (run.permission === "full") return ["--disable-approval", "--disable-sandbox"]
   // The sandbox of the program stays on: it can write in the workspace, and cannot reach out.
   return []
@@ -319,9 +336,9 @@ async function* runMuseExec(run: RuntimeRun): AsyncGenerator<AgentEvent> {
     if (state.failed !== null) throw museFailure(state.failed)
     if (!state.done) {
       const code = await exited
-      throw museFailure(
-        startError?.message ?? (stderr.trim() || `The program ended with code ${code}.`),
-      )
+      const started = startFailure(startError, code)
+      if (started) throw started
+      throw museFailure(stderr.trim() || `The program ended with code ${code}.`)
     }
   } finally {
     run.signal.removeEventListener("abort", stop)
@@ -366,7 +383,9 @@ export const museHostArgs = (run: RuntimeRun): string[] => [
   // Nothing of this run stays in the session store of the user.
   "--no-session-log",
   "--disable-request-user-input",
-  ...(run.permission === "ask_all" ? ["--disable-write", "--disable-shell"] : []),
+  ...(run.permission === "ask_all" || run.permission === "read_only"
+    ? ["--disable-write", "--disable-shell"]
+    : []),
   ...(run.bridge ? museBridge(run.bridge).args : []),
 ]
 
@@ -718,9 +737,9 @@ async function* runMuseHost(run: RuntimeRun): AsyncGenerator<AgentEvent> {
     if (state.failed !== null) throw museFailure(state.failed)
     if (!state.done) {
       const code = await exited
-      throw museFailure(
-        startError?.message ?? (stderr.trim() || `The program ended with code ${code}.`),
-      )
+      const started = startFailure(startError, code)
+      if (started) throw started
+      throw museFailure(stderr.trim() || `The program ended with code ${code}.`)
     }
   } finally {
     run.signal.removeEventListener("abort", stop)

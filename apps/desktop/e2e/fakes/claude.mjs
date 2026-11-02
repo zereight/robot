@@ -27,9 +27,26 @@ const state = () =>
 const args = process.argv.slice(2)
 const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// Every call is noted, so that a test can tell a check (a version or a sign-in question) from a turn.
+appendFileSync(join(dir, "claude-asks.jsonl"), `${JSON.stringify(args.slice(0, 3))}\n`)
+
+// The help text names `--tools` unless the test says that this program has no such mode.
+if (args.includes("--help")) {
+  console.log("Usage: claude [options] [prompt]\n\nOptions:\n  --model <model>  The model")
+  if (!globalState().noReadOnly)
+    console.log("  --tools <tools...>  Specify the list of available tools from the built-in set.")
+  process.exit(0)
+}
+// A program that exits at start, that does not answer, or that gives an answer with no version.
+if (globalState().exitAtStart) {
+  console.error("fake claude: cannot start")
+  process.exit(1)
+}
+if (args[0] === "--version" && globalState().hang)
+  await sleep(Number(globalState().hang) || 120_000)
 
 if (args[0] === "--version") {
-  console.log("9.9.9 (Claude Code)")
+  console.log(globalState().garbage ? "no number in this answer" : "9.9.9 (Claude Code)")
   process.exit(0)
 }
 

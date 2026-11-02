@@ -14,8 +14,7 @@ import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import styles from "./providers.module.css"
 
-export const isReady = (status: RuntimeStatus | undefined) =>
-  !!status && status.source !== null && status.signedIn && status.method === "subscription"
+export const isReady = (status: RuntimeStatus | undefined) => status?.state === "ready"
 
 /** A reset time: the clock time when it is near, the weekday with it when it is not. */
 const formatReset = (locale: Locale, at: number, now = Date.now()) =>
@@ -35,6 +34,46 @@ const formatClock = (locale: Locale, at: number) =>
 /** A window that has reset since it was read says nothing true: it is left out. */
 export const openLimits = (limits: readonly RuntimeLimit[], now = Date.now()) =>
   limits.filter((limit) => limit.resetsAt === null || limit.resetsAt > now)
+
+/** The state of the program as a tag with text (spec 006). Colour alone is not enough. */
+export const RuntimeTag = (props: { status: RuntimeStatus; testId: string }) => {
+  const { t } = useApp()
+  return (
+    <span class={styles.stateTag} data-state={props.status.state} data-testid={props.testId}>
+      {t(`runtime.state.${props.status.state}` as MessageKey)}
+    </span>
+  )
+}
+
+/** The tag, the reason when the program needs repair, and the time of the last check. */
+export const RuntimeReadiness = (props: { status: RuntimeStatus; prefix: string }) => {
+  const { t, locale } = useApp()
+  return (
+    <div class={styles.stateLine}>
+      <RuntimeTag status={props.status} testId={`${props.prefix}-state`} />
+      <Show when={props.status.state === "needs_repair" && props.status.reason}>
+        {(reason) => (
+          <span
+            class={`${styles.itemMeta} ${styles.stateText}`}
+            data-testid={`${props.prefix}-reason`}
+          >
+            {t(`runtime.reason.${reason()}` as MessageKey)}
+          </span>
+        )}
+      </Show>
+      <Show when={props.status.checkedAt}>
+        {(at) => (
+          <span
+            class={`${styles.itemMeta} ${styles.stateText}`}
+            data-testid={`${props.prefix}-checked`}
+          >
+            {t("runtime.checkedAt", { time: formatClock(locale(), at()) })}
+          </span>
+        )}
+      </Show>
+    </div>
+  )
+}
 
 /** The lines about the plan: its name, how much of each window is used, and when it was read. */
 export const RuntimeSummary = (props: { status: RuntimeStatus }) => {
@@ -115,7 +154,7 @@ export const RuntimePanel = (props: {
   )
   createEffect(() => props.onReady(isReady(status())))
 
-  const act = async (method: "runtimes.install" | "runtimes.signIn") => {
+  const act = async (method: "runtimes.install" | "runtimes.signIn" | "runtimes.repair") => {
     setError(undefined)
     try {
       setStatus(await call(method, target()))
@@ -137,6 +176,32 @@ export const RuntimePanel = (props: {
       >
         {(s) => (
           <>
+            <RuntimeReadiness status={s()} prefix="runtime" />
+            <Show when={s().busy === "repairing"}>
+              <div class={styles.muted} data-testid="runtime-status">
+                {t("runtime.repairing")}
+              </div>
+              <Show
+                when={s().progress}
+                fallback={
+                  <progress class={styles.progress} max="1" data-testid="runtime-progress" />
+                }
+              >
+                {(progress) => (
+                  <progress
+                    class={styles.progress}
+                    value={progress()}
+                    max="1"
+                    data-testid="runtime-progress"
+                  />
+                )}
+              </Show>
+              <div class={styles.runtimeActions}>
+                <Button onClick={cancel} data-testid="runtime-cancel">
+                  {t("runtime.cancel")}
+                </Button>
+              </div>
+            </Show>
             <Show when={s().busy === "installing"}>
               <div class={styles.muted} data-testid="runtime-status">
                 {s().progress === null
@@ -189,13 +254,33 @@ export const RuntimePanel = (props: {
                 </Button>
               </div>
             </Show>
-            <Show when={s().busy === null}>
+            <Show when={s().busy === null && s().state === "needs_repair"}>
+              <div class={styles.itemMeta} data-testid="runtime-repair-help">
+                {t("runtime.repair.help.system")}
+              </div>
+              <Show when={s().problem && runtimeSupport(props.kind).install === "download"}>
+                <div class={styles.itemMeta} data-testid="runtime-repair-help-download">
+                  {t("runtime.repair.help.download")}
+                </div>
+              </Show>
+              <div class={styles.itemMeta}>{t("runtime.repair.note")}</div>
+              <div class={styles.runtimeActions}>
+                <Button
+                  variant="primary"
+                  onClick={() => void act("runtimes.repair")}
+                  data-testid="runtime-repair"
+                >
+                  {t("runtime.repair")}
+                </Button>
+              </div>
+            </Show>
+            <Show when={s().busy === null && s().state !== "needs_repair"}>
               <Show
                 when={s().source !== null}
                 fallback={
                   <>
                     <div class={styles.muted} data-testid="runtime-status">
-                      {t("runtime.missing")}
+                      {s().state === "checking" ? t("runtime.checking") : t("runtime.missing")}
                     </div>
                     <Show
                       when={runtimeSupport(props.kind).install === "download"}
@@ -264,9 +349,14 @@ export const RuntimePanel = (props: {
             <Show when={s().problem}>
               {(problem) => (
                 <div class={styles.error} role="alert" data-testid="runtime-problem">
-                  {t(s().source === null ? "runtime.problem.install" : "runtime.problem.signIn", {
-                    detail: problem(),
-                  })}
+                  {t(
+                    s().state === "needs_repair"
+                      ? "runtime.problem.repair"
+                      : s().source === null
+                        ? "runtime.problem.install"
+                        : "runtime.problem.signIn",
+                    { detail: problem() },
+                  )}
                 </div>
               )}
             </Show>

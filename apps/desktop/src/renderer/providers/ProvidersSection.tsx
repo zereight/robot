@@ -7,7 +7,7 @@ import {
   type RuntimeKind,
   runtimeHasSeparateSignIn,
 } from "@robot/shared"
-import { createEffect, createSignal, For, onCleanup, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
@@ -15,7 +15,7 @@ import { useProviders } from "../state/providers.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { Button, Segmented } from "../ui/controls.tsx"
 import styles from "./providers.module.css"
-import { isReady, RuntimePanel, RuntimeSummary } from "./RuntimePanel.tsx"
+import { isReady, RuntimePanel, RuntimeReadiness, RuntimeSummary } from "./RuntimePanel.tsx"
 
 /** The subscriptions come first: they are what most users have. */
 const kinds: readonly ProviderKind[] = [
@@ -71,6 +71,8 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
   })
   /** The sign-in that this account uses: its own, or null for the one of the computer. */
   const signIn = () => (props.account ? props.account.signIn : wantsOwn() ? draft() : null)
+
+  const panelKey = createMemo(() => JSON.stringify([kind(), signIn()]))
 
   const changeKind = (next: ProviderKind) => {
     // Keep an address the user typed; replace one that was only a default.
@@ -201,9 +203,16 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
             </div>
           </Show>
         </Show>
-        {/* The panel is made again when the program or the sign-in changes. */}
-        <Show when={{ kind: kind() as RuntimeKind, signIn: signIn() }} keyed>
-          {(panel) => <RuntimePanel kind={panel.kind} signIn={panel.signIn} onReady={setReady} />}
+        {/* The panel is made again when the program or the sign-in changes, and at no other time:
+            the key is a plain text, so a new list of accounts does not make a new panel. */}
+        <Show when={panelKey()} keyed>
+          {(_key) => (
+            <RuntimePanel
+              kind={untrack(kind) as RuntimeKind}
+              signIn={untrack(signIn)}
+              onReady={setReady}
+            />
+          )}
         </Show>
       </Show>
       <Show when={error()}>
@@ -264,11 +273,15 @@ const AccountItem = (props: { account: ProviderAccount }) => {
               .join(" · ")}
           </div>
         </Show>
+        {/* The state of the program: a tag with text, the reason, and the time of the check. */}
         <Show when={props.account.runtime}>
           {(runtime) => (
-            <Show when={isReady(runtime())}>
-              <RuntimeSummary status={runtime()} />
-            </Show>
+            <>
+              <RuntimeReadiness status={runtime()} prefix="provider-runtime" />
+              <Show when={isReady(runtime())}>
+                <RuntimeSummary status={runtime()} />
+              </Show>
+            </>
           )}
         </Show>
         <Show when={note()}>
@@ -289,6 +302,39 @@ const AccountItem = (props: { account: ProviderAccount }) => {
       >
         {props.account.connected ? t("providers.connected") : t("providers.notConnected")}
       </span>
+      {/* "Check again" changes nothing but the state and the time. "Repair" is the only action that
+          changes the program (spec 006). */}
+      <Show when={props.account.runtime}>
+        {(runtime) => (
+          <>
+            <Button
+              onClick={() =>
+                run(() =>
+                  call("runtimes.status", { kind: runtime().kind, signIn: runtime().signIn }),
+                )
+              }
+              disabled={runtime().busy !== null}
+              data-testid="provider-recheck"
+            >
+              {t("runtime.recheck")}
+            </Button>
+            <Show when={runtime().state === "needs_repair" || runtime().busy === "repairing"}>
+              <Button
+                variant="primary"
+                onClick={() =>
+                  run(() =>
+                    call("runtimes.repair", { kind: runtime().kind, signIn: runtime().signIn }),
+                  )
+                }
+                disabled={runtime().busy !== null}
+                data-testid="provider-repair"
+              >
+                {runtime().busy === "repairing" ? t("runtime.repairing") : t("runtime.repair")}
+              </Button>
+            </Show>
+          </>
+        )}
+      </Show>
       <Show
         when={props.account.connected}
         fallback={
@@ -297,17 +343,19 @@ const AccountItem = (props: { account: ProviderAccount }) => {
           </Button>
         }
       >
-        <Button
-          onClick={() =>
-            run(
-              () => call("providers.check", { accountId: props.account.id }),
-              "providers.connected",
-            )
-          }
-          data-testid="provider-check"
-        >
-          {t("providers.check")}
-        </Button>
+        <Show when={!props.account.runtime}>
+          <Button
+            onClick={() =>
+              run(
+                () => call("providers.check", { accountId: props.account.id }),
+                "providers.connected",
+              )
+            }
+            data-testid="provider-check"
+          >
+            {t("providers.check")}
+          </Button>
+        </Show>
         <Button
           onClick={() => run(() => call("providers.disconnect", { accountId: props.account.id }))}
           data-testid="provider-disconnect"
@@ -345,6 +393,9 @@ export const ProvidersSection = () => {
       })
     } else takeTarget("account")
   })
+  const accountIds = createMemo(() => providers.accounts().map((a) => a.id), [], {
+    equals: (a, b) => a.length === b.length && a.every((id, i) => id === b[i]),
+  })
   return (
     <div data-testid="providers-section">
       <Show
@@ -352,7 +403,15 @@ export const ProvidersSection = () => {
         fallback={<p class={styles.muted}>{t("providers.empty")}</p>}
       >
         <ul class={styles.list}>
-          <For each={providers.accounts()}>{(account) => <AccountItem account={account} />}</For>
+          {/* The list is of ids. A row is made once for an account: when the state of a program
+              changes, the rows keep their open forms. */}
+          <For each={accountIds()}>
+            {(id) => (
+              <Show when={providers.byId(id)}>
+                {(account) => <AccountItem account={account()} />}
+              </Show>
+            )}
+          </For>
         </ul>
       </Show>
       <Show

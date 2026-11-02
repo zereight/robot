@@ -11,6 +11,16 @@ const state = () =>
   existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8")) : { ready: true }
 const args = process.argv.slice(2)
 const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`)
+// Every call is noted, so that a test can tell a check from a turn.
+appendFileSync(join(dir, "pi-asks.jsonl"), `${JSON.stringify(args.slice(0, 3))}\n`)
+
+// The help text names `--tools` unless the test says that this program has no such mode.
+if (args.includes("--help")) {
+  console.log("pi - AI coding assistant\n\nOptions:\n  --model <pattern>  Model")
+  if (!state().noReadOnly)
+    console.log("  --tools, -t <tools>  Comma-separated allowlist of tool names to enable")
+  process.exit(0)
+}
 
 if (args[0] === "--version" || args[0] === "-v") {
   console.log("9.9.9")
