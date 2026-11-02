@@ -47,7 +47,9 @@ client shows it and sends commands.
 4. The server shows "Allow <device name>?" with the device kind, Allow and Deny. The text says
    that the device can direct the agents of this computer, including steps that change files and
    run commands. For a two-way link, the text also says that this computer can open the other
-   one. The dialog has a switch, "Let <device name> create and change agents", on by default.
+   one. The dialog has a switch, "Let <device name> create and change agents". It is on by
+   default for a computer and off by default for a phone, because the phone app has no screens
+   for it in this version (011).
    When it is on, the text also says that the device can make and change agents, channels,
    memory and workflows on this computer (see "Create and change agents" and "Workflows").
 5. On Allow, both sides store each other's identity. Later connections need no code. The new

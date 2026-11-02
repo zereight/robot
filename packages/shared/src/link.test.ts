@@ -3,6 +3,7 @@ import {
   ACCESS_EVENT,
   CHANGE_METHODS,
   CLIENT_METHODS,
+  defaultCanChange,
   formatAddress,
   formatLink,
   groupCode,
@@ -204,6 +205,13 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     // The list of places carries the sections and the section of each place, read only.
     expect(isClientMethod("places.list")).toBe(true)
     expect(isRoutedMethod("places.list")).toBe(true)
+  })
+})
+
+describe("the switch in Allow <name>? (spec 012, 011)", () => {
+  test("is on at first for a computer and off for a phone", () => {
+    expect(defaultCanChange("computer")).toBe(true)
+    expect(defaultCanChange("phone")).toBe(false)
   })
 })
 

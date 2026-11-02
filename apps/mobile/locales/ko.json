@@ -1,0 +1,6 @@
+{
+  "CFBundleDisplayName": "ROBot",
+  "NSCameraUsageDescription": "컴퓨터의 페어링 코드를 읽으려고 카메라를 써요.",
+  "NSLocalNetworkUsageDescription": "이 네트워크에 있는 컴퓨터에 바로 연결해요.",
+  "NSPhotoLibraryUsageDescription": "에이전트에게 보낼 사진을 고르려고 사진 보관함을 열어요."
+}

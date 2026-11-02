@@ -1,0 +1,295 @@
+import { allPlaces, summarize } from "@robot/phone"
+import type { Agent, Place, PlaceSection } from "@robot/shared"
+import { router, Stack, useLocalSearchParams } from "expo-router"
+import { Pressable, StyleSheet, Text, View } from "react-native"
+import { toggleSection } from "../../../src/prefs.ts"
+import { useApp, useServer } from "../../../src/state/context.tsx"
+import { radius, space, text } from "../../../src/theme/palette.ts"
+import { Face } from "../../../src/ui/Face.tsx"
+import { Body, Button, HeaderButton, Notice, Screen } from "../../../src/ui/kit.tsx"
+import { stateText } from "../../../src/ui/states.ts"
+
+/**
+ * Places (spec 011): the sections of the server, read only. The phone remembers which sections
+ * the user closed; it cannot make, order or rename them.
+ */
+export default function Places() {
+  const { link } = useLocalSearchParams<{ link: string }>()
+  const { hub, t, prefs, setPrefs } = useApp()
+  const view = useServer(link)
+  if (!view) return <Screen>{null}</Screen>
+  const { data, state } = view
+  const closed = prefs.closed[link] ?? []
+  const waiting = data.attention.filter(
+    (n) => n.kind === "approval" || n.kind === "question",
+  ).length
+
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          title: view.link.name,
+          headerRight: () => (
+            <HeaderButton
+              testID="places.needsYou"
+              label={
+                waiting > 0 ? t("places.needsYou.count", { count: waiting }) : t("places.needsYou")
+              }
+              onPress={() => router.push({ pathname: "/server/[link]/needs", params: { link } })}
+            />
+          ),
+        }}
+      />
+      <Screen testID="places" onRefresh={() => hub.refresh(link)}>
+        {state === "not_allowed" ? (
+          <>
+            <Notice tone="danger" text={stateText(t, view)} />
+            <Button label={t("servers.pairAgain")} onPress={() => router.push("/pair")} />
+          </>
+        ) : state === "online" ? null : data.places ? (
+          <Notice text={state === "offline" ? t("places.offline") : stateText(t, view)} />
+        ) : (
+          <Notice
+            text={
+              state === "offline" || state === "update_app"
+                ? `${stateText(t, view)} ${t("places.noCache", { name: view.link.name })}`
+                : t("places.loading")
+            }
+          />
+        )}
+        {(data.places ?? []).map((section) => (
+          <Section
+            key={section.id}
+            linkId={link}
+            section={section}
+            agents={data.agents ?? []}
+            closed={closed}
+            toggle={(key) => setPrefs((p) => toggleSection(p, link, key))}
+          />
+        ))}
+      </Screen>
+    </>
+  )
+}
+
+const Section = (props: {
+  readonly linkId: string
+  readonly section: PlaceSection
+  readonly agents: readonly Agent[]
+  readonly closed: readonly string[]
+  readonly toggle: (key: string) => void
+}) => {
+  const { t } = useApp()
+  const { section } = props
+  const everything = allPlaces(section)
+  const open = !props.closed.includes(section.id)
+  const title = section.id === "agents" ? t("places.agents") : t("places.channels")
+  const row = (place: Place) => (
+    <PlaceRow
+      key={`${place.kind}:${place.id}`}
+      linkId={props.linkId}
+      place={place}
+      agent={props.agents.find((a) => a.id === place.id)}
+    />
+  )
+  return (
+    <View style={styles.section}>
+      <Header
+        title={title}
+        open={open}
+        places={everything}
+        onPress={() => props.toggle(section.id)}
+        big
+      />
+      {open ? (
+        <>
+          {everything.length === 0 ? (
+            <Body muted style={styles.empty}>
+              {section.id === "agents" ? t("places.empty.agents") : t("places.empty.channels")}
+            </Body>
+          ) : null}
+          {section.places.map(row)}
+          {section.sections.map((user) => {
+            const key = `user:${user.id}`
+            const userOpen = !props.closed.includes(key)
+            return (
+              <View key={user.id} style={styles.userSection}>
+                <Header
+                  title={user.name}
+                  open={userOpen}
+                  places={user.places}
+                  onPress={() => props.toggle(key)}
+                />
+                {userOpen ? (
+                  user.places.length === 0 ? (
+                    <Body muted style={styles.empty}>
+                      {t("places.emptySection")}
+                    </Body>
+                  ) : (
+                    user.places.map(row)
+                  )
+                ) : null}
+              </View>
+            )
+          })}
+        </>
+      ) : null}
+    </View>
+  )
+}
+
+/** A section header. When closed, it shows the unread sum and a working dot (as on desktop). */
+const Header = (props: {
+  readonly title: string
+  readonly open: boolean
+  readonly places: readonly Place[]
+  readonly onPress: () => void
+  readonly big?: boolean
+}) => {
+  const { t, palette } = useApp()
+  const sum = summarize(props.places)
+  return (
+    <Pressable
+      testID={`section.${props.title}`}
+      accessibilityRole="button"
+      accessibilityState={{ expanded: props.open }}
+      accessibilityLabel={t(props.open ? "places.section.open" : "places.section.closed", {
+        name: props.title,
+      })}
+      onPress={props.onPress}
+      style={({ pressed }) => [styles.header, { opacity: pressed ? 0.6 : 1 }]}
+    >
+      <Text style={[styles.chevron, { color: palette.textMuted }]}>{props.open ? "▾" : "▸"}</Text>
+      <Text
+        style={[
+          props.big ? styles.headerBig : styles.headerSmall,
+          { color: props.big ? palette.text : palette.textMuted },
+        ]}
+        numberOfLines={1}
+      >
+        {props.title}
+      </Text>
+      {!props.open && sum.working ? (
+        <View style={[styles.workDot, { backgroundColor: palette.success }]} />
+      ) : null}
+      {!props.open && sum.unread > 0 ? <Badge count={sum.unread} /> : null}
+    </Pressable>
+  )
+}
+
+const Badge = ({ count }: { readonly count: number }) => {
+  const { t, palette } = useApp()
+  return (
+    <View
+      style={[styles.badge, { backgroundColor: palette.accent }]}
+      accessibilityLabel={t("places.unread", { count })}
+    >
+      <Text style={[styles.badgeText, { color: palette.accentText }]}>
+        {count > 99 ? "99+" : count}
+      </Text>
+    </View>
+  )
+}
+
+const PlaceRow = (props: {
+  readonly linkId: string
+  readonly place: Place
+  readonly agent: Agent | undefined
+}) => {
+  const { t, palette } = useApp()
+  const { place } = props
+  const details = [
+    place.working ? t("places.working") : null,
+    place.unread > 0 ? t("places.unread", { count: place.unread }) : null,
+    place.lastMessage,
+  ]
+    .filter(Boolean)
+    .join(", ")
+  return (
+    <Pressable
+      testID={`place.${place.name}`}
+      accessibilityRole="button"
+      accessibilityLabel={t("places.row", { name: place.name, details })}
+      onPress={() =>
+        router.push({
+          pathname: "/server/[link]/[kind]/[id]",
+          params: { link: props.linkId, kind: place.kind, id: place.id },
+        })
+      }
+      style={({ pressed }) => [
+        styles.place,
+        { backgroundColor: pressed ? palette.pressed : "transparent" },
+      ]}
+    >
+      {place.kind === "agent" ? (
+        <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
+      ) : (
+        <View style={[styles.hash, { backgroundColor: palette.surface }]}>
+          <Text style={[styles.hashText, { color: palette.textMuted }]}>#</Text>
+        </View>
+      )}
+      <View style={styles.placeText}>
+        <View style={styles.placeTop}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.placeName,
+              { color: palette.text, fontWeight: place.unread > 0 ? "700" : "500" },
+            ]}
+          >
+            {place.name}
+          </Text>
+          {place.working ? (
+            <View style={[styles.workDot, { backgroundColor: palette.success }]} />
+          ) : null}
+        </View>
+        {place.lastMessage ? (
+          <Text numberOfLines={1} style={[styles.last, { color: palette.textMuted }]}>
+            {place.lastMessage}
+          </Text>
+        ) : null}
+      </View>
+      {place.unread > 0 ? <Badge count={place.unread} /> : null}
+    </Pressable>
+  )
+}
+
+const styles = StyleSheet.create({
+  section: { gap: space.xs },
+  userSection: { gap: space.xs, marginLeft: space.s },
+  empty: { fontSize: text.s, paddingHorizontal: space.s, paddingVertical: space.xs },
+  header: { flexDirection: "row", alignItems: "center", gap: space.s, minHeight: 44 },
+  chevron: { width: 14, fontSize: text.s },
+  headerBig: { flex: 1, fontSize: text.l, fontWeight: "700" },
+  headerSmall: { flex: 1, fontSize: text.s, fontWeight: "600" },
+  workDot: { width: 8, height: 8, borderRadius: 4 },
+  badge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: radius.round,
+    paddingHorizontal: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: { fontSize: text.xs, fontWeight: "700" },
+  place: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.m,
+    minHeight: 56,
+    paddingHorizontal: space.s,
+    borderRadius: radius.m,
+  },
+  hash: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.m,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  hashText: { fontSize: text.l, fontWeight: "700" },
+  placeText: { flex: 1, gap: 2 },
+  placeTop: { flexDirection: "row", alignItems: "center", gap: space.s },
+  placeName: { fontSize: text.m, flexShrink: 1 },
+  last: { fontSize: text.s },
+})

@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["DOM", "ES2023"],
+    "module": "preserve",
+    "moduleDetection": "force",
+    "customConditions": ["react-native"],
+    "allowJs": false,
+    "esModuleInterop": true,
+    // The tests of the app run in Bun.
+    "types": ["bun"],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["app", "src", "scripts", "types.d.ts"]
+}

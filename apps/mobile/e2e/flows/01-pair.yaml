@@ -1,0 +1,82 @@
+# First start and pairing with "Type it instead" (spec 011). ADDRESS and CODE come from the host.
+appId: host.exp.Exponent
+---
+- clearKeychain
+# A fresh Expo Go, with notifications allowed, so no system question covers the screens.
+- launchApp:
+    clearState: true
+- openLink: ${URL}
+# Older Expo Go builds show their developer menu once even with the flag.
+- tapOn:
+    text: "Continue"
+    optional: true
+# The system may ask about notifications at any time (a question left open by an earlier run
+# shows again). Wait for it or for the first screen, and allow when it is there.
+- extendedWaitUntil:
+    visible:
+      text: "허용|Allow|ROBot에 오신 걸 환영해요|Welcome to ROBot"
+    timeout: 180000
+- runFlow:
+    when:
+      visible: "허용|Allow"
+    commands:
+      - tapOn: "허용|Allow"
+- extendedWaitUntil:
+    visible:
+      id: "welcome.name"
+    timeout: 30000
+- takeScreenshot: phone-01-first-start
+- tapOn:
+    id: "welcome.name"
+- inputText: "iPhone of Kim"
+- tapOn:
+    id: "welcome.continue"
+- extendedWaitUntil:
+    visible:
+      id: "pair.typeInstead"
+    timeout: 30000
+- takeScreenshot: phone-02-pairing-camera
+- tapOn:
+    id: "pair.typeInstead"
+- tapOn:
+    id: "pair.address"
+- inputText: ${ADDRESS}
+- tapOn:
+    id: "pair.code"
+- inputText: ${CODE}
+# The number pad has no return key: a tap on a label closes the keyboard.
+- tapOn:
+    id: "pair.code.label"
+- takeScreenshot: phone-03-type-it-instead
+- tapOn:
+    id: "pair.submit"
+- extendedWaitUntil:
+    visible:
+      id: "pair.busy"
+    timeout: 30000
+# While the phone works out the key, the line says that this can take up to half a minute.
+- extendedWaitUntil:
+    visible:
+      text: ".*half a minute.*|.*최대 30초.*"
+    timeout: 10000
+- takeScreenshot: phone-04-checking-the-code
+- extendedWaitUntil:
+    visible:
+      text: ".*Waiting for .* to allow.*|.*허용하기를 기다리고.*"
+    timeout: 60000
+- takeScreenshot: phone-04-waiting-to-allow
+# After the first pairing the system asks about notifications (Korean or English simulator).
+- extendedWaitUntil:
+    visible:
+      text: "허용|Allow|MacBook, .*"
+    timeout: 120000
+- runFlow:
+    when:
+      visible: "허용|Allow"
+    commands:
+      - tapOn: "허용|Allow"
+- extendedWaitUntil:
+    visible:
+      id: "server.MacBook"
+    timeout: 30000
+- takeScreenshot: phone-05-servers

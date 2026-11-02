@@ -1,19 +1,28 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { EventEmitter } from "node:events"
 import { createServer } from "node:net"
+import {
+  Conn,
+  generateKeyPair,
+  type JoinResult,
+  pairingCiphers,
+  SecureChannel,
+  type SocketData,
+} from "@robot/link"
 import { type Address, LINK_PROTOCOL, type WireDevice } from "@robot/shared"
 import type WebSocket from "ws"
-import { Conn, pairingCiphers, SecureChannel } from "./channel.ts"
-import { failureCode, LinkError, openAny, openLinked, pairWithCode } from "./client.ts"
-import { generateKeyPair } from "./crypto/noise.ts"
-import { codeToW } from "./crypto/spake2.ts"
+import { codeToW, failureCode, LinkError, openAny, openLinked, pairWithCode } from "./client.ts"
 import { deviceIdOf, type Identity } from "./identity.ts"
-import type { JoinResult } from "./protocol.ts"
 import { type ClientSession, type LinkHost, LinkServer, type ServerOffer } from "./server.ts"
+import { wsSocket } from "./ws.ts"
 
 const identityOf = (): Identity => {
   const pair = generateKeyPair()
-  return { ...pair, id: deviceIdOf(pair.publicKey) }
+  return {
+    publicKey: Buffer.from(pair.publicKey),
+    privateKey: Buffer.from(pair.privateKey),
+    id: deviceIdOf(pair.publicKey),
+  }
 }
 
 interface Rig {
@@ -69,7 +78,7 @@ const rig = async (handshakeMs?: number): Promise<Rig> => {
       state.joins.push(request)
       return state.decision
     },
-    client: (publicKey) => state.clients.get(publicKey.toString("hex")),
+    client: (publicKey) => state.clients.get(Buffer.from(publicKey).toString("hex")),
     session: (session) => {
       state.sessions.push(session)
     },
@@ -173,11 +182,12 @@ describe("pairing run", () => {
     host.state.offer = offerFor("424242")
     const { conn } = await openAny([addr(port)])
     const seen: string[] = []
-    const rawSend = conn.ws.send.bind(conn.ws)
-    conn.ws.send = ((data: unknown, ...rest: unknown[]) => {
-      seen.push(String(data))
-      return (rawSend as (...a: unknown[]) => void)(data, ...rest)
-    }) as typeof conn.ws.send
+    const socket = conn.socket as { send: (data: SocketData) => void }
+    const rawSend = socket.send
+    socket.send = (data) => {
+      seen.push(typeof data === "string" ? data : Buffer.from(data).toString("latin1"))
+      rawSend(data)
+    }
     await pairWithCode(conn, "424242")
     expect(seen.join("")).not.toContain("424242")
   })
@@ -373,7 +383,7 @@ describe("a message that comes with the last handshake message", () => {
     const key = Buffer.alloc(16, 7)
     const serverSocket = fakeSocket()
     const server = new SecureChannel(
-      new Conn(serverSocket as unknown as WebSocket),
+      new Conn(wsSocket(serverSocket as unknown as WebSocket)),
       pairingCiphers(key, false),
     )
     server.send({ type: "hello", n: 1 })
@@ -381,7 +391,7 @@ describe("a message that comes with the last handshake message", () => {
 
     // Both frames reach the client before it has made its channel.
     const clientSocket = fakeSocket()
-    const conn = new Conn(clientSocket as unknown as WebSocket)
+    const conn = new Conn(wsSocket(clientSocket as unknown as WebSocket))
     for (const frame of serverSocket.sent) clientSocket.emit("message", frame, true)
     const channel = new SecureChannel(conn, pairingCiphers(key, true))
     const seen: unknown[] = []

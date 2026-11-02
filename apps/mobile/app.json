@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "ROBot",
+    "slug": "robot",
+    "scheme": "robot",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "locales": {
+      "en": "./locales/en.json",
+      "ko": "./locales/ko.json"
+    },
+    "ios": {
+      "bundleIdentifier": "com.zereight.robot",
+      "supportsTablet": false,
+      "infoPlist": {
+        "CFBundleAllowMixedLocalizations": true,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "10.0.0.0/8": { "NSExceptionAllowsInsecureHTTPLoads": true },
+            "172.16.0.0/12": { "NSExceptionAllowsInsecureHTTPLoads": true },
+            "192.168.0.0/16": { "NSExceptionAllowsInsecureHTTPLoads": true },
+            "100.64.0.0/10": { "NSExceptionAllowsInsecureHTTPLoads": true },
+            "ts.net": {
+              "NSIncludesSubdomains": true,
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        }
+      }
+    },
+    "android": {
+      "package": "com.zereight.robot",
+      "permissions": ["android.permission.CAMERA", "android.permission.POST_NOTIFICATIONS"]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-localization",
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ROBot uses the camera to read the pairing code of your computer.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ROBot lets you pick photos to send to an agent.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-notifications",
+      [
+        "expo-build-properties",
+        {
+          "android": { "usesCleartextTraffic": true }
+        }
+      ]
+    ]
+  }
+}

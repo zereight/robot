@@ -1,0 +1,20 @@
+{
+  "name": "@robot/phone",
+  "private": true,
+  "type": "module",
+  "description": "The client core of the phone app (spec 011): paired servers, pairing, the link to each server, the offline cache. Plain TypeScript, so it runs in Bun for the tests.",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@robot/link": "workspace:*"
+  },
+  "devDependencies": {
+    "@robot/shared": "workspace:*"
+  }
+}

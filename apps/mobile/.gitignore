@@ -1,0 +1,6 @@
+# Made by Expo on each run, or by a native build.
+.expo/
+ios/
+android/
+web-build/
+expo-env.d.ts

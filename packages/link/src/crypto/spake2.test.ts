@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { codeToW, Spake2 } from "./spake2.ts"
+import { equalBytes, toHex, utf8 } from "../bytes.ts"
+import { codeToW, codeToWAsync, Spake2 } from "./spake2.ts"
 
-const hex = (value: Uint8Array) => Buffer.from(value).toString("hex")
+const hex = toHex
 
 // The first and the last test vector of RFC 9382, Appendix B (P256-SHA256-HKDF-HMAC).
 const vectors = [
@@ -60,26 +61,41 @@ describe("SPAKE2 (RFC 9382)", () => {
       return { ra, rb }
     }
     const same = run("123456", "123456")
-    expect(same.ra.key.equals(same.rb.key)).toBe(true)
+    expect(equalBytes(same.ra.key, same.rb.key)).toBe(true)
     expect(same.rb.verify(same.ra.confirmation)).toBe(true)
     const wrong = run("123456", "123457")
-    expect(wrong.ra.key.equals(wrong.rb.key)).toBe(false)
+    expect(equalBytes(wrong.ra.key, wrong.rb.key)).toBe(false)
     expect(wrong.rb.verify(wrong.ra.confirmation)).toBe(false)
     expect(wrong.ra.verify(wrong.rb.confirmation)).toBe(false)
   })
 
   test("a message that is not a point of the group is refused", () => {
     const a = new Spake2("A", codeToW("123456"), { idA: "client", idB: "server" })
-    expect(() => a.finish(Buffer.alloc(65, 4))).toThrow()
-    expect(() => a.finish(Buffer.alloc(3))).toThrow()
+    expect(() => a.finish(new Uint8Array(65).fill(4))).toThrow()
+    expect(() => a.finish(new Uint8Array(3))).toThrow()
   })
 
   test("the data that both sides add must match", () => {
     const w = codeToW("000000")
-    const a = new Spake2("A", w, { idA: "c", idB: "s", aad: Buffer.from("v1") })
-    const b = new Spake2("B", w, { idA: "c", idB: "s", aad: Buffer.from("v2") })
+    const a = new Spake2("A", w, { idA: "c", idB: "s", aad: utf8("v1") })
+    const b = new Spake2("B", w, { idA: "c", idB: "s", aad: utf8("v2") })
     const ra = a.finish(b.message)
     const rb = b.finish(a.message)
     expect(rb.verify(ra.confirmation)).toBe(false)
+  })
+
+  test("the code gives the same w in one go, in steps, and with the scrypt of Node", async () => {
+    const { scryptSync } = await import("node:crypto")
+    const { PAIR_SCRYPT, wFromScrypt } = await import("./spake2.ts")
+    const node = wFromScrypt(
+      scryptSync("042917", PAIR_SCRYPT.salt, PAIR_SCRYPT.dkLen, {
+        N: PAIR_SCRYPT.N,
+        r: PAIR_SCRYPT.r,
+        p: PAIR_SCRYPT.p,
+        maxmem: 64 * 1024 * 1024,
+      }),
+    )
+    expect(codeToW("042917")).toBe(node)
+    expect(await codeToWAsync("042917")).toBe(node)
   })
 })

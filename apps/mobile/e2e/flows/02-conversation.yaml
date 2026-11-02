@@ -1,0 +1,39 @@
+# Places, open an agent, send, and see the streamed reply (spec 011, 003). Runs after 01-pair.
+appId: host.exp.Exponent
+---
+- tapOn:
+    id: "server.MacBook"
+- extendedWaitUntil:
+    visible:
+      id: "place.Ada"
+    timeout: 30000
+- takeScreenshot: phone-06-places
+- tapOn:
+    id: "place.Ada"
+- extendedWaitUntil:
+    visible:
+      id: "composer.input"
+    timeout: 30000
+- tapOn:
+    id: "composer.input"
+- inputText: "hello from the phone"
+- tapOn:
+    id: "composer.send"
+- extendedWaitUntil:
+    visible:
+      text: ".*You said: hello from the phone.*"
+    timeout: 60000
+- takeScreenshot: phone-07-reply
+- tapOn:
+    id: "composer.input"
+- inputText: "show markdown"
+- tapOn:
+    id: "composer.send"
+- extendedWaitUntil:
+    visible:
+      text: ".*const answer = 42.*"
+    timeout: 60000
+# Raw HTML stays text.
+- assertVisible:
+    text: ".*<b>raw html</b>.*"
+- takeScreenshot: phone-08-markdown

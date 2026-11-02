@@ -1,0 +1,49 @@
+# Back from the background, Settings, and unpair (spec 011). Runs after 03-approval.
+appId: host.exp.Exponent
+---
+# The app leaves the screen and comes back: the server is online again with no new pairing.
+- pressKey: Home
+- waitForAnimationToEnd:
+    timeout: 5000
+- launchApp:
+    stopApp: false
+# Back to the Servers screen, whatever the depth.
+- repeat:
+    while:
+      notVisible:
+        id: "servers.settings"
+    times: 5
+    commands:
+      - tapOn:
+          point: "9%,9%"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- extendedWaitUntil:
+    visible:
+      text: "MacBook, (온라인|Online)"
+    timeout: 30000
+- takeScreenshot: phone-12-back-online
+- tapOn:
+    id: "servers.settings"
+- extendedWaitUntil:
+    visible:
+      id: "settings"
+    timeout: 15000
+- takeScreenshot: phone-13-settings
+- scrollUntilVisible:
+    element:
+      id: "settings.unpair.MacBook"
+    direction: DOWN
+- tapOn:
+    id: "settings.unpair.MacBook"
+- tapOn:
+    id: "settings.unpair.confirm"
+- tapOn:
+    point: "9%,9%"
+- extendedWaitUntil:
+    visible:
+      id: "servers"
+    timeout: 15000
+- assertNotVisible:
+    id: "server.MacBook"
+- takeScreenshot: phone-14-unpaired

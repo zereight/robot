@@ -2,6 +2,14 @@ import { randomUUID } from "node:crypto"
 import { closeSync, openSync, readSync, statSync, writeFileSync } from "node:fs"
 import { basename, join } from "node:path"
 import {
+  type Conn,
+  Connection,
+  DECISION_MS,
+  type PairMessage,
+  type SecureChannel,
+  toPairDevice,
+} from "@robot/link"
+import {
   ACCESS_EVENT,
   type AccessPayload,
   ATTACH_BYTES,
@@ -27,12 +35,10 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { cacheKey, LinkCache } from "../link/cache.ts"
-import type { Conn, SecureChannel } from "../link/channel.ts"
 import { LinkError, openAny, pairWithCode } from "../link/client.ts"
-import { Connection } from "../link/connection.ts"
 import { deviceIdOf, fromB64 } from "../link/identity.ts"
-import { DECISION_MS, type PairMessage, toPairDevice } from "../link/protocol.ts"
 import { searchSaved } from "../link/saved.ts"
+import { wsOpener } from "../link/ws.ts"
 import { Devices, type LinkRow } from "./Devices.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -161,6 +167,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
       const connect = (row: LinkRow) => {
         const connection = new Connection({
           identity,
+          opener: wsOpener,
           self: devices.self,
           target: () => {
             const link = devices.link(row.id)

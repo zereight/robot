@@ -1,23 +1,29 @@
-import { LINK_PROTOCOL, type WireDevice } from "@robot/shared"
-import type { WebSocket } from "ws"
-import { WebSocketServer } from "ws"
-import { Conn, pairingCiphers, SecureChannel } from "./channel.ts"
-import { NoiseHandshake } from "./crypto/noise.ts"
-import { Spake2 } from "./crypto/spake2.ts"
-import { b64, fromB64, type Identity } from "./identity.ts"
 import {
+  Conn,
   DECISION_MS,
+  fromUtf8,
   HANDSHAKE_MS,
   type JoinResult,
   LINK_PROLOGUE,
+  LINK_PROTOCOL,
   type LinkAnswer,
   type LinkHello,
+  NoiseHandshake,
   PAIR_AAD,
   PAIR_IDS,
   type PairDevice,
   type PairMessage,
+  pairingCiphers,
+  SecureChannel,
+  Spake2,
   toPairDevice,
-} from "./protocol.ts"
+  utf8,
+  type WireDevice,
+} from "@robot/link"
+import type { WebSocket } from "ws"
+import { WebSocketServer } from "ws"
+import { b64, fromB64, type Identity } from "./identity.ts"
+import { wsSocket } from "./ws.ts"
 
 /** A pairing code that the server shows. `w` is the number that SPAKE2 makes from the code. */
 export interface ServerOffer {
@@ -51,7 +57,7 @@ export interface LinkHost {
     addresses: readonly string[]
   }): Promise<JoinResult>
   /** The linked client with this public key, or undefined. */
-  client(publicKey: Buffer): WireDevice | undefined
+  client(publicKey: Uint8Array): WireDevice | undefined
   session(session: ClientSession): void
 }
 
@@ -93,13 +99,13 @@ export class LinkServer {
   close() {
     const wss = this.#wss
     this.#wss = undefined
-    for (const conn of this.#open) conn.ws.terminate()
+    for (const conn of this.#open) conn.terminate()
     this.#open.clear()
     wss?.close()
   }
 
   async #accept(ws: WebSocket) {
-    const conn = new Conn(ws)
+    const conn = new Conn(wsSocket(ws))
     this.#open.add(conn)
     conn.onClose(() => this.#open.delete(conn))
     if (this.#handshakes >= MAX_HANDSHAKES || !this.#host.accepting()) {
@@ -211,7 +217,7 @@ export class LinkServer {
     })
     let first: LinkHello
     try {
-      first = JSON.parse(noise.read(fromB64(String(hello.m))).toString("utf8")) as LinkHello
+      first = JSON.parse(fromUtf8(noise.read(fromB64(String(hello.m))))) as LinkHello
     } catch {
       // A device that does not hold our public key cannot make a message that opens.
       return conn.close(4400)
@@ -219,7 +225,7 @@ export class LinkServer {
     const remote = noise.remoteStatic
     const known = remote ? this.#host.client(remote) : undefined
     const send = (answer: LinkAnswer) =>
-      conn.sendText({ t: "link-2", m: b64(noise.write(Buffer.from(JSON.stringify(answer)))) })
+      conn.sendText({ t: "link-2", m: b64(noise.write(utf8(JSON.stringify(answer)))) })
     if (!known || !this.#host.accepting()) {
       send({
         ok: false,
