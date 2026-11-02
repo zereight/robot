@@ -24,7 +24,9 @@ through or being stored on a third-party server.
 ## Messages
 
 - The phone asks for: server summary, places, a page of messages, send message, stop, approve,
-  answer question, upload attachment, download attachment.
+  answer question, upload attachment, download attachment, retry a task, end a request (see 004),
+  mark a place read, start and fork a thread, compact a conversation, and run or edit a workflow.
+  Whatever the user can do in a conversation on the computer, the phone can ask for.
 - The computer pushes: new and changed messages, task state changes, agent state changes,
   approval requests.
 - Each message has a type, an id, and a version number. Both sides use one protocol version; a

@@ -18,12 +18,24 @@ The user follows and directs agents from an iPhone or Android phone while away f
    message box with attach (photos, files), stop, and reply.
 4. **Approvals**: approval and question cards can be answered in the conversation or from a
    notification.
-5. **Settings**: language, theme, notifications, unpair.
+5. **Needs you**: one list of what waits for the user on a server: approval cards, question cards,
+   and failed channel parts. A failed part has "Retry" and "End the request", as on the computer
+   (see 004). A card for browser control that is no longer valid leaves the list.
+6. **Workflows**: the workflows of a server. The user sees them as numbered step lists, runs one,
+   reads the runs, edits steps, and asks the assistant, as on the computer (see 010).
+7. **Settings**: language, theme, notifications, unpair.
 
 ## First start
 
 The phone asks the user for a device name that the computer will show, then opens the pairing
 camera.
+
+## Same as the computer
+
+The phone follows the computer in these points: the `@all` mention in channels (004), the random
+name button and the role list for agents (002, 013), the word "archived" for channels (004), the
+context meter and the Compact control (003), threads and fork (003), the command list (003),
+the main agent switch (002), and the end of a request (004). The phone shows no marketplace.
 
 ## Rules
 
