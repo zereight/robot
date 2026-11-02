@@ -2,6 +2,7 @@ import type { CutNotice, MessageKey } from "@robot/shared"
 import { createSignal, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { useRetry } from "../retry/RetryNote.tsx"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
@@ -27,8 +28,19 @@ export const RestartNotice = (props: { agentId: string; cut: CutNotice }) => {
       setBusy(false)
     }
   }
+  // A request that never reached the model ran no step, so no retry note shows (spec 005). The
+  // same path as Retry holds the note anyway if the server answers with one.
+  const retry = useRetry()
   const sendAgain = () =>
-    act(() => call("chat.retry", { agentId: props.agentId, messageId: props.cut.messageId }))
+    act(() =>
+      retry.start((confirmed) =>
+        call("chat.retry", {
+          agentId: props.agentId,
+          messageId: props.cut.messageId,
+          ...(confirmed ? { confirmed } : {}),
+        }),
+      ),
+    )
   const goOn = () =>
     act(() =>
       call("chat.send", {
@@ -44,6 +56,7 @@ export const RestartNotice = (props: { agentId: string; cut: CutNotice }) => {
       data-testid="restart-notice"
       data-progress={props.cut.progress}
     >
+      {retry.dialog()}
       <div class={styles.restartText}>
         <span>{t("chat.restart.notice")}</span>{" "}
         <span data-testid="progress-line">

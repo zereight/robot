@@ -26,7 +26,17 @@ export const ActionLogSection = () => {
   const row = (e: ActionLogEntry) => (
     <li class={styles.logRow} data-testid="action-log-entry" data-outside={e.outside !== null}>
       <div class={styles.logHead}>
-        <span class={styles.label}>{t(`permissions.log.kind.${e.kind}` as MessageKey)}</span>
+        <span class={styles.label}>
+          {t(`permissions.log.kind.${e.kind}` as MessageKey)}
+          <Show when={e.access}>
+            {(access) => (
+              <span data-testid="action-log-access" data-access={access()}>
+                {" · "}
+                {t(`permissions.log.access.${access()}` as MessageKey)}
+              </span>
+            )}
+          </Show>
+        </span>
         <span class={styles.logTag} data-result={e.result}>
           {t(`permissions.log.result.${e.result}` as MessageKey)}
         </span>

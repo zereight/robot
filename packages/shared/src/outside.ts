@@ -1,5 +1,6 @@
 import type { MessagePart } from "./chat.ts"
 import { toolStepKind } from "./notifications.ts"
+import type { LoggedKind, StepAccess } from "./steps.ts"
 import type { TaskSource } from "./task.ts"
 import type { PermissionLevel } from "./tools.ts"
 
@@ -189,6 +190,12 @@ export type ActionDecider = "level" | "allow_rule" | "deny_rule" | "user"
 /** The result of a step of the action log. */
 export type ActionResult = "ran" | "failed" | "refused" | "stopped"
 
+/**
+ * The kind of an entry of the action log: a guarded step (spec 007, "Outside content"), or a step
+ * of the four kinds of "Permission rules": file, shell command, web page, tool of a connection.
+ */
+export type ActionKind = GuardedStep | LoggedKind
+
 /** One entry of the action log. */
 export interface ActionLogEntry {
   readonly id: string
@@ -196,8 +203,9 @@ export interface ActionLogEntry {
   readonly agentId: string
   /** The name that the agent had at the time of the step. */
   readonly agentName: string
-  /** The kind of step. In this version, the guarded steps. */
-  readonly kind: GuardedStep
+  readonly kind: ActionKind
+  /** For a step of a file, whether it read or wrote (spec 007). Null for every other kind. */
+  readonly access: StepAccess | null
   /** A short target, cut at 200 characters, with secrets hidden. */
   readonly target: string
   readonly decidedBy: ActionDecider

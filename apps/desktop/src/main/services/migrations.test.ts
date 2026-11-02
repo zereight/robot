@@ -196,9 +196,17 @@ describe("the steps of the device link and of sync", () => {
     ).toHaveLength(1)
     // The step for message search (spec 001) follows them.
     expect(SEARCH).toBeGreaterThan(MAIN_STEPS + 2)
+    // The step of the limits of a task adds its columns after the step that makes the action log.
+    const logStep = migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log"))
+    const depthStep = migrations.findIndex((sql) =>
+      sql.includes("ALTER TABLE task ADD COLUMN depth"),
+    )
+    expect(logStep).toBeGreaterThan(MAIN_STEPS + 2)
+    expect(depthStep).toBeGreaterThan(logStep)
+    expect(migrations[depthStep]).toContain("ALTER TABLE action_log ADD COLUMN access")
     // The number of steps is the data version that two computers compare before they sync.
     // Later steps follow these.
-    expect(migrations.length).toBeGreaterThan(PROGRESS)
+    expect(migrations.length).toBeGreaterThan(depthStep)
     // S44: the checklist that an import leaves is a step of its own, after the action log (S39).
     const checklist = migrations.findIndex((sql) => sql.includes("CREATE TABLE import_checklist"))
     const actionLog = migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log"))

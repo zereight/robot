@@ -1,9 +1,12 @@
 import {
+  isStepLimit,
   type LicenseEntry,
   type MessageKey,
   type MessageParams,
   SILENT_LIMITS,
   type SilentLimit,
+  STEP_LIMIT_MAX,
+  STEP_LIMIT_MIN,
 } from "@robot/shared"
 import { X } from "lucide-solid"
 import {
@@ -51,6 +54,45 @@ const Row = (props: ParentProps<{ label: string; hint?: string | undefined; test
     {props.children}
   </div>
 )
+
+/** The step limit of a task: a whole number from 20 to 2000 (spec 013). */
+const StepLimit = () => {
+  const app = useApp()
+  const { t } = app
+  const [draft, setDraft] = createSignal<string>()
+  const shown = () => draft() ?? String(app.settings.stepLimit)
+  const parsed = () => (/^\d+$/.test(shown().trim()) ? Number(shown().trim()) : Number.NaN)
+  const invalid = () => draft() !== undefined && !isStepLimit(parsed())
+  /** Saves a valid number when the user leaves the field or presses Enter. */
+  const commit = () => {
+    const value = parsed()
+    if (isStepLimit(value) && value !== app.settings.stepLimit) app.update({ stepLimit: value })
+    setDraft(undefined)
+  }
+  return (
+    <Row
+      label={t("settings.stepLimit")}
+      hint={invalid() ? t("settings.stepLimit.invalid") : t("settings.stepLimit.hint")}
+      testId="setting-step-limit-row"
+    >
+      <input
+        class={styles.number}
+        type="number"
+        inputMode="numeric"
+        min={STEP_LIMIT_MIN}
+        max={STEP_LIMIT_MAX}
+        step={1}
+        value={shown()}
+        aria-label={t("settings.stepLimit")}
+        aria-invalid={invalid()}
+        onInput={(e) => setDraft(e.currentTarget.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        data-testid="setting-step-limit"
+      />
+    </Row>
+  )
+}
 
 const General = () => {
   const app = useApp()
@@ -121,6 +163,7 @@ const General = () => {
           }))}
         />
       </Row>
+      <StepLimit />
     </>
   )
 }

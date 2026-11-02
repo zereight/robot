@@ -656,6 +656,14 @@ export const migrations: readonly string[] = [
   );
   `,
   `
+  -- How deep a task is in a chain of messages between agents (spec 005, "Limits of a task").
+  ALTER TABLE task ADD COLUMN depth INTEGER NOT NULL DEFAULT 0;
+  -- For a step of a file, whether it read or wrote (spec 007, "Action log"). It is NULL for every
+  -- other kind of step. The retry note (spec 005) reads the entries of a task by its id.
+  ALTER TABLE action_log ADD COLUMN access TEXT;
+  CREATE INDEX action_log_task ON action_log (task_id, at);
+  `,
+  `
   -- How far the turn of a task went: not_sent, sent or started (spec 005). It only goes up. A task
   -- from before this step has none, and shows no line about it.
   ALTER TABLE task ADD COLUMN progress TEXT;

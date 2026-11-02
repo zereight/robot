@@ -55,6 +55,11 @@ export type MessagePart =
        * with the level as the one who decided.
        */
       readonly refused?: RefusalReason
+      /**
+       * Set when the app refused or failed the step for a reason of its own (spec 005): a code
+       * that the card translates, for example the limit of the chain of messages.
+       */
+      readonly reason?: { readonly code: string; readonly detail?: string }
     }
 
 /** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */

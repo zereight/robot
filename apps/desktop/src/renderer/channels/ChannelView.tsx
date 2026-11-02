@@ -17,6 +17,7 @@ import { formatDay } from "../chat/format.ts"
 import { MessageRow } from "../chat/MessageRow.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { useRetry } from "../retry/RetryNote.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
@@ -112,6 +113,7 @@ export const ChannelView = (props: { channel: Channel }) => {
   const ui = useUi()
   const agents = useAgents()
   const messages = createChannelChat(props.channel.id)
+  const retry = useRetry()
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
   const [atBottom, setAtBottom] = createSignal(true)
@@ -217,6 +219,7 @@ export const ChannelView = (props: { channel: Channel }) => {
 
   return (
     <div class={chat.view} data-testid="channel-view">
+      {retry.dialog()}
       <div
         class={chat.scroller}
         ref={scroller}
@@ -278,7 +281,16 @@ export const ChannelView = (props: { channel: Channel }) => {
                       }}
                       onJumpTo={jump}
                       onEdit={async () => {}}
-                      onRetry={() => {}}
+                      onRetry={() => {
+                        // A client of a linked server cannot try a part again (spec 012).
+                        const id = message.taskId
+                        if (!id || ui.linked()) return
+                        void retry
+                          .start((confirmed) =>
+                            call("tasks.retry", { id, ...(confirmed ? { confirmed } : {}) }),
+                          )
+                          .catch((e) => setError(describeError(e)))
+                      }}
                     />
                     <Show when={message.kind !== "text"}>
                       <div class={styles.kindTag}>

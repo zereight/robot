@@ -11,6 +11,9 @@ import { basename, dirname, join, relative, resolve } from "node:path"
 import {
   type ActionDecider,
   type ApprovalAnswer,
+  CHAIN_LIMIT,
+  CHAIN_LIMIT_TEXT,
+  chainAtLimit,
   changeSummary,
   checkRequestAddress,
   type GuardedStep,
@@ -33,6 +36,8 @@ import {
   type PermissionLevel,
   parseOrigin,
   parseSecretAuth,
+  REPEATED_READ_TEXT,
+  type ReadGuard,
   type RefusalReason,
   readOnlyRefuses,
   readOnlyRefusesKey,
@@ -108,6 +113,21 @@ export interface ToolContext {
   readonly taskId: string | null
   /** Records how a protected card ended, so the card shows "Saved" or "Cancelled" (spec 020). */
   readonly onSecret?: (callId: string, result: "saved" | "cancelled") => void
+  /** The depth of the task that runs this turn, in a chain of messages between agents (spec 005). */
+  readonly depth?: number
+  /** Watches the reads of this turn, so that a read with the same result is refused (spec 005). */
+  readonly guard?: ReadGuard
+  /** Records why a step failed, as a code that the card translates. */
+  readonly onReason?: (callId: string, reason: { code: string; detail?: string }) => void
+}
+
+/** What "send message" needs from the chat service, which is built after the tools. */
+export interface Messenger {
+  /**
+   * Sends a text to another agent as a message that makes a task for it. The task is one deeper
+   * than the task that sends. The reply of the receiver comes back to the sender later.
+   */
+  send(from: { agentId: string; depth: number }, toAgentId: string, text: string): Promise<void>
 }
 
 /**
@@ -125,6 +145,13 @@ export interface GuardedRequest<A> {
 }
 
 export interface ToolsService {
+  /** The chat service gives its way to deliver a message to another agent (spec 007). */
+  setMessenger(messenger: Messenger): void
+  /**
+   * Who decided the step of a call, for the action log: the user when a card asked and the user
+   * answered, else the permission level. It reads the decision once and forgets it.
+   */
+  decidedBy(agentId: string, callId: string): ActionDecider
   /**
    * The tools that an agent may call. Memory and knowledge tools are left out when they are off.
    * The settings tool is only for an agent of an API provider in its direct chat (spec 002).
@@ -276,6 +303,21 @@ const DEFS: Record<string, ToolDef> = {
     schema: object({ query: str("The words to look for, for example a name or a topic.") }, [
       "query",
     ]),
+  },
+  list_agents: {
+    name: "list_agents",
+    description:
+      "List the other agents of this server that are not archived: name, role line and state.",
+    schema: object({}, []),
+  },
+  send_message: {
+    name: "send_message",
+    description:
+      "Send a message to another agent. This starts a task for it. Its reply comes back to you as a new message in a later turn, so you can end your turn after you send.",
+    schema: object(
+      { to: str("The name of the agent."), text: str("The message, with all that it needs.") },
+      ["to", "text"],
+    ),
   },
   save_memory: {
     name: "save_memory",
@@ -516,6 +558,9 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const teaching = new Set<string>()
       const holds = (agentId: string) => control.has(agentId) || teaching.has(agentId)
       const wired = new Set<string>()
+      let messenger: Messenger | undefined
+      /** The calls that the user answered on a card, until the action log has read them. */
+      const answered = new Set<string>()
       const browserChanged = (agentId: string) => bus.emit("browser.changed", { agentId })
       const pageOf = (agentId: string) => {
         const page = platform.browser(agentId)
@@ -575,6 +620,9 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       ) => {
         if (!needsApproval(ctx.permission, risky) || allowed(ctx.agentId, key)) return
         const reply = await wait(ctx, call.id, { kind: "approval", summary })
+        // A small cap: a card that no log entry reads must not grow the set for ever.
+        if (answered.size >= 1000) answered.clear()
+        answered.add(`${ctx.agentId}:${call.id}`)
         const answer = reply.answer as ApprovalAnswer
         if (reply.by) ctx.onDecision?.(call.id, answer === "deny" ? "deny" : "allow", reply.by)
         // A linked device cannot change what an agent may always do (spec 012): its "always" is
@@ -1322,6 +1370,84 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      /**
+       * A read of a file or a page that gives the same result as the two reads before it, in the
+       * same turn, is refused with a short text (spec 005, "Repeated reads").
+       */
+      const repeated = (
+        ctx: ToolContext,
+        call: ToolCall,
+        target: string,
+        output: string,
+      ): ToolOutcome | undefined => {
+        if (!ctx.guard?.refuse(call.name, target, output)) return undefined
+        ctx.onReason?.(call.id, { code: "repeated_read" })
+        return { output: REPEATED_READ_TEXT, failed: true }
+      }
+
+      const listAgents = (ctx: ToolContext): ToolOutcome => {
+        const server = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        const rows = db.all<{ id: string; name: string; role: string }>(
+          `SELECT id, name, role FROM agent
+           WHERE server_id = ? AND id != ? AND archived_at IS NULL ORDER BY name_key`,
+          server?.server_id ?? "",
+          ctx.agentId,
+        )
+        const busy = new Set(
+          db
+            .all<{ agent_id: string }>(
+              "SELECT DISTINCT agent_id FROM task WHERE state IN ('running', 'waiting')",
+            )
+            .map((r) => r.agent_id),
+        )
+        const lines = rows.map(
+          (r) =>
+            `- ${r.name}: ${r.role || "(no role line)"} [${busy.has(r.id) ? "working" : "idle"}]`,
+        )
+        return { output: lines.join("\n") || "There are no other agents.", failed: false }
+      }
+
+      const sendMessage = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        // At the limit of the chain no task starts, and nothing else is checked (spec 005).
+        const depth = ctx.depth ?? 0
+        if (chainAtLimit(depth)) {
+          ctx.onReason?.(call.id, { code: "chain_limit", detail: String(CHAIN_LIMIT) })
+          return { output: CHAIN_LIMIT_TEXT, failed: true }
+        }
+        const name = text(args, "to").trim()
+        const message = text(args, "text").trim()
+        if (!name || !message)
+          return { output: "Give the name of an agent and a text.", failed: true }
+        const server = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        const target = db.get<{ id: string; archived_at: number | null }>(
+          "SELECT id, archived_at FROM agent WHERE server_id = ? AND name_key = ?",
+          server?.server_id ?? "",
+          name.toLocaleLowerCase(),
+        )
+        if (!target) return { output: "No agent has this name. Use list_agents.", failed: true }
+        if (target.id === ctx.agentId)
+          return { output: "An agent cannot send a message to itself.", failed: true }
+        if (target.archived_at !== null)
+          return { output: "This agent is archived. Choose another agent.", failed: true }
+        if (!messenger)
+          return { output: "Messages to other agents are not available.", failed: true }
+        await messenger.send({ agentId: ctx.agentId, depth }, target.id, message)
+        return {
+          output: `Sent to ${name}. Its reply comes back to you as a new message in a later turn. End your turn if you have nothing else to do.`,
+          failed: false,
+        }
+      }
+
       const run = async (ctx: ToolContext, call: ToolCall): Promise<ToolOutcome> => {
         const args = parseArgs(call)
         switch (call.name) {
@@ -1340,7 +1466,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const blocked = knowledgeBlock(ctx, p.full)
             if (blocked) return { output: blocked, failed: true }
             await approve(ctx, call, !p.inside, `read_file${p.inside ? "" : ":outside"}`, p.full)
-            return { output: cut(readFileSync(p.full, "utf8"), READ_MAX), failed: false }
+            const output = cut(readFileSync(p.full, "utf8"), READ_MAX)
+            return repeated(ctx, call, p.full, output) ?? { output, failed: false }
           }
           case "write_file": {
             const p = place(ctx, text(args, "path"))
@@ -1370,8 +1497,13 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           case "fetch_url": {
             const url = text(args, "url")
             await approve(ctx, call, false, "fetch_url", url)
-            return await fetchUrl(ctx, url)
+            const page = await fetchUrl(ctx, url)
+            return repeated(ctx, call, url, page.output) ?? page
           }
+          case "list_agents":
+            return listAgents(ctx)
+          case "send_message":
+            return await sendMessage(ctx, call, args)
           case "ask_user": {
             const question = text(args, "question")
             const choices = Array.isArray(args.choices)
@@ -1423,8 +1555,9 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         try {
           return await run(ctx, call)
         } catch (error) {
-          if (error instanceof Denied) return { output: "The user denied this step.", failed: true }
-          if (error instanceof Refused) return { output: error.message, failed: true }
+          if (error instanceof Denied)
+            return { output: "The user denied this step.", failed: true, notRun: true }
+          if (error instanceof Refused) return { output: error.message, failed: true, notRun: true }
           if (error instanceof SecretFailure) return { output: error.message, failed: true }
           if (ctx.signal.aborted) throw error
           return { output: error instanceof Error ? error.message : String(error), failed: true }
@@ -1432,6 +1565,11 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
 
       return Tools.of({
+        decidedBy: (agentId, callId) =>
+          answered.delete(`${agentId}:${callId}`) ? "user" : "level",
+        setMessenger: (m) => {
+          messenger = m
+        },
         defs: (options) => [
           ...Object.values(DEFS).filter(
             (d) =>
@@ -1461,8 +1599,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
                   call,
                   output: outcome.output,
                   ...(outcome.refused ? { refused: outcome.refused } : {}),
+                  ...(outcome.notRun ? { notRun: true } : {}),
                 })
-                return outcome
+                // The program is told what the step gave, not why the app did not run it.
+                return { output: outcome.output, failed: outcome.failed }
               } catch (error) {
                 // The turn stopped. The program is told, and the card is not changed any more.
                 show({ type: "tool", state: "failed", call, output: "Stopped." })
