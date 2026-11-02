@@ -38,6 +38,8 @@ An agent has:
 
 - Changing the model keeps the agent's history, memory and workspace.
 - A working agent cannot be deleted; the user must stop it first.
+- A linked device that the user allows can create, edit, duplicate and archive agents on this
+  computer, with limits on the folder, the permission level and the model accounts (012).
 - The face is the same everywhere: list, messages, activity panel, phone.
 
 ## Acceptance

@@ -12,7 +12,7 @@ Each agent works in its own folder with real tools, and the user stays in contro
 - **Tools**: read and write files, run shell commands, search, fetch web pages, drive a browser
   window, and ask the user a question.
 - **Permission level** per agent: "Ask for everything", "Ask for risky steps" (default), or
-  "Full access".
+  "Full access". A linked device (012) can make the level stricter, never looser.
 
 ## Flows
 

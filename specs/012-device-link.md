@@ -43,7 +43,9 @@ client shows it and sends commands.
 4. The server shows "Allow <device name>?" with the device kind, Allow and Deny. The text says
    that the device can direct the agents of this computer, including steps that change files and
    run commands. For a two-way link, the text also says that this computer can open the other
-   one.
+   one. The dialog has a switch, "Let <device name> create and change agents", on by default.
+   When it is on, the text also says that the device can make and change agents, channels and
+   memory on this computer (see "Create and change agents").
 5. On Allow, both sides store each other's identity. Later connections need no code. The new
    server appears in the client; the client opens it at once.
 
@@ -54,12 +56,17 @@ client shows it and sends commands.
 2. The user works as in a direct chat or a channel: read, send, stop, attach files, reply,
    answer approvals and questions (003, 004, 007).
 3. Another device that uses the same server sees the same messages at once.
+4. If the server lets this device change agents, the user can also create and change agents and
+   channels of that server (see "Create and change agents").
 
 ### Remove access
 
 - On the server: Settings → Devices lists the linked devices that can open this computer. The
   user picks one and chooses "Remove access". That device cannot connect again until it is
   paired again.
+- On the server, each linked device in that list has the switch "Can create and change agents".
+  It takes effect at once, also for a connection that is open. A link made before this switch
+  existed has it off until the user turns it on.
 - On the client: Settings → Devices lists the servers this device can open. The user picks one
   and chooses "Remove". The link ends on both sides. The cache of that server is deleted.
 
@@ -75,17 +82,45 @@ client shows it and sends commands.
 
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
-| See places, unread counts, working dots | Create, edit, archive or delete agents and channels |
-| Read messages, search places | Change model accounts, permission levels, memory, settings |
-| Send, stop, reply, edit the last message, retry | Routines, workflows, usage page |
-| Attach files and download files from messages | Browser "Take control" |
-| Answer approval cards and questions | Export and import of data |
-| See the task list and task details; stop a task | |
+| See places, unread counts, working dots | Delete or restore agents and channels |
+| Read messages, search places | Change model accounts and settings |
+| Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser |
+| Attach files and download files from messages | Choose a workspace folder |
+| Answer approval cards and questions | Routines, workflows, usage page |
+| See the task list and task details; stop a task | Browser "Take control" |
+| Only with "Can create and change agents": create, edit, duplicate and archive agents; create, edit and archive channels; edit memory | Export and import of data |
 
 The page buttons that a client cannot use show a muted line: "Open this on <server name>."
-Permission levels of agents (007) are the same for every client: a client does not change them
-and cannot get around them. For this reason an approval card on a client has no "Always allow"
-choice. If a client sends one, the server takes it as one "Allow" and keeps no rule.
+A client cannot make an agent less careful than it is now (007). For this reason an approval
+card on a client has no "Always allow" choice. If a client sends one, the server takes it as one
+"Allow" and keeps no rule.
+
+### Create and change agents
+
+A client with the switch "Can create and change agents" (see "Remove access") works with the
+agents and channels of the server in the same screens as on the server (002, 004, 008): the plus
+button on a section, the agent profile, the channel settings, the memory list.
+
+- **Fields a client can set:** name, face, role line, instructions, model, effort, section, and
+  memory items. For a channel: name, topic, members and lead.
+- **Model:** the client picks from the model accounts that are connected on the server. It cannot
+  add, change or disconnect an account, and it never sees a key.
+- **Workspace:** the server makes a new, empty workspace folder in its default folder (013) for
+  each agent that a client creates or duplicates. A client cannot choose or change a folder. The
+  profile on a client says "Workspace: on <server name>" and shows no path.
+- **Permission level:** an agent that a client creates starts at the level that the server uses
+  for new agents ("Ask for risky steps"). A client can set a stricter level. It cannot set a
+  looser one, and it cannot add an "Always allow" rule.
+- **Names:** the rules of 002 and 004 hold on the server. A name that is taken gives a plain
+  error on the client.
+- **Working agents:** a client cannot archive an agent while it works. It stops the agent first.
+- **Record:** the profile of an agent, on the server and on clients, shows "Last changed by
+  <device name>" with the time, when a client made the last change. A change shows on the server
+  and on all clients at once.
+- **No switch:** a client without the switch sees the profiles as read-only text, and the plus
+  buttons are not shown. A try to change anything gets the error "Not allowed", with the line
+  "<server name> does not let this device change agents. Turn it on in Settings → Devices on
+  that computer."
 
 ## Connection
 
@@ -156,6 +191,8 @@ accept connections, this is the same computer.
 - A relay or a connection service that links devices which share no network. The user uses a
   VPN for this.
 - Setting up or checking the VPN.
+- Screens on the phone to create or change agents. The rules above hold for every client, but
+  the phone app (011) does not show these screens in this version.
 - A push to a closed phone app. This needs a service that is not in this spec. A phone gets
   notifications only while the app runs (011).
 - Pairing by Bluetooth or by a shared account.
@@ -173,6 +210,19 @@ accept connections, this is the same computer.
 - Remove access for MacBook 1 on MacBook 2: the next request from MacBook 1 fails, the tile
   shows "Pair again", and its cache is gone.
 - With "Let other devices connect" off, a linked device cannot connect.
+- Pair MacBook 1 with MacBook 2 and leave the switch "Let MacBook 1 create and change agents"
+  on. On MacBook 1, open the tile of MacBook 2 and create an agent "Writer" with a model. The
+  agent shows on MacBook 2 with a new empty workspace folder, "Last changed by MacBook 1", and
+  the level "Ask for risky steps". Edit its instructions from MacBook 1: the change shows on
+  MacBook 2 at once and applies to the next turn.
+- On MacBook 1, set the level of that agent to "Ask for everything". Try to set it back: the
+  client offers no looser level, and a request for one gets "Not allowed".
+- Turn the switch off on MacBook 2 while MacBook 1 is connected: the next change from MacBook 1
+  fails with the line that names MacBook 2, and the plus buttons and fields on MacBook 1 turn
+  read-only.
+- A link that was made before the switch existed has it off.
+- MacBook 1 cannot delete an agent of MacBook 2, cannot change a model account, and a request
+  for a folder path is refused.
 - Type a wrong code 5 times: the code ends. Wait 5 minutes: the code ends.
 - Pair a computer with itself: a plain error shows.
 - With both devices in one VPN: pair on the same Wi-Fi, then switch the phone to mobile data.

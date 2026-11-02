@@ -37,3 +37,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-02 | Device link: spec now states the choices made in S18 to S20 (no "Always allow" on a client, cache size, removed-device text, mute row, island scope) and allows common acronyms in Korean screens | Spec author | 012, 013, 015 |
 | 2026-11-02 | Fix: s1 e2e allows "VPN" and cuts out "Tailscale" in Korean screens, as spec 013 now allows | Implementer | 013 |
 | 2026-11-02 | Sync between two computers: new spec 016; small rules in 000, 002, 005, 009, 010, 012, 013, 014, 015 | Spec author | 016, 000, 002, 005, 009, 010, 012, 013, 014, 015 |
+| 2026-11-02 | Device link: a linked computer can create and change agents, channels and memory of a server when the server allows it per device; no folders, no looser permission levels | Spec author | 012, 001, 002, 007, 013 |

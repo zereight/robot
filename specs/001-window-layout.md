@@ -21,7 +21,8 @@ new user knows where to look.
 ## Flows
 
 1. The user clicks a server tile. The place list and the conversation change to that server.
-   On a linked computer, the places and the pages work as 012 says.
+   On a linked computer, the places and the pages work as 012 says. The plus buttons on the
+   sections show only when that computer lets this device create and change agents.
 2. The user clicks a place. The conversation opens it. The place row shows as selected.
 3. The user types in search. The list shows only places whose name matches. Escape clears it.
 4. The user collapses a section by clicking its name. The app remembers this per section.
