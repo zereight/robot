@@ -243,6 +243,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                     input: redactSecrets(p.input, known),
                     output: redactSecrets(p.output, known),
                   }
+                if (p.kind === "skill")
+                  return { ...p, instructions: redactSecrets(p.instructions, known) }
                 return { ...p, text: redactSecrets(p.text, known) }
               })
               update.run(
@@ -354,6 +356,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               copyToServer("channel")
               copyToServer("routine")
               copyToServer("workflow")
+              // Skills (spec 017) move to this computer's server too.
+              copyToServer("skill")
               db.run("INSERT INTO workflow_run SELECT * FROM imp.workflow_run")
               db.run("INSERT INTO workflow_run_step SELECT * FROM imp.workflow_run_step")
               db.run("INSERT INTO routine_skip SELECT * FROM imp.routine_skip")

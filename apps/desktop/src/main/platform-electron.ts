@@ -1,6 +1,12 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync } from "node:fs"
 import { basename, join, join as joinPath } from "node:path"
-import type { IslandShape } from "@robot/shared"
+import {
+  type IslandShape,
+  TEACH_CHANNEL,
+  TEACH_ON_CHANNEL,
+  type TeachEvent,
+  teachEventOf,
+} from "@robot/shared"
 import {
   app,
   BrowserWindow,
@@ -48,6 +54,13 @@ const electronBrowser = (agentId: string): BrowserPage => {
   let bounds: PageBounds | undefined
   let userInput = false
   const listeners: (() => void)[] = []
+  /** The recorder of "Teach a task" (spec 017), while it runs. */
+  let recorder: ((event: TeachEvent) => void) | undefined
+  /** Reports the page that shows now, when it is a web page. */
+  const reportPage = (wc: Electron.WebContents) => {
+    const url = wc.getURL()
+    if (recorder && /^https?:\/\//i.test(url)) recorder({ kind: "page", url, title: wc.getTitle() })
+  }
   const live = () => (view && !view.webContents.isDestroyed() ? view : undefined)
   const need = () => {
     const v = live()
@@ -101,9 +114,24 @@ const electronBrowser = (agentId: string): BrowserPage => {
             nodeIntegration: false,
             // The agent goes on with the page while the user looks at another chat.
             backgroundThrottling: false,
+            // The recorder of "Teach a task". It runs in its own world: the page cannot reach it.
+            preload: join(import.meta.dirname, "../preload/teach.cjs"),
           },
         })
         const wc = created.webContents
+        // The recorder asks at each page whether the app records, and reports the steps of the
+        // user. Only this page talks on these channels.
+        wc.ipc.on(TEACH_ON_CHANNEL, (event) => {
+          event.returnValue = recorder !== undefined
+        })
+        wc.ipc.on(TEACH_CHANNEL, (_, payload: unknown) => {
+          const step = teachEventOf(payload)
+          if (step && recorder) recorder(step)
+        })
+        wc.on("did-finish-load", () => reportPage(wc))
+        wc.on("did-navigate-in-page", (_, __, isMainFrame) => {
+          if (isMainFrame) reportPage(wc)
+        })
         wc.setWindowOpenHandler(({ url: next }) => {
           if (/^https?:\/\//i.test(next)) wc.loadURL(next).catch(() => {})
           return { action: "deny" }
@@ -173,6 +201,15 @@ const electronBrowser = (agentId: string): BrowserPage => {
     close: release,
     onClosed: (l) => {
       listeners.push(l)
+    },
+    record: (listener) => {
+      const starts = listener !== undefined && recorder === undefined
+      recorder = listener
+      const v = live()
+      if (!v) return
+      v.webContents.send(TEACH_ON_CHANNEL, listener !== undefined)
+      // The page that shows when the recording starts is its first step.
+      if (starts && !v.webContents.isLoading()) reportPage(v.webContents)
     },
   }
 }
