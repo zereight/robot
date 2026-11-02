@@ -127,16 +127,12 @@ export const taskTimes = (
  * Thinking, the working line and tool cards do not count (spec 005).
  */
 export const hasVisibleReply = (
-  parts: readonly (
-    | { readonly kind: "text"; readonly text: string }
-    | { readonly kind: "tool"; readonly ask?: unknown }
-    | { readonly kind: string }
-  )[],
+  parts: readonly { readonly kind: string; readonly text?: unknown; readonly ask?: unknown }[],
 ) =>
   parts.some(
     (p) =>
-      (p.kind === "text" && "text" in p && typeof p.text === "string" && p.text.trim() !== "") ||
-      (p.kind === "tool" && "ask" in p && p.ask !== undefined),
+      (p.kind === "text" && typeof p.text === "string" && p.text.trim() !== "") ||
+      (p.kind === "tool" && p.ask !== undefined),
   )
 
 /** The median of a list of numbers. Null for an empty list. */
