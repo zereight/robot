@@ -4,6 +4,7 @@ import { createInterface } from "node:readline"
 import type { PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { codexBridgeArgs, type Staged, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
 import type { Login, RuntimeRun } from "./types.ts"
@@ -40,7 +41,8 @@ export const sandboxFor = (level: PermissionLevel, useTools: boolean) =>
       ? "danger-full-access"
       : "workspace-write"
 
-export const codexArgs = (run: RuntimeRun): string[] => {
+/** `staged` holds how the program reaches the tools of the app (see bridge.ts). */
+export const codexArgs = (run: RuntimeRun, staged?: Staged): string[] => {
   const args = [
     "exec",
     "--json",
@@ -53,6 +55,7 @@ export const codexArgs = (run: RuntimeRun): string[] => {
   ]
   if (run.model !== "default") args.push("-m", run.model)
   if (run.effort) args.push("-c", `model_reasoning_effort="${run.effort}"`)
+  if (staged) args.push(...codexBridgeArgs(staged))
   args.push("-")
   return args
 }
@@ -190,7 +193,8 @@ const TAIL = 2000
 
 export async function* runCodex(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
-  const child = spawn(run.bin, codexArgs(run), {
+  const staged = run.bridge ? stage(run.bridge) : null
+  const child = spawn(run.bin, codexArgs(run, staged ?? undefined), {
     cwd: run.workspace,
     env: runtimeEnv(),
     stdio: ["pipe", "pipe", "pipe"],
@@ -245,5 +249,6 @@ export async function* runCodex(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       await exited
       clearTimeout(timer)
     }
+    staged?.remove()
   }
 }

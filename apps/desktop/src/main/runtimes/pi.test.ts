@@ -96,6 +96,33 @@ describe("pi command", () => {
     expect(piTools("full", true)).toEqual([])
     expect(piTools("full", false)).toEqual(["--no-tools"])
   })
+  test("the browser of the app stays in a list of tools, which would hold back an extension", () => {
+    const browser = ["browser_open", "browser_read"]
+    expect(piTools("ask_all", true, browser)).toEqual([
+      "--tools",
+      "read,grep,find,ls,browser_open,browser_read",
+    ])
+    expect(piTools("ask_risky", true, browser)).toEqual([
+      "--tools",
+      "read,grep,find,ls,edit,write,browser_open,browser_read",
+    ])
+    // Full access has no list, and a run that may not use tools has none of them.
+    expect(piTools("full", true, browser)).toEqual([])
+    expect(piTools("full", false, browser)).toEqual(["--no-tools"])
+  })
+  test("a run with the access loads the extension, and keeps the user's servers out", () => {
+    const access = {
+      url: "http://127.0.0.1:1/mcp",
+      token: "t0k3n",
+      tools: [{ name: "browser_open", description: "d", schema: { type: "object" } }],
+    }
+    const args = piArgs(run({ bridge: access }), null, "/tmp/robot-bridge-x/pi.mjs")
+    expect(args[args.indexOf("--extension") + 1]).toBe("/tmp/robot-bridge-x/pi.mjs")
+    expect(args).toContain("--no-mcp")
+    expect(args[args.indexOf("--tools") + 1]).toBe("read,grep,find,ls,edit,write,browser_open")
+    expect(args.join(" ")).not.toContain("t0k3n")
+    expect(piArgs(run(), null)).not.toContain("--extension")
+  })
 })
 
 describe("pi stream", () => {

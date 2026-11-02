@@ -159,7 +159,45 @@ async function turn(prompt) {
     delta("Thinking slowly")
     await sleep(60_000)
   }
-  if (tool) {
+  const browser = /BROWSER:(\w+)(?: (\{.*\}))?/.exec(prompt)
+  if (browser) {
+    // A tool of the app: the program reads the server from the file it was given, and asks.
+    const server = JSON.parse(readFileSync(args[args.indexOf("--mcp-config") + 1], "utf8"))
+      .mcpServers.robot
+    const id = "toolu_fake_mcp"
+    const name = `mcp__robot__${browser[1]}`
+    out({ type: "assistant", message: { content: [{ type: "tool_use", id, name, input: {} }] } })
+    await new Promise((resolve) => {
+      waiting.set("req_mcp", resolve)
+      out({
+        type: "control_request",
+        request_id: "req_mcp",
+        request: { subtype: "can_use_tool", tool_name: name, tool_use_id: id, input: {} },
+      })
+    })
+    const reply = await (
+      await fetch(server.url, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...server.headers },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: browser[1], arguments: JSON.parse(browser[2] ?? "{}") },
+        }),
+      })
+    ).json()
+    const text = reply.result.content.map((c) => c.text).join("\n")
+    out({
+      type: "user",
+      message: {
+        content: [
+          { type: "tool_result", tool_use_id: id, is_error: reply.result.isError, content: text },
+        ],
+      },
+    })
+    delta(`Page: ${text}`)
+  } else if (tool) {
     const command = tool[1].trim()
     const id = "toolu_fake1"
     out({
