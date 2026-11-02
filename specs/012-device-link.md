@@ -39,7 +39,9 @@ client shows it and sends commands.
      on screen. The user picks one and types the code, or pastes the link text, or types an
      address and a code.
 3. If the joining device is a computer, it asks one more question: "Let <name> open this
-   computer too?" It is on by default. On means the link goes in both directions.
+   computer too?" It is on by default. On means the link goes in both directions. The switch
+   "Can create and change agents" for that other direction is off at first. The user turns it on
+   in Settings → Devices on the joining computer.
 4. The server shows "Allow <device name>?" with the device kind, Allow and Deny. The text says
    that the device can direct the agents of this computer, including steps that change files and
    run commands. For a two-way link, the text also says that this computer can open the other
@@ -89,7 +91,7 @@ client shows it and sends commands.
 | Attach files and download files from messages | Choose a workspace folder |
 | Answer approval cards and questions | Routines, workflows, usage page |
 | See the task list and task details; stop a task | Browser "Take control" |
-| Only with "Can create and change agents": create, edit, duplicate and archive agents; create, edit and archive channels; edit memory | Export and import of data |
+| Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory | Export and import of data |
 
 The page buttons that a client cannot use show a muted line: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
@@ -102,8 +104,11 @@ A client with the switch "Can create and change agents" (see "Remove access") wo
 agents and channels of the server in the same screens as on the server (002, 004, 008): the plus
 button on a section, the agent profile, the channel settings, the memory list.
 
-- **Fields a client can set:** name, face, role line, instructions, model, effort, section, and
-  memory items. For a channel: name, topic, members and lead.
+- **Fields a client can set:** name, face (shape and hue; no uploaded image), role line,
+  instructions, model and effort. The section of an agent is not offered. For a channel: name,
+  topic, members and lead. A client does not archive, delete or restore channels.
+- **Memory:** a client does the same four things as the profile of an agent on the server (008):
+  list and search, add, edit and delete items. It has no switch for memory on or off.
 - **Model:** the client picks from the model accounts that are connected on the server. It cannot
   add, change or disconnect an account, and it never sees a key.
 - **Workspace:** the server makes a new, empty workspace folder in its default folder (013) for
@@ -116,8 +121,9 @@ button on a section, the agent profile, the channel settings, the memory list.
   error on the client.
 - **Working agents:** a client cannot archive an agent while it works. It stops the agent first.
 - **Record:** the profile of an agent, on the server and on clients, shows "Last changed by
-  <device name>" with the time, when a client made the last change. A change shows on the server
-  and on all clients at once.
+  <device name>" with the time, when a client made the last change. A later change in the window
+  of the server removes the line. A change that arrives by sync (016) leaves it as it is. A
+  change shows on the server and on all clients at once.
 - **No switch:** a client without the switch sees the profiles as read-only text, and the plus
   buttons are not shown. A try to change anything gets the error "Not allowed", with the line
   "<server name> does not let this device change agents. Turn it on in Settings → Devices on
