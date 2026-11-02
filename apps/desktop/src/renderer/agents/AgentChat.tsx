@@ -61,7 +61,12 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         onClick={() => setOpen(true)}
         data-testid="chat-header-agent"
       >
-        <Face face={props.agent.face} image={props.agent.faceImage} size={24} />
+        <Face
+          face={props.agent.face}
+          image={props.agent.faceImage}
+          size={24}
+          agentId={props.agent.id}
+        />
         <span>{props.agent.name}</span>
       </button>
       <button

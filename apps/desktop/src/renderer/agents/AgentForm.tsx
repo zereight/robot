@@ -235,7 +235,7 @@ export const AgentForm = (props: AgentFormProps) => {
       <div class={styles.field}>
         <span class={styles.label}>{t("agents.field.face")}</span>
         <div class={styles.faceRow}>
-          <Face face={face()} image={props.agent?.faceImage ?? null} size={64} />
+          <Face face={face()} image={props.agent?.faceImage ?? null} size={64} swap />
           <div class={styles.facePicker}>
             <div class={styles.options}>
               <Index each={Array.from({ length: FACE_SHAPES })}>

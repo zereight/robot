@@ -25,6 +25,29 @@
   overflow-y: auto;
 }
 
+/* A step comes in from the side the user moves toward. The curve is the drawer curve. */
+.section[data-direction="forward"] {
+  animation: step-forward var(--motion-slow) var(--ease-drawer);
+}
+
+.section[data-direction="back"] {
+  animation: step-back var(--motion-slow) var(--ease-drawer);
+}
+
+@keyframes step-forward {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes step-back {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+
 .section h3 {
   font-size: var(--text-m);
   font-weight: 600;
