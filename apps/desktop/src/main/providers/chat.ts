@@ -154,7 +154,19 @@ const anthropicMessages = (turns: readonly Turn[]) => {
           })),
         ],
       })
-    } else out.push({ role: t.role, content: t.content })
+    } else {
+      // A message of the user after tool results (a message sent during the turn) goes in the
+      // same turn as the results, because the roles must alternate.
+      const last = out.at(-1)
+      if (
+        t.role === "user" &&
+        last?.role === "user" &&
+        Array.isArray(last.content) &&
+        last.content[0]?.type === "tool_result"
+      )
+        last.content.push({ type: "text", text: t.content })
+      else out.push({ role: t.role, content: t.content })
+    }
   }
   return out
 }

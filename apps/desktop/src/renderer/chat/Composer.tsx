@@ -2,10 +2,12 @@ import {
   type Agent,
   ATTACH_MAX,
   type ChatMessage,
+  type MessageKey,
   messageText,
   type QueuedMessage,
+  type QueueHold,
 } from "@robot/shared"
-import { Paperclip, Pencil, SendHorizontal, Square, X } from "lucide-solid"
+import { CornerDownRight, Paperclip, Pencil, SendHorizontal, Square, X } from "lucide-solid"
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -18,6 +20,8 @@ export interface ComposerProps {
   agent: Agent
   working: boolean
   queue: readonly QueuedMessage[]
+  /** Set when the program of the agent takes no input during a turn: "Send now" is off. */
+  hold: QueueHold | null
   replyTo: ChatMessage | undefined
   onCancelReply: () => void
   onSent: () => void
@@ -25,7 +29,16 @@ export interface ComposerProps {
   onChooseModel: () => void
 }
 
-const QueueItem = (props: { agentId: string; item: QueuedMessage }) => {
+/** The reason why queued messages cannot go into the turn. */
+const holdKey = (hold: QueueHold) => `chat.hold.${hold.runtime}` as MessageKey
+
+const QueueItem = (props: {
+  agentId: string
+  item: QueuedMessage
+  working: boolean
+  hold: QueueHold | null
+  onError: (error: ErrorText) => void
+}) => {
   const { t } = useApp()
   const [editing, setEditing] = createSignal(false)
   const [text, setText] = createSignal(props.item.text)
@@ -58,6 +71,22 @@ const QueueItem = (props: { agentId: string; item: QueuedMessage }) => {
         <span class={styles.queueLabel}>
           {t("chat.queue.files", { count: props.item.files.length })}
         </span>
+      </Show>
+      <Show when={props.working}>
+        <Button
+          class={styles.sendNow}
+          disabled={props.hold !== null}
+          title={props.hold ? t(holdKey(props.hold)) : undefined}
+          onClick={() =>
+            call("chat.queue.sendNow", { agentId: props.agentId, itemId: props.item.id }).catch(
+              (e: unknown) => props.onError(describeError(e)),
+            )
+          }
+          data-testid="queued-send-now"
+        >
+          <CornerDownRight size={14} />
+          {t("chat.queue.sendNow")}
+        </Button>
       </Show>
       <IconButton
         label={t("chat.queue.edit")}
@@ -161,8 +190,23 @@ export const Composer = (props: ComposerProps) => {
     <div class={styles.composer}>
       <Show when={props.queue.length > 0}>
         <div class={styles.queue}>
+          <Show when={props.hold}>
+            {(hold) => (
+              <div class={styles.queueHold} data-testid="queue-hold">
+                {t(holdKey(hold()))}
+              </div>
+            )}
+          </Show>
           <For each={props.queue}>
-            {(item) => <QueueItem agentId={props.agent.id} item={item} />}
+            {(item) => (
+              <QueueItem
+                agentId={props.agent.id}
+                item={item}
+                working={props.working}
+                hold={props.hold}
+                onError={setError}
+              />
+            )}
           </For>
         </div>
       </Show>

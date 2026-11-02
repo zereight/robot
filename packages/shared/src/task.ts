@@ -42,6 +42,8 @@ export interface TaskDetail {
   readonly children: readonly Task[]
   /** The text of the reply, when there is one. Cut at 4000 characters. */
   readonly result: string
+  /** The messages that the user sent into the turn of the task, oldest first (spec 003). */
+  readonly joined: readonly { readonly text: string; readonly at: number }[]
 }
 
 /** One line of a prompt, cut to a label. */

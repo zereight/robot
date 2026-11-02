@@ -85,6 +85,18 @@ describe("claude stream", () => {
     expect(delta({ type: "input_json_delta", partial_json: "{" })).toEqual([])
   })
 
+  test("the program tells when it begins to read a message on its input", () => {
+    const state = newStreamState()
+    const lifecycle = (state_: string) =>
+      mapClaudeMessage(
+        { type: "command_lifecycle", command_uuid: "m-1", state: state_, uuid: "x" },
+        state,
+      )
+    expect(lifecycle("queued")).toEqual([])
+    expect(lifecycle("started")).toEqual([{ kind: "started", id: "m-1" }])
+    expect(lifecycle("completed")).toEqual([])
+  })
+
   test("the complete message adds no text twice, but shows each tool call once", () => {
     const state = newStreamState()
     const assistant = {

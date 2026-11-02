@@ -22,6 +22,13 @@ export type ProviderKind = typeof ProviderKind.Type
 export const isRuntimeKind = (kind: string): kind is RuntimeKind =>
   (RUNTIME_KINDS as readonly string[]).includes(kind)
 
+/**
+ * True when the program reads a message of the user in the middle of a turn, as the app runs it
+ * (spec 003). Claude Code reads a stream of messages on its input (`--input-format stream-json`).
+ * Codex (`exec`), Muse Code and pi get one prompt when they start.
+ */
+export const runtimeTakesInput = (kind: RuntimeKind): boolean => kind === "claude_code"
+
 export const defaultBaseUrls: Record<ProviderKind, string> = {
   openai: "https://api.openai.com/v1",
   anthropic: "https://api.anthropic.com",
