@@ -17,6 +17,14 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+      - name: Cache packages and Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            ~/.cache/electron
+          key: deps-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: deps-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - run: bun run typecheck
@@ -26,8 +34,13 @@ jobs:
       - run: bun run build
       - run: bun run sizes
 
+  # The suite runs in two parts on two runners; each part runs its tests in parallel.
   e2e:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -36,14 +49,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Cache packages and Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            ~/.cache/electron
+          key: deps-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: deps-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       - name: Install Electron system libraries
         run: sudo apt-get update && sudo apt-get install -y xvfb libnss3 libgbm1 libasound2t64 gnome-keyring
       - name: End-to-end tests
-        run: xvfb-run --auto-servernum bun run e2e
+        run: xvfb-run --auto-servernum bun run e2e --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-report
+          name: e2e-report-${{ matrix.shard }}
           path: build/e2e
           retention-days: 7

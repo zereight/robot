@@ -1,11 +1,19 @@
 import type { ChannelMessage } from "@robot/shared"
 import { createEffect, on, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
+import { isForView, type ViewServer } from "../lib/events.ts"
+import { placeMessage } from "../lib/order.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
 import { linkEpoch } from "../state/link.ts"
 
-/** The messages of one channel, kept in step with the main process. */
-export const createChannelChat = (channelId: string) => {
+/**
+ * The messages of one channel, kept in step with the main process. `server` is the server that
+ * the view shows (see `isForView`).
+ */
+export const createChannelChat = (
+  channelId: string,
+  server: () => ViewServer = () => undefined,
+) => {
   const [state, setState] = createStore<{ loaded: boolean; messages: ChannelMessage[] }>({
     loaded: false,
     messages: [],
@@ -23,19 +31,15 @@ export const createChannelChat = (channelId: string) => {
           setState("messages", reconcile([], { key: "id" }))
         setState("loaded", true)
       })
-  const offMessage = window.robot.on("channel.message", (message) => {
-    if (message.channelId !== channelId) return
+  const offMessage = window.robot.on("channel.message", (message, from) => {
+    if (message.channelId !== channelId || !isForView(server(), from)) return
     setState(
       "messages",
-      produce((list) => {
-        const index = list.findIndex((m) => m.id === message.id)
-        if (index >= 0) list[index] = message
-        else list.push(message)
-      }),
+      produce((list) => placeMessage(list, message)),
     )
   })
-  const offRemoved = window.robot.on("channel.removed", (event) => {
-    if (event.channelId === channelId)
+  const offRemoved = window.robot.on("channel.removed", (event, from) => {
+    if (event.channelId === channelId && isForView(server(), from))
       setState("messages", (list) => list.filter((m) => m.id !== event.messageId))
   })
   // The chips under a plan message change when a part changes, so the list loads again.

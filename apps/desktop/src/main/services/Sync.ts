@@ -359,9 +359,17 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       const busyOn = (agentId: string): string | null => {
         const p = pairRow()
         if (p?.phase !== "live" || p.paused === 1 || !online(p)) return null
+        // A reply of the other computer that still streams here counts as its task: the task row
+        // can say done before the end of the reply arrives, and a task that started then would
+        // not see that reply.
         const row = db.get<{ x: number }>(
           `SELECT 1 AS x FROM task WHERE agent_id = ? AND origin IS NOT NULL
-             AND state IN ('running', 'waiting') LIMIT 1`,
+             AND state IN ('running', 'waiting')
+           UNION ALL
+           SELECT 1 AS x FROM message WHERE agent_id = ? AND origin IS NOT NULL
+             AND status = 'streaming'
+           LIMIT 1`,
+          agentId,
           agentId,
         )
         return row ? peerName(p) || computerName(p.peer_id) || p.peer_id : null

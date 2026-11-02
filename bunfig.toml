@@ -1,0 +1,3 @@
+[test]
+# Test runs only: see the file for the fault of the test runner that it works around.
+preload = ["./apps/desktop/src/main/test-preload.ts"]

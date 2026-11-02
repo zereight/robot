@@ -199,7 +199,9 @@ export const ChannelView = (props: { channel: Channel }) => {
   const { t } = app
   const ui = useUi()
   const agents = useAgents()
-  const messages = createChannelChat(props.channel.id)
+  const messages = createChannelChat(props.channel.id, () =>
+    ui.linked() ? ui.server()?.id : undefined,
+  )
   const retry = useRetry()
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()

@@ -122,7 +122,8 @@ bun run dev          # run the desktop app with hot reload
 bun run lint         # Biome
 bun run format       # Biome, with fixes
 bun run typecheck    # TypeScript, every workspace
-bun run test         # unit tests (bun test)
+bun run test         # unit tests (bun test, files in parallel)
+bun run check        # lint, typecheck and unit tests in one go
 bun run e2e          # build, then Playwright drives the real app
 bun run dist         # package for this computer into dist/desktop
 ```
@@ -188,11 +189,20 @@ docs/                Spec questions, provenance, release process
 End-to-end runs write screenshots, a report and a motion video under `build/e2e`. CI keeps them
 as an artifact for each run.
 
-Tests that run two copies of the app ask the system for free ports (`apps/desktop/e2e/ports.ts`) and
-give every worker its own port for the network name service. So they can run in parallel
-(`bunx playwright test --workers=4 --fully-parallel`), next to other runs, and next to an open ROBot.
+Both suites run in parallel. Unit test files run in separate processes. Each end-to-end test
+starts its own copy of the app with its own data folder. Tests that run two copies of the app ask
+the system for free ports (`apps/desktop/e2e/ports.ts`) and give every worker its own port for
+the network name service, so they run in parallel, next to other runs, and next to an open ROBot.
 Some hosted test machines block multicast; the test of nearby computers then checks the rest of
-its flow without the list.
+its flow without the list. The number of end-to-end workers is half of the CPU cores; set
+`ROBOT_E2E_WORKERS` to change it. CI splits the end-to-end suite over two runners and retries a
+failed test once; the report marks a test that passed on the retry as flaky.
+
+```sh
+bun run e2e                                        # whole suite
+cd apps/desktop && bunx playwright test e2e/s5-chat.spec.ts   # one file, without a new build
+ROBOT_E2E_WORKERS=1 bun run e2e                    # one test at a time
+```
 
 ## Release
 

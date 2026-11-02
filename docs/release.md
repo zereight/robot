@@ -22,10 +22,15 @@ Role: Implementer. This page describes how ROBot desktop builds are made and pub
 3. The **Release** workflow runs:
    - `verify`: the tag must equal the version in `apps/desktop/package.json`; then lint, typecheck
      and unit tests.
-   - `package`: builds on four runners (macOS arm64, macOS x64, Windows x64, Linux x64) and runs
-     the whole end-to-end suite against each packaged app.
-   - `release`: makes a **draft** release with the files, checksums and generated notes. A version
-     with `-` is marked as a pre-release.
+   - `package`: starts at the same time as `verify`. It builds on four runners (macOS arm64,
+     macOS x64, Windows x64, Linux x64) and runs the whole end-to-end suite against each packaged
+     app.
+   - `release`: starts only when `verify` and all four `package` jobs pass. It makes a **draft**
+     release with the files, checksums and generated notes. A version with `-` is marked as a
+     pre-release.
+
+   Packages, the Electron download and the files of electron-builder are kept in the Actions
+   cache for each runner, keyed by `bun.lock`.
 4. Download one build, start it, and check the version in Settings > About.
 5. Publish the draft: `gh release edit v<v> --draft=false`, or use the GitHub page.
 

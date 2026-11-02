@@ -125,7 +125,7 @@ export const testPlatform = () => {
 export const testRuntime = (options: { name?: string; network?: MemoryNetwork } = {}) => {
   const { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, recorders, shell } =
     testPlatform()
-  const events: { event: string; payload: unknown }[] = []
+  const events: { event: string; payload: unknown; server?: string }[] = []
   const runtime = ManagedRuntime.make(
     appLayer({
       platform,
@@ -133,7 +133,8 @@ export const testRuntime = (options: { name?: string; network?: MemoryNetwork } 
       linkPort: 0,
       nearbySocket: (options.network ?? new MemoryNetwork()).open,
       localServerName: options.name ?? "Test computer",
-      emit: (event, payload) => events.push({ event, payload }),
+      emit: (event, payload, server) =>
+        events.push(server === undefined ? { event, payload } : { event, payload, server }),
       secrets: Secrets.memory,
     }),
   )

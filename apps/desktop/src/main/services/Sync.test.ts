@@ -349,6 +349,62 @@ describe("sync between two computers", () => {
     ).toHaveLength(8)
   })
 
+  test("the other computer shows each question above its reply, as this one does", async () => {
+    const a = side("MacBook 1")
+    const b = side("MacBook 2")
+    const account = await run(
+      a,
+      Providers.use((p) =>
+        p.connect({
+          kind: "custom",
+          name: "Model",
+          baseUrl: `http://127.0.0.1:${model.port}/v1`,
+          apiKey: "sk-order-test-0123456789",
+        }),
+      ),
+    )
+    const serverId = await localId(a)
+    const agent = await run(
+      a,
+      Agents.use((x) =>
+        x.create({
+          serverId,
+          name: "Ada",
+          role: "",
+          instructions: "",
+          model: { accountId: account.id, model: "mock", effort: null },
+        }),
+      ),
+    )
+    const entry = await link(a, b, true)
+    await turnOn(a, b, entry.id, "merge")
+    const history = (rt: Rt) =>
+      run(
+        rt,
+        Chat.use((c) => c.history(agent.id)),
+      )
+    const done = (h: Awaited<ReturnType<typeof history>>, n: number) =>
+      h.messages.length === n && h.messages.every((m) => m.status !== "streaming")
+    for (let i = 0; i < 10; i++) {
+      await run(
+        a,
+        Chat.use((c) => c.send({ agentId: agent.id, text: `question ${i}`, replyTo: null })),
+      )
+      await waitFor(
+        () => history(a),
+        (h) => done(h, (i + 1) * 2),
+      )
+    }
+    const order = (h: Awaited<ReturnType<typeof history>>) => h.messages.map((m) => m.author)
+    const onA = await history(a)
+    const onB = await waitFor(
+      () => history(b),
+      (h) => done(h, 20),
+    )
+    expect(order(onA)).toEqual(Array.from({ length: 20 }, (_, i) => (i % 2 ? "agent" : "user")))
+    expect(order(onB)).toEqual(order(onA))
+  })
+
   test("a message made on one computer arrives on the other and starts no task", async () => {
     const a = side("MacBook 1")
     const b = side("MacBook 2")
@@ -811,6 +867,46 @@ describe("tasks, routines, workflows and files of two computers", () => {
     const done = (await tasksOf(a)).find((t) => t.id === second.id)
     expect(done?.state).toBe("done")
     expect(done?.waitsFor).toBeNull()
+  })
+
+  test("a task here waits while a reply of the other computer is still streaming here", async () => {
+    const { a, ada } = await pair()
+    // The task row of the other computer can say done before the end of its reply arrives. A task
+    // that started then would not see that reply in its history.
+    const peer = await run(
+      a,
+      Database.use((db) =>
+        Effect.sync(() => db.get<{ peer_id: string }>("SELECT peer_id FROM sync_pair")?.peer_id),
+      ),
+    )
+    await SQL(
+      a,
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at, origin)
+       VALUES ('reply-there', ?, 'agent', '[]', 'streaming', ?, ?)`,
+      ada.id,
+      Date.now(),
+      peer ?? null,
+    )
+    const next = await run(
+      a,
+      Tasks.use((t) =>
+        t.create({ agentId: ada.id, prompt: "Next job", source: "chat", sourceId: ada.id }),
+      ),
+    )
+    const finished = run(
+      a,
+      Tasks.use((t) => t.run(next.id, ada.id, Effect.succeed("ok"))),
+    )
+    const waiting = await waitFor(
+      async () => (await tasksOf(a)).find((t) => t.id === next.id),
+      (t) => t?.waitsFor === "MacBook 2",
+    )
+    expect(waiting?.waitsFor).toBe("MacBook 2")
+    await new Promise((r) => setTimeout(r, 700))
+    expect((await tasksOf(a)).find((t) => t.id === next.id)?.state).toBe("queued")
+    await SQL(a, "UPDATE message SET status = 'done' WHERE id = 'reply-there'")
+    await finished
+    expect((await tasksOf(a)).find((t) => t.id === next.id)?.state).toBe("done")
   })
 
   test("a routine from the other computer does not run here; Run on this computer moves it", async () => {

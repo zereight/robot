@@ -1,6 +1,8 @@
 import type { ChatMessage, CutNotice, QueuedMessage, QueueHold } from "@robot/shared"
 import { createEffect, on, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
+import { isForView, type ViewServer } from "../lib/events.ts"
+import { placeMessage } from "../lib/order.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
 import { linkEpoch } from "../state/link.ts"
 
@@ -14,8 +16,11 @@ export interface ChatState {
   cut: CutNotice | null
 }
 
-/** The messages and queue of one direct chat, kept in step with the main process. */
-export const createChat = (agentId: string) => {
+/**
+ * The messages and queue of one direct chat, kept in step with the main process. `server` is the
+ * server that the view shows (see `isForView`).
+ */
+export const createChat = (agentId: string, server: () => ViewServer = () => undefined) => {
   const [state, setState] = createStore<ChatState>({
     loaded: false,
     messages: [],
@@ -27,22 +32,19 @@ export const createChat = (agentId: string) => {
   const upsert = (message: ChatMessage) =>
     setState(
       "messages",
-      produce((list) => {
-        const index = list.findIndex((m) => m.id === message.id)
-        if (index >= 0) list[index] = message
-        else list.push(message)
-      }),
+      produce((list) => placeMessage(list, message)),
     )
 
-  const offMessage = window.robot.on("chat.message", (message) => {
-    if (message.agentId === agentId) upsert(message)
+  const mine = (id: string, from: ViewServer) => id === agentId && isForView(server(), from)
+  const offMessage = window.robot.on("chat.message", (message, from) => {
+    if (mine(message.agentId, from)) upsert(message)
   })
-  const offRemoved = window.robot.on("chat.removed", (event) => {
-    if (event.agentId === agentId)
+  const offRemoved = window.robot.on("chat.removed", (event, from) => {
+    if (mine(event.agentId, from))
       setState("messages", (list) => list.filter((m) => m.id !== event.messageId))
   })
-  const offQueue = window.robot.on("chat.queue", (event) => {
-    if (event.agentId !== agentId) return
+  const offQueue = window.robot.on("chat.queue", (event, from) => {
+    if (!mine(event.agentId, from)) return
     setState("queue", reconcile([...event.queue]))
     setState("hold", event.hold ?? null)
   })
