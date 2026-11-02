@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ElectronApplication } from "@playwright/test"
 import { expect, type Page, test } from "@playwright/test"
@@ -103,7 +104,8 @@ const setup = async (env: Record<string, string> = {}) => {
   const userData = freshUserData()
   const log = join(userData, "notices.jsonl")
   // A short path, so that the card holds the file name when it cuts the line to 90 characters.
-  const outside = mkdtempSync("/tmp/s33-")
+  // Windows has no /tmp; its temporary folder is short enough on the runners.
+  const outside = mkdtempSync(process.platform === "win32" ? join(tmpdir(), "s33-") : "/tmp/s33-")
   const launched = await launch(userData, {
     ROBOT_SYSTEM_LOCALE: "en-US",
     ROBOT_TEST_NOTIFY_LOG: log,
