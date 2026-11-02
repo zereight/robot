@@ -1617,4 +1617,9 @@ export const ko: Record<MessageKey, string> = {
     "계획의 부분이 잘 끝나면 먼저 사용자를 기다려요. 수락하거나 변경을 요청할 수 있어요. 이미 검토 중인 부분은 이 설정을 꺼도 그대로 검토 중이에요.",
   "channels.part.blocked": "이 부분이 막혔어요.",
   "channels.part.failed": "이 부분이 실패했어요.",
+  "tasks.doneTest": "완료 기준",
+  "tasks.verdict": "리드의 판정",
+  "tasks.verdict.met": "충족",
+  "tasks.verdict.not_met": "미충족",
+  "tasks.verdict.noReason": "리드가 이유를 말하지 않았어요.",
 }

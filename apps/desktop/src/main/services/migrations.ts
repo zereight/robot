@@ -673,4 +673,16 @@ export const migrations: readonly string[] = [
   -- with the channel (spec 019): the dirty trigger of the channel already watches every column.
   ALTER TABLE channel ADD COLUMN review_parts INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  -- The done test and the verdict of a part (spec 004, 005). Only fields are added: a task from
+  -- before this step has no done test and no verdict, and the check does not read it. The verdict
+  -- is a field, not a state (the state of the part stays "done"). \`decided_at\` is when the user
+  -- accepted the part or asked for changes: the check gives no verdict to such a part.
+  -- The dirty trigger of the task already watches every column.
+  ALTER TABLE task ADD COLUMN done_test TEXT;
+  ALTER TABLE task ADD COLUMN verdict TEXT;
+  ALTER TABLE task ADD COLUMN verdict_reason TEXT;
+  ALTER TABLE task ADD COLUMN judged_at INTEGER;
+  ALTER TABLE task ADD COLUMN decided_at INTEGER;
+  `,
 ]

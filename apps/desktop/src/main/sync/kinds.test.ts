@@ -442,6 +442,91 @@ describe("how far a turn went syncs with the task (spec 005, 019)", () => {
   })
 })
 
+describe("the done test and the verdict sync with the task (spec 004, 005, 019)", () => {
+  const dirOf = () => join(testRuntime().dataDir, "kinds")
+  const opOf = (fields: Fields) =>
+    parseOp(
+      {
+        k: "task",
+        i: "task-1",
+        o: "dev-a",
+        f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+      },
+      NOW,
+    )
+
+  test("a part carries its done test, verdict, reason and times to the copy, and later changes follow", async () => {
+    const a = await source()
+    a.db.run(
+      `UPDATE task SET done_test = 'Holds a title', verdict = 'not_met',
+         verdict_reason = 'No title', judged_at = 70, decided_at = 80 WHERE id = 'task-1'`,
+    )
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(fields).toMatchObject({
+      doneTest: "Holds a title",
+      verdict: "not_met",
+      verdictReason: "No title",
+      judgedAt: 70,
+      decidedAt: 80,
+    })
+    for (const name of ["doneTest", "verdict", "verdictReason", "judgedAt", "decidedAt"])
+      expect(KINDS.task.required).toContain(name)
+    const b = target(openDatabase(":memory:"), dirOf())
+    const ada = KINDS.agent.read(ctxA, a.ada.id)
+    expect(KINDS.agent.create(b, a.ada.id, copy(ada?.fields) as Fields)).toBe(true)
+    expect(KINDS.task.create(b, "task-1", fields)).toBe(true)
+    expect(KINDS.task.read(b, "task-1")?.fields).toMatchObject({
+      doneTest: "Holds a title",
+      verdict: "not_met",
+      verdictReason: "No title",
+      judgedAt: 70,
+      decidedAt: 80,
+    })
+    // The verdict that the lead gives later reaches the copy. The done test is set once.
+    KINDS.task.write(b, "task-1", {
+      verdict: "met",
+      verdictReason: null,
+      judgedAt: 90,
+      doneTest: "Other",
+    })
+    expect(KINDS.task.read(b, "task-1")?.fields).toMatchObject({
+      doneTest: "Holds a title",
+      verdict: "met",
+      verdictReason: null,
+      judgedAt: 90,
+    })
+    expect(KINDS.task.fixed).toContain("doneTest")
+  })
+
+  test("a task with no done test and no verdict crosses with empty fields", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(fields).toMatchObject({
+      doneTest: null,
+      verdict: null,
+      verdictReason: null,
+      judgedAt: null,
+      decidedAt: null,
+    })
+    expect(opOf(fields)).toBeDefined()
+  })
+
+  test("only the two verdicts pass the strict check", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    for (const verdict of ["met", "not_met", null])
+      expect(opOf({ ...fields, verdict }), String(verdict)).toBeDefined()
+    for (const verdict of ["Met", "failed", "", 1, true, {}])
+      expect(opOf({ ...fields, verdict }), String(verdict)).toBeUndefined()
+    for (const doneTest of [5, true, {}, "x".repeat(1001)])
+      expect(opOf({ ...fields, doneTest }), String(doneTest)).toBeUndefined()
+    expect(opOf({ ...fields, judgedAt: -1 })).toBeUndefined()
+  })
+})
+
 describe("one item of every kind is made from its first copy", () => {
   test("each kind passes the strict check, satisfies every column that must have a value, and reads back the same", async () => {
     const a = await source()

@@ -1,3 +1,5 @@
+import type { Verdict } from "./check.ts"
+
 export const TASK_STATES = [
   "queued",
   "running",
@@ -191,6 +193,19 @@ export interface Task {
   readonly waitsFor: string | null
   /** How far the turn went. Null for a task from before the app kept it (spec 005). */
   readonly progress: TaskProgress | null
+  /**
+   * What a finished part must hold: one line, up to 200 characters, written by the lead in the
+   * plan (spec 004, 005). Null for a task that has none.
+   */
+  readonly doneTest: string | null
+  /** The verdict of the lead after the check: "met" or "not_met". Not a state (spec 005). */
+  readonly verdict: Verdict | null
+  /** The reason of a verdict "not_met", up to 160 characters. Null for "met" and for no reason. */
+  readonly verdictReason: string | null
+  /** When the lead gave the verdict. Null until then. */
+  readonly judgedAt: number | null
+  /** When the user decided on the part (accept, request changes). Null when not (spec 004). */
+  readonly decidedAt: number | null
 }
 
 export interface TaskDetail {
