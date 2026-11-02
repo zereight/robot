@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { AgentChecklist } from "../imports/ImportChecklist.tsx"
 import { call } from "../lib/rpc.ts"
+import { useRetry } from "../retry/RetryNote.tsx"
 import { useApp } from "../state/app.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
 import { useUi } from "../state/ui.tsx"
@@ -64,6 +65,7 @@ export const ChatView = (props: ChatViewProps) => {
 
   const byId = createMemo(() => new Map(chat.messages.map((m) => [m.id, m])))
   const streaming = () => chat.messages.find((m) => m.status === "streaming")
+  const retry = useRetry()
   const working = () => props.agent.state === "working" || streaming() !== undefined
   /** The notice of a request that a restart cut off. It leaves when the user writes. */
   const cutNotice = () => {
@@ -147,6 +149,7 @@ export const ChatView = (props: ChatViewProps) => {
 
   return (
     <div class={styles.view} data-testid="chat-view">
+      {retry.dialog()}
       <div class={styles.scroller} ref={scroller} onScroll={onScroll} data-testid="chat-scroller">
         <div class={styles.list} role="log" aria-label={t("chat.messages")}>
           {props.start}
@@ -185,7 +188,13 @@ export const ChatView = (props: ChatViewProps) => {
                       call("chat.edit", { agentId: props.agent.id, messageId: message.id, text })
                     }
                     onRetry={() =>
-                      void call("chat.retry", { agentId: props.agent.id, messageId: message.id })
+                      void retry.start((confirmed) =>
+                        call("chat.retry", {
+                          agentId: props.agent.id,
+                          messageId: message.id,
+                          ...(confirmed ? { confirmed } : {}),
+                        }),
+                      )
                     }
                   />
                 </>

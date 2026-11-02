@@ -14,6 +14,8 @@ export interface ToolOutcome {
   readonly failed: boolean
   /** Set when the permission level refused the step, so the card says why (spec 007). */
   readonly refused?: RefusalReason
+  /** True when the step did not run because the user, or a rule, refused it (spec 005, 007). */
+  readonly notRun?: boolean
 }
 
 /** A tool call as it shows in the reply, before and after it runs. */
@@ -25,6 +27,8 @@ export type ToolEvent =
       readonly call: ToolCall
       readonly output: string
       readonly refused?: RefusalReason
+      /** The step did not run: the user or a rule refused it. The action log does not count it as run. */
+      readonly notRun?: true
     }
 
 /** The agent read a message that the user sent into the turn (spec 003). */
@@ -34,8 +38,6 @@ export interface JoinedEvent {
 }
 
 export type AgentEvent = Exclude<StreamEvent, { type: "toolcall" }> | ToolEvent | JoinedEvent
-
-export const MAX_ROUNDS = 12
 
 /**
  * Asks the model, runs the tools it calls, gives it the results, and asks again, until it
@@ -65,7 +67,9 @@ export async function* runAgent(
     turns.push({ role: "user", content: joined.map((m) => m.text).join("\n\n") })
     return true
   }
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  // The number of steps in a turn is limited by the step limit of the task (spec 005), which the
+  // caller enforces. The turn ends when the model answers without a tool call.
+  for (;;) {
     let text = ""
     let blocks: readonly ReplyBlock[] | undefined
     const calls: ToolCall[] = []
@@ -111,11 +115,11 @@ export async function* runAgent(
         call,
         output: outcome.output,
         ...(outcome.refused ? { refused: outcome.refused } : {}),
+        ...(outcome.notRun ? { notRun: true as const } : {}),
       }
       turns.push({ role: "tool", callId: call.id, name: call.name, content: outcome.output })
     }
     pending = undefined
     yield* join()
   }
-  yield { type: "text", text: "\n\n(Stopped: too many tool rounds.)" }
 }

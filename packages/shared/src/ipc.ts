@@ -44,6 +44,7 @@ import type { SavedSecret } from "./secrets.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Skill, SkillInput } from "./skills.ts"
+import type { RetryResult } from "./steps.ts"
 import type {
   SyncChangeEntry,
   SyncGuard,
@@ -281,7 +282,11 @@ export interface RpcMethods {
   "tasks.list": { input: { serverId: string }; output: readonly Task[] }
   "tasks.get": { input: { id: string }; output: TaskDetail }
   "tasks.stop": { input: { id: string }; output: undefined }
-  "tasks.retry": { input: { id: string }; output: undefined }
+  /**
+   * Tries a task again. When the first try ran steps that may have changed things, the answer
+   * holds the retry note and nothing starts. The same request with `confirmed` starts the task.
+   */
+  "tasks.retry": { input: { id: string; confirmed?: boolean }; output: RetryResult }
   "channels.list": { input: { serverId: string }; output: readonly Channel[] }
   "channels.create": { input: ChannelCreate; output: Channel }
   "channels.update": { input: { id: string; patch: ChannelPatch }; output: Channel }
@@ -463,7 +468,11 @@ export interface RpcMethods {
   "chat.history": { input: { agentId: string }; output: ChatHistory }
   "chat.send": { input: ChatSend; output: { queued: boolean } }
   "chat.stop": { input: { agentId: string }; output: undefined }
-  "chat.retry": { input: { agentId: string; messageId: string }; output: undefined }
+  /** As `tasks.retry`, for the failed reply of a chat. */
+  "chat.retry": {
+    input: { agentId: string; messageId: string; confirmed?: boolean }
+    output: RetryResult
+  }
   "chat.edit": { input: { agentId: string; messageId: string; text: string }; output: undefined }
   "chat.queue.update": {
     input: { agentId: string; itemId: string; text: string }

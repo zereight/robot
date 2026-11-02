@@ -232,6 +232,13 @@ const ToolCard = (props: {
             ? t("chat.tool.refusedReadOnly")
             : t(`chat.tool.${props.part.state}` as MessageKey)}
         </span>
+        <Show when={props.part.reason}>
+          {(reason) => (
+            <span class={styles.toolReason} data-testid="tool-reason" data-code={reason().code}>
+              {t(`error.${reason().code}` as MessageKey, { detail: reason().detail ?? "" })}
+            </span>
+          )}
+        </Show>
         <Show when={props.from}>
           {(from) => (
             <span class={styles.fromDevice} data-testid="tool-origin">
@@ -1188,7 +1195,13 @@ const FullMessageRow = (props: MessageRowProps) => {
               {t("chat.stopped")}
             </span>
           </Show>
-          <Show when={props.message.status === "failed"}>
+          {/* A reply that stopped at the step limit has an error: its task has failed (spec 005). */}
+          <Show
+            when={
+              props.message.status === "failed" ||
+              (props.message.status === "stopped" && props.message.error !== null)
+            }
+          >
             <FailedRow message={props.message} onRetry={props.onRetry} />
           </Show>
         </Show>

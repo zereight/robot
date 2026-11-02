@@ -1,7 +1,8 @@
 export const TASK_STATES = ["queued", "running", "waiting", "done", "failed", "cancelled"] as const
 export type TaskState = (typeof TASK_STATES)[number]
 
-export const TASK_SOURCES = ["chat", "channel", "routine", "workflow"] as const
+/** Where a task came from. "agent" is a message of another agent (spec 007). */
+export const TASK_SOURCES = ["chat", "channel", "routine", "workflow", "agent"] as const
 export type TaskSource = (typeof TASK_SOURCES)[number]
 
 /** States in which a task can still be stopped. */

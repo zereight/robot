@@ -1,6 +1,7 @@
 import { Schema, Struct } from "effect"
 import { DEVICE_NAME_MAX } from "./link.ts"
 import { ISLAND_MODES } from "./notifications.ts"
+import { STEP_LIMIT_DEFAULT, STEP_LIMIT_MAX, STEP_LIMIT_MIN } from "./steps.ts"
 
 /** "While an agent works, new messages": join the current turn, or wait in a queue. */
 export const DURING_TURN = ["join", "queue"] as const
@@ -30,6 +31,10 @@ export const Settings = Schema.Struct({
   startAtLogin: Schema.Boolean,
   /** Folder where new agent workspaces are made. Empty means the default folder. */
   workspaceRoot: Schema.String,
+  /** The most steps that one task may take, a whole number from 20 to 2000 (spec 005, 013). */
+  stepLimit: Schema.Int.check(
+    Schema.isBetween({ minimum: STEP_LIMIT_MIN, maximum: STEP_LIMIT_MAX }),
+  ),
   /** True once the user finished or skipped the first start guide. */
   firstRunDone: Schema.Boolean,
   /** The silent limit in minutes; 0 for never. Local to this computer (spec 019). */
@@ -77,6 +82,7 @@ export const defaultSettings: Settings = {
   reduceMotion: "system",
   startAtLogin: false,
   workspaceRoot: "",
+  stepLimit: STEP_LIMIT_DEFAULT,
   firstRunDone: false,
   silentLimit: DEFAULT_SILENT_LIMIT,
   notifyKinds: {

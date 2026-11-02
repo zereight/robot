@@ -913,3 +913,8 @@
   color: var(--c-text-muted);
   font-size: var(--text-xs);
 }
+
+.toolReason {
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+}

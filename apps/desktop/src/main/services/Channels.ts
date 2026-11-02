@@ -5,6 +5,7 @@ import {
   askKind,
   askStep,
   askSummary,
+  CHAIN_LIMIT_RULE,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
   type Channel,
@@ -14,6 +15,7 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   charLength,
+  createReadGuard,
   hasVisibleReply,
   holdOutside,
   isTaskProgress,
@@ -60,6 +62,7 @@ import { Providers, storedFailure } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
 import { SettingsStore } from "./Settings.ts"
 import { closing, turnWatch } from "./silence.ts"
+import { stepWatch } from "./stepWatch.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
 
@@ -254,7 +257,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       /** How far the turn of a failed part went (spec 005), for the line on its failed row. */
       const failedProgress = (row: MessageRow): { progress?: TaskProgress } => {
-        if (row.status !== "failed" || !row.task_id) return {}
+        const shows =
+          row.status === "failed" || (row.status === "stopped" && row.error_code !== null)
+        if (!shows || !row.task_id) return {}
         const found = db.get<{ progress: string | null }>(
           "SELECT progress FROM task WHERE id = ?",
           row.task_id,
@@ -373,7 +378,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const usage = { input: 0, output: 0 }
         const controller = new AbortController()
         // The silent limit counts for every kind of turn (spec 005).
-        const watch = turnWatch({
+        const silence = turnWatch({
           limitMinutes: (yield* settings.get).silentLimit,
           progress: (progress) => tasks.setProgress(o.taskId, progress),
           userHoldsBrowser: () => tools.browserState(o.agent.id).control,
@@ -388,6 +393,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           replied = true
           tasks.replied(o.taskId)
         }
+        const stepLimit = (yield* settings.get).stepLimit
+        const mark = o.turn ?? newTurnMark("user")
+        const watch = stepWatch({
+          limit: stepLimit,
+          before: 0,
+          stop: () => controller.abort(),
+          record: ({ callId, ...step }) =>
+            tasks.recordStep({
+              ...step,
+              agentId: o.agent.id,
+              taskId: o.taskId,
+              decidedBy: tools.decidedBy(o.agent.id, callId),
+              outside: mark.source,
+            }),
+        })
         db.run(
           `INSERT INTO channel_message (id, channel_id, author, agent_id, kind, parts, status, task_id, model, created_at)
            VALUES (?, ?, 'agent', ?, ?, '[]', 'streaming', ?, ?, ?)`,
@@ -423,7 +443,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         }
         const onEvent = (event: AgentEvent) =>
           Effect.sync(() => {
-            watch.sense(event)
+            silence.sense(event)
             if (event.type === "usage") {
               usage.input = event.input ?? usage.input
               usage.output = event.output ?? usage.output
@@ -447,13 +467,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 bus.emit("channel.message", toMessage({ ...row, parts: JSON.stringify(parts) }))
               lastEmit = now
             }
+            watch.see(event, parts)
           })
 
         const stream = Effect.gen(function* () {
           if (!o.agent.model_account_id || !o.agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
           const useTools = o.tools === true
-          const mark = o.turn ?? newTurnMark("user")
           const isRuntime = providers.isRuntime(o.agent.model_account_id)
           const changePart = (
             callId: string,
@@ -476,7 +496,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             signal: controller.signal,
             onWaiting: (callId, ask) => {
               tasks.setWaiting(o.taskId, ask !== null)
-              watch.waiting(ask !== null)
+              silence.waiting(ask !== null)
               if (ask)
                 notifier.attention({
                   agentId: o.agent.id,
@@ -504,6 +524,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             knowledgeChanges: { count: 0 },
             turn: mark,
             taskId: o.taskId,
+            depth: tasks.depthOf(o.taskId),
+            guard: createReadGuard(),
+            onReason: (callId, reason) => changePart(callId, (p) => ({ ...p, reason })),
           }
           const events = yield* providers.events(
             o.agent.model_account_id,
@@ -513,6 +536,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               system: useTools
                 ? [
                     `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`,
+                    CHAIN_LIMIT_RULE,
                     // An agent in a channel uses its own knowledge only.
                     knowledge.prompt(
                       o.agent.id,
@@ -553,11 +577,11 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 : {}),
             },
           )
-          yield* Stream.fromAsyncIterable(closing(events, controller, watch), (e) => e).pipe(
+          yield* Stream.fromAsyncIterable(closing(events, controller, silence), (e) => e).pipe(
             // The program also reports its own calls of these tools. The app shows its own cards.
             Stream.runForEach((event) => {
               if (isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null) {
-                watch.sense(event)
+                silence.sense(event)
                 return Effect.void
               }
               // A web, browser or connection step of the program itself gives outside content.
@@ -565,6 +589,17 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 holdOutside(mark, outsideOfCall(event.call.name, event.call.input))
               return onEvent(event)
             }),
+            // A turn that reached the step limit was stopped by the app (spec 005).
+            Effect.catchCause((cause) =>
+              watch.hit
+                ? Effect.fail(new AppError({ code: "step_limit", detail: String(stepLimit) }))
+                : Effect.failCause(cause),
+            ),
+            Effect.tap(() =>
+              watch.hit
+                ? Effect.fail(new AppError({ code: "step_limit", detail: String(stepLimit) }))
+                : Effect.void,
+            ),
           )
         })
 
@@ -574,13 +609,15 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         knowledge.begin(o.agent.id)
         // A turn that shows no sign of life for the silent limit stops like after a Stop, and its
         // task fails with the reason (spec 005).
-        yield* Effect.raceFirst(stream, watch.silent).pipe(
+        yield* Effect.raceFirst(stream, silence.silent).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
-              watch.stop()
+              silence.stop()
               controller.abort()
               knowledge.end(o.agent.id, writesFiles ? "agent" : "user")
               notifier.clearAgent(o.agent.id)
+              // A step that was running when the turn ended may have run in part.
+              watch.end(parts)
               // A step that did not finish cannot keep a running mark or a question card.
               for (const [i, part] of parts.entries()) {
                 if (part.kind !== "tool" || (part.state !== "running" && part.state !== "waiting"))
@@ -605,7 +642,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 const failure = Cause.squash(exit.cause)
                 if (failure instanceof ProviderFailure) save("failed", storedFailure(failure))
                 else if (failure instanceof AppError)
-                  save("failed", {
+                  // The reply that streamed stays and counts as stopped; the task has failed.
+                  save(failure.code === "step_limit" ? "stopped" : "failed", {
                     code: failure.code,
                     detail: failure.detail ?? "",
                     resetsAt: null,

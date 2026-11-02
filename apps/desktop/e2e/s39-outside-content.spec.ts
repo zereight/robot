@@ -93,7 +93,10 @@ test("outside content: a memory save after a page fetch asks, Full access runs, 
   // The action log has one entry for each save, and says whether the turn held outside content.
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-permissions").click()
-  const entries = page.getByTestId("action-log-entry")
+  // The two page fetches are steps of the log too (a web step); only the saves are counted here.
+  const all = page.getByTestId("action-log-entry")
+  await expect(all.filter({ hasText: /^\s*Web page/ })).toHaveCount(2)
+  const entries = all.filter({ hasText: /^\s*Save to memory/ })
   await expect(entries).toHaveCount(3)
   await expect(entries.nth(0)).toHaveAttribute("data-outside", "true")
   await expect(entries.nth(0)).toContainText("Ran")
