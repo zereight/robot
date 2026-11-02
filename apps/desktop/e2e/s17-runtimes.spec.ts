@@ -273,6 +273,21 @@ test("subscription: Muse Code signs in from the app, shows the code, and answers
   expect(call.args).toContain("--no-session-log")
   // The program must not update itself in the background while ROBot uses it.
   expect(call.autoUpdate).toBe("1")
+
+  // A step that the program asks about waits on a card in the app, also at the default level.
+  await send(page, "do it [ask]")
+  await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("ask-card")).toContainText("rm /etc/robot-test")
+  await shot(page, "s17-10-muse-approval")
+  await page.getByTestId("ask-allow").click()
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Ran it.")
+
+  await send(page, "do it again [ask]")
+  await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId("ask-deny").click()
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Not allowed.")
   await app.close()
 })
 
