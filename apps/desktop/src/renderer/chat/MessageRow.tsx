@@ -53,7 +53,8 @@ const ToolCard = (props: {
   /** The name of the other computer when the task runs there (spec 016). */
   from: string | undefined
 }) => {
-  const { t } = useApp()
+  const app = useApp()
+  const { t } = app
   const ui = useUi()
   const devices = useDevices()
   const [answer, setAnswer] = createSignal("")
@@ -103,6 +104,13 @@ const ToolCard = (props: {
         <Show when={props.part.ask}>
           {(ask) => (
             <div class={styles.ask} data-testid="ask-card">
+              <Show when={ask().askedAt}>
+                {(at) => (
+                  <div class={styles.time} data-testid="ask-time">
+                    {t("chat.tool.askedAt", { time: formatTime(app.locale(), at()) })}
+                  </div>
+                )}
+              </Show>
               <Show when={away()}>
                 <div class={styles.fromDevice} role="status" data-testid="ask-origin-offline">
                   {t("sync.originOffline", { name: props.from ?? "" })}

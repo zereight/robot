@@ -222,7 +222,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             ctx.signal.removeEventListener("abort", stop)
             resolveAnswer({ answer, by })
           })
-          ctx.onWaiting(callId, ask)
+          ctx.onWaiting(callId, { ...ask, askedAt: Date.now() })
         }).finally(() => ctx.onWaiting(callId, null))
 
       /** Asks for approval when the level and the risk need it. Throws `Denied` on a no. */

@@ -418,6 +418,7 @@ export const en = {
   "chat.tool.always": "Always allow for this agent",
   "chat.tool.deny": "Deny",
   "chat.tool.approval": "This step needs your approval.",
+  "chat.tool.askedAt": "Asked at {time}",
   "chat.tool.answer": "Your answer",
   "chat.tool.send": "Send",
   "chat.tool.undoMemory": "Undo",

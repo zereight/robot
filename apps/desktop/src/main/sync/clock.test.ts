@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { compareStamps, HybridClock, readStamp, STAMP_FUTURE_MS, type Stamp } from "./clock.ts"
+import {
+  ageOnArrival,
+  compareStamps,
+  HybridClock,
+  readStamp,
+  STAMP_FUTURE_MS,
+  type Stamp,
+} from "./clock.ts"
 
 const clock = (node: string, wall: { now: number }, start = { l: 0, c: 0 }) =>
   new HybridClock(
@@ -82,5 +89,20 @@ describe("the order of changes", () => {
     expect(readStamp([now, 0.5, "dev"], limit)).toBeUndefined()
     expect(readStamp(["1", 0, "dev"], limit)).toBeUndefined()
     expect(readStamp({ l: now, c: 0, n: "dev" }, limit)).toBeUndefined()
+  })
+
+  test("the age of a message uses the clock difference that was measured, not the raw stamps", () => {
+    const now = 1_700_000_000_000
+    const minute = 60_000
+    // Clocks that agree: the age is the plain difference.
+    expect(ageOnArrival(now - minute, now, 0)).toBe(minute)
+    // The other clock is 2 hours ahead. A message made 30 seconds ago carries a stamp in the future
+    // of this computer, but it is young.
+    const ahead = 2 * 60 * minute
+    expect(ageOnArrival(now + ahead - 30_000, now, ahead)).toBe(30_000)
+    // The same clock, and a message made 10 minutes ago: it is old, though the raw stamp is ahead.
+    expect(ageOnArrival(now + ahead - 10 * minute, now, ahead)).toBe(10 * minute)
+    // The other clock is 2 hours behind. A message made 30 seconds ago looks 2 hours old.
+    expect(ageOnArrival(now - ahead - 30_000, now, -ahead)).toBe(30_000)
   })
 })

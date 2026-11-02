@@ -14,6 +14,12 @@ export interface DatabaseService {
   transaction<T>(body: () => T): T
   /** Calls `listener` after every statement that wrote. Sync uses it to look for changes. */
   onWrite(listener: () => void): void
+  /**
+   * From now on `run` writes nothing. The app calls it when it starts to close: work that the
+   * quit cuts off must not record itself as stopped or failed, because the next start reads the
+   * data as it was (spec 005, a card that waits stays).
+   */
+  freeze(): void
 }
 
 /**
@@ -59,9 +65,14 @@ export const openDatabase = (file: string): DatabaseService => wrap(open(file))
 
 const wrap = (db: DatabaseSync): DatabaseService => {
   let depth = 0
+  let frozen = false
   const writeListeners: (() => void)[] = []
   return {
+    freeze: () => {
+      frozen = true
+    },
     run: (sql, ...params) => {
+      if (frozen) return
       db.prepare(sql).run(...params)
       for (const listener of writeListeners) listener()
     },

@@ -277,6 +277,7 @@ describe("tools in a chat turn", () => {
       kind: "question",
       question: "Which colour?",
       choices: ["red", "blue"],
+      askedAt: expect.any(Number),
     })
     await s.respond("blue")
     await s.finished()

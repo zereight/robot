@@ -335,7 +335,11 @@ describe("approvals for a subscription", () => {
     const s = await chatSetup("claude_code", "ask_all")
     await s.send("RUN: touch a.txt")
     await until(async () => (await s.card())?.state === "waiting")
-    expect((await s.card())?.ask).toEqual({ kind: "approval", summary: "touch a.txt" })
+    expect((await s.card())?.ask).toEqual({
+      kind: "approval",
+      summary: "touch a.txt",
+      askedAt: expect.any(Number),
+    })
     await s.respond("allow")
     await s.settled()
     const r = await s.reply()

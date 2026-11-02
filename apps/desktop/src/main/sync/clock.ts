@@ -47,6 +47,14 @@ export const readStamp = (value: unknown, limit: number): Stamp | undefined => {
   return { l, c, n }
 }
 
+/**
+ * How old a message of the other computer is when it arrives, on the clock of this computer.
+ * `madeAt` is the time that the other computer wrote on it. `skew` is the other clock minus this
+ * one, as the computers measured it when they connected (spec 016). So a clock that is wrong
+ * does not make an old message look new, or a new one look old.
+ */
+export const ageOnArrival = (madeAt: number, now: number, skew: number) => now - (madeAt - skew)
+
 export const wireStamp = (s: Stamp): [number, number, string] => [s.l, s.c, s.n]
 
 /** A stamp of the far future is refused: it would lift the clock of the pair for good. */

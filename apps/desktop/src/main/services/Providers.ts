@@ -179,11 +179,12 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                 model: input.model,
                 effort: input.effort,
                 system: input.system,
-                turns: input.turns,
+                turns: input.resume ? [...input.turns, ...input.resume.turns] : input.turns,
                 ...(input.tools ? { tools: input.tools } : {}),
                 signal: input.signal,
               },
               hooks.execute,
+              input.resume?.call,
             )
           }
           const kind = row.kind

@@ -16,6 +16,7 @@ const msg = (
   model: null,
   createdAt,
   editedAt: null,
+  fromDevice: null,
   ...extra,
 })
 

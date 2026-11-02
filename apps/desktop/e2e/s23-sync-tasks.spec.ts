@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { expect, type Page, test } from "@playwright/test"
 import { createAgent, shot } from "./harness.ts"
 import { GOOD_KEY } from "./mock-provider.ts"
@@ -56,18 +57,11 @@ const ready = async (
   await connectHere(s.two.page)
   return s
 }
-/** Closes both apps. An app that is still going after 5 seconds is ended. */
+/** Closes an app the normal way. It must end by itself (see f1-quit.spec.ts). */
 const quit = async (app: Awaited<ReturnType<typeof synced>>["one"]["app"]) => {
-  try {
-    const proc = app.process()
-    await Promise.race([
-      app.close().catch(() => {}),
-      new Promise((resolve) => setTimeout(resolve, 5_000)),
-    ])
-    if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL")
-  } catch {
+  await app.close().catch(() => {
     // The app was closed in the test.
-  }
+  })
 }
 const close = async (s: Awaited<ReturnType<typeof ready>>) => {
   await quit(s.one.app)
@@ -316,6 +310,35 @@ test("sync tasks: a routine and a workflow run on one computer only, and Run on 
     // One run in all: the second computer did not fire it too.
     expect(await runs(one.page)).toBe(1)
     await expect.poll(() => runs(two.page), { timeout: 20_000 }).toBe(1)
+
+    // MacBook 1 sends a change that makes the routine and the workflow run on MacBook 2. Only the
+    // user of MacBook 2 decides that, so MacBook 2 ignores it and still shows "Runs on MacBook 1".
+    // The rename is in the same change, so the test sees that the change has crossed.
+    const deviceTwo = (await rpc<{ self: { id: string } }>(two.page, "devices.get")).self.id
+    const craft = (sql: string, ...args: (string | null)[]) => {
+      const db = new DatabaseSync(join(s.data1, "robot.db"))
+      db.exec("PRAGMA busy_timeout = 5000")
+      db.prepare(sql).run(...args)
+      db.close()
+    }
+    craft("UPDATE routine SET runs_on = ?, name = 'Morning check 2'", deviceTwo)
+    craft("UPDATE workflow SET runs_on = ?, name = 'Deploy flow 2'", deviceTwo)
+    await two.page.getByTestId("wf-tabs").getByText("Routines", { exact: true }).click()
+    await expect(
+      two.page.getByTestId("routine-card").filter({ hasText: "Morning check 2" }),
+    ).toBeVisible({ timeout: 20_000 })
+    await expect(two.page.getByTestId("routine-runs-on")).toHaveText("Runs on MacBook 1")
+    await expect(two.page.getByTestId("routine-run")).toHaveCount(0)
+    await two.page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
+    await expect(two.page.getByText("Deploy flow 2")).toBeVisible({ timeout: 20_000 })
+    await expect(two.page.getByTestId("wf-runs-on")).toHaveText("Runs on MacBook 1")
+    await expect(two.page.getByTestId("wf-card-run")).toHaveCount(0)
+    await shot(two.page, "s23-05b-run-here-change-ignored")
+    // The first computer takes them back, so that the move below is a real move.
+    craft("UPDATE routine SET runs_on = NULL")
+    craft("UPDATE workflow SET runs_on = NULL")
+    await one.page.getByTestId("page-workflows").click()
+    await expect(one.page.getByTestId("routine-runs-on")).toHaveCount(0, { timeout: 20_000 })
 
     // Run on this computer moves the routine; the first computer shows where it runs at once.
     await two.page.getByTestId("wf-tabs").getByText("Routines", { exact: true }).click()

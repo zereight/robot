@@ -116,6 +116,9 @@ export class Connection {
     const channel = this.#channel
     this.#channel = undefined
     channel?.close(1000)
+    // The socket of a connection that was stopped does not wait for the other side to answer
+    // the close: the app can end at once (a quit must not wait for a computer that is away).
+    if (this.#stopped) channel?.conn.ws.terminate()
     for (const [id, request] of this.#pending) {
       clearTimeout(request.timer)
       request.reject(new LinkError("offline"))
@@ -185,7 +188,10 @@ export class Connection {
 
   #attach(channel: SecureChannel) {
     this.#channel = channel
-    channel.onMessage((message) => this.#onMessage(message))
+    // A message that comes while the channel closes, or after the connection stopped, is dropped.
+    channel.onMessage((message) => {
+      if (this.#channel === channel) this.#onMessage(message)
+    })
     channel.onClose(() => {
       if (this.#channel !== channel) return
       this.#drop()

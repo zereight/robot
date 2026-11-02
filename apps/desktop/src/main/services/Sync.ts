@@ -41,6 +41,7 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { LinkError } from "../link/client.ts"
+import { ageOnArrival } from "../sync/clock.ts"
 import { SyncEngine, type Touch } from "../sync/engine.ts"
 import { KINDS } from "../sync/kinds.ts"
 import {
@@ -472,9 +473,13 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
           "SELECT channel_id, author, origin, parts, created_at FROM channel_message WHERE id = ?",
           id,
         )
-        // A message that is older than 5 minutes when it arrives does not fire a workflow.
         if (r?.author !== "user" || r.origin === null) return
-        if (Date.now() - r.created_at > HEARD_MAX_AGE_MS) return
+        // A message that is older than 5 minutes when it arrives does not fire a workflow. The
+        // other computer wrote the time by its own clock, so the age uses the difference between
+        // the two clocks that the computers measured when they connected.
+        const pair = pairRow()
+        const skew = pair?.peer_id === r.origin ? pair.clock_offset : 0
+        if (ageOnArrival(r.created_at, wall(), skew) > HEARD_MAX_AGE_MS) return
         channels.hearUserMessage(r.channel_id, messageText({ parts: JSON.parse(r.parts) }))
       }
 

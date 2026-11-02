@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   isActive,
+  isRuntimeKind,
   messageText,
   type Task,
   type TaskDetail,
@@ -9,6 +10,7 @@ import {
   taskLabel,
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Layer, Semaphore } from "effect"
+import { resumeOf } from "../providers/resume.ts"
 import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -74,7 +76,13 @@ export interface TasksService {
     taskId: string,
     agentId: string,
     work: Effect.Effect<A, E, R>,
+    options?: { readonly resumed?: boolean },
   ): Effect.Effect<A, E, R>
+  /**
+   * The tasks that waited for an approval or a question when the app closed and wait on (spec
+   * 005). The chat starts their turns again. `run` with `resumed` keeps the place of the agent.
+   */
+  waitingAfterRestart(): readonly Task[]
   /** Marks a running task as waiting for the user, or running again. */
   setWaiting(taskId: string, waiting: boolean): void
   /** Records which message holds the reply of a task. */
@@ -140,12 +148,36 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const retryHandlers = new Map<TaskSource, RetryHandler>()
       let remote: RemoteTasks | undefined
 
+      // A task that waits for an approval or a question can wait through a restart when it has no
+      // parent task, is no part of a workflow run, and has no vendor runtime (spec 005). Its card
+      // and its place are kept. Its turn starts again in the chat.
+      const keepIds = db
+        .all<{ id: string; parts: string; kind: string | null }>(
+          `SELECT t.id, m.parts, p.kind FROM task t
+             JOIN agent a ON a.id = t.agent_id
+             JOIN message m ON m.id = t.message_id
+             LEFT JOIN provider_account p ON p.id = a.model_account_id
+           WHERE t.state = 'waiting' AND t.origin IS NULL AND t.parent_id IS NULL
+             AND t.source IN ('chat', 'routine') AND a.archived_at IS NULL
+             AND m.status = 'streaming' AND m.origin IS NULL`,
+        )
+        .filter((r) => r.kind !== null && !isRuntimeKind(r.kind))
+        .filter((r) => {
+          try {
+            return resumeOf(JSON.parse(r.parts)) !== undefined
+          } catch {
+            return false
+          }
+        })
+        .map((r) => r.id)
       // Work that was running when the app closed did not finish. A task of the other computer
       // (spec 016) is not ours to end: its own computer does.
       db.run(
         `UPDATE task SET state = 'failed', error_code = 'app_stopped', finished_at = ?
-         WHERE state IN ('queued', 'running', 'waiting') AND origin IS NULL`,
+         WHERE state IN ('queued', 'running', 'waiting') AND origin IS NULL
+           AND id NOT IN (SELECT value FROM json_each(?))`,
         Date.now(),
+        JSON.stringify(keepIds),
       )
 
       const row = (id: string) => db.get<TaskRow>(`${SELECT} WHERE t.id = ?`, id)
@@ -238,7 +270,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           return toTask(row(id) as TaskRow, remote)
         })
 
-      const run = <A, E, R>(taskId: string, agentId: string, work: Effect.Effect<A, E, R>) => {
+      const run = <A, E, R>(
+        taskId: string,
+        agentId: string,
+        work: Effect.Effect<A, E, R>,
+        options?: { readonly resumed?: boolean },
+      ) => {
         const stopSignal = stops.get(taskId) ?? Deferred.makeUnsafe<void>()
         stops.set(taskId, stopSignal)
         live.add(taskId)
@@ -251,12 +288,13 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             // One task per agent across both computers (spec 016): while the other computer runs
             // a task of this agent, this one stays queued.
             let told = false
-            while (remote?.busyOn(agentId)) {
+            while (!options?.resumed && remote?.busyOn(agentId)) {
               if (!told) changed(agentId)
               told = true
               yield* Effect.sleep(REMOTE_POLL_MS)
             }
-            setState(taskId, agentId, "running")
+            // A task that waited through a restart goes on waiting until its card is answered.
+            if (!options?.resumed) setState(taskId, agentId, "running")
             if (serverId) activity.setWorking(agentId, serverId, true)
             return yield* work.pipe(
               Effect.ensuring(
@@ -334,6 +372,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       return Tasks.of({
         create,
         run,
+        waitingAfterRestart: () =>
+          keepIds.flatMap((id) => {
+            const r = row(id)
+            return r ? [toTask(r, remote)] : []
+          }),
         setWaiting: (taskId, waiting) => {
           const current = row(taskId)
           if (current && (current.state === "running" || current.state === "waiting"))

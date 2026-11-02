@@ -415,6 +415,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.tool.always": "이 에이전트에 항상 허용",
   "chat.tool.deny": "거부",
   "chat.tool.approval": "이 작업은 승인이 필요합니다.",
+  "chat.tool.askedAt": "{time}에 요청했어요",
   "chat.tool.answer": "답변",
   "chat.tool.send": "보내기",
   "chat.tool.undoMemory": "되돌리기",

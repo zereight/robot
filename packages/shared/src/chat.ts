@@ -28,9 +28,15 @@ export type MessagePart =
       readonly decision?: { readonly answer: "allow" | "deny"; readonly by: string }
     }
 
+/** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */
 export type ToolAsk =
-  | { readonly kind: "approval"; readonly summary: string }
-  | { readonly kind: "question"; readonly question: string; readonly choices: readonly string[] }
+  | { readonly kind: "approval"; readonly summary: string; readonly askedAt?: number }
+  | {
+      readonly kind: "question"
+      readonly question: string
+      readonly choices: readonly string[]
+      readonly askedAt?: number
+    }
 
 export type MessageStatus = "done" | "streaming" | "stopped" | "failed"
 

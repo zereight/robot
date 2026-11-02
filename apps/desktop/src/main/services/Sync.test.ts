@@ -803,7 +803,139 @@ describe("tasks, routines, workflows and files of two computers", () => {
     expect((await entries(b, idB)).length).toBeGreaterThan(0)
   })
 
-  test("a workflow with a channel trigger fires on its computer for a message of the other, unless the message is old", async () => {
+  test("a change from the other computer cannot make a routine or a workflow run here; the user here decides", async () => {
+    const { a, b, ada } = await pair()
+    const idA = await localId(a)
+    const idB = await localId(b)
+    const deviceB = await run(
+      b,
+      Devices.use((d) => Effect.sync(() => d.selfId)),
+    )
+    const routine = await run(
+      a,
+      Routines.use((r) =>
+        r.create({
+          serverId: idA,
+          agentId: ada.id,
+          name: "Check",
+          prompt: "hello",
+          schedule: { kind: "every", minutes: 2, from: Date.now() },
+          place: { kind: "agent" },
+        }),
+      ),
+    )
+    const wf = await run(
+      a,
+      Workflows.use((w) =>
+        w.create({
+          serverId: idA,
+          name: "Flow",
+          trigger: { kind: "manual" },
+          steps: [],
+          edges: [],
+        }),
+      ),
+    )
+    const routineOnB = () =>
+      run(
+        b,
+        Routines.use((r) => r.list(idB)),
+      ).then((list) => list.find((x) => x.id === routine.id))
+    const workflowOnB = () =>
+      run(
+        b,
+        Workflows.use((w) => w.list(idB)),
+      ).then((list) => list.find((x) => x.id === wf.id))
+    expect((await waitFor(routineOnB, (x) => x !== undefined))?.runsOn).toBe("MacBook 1")
+    expect((await waitFor(workflowOnB, (x) => x !== undefined))?.runsOn).toBe("MacBook 1")
+
+    // The first computer writes "runs on the second computer" into both. It also renames them, in
+    // the same change, so the test knows when the change has crossed.
+    await SQL(
+      a,
+      "UPDATE routine SET runs_on = ?, name = 'Check 2' WHERE id = ?",
+      deviceB,
+      routine.id,
+    )
+    await SQL(a, "UPDATE workflow SET runs_on = ?, name = 'Flow 2' WHERE id = ?", deviceB, wf.id)
+    expect((await waitFor(routineOnB, (x) => x?.name === "Check 2"))?.name).toBe("Check 2")
+    expect((await waitFor(workflowOnB, (x) => x?.name === "Flow 2"))?.name).toBe("Flow 2")
+    // The second computer keeps the old place, and does not run them at their time.
+    expect((await routineOnB())?.runsOn).toBe("MacBook 1")
+    expect((await workflowOnB())?.runsOn).toBe("MacBook 1")
+    await run(
+      b,
+      Routines.use((r) => r.tick(Date.now() + 10 * 60_000)),
+    )
+    expect(
+      await run(
+        b,
+        Routines.use((r) => r.calendar(idB, Date.now() - 86_400_000, Date.now() + 86_400_000)),
+      ).then((list) => list.filter((e) => e.state !== "planned")),
+    ).toEqual([])
+
+    // An item that arrives for the first time and names the second computer is stored as running
+    // on the first one.
+    const now = Date.now()
+    await SQL(
+      a,
+      `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, channel_id, enabled,
+         last_checked_at, created_at, updated_at, runs_on)
+       VALUES ('crafted-routine', ?, ?, 'Crafted', 'hi', ?, NULL, 1, ?, ?, ?, ?)`,
+      idA,
+      ada.id,
+      JSON.stringify({ kind: "every", minutes: 5, from: now }),
+      now,
+      now,
+      now,
+      deviceB,
+    )
+    await SQL(
+      a,
+      `INSERT INTO workflow (id, server_id, name, trigger, steps, edges, enabled, last_checked_at,
+         created_at, updated_at, runs_on)
+       VALUES ('crafted-workflow', ?, 'Crafted flow', ?, '[]', '[]', 1, ?, ?, ?, ?)`,
+      idA,
+      JSON.stringify({ kind: "manual" }),
+      now,
+      now,
+      now,
+      deviceB,
+    )
+    const craftedRoutine = await waitFor(
+      async () =>
+        (
+          await run(
+            b,
+            Routines.use((r) => r.list(idB)),
+          )
+        ).find((x) => x.id === "crafted-routine"),
+      (x) => x !== undefined,
+    )
+    const craftedWorkflow = await waitFor(
+      async () =>
+        (
+          await run(
+            b,
+            Workflows.use((w) => w.list(idB)),
+          )
+        ).find((x) => x.id === "crafted-workflow"),
+      (x) => x !== undefined,
+    )
+    expect(craftedRoutine?.runsOn).toBe("MacBook 1")
+    expect(craftedRoutine?.nextRuns).toEqual([])
+    expect(craftedWorkflow?.runsOn).toBe("MacBook 1")
+
+    // The user of the second computer can still take it, with "Run on this computer".
+    await run(
+      b,
+      Routines.use((r) => r.runHere(routine.id)),
+    )
+    expect((await routineOnB())?.runsOn).toBeNull()
+  })
+
+  /** A workflow on the first computer fires when a message that holds "deploy" is posted in a channel. */
+  const watchedFlow = async () => {
     const { a, b, ada } = await pair()
     const idA = await localId(a)
     const make = (name: string) =>
@@ -858,6 +990,36 @@ describe("tasks, routines, workflows and files of two computers", () => {
           Workflows.use((w) => w.runs(wf.id)),
         )
       ).length
+    /** A message that the second computer wrote `ageMs` ago by its own clock, which is `skewMs` off. */
+    const postOld = async (id: string, text: string, ageMs: number, skewMs: number) => {
+      const madeAt = Date.now() + skewMs - ageMs
+      await SQL(
+        b,
+        `INSERT INTO channel_message (id, channel_id, author, parts, status, awaiting, created_at, finished_at)
+         VALUES (?, ?, 'user', ?, 'done', 0, ?, ?)`,
+        id,
+        watched.id,
+        JSON.stringify([{ kind: "text", text }]),
+        madeAt,
+        madeAt,
+      )
+      await waitFor(
+        async () =>
+          (
+            await run(
+              a,
+              Channels.use((c) => c.history(watched.id)),
+            )
+          ).some((m) => JSON.stringify(m.parts).includes(text)),
+        Boolean,
+      )
+      await new Promise((r) => setTimeout(r, 300))
+    }
+    return { a, b, watched, runsOnA, postOld }
+  }
+
+  test("a workflow with a channel trigger fires on its computer for a message of the other, unless the message is old", async () => {
+    const { b, watched, runsOnA, postOld } = await watchedFlow()
 
     // A message that was sent now on the second computer fires it on the first one.
     await run(
@@ -867,27 +1029,32 @@ describe("tasks, routines, workflows and files of two computers", () => {
     expect(await waitFor(runsOnA, (n) => n === 1)).toBe(1)
 
     // A message that is 6 minutes old when it arrives fires nothing.
-    await SQL(
-      b,
-      `INSERT INTO channel_message (id, channel_id, author, parts, status, awaiting, created_at, finished_at)
-       VALUES ('old-message', ?, 'user', ?, 'done', 0, ?, ?)`,
-      watched.id,
-      JSON.stringify([{ kind: "text", text: "old deploy" }]),
-      Date.now() - 6 * 60_000,
-      Date.now() - 6 * 60_000,
-    )
-    await waitFor(
-      async () =>
-        (
-          await run(
-            a,
-            Channels.use((c) => c.history(watched.id)),
-          )
-        ).some((m) => JSON.stringify(m.parts).includes("old deploy")),
-      Boolean,
-    )
-    await new Promise((r) => setTimeout(r, 300))
+    await postOld("old-message", "old deploy", 6 * 60_000, 0)
     expect(await runsOnA()).toBe(1)
+  })
+
+  test("the age of a message uses the clock difference that the computers measured, so a wrong clock changes nothing", async () => {
+    const { a, runsOnA, postOld } = await watchedFlow()
+    const HOUR = 60 * 60_000
+    const measure = (skew: number) =>
+      SQL(a, "UPDATE sync_pair SET clock_offset = ? WHERE id = 1", skew)
+
+    // The clock of the second computer is 2 hours behind. A message that is 1 minute old shows a
+    // time that looks 2 hours old, but it fires the workflow.
+    await measure(-2 * HOUR)
+    await postOld("behind-new", "deploy behind new", 60_000, -2 * HOUR)
+    expect(await waitFor(runsOnA, (n) => n === 1)).toBe(1)
+
+    // The same clock, and a message that is 10 minutes old: too old, though its time looks new.
+    await postOld("behind-old", "deploy behind old", 10 * 60_000, -2 * HOUR)
+    expect(await runsOnA()).toBe(1)
+
+    // The clock is 2 hours ahead. A young message fires, and an old one does not.
+    await measure(2 * HOUR)
+    await postOld("ahead-new", "deploy ahead new", 30_000, 2 * HOUR)
+    expect(await waitFor(runsOnA, (n) => n === 2)).toBe(2)
+    await postOld("ahead-old", "deploy ahead old", 10 * 60_000, 2 * HOUR)
+    expect(await runsOnA()).toBe(2)
   })
 
   test("a card that waits on the other computer notices here, and the notice drops when it is answered there", async () => {

@@ -135,10 +135,14 @@ const ATTACHMENT_PATH = /^attachments\/[^/\\]{1,255}$/
 
 const askCheck = (v: unknown): boolean => {
   if (!isObject(v)) return false
-  if (v.kind === "approval") return shape(["kind", "summary"])(v) && str(5000)(v.summary)
+  const timeOk = v.askedAt === undefined || int(v.askedAt)
+  if (v.kind === "approval") {
+    return shape(["kind", "summary"], ["askedAt"])(v) && str(5000)(v.summary) && timeOk
+  }
   if (v.kind === "question") {
     return (
-      shape(["kind", "question", "choices"])(v) &&
+      timeOk &&
+      shape(["kind", "question", "choices"], ["askedAt"])(v) &&
       str(5000)(v.question) &&
       Array.isArray(v.choices) &&
       v.choices.length <= 50 &&
@@ -266,6 +270,15 @@ const insert = (db: DatabaseService, table: string, columns: Record<string, unkn
 
 /** An id of the other computer's origin, as stored: this device is NULL. */
 const originColumn = (ctx: Ctx, wire: unknown) => (wire === ctx.self ? null : (wire as string))
+
+/**
+ * Where a routine or workflow runs, from a new item of the other computer (spec 016). Only the
+ * user of the computer that would run it can choose that, with "Run on this computer". So an
+ * item that arrives for the first time and names this computer is stored as running on the other
+ * computer.
+ */
+const arrivingRunsOn = (ctx: Ctx, wire: unknown) =>
+  wire === ctx.self ? (ctx.peer()?.id ?? null) : originColumn(ctx, wire)
 
 // ------------------------------------------------------------------------------ account
 
@@ -1163,7 +1176,7 @@ const routine: KindDef = {
       last_checked_at: now,
       created_at: f.createdAt,
       updated_at: now,
-      runs_on: originColumn(ctx, f.runsOn),
+      runs_on: arrivingRunsOn(ctx, f.runsOn),
     })
     return true
   },
@@ -1174,7 +1187,8 @@ const routine: KindDef = {
     if (f.schedule !== undefined) columns.schedule = JSON.stringify(f.schedule)
     if (f.channelId !== undefined) columns.channel_id = f.channelId
     if (f.enabled !== undefined) columns.enabled = f.enabled ? 1 : 0
-    if (f.runsOn !== undefined) {
+    // A change that makes it run on this computer is ignored: the user here decides that.
+    if (f.runsOn !== undefined && f.runsOn !== ctx.self) {
       columns.runs_on = originColumn(ctx, f.runsOn)
       columns.last_checked_at = ctx.now()
     }
@@ -1289,7 +1303,7 @@ const workflow: KindDef = {
       last_checked_at: now,
       created_at: f.createdAt,
       updated_at: now,
-      runs_on: originColumn(ctx, f.runsOn),
+      runs_on: arrivingRunsOn(ctx, f.runsOn),
     })
     return true
   },
@@ -1300,7 +1314,8 @@ const workflow: KindDef = {
     if (f.steps !== undefined) columns.steps = JSON.stringify(f.steps)
     if (f.edges !== undefined) columns.edges = JSON.stringify(f.edges)
     if (f.enabled !== undefined) columns.enabled = f.enabled ? 1 : 0
-    if (f.runsOn !== undefined) {
+    // A change that makes it run on this computer is ignored: the user here decides that.
+    if (f.runsOn !== undefined && f.runsOn !== ctx.self) {
       columns.runs_on = originColumn(ctx, f.runsOn)
       columns.last_checked_at = ctx.now()
     }
