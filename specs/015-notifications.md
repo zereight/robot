@@ -7,7 +7,7 @@ The user knows when an agent needs them or finishes, without watching the window
 ## System notifications
 
 - Kinds: reply in a direct chat while the window is not focused, mention in a channel, approval
-  request, question, task failed, routine failed.
+  request, question, task failed, routine failed, and workflow notice (a notify step, see 010).
 - Each kind can be turned off. A server or a channel can be muted for 1 hour, 8 hours, 1 day, or
   until turned back on.
 - Clicking a notification opens the place and scrolls to the message.
