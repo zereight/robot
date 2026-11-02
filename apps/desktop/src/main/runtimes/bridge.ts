@@ -12,14 +12,23 @@ import { join } from "node:path"
  * as an MCP server, or, for Pi, as tools of the same names that the API agents have.
  */
 
-/** The tools that the app gives to a runtime. Every agent has the browser. */
-export const BRIDGE_TOOL_NAMES = [
+/** The browser tools of the app. Every agent has them. */
+export const BROWSER_TOOL_NAMES = [
   "browser_open",
   "browser_read",
   "browser_click",
   "browser_type",
   "browser_close",
 ] as const
+
+/**
+ * The tool that searches the past chats (spec 007). A runtime gets it only when memory is on for
+ * the agent, as an API agent does.
+ */
+export const SEARCH_TOOL_NAME = "search_chats"
+
+/** The tools that the app can give to a runtime. */
+export const BRIDGE_TOOL_NAMES = [...BROWSER_TOOL_NAMES, SEARCH_TOOL_NAME] as const
 
 /** The name of the server, as the vendor program shows it in the name of a tool. */
 export const BRIDGE_SERVER = "robot"

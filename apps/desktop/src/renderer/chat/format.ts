@@ -24,6 +24,27 @@ export const formatDay = (
   return new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(at)
 }
 
+/**
+ * When a message was written, for a hit of message search: the time on the day of the message,
+ * otherwise the day and the time, with the year when the year is not this one.
+ */
+export const formatHitTime = (locale: Locale, at: number, now = Date.now()) => {
+  const date = new Date(at)
+  const today = new Date(now)
+  const sameDay =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  if (sameDay) return formatTime(locale, at)
+  return new Intl.DateTimeFormat(locale, {
+    ...(date.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }),
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(at)
+}
+
 /** Elapsed time as m:ss. */
 export const formatElapsed = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000))

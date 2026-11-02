@@ -119,6 +119,7 @@ export const CLIENT_METHODS = [
   "channels.activity",
   "channels.markRead",
   "chat.history",
+  "messages.search",
   "chat.send",
   "chat.stop",
   "chat.retry",
