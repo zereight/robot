@@ -54,7 +54,10 @@ camera.
 2. "Type it instead" opens a form for an address and the 6-digit code. It is always there, also
    when the user did not allow the camera.
 3. The phone does not ask "Let <name> open this computer too?": a phone is never a server.
-4. The phone shows "Waiting for <server name> to allow…" until the user answers on the
+4. Before the phone connects, it checks the code. On a phone this can take up to half a minute,
+   and the line "Checking the code…" says so. The computer does not wait for this step, so its
+   pairing time limit is not used up by it.
+5. The phone shows "Waiting for <server name> to allow…" until the user answers on the
    computer. On Allow the new server opens. The errors are the plain lines of 012.
 
 ## Versions
