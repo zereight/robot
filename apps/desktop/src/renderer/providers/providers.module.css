@@ -28,6 +28,12 @@
   word-break: break-all;
 }
 
+/* An e-mail address is read as one piece: it wraps only when the line is too narrow for it. */
+.itemWho {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
 .status {
   font-size: var(--text-xs);
   font-weight: 500;
