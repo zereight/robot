@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { CLAUDE_EFFORTS } from "./providers.ts"
 import { ScheduleSchema } from "./routines.ts"
 
 export const WORKFLOW_NAME_MAX = 60
@@ -12,8 +13,11 @@ export const NOTIFY_BODY_MAX = 200
 /** The longest part of an answer that an error of a condition holds. */
 export const ANSWER_ERROR_MAX = 240
 
-/** The levels of an agent step that sets its own effort, from low to max. */
-export const STEP_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const
+/**
+ * The levels of an agent step that sets its own effort, from low to max. They are the levels of
+ * the current Claude models; a model that takes fewer levels gets the effort of the agent instead.
+ */
+export const STEP_EFFORTS = CLAUDE_EFFORTS
 export type StepEffort = (typeof STEP_EFFORTS)[number]
 
 export const NOTE_TONES = ["yellow", "blue", "green", "pink"] as const

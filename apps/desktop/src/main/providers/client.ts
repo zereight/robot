@@ -103,6 +103,17 @@ export const effortsFromCapabilities = (capabilities: unknown): readonly string[
 }
 
 /**
+ * The effort levels that a model takes. The model list of the account counts when it names the
+ * model. Without that, what the vendor documents for the model id decides. An agent runtime has
+ * no such document, so for a model that its list does not name there is no level.
+ */
+export const offeredEfforts = (
+  kind: ProviderKind,
+  model: string,
+  listed?: readonly ModelInfo[],
+): readonly string[] => listed?.find((m) => m.id === model)?.efforts ?? effortsFor(kind, model)
+
+/**
  * The effort of an agent, kept only if an Anthropic model still takes it. The agent keeps the level
  * it was given; a model that takes no such level would refuse the request. `listed` is the model
  * list of the account when the app has it. Without it, the model name decides.
@@ -114,8 +125,7 @@ export const keepEffort = (
   listed?: readonly ModelInfo[],
 ): string | null => {
   if (effort === null || kind !== "anthropic") return effort
-  const offered = listed?.find((m) => m.id === model)?.efforts ?? effortsFor(kind, model)
-  return offered.includes(effort) ? effort : null
+  return offeredEfforts(kind, model, listed).includes(effort) ? effort : null
 }
 
 /** Lists the models of an account. It is also the connection check: one small request. */

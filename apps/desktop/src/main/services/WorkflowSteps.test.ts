@@ -12,10 +12,16 @@ import { Workflows } from "./Workflows.ts"
 
 interface Seen {
   readonly key: string
-  readonly body: { messages: { role: string; content: string }[]; reasoning_effort?: string }
+  readonly body: {
+    messages: { role: string; content: string }[]
+    reasoning_effort?: string
+    output_config?: { effort?: string }
+  }
 }
 const seen: Seen[] = []
 const failedOnce = new Set<string>()
+/** The model list that the Claude account of a test gets. */
+let claudeModels: unknown[] = []
 
 const sse = (text: string) =>
   new Response(
@@ -28,8 +34,23 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models")
-      return Response.json({ data: [{ id: "mock" }, { id: "o3-mini" }] })
+      return Response.json({
+        data: req.headers.get("x-api-key") ? claudeModels : [{ id: "mock" }, { id: "o3-mini" }],
+      })
     const body = (await req.json()) as Seen["body"]
+    if (url.pathname === "/v1/messages") {
+      seen.push({ key: req.headers.get("x-api-key") ?? "", body })
+      return new Response(
+        [
+          { type: "message_start", message: { usage: { input_tokens: 1 } } },
+          { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Done" } },
+          { type: "message_stop" },
+        ]
+          .map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+          .join(""),
+        { headers: { "content-type": "text/event-stream" } },
+      )
+    }
     const key = req.headers.get("authorization")?.replace("Bearer ", "") ?? ""
     seen.push({ key, body })
     const last = body.messages.at(-1)?.content ?? ""
@@ -575,6 +596,58 @@ describe("effort of an agent step", () => {
     )
     await s.finished(wf.id)
     expect(effortOf(2)).toBe("low")
+  })
+})
+
+describe("effort of an agent step on a Claude model", () => {
+  const levels = ["low", "medium", "high", "xhigh", "max"] as const
+  /** A model of the Anthropic list, with the effort levels that it says it takes. */
+  const listed = (id: string, takes: readonly string[]) => ({
+    id,
+    display_name: id,
+    capabilities: {
+      effort: {
+        supported: takes.length > 0,
+        ...Object.fromEntries(levels.map((l) => [l, { supported: takes.includes(l) }])),
+      },
+    },
+  })
+  /** Runs a workflow of one step with the effort `step` for a Claude agent. Gives the effort sent. */
+  const claudeRun = async (model: string, step: "xhigh" | "max") => {
+    const s = await setup()
+    const account = await s.run(
+      Providers.use((p) =>
+        p.connect({
+          kind: "anthropic",
+          name: "Claude",
+          baseUrl: `http://127.0.0.1:${server.port}`,
+          apiKey: "sk-ant-test-key",
+        }),
+      ),
+    )
+    const agent = await s.agent("Claude agent", account.id, model, "high")
+    const wf = await s.create([s.agentStep("a", agent.id, "Hello", { effort: step })], [])
+    await s.finished(wf.id)
+    return seen[0]?.body.output_config?.effort
+  }
+
+  test("a model whose list holds the level gets the level, with five levels up to extra high", async () => {
+    claudeModels = [listed("claude-opus-5-5", levels)]
+    expect(await claudeRun("claude-opus-5-5", "xhigh")).toBe("xhigh")
+  })
+
+  test("a model whose list lacks the level gets the effort of the agent", async () => {
+    claudeModels = [listed("claude-sonnet-4-6", ["low", "medium", "high", "max"])]
+    expect(await claudeRun("claude-sonnet-4-6", "xhigh")).toBe("high")
+    expect(await claudeRun("claude-sonnet-4-6", "max")).toBe("max")
+  })
+
+  test("a model that the list does not name has the levels that the vendor documents for it", async () => {
+    // The list holds another model, so the name of the model decides, as for the effort of an agent.
+    claudeModels = [listed("claude-haiku-5-5", levels)]
+    expect(await claudeRun("claude-opus-5-5", "xhigh")).toBe("xhigh")
+    // Claude Opus 4.5 takes three levels: "max" is not offered, the agent keeps its own "high".
+    expect(await claudeRun("claude-opus-4-5", "max")).toBe("high")
   })
 })
 

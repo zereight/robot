@@ -324,7 +324,7 @@
   height: 20px;
   padding: 0 5px;
   box-sizing: border-box;
-  border-radius: 10px;
+  border-radius: 999px;
   border: 1px solid var(--c-border);
   background: var(--c-main);
   color: var(--c-text-muted);
