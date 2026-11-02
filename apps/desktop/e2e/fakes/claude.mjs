@@ -34,6 +34,8 @@ if (args[0] === "--version") {
 }
 
 if (args[0] === "auth" && args[1] === "status") {
+  // A program that does not answer its check: the state says `hang`.
+  if (state().hang) await sleep(120_000)
   const s = state()
   console.log(
     JSON.stringify(
@@ -175,6 +177,8 @@ async function turn(content) {
       prompt,
       blocks,
       configDir,
+      // A test finds the process of this turn by it.
+      pid: process.pid,
       hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
     })}\n`,
   )
@@ -290,4 +294,7 @@ async function turn(content) {
   process.stdin.pause()
 }
 
-lines.on("close", () => process.exit(0))
+// The state can say `survive`: the program then stays up when the app that started it is gone.
+lines.on("close", () => {
+  if (!state().survive) process.exit(0)
+})

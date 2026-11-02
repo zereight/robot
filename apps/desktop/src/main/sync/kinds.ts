@@ -23,6 +23,7 @@ import {
   STEP_STATES,
   StepSchema,
   type SyncKind,
+  TASK_PROGRESS,
   TASK_SOURCES,
   TASK_STATES,
   TriggerSchema,
@@ -1034,6 +1035,7 @@ interface TaskRow {
   started_at: number | null
   finished_at: number | null
   origin: string | null
+  progress: string | null
 }
 
 const task: KindDef = {
@@ -1058,6 +1060,8 @@ const task: KindDef = {
     startedAt: { check: nullable(int) },
     finishedAt: { check: nullable(int) },
     origin: { check: str(64, 1) },
+    // How far the turn went (spec 005). It syncs with the task; null for a task from before.
+    progress: { check: nullable(oneOf(TASK_PROGRESS)) },
   },
   required: [
     "agentId",
@@ -1074,6 +1078,7 @@ const task: KindDef = {
     "startedAt",
     "finishedAt",
     "origin",
+    "progress",
   ],
   fixed: [
     "agentId",
@@ -1107,6 +1112,7 @@ const task: KindDef = {
         startedAt: r.started_at,
         finishedAt: r.finished_at,
         origin: r.origin ?? ctx.self,
+        progress: r.progress,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: r.finished_at ?? r.started_at ?? r.created_at,
@@ -1132,12 +1138,14 @@ const task: KindDef = {
       started_at: f.startedAt,
       finished_at: f.finishedAt,
       origin: originColumn(ctx, f.origin),
+      progress: f.progress,
     })
     return true
   },
   write: (ctx, id, f) => {
     const e = f.error as { code: string; detail: string } | null | undefined
     update(ctx.db, "task", "id = ?", [id], {
+      ...(f.progress !== undefined ? { progress: f.progress } : {}),
       ...(f.messageId !== undefined ? { message_id: f.messageId } : {}),
       ...(f.state !== undefined ? { state: f.state } : {}),
       ...(f.error !== undefined

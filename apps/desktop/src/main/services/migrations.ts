@@ -423,4 +423,9 @@ export const migrations: readonly string[] = [
   ALTER TABLE agent ADD COLUMN changed_by TEXT;
   ALTER TABLE agent ADD COLUMN changed_at INTEGER;
   `,
+  `
+  -- How far the turn of a task went: not_sent, sent or started (spec 005). It only goes up. A task
+  -- from before this step has none, and shows no line about it.
+  ALTER TABLE task ADD COLUMN progress TEXT;
+  `,
 ]

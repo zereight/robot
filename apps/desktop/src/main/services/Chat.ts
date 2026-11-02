@@ -10,7 +10,9 @@ import {
   askSummary,
   type ChatMessage,
   type ChatSend,
+  type CutNotice,
   type FilePart,
+  isTaskProgress,
   type MessagePart,
   type MessageStatus,
   type ModelInfo,
@@ -23,6 +25,7 @@ import {
   type StepEffort,
   stepTurnEffort,
   type Task,
+  type TaskProgress,
   type TaskSource,
   type ToolAsk,
   toolNameOf,
@@ -42,6 +45,8 @@ import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
+import { SettingsStore } from "./Settings.ts"
+import { closing, turnWatch } from "./silence.ts"
 import { Tasks } from "./Tasks.ts"
 import type { ToolContext } from "./Tools.ts"
 import { Tools } from "./Tools.ts"
@@ -96,9 +101,11 @@ export interface TaskOrigin {
 }
 
 export interface ChatService {
-  history(
-    agentId: string,
-  ): Effect.Effect<{ messages: readonly ChatMessage[]; queue: readonly QueuedMessage[] }>
+  history(agentId: string): Effect.Effect<{
+    messages: readonly ChatMessage[]
+    queue: readonly QueuedMessage[]
+    cut: CutNotice | null
+  }>
   /** Sends at once when the agent is free; otherwise puts the message in the queue. */
   send(input: ChatSend, origin?: TaskOrigin): Effect.Effect<{ queued: boolean }, AppError>
   stop(agentId: string): Effect.Effect<void>
@@ -241,6 +248,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const memory = yield* Memory
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
+      const settings = yield* SettingsStore
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
@@ -293,11 +301,69 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           agentId,
         )
 
+      /**
+       * How far the turn of each failed reply went, by the id of the reply (spec 005). A reply
+       * that does not fail, or whose task is not known here, has none.
+       */
+      const progressOf = (ids: readonly string[]): Map<string, TaskProgress | null> => {
+        if (ids.length === 0) return new Map()
+        const found = db.all<{ message_id: string; progress: string | null }>(
+          `SELECT message_id, progress FROM task
+           WHERE message_id IN (SELECT value FROM json_each(?)) ORDER BY created_at, rowid`,
+          JSON.stringify(ids),
+        )
+        return new Map(
+          found.map((r) => [r.message_id, isTaskProgress(r.progress) ? r.progress : null]),
+        )
+      }
+      /** A message as the windows get it: a failed reply also tells how far its turn went. */
+      const present = (row: MessageRow, known?: Map<string, TaskProgress | null>): ChatMessage => {
+        const message = toMessage(row)
+        if (row.author !== "agent" || row.status !== "failed") return message
+        const progress = (known ?? progressOf([row.id])).get(row.id)
+        return progress ? { ...message, progress } : message
+      }
+      const presentAll = (list: readonly MessageRow[]): ChatMessage[] => {
+        const known = progressOf(
+          list.filter((r) => r.author === "agent" && r.status === "failed").map((r) => r.id),
+        )
+        return list.map((r) => present(r, known))
+      }
+
+      /** The task that ended with a restart and holds this reply (spec 003, "Rules"). */
+      const cutTaskOf = (replyId: string) => {
+        const found = db.get<{
+          id: string
+          state: string
+          error_code: string | null
+          progress: string | null
+        }>(
+          `SELECT id, state, error_code, progress FROM task
+           WHERE message_id = ? AND source = 'chat' AND origin IS NULL
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          replyId,
+        )
+        return found?.state === "failed" && found.error_code === "app_stopped" ? found : undefined
+      }
+      /**
+       * The request that a restart cut off, when the user has not written since: the last message
+       * is the reply of a chat task that the restart ended.
+       */
+      const cutOf = (list: readonly MessageRow[]): CutNotice | null => {
+        const last = list.at(-1)
+        if (last?.author !== "agent" || last.status !== "stopped") return null
+        const task = cutTaskOf(last.id)
+        if (!task) return null
+        // A task from before the app kept the progress may have reached the model.
+        const progress = isTaskProgress(task.progress) ? task.progress : "sent"
+        return { taskId: task.id, messageId: last.id, progress }
+      }
+
       const placesChanged = (agentId: string) => {
         const agent = agentRow(agentId)
         if (agent) bus.emit("places.changed", { serverId: agent.server_id })
       }
-      const emitMessage = (row: MessageRow) => bus.emit("chat.message", toMessage(row))
+      const emitMessage = (row: MessageRow) => bus.emit("chat.message", present(row))
       const emitQueue = (agentId: string) =>
         bus.emit("chat.queue", { agentId, queue: queues.get(agentId) ?? [] })
 
@@ -403,6 +469,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           : undefined
         const usage = { input: counted?.input_tokens ?? 0, output: counted?.output_tokens ?? 0 }
         const controller = new AbortController()
+        // The silent limit counts for every kind of turn. A change of the setting counts for the
+        // turns that start after it (spec 013).
+        const watch = turnWatch({
+          limitMinutes: (yield* settings.get).silentLimit,
+          progress: (progress) => tasks.setProgress(task.id, progress),
+          userHoldsBrowser: () => tools.browserState(agentId).control,
+        })
         let lastEmit = 0
         let lastSave = 0
 
@@ -431,6 +504,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
         const onEvent = (event: AgentEvent) =>
           Effect.sync(() => {
+            watch.sense(event)
             if (event.type === "usage") {
               usage.input = event.input ?? usage.input
               usage.output = event.output ?? usage.output
@@ -501,6 +575,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             signal: controller.signal,
             onWaiting: (callId, ask) => {
               tasks.setWaiting(task.id, ask !== null)
+              watch.waiting(ask !== null)
               if (ask)
                 notifier.attention({
                   agentId,
@@ -537,7 +612,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           // list that cannot be read leaves the levels that the vendor documents for the model.
           let offered: readonly string[] = []
           if (turnEffort) {
-            const accounts = yield* providers.list
+            const accounts = yield* providers.accounts
             const listed = yield* providers
               .models(agent.model_account_id)
               .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
@@ -575,26 +650,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 : {}),
             },
           )
-          // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
-          const closing: AsyncIterable<AgentEvent> = {
-            [Symbol.asyncIterator]: () => {
-              const it = events[Symbol.asyncIterator]()
-              return {
-                next: () => it.next(),
-                return: (value?: unknown) => {
-                  controller.abort()
-                  return it.return?.(value) ?? Promise.resolve({ done: true, value: undefined })
-                },
-              }
-            },
-          }
-          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(
+          yield* Stream.fromAsyncIterable(closing(events, controller, watch), (e) => e).pipe(
             // The program also reports its own calls of these tools. The app shows its own cards.
-            Stream.runForEach((event) =>
-              isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null
-                ? Effect.void
-                : onEvent(event),
-            ),
+            Stream.runForEach((event) => {
+              if (isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null) {
+                watch.sense(event)
+                return Effect.void
+              }
+              return onEvent(event)
+            }),
           )
         })
 
@@ -602,9 +666,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // A vendor program writes the Knowledge folder itself. The folder is read again after it.
         const writesFiles = !!agent.model_account_id && providers.isRuntime(agent.model_account_id)
         knowledge.begin(agentId)
-        yield* tasks.run(task.id, agentId, stream, resumed ? { resumed: true } : undefined).pipe(
+        // A turn that shows no sign of life for the silent limit stops like after a Stop, and its
+        // task fails with the reason (spec 005).
+        const watched = Effect.raceFirst(stream, watch.silent)
+        yield* tasks.run(task.id, agentId, watched, resumed ? { resumed: true } : undefined).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
+              watch.stop()
               controller.abort()
               knowledge.end(agentId, writesFiles ? "agent" : "user")
               notifier.clearAgent(agentId)
@@ -745,9 +813,28 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         yield* usableAgent(agentId)
         if (yield* isRunning(agentId)) return yield* new AppError({ code: "agent_working" })
         const last = lastRow(agentId)
-        if (!last || last.id !== messageId || last.author !== "agent" || last.status !== "failed") {
+        // A reply that a restart cut off before the request reached the model has nothing in it
+        // and ran no step. "Send again" asks it again in place (spec 003).
+        const cutBefore =
+          last?.status === "stopped" &&
+          (() => {
+            const found = cutTaskOf(last.id)
+            return found?.progress === "not_sent"
+          })()
+        if (
+          !last ||
+          last.id !== messageId ||
+          last.author !== "agent" ||
+          (last.status !== "failed" && !cutBefore)
+        ) {
           return yield* new AppError({ code: "cannot_retry" })
         }
+        // The new task links to the one that failed (spec 005).
+        const before = db.get<{ id: string }>(
+          "SELECT id FROM task WHERE message_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+          messageId,
+        )
+        if (before && !retryLinks.has(agentId)) retryLinks.set(agentId, before.id)
         db.run("DELETE FROM message WHERE id = ?", messageId)
         bus.emit("chat.removed", { agentId, messageId })
         yield* kick(agentId)
@@ -816,10 +903,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (row) emitMessage(row)
         },
         history: (agentId) =>
-          Effect.sync(() => ({
-            messages: rows(agentId).map(toMessage),
-            queue: queues.get(agentId) ?? [],
-          })),
+          Effect.sync(() => {
+            const list = rows(agentId)
+            return {
+              messages: presentAll(list),
+              queue: queues.get(agentId) ?? [],
+              cut: cutOf(list),
+            }
+          }),
         send,
         stop,
         retry,

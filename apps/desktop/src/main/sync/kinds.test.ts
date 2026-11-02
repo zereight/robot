@@ -321,6 +321,59 @@ const target = (db: DatabaseService, dir: string): Ctx => {
 
 const copy = (value: unknown) => JSON.parse(JSON.stringify(value)) as unknown
 
+describe("how far a turn went syncs with the task (spec 005, 019)", () => {
+  const dirOf = () => join(testRuntime().dataDir, "kinds")
+  const opOf = (fields: Fields) =>
+    parseOp(
+      {
+        k: "task",
+        i: "task-1",
+        o: "dev-a",
+        f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+      },
+      NOW,
+    )
+
+  test("the progress is read with the task, arrives with it, and follows later changes", async () => {
+    const a = await source()
+    a.db.run("UPDATE task SET progress = 'sent' WHERE id = 'task-1'")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(fields.progress).toBe("sent")
+    expect(KINDS.task.required).toContain("progress")
+    // A first copy on the other computer keeps it.
+    const b = target(openDatabase(":memory:"), dirOf())
+    // The agent comes first, as in the order of the kinds.
+    const ada = KINDS.agent.read(ctxA, a.ada.id)
+    expect(KINDS.agent.create(b, a.ada.id, copy(ada?.fields) as Fields)).toBe(true)
+    expect(KINDS.task.create(b, "task-1", fields)).toBe(true)
+    expect(KINDS.task.read(b, "task-1")?.fields.progress).toBe("sent")
+    // A later change reaches the copy.
+    KINDS.task.write(b, "task-1", { progress: "started" })
+    expect(KINDS.task.read(b, "task-1")?.fields.progress).toBe("started")
+  })
+
+  test("a task from before the progress was kept has none, and that crosses too", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(fields.progress).toBeNull()
+    expect(opOf(fields)).toBeDefined()
+  })
+
+  test("only the three values pass the strict check", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    for (const progress of ["not_sent", "sent", "started", null])
+      expect(opOf({ ...fields, progress }), String(progress)).toBeDefined()
+    for (const progress of ["done", "", 2, true, {}])
+      expect(opOf({ ...fields, progress }), String(progress)).toBeUndefined()
+    // A first copy must name it.
+    expect(KINDS.task.required).toContain("progress")
+  })
+})
+
 describe("one item of every kind is made from its first copy", () => {
   test("each kind passes the strict check, satisfies every column that must have a value, and reads back the same", async () => {
     const a = await source()

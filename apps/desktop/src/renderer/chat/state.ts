@@ -1,4 +1,4 @@
-import type { ChatMessage, QueuedMessage } from "@robot/shared"
+import type { ChatMessage, CutNotice, QueuedMessage } from "@robot/shared"
 import { createEffect, on, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { call, RpcFailure } from "../lib/rpc.ts"
@@ -8,11 +8,18 @@ export interface ChatState {
   loaded: boolean
   messages: ChatMessage[]
   queue: QueuedMessage[]
+  /** The request that a restart cut off, when the user has not written since (spec 003). */
+  cut: CutNotice | null
 }
 
 /** The messages and queue of one direct chat, kept in step with the main process. */
 export const createChat = (agentId: string) => {
-  const [state, setState] = createStore<ChatState>({ loaded: false, messages: [], queue: [] })
+  const [state, setState] = createStore<ChatState>({
+    loaded: false,
+    messages: [],
+    queue: [],
+    cut: null,
+  })
 
   const upsert = (message: ChatMessage) =>
     setState(
@@ -43,14 +50,19 @@ export const createChat = (agentId: string) => {
   const load = () =>
     call("chat.history", { agentId })
       .then((history) => {
-        setState({ loaded: true, messages: [...history.messages], queue: [...history.queue] })
+        setState({
+          loaded: true,
+          messages: [...history.messages],
+          queue: [...history.queue],
+          cut: history.cut ?? null,
+        })
       })
       // A linked server that is offline and has nothing saved: the view stays empty. One that
       // removed this device takes its messages from the view too (spec 012).
       .catch((error) =>
         setState(
           error instanceof RpcFailure && error.error.code === "not_allowed"
-            ? { loaded: true, messages: [], queue: [] }
+            ? { loaded: true, messages: [], queue: [], cut: null }
             : { loaded: true },
         ),
       )

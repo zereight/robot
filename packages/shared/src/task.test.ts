@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { filterTasks, type Task, taskDuration, taskLabel, taskTree } from "./task.ts"
+import {
+  filterTasks,
+  isTaskProgress,
+  raiseProgress,
+  silentFailure,
+  type Task,
+  taskDuration,
+  taskLabel,
+  taskTree,
+} from "./task.ts"
 
 const task = (id: string, extra: Partial<Task> = {}): Task => ({
   id,
@@ -19,6 +28,7 @@ const task = (id: string, extra: Partial<Task> = {}): Task => ({
   finishedAt: 350,
   originName: null,
   waitsFor: null,
+  progress: "not_sent",
   ...extra,
 })
 
@@ -59,5 +69,34 @@ describe("tasks", () => {
       "0:a",
       "1:a1",
     ])
+  })
+})
+
+describe("how far a turn went", () => {
+  test("the progress only goes up", () => {
+    expect(raiseProgress("not_sent", "sent")).toBe("sent")
+    expect(raiseProgress("sent", "started")).toBe("started")
+    expect(raiseProgress("started", "sent")).toBe("started")
+    expect(raiseProgress("started", "not_sent")).toBe("started")
+    expect(raiseProgress("sent", "sent")).toBe("sent")
+  })
+
+  test("a progress that is not known counts as the lowest", () => {
+    expect(raiseProgress(null, "sent")).toBe("sent")
+    expect(raiseProgress(undefined, "not_sent")).toBe("not_sent")
+  })
+
+  test("only the three values are progress", () => {
+    expect(isTaskProgress("started")).toBe(true)
+    expect(isTaskProgress("done")).toBe(false)
+    expect(isTaskProgress(null)).toBe(false)
+  })
+})
+
+describe("the failure of the silent limit", () => {
+  test("one minute reads in the singular, every other limit in the plural", () => {
+    expect(silentFailure(1)).toEqual({ code: "silent_limit_1", detail: "1" })
+    expect(silentFailure(5)).toEqual({ code: "silent_limit", detail: "5" })
+    expect(silentFailure(60)).toEqual({ code: "silent_limit", detail: "60" })
   })
 })
