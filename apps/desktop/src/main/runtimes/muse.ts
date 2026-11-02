@@ -50,7 +50,11 @@ export const parseMuseUsage = (stdout: string, code: number | null): Login => {
     const allowance = obj(usage.allowance)
     if (usage.allowance === null || usage.allowance === undefined) {
       // A key in the environment or in the store wins over the account, and has no allowance.
-      return usage.reason === "api_key" ? { ...none, signedIn: true, method: "api_key" } : none
+      if (usage.reason === "api_key") return { ...none, signedIn: true, method: "api_key" }
+      // The account is signed in, but the server has no usage data yet. A new window does this.
+      if (usage.reason === "server_sent_no_usage")
+        return { ...none, signedIn: true, method: "subscription" }
+      return none
     }
     return {
       signedIn: true,

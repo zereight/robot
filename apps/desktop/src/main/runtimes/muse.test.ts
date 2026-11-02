@@ -56,6 +56,14 @@ describe("muse usage", () => {
       parseMuseUsage(JSON.stringify({ schemaVersion: 1, allowance: null, reason: "api_key" }), 0),
     ).toMatchObject({ signedIn: true, method: "api_key" })
   })
+  test("an account that has no usage data yet is still signed in", () => {
+    expect(
+      parseMuseUsage(
+        JSON.stringify({ schemaVersion: 1, allowance: null, reason: "server_sent_no_usage" }),
+        0,
+      ),
+    ).toMatchObject({ signedIn: true, method: "subscription", plan: null })
+  })
   test("a failing command, or text that is not JSON, reads as signed out", () => {
     expect(parseMuseUsage("", 1).signedIn).toBe(false)
     expect(parseMuseUsage("not json", 0).signedIn).toBe(false)
