@@ -132,6 +132,7 @@ export const CLIENT_METHODS = [
   "tools.respond",
   "tasks.list",
   "tasks.get",
+  "tasks.recent",
   "tasks.stop",
   "attachment.upload",
   "attachment.download",

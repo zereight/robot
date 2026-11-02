@@ -562,6 +562,10 @@ export const handlers: Handlers = {
     ),
   "tasks.get": (input) =>
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Tasks.use((t) => t.get(id)))),
+  "tasks.recent": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Tasks.use((t) => Effect.sync(() => t.recent(agentId)))),
+    ),
   "tasks.stop": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Tasks.use((t) => t.stopAny(id))),

@@ -527,6 +527,77 @@ describe("the done test and the verdict sync with the task (spec 004, 005, 019)"
   })
 })
 
+describe("the moments of a task sync with it (spec 005, 019)", () => {
+  const dirOf = () => join(testRuntime().dataDir, "kinds")
+  const opOf = (fields: Fields) =>
+    parseOp(
+      {
+        k: "task",
+        i: "task-1",
+        o: "dev-a",
+        f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+      },
+      NOW,
+    )
+
+  test("the end of the turn and the decision of the user reach the copy, and later changes follow", async () => {
+    const a = await source()
+    a.db.run(
+      `UPDATE task SET ended_at = 60, ended_as = 'review', decision = 'changes',
+         decision_text = 'Add a title', decided_at = 80 WHERE id = 'task-1'`,
+    )
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(fields).toMatchObject({
+      endedAt: 60,
+      endedAs: "review",
+      decision: "changes",
+      decisionText: "Add a title",
+    })
+    for (const name of ["endedAt", "endedAs", "decision", "decisionText"])
+      expect(KINDS.task.required).toContain(name)
+    const b = target(openDatabase(":memory:"), dirOf())
+    const ada = KINDS.agent.read(ctxA, a.ada.id)
+    expect(KINDS.agent.create(b, a.ada.id, copy(ada?.fields) as Fields)).toBe(true)
+    expect(KINDS.task.create(b, "task-1", fields)).toBe(true)
+    expect(KINDS.task.read(b, "task-1")?.fields).toMatchObject({
+      endedAt: 60,
+      endedAs: "review",
+      decision: "changes",
+      decisionText: "Add a title",
+    })
+    KINDS.task.write(b, "task-1", { endedAs: "done", decision: "accepted", decisionText: null })
+    expect(KINDS.task.read(b, "task-1")?.fields).toMatchObject({
+      endedAs: "done",
+      decision: "accepted",
+      decisionText: null,
+    })
+  })
+
+  test("a task with no moments crosses with empty fields; only known words pass the strict check", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(fields).toMatchObject({
+      endedAt: null,
+      endedAs: null,
+      decision: null,
+      decisionText: null,
+    })
+    expect(opOf(fields)).toBeDefined()
+    for (const endedAs of ["done", "failed", "blocked", "cancelled", "review", null])
+      expect(opOf({ ...fields, endedAs }), String(endedAs)).toBeDefined()
+    for (const endedAs of ["Done", "running", "", 1, true, {}])
+      expect(opOf({ ...fields, endedAs }), String(endedAs)).toBeUndefined()
+    for (const decision of ["accepted", "changes", null])
+      expect(opOf({ ...fields, decision }), String(decision)).toBeDefined()
+    for (const decision of ["yes", "", 1, {}])
+      expect(opOf({ ...fields, decision }), String(decision)).toBeUndefined()
+    expect(opOf({ ...fields, endedAt: -1 })).toBeUndefined()
+    expect(opOf({ ...fields, decisionText: 5 })).toBeUndefined()
+  })
+})
+
 describe("one item of every kind is made from its first copy", () => {
   test("each kind passes the strict check, satisfies every column that must have a value, and reads back the same", async () => {
     const a = await source()
