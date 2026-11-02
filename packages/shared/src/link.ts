@@ -193,7 +193,7 @@ export const isCachedMethod = (method: string) =>
   (CACHED_METHODS as readonly string[]).includes(method)
 
 /** Page buttons that a client cannot use on a linked server (spec 012, "What a client can do"). */
-export const CLIENT_BLOCKED_PAGES = ["workflows", "usage"] as const
+export const CLIENT_BLOCKED_PAGES = ["today", "workflows", "usage"] as const
 
 /**
  * The requests that a server answers only when the switch "Can create and change agents" is on

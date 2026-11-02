@@ -7,12 +7,22 @@ import {
   type Schedule,
   validSchedule,
 } from "@robot/shared"
-import { createMemo, createResource, createSignal, For, Index, onCleanup, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  Index,
+  onCleanup,
+  Show,
+} from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
+import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -273,6 +283,17 @@ export const RoutinesView = () => {
     (serverId) => call("routines.list", { serverId }),
     { initialValue: [] },
   )
+  // The Today page asks for a routine: its card lights up. A routine that is gone is dropped.
+  createEffect(() => {
+    const target = openTarget()
+    const list = routines()
+    if (target?.kind !== "routine" || routines.loading) return
+    if (list.some((r) => r.id === target.id)) {
+      queueMicrotask(() => {
+        if (flashRow(`[data-routine-id="${target.id}"]`)) takeTarget("routine")
+      })
+    } else takeTarget("routine")
+  })
   const range = () => {
     const a = anchor()
     return mode() === "week"
@@ -350,7 +371,12 @@ export const RoutinesView = () => {
         >
           <For each={routines()}>
             {(r) => (
-              <div class={styles.card} data-testid="routine-card" data-enabled={r.enabled}>
+              <div
+                class={styles.card}
+                data-testid="routine-card"
+                data-enabled={r.enabled}
+                data-routine-id={r.id}
+              >
                 <div class={styles.cardMain}>
                   <strong>{r.name}</strong>
                   <span class={styles.hint}>
