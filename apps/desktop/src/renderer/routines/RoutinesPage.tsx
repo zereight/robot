@@ -1,11 +1,16 @@
 import {
   type Agent,
+  type AgentModel,
+  catalogues,
   type MessageKey,
   type Routine,
   type RoutineEntry,
   type RoutineInput,
   type Schedule,
   validSchedule,
+  validWatch,
+  type Watch,
+  watchNeedsConfirm,
 } from "@robot/shared"
 import {
   createEffect,
@@ -20,6 +25,7 @@ import {
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
+import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
@@ -30,12 +36,19 @@ import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import styles from "./routines.module.css"
 import { ScheduleFields } from "./ScheduleFields.tsx"
+import { useIntervalWords, WatchFields } from "./WatchFields.tsx"
 
 /** The next run times in words: "Mon, Mar 2, 9:00 AM". */
 const useFormat = () => {
   const app = useApp()
   return (at: number) =>
     new Intl.DateTimeFormat(app.locale(), { dateStyle: "medium", timeStyle: "short" }).format(at)
+}
+
+/** The text key of the reason of a failure. An unknown code reads as an unknown failure. */
+const reasonKey = (code: string): MessageKey => {
+  const key = `error.${code}`
+  return (key in catalogues.en ? key : "error.unknown") as MessageKey
 }
 
 export const useScheduleWords = () => {
@@ -82,29 +95,47 @@ const RoutineDialog = (props: { routine?: Routine; onClose: () => void }) => {
   const [place, setPlace] = createSignal(
     props.routine?.place.kind === "channel" ? props.routine.place.channelId : "agent",
   )
+  const initialWatch = props.routine?.watch ?? undefined
+  const [trigger, setTrigger] = createSignal<"schedule" | "watch">(
+    initialWatch ? "watch" : "schedule",
+  )
   const [schedule, setSchedule] = createSignal<Schedule>(
     initial ?? { kind: "daily", times: ["09:00"] },
   )
   const [valid, setValid] = createSignal(initial ? validSchedule(initial) : true)
+  const [watch, setWatch] = createSignal<Watch | undefined>(initialWatch)
+  const [watchValid, setWatchValid] = createSignal(initialWatch ? validWatch(initialWatch) : false)
+  const [ownModel, setOwnModel] = createSignal(props.routine?.model != null)
+  const [model, setModel] = createSignal<AgentModel | null>(props.routine?.model ?? null)
+  // A watch on a command or a tool runs at each check with no question: the user confirms.
+  const [confirming, setConfirming] = createSignal(false)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
 
   const memberChannels = () => channels.channels().filter((c) => c.memberIds.includes(agentId()))
-  const canSave = () => name().trim() && prompt().trim() && agentId() && valid() && !busy()
+  const triggerValid = () => (trigger() === "watch" ? watchValid() : valid())
+  const canSave = () =>
+    name().trim() &&
+    prompt().trim() &&
+    agentId() &&
+    triggerValid() &&
+    (!ownModel() || model() !== null) &&
+    !busy()
 
-  const submit = async (event: SubmitEvent) => {
-    event.preventDefault()
+  const save = async () => {
     const serverId = ui.server()?.id
     if (!serverId || !canSave()) return
     setBusy(true)
     setError(undefined)
+    const w = watch()
     const input: RoutineInput = {
       serverId,
       agentId: agentId(),
       name: name().trim(),
       prompt: prompt(),
-      schedule: schedule(),
+      ...(trigger() === "watch" && w ? { watch: w } : { schedule: schedule() }),
       place: place() === "agent" ? { kind: "agent" } : { kind: "channel", channelId: place() },
+      model: ownModel() ? model() : null,
     }
     try {
       if (props.routine) {
@@ -114,10 +145,24 @@ const RoutineDialog = (props: { routine?: Routine; onClose: () => void }) => {
       props.onClose()
     } catch (e) {
       setError(describeError(e))
+      setConfirming(false)
     } finally {
       setBusy(false)
     }
   }
+
+  const submit = async (event: SubmitEvent) => {
+    event.preventDefault()
+    if (!canSave()) return
+    const w = watch()
+    if (trigger() === "watch" && w && watchNeedsConfirm(w) && !confirming()) {
+      setConfirming(true)
+      return
+    }
+    await save()
+  }
+
+  const agentName = () => agents.agents().find((a) => a.id === agentId())?.name ?? ""
 
   return (
     <Dialog label={t("routines.dialog.title")} onClose={props.onClose} testId="routine-dialog">
@@ -169,13 +214,107 @@ const RoutineDialog = (props: { routine?: Routine; onClose: () => void }) => {
           </select>
         </label>
 
-        <ScheduleFields
-          {...(initial ? { initial } : {})}
-          onChange={(next, ok) => {
-            setSchedule(next)
-            setValid(ok)
-          }}
-        />
+        <label class={styles.field}>
+          <span>{t("routines.field.trigger")}</span>
+          <select
+            class={styles.input}
+            value={trigger()}
+            onChange={(e) => setTrigger(e.currentTarget.value as "schedule" | "watch")}
+            data-testid="routine-trigger"
+          >
+            <option value="schedule">{t("routines.trigger.schedule")}</option>
+            <option value="watch">{t("routines.trigger.watch")}</option>
+          </select>
+        </label>
+        <Show
+          when={trigger() === "watch"}
+          fallback={
+            <ScheduleFields
+              {...(initial ? { initial } : {})}
+              onChange={(next, ok) => {
+                setSchedule(next)
+                setValid(ok)
+              }}
+            />
+          }
+        >
+          <WatchFields
+            {...(initialWatch ? { initial: initialWatch } : {})}
+            onChange={(next, ok) => {
+              setWatch(next)
+              setWatchValid(ok)
+              setConfirming(false)
+            }}
+          />
+        </Show>
+
+        <div class={styles.field}>
+          <span>{t("routines.model")}</span>
+          <select
+            class={styles.input}
+            value={ownModel() ? "own" : "same"}
+            onChange={(e) => setOwnModel(e.currentTarget.value === "own")}
+            data-testid="routine-model-mode"
+          >
+            <option value="same">{t("routines.model.same")}</option>
+            <option value="own">{t("routines.model.own")}</option>
+          </select>
+          <Show when={ownModel()}>
+            <ModelPicker value={model()} onChange={setModel} />
+          </Show>
+        </div>
+
+        <Show when={confirming() ? watch() : undefined}>
+          {(w) => (
+            <div class={styles.confirm} role="alert" data-testid="routine-confirm">
+              <strong>{t("routines.confirm.title")}</strong>
+              <Show
+                when={w().target.kind === "command" ? w().target : undefined}
+                fallback={
+                  <>
+                    <span>{t("routines.confirm.tool")}</span>
+                    <Show when={w().target.kind === "tool" ? w().target : undefined}>
+                      {(target) => {
+                        const tool = target() as Extract<Watch["target"], { kind: "tool" }>
+                        return (
+                          <pre class={styles.code} data-testid="routine-confirm-target">
+                            {[
+                              t("routines.confirm.connection", { name: tool.connection }),
+                              t("routines.confirm.toolName", { name: tool.tool }),
+                              t("routines.confirm.args", { args: tool.args }),
+                            ].join("\n")}
+                          </pre>
+                        )
+                      }}
+                    </Show>
+                  </>
+                }
+              >
+                {(target) => (
+                  <>
+                    <span>{t("routines.confirm.command", { agent: agentName() })}</span>
+                    <pre class={styles.code} data-testid="routine-confirm-target">
+                      {(target() as Extract<Watch["target"], { kind: "command" }>).command}
+                    </pre>
+                  </>
+                )}
+              </Show>
+              <div class={styles.actions}>
+                <Button onClick={() => setConfirming(false)} data-testid="routine-confirm-back">
+                  {t("routines.confirm.back")}
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => void save()}
+                  disabled={!canSave()}
+                  data-testid="routine-confirm-ok"
+                >
+                  {t("routines.confirm.ok")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Show>
 
         <Show when={error()}>
           {(err) => (
@@ -186,7 +325,12 @@ const RoutineDialog = (props: { routine?: Routine; onClose: () => void }) => {
         </Show>
         <div class={styles.actions}>
           <Button onClick={props.onClose}>{t("agents.cancel")}</Button>
-          <Button variant="primary" type="submit" disabled={!canSave()} data-testid="routine-save">
+          <Button
+            variant="primary"
+            type="submit"
+            disabled={!canSave() || confirming()}
+            data-testid="routine-save"
+          >
             {t("agents.save")}
           </Button>
         </div>
@@ -261,6 +405,14 @@ const Calendar = (props: {
                   <span class={styles.entryState}>
                     {t(`routines.state.${e.state}` as MessageKey)}
                   </span>
+                  <Show when={e.reason}>
+                    {(reason) => (
+                      <span class={styles.entryReason} data-testid="calendar-reason">
+                        {" "}
+                        {t(reasonKey(reason().code), { detail: reason().detail })}
+                      </span>
+                    )}
+                  </Show>
                 </div>
               )}
             </For>
@@ -276,6 +428,7 @@ export const RoutinesView = () => {
   const ui = useUi()
   const format = useFormat()
   const words = useScheduleWords()
+  const intervalWords = useIntervalWords()
   const [editing, setEditing] = createSignal<Routine | "new">()
   const [mode, setMode] = createSignal<"list" | "week" | "month">("list")
   const [anchor, setAnchor] = createSignal(new Date())
@@ -393,8 +546,28 @@ export const RoutinesView = () => {
                 <div class={styles.cardMain}>
                   <strong>{r.name}</strong>
                   <span class={styles.hint}>
-                    {r.agentName} · {words(r.schedule)}
+                    {r.agentName} ·{" "}
+                    {r.watch
+                      ? t("routines.words.watch", { interval: intervalWords(r.watch.minutes) })
+                      : r.schedule
+                        ? words(r.schedule)
+                        : ""}
                   </span>
+                  <Show when={r.pausedAfterFailures}>
+                    {(reason) => (
+                      <span class={styles.paused} data-testid="routine-paused">
+                        {t("routines.paused")} ·{" "}
+                        {t(reasonKey(reason().code), { detail: reason().detail })}
+                      </span>
+                    )}
+                  </Show>
+                  <Show when={r.nextCheck}>
+                    {(at) => (
+                      <span class={styles.hint} data-testid="routine-next-check">
+                        {t("routines.nextCheck")}: {format(at())}
+                      </span>
+                    )}
+                  </Show>
                   <Show when={r.runsOn !== null}>
                     <span class={styles.hint} data-testid="routine-runs-on">
                       {t("sync.runsOn", { name: r.runsOn || t("sync.anotherComputer") })}

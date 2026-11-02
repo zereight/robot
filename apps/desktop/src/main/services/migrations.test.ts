@@ -540,7 +540,7 @@ describe("the step of the instruction history", () => {
     expect(step).toBeGreaterThan(
       migrations.findIndex((sql) => sql.includes("CREATE TABLE saved_secret")),
     )
-    // Later steps follow it (the progress of a task, spec 005, comes after it).
+    // Later steps may follow it (S43 adds the step of watch routines).
     expect(step).toBeLessThan(migrations.length)
     const db = upTo(migrations.length)
     const triggers = db

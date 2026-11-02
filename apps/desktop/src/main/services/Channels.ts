@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import {
+  type AgentModel,
   askAllowsAlways,
   askKind,
   askStep,
@@ -88,13 +89,24 @@ export interface ChannelsService {
     agentId: string,
     prompt: string,
     routineId: string,
+    options?: RoutineRunOptions,
   ): Effect.Effect<void, AppError>
+  /** Posts one muted line of an agent, with no task: a watch saw no change (spec 009). */
+  note(channelId: string, agentId: string, part: Extract<MessagePart, { kind: "note" }>): void
   activity(channelId: string): Effect.Effect<ChannelActivity>
   markRead(channelId: string): Effect.Effect<void>
   /** Tells the windows about a message that sync wrote, so an open channel shows it at once. */
   announce(messageId: string): void
   /** The text of the newest message of a channel, for the place list. */
   lastMessage(channelId: string): string | null
+}
+
+/** What a run of a routine brings to its turn in a channel (spec 009). */
+export interface RoutineRunOptions {
+  /** The model and effort of the routine, in place of the model of the agent. */
+  readonly model?: AgentModel
+  /** The change that started a watch: the turn holds outside content from its start (007). */
+  readonly outside?: OutsideSource
 }
 
 interface ChannelRow {
@@ -649,6 +661,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         extraTurn: string | null,
         kind: ChannelMessageKind = "text",
         from: AgentRow | null = null,
+        outside: OutsideSource | null = null,
       ) =>
         tasks.run(
           task.id,
@@ -660,7 +673,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               task.source === "routine" ? "routine" : from ? "agent" : "user"
             const turn = newTurnMark(
               starter,
-              from ? { kind: "agent", name: from.name } : otherVoice(channel.id, agent),
+              outside ??
+                (from ? { kind: "agent", name: from.name } : otherVoice(channel.id, agent)),
             )
             return streamReply({
               channel,
@@ -675,19 +689,43 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           }),
         )
 
-      const runRoutine = (channelId: string, agentId: string, prompt: string, routineId: string) =>
+      const runRoutine = (
+        channelId: string,
+        agentId: string,
+        prompt: string,
+        routineId: string,
+        options: RoutineRunOptions = {},
+      ) =>
         Effect.gen(function* () {
           const channel = channelRow(channelId)
-          const agent = agentRow(agentId)
-          if (!channel || !agent || agent.archived_at !== null)
+          const own = agentRow(agentId)
+          if (!channel || !own || own.archived_at !== null)
             return yield* new AppError({ code: "agent_not_found" })
+          // A routine with a model of its own uses it, and never another model (spec 009).
+          const model = options.model
+          const agent: AgentRow = model
+            ? {
+                ...own,
+                model_account_id: model.accountId,
+                model_name: model.model,
+                model_effort: model.effort,
+              }
+            : own
+          if (
+            !agent.model_account_id ||
+            !agent.model_name ||
+            !(yield* providers.verify(agent.model_account_id))
+          )
+            return yield* new AppError({ code: "provider_not_connected" })
           const task = yield* tasks.create({
             agentId,
             prompt,
             source: "routine",
             sourceId: routineId,
           })
-          yield* background(memberTurn(channel, agent, task, prompt))
+          yield* background(
+            memberTurn(channel, agent, task, prompt, "text", null, options.outside ?? null),
+          )
         })
 
       const startDirect = (
@@ -1138,6 +1176,24 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       return Channels.of({
         announce: (messageId) => emitMessage(messageId),
+        note: (channelId, agentId, part) => {
+          const channel = channelRow(channelId)
+          if (!channel) return
+          const id = randomUUID()
+          const now = Date.now()
+          db.run(
+            `INSERT INTO channel_message (id, channel_id, author, agent_id, kind, parts, status, created_at, finished_at)
+             VALUES (?, ?, 'agent', ?, 'text', ?, 'done', ?, ?)`,
+            id,
+            channelId,
+            agentId,
+            JSON.stringify([part]),
+            now,
+            now,
+          )
+          emitMessage(id)
+          placesChanged(channel.server_id)
+        },
         list: (serverId) =>
           Effect.sync(() =>
             db

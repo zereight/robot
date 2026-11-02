@@ -167,3 +167,33 @@
 .card[data-flash="true"] {
   background: var(--c-selected);
 }
+
+.paused {
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+}
+
+.entryReason {
+  color: var(--c-text-muted);
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+}
+
+.code {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-s);
+  background: var(--c-main);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

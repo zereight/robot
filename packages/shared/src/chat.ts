@@ -19,6 +19,11 @@ export type MessagePart =
   | { readonly kind: "thinking"; readonly text: string }
   /** A skill chip (spec 017): the name and a copy of the instructions at the time of sending. */
   | { readonly kind: "skill"; readonly name: string; readonly instructions: string }
+  /**
+   * A muted line with no task: the watch of a routine checked and saw no change (spec 009,
+   * "Post when nothing changed"). `routine` is the name of the routine at that time.
+   */
+  | { readonly kind: "note"; readonly note: "watch_unchanged"; readonly routine: string }
   | {
       readonly kind: "tool"
       readonly id: string
@@ -224,3 +229,13 @@ export const sameDay = (a: number, b: number) => {
 /** The skill chip of a message, if it has one. */
 export const messageSkill = (message: Pick<ChatMessage, "parts">) =>
   message.parts.find((p): p is SkillPart => p.kind === "skill")
+
+/** True when the saved parts of a message are one muted note: it is no turn of the chat. */
+export const isNoteOnly = (parts: string | readonly MessagePart[]): boolean => {
+  try {
+    const list = typeof parts === "string" ? (JSON.parse(parts) as MessagePart[]) : parts
+    return list.length > 0 && list.every((p) => p.kind === "note")
+  } catch {
+    return false
+  }
+}

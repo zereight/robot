@@ -636,6 +636,26 @@ export const migrations: readonly string[] = [
   ${dirtyTriggers("instruction_version", "iversion", plainId)}
   `,
   `
+  -- Watch routines and the model of a routine (spec 009). A routine has one trigger: \`schedule\`
+  -- holds the JSON of a schedule, or the JSON null for a watch, and \`watch\` holds the JSON of a
+  -- watch, or NULL. \`model_*\` are NULL for "Same as the agent".
+  ALTER TABLE routine ADD COLUMN watch TEXT;
+  ALTER TABLE routine ADD COLUMN model_account_id TEXT;
+  ALTER TABLE routine ADD COLUMN model_name TEXT;
+  ALTER TABLE routine ADD COLUMN model_effort TEXT;
+  -- A failed check, or a run that could not start, is an entry of kind 'failed' with its reason.
+  ALTER TABLE routine_skip ADD COLUMN reason TEXT;
+  -- What stays on this computer for each routine (spec 019): the count of failed runs in a row,
+  -- the reason when it paused itself, and the last result of its watch with the time of the check.
+  CREATE TABLE routine_state (
+    routine_id TEXT PRIMARY KEY REFERENCES routine (id) ON DELETE CASCADE,
+    failed_runs INTEGER NOT NULL DEFAULT 0,
+    paused_failure TEXT,
+    watch_result TEXT,
+    watch_checked_at INTEGER
+  );
+  `,
+  `
   -- How far the turn of a task went: not_sent, sent or started (spec 005). It only goes up. A task
   -- from before this step has none, and shows no line about it.
   ALTER TABLE task ADD COLUMN progress TEXT;

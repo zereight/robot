@@ -3,6 +3,7 @@ import {
   type ChatMessage,
   catalogues,
   type FilePart,
+  isNoteOnly,
   type KnowledgeNote,
   type MemoryNote,
   type MemoryUndo,
@@ -990,7 +991,30 @@ const FailedRow = (props: { message: ChatMessage; onRetry: () => void }) => {
   )
 }
 
-export const MessageRow = (props: MessageRowProps) => {
+/**
+ * One muted line with no task: the watch of a routine checked and saw no change (spec 009,
+ * "Post when nothing changed").
+ */
+const NoteLine = (props: { message: ChatMessage }) => {
+  const app = useApp()
+  const { t } = app
+  const note = () =>
+    props.message.parts.find((p): p is Extract<MessagePart, { kind: "note" }> => p.kind === "note")
+  return (
+    <div class={styles.noteLine} data-testid="note-line">
+      <span>{t("routines.note.unchanged", { name: note()?.routine ?? "" })}</span>
+      <span>{formatTime(app.locale(), props.message.createdAt)}</span>
+    </div>
+  )
+}
+
+export const MessageRow = (props: MessageRowProps) => (
+  <Show when={!isNoteOnly(props.message.parts)} fallback={<NoteLine message={props.message} />}>
+    <FullMessageRow {...props} />
+  </Show>
+)
+
+const FullMessageRow = (props: MessageRowProps) => {
   const app = useApp()
   const { t } = app
   const devices = useDevices()

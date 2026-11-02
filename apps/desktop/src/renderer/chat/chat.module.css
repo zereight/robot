@@ -903,3 +903,12 @@
   gap: 4px;
   padding: 0 4px 6px;
 }
+
+.noteLine {
+  display: flex;
+  gap: 8px;
+  margin: 2px 16px;
+  padding-inline-start: 44px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
