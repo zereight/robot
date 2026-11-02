@@ -5,6 +5,7 @@ body,
   width: 100%;
   height: 100%;
   background: transparent;
+  /* The window is fitted to the content, so nothing needs a scroll bar. */
   overflow: hidden;
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 13px;
@@ -14,30 +15,25 @@ body,
 
 .island {
   box-sizing: border-box;
-  width: 100%;
-  height: 100%;
+  /* The height comes from the content. The page tells the window how big it is. */
+  width: 340px;
+  height: auto;
   background: #000;
   color: #f2f2f2;
   border-radius: 0 0 18px 18px;
   padding: 0 14px;
-  display: flex;
-  align-items: center;
   animation: appear 220ms ease-out;
 }
 
-/* The card starts below the camera notch. */
-.island[data-shape="attention"] {
+.island[data-view="detail"],
+.island[data-view="attention"],
+.island[data-view="result"] {
+  width: 460px;
+}
+
+/* The attention card has no bar. It starts below the camera notch. */
+.island[data-view="attention"] {
   padding-top: 38px;
-}
-
-.island[data-motion="off"] {
-  animation: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .island {
-    animation: none;
-  }
 }
 
 @keyframes appear {
@@ -47,11 +43,26 @@ body,
   }
 }
 
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
 .bar {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: default;
 }
 
 .spacer {
@@ -83,9 +94,82 @@ body,
 .card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   padding: 10px 0;
+  animation: card-in 180ms ease-out;
+}
+
+.card.detail {
+  gap: 2px;
+  padding: 2px 0 10px;
+}
+
+.card.result {
+  padding-top: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  height: 44px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: #1c1e23;
+}
+
+.row-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.row-head strong {
+  white-space: nowrap;
+}
+
+.place {
+  color: #8d929b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.doing {
+  color: #b8bcc4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time {
+  color: #b8bcc4;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.more {
+  color: #8d929b;
+  padding: 4px 6px 0;
 }
 
 .head {
@@ -97,14 +181,41 @@ body,
 .text {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-width: 0;
 }
 
-.summary {
-  color: #b8bcc4;
+.meta {
+  color: #8d929b;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A summary may use two lines, a question three. The text is cut to 90 and 160 characters. */
+.summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: #b8bcc4;
+  overflow-wrap: anywhere;
+}
+
+.summary[data-kind="question"] {
+  -webkit-line-clamp: 3;
+}
+
+.result .text .summary {
+  -webkit-line-clamp: 1;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #b8bcc4;
+  font-variant-numeric: tabular-nums;
 }
 
 .buttons {
@@ -123,7 +234,27 @@ button {
   cursor: pointer;
 }
 
+button.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+}
+
 button.primary {
   background: #4f6bff;
   border-color: #4f6bff;
+}
+
+/* With reduce motion on, the cards still show and close, with no movement. */
+.island[data-motion="off"],
+.island[data-motion="off"] .card {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island,
+  .island .card {
+    animation: none;
+  }
 }
