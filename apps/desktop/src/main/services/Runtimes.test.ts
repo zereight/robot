@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   type ChatMessage,
@@ -222,6 +222,206 @@ describe("runtime accounts", () => {
     } finally {
       delete process.env.FAKE_LOGIN_MS
     }
+  })
+})
+
+const SEPARATE = "11111111-2222-3333-4444-555555555555"
+const ANOTHER = "66666666-7777-8888-9999-000000000000"
+
+describe("separate sign-ins", () => {
+  const folder = (dataDir: string, id: string) => join(dataDir, "sign-ins", "claude_code", id)
+  const withLogin = async <T>(task: () => Promise<T>) => {
+    process.env.FAKE_LOGIN_MS = "50"
+    try {
+      return await task()
+    } finally {
+      delete process.env.FAKE_LOGIN_MS
+    }
+  }
+
+  test("a separate sign-in has its own state and its own folder, and the program's own stays", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = testRuntime()
+    const run = t.runtime.runPromise
+    // Nobody is signed in there yet, and looking makes no folder.
+    const before = await run(Runtimes.use((r) => r.status("claude_code", SEPARATE)))
+    expect(before).toMatchObject({ signIn: SEPARATE, signedIn: false, source: "system" })
+    expect(existsSync(folder(t.dataDir, SEPARATE))).toBe(false)
+
+    const after = await withLogin(() => run(Runtimes.use((r) => r.signIn("claude_code", SEPARATE))))
+    expect(after).toMatchObject({
+      signIn: SEPARATE,
+      signedIn: true,
+      method: "subscription",
+      user: "second@example.com",
+      plan: "pro",
+      busy: null,
+      problem: null,
+    })
+    // The program was told to keep the sign-in in the folder of the account.
+    const login = fake.claudeCalls().filter((c) => c.kind === "login" && c.configDir !== null)
+    expect(login.at(-1)?.configDir).toBe(folder(t.dataDir, SEPARATE))
+    // The sign-in of the computer did not change.
+    const own = await run(Runtimes.use((r) => r.status("claude_code")))
+    expect(own).toMatchObject({ signIn: null, user: "a@b.c", plan: "max" })
+    expect(
+      await run(Runtimes.use((r) => Effect.sync(() => r.ready("claude_code", SEPARATE)))),
+    ).toBe(true)
+    expect(await Bun.$`${fake.claude} auth status`.text()).toContain("a@b.c")
+  })
+
+  test("two accounts of one program are looked at, and run, each with its own sign-in", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = testRuntime()
+    const run = t.runtime.runPromise
+    await withLogin(() => run(Runtimes.use((r) => r.signIn("claude_code", SEPARATE))))
+    const first = await run(Providers.use((p) => p.connect({ kind: "claude_code", name: "Home" })))
+    const second = await run(
+      Providers.use((p) => p.connect({ kind: "claude_code", name: "Work", signIn: SEPARATE })),
+    )
+    expect(first).toMatchObject({ signIn: null, connected: true })
+    expect(second).toMatchObject({ signIn: SEPARATE, connected: true })
+
+    const list = await run(Providers.use((p) => p.list))
+    expect(list.map((a) => [a.name, a.runtime?.user, a.runtime?.plan])).toEqual([
+      ["Home", "a@b.c", "max"],
+      ["Work", "second@example.com", "pro"],
+    ])
+
+    // One account is signed out: only that account shows as not connected.
+    rmSync(join(folder(t.dataDir, SEPARATE), "fake-state.json"))
+    await run(Runtimes.use((r) => r.status("claude_code", SEPARATE)))
+    const later = await run(Providers.use((p) => p.list))
+    expect(later.map((a) => [a.name, a.connected])).toEqual([
+      ["Home", true],
+      ["Work", false],
+    ])
+  })
+
+  test("a turn of an account runs the program with the folder of that account", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = testRuntime()
+    const run = t.runtime.runPromise
+    await withLogin(() => run(Runtimes.use((r) => r.signIn("claude_code", SEPARATE))))
+    const home = await run(Providers.use((p) => p.connect({ kind: "claude_code", name: "Home" })))
+    const work = await run(
+      Providers.use((p) => p.connect({ kind: "claude_code", name: "Work", signIn: SEPARATE })),
+    )
+    const local = await run(Servers.use((s) => s.local))
+    const ask = async (accountId: string, name: string, text: string) => {
+      const agent = await run(
+        Agents.use((a) =>
+          a.create({
+            serverId: local.id,
+            name,
+            role: "",
+            instructions: "",
+            model: { accountId, model: "sonnet", effort: null },
+          }),
+        ),
+      )
+      await run(Chat.use((c) => c.send({ agentId: agent.id, text, replyTo: null })))
+      await until(async () => {
+        const last = (await run(Chat.use((c) => c.history(agent.id)))).messages
+          .filter((m) => m.author === "agent")
+          .at(-1)
+        return last !== undefined && last.status !== "streaming"
+      })
+    }
+    await ask(work.id, "Wendy", "from work")
+    await ask(home.id, "Hank", "from home")
+    const turns = fake.claudeCalls().filter((c) => typeof c.prompt === "string")
+    const dirOf = (text: string) => turns.find((c) => String(c.prompt).includes(text))?.configDir
+    expect(dirOf("from work")).toBe(folder(t.dataDir, SEPARATE))
+    // The account of the computer sets no folder: the program uses its own place.
+    expect(dirOf("from home")).toBeNull()
+  })
+
+  test("a sign-in is for a program that can have one, and it must be signed in", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    fake.setCodex({ loggedIn: true, method: "chatgpt" })
+    const t = testRuntime()
+    const connect = (input: Parameters<(typeof Providers.Service)["connect"]>[0]) =>
+      t.runtime.runPromiseExit(Providers.use((p) => p.connect(input)))
+    expect(code(await connect({ kind: "codex", name: "X", signIn: SEPARATE }))).toBe(
+      "invalid_input",
+    )
+    expect(code(await connect({ kind: "openai", name: "X", signIn: SEPARATE }))).toBe(
+      "invalid_input",
+    )
+    // Nobody signed in to that folder: the program of the computer does not stand in for it.
+    expect(code(await connect({ kind: "claude_code", name: "X", signIn: SEPARATE }))).toBe(
+      "runtime_not_signed_in",
+    )
+    expect(await t.runtime.runPromise(Providers.use((p) => p.list))).toHaveLength(0)
+  })
+
+  test("connecting an account again keeps its sign-in", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = testRuntime()
+    const run = t.runtime.runPromise
+    await withLogin(() => run(Runtimes.use((r) => r.signIn("claude_code", SEPARATE))))
+    const work = await run(
+      Providers.use((p) => p.connect({ kind: "claude_code", name: "Work", signIn: SEPARATE })),
+    )
+    const again = await run(
+      Providers.use((p) =>
+        p.connect({ accountId: work.id, kind: "claude_code", name: "Work 2", signIn: ANOTHER }),
+      ),
+    )
+    expect(again).toMatchObject({ id: work.id, name: "Work 2", signIn: SEPARATE })
+  })
+
+  test("removing an account signs its sign-in out and deletes the folder; the computer's stays", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = testRuntime()
+    const run = t.runtime.runPromise
+    await withLogin(() => run(Runtimes.use((r) => r.signIn("claude_code", SEPARATE))))
+    const home = await run(Providers.use((p) => p.connect({ kind: "claude_code", name: "Home" })))
+    const work = await run(
+      Providers.use((p) => p.connect({ kind: "claude_code", name: "Work", signIn: SEPARATE })),
+    )
+    expect(existsSync(folder(t.dataDir, SEPARATE))).toBe(true)
+    await run(Providers.use((p) => p.remove(work.id)))
+    expect(existsSync(folder(t.dataDir, SEPARATE))).toBe(false)
+    expect(
+      fake
+        .claudeCalls()
+        .some((c) => c.kind === "logout" && c.configDir === folder(t.dataDir, SEPARATE)),
+    ).toBe(true)
+    // The account of the computer was not signed out, and no sign-out ran without a folder.
+    expect(fake.claudeCalls().some((c) => c.kind === "logout" && c.configDir === null)).toBe(false)
+    expect(await Bun.$`${fake.claude} auth status`.text()).toContain("a@b.c")
+    const [left] = await run(Providers.use((p) => p.list))
+    expect(left).toMatchObject({ id: home.id, connected: true })
+    // Removing the account of the computer leaves the program signed in.
+    await run(Providers.use((p) => p.remove(home.id)))
+    expect(await Bun.$`${fake.claude} auth status`.text()).toContain("a@b.c")
+  })
+
+  test("a sign-in that the user gave up is removed, but one that an account uses is not", async () => {
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
+    const t = testRuntime()
+    const run = t.runtime.runPromise
+    await withLogin(async () => {
+      await run(Runtimes.use((r) => r.signIn("claude_code", SEPARATE)))
+      await run(Runtimes.use((r) => r.signIn("claude_code", ANOTHER)))
+    })
+    await run(
+      Providers.use((p) => p.connect({ kind: "claude_code", name: "Work", signIn: SEPARATE })),
+    )
+    await run(Providers.use((p) => p.discardSignIn("claude_code", SEPARATE)))
+    await run(Providers.use((p) => p.discardSignIn("claude_code", ANOTHER)))
+    expect(existsSync(folder(t.dataDir, SEPARATE))).toBe(true)
+    expect(existsSync(folder(t.dataDir, ANOTHER))).toBe(false)
+  })
+
+  test("an id that is not a plain name cannot reach another folder", async () => {
+    const t = testRuntime()
+    const outcome = await t.runtime.runPromiseExit(
+      Runtimes.use((r) => r.status("claude_code", "../../etc")),
+    )
+    expect(Exit.isFailure(outcome)).toBe(true)
   })
 })
 

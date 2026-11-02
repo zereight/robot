@@ -32,6 +32,18 @@ export const defaultBaseUrls: Record<ProviderKind, string> = {
   pi: "",
 }
 
+/**
+ * The name of a separate sign-in. The app keeps one folder for each in its data folder, so the id
+ * is also a folder name: it holds only letters, digits and dashes.
+ */
+export const SIGN_IN_ID = /^[A-Za-z0-9-]{8,64}$/
+
+/**
+ * Whether the user can keep more than one sign-in of this program. An account of such a kind can
+ * have a sign-in of its own, apart from the one of the program on this computer.
+ */
+export const runtimeHasSeparateSignIn = (kind: ProviderKind): boolean => kind === "claude_code"
+
 /** One model account. Its key is in the system keychain, never here. */
 export interface ProviderAccount {
   readonly id: string
@@ -39,6 +51,11 @@ export interface ProviderAccount {
   readonly name: string
   /** Empty for an agent runtime. */
   readonly baseUrl: string
+  /**
+   * The id of the separate sign-in of this account (see `SIGN_IN_ID`). Null when the account uses
+   * the sign-in that the program has on this computer, and for an API account.
+   */
+  readonly signIn: string | null
   /**
    * An API account is connected when the app holds a key for it. A runtime account is connected
    * when the program is on the computer, the user is signed in with a subscription, and the
@@ -81,9 +98,20 @@ export interface RuntimeLimit {
   readonly resetsAt: number | null
 }
 
-/** What the app knows about one vendor program on this computer. */
+/**
+ * Which sign-in of a vendor program a call is about. `signIn` is absent or null for the sign-in
+ * that the program has on this computer.
+ */
+export interface RuntimeTarget {
+  readonly kind: RuntimeKind
+  readonly signIn?: string | null
+}
+
+/** What the app knows about one vendor program on this computer, for one sign-in of it. */
 export interface RuntimeStatus {
   readonly kind: RuntimeKind
+  /** Whose sign-in this is: a separate sign-in of an account, or null for the program's own. */
+  readonly signIn: string | null
   /** Whose copy runs: the one the app downloaded, or one found on the computer. */
   readonly source: "app" | "system" | null
   readonly version: string | null
@@ -156,6 +184,12 @@ export const ProviderConnect = Schema.Struct({
   /** Give it to connect an existing account again. */
   accountId: Schema.optionalKey(Schema.String),
   kind: ProviderKind,
+  /**
+   * For a new account of a kind that can have one: the separate sign-in to use (see
+   * `SIGN_IN_ID`). Without it the account uses the sign-in of the program on this computer. An
+   * account that exists keeps the sign-in that it was made with.
+   */
+  signIn: Schema.optionalKey(Schema.String.check(Schema.isPattern(SIGN_IN_ID))),
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(60)),
   baseUrl: Schema.optionalKey(HttpUrl),
   apiKey: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096))),

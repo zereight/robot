@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { AgentEvent } from "../providers/agent.ts"
 import {
   claudeArgs,
+  claudeEnv,
   claudeFailure,
   describeRequest,
   type Mapped,
@@ -378,5 +379,36 @@ describe("claude usage windows", () => {
       parseUsageText("You are currently using your subscription.", now, "Asia/Seoul"),
     ).toBeNull()
     expect(parseUsageText("", now, "Asia/Seoul")).toBeNull()
+  })
+})
+
+describe("claudeEnv", () => {
+  const saved = { ...process.env }
+  const restore = () => {
+    for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key]
+    Object.assign(process.env, saved)
+  }
+
+  test("a separate sign-in names its folder, and a key still does not reach the program", () => {
+    process.env.ANTHROPIC_API_KEY = "k"
+    process.env.CLAUDE_CONFIG_DIR = "/users/own/.claude-other"
+    try {
+      const env = claudeEnv("/data/sign-ins/claude_code/abc")
+      expect(env.CLAUDE_CONFIG_DIR).toBe("/data/sign-ins/claude_code/abc")
+      expect(env.ANTHROPIC_API_KEY).toBeUndefined()
+    } finally {
+      restore()
+    }
+  })
+
+  test("without a folder the program keeps whatever place the user set for it", () => {
+    process.env.CLAUDE_CONFIG_DIR = "/users/own/.claude-other"
+    try {
+      expect(claudeEnv().CLAUDE_CONFIG_DIR).toBe("/users/own/.claude-other")
+      delete process.env.CLAUDE_CONFIG_DIR
+      expect(claudeEnv().CLAUDE_CONFIG_DIR).toBeUndefined()
+    } finally {
+      restore()
+    }
   })
 })

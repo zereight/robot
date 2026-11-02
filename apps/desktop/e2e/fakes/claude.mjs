@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A stand-in for the `claude` program, for tests. It speaks the same lines as the real one for
 // the parts that the app uses. Its state is a JSON file next to it, so a test can change it.
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { createInterface } from "node:readline"
 
@@ -10,10 +10,20 @@ const stateFile = join(dir, "claude-state.json")
 const callsFile = join(dir, "claude-calls.jsonl")
 // The looks at the usage have a file of their own: they run beside the turns, in any order.
 const usageCallsFile = join(dir, "claude-usage-calls.jsonl")
-const state = () =>
+// A separate sign-in has a folder of its own, like the real program with `CLAUDE_CONFIG_DIR`. Its
+// state lives in that folder, and nobody is signed in until the program signs in there.
+const configDir = process.env.CLAUDE_CONFIG_DIR || null
+const profileFile = configDir ? join(configDir, "fake-state.json") : null
+const globalState = () =>
   existsSync(stateFile)
     ? JSON.parse(readFileSync(stateFile, "utf8"))
     : { loggedIn: true, authMethod: "claude.ai", email: "tester@example.com", plan: "max" }
+const state = () =>
+  profileFile
+    ? existsSync(profileFile)
+      ? JSON.parse(readFileSync(profileFile, "utf8"))
+      : { loggedIn: false }
+    : globalState()
 const args = process.argv.slice(2)
 const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -42,21 +52,40 @@ if (args[0] === "auth" && args[1] === "status") {
 }
 
 if (args[0] === "auth" && args[1] === "login") {
-  appendFileSync(callsFile, `${JSON.stringify({ args, kind: "login" })}\n`)
+  appendFileSync(callsFile, `${JSON.stringify({ args, kind: "login", configDir })}\n`)
   await sleep(Number(process.env.FAKE_LOGIN_MS ?? 400))
-  if (state().loginFails) {
+  if (globalState().loginFails) {
     console.error("Login failed")
     process.exit(1)
   }
-  writeFileSync(
-    stateFile,
-    JSON.stringify({
-      ...state(),
-      loggedIn: true,
-      authMethod: "claude.ai",
-      email: "tester@example.com",
-    }),
-  )
+  if (profileFile) {
+    mkdirSync(configDir, { recursive: true })
+    writeFileSync(
+      profileFile,
+      JSON.stringify({
+        loggedIn: true,
+        authMethod: "claude.ai",
+        email: globalState().profileEmail ?? "second@example.com",
+        plan: "pro",
+      }),
+    )
+  } else {
+    writeFileSync(
+      stateFile,
+      JSON.stringify({
+        ...state(),
+        loggedIn: true,
+        authMethod: "claude.ai",
+        email: "tester@example.com",
+      }),
+    )
+  }
+  process.exit(0)
+}
+
+if (args[0] === "auth" && args[1] === "logout") {
+  appendFileSync(callsFile, `${JSON.stringify({ args, kind: "logout", configDir })}\n`)
+  if (profileFile) rmSync(profileFile, { force: true })
   process.exit(0)
 }
 
@@ -65,7 +94,7 @@ if (args[0] === "auth" && args[1] === "login") {
 if (args[0] === "-p" && args[1] === "/usage") {
   appendFileSync(
     usageCallsFile,
-    `${JSON.stringify({ kind: "usage-text", args, cwd: process.cwd() })}\n`,
+    `${JSON.stringify({ kind: "usage-text", args, cwd: process.cwd(), configDir })}\n`,
   )
   const text = state().usageText ?? "You are currently using your subscription.\n"
   out({ type: "result", subtype: "success", is_error: false, result: text, num_turns: 0 })
@@ -89,7 +118,7 @@ lines.on("line", (line) => {
     // vendor cannot be reached.
     appendFileSync(
       usageCallsFile,
-      `${JSON.stringify({ kind: "usage", args, cwd: process.cwd() })}\n`,
+      `${JSON.stringify({ kind: "usage", args, cwd: process.cwd(), configDir })}\n`,
     )
     out({
       type: "control_response",
@@ -139,6 +168,7 @@ async function turn(prompt) {
       args,
       cwd: process.cwd(),
       prompt,
+      configDir,
       hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
     })}\n`,
   )

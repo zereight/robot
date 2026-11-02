@@ -23,6 +23,7 @@ import {
   redactSecrets,
   SectionCreate,
   SettingsPatch,
+  SIGN_IN_ID,
   SYNC_MODES,
   UiStatePatch,
   USAGE_RANGES,
@@ -82,7 +83,11 @@ const decode =
 
 const ById = Schema.Struct({ id: Schema.String })
 const ByAccount = Schema.Struct({ accountId: Schema.String })
-const ByRuntime = Schema.Struct({ kind: Schema.Literals(RUNTIME_KINDS) })
+const SignInId = Schema.String.check(Schema.isPattern(SIGN_IN_ID))
+const ByRuntime = Schema.Struct({
+  kind: Schema.Literals(RUNTIME_KINDS),
+  signIn: Schema.optionalKey(Schema.NullOr(SignInId)),
+})
 const ByAgent = Schema.Struct({ agentId: Schema.String })
 const FileOfMessage = Schema.Struct({
   agentId: Schema.String,
@@ -443,19 +448,24 @@ export const handlers: Handlers = {
     ),
   "runtimes.status": (input) =>
     decode(ByRuntime)(input).pipe(
-      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.status(kind))),
+      Effect.flatMap(({ kind, signIn }) => Runtimes.use((r) => r.status(kind, signIn))),
     ),
   "runtimes.install": (input) =>
     decode(ByRuntime)(input).pipe(
-      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.install(kind))),
+      Effect.flatMap(({ kind, signIn }) => Runtimes.use((r) => r.install(kind, signIn))),
     ),
   "runtimes.signIn": (input) =>
     decode(ByRuntime)(input).pipe(
-      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.signIn(kind))),
+      Effect.flatMap(({ kind, signIn }) => Runtimes.use((r) => r.signIn(kind, signIn))),
     ),
   "runtimes.cancel": (input) =>
     decode(ByRuntime)(input).pipe(
-      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.cancel(kind))),
+      Effect.flatMap(({ kind, signIn }) => Runtimes.use((r) => r.cancel(kind, signIn))),
+      Effect.as(undefined),
+    ),
+  "providers.discardSignIn": (input) =>
+    decode(Schema.Struct({ kind: Schema.Literals(RUNTIME_KINDS), signIn: SignInId }))(input).pipe(
+      Effect.flatMap(({ kind, signIn }) => Providers.use((p) => p.discardSignIn(kind, signIn))),
       Effect.as(undefined),
     ),
   "files.pick": () => Platform.use((p) => Effect.promise(() => p.pickFiles())),

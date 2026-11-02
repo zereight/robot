@@ -9,8 +9,10 @@ const NOTES = 13
 const SECTIONS = 14
 /** The index of the migration that S26 added: agent knowledge. */
 const KNOWLEDGE = 12
+/** The index of the migration that spec 006 added: the separate sign-in of an account. */
+const SIGN_IN = SECTIONS + 1
 /** Main has this many steps. The steps of the device link and of sync follow them. */
-const MAIN_STEPS = SECTIONS + 1
+const MAIN_STEPS = SIGN_IN + 1
 
 const upTo = (count: number) => {
   const db = new DatabaseSync(":memory:")
@@ -170,6 +172,7 @@ describe("the steps of the device link and of sync", () => {
     expect(migrations[KNOWLEDGE]).toContain("knowledge_enabled")
     expect(migrations[NOTES]).toContain("ADD COLUMN notes")
     expect(migrations[SECTIONS]).toContain("CREATE TABLE place_section")
+    expect(migrations[SIGN_IN]?.trim()).toBe("ALTER TABLE provider_account ADD COLUMN sign_in TEXT;")
     expect(migrations[MAIN_STEPS]).toContain("CREATE TABLE device_link")
     expect(migrations[MAIN_STEPS + 1]).toContain("CREATE TABLE sync_pair")
     expect(migrations[MAIN_STEPS + 2]).toContain("ALTER TABLE device_link ADD COLUMN can_change")
@@ -197,6 +200,8 @@ describe("the steps of the device link and of sync", () => {
         VALUES ('w', 's', 'Flow', '{}', '[]', '[]', '[{"id":"n1"}]', 0, 1, 1);
       INSERT INTO knowledge_file (agent_id, file, hash, editor, content)
         VALUES ('a', 'x.md', 'h', 'agent', 'text');
+      INSERT INTO provider_account (id, kind, name, base_url, created_at)
+        VALUES ('acc', 'claude-code', 'Claude', '', 1);
     `)
 
     migrate(db)
@@ -211,6 +216,10 @@ describe("the steps of the device link and of sync", () => {
       { name: "Flow", notes: '[{"id":"n1"}]' },
     ])
     expect(db.prepare("SELECT file FROM knowledge_file").all()).toEqual([{ file: "x.md" }])
+    // The account keeps its row, and the separate sign-in of main stays empty.
+    expect(db.prepare("SELECT name, sign_in FROM provider_account").all()).toEqual([
+      { name: "Claude", sign_in: null },
+    ])
     // The new columns start empty, and no sync pair exists, so nothing marks a row as changed.
     expect(db.prepare("SELECT changed_by, changed_at FROM agent").all()).toEqual([
       { changed_by: null, changed_at: null },

@@ -241,6 +241,9 @@ describe("export and import", () => {
     dbA.run(
       "INSERT INTO provider_account (id, kind, name, base_url, created_at) VALUES ('r1', 'claude_code', 'Claude', '', 1)",
     )
+    dbA.run(
+      "INSERT INTO provider_account (id, kind, name, base_url, sign_in, created_at) VALUES ('r2', 'claude_code', 'Work', '', '11111111-2222-3333-4444-555555555555', 2)",
+    )
     await a.run(Data.use((d) => d.export()))
 
     const b = app({ open: out })
@@ -251,6 +254,10 @@ describe("export and import", () => {
     )
     const accounts = await b.run(Providers.use((p) => p.list))
     expect(accounts.find((x) => x.id === "r1")?.connected).toBe(false)
+    // The account keeps the name of its sign-in, and the folder is not here: nobody is signed in.
+    // It does not fall back to the account of this computer.
+    const work = accounts.find((x) => x.id === "r2")
+    expect(work).toMatchObject({ connected: false, signIn: "11111111-2222-3333-4444-555555555555" })
   })
 
   test("user sections and the places in them come back in the same order", async () => {

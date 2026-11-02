@@ -32,6 +32,7 @@ import type {
   ProviderConnect,
   RuntimeKind,
   RuntimeStatus,
+  RuntimeTarget,
 } from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
@@ -221,13 +222,18 @@ export interface RpcMethods {
   "models.available": { input: undefined; output: readonly ModelChoice[] }
   "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
   /** Looks at the vendor program on this computer again, and returns what it finds. */
-  "runtimes.status": { input: { kind: RuntimeKind }; output: RuntimeStatus }
+  "runtimes.status": { input: RuntimeTarget; output: RuntimeStatus }
   /** Downloads the vendor program into the app. Ends when the download is done or failed. */
-  "runtimes.install": { input: { kind: RuntimeKind }; output: RuntimeStatus }
+  "runtimes.install": { input: RuntimeTarget; output: RuntimeStatus }
   /** Opens the vendor sign-in in the browser. Ends when the user is signed in, or gave up. */
-  "runtimes.signIn": { input: { kind: RuntimeKind }; output: RuntimeStatus }
+  "runtimes.signIn": { input: RuntimeTarget; output: RuntimeStatus }
   /** Ends a running download or sign-in. */
-  "runtimes.cancel": { input: { kind: RuntimeKind }; output: undefined }
+  "runtimes.cancel": { input: RuntimeTarget; output: undefined }
+  /**
+   * Gives up a separate sign-in that no account uses: signs it out and deletes its folder. A
+   * sign-in that an account uses is left as it is.
+   */
+  "providers.discardSignIn": { input: { kind: RuntimeKind; signIn: string }; output: undefined }
   /** Opens the system file dialog. Returns the chosen full paths; none when cancelled. */
   "files.pick": { input: undefined; output: readonly string[] }
   /** Asks where to save, then writes the archive. `path` is null when cancelled. */

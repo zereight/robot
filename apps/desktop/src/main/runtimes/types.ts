@@ -29,6 +29,11 @@ export interface RuntimeRun {
   /** How the program reaches the tools of the app, the browser of the agent. */
   readonly bridge?: BridgeAccess
   readonly signal: AbortSignal
+  /**
+   * The folder of a separate sign-in, for a program that can have one. Absent: the program uses
+   * the sign-in that it has on this computer.
+   */
+  readonly signInDir?: string
   /** Asks the user when the permission level needs it. Resolves true to go on. */
   readonly approve: (request: ApprovalRequest) => Promise<boolean>
   /** Called when the vendor reports the usage windows of the plan. */

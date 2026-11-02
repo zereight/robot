@@ -32,6 +32,7 @@ import { TasksPage } from "./tasks/TasksPage.tsx"
 import { IconButton } from "./ui/controls.tsx"
 import { Menu } from "./ui/Menu.tsx"
 import { Presence } from "./ui/Presence.tsx"
+import { Toasts } from "./ui/Toasts.tsx"
 import { UsagePage } from "./usage/UsagePage.tsx"
 import { WorkflowsPage } from "./workflows/WorkflowsPage.tsx"
 
@@ -195,6 +196,7 @@ export const App = () => {
       <JoinDialog />
       <SyncRequestDialog />
       <SyncGuardDialog />
+      <Toasts />
     </>
   )
 }
