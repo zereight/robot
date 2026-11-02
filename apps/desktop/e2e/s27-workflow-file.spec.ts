@@ -107,6 +107,7 @@ test("workflow file: export, import with the agent, notify step with the whole i
   await expect(page.getByTestId("wf-note")).toHaveCount(1)
   await expect(page.getByTestId("wf-node-number")).toHaveText(["1", "2", "3", "4"])
   await page.getByTestId("wf-save").click()
+  await expect(page.getByTestId("toast-success")).toHaveText("Workflow saved.")
   await shot(page, "s27-01-source")
   await page.getByTestId("wf-back").click()
   await expect(page.getByTestId("wf-card")).toHaveCount(1)

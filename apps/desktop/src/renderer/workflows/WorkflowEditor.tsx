@@ -33,6 +33,7 @@ import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
+import { showToast } from "../ui/toast.ts"
 import styles from "./workflows.module.css"
 
 const NODE_W = 180
@@ -312,7 +313,11 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
       produce((s: Step) => Object.assign(s, patch)),
     )
 
-  const save = async (): Promise<Workflow | undefined> => {
+  /**
+   * Saves the workflow. A failure always shows a toast. A success shows one only when the user
+   * asked to save (`announce`), not when a run saves first.
+   */
+  const save = async (announce = false): Promise<Workflow | undefined> => {
     const serverId = ui.server()?.id
     if (!serverId) return
     setError(undefined)
@@ -329,9 +334,12 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
         ? await call("workflows.update", { id: current.id, patch: body })
         : await call("workflows.create", { serverId, ...body })
       setSaved(next)
+      if (announce) showToast("success", "workflows.saved")
       return next
     } catch (e) {
-      setError(describeError(e))
+      const problem = describeError(e)
+      setError(problem)
+      showToast("error", "workflows.saveFailed", { reason: t(problem.key, problem.params) })
     }
   }
 
@@ -420,7 +428,11 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
         >
           +
         </Button>
-        <Button disabled={readOnly() || !scheduleOk()} onClick={save} data-testid="wf-save">
+        <Button
+          disabled={readOnly() || !scheduleOk()}
+          onClick={() => void save(true)}
+          data-testid="wf-save"
+        >
           {t("agents.save")}
         </Button>
         <Show
