@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { type BridgeHandler, grantBridge, MUSE_AUTH_VARIABLE } from "./bridge.ts"
 import { claudeLogin, claudeVersion, runClaude } from "./claude.ts"
 import { codexLogin, runCodex } from "./codex.ts"
 import { runMuse } from "./muse.ts"
@@ -36,6 +38,16 @@ const collect = async (stream: AsyncGenerator<AgentEvent>) => {
 
 const text = (events: AgentEvent[]) =>
   events.flatMap((e) => (e.type === "text" ? [e.text] : [])).join("")
+
+/** The browser of the app, as a program sees it. */
+const browser: BridgeHandler & { calls: string[] } = {
+  calls: [],
+  tools: [{ name: "browser_read", description: "Read the page.", schema: { type: "object" } }],
+  call: async (name) => {
+    browser.calls.push(name)
+    return { output: "Text of the page", failed: false }
+  },
+}
 
 describe("claude program", () => {
   test("version and sign-in come from the program", async () => {
@@ -94,6 +106,47 @@ describe("claude program", () => {
     const tool = events.filter((e) => e.type === "tool")
     expect(tool.map((e) => (e.type === "tool" ? e.state : ""))).toEqual(["running", "done"])
     expect(text(events)).toBe("It ran.")
+  })
+
+  test("the program reaches the browser of the app, and the app asks the user by itself", async () => {
+    browser.calls.length = 0
+    const grant = await grantBridge(browser)
+    const asked: string[] = []
+    try {
+      const events = await collect(
+        runClaude(
+          base(fake.claude, {
+            prompt: "BROWSER:browser_read",
+            bridge: grant,
+            approve: async (r) => {
+              asked.push(r.summary)
+              return true
+            },
+          }),
+        ),
+      )
+      expect(browser.calls).toEqual(["browser_read"])
+      // The step of the app is allowed at once. Its own card follows the permission level.
+      expect(asked).toEqual([])
+      expect(
+        events.flatMap((e) => (e.type === "tool" ? [`${e.state} ${e.call.name}`] : [])),
+      ).toEqual(["running mcp__robot__browser_read", "done mcp__robot__browser_read"])
+      expect(text(events)).toBe("Page: Text of the page")
+      // The token is in a file that is gone with the run, never in an argument.
+      const call = fake.claudeCalls().at(-1) as { args: string[] }
+      const file = call.args[call.args.indexOf("--mcp-config") + 1] ?? ""
+      expect(call.args.join(" ")).not.toContain(grant.token)
+      expect(call.args).toContain("--strict-mcp-config")
+      expect(existsSync(file)).toBe(false)
+    } finally {
+      grant.release()
+    }
+  })
+
+  test("a run without the access gets no server", async () => {
+    await collect(runClaude(base(fake.claude)))
+    const call = fake.claudeCalls().at(-1) as { args: string[] }
+    expect(call.args).not.toContain("--mcp-config")
   })
 
   test("a no from the user is passed on to the program", async () => {
@@ -155,6 +208,26 @@ describe("codex program", () => {
     const call = fake.codexCalls().at(-1) as { args: string[]; prompt: string }
     expect(call.prompt).toContain("Be brief.")
     expect(call.args).toContain("workspace-write")
+  })
+
+  test("the program is told how to start the app's server, with no token in the arguments", async () => {
+    const grant = await grantBridge(browser)
+    try {
+      await collect(runCodex(base(fake.codex, { model: "default", bridge: grant })))
+      const call = fake.codexCalls().at(-1) as { args: string[] }
+      const settings = call.args.filter((a) => a.startsWith("mcp_servers.robot."))
+      expect(settings.map((a) => a.split("=")[0])).toEqual([
+        "mcp_servers.robot.command",
+        "mcp_servers.robot.args",
+        "mcp_servers.robot.env.ELECTRON_RUN_AS_NODE",
+      ])
+      expect(call.args.join(" ")).not.toContain(grant.token)
+      // The last argument of the script is the file with the address and the token.
+      const args = JSON.parse(settings[1]?.slice("mcp_servers.robot.args=".length) ?? "[]")
+      expect(existsSync(args.at(-1))).toBe(false)
+    } finally {
+      grant.release()
+    }
   })
 
   test("a failed turn becomes a failure", async () => {
@@ -289,5 +362,22 @@ describe("muse program", () => {
     expect(fake.museCalls().length).toBe(before + 1)
     expect(call.args[0]).toBe("exec")
     expect(call.args).toContain("--disable-approval")
+  })
+
+  test("the host gets the server of the app, and the token only in its environment", async () => {
+    const grant = await grantBridge(browser)
+    try {
+      await collect(runMuse(ask({ bridge: grant })))
+      const call = fake.museCalls().at(-1) as { args: string[]; bridgeAuth: string | null }
+      const setting = call.args.find((a) => a.startsWith("mcpServers.robot=")) ?? ""
+      expect(JSON.parse(setting.slice("mcpServers.robot=".length))).toEqual({
+        url: grant.url,
+        headers: { Authorization: `\${${MUSE_AUTH_VARIABLE}}` },
+      })
+      expect(call.args.join(" ")).not.toContain(grant.token)
+      expect(call.bridgeAuth).toBe(`Bearer ${grant.token}`)
+    } finally {
+      grant.release()
+    }
   })
 })

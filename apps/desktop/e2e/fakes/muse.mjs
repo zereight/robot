@@ -85,6 +85,7 @@ if (args[0] === "serve") {
       prompt,
       autoUpdate: process.env.MUSE_NO_AUTO_UPDATE ?? null,
       foreignKill: process.env.MUSE_EXPERIMENTAL_FOREIGN_PERSONAL_CONTEXT_KILL ?? null,
+      bridgeAuth: process.env.ROBOT_BRIDGE_AUTH ?? null,
       session,
       effort: params.reasoningEffort ?? null,
     })

@@ -1,4 +1,5 @@
 import type { ModelInfo, PermissionLevel, RuntimeLimit } from "@robot/shared"
+import type { BridgeAccess } from "./bridge.ts"
 
 /** A step that the vendor program wants to take, and that may need the user's answer. */
 export interface ApprovalRequest {
@@ -25,6 +26,8 @@ export interface RuntimeRun {
   readonly permission: PermissionLevel
   /** False when the program may only answer: no files, no commands. */
   readonly useTools: boolean
+  /** How the program reaches the tools of the app, the browser of the agent. */
+  readonly bridge?: BridgeAccess
   readonly signal: AbortSignal
   /** Asks the user when the permission level needs it. Resolves true to go on. */
   readonly approve: (request: ApprovalRequest) => Promise<boolean>
