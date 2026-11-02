@@ -151,7 +151,7 @@ accept connections, this is the same computer.
 
 ## Out of scope
 
-- Copy or sync of agents and data between computers.
+- Sync of agents and data between computers. See 016. A link alone copies nothing.
 - An agent on one computer that joins a channel of another computer.
 - A relay or a connection service that links devices which share no network. The user uses a
   VPN for this.

@@ -31,7 +31,8 @@ An agent has:
 5. Archive: the agent leaves the place list. Its history and workspace stay. The user can restore
    it from settings.
 6. Delete: only from the archive. The app asks to confirm and says the workspace folder will be
-   moved to the system trash.
+   moved to the system trash. If this computer syncs (016), the text also says that the agent
+   is deleted on the other computer. There, the workspace folder stays where it is.
 
 ## Rules
 

@@ -26,6 +26,8 @@ Agents do repeat work on a schedule without the user starting it.
   per routine, and only if it is less than 12 hours late. The others show as "Missed".
 - A run does not start while the previous run of the same routine is still going; it is marked
   "Skipped".
+- When two computers sync (016), a routine runs on one computer only. The other computer shows
+  "Runs on <name>".
 
 ## Acceptance
 

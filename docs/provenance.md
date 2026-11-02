@@ -36,3 +36,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-02 | S20: linked server approvals and questions answered from a client (“Allowed by / Denied by <device name>”), tasks list, details and stop, notices of a linked server by the settings of this computer, nearby computers while a code is valid | Implementer | 012, 015, 003, 007 |
 | 2026-11-02 | Device link: spec now states the choices made in S18 to S20 (no "Always allow" on a client, cache size, removed-device text, mute row, island scope) and allows common acronyms in Korean screens | Spec author | 012, 013, 015 |
 | 2026-11-02 | Fix: s1 e2e allows "VPN" and cuts out "Tailscale" in Korean screens, as spec 013 now allows | Implementer | 013 |
+| 2026-11-02 | Sync between two computers: new spec 016; small rules in 000, 002, 005, 009, 010, 012, 013, 014, 015 | Spec author | 016, 000, 002, 005, 009, 010, 012, 013, 014, 015 |

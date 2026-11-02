@@ -35,13 +35,17 @@ tag, so the user reads their work as they read messages from colleagues.
 4. Phone: the user pairs the phone with a computer, then reads and sends messages and answers
    approval requests from the phone. The phone can pair with more than one computer.
 5. Other computers: the user pairs a second computer with the first. Each computer then shows the
-   other as a server and directs its agents. Each computer keeps its own agents and data.
+   other as a server and directs its agents. Each computer keeps its own agents and data, unless
+   the user turns on sync (016).
+6. Sync: the user sets two computers to sync. Both then hold the same agents, chats, memory,
+   routines and workflows, and the user can work on either one.
 
 ## Rules
 
 - Conversations, files, memory and settings stay on the computer that runs the agent. That
   computer's local database is the source of truth. A linked device shows this data and keeps
-  only a cache (012).
+  only a cache (012). Two computers that sync (016) each hold a full copy, and a change on one
+  reaches the other.
 - Model providers and pages the agent visits use the network. Nothing else sends conversation
   content off the computer.
 - Secrets never appear in logs, exports or diagnostics.

@@ -12,7 +12,8 @@ The user sets the app up the way they like in one place.
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
 - **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
-  that can open this computer, and the computers this computer can open, see 012.
+  that can open this computer, and the computers this computer can open, see 012. Each linked
+  computer has a sync row, see 016.
 - **Notifications**: see 015.
 - **Archive**: archived agents and channels with restore and delete.
 - **Data**: open data folder, export, see 014.

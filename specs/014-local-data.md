@@ -9,9 +9,12 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - One local database file holds servers, agents, conversations, tasks, routines, workflows,
   memory and settings. Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
-- The database is the source of truth. Nothing remote is a cache of it. A device that opens a
-  linked server (012) keeps a local cache of recent messages for offline reading. The cache is
-  deleted when the link ends and is never exported.
+- The database is the source of truth. Nothing remote is a cache of it. Two computers that sync
+  (016) each hold a full copy of the shared data. Both are sources of truth, and the rules of
+  016 make them equal. A device that opens a linked server (012) keeps a local cache of recent
+  messages for offline reading. The cache is deleted when the link ends and is never exported.
+  The state of a sync (016) is not exported either. Backups that sync makes are in a "backups"
+  folder in the data folder.
 - The app never sends conversation content, files, or commands anywhere except the model provider
   an agent uses, the pages an agent visits, and the devices that the user linked (012). Traffic
   to a linked device is end-to-end encrypted.
