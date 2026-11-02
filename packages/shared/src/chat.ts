@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { SettingsNote } from "./agentSettings.ts"
 import type { KnowledgeNote } from "./knowledge.ts"
 import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
@@ -39,6 +40,8 @@ export type MessagePart =
       readonly answeredInChat?: boolean
       /** Set when a protected card ended: the value was saved, or the user cancelled (spec 020). */
       readonly secret?: "saved" | "cancelled"
+      /** Set for the settings tool: what the call changed, so the chat shows a line with Undo. */
+      readonly settings?: SettingsNote
     }
 
 /** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */

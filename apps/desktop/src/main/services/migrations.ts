@@ -622,4 +622,17 @@ export const migrations: readonly string[] = [
     DELETE FROM saved_secret WHERE agent_id = OLD.id;
   END;
   `,
+  `
+  -- The instruction history of each agent (spec 002). It goes with the agent in an export (014)
+  -- and in sync (019), and goes when the agent is deleted.
+  CREATE TABLE instruction_version (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX instruction_version_agent ON instruction_version (agent_id, created_at);
+  ${dirtyTriggers("instruction_version", "iversion", plainId)}
+  `,
 ]

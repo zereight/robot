@@ -1,4 +1,5 @@
 import type { AgentFileImported, AgentFilePreview } from "./agentFile.ts"
+import type { InstructionVersion, SettingsLineState } from "./agentSettings.ts"
 import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
 import type {
   Channel,
@@ -204,6 +205,20 @@ export interface RpcMethods {
   "agents.archive": { input: { id: string }; output: Agent }
   "agents.restore": { input: { id: string }; output: Agent }
   "agents.delete": { input: { id: string }; output: undefined }
+  /** The versions of the instructions of an agent, newest first (spec 002). */
+  "agents.history.list": { input: { agentId: string }; output: readonly InstructionVersion[] }
+  /** Makes the text of a version the instructions again. The restore is a new version. */
+  "agents.history.restore": { input: { agentId: string; versionId: string }; output: Agent }
+  /** Whether the line of a change from the chat can still undo it (spec 002). */
+  "agents.settings.line": {
+    input: { agentId: string; messageId: string; callId: string }
+    output: SettingsLineState
+  }
+  /** Puts back the values from before a change from the chat. */
+  "agents.settings.undo": {
+    input: { agentId: string; messageId: string; callId: string }
+    output: undefined
+  }
   "agents.setFaceImage": { input: { id: string; dataUrl: string | null }; output: Agent }
   /** Asks where to save, then writes one agent file. `path` is null when cancelled. */
   "agentFile.export": {

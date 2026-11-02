@@ -11,6 +11,7 @@ import { basename, dirname, join, relative, resolve } from "node:path"
 import {
   type ActionDecider,
   type ApprovalAnswer,
+  changeSummary,
   checkRequestAddress,
   type GuardedStep,
   guardDecision,
@@ -44,6 +45,7 @@ import {
   type SecretAddressError,
   type SecretAsk,
   type SecretMethod,
+  type SettingsNote,
   secretNameKey,
   type ToolAsk,
   type TurnMark,
@@ -55,6 +57,7 @@ import { BRIDGE_TOOL_NAMES, type BridgeHandler, SEARCH_TOOL_NAME } from "../runt
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import { type SecretBody, sendWithSecret } from "../secrets/request.ts"
 import { ActionLog } from "./ActionLog.ts"
+import { AgentSettings } from "./AgentSettings.ts"
 import { CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -81,6 +84,11 @@ export interface ToolContext {
   readonly onDecision?: (callId: string, answer: "allow" | "deny", by: string) => void
   /** Records what a knowledge call read or changed, so its card can show it and offer undo. */
   readonly onKnowledge: (callId: string, note: KnowledgeNote) => void
+  /**
+   * Records what a call of the settings tool changed, so the chat shows a line with Undo. A turn
+   * with no such place (a channel) does not get the settings tool.
+   */
+  readonly onSettings?: (callId: string, note: SettingsNote) => void
   /** The article changes that this turn made so far. A turn makes at most 5. */
   readonly knowledgeChanges: { count: number }
   /**
@@ -109,8 +117,11 @@ export interface GuardedRequest<A> {
 }
 
 export interface ToolsService {
-  /** The tools that an agent may call. Memory and knowledge tools are left out when they are off. */
-  defs(options: { memory: boolean; knowledge: boolean }): readonly ToolDef[]
+  /**
+   * The tools that an agent may call. Memory and knowledge tools are left out when they are off.
+   * The settings tool is only for an agent of an API provider in its direct chat (spec 002).
+   */
+  defs(options: { memory: boolean; knowledge: boolean; settings?: boolean }): readonly ToolDef[]
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
   /**
    * Asks about a step that a vendor program wants to take, by the permission level and the risk.
@@ -372,6 +383,41 @@ const DEFS: Record<string, ToolDef> = {
   },
 }
 
+/** The settings tool (spec 002, "Changes from the chat"). */
+const SETTINGS_DEF: ToolDef = {
+  name: "settings",
+  description:
+    "Read or change your own settings and some settings of the app. Call it with no fields to read the values now, the connected models and what you may not change. Change a setting only when the user asks for it; to answer a question about your settings, call it with no fields. Changes to you apply from your next turn; app settings apply at once.",
+  schema: object(
+    {
+      name: str("Your new name, 1 to 40 characters."),
+      role: str("Your new role line, up to 120 characters."),
+      instructions: str("Your whole new instructions. They replace the old text."),
+      face_shape: { type: "integer", description: "The shape of your face, 1 to 6." },
+      face_hue: { type: "integer", description: "The colour of your face, 1 to 10." },
+      account: str("The name of a connected model account."),
+      model: str(
+        'A model, in loose words if needed, for example "Sonnet". It must match one connected model.',
+      ),
+      effort: str("An effort level that the model takes."),
+      language: { type: "string", enum: ["system", "en", "ko"], description: "App language." },
+      theme: { type: "string", enum: ["system", "dark", "light"], description: "App theme." },
+      text_size: {
+        type: "string",
+        enum: ["small", "default", "large"],
+        description: "App text size.",
+      },
+      compact_place_list: { type: "boolean", description: "Compact place list on or off." },
+      reduce_motion: {
+        type: "string",
+        enum: ["system", "on", "off"],
+        description: "Reduce motion in the app.",
+      },
+    },
+    [],
+  ),
+}
+
 const KNOWLEDGE_TOOLS = new Set(["read_article", "write_article", "delete_article", "add_source"])
 
 /** What the model reads when a knowledge call fails. The card shows its own translated text. */
@@ -444,6 +490,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const memory = yield* Memory
       const search = yield* Search
       const actionLog = yield* ActionLog
+      const agentSettings = yield* AgentSettings
       const knowledge = yield* Knowledge
       const saved = yield* SavedSecrets
       const settingsStore = yield* SettingsStore
@@ -1231,6 +1278,35 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      /**
+       * The settings tool (spec 002). A call with no field reads and changes nothing. A change is
+       * a guarded step (spec 007): the guard asks in a turn that holds outside content or that the
+       * user did not start, and writes the action log entry.
+       */
+      const settingsTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        if (!ctx.onSettings) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const { plan, text: values } = await settle(agentSettings.plan(ctx.agentId, args))
+        if (plan.kind === "read") return { output: values, failed: false }
+        if (plan.kind === "unchanged")
+          return { output: "Nothing changed: these values are set already.", failed: false }
+        if (plan.kind === "refused") return { output: plan.reason, failed: true }
+        const summary = changeSummary(plan.changes)
+        const note = await guarded(ctx, call.id, {
+          step: "settings",
+          target: summary,
+          work: () => settle(agentSettings.apply(ctx.agentId, plan.changes, "chat")),
+        })
+        ctx.onSettings(call.id, note)
+        return {
+          output: `Changed: ${changeSummary(plan.changes.map((c) => (c.field === "instructions" ? { ...c, after: "(new text)" } : c)))}. Changes to you apply from your next turn. App settings apply now.`,
+          failed: false,
+        }
+      }
+
       const run = async (ctx: ToolContext, call: ToolCall): Promise<ToolOutcome> => {
         const args = parseArgs(call)
         switch (call.name) {
@@ -1304,6 +1380,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
           case "save_memory":
             return await saveMemory(ctx, call, text(args, "text"))
+          case "settings":
+            return await settingsTool(ctx, call, args)
           case "read_article":
             return await readTool(ctx, call, args)
           case "write_article":
@@ -1335,12 +1413,14 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
 
       return Tools.of({
-        defs: (options) =>
-          Object.values(DEFS).filter(
+        defs: (options) => [
+          ...Object.values(DEFS).filter(
             (d) =>
               (options.memory || (d.name !== "save_memory" && d.name !== SEARCH_TOOL_NAME)) &&
               (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)),
           ),
+          ...(options.settings ? [SETTINGS_DEF] : []),
+        ],
         execute,
         guarded,
         bridge: (ctx, show) => {
