@@ -1144,7 +1144,7 @@ export const en = {
   "importReview.counts.workflows": "ROBot will make {workflows} workflows (off).",
   "importReview.nothing": "Nothing is ticked.",
   "error.import_nothing_picked": "Nothing is ticked. Tick at least one part to import.",
-  "checklist.from": "ROBot",
+  "checklist.sender": "ROBot",
   "checklist.title": "After the import",
   "checklist.intro": "These parts of the import still need you.",
   "checklist.progress": "{done} of {count} done",

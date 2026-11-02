@@ -28,7 +28,7 @@ const toChecklist = (row: Row | undefined): ImportChecklist | null =>
       }
     : null
 
-/** The checklists that imports leave (spec 014, "Review before an import"). */
+/** The checklists that imports leave (spec 014, the review before an import). */
 export class Checklists extends Context.Service<Checklists, ChecklistsService>()(
   "robot/main/Checklists",
 ) {
