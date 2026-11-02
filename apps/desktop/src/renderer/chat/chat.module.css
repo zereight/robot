@@ -240,7 +240,8 @@
   font-size: var(--text-xs);
 }
 
-.toolState[data-state="failed"] {
+.toolState[data-state="failed"],
+.toolState[data-state="refused"] {
   color: var(--c-danger);
 }
 

@@ -79,7 +79,7 @@ const until = async (check: () => boolean | Promise<boolean>, ms = 4000) => {
   throw new Error("timed out")
 }
 
-const setup = async (permission: "ask_all" | "ask_risky" | "full" = "ask_risky") => {
+const setup = async (permission: "read_only" | "ask_all" | "ask_risky" | "full" = "ask_risky") => {
   const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
@@ -726,5 +726,76 @@ describe("browser for an agent runtime", () => {
     controller.abort()
     await expect(pending).rejects.toThrow()
     expect(shown.at(-1)).toMatchObject({ state: "failed", output: "Stopped." })
+  })
+})
+
+describe("the level Read only (spec 007)", () => {
+  test("reads, lists and searches run with no question", async () => {
+    const s = await setup("read_only")
+    writeFileSync(join(s.agent.workspace, "a.txt"), "needle in a haystack")
+    for (const [name, args] of [
+      ["read_file", { path: "a.txt" }],
+      ["list_files", { path: "." }],
+      ["search_files", { query: "needle" }],
+    ] as const) {
+      await s.send(call(name, args))
+      await s.finished()
+      expect(await s.toolPart()).toMatchObject({ name, state: "done" })
+      expect((await s.toolPart())?.refused).toBeUndefined()
+    }
+  })
+
+  test("a write, a shell command and a browser step are refused, change nothing, and the turn goes on", async () => {
+    const s = await setup("read_only")
+    const wrote = join(s.agent.workspace, "w.txt")
+    const touched = join(s.agent.workspace, "t.txt")
+    for (const [name, args] of [
+      ["write_file", { path: "w.txt", content: "x" }],
+      ["run_command", { command: "touch t.txt" }],
+      ["browser_open", { url: "https://example.com" }],
+    ] as const) {
+      await s.send(call(name, args))
+      await s.finished()
+      const part = await s.toolPart()
+      expect(part).toMatchObject({ name, state: "failed", refused: "read_only" })
+      expect(part?.output).toContain("Refused: this agent is at the permission level Read only")
+      // No card waited, and the model was told. The turn ended well.
+      expect(part?.ask).toBeUndefined()
+      expect((await s.reply())?.status).toBe("done")
+      expect((await s.reply())?.parts.at(-1)).toMatchObject({
+        kind: "text",
+        text: expect.stringContaining("Refused"),
+      })
+    }
+    expect(existsSync(wrote)).toBe(false)
+    expect(existsSync(touched)).toBe(false)
+    expect(s.t.browserLog).toEqual([])
+  })
+
+  test("it comes first: an Always allow that the user gave at another level does not open the step", async () => {
+    const s = await setup("ask_all")
+    await s.send(call("run_command", { command: "touch first.txt" }))
+    await s.waitingCard()
+    await s.respond("always")
+    await s.finished()
+    expect(existsSync(join(s.agent.workspace, "first.txt"))).toBe(true)
+    await s.run(Agents.use((a) => a.update(s.agent.id, { permission: "read_only" })))
+    await s.send(call("run_command", { command: "touch first.txt" }))
+    await s.finished()
+    expect(await s.toolPart()).toMatchObject({ state: "failed", refused: "read_only" })
+    // A step that the user allowed at another level is still not run: the file is as it was.
+    await s.send(call("run_command", { command: "touch second.txt" }))
+    await s.finished()
+    expect(existsSync(join(s.agent.workspace, "second.txt"))).toBe(false)
+  })
+
+  test("a question to the user is allowed", async () => {
+    const s = await setup("read_only")
+    await s.send(call("ask_user", { question: "Which colour?" }))
+    const ask = await s.waitingCard()
+    expect(ask).toMatchObject({ kind: "question" })
+    await s.respond("green")
+    await s.finished()
+    expect((await s.toolPart())?.refused).toBeUndefined()
   })
 })

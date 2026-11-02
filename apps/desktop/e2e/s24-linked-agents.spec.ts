@@ -183,7 +183,12 @@ test("linked agents: a client with the switch makes and changes agents, channels
     )
     await expect(one.page.getByTestId("face-file")).toHaveCount(0)
     await expect(one.page.getByTestId("agent-memory-enabled")).toHaveCount(0)
-    await expect(one.page.locator("[data-testid=agent-permission] label")).toHaveCount(2)
+    // The agent is at "Ask for risky steps": a client offers it and every stricter level, with
+    // "Read only" too (007, 012). It offers no looser level.
+    await expect(one.page.locator("[data-testid=agent-permission] label")).toHaveCount(3)
+    await expect(
+      one.page.locator("[data-testid=agent-permission] label[data-value=read_only]"),
+    ).toHaveCount(1)
     await expect(
       one.page.locator("[data-testid=agent-permission] label[data-value=full]"),
     ).toHaveCount(0)
@@ -213,7 +218,7 @@ test("linked agents: a client with the switch makes and changes agents, channels
     await one.page.getByTestId("agent-submit").click()
     await expect(one.page.getByTestId("agent-profile")).toBeHidden()
     await one.page.getByTestId("chat-header-agent").click()
-    await expect(one.page.locator("[data-testid=agent-permission] label")).toHaveCount(1)
+    await expect(one.page.locator("[data-testid=agent-permission] label")).toHaveCount(2)
     await dismiss(one.page, "agent-profile")
     await two.page.getByTestId("chat-header-agent").click()
     await expect(

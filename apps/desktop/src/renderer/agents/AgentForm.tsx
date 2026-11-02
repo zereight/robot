@@ -12,21 +12,36 @@ import {
   type Face as FaceValue,
   faceFromName,
   isLooser,
+  isRuntimeKind,
+  levelNeedsConfirm,
   type MessageKey,
   nameKey,
   PERMISSION_LEVELS,
   type PermissionLevel,
+  type ProviderKind,
+  type RuntimeKind,
   suggestName,
 } from "@robot/shared"
 import { Dices } from "lucide-solid"
-import { createSignal, createUniqueId, For, Index, Show } from "solid-js"
+import {
+  createEffect,
+  createResource,
+  createSignal,
+  createUniqueId,
+  For,
+  Index,
+  Show,
+} from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useApp } from "../state/app.tsx"
+import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
+import { Dialog } from "../ui/Dialog.tsx"
+import { Presence } from "../ui/Presence.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
 import styles from "./agents.module.css"
 import { Face, faceColour } from "./Face.tsx"
@@ -41,8 +56,9 @@ export interface AgentFormValues {
   model: AgentModel | null
   /** The user section of the Agents list, or null for "No section". A client sends none. */
   sectionId?: string | null
-  /** Only when an existing agent is edited. */
+  /** The level of the agent. A form on a linked server sends it only for an agent that exists. */
   permission?: PermissionLevel
+  /** Only when an existing agent is edited. */
   memoryEnabled?: boolean
 }
 
@@ -87,6 +103,58 @@ export const AgentForm = (props: AgentFormProps) => {
     props.agent?.permission ?? "ask_risky",
   )
   const [memoryEnabled, setMemoryEnabled] = createSignal(props.agent?.memoryEnabled ?? true)
+
+  // What the model is: an API provider, or a vendor program. It decides which line shows under the
+  // level, and whether "Read only" can be picked (spec 007).
+  const providers = useProviders()
+  const [offered] = createResource(
+    () => (remote() ? "server" : null),
+    () => call("models.available").catch(() => []),
+  )
+  const modelKind = (): ProviderKind | null => {
+    const picked = model()
+    if (!picked) return null
+    if (remote()) return offered()?.find((c) => c.accountId === picked.accountId)?.kind ?? null
+    return providers.byId(picked.accountId)?.kind ?? null
+  }
+  const programKind = (): RuntimeKind | null => {
+    const kind = modelKind()
+    return kind && isRuntimeKind(kind) ? kind : null
+  }
+  const [programReadOnly] = createResource(
+    () => (remote() ? null : programKind()),
+    async (kind) => (await call("runtimes.readOnly", { kind })).supported,
+  )
+  /** True when the program of the model has no read-only mode: the option is off. */
+  const readOnlyOff = () => {
+    if (programKind() === null) return false
+    if (remote()) {
+      const picked = model()
+      return offered()?.find((c) => c.accountId === picked?.accountId)?.readOnly === false
+    }
+    return programReadOnly() === false
+  }
+  // A level that is off cannot stay picked. The next strictest level takes its place.
+  createEffect(() => {
+    if (readOnlyOff() && permission() === "read_only") setPermission("ask_all")
+  })
+
+  // "Full access" asks the user to confirm. "Back" keeps the old level. No other level asks.
+  const [confirmFull, setConfirmFull] = createSignal(false)
+  const [levelBefore, setLevelBefore] = createSignal<PermissionLevel>(permission())
+  const pickLevel = (value: PermissionLevel) => {
+    if (levelNeedsConfirm(value) && permission() !== value) {
+      setLevelBefore(permission())
+      setPermission(value)
+      setConfirmFull(true)
+      return
+    }
+    setPermission(value)
+  }
+  const backFromFull = () => {
+    setPermission(levelBefore())
+    setConfirmFull(false)
+  }
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   let fileInput: HTMLInputElement | undefined
@@ -149,7 +217,7 @@ export const AgentForm = (props: AgentFormProps) => {
           : { sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null }),
         ...(props.agent && !remote()
           ? { permission: permission(), memoryEnabled: memoryEnabled() }
-          : props.agent
+          : props.agent || !remote()
             ? { permission: permission() }
             : {}),
       })
@@ -332,28 +400,69 @@ export const AgentForm = (props: AgentFormProps) => {
         </div>
       </Show>
 
+      {/* The level: in the profile of an agent, and in the form of a new agent on this computer. */}
+      <Show when={props.agent || !remote()}>
+        <div class={styles.field}>
+          <span class={styles.label}>{t("agents.field.permission")}</span>
+          <Segmented
+            label={t("agents.field.permission")}
+            value={permission()}
+            options={levels().map((value) => ({
+              value,
+              label: t(`agents.permission.${value}` as MessageKey),
+              disabled: value === "read_only" && readOnlyOff(),
+            }))}
+            onChange={pickLevel}
+            testId="agent-permission"
+          />
+          {/* One line says how the level applies to the runtime of this agent. */}
+          <span class={styles.hint} data-testid="agent-permission-line">
+            {t(`agents.permission.line.${programKind() ?? "app"}.${permission()}` as MessageKey)}
+          </span>
+          <Show when={readOnlyOff()}>
+            <span class={styles.hint} data-testid="agent-permission-off">
+              {t("agents.permission.readOnlyOff", {
+                program: t(`providers.kind.${programKind() ?? "claude_code"}` as MessageKey),
+              })}
+            </span>
+          </Show>
+          <Show when={remote()}>
+            <span class={styles.hint} data-testid="agent-permission-stricter">
+              {t("agents.permission.stricter")}
+            </span>
+          </Show>
+        </div>
+        <Presence when={confirmFull()}>
+          {() => (
+            <Dialog
+              label={t("agents.permission.confirm.title")}
+              onClose={backFromFull}
+              testId="full-access-confirm"
+            >
+              <div class={styles.form}>
+                <h2 class={styles.title}>{t("agents.permission.confirm.title")}</h2>
+                <p>{t("agents.permission.confirm.body")}</p>
+                <div class={styles.actions}>
+                  <Button onClick={backFromFull} data-testid="full-access-back">
+                    {t("agents.permission.confirm.back")}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={() => setConfirmFull(false)}
+                    data-testid="full-access-use"
+                  >
+                    {t("agents.permission.confirm.use")}
+                  </Button>
+                </div>
+              </div>
+            </Dialog>
+          )}
+        </Presence>
+      </Show>
+
       <Show when={props.agent}>
         {(agent) => (
           <>
-            <div class={styles.field}>
-              <span class={styles.label}>{t("agents.field.permission")}</span>
-              <Segmented
-                label={t("agents.field.permission")}
-                value={permission()}
-                options={levels().map((value) => ({
-                  value,
-                  label: t(`agents.permission.${value}` as MessageKey),
-                }))}
-                onChange={setPermission}
-                testId="agent-permission"
-              />
-              <span class={styles.hint}>{t("agents.permission.hint")}</span>
-              <Show when={remote()}>
-                <span class={styles.hint} data-testid="agent-permission-stricter">
-                  {t("agents.permission.stricter")}
-                </span>
-              </Show>
-            </div>
             <Show when={!remote()}>
               <div class={styles.field}>
                 <span class={styles.label}>{t("agents.field.memory")}</span>

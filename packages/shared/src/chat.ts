@@ -6,6 +6,7 @@ import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
 import type { SecretAsk } from "./secrets.ts"
 import type { TaskProgress } from "./task.ts"
+import type { RefusalReason } from "./tools.ts"
 
 export type MessagePart =
   | { readonly kind: "text"; readonly text: string }
@@ -48,6 +49,12 @@ export type MessagePart =
       readonly secret?: "saved" | "cancelled"
       /** Set for the settings tool: what the call changed, so the chat shows a line with Undo. */
       readonly settings?: SettingsNote
+      /**
+       * Set when the step did not run because the permission level refused it: the card says
+       * "Refused: read only" (spec 007). The action log reads this to record the result Refused,
+       * with the level as the one who decided.
+       */
+      readonly refused?: RefusalReason
     }
 
 /** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */

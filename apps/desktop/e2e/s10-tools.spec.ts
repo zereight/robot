@@ -85,6 +85,8 @@ test("tools: approval cards, deny, question, stop, permission level, memory", as
 
   // The permission level: full access asks nothing.
   await page.getByTestId("agent-permission").getByText("Full access").click()
+  // Full access asks the user to confirm first (007).
+  await page.getByTestId("full-access-use").click()
   await page.getByTestId("agent-submit").click()
   const gone = join(outside, "gone.txt")
   writeFileSync(gone, "x")

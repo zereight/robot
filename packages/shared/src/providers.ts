@@ -95,6 +95,15 @@ export const runtimeSupport = (
       ? { install: "manual", signIn: "app" }
       : { install: "manual", signIn: "manual" }
 
+/**
+ * Whether the program has a mode in which it blocks changes to files and commands by itself
+ * (spec 007, "Permission levels"). `supported` is false when the app cannot show that it does.
+ */
+export interface ReadOnlySupport {
+  readonly kind: RuntimeKind
+  readonly supported: boolean
+}
+
 /** The usage window of a subscription, as the vendor reports it. */
 export interface RuntimeLimit {
   /** For example "five_hour" or "seven_day". */
@@ -114,6 +123,40 @@ export interface RuntimeTarget {
   readonly signIn?: string | null
 }
 
+/**
+ * The state of an agent runtime on this computer (spec 006, "Readiness of an agent runtime").
+ * "checking" is temporary and ends within `RUNTIME_CHECK_MS` in one of the others.
+ */
+export const RUNTIME_STATES = [
+  "checking",
+  "ready",
+  "needs_sign_in",
+  "needs_repair",
+  "not_installed",
+] as const
+export type RuntimeState = (typeof RUNTIME_STATES)[number]
+
+/** The most time a check may take. After it, the row shows a state, never "Checking". */
+export const RUNTIME_CHECK_MS = 15_000
+
+/**
+ * Why a program needs repair, in four kinds: its file is gone or moved, it does not start, it does
+ * not answer, or its answer cannot be read (spec 006).
+ */
+export const REPAIR_REASONS = ["gone", "start", "answer", "unreadable"] as const
+export type RepairReason = (typeof REPAIR_REASONS)[number]
+
+/** The states in which an agent on the program cannot work, and the reason for each. */
+export interface RuntimeProblem {
+  readonly kind: RuntimeKind
+  readonly state: "needs_repair" | "not_installed"
+  readonly reason: RepairReason | null
+}
+
+/** True for the states that stop an agent: the message box is off (spec 006). */
+export const isBlockingState = (state: RuntimeState): state is "needs_repair" | "not_installed" =>
+  state === "needs_repair" || state === "not_installed"
+
 /** What the app knows about one vendor program on this computer, for one sign-in of it. */
 export interface RuntimeStatus {
   readonly kind: RuntimeKind
@@ -129,7 +172,13 @@ export interface RuntimeStatus {
   readonly user: string | null
   /** The plan name, for example "max". */
   readonly plan: string | null
-  readonly busy: "installing" | "signing_in" | null
+  /** The state of the program. A look that is not finished yet shows "checking". */
+  readonly state: RuntimeState
+  /** Why the program needs repair. Set only in the state "needs_repair". */
+  readonly reason: RepairReason | null
+  /** When the last check ended, in ms since the epoch. Null before the first check. */
+  readonly checkedAt: number | null
+  readonly busy: "installing" | "signing_in" | "repairing" | null
   /** 0 to 1 while installing; null when unknown. */
   readonly progress: number | null
   readonly limits: readonly RuntimeLimit[]

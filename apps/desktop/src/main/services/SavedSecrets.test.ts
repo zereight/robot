@@ -492,3 +492,38 @@ describe("export and import", () => {
     ])
   })
 })
+
+describe("the level Read only (spec 007)", () => {
+  test("a GET with a saved secret runs; a new secret, a method other than GET and a forget are refused", async () => {
+    const s = await setup("ask_risky")
+    await s.saveSecret()
+    await s.run(Agents.use((a) => a.update(s.agent.id, { permission: "read_only" })))
+    got.delete("/api/echo")
+    got.delete("/api/items")
+    await s.send(
+      calls(
+        request("/api/echo"),
+        request("/api/items", "POST", { body: '{"a":1}' }),
+        askFor({ name: "other_api" }),
+        { name: "forget_secret", args: { name: "test_api" } },
+      ),
+    )
+    await s.finished()
+    // The GET ran, with no card.
+    expect((await s.part("call_1"))?.state).toBe("done")
+    expect(got.get("/api/echo")?.auth).toBe(`Bearer ${VALUE}`)
+    // The POST and the request for a new secret were refused by the guard, which logged them with
+    // the level as the one who decided.
+    expect((await s.part("call_2"))?.state).toBe("failed")
+    expect(got.has("/api/items")).toBe(false)
+    expect((await s.part("call_3"))?.state).toBe("failed")
+    const log = await s.run(ActionLog.use((l) => l.list({ result: "refused" })))
+    expect(log.map((e) => [e.kind, e.decidedBy, e.result]).sort()).toEqual([
+      ["secret_new", "level", "refused"],
+      ["secret_request", "level", "refused"],
+    ])
+    // A forget is a change that no guard decides: the level refuses it, and the secret stays.
+    expect(await s.part("call_4")).toMatchObject({ state: "failed", refused: "read_only" })
+    expect(await s.secrets()).toHaveLength(1)
+  })
+})

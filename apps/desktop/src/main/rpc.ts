@@ -518,6 +518,14 @@ export const handlers: Handlers = {
     decode(ByRuntime)(input).pipe(
       Effect.flatMap(({ kind, signIn }) => Runtimes.use((r) => r.signIn(kind, signIn))),
     ),
+  "runtimes.repair": (input) =>
+    decode(ByRuntime)(input).pipe(
+      Effect.flatMap(({ kind, signIn }) => Runtimes.use((r) => r.repair(kind, signIn))),
+    ),
+  "runtimes.readOnly": (input) =>
+    decode(ByRuntime)(input).pipe(
+      Effect.flatMap(({ kind }) => Runtimes.use((r) => r.readOnly(kind))),
+    ),
   "runtimes.cancel": (input) =>
     decode(ByRuntime)(input).pipe(
       Effect.flatMap(({ kind, signIn }) => Runtimes.use((r) => r.cancel(kind, signIn))),

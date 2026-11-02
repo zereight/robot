@@ -1,4 +1,4 @@
-import type { ModelInfo, PermissionLevel, RuntimeLimit } from "@robot/shared"
+import type { ModelInfo, PermissionLevel, RepairReason, RuntimeLimit } from "@robot/shared"
 import type { TurnInbox } from "../providers/turn.ts"
 import type { BridgeAccess } from "./bridge.ts"
 
@@ -62,4 +62,10 @@ export interface Login {
   readonly limits?: readonly RuntimeLimit[]
   /** The models, when the program has a list. */
   readonly models?: readonly ModelInfo[]
+  /**
+   * Set when the question did not get an answer that means something: the program did not start,
+   * did not answer in time, or answered with text that the app cannot read. The check then ends
+   * in "Needs repair" and not in "Needs sign-in".
+   */
+  readonly fail?: RepairReason
 }

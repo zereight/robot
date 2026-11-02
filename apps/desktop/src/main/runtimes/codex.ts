@@ -4,9 +4,11 @@ import type { PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { codexBridgeArgs, type Staged, stage } from "./bridge.ts"
+import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
 import { spawnProgram } from "./programs.ts"
+import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
 /** Reads the answer of `codex login status`. The text can come on either output. */
@@ -23,7 +25,14 @@ export const parseCodexStatus = (output: string, code: number | null): Login => 
 
 export const codexLogin = async (bin: string): Promise<Login> => {
   const done = await execute(bin, ["login", "status"], { env: runtimeEnv(), timeoutMs: 15_000 })
+  const fail = loginFailure(done)
+  if (fail) return { signedIn: false, method: null, user: null, plan: null, fail }
   return parseCodexStatus(`${done.stdout}\n${done.stderr}`, done.code)
+}
+
+export const codexProbe = async (bin: string): Promise<VersionProbe> => {
+  const done = await execute(bin, ["--version"], { env: runtimeEnv(), timeoutMs: 15_000 })
+  return versionProbe(done, parseVersion(done.stdout))
 }
 
 /** Opens the sign-in with ChatGPT in the browser, and ends when the vendor program ends. */
@@ -35,7 +44,7 @@ export const codexSignIn = (bin: string, signal: AbortSignal) =>
  * the run: nothing may change, the workspace may change, or nothing is held back.
  */
 export const sandboxFor = (level: PermissionLevel, useTools: boolean) =>
-  !useTools || level === "ask_all"
+  !useTools || level === "read_only" || level === "ask_all"
     ? "read-only"
     : level === "full"
       ? "danger-full-access"
@@ -237,10 +246,9 @@ export async function* runCodex(run: RuntimeRun): AsyncGenerator<AgentEvent> {
     if (state.failed !== null) throw codexFailure(state.failed)
     if (!state.done) {
       const code = await exited
-      throw codexFailure(
-        startError?.message ??
-          (state.lastError || stderr.trim() || `The program ended with code ${code}.`),
-      )
+      const started = startFailure(startError, code)
+      if (started) throw started
+      throw codexFailure(state.lastError || stderr.trim() || `The program ended with code ${code}.`)
     }
   } finally {
     run.signal.removeEventListener("abort", stop)
