@@ -7,6 +7,7 @@ import { call } from "../lib/rpc.ts"
 import { RoutinesView } from "../routines/RoutinesPage.tsx"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
+import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Menu } from "../ui/Menu.tsx"
@@ -29,6 +30,17 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
     { initialValue: [] as readonly Workflow[] },
   )
   onCleanup(window.robot.on("workflows.changed", () => void refetch()))
+  // The Today page asks for a workflow: its card lights up. A workflow that is gone is dropped.
+  createEffect(() => {
+    const target = openTarget()
+    const list = workflows()
+    if (target?.kind !== "workflow" || workflows.loading) return
+    if (list.some((w) => w.id === target.id)) {
+      queueMicrotask(() => {
+        if (flashRow(`[data-workflow-id="${target.id}"]`)) takeTarget("workflow")
+      })
+    } else takeTarget("workflow")
+  })
   // A checklist item asked for one workflow: show its card and focus its switch.
   createEffect(() => {
     const target = ui.revealTarget()
@@ -174,6 +186,13 @@ export const WorkflowsPage = () => {
   const ui = useUi()
   const [tab, setTab] = createSignal<"routines" | "workflows">("routines")
   const [open, setOpen] = createSignal<{ workflow: Workflow | null }>()
+  // The Today page asks for a routine or a workflow: the page shows the tab that holds it.
+  createEffect(() => {
+    const target = openTarget()
+    if (target?.kind === "routine") setTab("routines")
+    else if (target?.kind === "workflow") setTab("workflows")
+    if (target?.kind === "routine" || target?.kind === "workflow") setOpen(undefined)
+  })
   // A checklist item opens the list where the user does the step (spec 014).
   createEffect(() => {
     const target = ui.revealTarget()

@@ -381,3 +381,8 @@
 .fields .hint {
   display: block;
 }
+
+/* An item that the Today page asks for lights up for a moment. */
+.card[data-flash="true"] {
+  background: var(--c-selected);
+}

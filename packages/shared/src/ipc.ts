@@ -51,6 +51,7 @@ import type {
 } from "./sync.ts"
 import type { Task, TaskDetail } from "./task.ts"
 import type { TeachState } from "./teach.ts"
+import type { TodaySnapshot } from "./today.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
@@ -394,6 +395,8 @@ export interface RpcMethods {
     input: { serverId: string; days: UsageRange }
     output: readonly UsageRow[]
   }
+  /** The Today page of this computer (spec 021). It reads local data only and sends nothing out. */
+  "today.get": { input: undefined; output: TodaySnapshot }
   /**
    * Message search (spec 001): one page of the messages of a server that hold every word of the
    * text, newest first. A linked server answers it; while the link is offline the answer comes
@@ -454,6 +457,8 @@ export interface RpcEvents {
   "workflows.changed": { serverId: string }
   "workflows.run": { runId: string }
   "island.state": IslandState
+  /** The Today page changed: the whole page, so the window needs no second request. */
+  "today.changed": TodaySnapshot
   "app.openPlace": PlaceTarget
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
   "app.openPage": { page: "workflows"; serverId?: string }
