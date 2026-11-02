@@ -84,6 +84,19 @@ const Island = () => {
                 </button>
                 <button
                   type="button"
+                  data-testid="island-always"
+                  onClick={() =>
+                    call("island.respond", {
+                      agentId: a().agentId,
+                      callId: a().callId,
+                      answer: "always",
+                    })
+                  }
+                >
+                  {t("chat.tool.always")}
+                </button>
+                <button
+                  type="button"
                   data-testid="island-deny"
                   onClick={() =>
                     call("island.respond", {

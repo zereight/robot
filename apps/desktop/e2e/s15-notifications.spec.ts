@@ -93,6 +93,22 @@ test("notifications: settings, a notification per kind, the island, Allow on the
   await expect(island.getByTestId("island-attention")).toHaveCount(0, { timeout: 10_000 })
   await expect(page.getByTestId("tool-card").last()).toContainText("Done")
 
+  // Always allow on the island: this step runs, and the next step of the same kind asks no more.
+  const second = join(outside, "second.txt")
+  const third = join(outside, "third.txt")
+  writeFileSync(second, "x")
+  writeFileSync(third, "x")
+  await send(page, `TOOL run_command ${JSON.stringify({ command: `rm "${second}"` })}`)
+  await expect(island.getByTestId("island-attention")).toBeVisible({ timeout: 15_000 })
+  await expect(island.getByTestId("island-always")).toBeVisible()
+  await island.screenshot({ path: join(userData, "island-attention-always.png") })
+  await island.getByTestId("island-always").click()
+  await expect.poll(() => existsSync(second), { timeout: 15_000 }).toBe(false)
+  await expect(island.getByTestId("island-attention")).toHaveCount(0, { timeout: 10_000 })
+  await send(page, `TOOL run_command ${JSON.stringify({ command: `rm "${third}"` })}`)
+  await expect.poll(() => existsSync(third), { timeout: 15_000 }).toBe(false)
+  await expect(island.getByTestId("island-attention")).toHaveCount(0)
+
   // Working agents show on the island, then it is idle again.
   await send(page, "please go slow")
   await expect(island.getByTestId("island-working")).toBeVisible({ timeout: 15_000 })
