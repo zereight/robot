@@ -10,6 +10,7 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { AgentChecklist } from "../imports/ImportChecklist.tsx"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { focusMessage, setFocusMessage } from "../state/focus.ts"
@@ -135,6 +136,7 @@ export const ChatView = (props: ChatViewProps) => {
       <div class={styles.scroller} ref={scroller} onScroll={onScroll} data-testid="chat-scroller">
         <div class={styles.list} role="log" aria-label={t("chat.messages")}>
           {props.start}
+          <AgentChecklist agentId={props.agent.id} />
           <For each={chat.messages}>
             {(message, index) => {
               const previous = () => chat.messages[index() - 1]

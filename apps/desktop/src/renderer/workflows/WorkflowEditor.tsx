@@ -25,6 +25,7 @@ import {
 } from "@robot/shared"
 import { createEffect, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, produce } from "solid-js/store"
+import { ChecklistCard, useChecklistRows } from "../imports/ImportChecklist.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
@@ -119,6 +120,24 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
     if (newest && watched() === undefined) setWatched(newest.id)
   })
   const stateOf = (stepId: string) => live()?.steps.find((s) => s.stepId === stepId)?.state
+
+  // The checklist that an import left for this workflow (spec 014). Its steps tick themselves as
+  // the user picks on the canvas; "Turn on" ticks when the workflow is on.
+  const checklistRows = useChecklistRows()
+  const [checklist] = createResource(
+    () => saved()?.id,
+    (workflowId) => call("checklists.forWorkflow", { workflowId }).catch(() => null),
+  )
+  const [enabled, { refetch: refetchEnabled }] = createResource(
+    () => (checklist() ? { id: saved()?.id, serverId: ui.server()?.id } : undefined),
+    async (input) =>
+      input.id && input.serverId
+        ? (await call("workflows.list", { serverId: input.serverId })).some(
+            (w) => w.id === input.id && w.enabled,
+          )
+        : false,
+  )
+  onCleanup(window.robot.on("workflows.changed", () => void refetchEnabled()))
 
   const readOnly = () => running()
   const step = (id: string) => graph.steps.find((s) => s.id === id)
@@ -543,6 +562,31 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
           </div>
         </Show>
       </div>
+
+      <Show when={checklist()}>
+        {(list) => (
+          <ChecklistCard
+            testId="wf-checklist"
+            place="canvas"
+            rows={checklistRows(
+              list(),
+              { workflow: { enabled: enabled.latest ?? false, steps: graph.steps } },
+              (item) => {
+                if (item.kind === "stepAgent" || item.kind === "stepPlace") {
+                  setSelected({ kind: "step", id: item.stepId })
+                  const field = item.kind === "stepAgent" ? "wf-step-agent" : "wf-step-channel"
+                  queueMicrotask(() =>
+                    document.querySelector<HTMLElement>(`[data-testid="${field}"]`)?.focus(),
+                  )
+                } else if (item.kind === "workflowOn") {
+                  const id = saved()?.id
+                  if (id) ui.reveal({ kind: "workflow", id })
+                }
+              },
+            )}
+          />
+        )}
+      </Show>
 
       <div class={styles.workspace}>
         <div

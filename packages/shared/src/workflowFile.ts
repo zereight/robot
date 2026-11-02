@@ -1,5 +1,6 @@
 import { readSchedule } from "./agentFile.ts"
 import { AGENT_NAME_MAX, charLength, nameKey } from "./agents.ts"
+import type { NotImported } from "./importReview.ts"
 import type { Schedule } from "./schedule.ts"
 import {
   type ConditionMode,
@@ -542,7 +543,7 @@ export const mapFileTexts = (
   }
 }
 
-/** What an import will make, for the dialog that asks the user to confirm. */
+/** What an import will make, for the review screen (spec 014, "Review before an import"). */
 export interface WorkflowFilePreviewItem {
   /** The name that the new workflow gets. */
   readonly name: string
@@ -551,14 +552,16 @@ export interface WorkflowFilePreviewItem {
   readonly trigger: "manual" | "schedule"
   readonly steps: number
   readonly notes: number
+  /** The agent names of this workflow that no agent of the server has, once each, in order. */
+  readonly missingAgents: readonly string[]
+  /** True when the app hid a secret in a text of this workflow. It starts not ticked. */
+  readonly secretRemoved: boolean
 }
 
 export interface WorkflowFilePreview {
   readonly workflows: readonly WorkflowFilePreviewItem[]
-  /** The agent names of the file that no agent of the server has, once each, in file order. */
-  readonly missingAgents: readonly string[]
-  /** How many post steps the file holds. Each one shows "Pick a place". */
-  readonly postSteps: number
+  /** What the file holds that the import does not make, with the reason. */
+  readonly notImported: readonly NotImported[]
 }
 
 export interface WorkflowFileImported {
