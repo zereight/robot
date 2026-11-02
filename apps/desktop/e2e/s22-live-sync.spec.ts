@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
 import { createAgent, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY } from "./mock-provider.ts"
+import { freePortPair } from "./ports.ts"
 import {
   agentNames,
   closeSettings,
@@ -23,7 +24,7 @@ import {
 // newest change wins per field, nothing is lost, and a delete reaches the other computer.
 test("live sync: a rename, a streaming reply, the read state and the origin of a message", async () => {
   test.setTimeout(300_000)
-  const s = await synced([47881, 47882])
+  const s = await synced(await freePortPair())
   const { one, two } = s
   try {
     await createAgent(one.page, "Ada")
@@ -113,7 +114,7 @@ test("live sync: a rename, a streaming reply, the read state and the origin of a
 
 test("live sync: changes wait while a computer is off, and one memory item edited on both keeps both texts", async () => {
   test.setTimeout(300_000)
-  const s = await synced([47883, 47884])
+  const s = await synced(await freePortPair())
   const { one } = s
   let { two } = s
   try {
@@ -209,7 +210,7 @@ test("live sync: changes wait while a computer is off, and one memory item edite
 
 test("live sync: a delete reaches the other computer and keeps its folder; many deletions ask first", async () => {
   test.setTimeout(400_000)
-  const s = await synced([47885, 47886])
+  const s = await synced(await freePortPair())
   const { one, two } = s
   try {
     await createAgent(one.page, "Ada")
@@ -309,7 +310,10 @@ test("live sync: a delete reaches the other computer and keeps its folder; many 
 
 test("live sync: a clock that is more than 5 minutes off gets a warning", async () => {
   test.setTimeout(240_000)
-  const s = await synced([47887, 47888], [{}, { ROBOT_SYNC_CLOCK_SKEW_MS: String(12 * 60_000) }])
+  const s = await synced(await freePortPair(), [
+    {},
+    { ROBOT_SYNC_CLOCK_SKEW_MS: String(12 * 60_000) },
+  ])
   const { one, two } = s
   try {
     await createAgent(one.page, "Ada")

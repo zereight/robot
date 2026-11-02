@@ -1,10 +1,9 @@
 import { expect, type Page, test } from "@playwright/test"
 import { freshUserData, type Launched, launch, resizeWindow, shot } from "./harness.ts"
+import { freePortPair } from "./ports.ts"
 
 // Two copies of the app run side by side, each with its own data folder. They find each other on
 // 127.0.0.1, so the test needs no network.
-const PORT_A = 47851
-const PORT_B = 47852
 
 const envFor = (port: number, extra: Record<string, string> = {}) => ({
   ROBOT_SYSTEM_LOCALE: "en-US",
@@ -64,6 +63,7 @@ const clientRow = (page: Page, name: string) =>
 
 test("devices: two copies pair, a wrong code and the switch are refused, access can be removed", async () => {
   test.setTimeout(150_000)
+  const [PORT_A, PORT_B] = await freePortPair()
   const a = await start(PORT_A)
   const b = await start(PORT_B)
   try {
@@ -226,6 +226,7 @@ test("devices: two copies pair, a wrong code and the switch are refused, access 
 
 test("devices: a one-way link goes one way only, and the address of a server can be edited", async () => {
   test.setTimeout(120_000)
+  const [PORT_A, PORT_B] = await freePortPair()
   const a = await start(PORT_A)
   const b = await start(PORT_B)
   try {
@@ -267,6 +268,7 @@ test("devices: a one-way link goes one way only, and the address of a server can
 
 test("devices: a code that has ended is refused", async () => {
   test.setTimeout(90_000)
+  const [PORT_A, PORT_B] = await freePortPair()
   const a = await start(PORT_A, { ROBOT_LINK_CODE_TTL_MS: "2500" })
   const b = await start(PORT_B)
   try {

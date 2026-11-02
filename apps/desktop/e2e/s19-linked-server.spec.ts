@@ -12,11 +12,10 @@ import {
   shot,
 } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { freePortPair } from "./ports.ts"
 
 // MacBook 1 opens an agent of MacBook 2. Two copies of the app run side by side, each with its own
 // data folder, and find each other on 127.0.0.1.
-const PORT_1 = 47861
-const PORT_2 = 47862
 
 const envFor = (port: number, extra: Record<string, string> = {}) => ({
   ROBOT_SYSTEM_LOCALE: "en-US",
@@ -49,6 +48,7 @@ const setName = async (page: Page, name: string) => {
 
 test("linked server: an agent of another computer works in this window, offline shows the cache", async () => {
   test.setTimeout(240_000)
+  const [PORT_1, PORT_2] = await freePortPair()
   const mock = await startMockProvider()
   const data1 = freshUserData()
   const data2 = freshUserData()
