@@ -10,10 +10,10 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   memory and settings. Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
 - The database is the source of truth. Nothing remote is a cache of it. Two computers that sync
-  (017) each hold a full copy of the shared data. Both are sources of truth, and the rules of
-  017 make them equal. A device that opens a linked server (012) keeps a local cache of recent
+  (019) each hold a full copy of the shared data. Both are sources of truth, and the rules of
+  019 make them equal. A device that opens a linked server (012) keeps a local cache of recent
   messages for offline reading. The cache is deleted when the link ends and is never exported.
-  The state of a sync (017) is not exported either. Backups that sync makes are in a "backups"
+  The state of a sync (019) is not exported either. Backups that sync makes are in a "backups"
   folder in the data folder. The one exception is the articles and sources of agent knowledge
   (016): they are files in the agent workspace. An export copies sources as they are, so the app
   refuses to add a source that holds a stored key (016).

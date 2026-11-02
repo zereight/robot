@@ -48,7 +48,7 @@ An agent has:
    restore it from settings. It returns to its section. If the section is gone, it returns with
    no section.
 9. Delete: only from the archive. The app asks to confirm and says the workspace folder will be
-   moved to the system trash. If this computer syncs (017), the text also says that the agent
+   moved to the system trash. If this computer syncs (019), the text also says that the agent
    is deleted on the other computer. There, the workspace folder stays where it is.
 10. Export agents: from the menu of the Agents section header, the user picks agents and a file
     name. The app writes one file. Import agents: the user picks such a file. The app lists what

@@ -24,7 +24,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 014 | [Local data, privacy, secrets and export](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
-| 017 | [Sync between two computers: what syncs, conflicts, where tasks run](017-sync.md) | Draft |
+| 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
 
 ## Milestones
 
@@ -37,7 +37,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M5a | 012, 001, 013, 014, 015 | Link between computers, on one network or through a VPN |
 | M5b | 011, 012 | Phone app that pairs with one or more computers |
 | M6 | 015 | Notifications and status island |
-| M5c | 017, 012 | Sync between two computers (after M5a) |
+| M5c | 019, 012 | Sync between two computers (after M5a) |
 | M7 | Changes listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S18 to S25 |
 | M8 | 016 | Agent knowledge: articles, sources, check |
 

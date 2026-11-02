@@ -68,7 +68,7 @@ client shows it and sends commands.
   paired again.
 - On the server, each linked device in that list has the switch "Can create and change agents".
   It takes effect at once, also for a connection that is open. While the two computers sync
-  (017), the switch for that device shows as on and cannot be changed. A link made before this switch
+  (019), the switch for that device shows as on and cannot be changed. A link made before this switch
   existed has it off until the user turns it on.
 - On the client: Settings → Devices lists the servers this device can open. The user picks one
   and chooses "Remove". The link ends on both sides. The cache of that server is deleted.
@@ -124,7 +124,7 @@ button on a section, the agent profile, the channel settings, the memory list.
 - **Working agents:** a client cannot archive an agent while it works. It stops the agent first.
 - **Record:** the profile of an agent, on the server and on clients, shows "Last changed by
   <device name>" with the time, when a client made the last change. A later change in the window
-  of the server removes the line. A change that arrives by sync (017) leaves it as it is. A
+  of the server removes the line. A change that arrives by sync (019) leaves it as it is. A
   change shows on the server and on all clients at once.
 - **No switch:** a client without the switch sees the profiles as read-only text, and the plus
   buttons are not shown. A try to change anything gets the error "Not allowed", with the line
@@ -203,7 +203,7 @@ accept connections, this is the same computer.
 
 ## Out of scope
 
-- Sync of agents and data between computers. See 017. A link alone copies nothing.
+- Sync of agents and data between computers. See 019. A link alone copies nothing.
 - An agent on one computer that joins a channel of another computer.
 - A relay or a connection service that links devices which share no network. The user uses a
   VPN for this.
