@@ -5,8 +5,11 @@ import { type ChatMessage, messageText, type PermissionLevel } from "@robot/shar
 import { Effect, Exit } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes, sha256, tarGzOf } from "../../../e2e/fake-runtimes.ts"
 import { runRequest } from "../rpc.ts"
+import { type Ctx, KINDS } from "../sync/kinds.ts"
+import { parseOp } from "../sync/wire.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
+import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
@@ -608,5 +611,96 @@ describe("the browser for a subscription", () => {
     await s.settled()
     expect((await s.reply())?.status).toBe("stopped")
     expect(s.t.browserLog).toEqual([])
+  })
+})
+
+describe("the browser step of a subscription agent, seen and answered from other devices", () => {
+  const open = 'BROWSER:browser_open {"url":"https://example.com/a"}'
+  const opened = (s: Awaited<ReturnType<typeof chatSetup>>) =>
+    s.t.browserLog.filter((x) => x === `${s.agent.id}:open https://example.com/a`).length
+
+  /** What the other computer does with a message: every field is read again and checked strictly. */
+  const syncAccepts = async (s: Awaited<ReturnType<typeof chatSetup>>) => {
+    const db = await s.run(Database.use((d) => Effect.succeed(d)))
+    const id = ((await s.reply()) as ChatMessage).id
+    const read = KINDS.message.read({ db, self: "dev-a" } as Ctx, id)
+    if (!read) return false
+    const stamp = [Date.now(), 0, "dev-a"]
+    const fields = JSON.parse(JSON.stringify(read.fields)) as Record<string, unknown>
+    return (
+      parseOp(
+        {
+          k: "message",
+          i: id,
+          o: "dev-a",
+          f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+        },
+        Date.now(),
+      ) !== undefined
+    )
+  }
+
+  test("a linked device and the sync peer answer the card; their Always allow is one Allow and saves no rule; the card passes the sync check", async () => {
+    const s = await chatSetup("claude_code", "ask_all")
+    /** The answer of a linked device: the sync peer is a linked device too (spec 012, 019). */
+    const answer = (name: string, value: string) =>
+      runRequest(
+        s.t.runtime,
+        "tools.respond",
+        { agentId: s.agent.id, callId: "app-1", answer: value },
+        { id: `device-${name}`, name },
+      )
+    const done = () =>
+      s
+        .history()
+        .then((h) => h.messages.filter((m) => m.author === "agent" && m.status === "done").length)
+
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await s.card())?.ask).toMatchObject({
+      kind: "approval",
+      summary: "https://example.com/a",
+    })
+    // The card that waits, with its ask, is a card that the other computer takes.
+    expect(await syncAccepts(s)).toBe(true)
+    // The island and the system notice show the request, with the choice to always allow.
+    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().attention)))
+    expect(waiting).toMatchObject({ callId: "app-1", kind: "approval", always: true })
+
+    // A linked device says "Always allow": the page opens once, and the card names the device.
+    expect((await answer("Phone", "always")).ok).toBe(true)
+    await s.settled()
+    expect(opened(s)).toBe(1)
+    expect((await s.card())?.decision).toEqual({ answer: "allow", by: "Phone" })
+    expect(await syncAccepts(s)).toBe(true)
+
+    // No rule was saved, so the same step asks again. The sync peer denies it.
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await answer("MacBook 2", "deny")).ok).toBe(true)
+    await s.settled()
+    expect(opened(s)).toBe(1)
+    expect(messageText((await s.reply()) as ChatMessage)).toContain("The user denied this step.")
+    expect((await s.card())?.decision).toEqual({ answer: "deny", by: "MacBook 2" })
+    expect(await syncAccepts(s)).toBe(true)
+
+    // The sync peer says "Always allow" too: one Allow, and the step asks again afterwards.
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await answer("MacBook 2", "always")).ok).toBe(true)
+    await s.settled()
+    expect(opened(s)).toBe(2)
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+
+    // The window of this computer can make the rule, and then the step asks nothing.
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "always")))
+    await until(async () => (await done()) === 4)
+    expect(opened(s)).toBe(3)
+    await s.send(open)
+    await until(async () => (await done()) === 5)
+    expect(opened(s)).toBe(4)
+    expect((await s.card())?.decision).toBeUndefined()
+    expect(await syncAccepts(s)).toBe(true)
   })
 })
