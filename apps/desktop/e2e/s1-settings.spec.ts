@@ -7,9 +7,9 @@ const chooseOption = (page: Page, group: string, value: string) =>
   page.getByTestId(group).locator(`label[data-value="${value}"]`).click()
 
 /** Words that may stay in Latin letters in the Korean interface: names and code. */
-const allowedLatin = new Set(["ROBot", "English", "OpenAI", "Anthropic", "API", "URL"])
+const allowedLatin = new Set(["ROBot", "English", "OpenAI", "Anthropic", "API", "URL", "VPN"])
 // Names of products are not translated.
-const productNames = /Claude Code|Muse Code|Codex|\bpi\b/g
+const productNames = /Claude Code|Muse Code|Codex|Tailscale|\bpi\b/g
 
 const latinWords = async (page: Page, selector: string) => {
   const text = await page.locator(selector).evaluate((el) => {

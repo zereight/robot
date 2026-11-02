@@ -103,7 +103,11 @@ export const NotificationsSection = () => {
       <Show when={ui.server()}>
         {(server) => (
           <MuteSelect
-            label={t("settings.notify.thisServer")}
+            label={
+              server().kind === "local"
+                ? t("settings.notify.thisServer")
+                : t("settings.notify.serverNamed", { name: server().name })
+            }
             kind="server"
             id={server().id}
             mutes={mutes()}

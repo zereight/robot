@@ -5,7 +5,7 @@ import { Effect, ManagedRuntime } from "effect"
 import { app, BrowserWindow } from "electron"
 import { appLayer } from "./layers.ts"
 import { electronPlatform, setMainWindow } from "./platform-electron.ts"
-import { registerRpc } from "./rpc.ts"
+import { registerRpc } from "./register-rpc.ts"
 import { Database } from "./services/Database.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Platform } from "./services/Platform.ts"
@@ -18,6 +18,34 @@ app.setName("ROBot")
 app.setPath("userData", process.env.ROBOT_USER_DATA ?? join(app.getPath("appData"), "ROBot"))
 if (process.env.ROBOT_SYSTEM_LOCALE)
   app.commandLine.appendSwitch("lang", process.env.ROBOT_SYSTEM_LOCALE)
+
+/** The longest time that the app waits for its services to close before it quits anyway. */
+const CLOSE_MS = 5_000
+
+/**
+ * Closes the services in order and waits for them. The database takes no more writes first, so
+ * work that the quit cuts off does not record itself as stopped: a task that waits for the user
+ * still waits at the next start (spec 005). The link server, the connections, the timers and the
+ * database close before the app quits.
+ */
+const closeRuntime = async (runtime: ReturnType<typeof makeRuntime>) => {
+  try {
+    await runtime.runPromise(Database.use((db) => Effect.sync(() => db.freeze())))
+  } catch (error) {
+    console.error("close: freeze failed", error)
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, CLOSE_MS)
+  })
+  try {
+    await Promise.race([runtime.dispose(), late])
+  } catch (error) {
+    console.error("close: dispose failed", error)
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 const broadcast = (event: string, payload: unknown) => {
   for (const win of BrowserWindow.getAllWindows())
@@ -88,8 +116,16 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-  app.on("will-quit", () => {
-    void runtime.dispose()
+  // The quit waits for the services to close. `will-quit` is stopped once, the services close,
+  // and then the app ends. (A second `app.quit()` does nothing after `will-quit` was stopped.)
+  let closing = false
+  app.on("will-quit", (event) => {
+    event.preventDefault()
+    if (closing) return
+    closing = true
+    // A late error of a socket or a timer must not open a dialog that stops the quit.
+    process.on("uncaughtException", (error) => console.error("error while closing", error))
+    void closeRuntime(runtime).finally(() => app.exit(0))
   })
 })
 

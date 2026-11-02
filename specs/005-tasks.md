@@ -24,7 +24,8 @@ and workflows.
 
 ## Rules
 
-- One agent runs one task at a time. Other tasks for it wait in its queue in order.
+- One agent runs one task at a time. Other tasks for it wait in its queue in order. When two
+  computers sync (019) and both are online, this holds across both computers.
 - A task waiting for the user (an approval or a question) does not block other agents.
 - Stopping a parent stops its children.
 - A parent task waits for the tasks it gave out. So the cancel of one child alone would leave the

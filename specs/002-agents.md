@@ -48,7 +48,8 @@ An agent has:
    restore it from settings. It returns to its section. If the section is gone, it returns with
    no section.
 9. Delete: only from the archive. The app asks to confirm and says the workspace folder will be
-   moved to the system trash.
+   moved to the system trash. If this computer syncs (019), the text also says that the agent
+   is deleted on the other computer. There, the workspace folder stays where it is.
 10. Export agents: from the menu of the Agents section header, the user picks agents and a file
     name. The app writes one file. Import agents: the user picks such a file. The app lists what
     it will make, asks for one model for all of them (see 006), and asks to confirm.
@@ -70,6 +71,8 @@ An agent has:
 
 - Changing the model keeps the agent's history, memory and workspace.
 - A working agent cannot be deleted; the user must stop it first.
+- A linked device that the user allows can create, edit, duplicate and archive agents on this
+  computer, with limits on the folder, the permission level and the model accounts (012).
 - The face is the same everywhere: list, messages, activity panel, phone.
 - Agents made by other ways than the form (an import, a tool of another agent, a template) keep
   the name they were given.

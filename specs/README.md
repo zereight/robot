@@ -19,13 +19,14 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 009 | [Routines: scheduled jobs, calendar, missed runs, limits and pause on repeated failure](009-routines.md) | Draft |
 | 010 | [Workflows: a graph of steps and triggers, with an assistant and workflow files](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, read and send, notifications](011-phone-app.md) | Draft |
-| 012 | [Desktop-to-phone link: messages, identity, offline behaviour](012-desktop-phone-link.md) | Draft |
+| 012 | [Device link: pair phones and computers, messages, identity, offline behaviour](012-device-link.md) | Draft |
 | 013 | [Settings, themes, languages, decision model and roles](013-settings.md) | Draft |
 | 014 | [Local data, privacy, secrets and export](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
 | 017 | [Skills: saved instructions that the user calls with a slash](017-skills.md) | Draft |
 | 018 | [Connections: outside tools for agents, with approvals](018-connections.md) | Draft |
+| 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
 
 ## Milestones
 
@@ -35,7 +36,9 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M2 | 004, 005 | Channels, split work, tasks page |
 | M3 | 007, 008 | Workspace tools, approvals, browser, memory |
 | M4 | 009, 010 | Routines and workflows |
-| M5 | 011, 012 | Phone app and link |
+| M5a | 012, 001, 013, 014, 015 | Link between computers, on one network or through a VPN |
+| M5b | 011, 012 | Phone app that pairs with one or more computers |
+| M5c | 019, 012 | Sync between two computers (after M5a) |
 | M6 | 015 | Notifications and status island |
 | M7 | Changes listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S18 to S25 |
 | M8 | 016 | Agent knowledge: articles, sources, check |

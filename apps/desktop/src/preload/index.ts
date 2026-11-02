@@ -3,7 +3,7 @@ import { EVENT_CHANNEL, INVOKE_CHANNEL, type RobotBridge } from "@robot/shared/i
 import { contextBridge, ipcRenderer, webUtils } from "electron"
 
 const bridge: RobotBridge = {
-  invoke: (method, input) => ipcRenderer.invoke(INVOKE_CHANNEL, method, input),
+  invoke: (method, input, server) => ipcRenderer.invoke(INVOKE_CHANNEL, method, input, server),
   pathForFile: (file) => webUtils.getPathForFile(file),
   on: (event, listener) => {
     const handler = (_: unknown, name: string, payload: unknown) => {

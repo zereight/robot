@@ -74,6 +74,8 @@ export const Switch = (props: {
   checked: boolean
   onChange: (checked: boolean) => void
   testId?: string
+  /** A switch the user cannot change now. It keeps its value. */
+  disabled?: boolean
 }) => (
   <button
     type="button"
@@ -81,6 +83,7 @@ export const Switch = (props: {
     class={styles.switch}
     aria-label={props.label}
     aria-checked={props.checked}
+    disabled={props.disabled}
     data-testid={props.testId}
     onClick={() => props.onChange(!props.checked)}
   />

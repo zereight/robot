@@ -51,6 +51,8 @@ export interface PlaceTarget {
   readonly kind: "agent" | "channel"
   readonly id: string
   readonly messageId?: string
+  /** Set for a place on a linked server: the window opens that server first (spec 012). */
+  readonly serverId?: string
 }
 
 export interface IslandAgent {
@@ -149,8 +151,23 @@ export interface IslandAttention {
   readonly place: string | null
   /** For an approval, the kind of step. Null when the app does not know it. */
   readonly step: ToolStepKind | null
+  /**
+   * True when the island may offer "Always allow for this agent": an approval of a task that runs
+   * on this computer, with that choice on its card. A request of the other computer of a sync
+   * pair never has it (spec 015, 019).
+   */
+  readonly always: boolean
   readonly target: PlaceTarget
 }
+
+/**
+ * The answers that the attention card offers, in the order of its buttons. A question has none:
+ * the user answers it in the app. "Always allow" shows only when the request has that choice.
+ */
+export const attentionAnswers = (
+  a: Pick<IslandAttention, "kind" | "always">,
+): ("allow" | "always" | "deny")[] =>
+  a.kind !== "approval" ? [] : a.always ? ["allow", "always", "deny"] : ["allow", "deny"]
 
 /** What an agent does now, see "Detail card" in spec 015. */
 export type IslandDoing =

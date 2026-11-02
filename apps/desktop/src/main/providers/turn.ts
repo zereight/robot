@@ -3,6 +3,7 @@ import type { BridgeHandler } from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import type { ToolOutcome } from "./agent.ts"
 import type { ToolCall, ToolDef, Turn } from "./chat.ts"
+import type { Resume } from "./resume.ts"
 
 /** What one turn of an agent needs, whatever kind of account answers it. */
 export interface TurnInput {
@@ -17,6 +18,8 @@ export interface TurnInput {
   readonly tools?: readonly ToolDef[]
   /** False when the turn may only answer in text. */
   readonly useTools: boolean
+  /** Set when the turn goes on after a restart, at a card that waits (spec 005). API accounts only. */
+  readonly resume?: Resume
 }
 
 /** How a turn reaches the user and the tools. */

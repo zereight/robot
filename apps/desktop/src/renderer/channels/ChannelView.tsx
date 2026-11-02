@@ -19,6 +19,7 @@ import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { focusMessage, setFocusMessage } from "../state/focus.ts"
+import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ChannelDialog } from "./ChannelDialog.tsx"
@@ -46,10 +47,12 @@ const removedAgent = (name: string): Agent => ({
   memoryEnabled: false,
   knowledgeEnabled: false,
   createdAt: 0,
+  changedBy: null,
 })
 
 export const ChannelHeader = (props: { channel: Channel }) => {
   const { t } = useApp()
+  const ui = useUi()
   const [open, setOpen] = createSignal(false)
   return (
     <>
@@ -65,13 +68,15 @@ export const ChannelHeader = (props: { channel: Channel }) => {
           {props.channel.topic}
         </span>
       </Show>
-      <IconButton
-        label={t("channels.settings")}
-        onClick={() => setOpen(true)}
-        data-testid="channel-settings"
-      >
-        <Settings2 size={16} />
-      </IconButton>
+      <Show when={ui.canChange()}>
+        <IconButton
+          label={t("channels.settings")}
+          onClick={() => setOpen(true)}
+          data-testid="channel-settings"
+        >
+          <Settings2 size={16} />
+        </IconButton>
+      </Show>
       <Presence when={open()}>
         {() => <ChannelDialog channel={props.channel} onClose={() => setOpen(false)} />}
       </Presence>
@@ -103,6 +108,7 @@ const Chip = (props: { chip: PartChip; onJump: (id: string) => void }) => {
 export const ChannelView = (props: { channel: Channel }) => {
   const app = useApp()
   const { t } = app
+  const ui = useUi()
   const agents = useAgents()
   const messages = createChannelChat(props.channel.id)
   const [text, setText] = createSignal("")
@@ -315,6 +321,13 @@ export const ChannelView = (props: { channel: Channel }) => {
         </div>
       </Show>
       <div class={chat.composer}>
+        <Show when={ui.serverOffline()}>
+          <div class={chat.composerError} role="status" data-testid="channel-offline">
+            {ui.server()?.state === "not_allowed"
+              ? t("link.state.not_allowed", { name: ui.server()?.name ?? "" })
+              : t("link.state.offline", { name: ui.server()?.name ?? "" })}
+          </div>
+        </Show>
         <Show when={error()}>
           {(err) => <div class={chat.composerError}>{t(err().key, err().params)}</div>}
         </Show>
@@ -323,6 +336,7 @@ export const ChannelView = (props: { channel: Channel }) => {
             ref={input}
             class={chat.input}
             rows={1}
+            disabled={ui.serverOffline()}
             value={text()}
             placeholder={t("channels.placeholder", { name: props.channel.name })}
             aria-label={t("channels.placeholder", { name: props.channel.name })}
@@ -347,7 +361,7 @@ export const ChannelView = (props: { channel: Channel }) => {
                 type="button"
                 class={chat.sendButton}
                 aria-label={t("channels.send")}
-                disabled={!text().trim()}
+                disabled={!text().trim() || ui.serverOffline()}
                 onClick={send}
                 data-testid="channel-send"
               >

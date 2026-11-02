@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
-import { Deferred, Effect, ManagedRuntime } from "effect"
+import { Deferred, Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
+import { Database } from "./Database.ts"
 import { AppError } from "./errors.ts"
+import { secretKey } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
+import { Tools } from "./Tools.ts"
 import { testPlatform, testRuntime } from "./testing.ts"
 
 const setup = async () => {
@@ -167,6 +170,139 @@ describe("Tasks", () => {
     const detail = await second.runPromise(Tasks.use((t) => t.get(task.id)))
     expect(detail.task.state).toBe("failed")
     expect(detail.task.error?.code).toBe("app_stopped")
+    await second.dispose()
+  })
+  test("after a restart, a task that waits for the user waits on, unless it cannot (spec 005)", async () => {
+    const { platform, dataDir } = testPlatform()
+    const file = join(dataDir, "robot.db")
+    // The key of the API account stays across the restart, as in the keychain.
+    const keys = new Map([[secretKey("api"), "sk-test"]])
+    const secrets = Layer.succeed(
+      Secrets,
+      Secrets.of({
+        get: (key) => keys.get(key) ?? null,
+        set: (key, value) => void keys.set(key, value),
+        remove: (key) => void keys.delete(key),
+      }),
+    )
+    const open = () =>
+      ManagedRuntime.make(
+        appLayer({ platform, databaseFile: file, localServerName: "T", emit: () => {}, secrets }),
+      )
+    const first = open()
+    const local = await first.runPromise(Servers.use((s) => s.local))
+    const sql = (text: string, ...args: (string | number | null)[]) =>
+      first.runPromise(Database.use((db) => Effect.sync(() => db.run(text, ...args))))
+    await sql(
+      "INSERT INTO provider_account (id, kind, name, base_url, created_at) VALUES ('api', 'openai', 'Api', 'http://x', 1)",
+    )
+    await sql(
+      "INSERT INTO provider_account (id, kind, name, base_url, created_at) VALUES ('cli', 'claude_code', 'Cli', '', 1)",
+    )
+    const agent = async (name: string, account: string) => {
+      const made = await first.runPromise(
+        Agents.use((a) =>
+          a.create({ serverId: local.id, name, role: "", instructions: "", model: null }),
+        ),
+      )
+      await sql(
+        "UPDATE agent SET model_account_id = ?, model_name = 'm' WHERE id = ?",
+        account,
+        made.id,
+      )
+      return made.id
+    }
+    const waitingCard = JSON.stringify([
+      {
+        kind: "tool",
+        id: "c1",
+        name: "run_command",
+        label: "run_command",
+        state: "waiting",
+        input: JSON.stringify({ command: "rm /tmp/robot-unit-test-missing-file" }),
+        output: "",
+        ask: { kind: "approval", summary: "rm /tmp/robot-unit-test-missing-file", askedAt: 5 },
+      },
+    ])
+    /** A task that waits at a card, as the app left it when it closed. */
+    const waiting = async (
+      id: string,
+      agentId: string,
+      extra: { source?: string; parent?: string | null; state?: string; parts?: string } = {},
+    ) => {
+      await sql(
+        `INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES (?, ?, 'agent', ?, 'streaming', 1)`,
+        `m-${id}`,
+        agentId,
+        extra.parts ?? waitingCard,
+      )
+      await sql(
+        `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, message_id, state, created_at)
+         VALUES (?, ?, 'p', 'p', ?, ?, ?, ?, ?, 1)`,
+        id,
+        agentId,
+        extra.source ?? "chat",
+        agentId,
+        extra.parent ?? null,
+        `m-${id}`,
+        extra.state ?? "waiting",
+      )
+    }
+    const ada = await agent("Ada", "api")
+    const bob = await agent("Bob", "cli")
+    const cy = await agent("Cy", "api")
+    const di = await agent("Di", "api")
+    const ed = await agent("Ed", "api")
+    const fay = await agent("Fay", "api")
+    await waiting("kept", ada)
+    // A second task of the same agent is only queued: it fails with the reason.
+    await waiting("queued", ada, { state: "queued", parts: "[]" })
+    await waiting("runtime", bob)
+    await waiting("child", cy, { parent: "kept" })
+    await waiting("workflow", di, { source: "workflow" })
+    // A task that waits for the user for another reason has no card to show again.
+    await waiting("no-card", ed, { parts: "[]" })
+    await waiting("running", fay, { state: "running", parts: "[]" })
+    await first.dispose()
+
+    const second = open()
+    const states = Object.fromEntries(
+      await Promise.all(
+        ["kept", "queued", "runtime", "child", "workflow", "no-card", "running"].map(
+          async (id) => [id, (await second.runPromise(Tasks.use((t) => t.get(id)))).task] as const,
+        ),
+      ),
+    )
+    expect(states.kept?.state).toBe("waiting")
+    expect(states.kept?.error).toBeNull()
+    for (const id of ["queued", "runtime", "child", "workflow", "no-card", "running"] as const) {
+      expect(states[id]?.state).toBe("failed")
+      expect(states[id]?.error?.code).toBe("app_stopped")
+    }
+    expect(
+      (await second.runPromise(Tasks.use((t) => Effect.sync(() => t.waitingAfterRestart())))).map(
+        (t) => t.id,
+      ),
+    ).toEqual(["kept"])
+    // The turn started again and asks for the same card, so an answer reaches it.
+    for (let i = 0; i < 100; i++) {
+      if (await second.runPromise(Tools.use((t) => Effect.sync(() => t.isWaiting(ada, "c1")))))
+        break
+      await sleep(20)
+    }
+    expect(
+      await second.runPromise(Tools.use((t) => Effect.sync(() => t.isWaiting(ada, "c1")))),
+    ).toBe(true)
+    const message = await second.runPromise(
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.get<{ status: string; parts: string }>("SELECT * FROM message WHERE id = 'm-kept'"),
+        ),
+      ),
+    )
+    // The reply keeps streaming, and the card keeps the time of its first ask.
+    expect(message?.status).toBe("streaming")
+    expect(JSON.parse(message?.parts ?? "[]")[0].ask.askedAt).toBe(5)
     await second.dispose()
   })
 })

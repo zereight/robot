@@ -3,6 +3,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
+import { MemoryNetwork } from "../link/nearby.testing.ts"
+import { bindLinkDispatcher } from "../rpc.ts"
 import type { BrowserPage, PlatformService } from "./Platform.ts"
 import { Secrets } from "./Secrets.ts"
 
@@ -23,6 +25,8 @@ export const testPlatform = () => {
     shapes: [] as string[],
     fits: [] as { width: number; height: number }[],
     shown: 0,
+    /** What "Save as" answers. Undefined means the user cancelled. */
+    savePath: undefined as string | undefined,
   }
   const fakeBrowser = (agentId: string): BrowserPage => {
     let open = false
@@ -71,13 +75,14 @@ export const testPlatform = () => {
     systemLocale: () => "en-US",
     pickFolder: async () => undefined,
     pickFiles: async () => [],
-    pickSavePath: async () => undefined,
+    pickSavePath: async () => shell.savePath,
     pickArchive: async () => undefined,
     pickAgentFileSave: async () => undefined,
     pickAgentFile: async () => undefined,
     pickWorkflowFileSave: async () => undefined,
     pickWorkflowFile: async () => undefined,
     openPath: async () => {},
+    openFile: async () => {},
     setStartAtLogin: () => {},
     setThemeSource: () => {},
     copyText: () => {},
@@ -110,7 +115,7 @@ export const testPlatform = () => {
 }
 
 /** The full app layer on an in-memory database, with recorded events. */
-export const testRuntime = () => {
+export const testRuntime = (options: { name?: string; network?: MemoryNetwork } = {}) => {
   const { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, shell } =
     testPlatform()
   const events: { event: string; payload: unknown }[] = []
@@ -118,11 +123,15 @@ export const testRuntime = () => {
     appLayer({
       platform,
       databaseFile: ":memory:",
-      localServerName: "Test computer",
+      linkPort: 0,
+      nearbySocket: (options.network ?? new MemoryNetwork()).open,
+      localServerName: options.name ?? "Test computer",
       emit: (event, payload) => events.push({ event, payload }),
       secrets: Secrets.memory,
     }),
   )
+  // The requests of linked devices run the real handlers, as in the app.
+  void bindLinkDispatcher(runtime)
   return { runtime, dataDir, trashed, events, browserLog, browserPlaced, browserInput, shell }
 }
 

@@ -8,7 +8,9 @@ new user knows where to look.
 ## Concepts
 
 - **Server rail**: a narrow column at the far left edge of the window. One round tile per server,
-  then an add button. The selected server has a short bar at its left side.
+  then an add button. The selected server has a short bar at its left side. The first tile is
+  this computer. Tiles of linked computers (012) follow in the order of pairing. A linked tile
+  shows the first letter of the computer's name and the connection state (012).
 - **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, workflows,
   tasks, usage. At the bottom: help and settings.
 - **Place list**: a column beside the rail. A search field at the top, then sections. A section has
@@ -23,11 +25,15 @@ new user knows where to look.
 ## Flows
 
 1. The user clicks a server tile. The place list and the conversation change to that server.
+   On a linked computer, the places and the pages work as 012 says. The plus buttons on the
+   sections show only when that computer lets this device create and change agents.
 2. The user clicks a place. The conversation opens it. The place row shows as selected.
 3. The user types in search. The list shows only places whose name matches. Escape clears it.
 4. The user collapses a section by clicking its name. The app remembers this per section.
 5. The user hides or shows the activity panel with a header button. The app remembers this.
 6. The user drags the edge of the place list to change its width, between 200 and 400 px.
+7. The user clicks the add button on the rail. A dialog opens: "Connect to a computer" (012).
+   The user can also remove a linked tile with its context menu.
 
 ## User sections
 
@@ -105,6 +111,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 ## States
 
 - No server connected: the rail shows only the add button; the main area explains how to start.
+- A linked server that is offline: its tile is muted, and the place list shows the cached places
+  (012).
 - No places in a section: the section shows a short muted line, not an empty gap.
 
 ## Rules
@@ -116,7 +124,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 ## Acceptance
 
 - Selecting a server, then a place, opens the right conversation; the selection survives a
-  restart.
+  restart. This also holds for a linked computer.
+- The add button opens the connect dialog.
 - At 760 px width, the activity panel is hidden and the rail is 56 px wide.
 - Make the agent section "Research", then use "Move to section" on one agent: the agent shows
   under "Research" and not among the other agents. After a restart, it still does.

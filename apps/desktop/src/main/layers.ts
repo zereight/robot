@@ -1,5 +1,6 @@
 import { join } from "node:path"
 import { Layer } from "effect"
+import type { OpenSocket } from "./link/nearby.ts"
 import { Activity } from "./services/Activity.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
@@ -7,6 +8,7 @@ import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
+import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
@@ -14,12 +16,14 @@ import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
+import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import type { Secrets } from "./services/Secrets.ts"
 import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -33,6 +37,10 @@ export interface AppLayerOptions {
   readonly localServerName: string
   readonly emit: (event: string, payload: unknown) => void
   readonly secrets: Layer.Layer<Secrets>
+  /** The port of the device link. Tests use 0 to let the system choose. */
+  readonly linkPort?: number
+  /** Opens the socket that finds and announces computers near. Tests give a network in memory. */
+  readonly nearbySocket?: OpenSocket
 }
 
 /** Every main process service, wired together. */
@@ -50,7 +58,12 @@ export const appLayer = (options: AppLayerOptions) => {
     Sections.layer,
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
-  const runtimes = Runtimes.layer.pipe(Layer.provideMerge(stores))
+  const devices = Devices.layer({
+    computerName: options.localServerName,
+    ...(options.linkPort !== undefined ? { port: options.linkPort } : {}),
+    ...(options.nearbySocket ? { nearbySocket: options.nearbySocket } : {}),
+  }).pipe(Layer.provideMerge(stores))
+  const runtimes = Runtimes.layer.pipe(Layer.provideMerge(devices))
   const providers = Providers.layer.pipe(Layer.provideMerge(runtimes))
   const notifier = Notifier.layer.pipe(Layer.provideMerge(providers))
   const memory = Memory.layer.pipe(Layer.provideMerge(notifier))
@@ -66,7 +79,9 @@ export const appLayer = (options: AppLayerOptions) => {
   const places = Places.layer.pipe(Layer.provideMerge(workflows))
   const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(places))
   const workflowFiles = WorkflowFiles.layer.pipe(Layer.provideMerge(agentFiles))
-  return Data.layer.pipe(Layer.provideMerge(workflowFiles))
+  const remote = Remote.layer.pipe(Layer.provideMerge(workflowFiles))
+  const data = Data.layer.pipe(Layer.provideMerge(remote))
+  return Sync.layer.pipe(Layer.provideMerge(data))
 }
 
 export type AppServices = Layer.Success<ReturnType<typeof appLayer>>
