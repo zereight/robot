@@ -9,7 +9,10 @@ import {
   type AgentFileImported,
   type AgentFilePreview,
   type AgentModel,
+  type AgentPick,
+  type ChecklistItem,
   faceFromName,
+  ignoredAgentFields,
   nameKey,
   parseAgentFile,
   planNames,
@@ -19,6 +22,7 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer } from "effect"
 import { Agents } from "./Agents.ts"
+import { Checklists } from "./Checklists.ts"
 import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, secretKey } from "./Providers.ts"
@@ -33,10 +37,14 @@ export interface AgentFilesService {
   }): Effect.Effect<{ path: string | null; count: number }, AppError>
   /** Asks for an agent file and reads it. Returns what an import would make, or null if cancelled. */
   open(serverId: string): Effect.Effect<AgentFilePreview | null, AppError>
-  /** Makes the agents of the file that `open` read, all with the one model. */
+  /**
+   * Makes the agents of the file that `open` read that the user ticked, all with the one model.
+   * A new agent with a routine gets a checklist in its chat.
+   */
   import(input: {
     serverId: string
     model: AgentModel | null
+    pick: readonly AgentPick[]
   }): Effect.Effect<AgentFileImported, AppError>
 }
 
@@ -53,6 +61,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
       const providers = yield* Providers
       const secrets = yield* Secrets
       const platform = yield* Platform
+      const checklists = yield* Checklists
       /** The file that `open` read last. `import` makes its agents. */
       let pending: string | undefined
 
@@ -80,6 +89,13 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         const parsed = parseAgentFile(text)
         if (!parsed.ok) return yield* refusal(parsed)
         const hide = yield* hider
+        /** True when the app hid a secret in one of these texts. */
+        const hidden = (...texts: string[]) => texts.some((text) => hide(text) !== text)
+        const secrets = parsed.file.agents.map((a) => ({
+          agent: hidden(a.name, a.role),
+          instructions: hidden(a.instructions),
+          routines: a.routines.map((r) => hidden(r.name, r.prompt)),
+        }))
         const cleaned: AgentFileAgent[] = parsed.file.agents.map((a) => ({
           name: clip(hide(a.name).trim(), AGENT_NAME_MAX),
           role: clip(hide(a.role).trim(), AGENT_ROLE_MAX),
@@ -97,6 +113,9 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         ].map((a) => a.name)
         return {
           agents: cleaned,
+          secrets,
+          ignored: ignoredAgentFields(text),
+          taken,
           names: planNames(
             cleaned.map((a) => a.name),
             taken,
@@ -161,26 +180,70 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         return {
           agents: loaded.agents.map((a, i) => {
             const name = loaded.names[i] ?? a.name
+            const secret = loaded.secrets[i]
             return {
               name,
               fileName: name === a.name ? null : a.name,
               role: a.role,
               face: a.face ?? faceFromName(name),
-              routines: a.routines.length,
+              secretRemoved: secret?.agent ?? false,
+              instructions: {
+                length: [...a.instructions].length,
+                secretRemoved: secret?.instructions ?? false,
+              },
+              routines: a.routines.map((r, j) => ({
+                name: r.name,
+                schedule: r.schedule,
+                secretRemoved: secret?.routines[j] ?? false,
+              })),
             }
           }),
+          notImported: loaded.ignored.map((f) => ({ reason: "unknown_field" as const, ...f })),
         } satisfies AgentFilePreview
       })
 
       const importAgents = Effect.fn("AgentFiles.apply")(function* (input: {
         serverId: string
         model: AgentModel | null
+        pick: readonly AgentPick[]
       }) {
         if (!pending) return yield* new AppError({ code: "invalid_input" })
         const { model } = input
         if (model && !(yield* providers.list).some((a) => a.id === model.accountId))
           return yield* new AppError({ code: "provider_not_found" })
         const loaded = yield* load(pending, input.serverId)
+        // The ticks of the review. Nothing ticked makes nothing; a place that the file does not
+        // have is refused.
+        const picks = new Map<number, AgentPick>()
+        for (const p of input.pick) {
+          const agent = loaded.agents[p.index]
+          if (
+            !agent ||
+            picks.has(p.index) ||
+            p.routines.some((j) => agent.routines[j] === undefined) ||
+            new Set(p.routines).size !== p.routines.length
+          )
+            return yield* new AppError({ code: "invalid_input" })
+          picks.set(p.index, p)
+        }
+        if (picks.size === 0) return yield* new AppError({ code: "import_nothing_picked" })
+        const chosen = loaded.agents.flatMap((agent, index) => {
+          const p = picks.get(index)
+          if (!p) return []
+          const routines = new Set(p.routines)
+          return [
+            {
+              ...agent,
+              instructions: p.instructions ? agent.instructions : "",
+              routines: agent.routines.filter((_, j) => routines.has(j)),
+            },
+          ]
+        })
+        // Only the agents that are made take a name: an agent that is not ticked keeps none.
+        const names = planNames(
+          chosen.map((a) => a.name),
+          loaded.taken,
+        )
 
         let made = 0
         let routineCount = 0
@@ -198,8 +261,9 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             model,
           })
           made++
+          const todo: ChecklistItem[] = []
           for (const r of agent.routines) {
-            yield* routines.create(
+            const routine = yield* routines.create(
               {
                 serverId: input.serverId,
                 agentId: created.id,
@@ -211,11 +275,14 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
               { paused: true },
             )
             routineCount++
+            todo.push({ kind: "routine", routineId: routine.id, name: routine.name })
           }
+          // The chat of the new agent shows what still needs the user.
+          yield* checklists.create({ agentId: created.id }, todo)
         })
 
-        for (const [i, agent] of loaded.agents.entries()) {
-          const name = loaded.names[i] ?? agent.name
+        for (const [i, agent] of chosen.entries()) {
+          const name = names[i] ?? agent.name
           const exit = yield* Effect.exit(makeOne(agent, name))
           if (Exit.isFailure(exit)) {
             // The agents made so far stay. The error names the one that stopped the import.
