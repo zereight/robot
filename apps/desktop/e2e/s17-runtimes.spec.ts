@@ -122,6 +122,109 @@ test("subscription: Claude Code connects without a key, chats, and asks before a
   await app.close()
 })
 
+test("subscription: a second Claude account signs in on its own, and each account runs with its own sign-in", async () => {
+  test.setTimeout(120_000)
+  const fake = makeFakeRuntimes()
+  fake.setClaude({
+    loggedIn: true,
+    authMethod: "claude.ai",
+    email: "tester@example.com",
+    plan: "max",
+    profileEmail: "second@example.com",
+  })
+  const userData = freshUserData()
+  const { app, page } = await launch(userData, {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+    ROBOT_CLAUDE_BIN: fake.claude,
+    ROBOT_CODEX_BIN: "none",
+    FAKE_LOGIN_MS: "100",
+  })
+  await resizeWindow(app, 1300, 900)
+
+  // The first account may use the account that Claude Code has on this computer.
+  await openAddForm(page)
+  await expect(page.getByTestId("provider-signin-choice")).toBeVisible()
+  await expect(page.getByTestId("provider-signin-hint")).toContainText(
+    "Uses the account that Claude Code is signed in to on this computer.",
+  )
+  await expect(page.getByTestId("runtime-status")).toHaveText("Signed in as tester@example.com.")
+  await page.getByTestId("provider-name").fill("Home")
+  await page.getByTestId("provider-submit").click()
+  await expect(page.getByTestId("provider-status")).toHaveText("Connected")
+
+  // Only one account may use that sign-in. The next account signs in with another account, and
+  // the form says so. Nobody is signed in there until the user signs in.
+  await page.getByTestId("provider-add").click()
+  await expect(page.getByTestId("provider-signin-choice")).toHaveCount(0)
+  await expect(page.getByTestId("provider-signin-hint")).toContainText(
+    "“Home” already uses the account of this computer",
+  )
+  await expect(page.getByTestId("runtime-status")).toHaveText("Not signed in.")
+  await expect(page.getByTestId("provider-submit")).toBeDisabled()
+  await page.getByTestId("runtime-sign-in").click()
+  await expect(page.getByTestId("runtime-status")).toHaveText("Signed in as second@example.com.")
+  await expect(page.getByTestId("runtime-panel").getByTestId("runtime-plan")).toHaveText(
+    "Plan: pro",
+  )
+  await page.getByTestId("provider-name").fill("Work")
+  await shot(page, "s17-05-second-account")
+  await page.getByTestId("provider-submit").click()
+  await expect(page.getByTestId("provider-who")).toHaveCount(2)
+  await expect(page.getByTestId("provider-who").first()).toContainText("tester@example.com")
+  await expect(page.getByTestId("provider-who").first()).not.toContainText("Separate sign-in")
+  await expect(page.getByTestId("provider-who").last()).toContainText("second@example.com")
+  await expect(page.getByTestId("provider-who").last()).toContainText("Separate sign-in")
+  await expect(page.getByTestId("provider-status")).toHaveText(["Connected", "Connected"])
+  await shot(page, "s17-06-two-accounts")
+
+  // The sign-in went into a folder of the app, and the program of the computer was not touched.
+  const login = fake.claudeCalls().filter((c) => c.kind === "login")
+  expect(login).toHaveLength(1)
+  expect(String(login[0]?.configDir).startsWith(join(userData, "sign-ins", "claude_code"))).toBe(
+    true,
+  )
+  expect(JSON.parse(readFileSync(join(fake.dir, "claude-state.json"), "utf8")).email).toBe(
+    "tester@example.com",
+  )
+  await page.getByTestId("settings-close").click()
+
+  // An agent on the second account runs the program with the folder of that account.
+  await page.getByTestId("new-agent").click()
+  await page.getByTestId("agent-name").fill("Wendy")
+  await page.getByTestId("model-account").selectOption({ label: "Work" })
+  await page.getByTestId("model-model").waitFor()
+  await page.getByTestId("agent-submit").click()
+  await page.getByTestId("chat-start").filter({ hasText: "Wendy" }).waitFor()
+  await send(page, "from work")
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Echo: from work")
+  const turn = fake.claudeCalls().find((c) => String(c.prompt).includes("from work"))
+  expect(turn?.configDir).toBe(String(login[0]?.configDir))
+
+  // An agent on the first account sets no folder.
+  await createAgent(page, "Hank")
+  await send(page, "from home")
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Echo: from home")
+  expect(
+    fake.claudeCalls().find((c) => String(c.prompt).includes("from home"))?.configDir,
+  ).toBeNull()
+
+  // Removing the second account signs its sign-in out; the first account stays connected.
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("settings-nav-providers").click()
+  const work = page.locator("[data-testid^=provider-]").filter({ hasText: "Work" })
+  await work.getByTestId("provider-remove").first().click()
+  await expect(page.getByTestId("provider-who")).toHaveCount(1)
+  await expect(page.getByTestId("provider-status")).toHaveText("Connected")
+  await expect
+    .poll(() =>
+      fake.claudeCalls().some((c) => c.kind === "logout" && c.configDir === login[0]?.configDir),
+    )
+    .toBe(true)
+  await app.close()
+})
+
 /** A stand-in for the release list of Codex and the file it points to. */
 const mockCodexRelease = async (program: string) => {
   const archive = tarGzOf("codex-release", program)

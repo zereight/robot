@@ -81,17 +81,23 @@ export const RuntimeSummary = (props: { status: RuntimeStatus }) => {
 
 /**
  * Shows the vendor program: whether it is here, whether the user is signed in with a
- * subscription, and the buttons to download it and to sign in.
+ * subscription, and the buttons to download it and to sign in. `signIn` names a separate sign-in
+ * of an account; without it the panel is about the sign-in of the program on this computer.
  */
-export const RuntimePanel = (props: { kind: RuntimeKind; onReady: (ready: boolean) => void }) => {
+export const RuntimePanel = (props: {
+  kind: RuntimeKind
+  signIn?: string | null
+  onReady: (ready: boolean) => void
+}) => {
   const { t } = useApp()
   const [status, setStatus] = createSignal<RuntimeStatus>()
   const [error, setError] = createSignal<ErrorText>()
+  const target = () => ({ kind: props.kind, signIn: props.signIn ?? null })
 
   const look = async () => {
     setError(undefined)
     try {
-      setStatus(await call("runtimes.status", { kind: props.kind }))
+      setStatus(await call("runtimes.status", target()))
     } catch (e) {
       setError(describeError(e))
     }
@@ -104,7 +110,7 @@ export const RuntimePanel = (props: { kind: RuntimeKind; onReady: (ready: boolea
   onCleanup(() => clearInterval(timer))
   onCleanup(
     window.robot.on("runtimes.changed", (next) => {
-      if (next.kind === props.kind) setStatus(next)
+      if (next.kind === props.kind && next.signIn === (props.signIn ?? null)) setStatus(next)
     }),
   )
   createEffect(() => props.onReady(isReady(status())))
@@ -112,12 +118,12 @@ export const RuntimePanel = (props: { kind: RuntimeKind; onReady: (ready: boolea
   const act = async (method: "runtimes.install" | "runtimes.signIn") => {
     setError(undefined)
     try {
-      setStatus(await call(method, { kind: props.kind }))
+      setStatus(await call(method, target()))
     } catch (e) {
       setError(describeError(e))
     }
   }
-  const cancel = () => void call("runtimes.cancel", { kind: props.kind })
+  const cancel = () => void call("runtimes.cancel", target())
 
   return (
     <div class={styles.runtime} data-testid="runtime-panel">

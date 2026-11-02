@@ -3,6 +3,7 @@ import type { AgentEvent } from "../providers/agent.ts"
 import {
   claudeLogin,
   claudeSignIn,
+  claudeSignOut,
   claudeUsage,
   claudeVersion,
   parseVersion,
@@ -23,18 +24,28 @@ export interface SignInPrompt {
 /** What the app does with one kind of program. */
 export interface Driver {
   version(bin: string): Promise<string | null>
-  login(bin: string): Promise<Login>
+  /**
+   * Who is signed in. `dir` is the folder of a separate sign-in. Only a driver that has
+   * `signOut` takes it; the others look at the one sign-in that the program has.
+   */
+  login(bin: string, dir?: string): Promise<Login>
   /**
    * The usage windows of the plan, asked without a turn. Null when the program does not tell
    * them. Absent when the program tells them in `login`, or not at all.
    */
-  usage?(bin: string): Promise<readonly RuntimeLimit[] | null>
+  usage?(bin: string, dir?: string): Promise<readonly RuntimeLimit[] | null>
   /** Starts the sign-in of the program. Absent when the user signs in inside the program. */
   signIn?(
     bin: string,
     signal: AbortSignal,
     onPrompt: (prompt: SignInPrompt) => void,
+    dir?: string,
   ): Promise<Finished>
+  /**
+   * Signs out of a separate sign-in. Present only for a program that can have one: the program
+   * then keeps that sign-in in the folder `dir`.
+   */
+  signOut?(bin: string, dir: string): Promise<Finished>
   /** Hosts whose pages may be opened for the sign-in. The program that opens its own page needs none. */
   readonly signInHosts?: readonly string[]
   run(run: RuntimeRun): AsyncGenerator<AgentEvent>
@@ -50,7 +61,8 @@ export const drivers: Record<RuntimeKind, Driver> = {
     version: claudeVersion,
     login: claudeLogin,
     usage: claudeUsage,
-    signIn: (bin, signal) => claudeSignIn(bin, signal),
+    signIn: (bin, signal, _onPrompt, dir) => claudeSignIn(bin, signal, dir),
+    signOut: claudeSignOut,
     run: runClaude,
   },
   codex: {

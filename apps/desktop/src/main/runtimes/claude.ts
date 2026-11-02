@@ -34,8 +34,19 @@ export const parseClaudeStatus = (stdout: string): Login => {
   }
 }
 
-export const claudeLogin = async (bin: string): Promise<Login> => {
-  const done = await execute(bin, ["auth", "status"], { env: runtimeEnv(), timeoutMs: 15_000 })
+/**
+ * The environment of the program. For a separate sign-in, `dir` is its folder: the program keeps
+ * its sign-in, settings and sessions there and not in the folder of the user. Without `dir` the
+ * program uses its own place, as it does when the user starts it.
+ */
+export const claudeEnv = (dir?: string): NodeJS.ProcessEnv => {
+  const env = runtimeEnv()
+  if (dir) env.CLAUDE_CONFIG_DIR = dir
+  return env
+}
+
+export const claudeLogin = async (bin: string, dir?: string): Promise<Login> => {
+  const done = await execute(bin, ["auth", "status"], { env: claudeEnv(dir), timeoutMs: 15_000 })
   return parseClaudeStatus(done.stdout)
 }
 
@@ -139,7 +150,7 @@ export const parseUsageText = (
 }
 
 /** Asks for the usage report with a control message. No model is called. */
-const askUsageReport = (bin: string): Promise<RuntimeLimit[] | null> =>
+const askUsageReport = (bin: string, dir?: string): Promise<RuntimeLimit[] | null> =>
   new Promise((resolve) => {
     const id = "robot-usage"
     let done = false
@@ -156,7 +167,12 @@ const askUsageReport = (bin: string): Promise<RuntimeLimit[] | null> =>
         "--tools",
         "",
       ],
-      { cwd: probeDir(), env: runtimeEnv(), stdio: ["pipe", "pipe", "ignore"], windowsHide: true },
+      {
+        cwd: probeDir(),
+        env: claudeEnv(dir),
+        stdio: ["pipe", "pipe", "ignore"],
+        windowsHide: true,
+      },
     )
     const lines = createInterface({ input: child.stdout })
     const finish = (limits: RuntimeLimit[] | null) => {
@@ -187,9 +203,9 @@ const askUsageReport = (bin: string): Promise<RuntimeLimit[] | null> =>
   })
 
 /** Asks for the text of `/usage`. The program answers it itself, without a model. */
-const askUsageText = async (bin: string): Promise<RuntimeLimit[] | null> => {
+const askUsageText = async (bin: string, dir?: string): Promise<RuntimeLimit[] | null> => {
   const done = await execute(bin, ["-p", "/usage", ...probeArgs(), "--output-format", "json"], {
-    env: runtimeEnv(),
+    env: claudeEnv(dir),
     cwd: probeDir(),
     timeoutMs: PROBE_MS,
   })
@@ -206,8 +222,8 @@ const askUsageText = async (bin: string): Promise<RuntimeLimit[] | null> => {
  * structured answer comes first; the text of `/usage` is the second try. Null when neither
  * tells a window, for example when the user limits optional traffic.
  */
-export const claudeUsage = async (bin: string): Promise<RuntimeLimit[] | null> =>
-  (await askUsageReport(bin)) ?? (await askUsageText(bin))
+export const claudeUsage = async (bin: string, dir?: string): Promise<RuntimeLimit[] | null> =>
+  (await askUsageReport(bin, dir)) ?? (await askUsageText(bin, dir))
 
 export const claudeVersion = async (bin: string): Promise<string | null> => {
   const done = await execute(bin, ["--version"], { env: runtimeEnv(), timeoutMs: 15_000 })
@@ -215,12 +231,16 @@ export const claudeVersion = async (bin: string): Promise<string | null> => {
 }
 
 /** Opens the sign-in of the subscription in the browser, and ends when the vendor program ends. */
-export const claudeSignIn = (bin: string, signal: AbortSignal) =>
+export const claudeSignIn = (bin: string, signal: AbortSignal, dir?: string) =>
   execute(bin, ["auth", "login", "--claudeai"], {
-    env: runtimeEnv(),
+    env: claudeEnv(dir),
     timeoutMs: 5 * 60_000,
     signal,
   })
+
+/** Signs out of a separate sign-in, so that the program keeps nothing of it. */
+export const claudeSignOut = (bin: string, dir: string) =>
+  execute(bin, ["auth", "logout"], { env: claudeEnv(dir), timeoutMs: 15_000 })
 
 // ---- the stream of a turn --------------------------------------------------------------
 
@@ -465,7 +485,7 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   const staged = run.bridge ? stage(run.bridge) : null
   const child = spawn(run.bin, claudeArgs(run, staged?.claudeConfig), {
     cwd: run.workspace,
-    env: runtimeEnv(),
+    env: claudeEnv(run.signInDir),
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   })
