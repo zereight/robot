@@ -88,11 +88,18 @@ const server = Bun.serve({
     const text = String(last?.content ?? "")
     const one = /CALL (\w+) (\{.*\})/s.exec(text)
     const many = /CALLS (\w+) (\[.*\])/s.exec(text)
-    const calls = many
-      ? (JSON.parse(many[2] as string) as unknown[]).map((a, i) => callOf(i, many[1] as string, a))
-      : one
-        ? [callOf(0, one[1] as string, JSON.parse(one[2] as string))]
-        : []
+    const mixed = /TOOLS (\[.*\])/s.exec(text)
+    const calls = mixed
+      ? (JSON.parse(mixed[1] as string) as { name: string; args: unknown }[]).map((c, i) =>
+          callOf(i, c.name, c.args),
+        )
+      : many
+        ? (JSON.parse(many[2] as string) as unknown[]).map((a, i) =>
+            callOf(i, many[1] as string, a),
+          )
+        : one
+          ? [callOf(0, one[1] as string, JSON.parse(one[2] as string))]
+          : []
     if (calls.length > 0 && body.tools?.some((t) => t.function.name === calls[0]?.function.name))
       return sse([{ choices: [{ delta: { tool_calls: calls } }] }, "[DONE]"])
     return sse([{ choices: [{ delta: { content: "ok" } }] }, "[DONE]"])
@@ -870,6 +877,69 @@ describe("knowledge tools in a turn", () => {
     // The next turn starts again from zero.
     await s.turn(call("write_article", { title: "Note 6", body: "x" }))
     expect((await s.list()).total).toBe(6)
+  })
+
+  test("only a saved add, edit or delete counts for the 5 changes; a read, a source and a failed change do not", async () => {
+    const s = await setup()
+    mkdirSync(join(s.agent.workspace, "attachments"), { recursive: true })
+    writeFileSync(join(s.agent.workspace, "attachments", "a.txt"), "source text")
+    const write = (title: string, extra: object = {}) => ({
+      name: "write_article",
+      args: { title, body: "x", ...extra },
+    })
+    const calls = [
+      write("A"),
+      { name: "read_article", args: { title: "A" } },
+      write(""), // fails: no title
+      { name: "add_source", args: { path: "attachments/a.txt" } },
+      write("B"),
+      { name: "add_source", args: { path: "attachments/a.txt" } },
+      write("C", { summary: "s".repeat(161) }), // fails: summary too long
+      write("C"),
+      { name: "delete_article", args: { title: "Nothing here" } }, // fails: no such article
+      write("D"),
+      { name: "read_article", args: { title: "B" } },
+      write("A", { body: "edited" }), // an edit counts, too: this is the 5th saved change
+      write("E"), // the 6th
+      { name: "read_article", args: { title: "A" } }, // a read still works after the limit
+    ]
+    await s.turn(`TOOLS ${JSON.stringify(calls)}`)
+    const parts = await s.toolParts()
+    expect(parts.map((p) => p.state)).toEqual([
+      "done",
+      "done",
+      "failed",
+      "done",
+      "done",
+      "done",
+      "failed",
+      "done",
+      "failed",
+      "done",
+      "done",
+      "done",
+      "failed",
+      "done",
+    ])
+    expect(parts[12]?.knowledge).toMatchObject({ kind: "failed", code: "knowledge_turn_limit" })
+    expect(parts[2]?.knowledge).toMatchObject({ code: "knowledge_title_invalid" })
+    expect(parts[6]?.knowledge).toMatchObject({ code: "knowledge_summary_long" })
+    expect(parts[8]?.knowledge).toMatchObject({ code: "knowledge_not_found" })
+    expect((await s.list()).articles.map((a) => a.title)).toEqual(["A", "B", "C", "D"])
+    // Five changes were saved: add A, add B, add C, add D, edit A. The six did not make a file.
+    expect((await s.changes()).filter((c) => c.actor === "agent")).toHaveLength(5)
+    expect(existsSync(join(s.folder, "E.md"))).toBe(false)
+    // A delete counts as well: five deletes are five changes, and the sixth change fails.
+    await s.turn(call("write_article", { title: "E", body: "x" }))
+    const deletes = ["A", "B", "C", "D", "E"].map((title) => ({
+      name: "delete_article",
+      args: { title },
+    }))
+    await s.turn(`TOOLS ${JSON.stringify([...deletes, write("F")])}`)
+    const second = await s.toolParts()
+    expect(second.map((p) => p.state)).toEqual(["done", "done", "done", "done", "done", "failed"])
+    expect(second[5]?.knowledge).toMatchObject({ code: "knowledge_turn_limit" })
+    expect((await s.list()).total).toBe(0)
   })
 
   test("a source is kept as it is; an article cites it; the original stays unchanged", async () => {
