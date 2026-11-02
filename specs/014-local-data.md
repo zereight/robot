@@ -10,6 +10,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   memory (with its proposals and history, see 008), settings, permission rules, the action log
   (007), skills (017) and connections (018). Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
+- Each profile (022) has its own database, attachments, logs and keychain entries, apart from
+  the other profiles. The rules of this spec hold for each profile.
 - The database is the source of truth. Nothing remote is a cache of it. Two computers that sync
   (019) each hold a full copy of the shared data. Both are sources of truth, and the rules of
   019 make them equal. A device that opens a linked server (012) keeps a local cache of recent
@@ -67,12 +69,12 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 
 ## Export and backup
 
-- Export: one archive with the database, attachments, agent knowledge, and a readme of the
-  format. Secrets are not included. The archive holds the rules, the action log, the skills and
+- Export: one archive for one profile (022), with the database, attachments, agent knowledge,
+  and a readme of the format. Secrets are not included. The archive holds the rules, the action log, the skills and
   the connections without their secret values.
 - The memory history in the archive follows the rule for secrets above: text that looks like a
   secret is replaced with "[redacted]".
-- Import of a ROBot export into an empty app restores everything except secrets. Every
+- Import of a ROBot export into an empty profile (022) restores everything except secrets. Every
   connection comes back turned off (see 018), so an import never starts a program or sends data.
 
 ## Review before an import
@@ -110,7 +112,7 @@ anything. The user sees each part that the file holds and picks what to keep.
   of the log finds neither the job text nor the key.
 - After an export, searching the archive for a stored key finds nothing.
 - Add a connection with a secret value, export, and search the archive for the value: it finds
-  nothing. Import the archive into an empty app: the connection shows and is turned off, and its
+  nothing. Import the archive into an empty profile: the connection shows and is turned off, and its
   secret value is missing.
 - Copy the data folder to a new computer, start the app: all agents and history are there; the
   providers ask to sign in again.

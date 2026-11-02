@@ -9,11 +9,13 @@ new user knows where to look.
 
 - **Server rail**: a narrow column at the far left edge of the window. One round tile per server,
   then an add button. The selected server has a short bar at its left side. The first tile is
-  this computer. Tiles of linked computers (012) follow in the order of pairing. A linked tile
-  shows the first letter of the computer's name and the connection state (012).
+  the open profile on this computer (see 022). Tiles of linked computers (012) follow in the
+  order of pairing. A linked tile shows the first letter of the computer's name and the
+  connection state (012).
 - **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
-  (see 021), workflows, tasks, usage. At the bottom: help and settings. The Today button shows a
-  badge with the number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
+  (see 021), workflows, tasks, usage. At the bottom: help and settings, then the profile button
+  when the computer has two or more profiles (see 022). The Today button shows a badge with the
+  number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
   above 99. It hides when a linked server is on the screen.
 - **Place list**: a column beside the rail. A search field at the top, then sections. A section has
   a name and its places. A place is an agent (direct chat) or a channel. The search field also
@@ -153,6 +155,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 - Window width under 800 px: the rail narrows to 56 px and the activity panel closes.
 - The rail leaves room for the window buttons at the top left.
+- The rail, the place list, the pages and the selection belong to the open profile. A switch of
+  profile changes all of them, and each profile keeps its own selection (022).
 - Keyboard: Cmd+K focuses search. Up and down move through places. Enter opens one.
 
 ## Acceptance

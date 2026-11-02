@@ -29,6 +29,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
 | 021 | [Today: what waits for the user, what went wrong, what ran today, what runs next](021-today.md) | Draft |
+| 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
 
 ## Milestones
 
@@ -50,6 +51,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M12 | 021, and the changes to 001, 003, 005, 006, 007, 008, 011, 012, 013, 014, 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S46 to S49: message search, silent and cut turns, the Today page, memory control |
 | M13 | The changes to 000, 002, 004, 005, 008, 009, 016, 017 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S50 to S54: honest wording, verdicts in the check, work record, starters, skills that go with their agent |
 | M14 | The changes to 000, 001, 011, 012 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S55: the desktop app is for Macs with Apple silicon only; the phone app is for iOS and Android |
+| M15 | 022, and the changes to 000, 001, 011, 012, 013, 014, 015 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S57 and S58: profiles on one computer, and profiles with linked devices and sync |
 
 ## Template
 

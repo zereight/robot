@@ -9,8 +9,9 @@ service holds it.
 
 ## Concepts
 
-- **Sync pair**: two linked computers (012) that the user set to sync. A computer is in at most
-  one pair. A phone is never in a pair; it opens a computer as a client (011).
+- **Sync pair**: two linked profiles on two computers (012, 022) that the user set to sync. A
+  profile is in at most one pair. Two profiles of the same computer cannot be a pair. A phone is
+  never in a pair; it opens a computer as a client (011).
 - **Copy**: after a sync, each computer holds all the data in the "Syncs" list. Each copy is
   complete and works alone, also when the other computer is off.
 - **Origin**: the computer where a message was made or a task ran.
