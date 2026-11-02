@@ -1,5 +1,6 @@
 import type { MessageKey, Page, Server } from "@robot/shared"
 import {
+  CalendarCheck,
   ChartColumn,
   CircleHelp,
   ListChecks,
@@ -15,6 +16,7 @@ import { createSignal, For, type JSX, Show } from "solid-js"
 import { ConnectDialog } from "../devices/ConnectDialog.tsx"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { useToday } from "../state/today.tsx"
 import { useUi } from "../state/ui.tsx"
 import { ContextMenu } from "../ui/ContextMenu.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -25,6 +27,7 @@ const initials = (name: string) => name.trim().slice(0, 1).toUpperCase() || "?"
 export const ServerRail = (props: { onOpenSettings: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
+  const today = useToday()
   const [addOpen, setAddOpen] = createSignal(false)
   const [menu, setMenu] = createSignal<{ server: Server; x: number; y: number }>()
 
@@ -32,7 +35,12 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
   const stateWord = (server: Server) =>
     server.kind === "linked" && server.state ? t(`devices.state.${server.state}` as MessageKey) : ""
 
-  const PageButton = (p: { page: Page; label: string; icon: JSX.Element }) => (
+  const PageButton = (p: {
+    page: Page
+    label: string
+    icon: JSX.Element
+    badge?: string | null
+  }) => (
     <button
       type="button"
       class={styles.pageButton}
@@ -43,6 +51,13 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
       onClick={() => ui.selectPage(p.page)}
     >
       {p.icon}
+      <Show when={p.badge}>
+        {(text) => (
+          <span class={styles.pageBadge} data-testid={`page-${p.page}-badge`}>
+            {text()}
+          </span>
+        )}
+      </Show>
     </button>
   )
 
@@ -114,6 +129,16 @@ export const ServerRail = (props: { onOpenSettings: () => void }) => {
         <div class={styles.railDivider} />
         <div class={styles.railGroup}>
           <PageButton page="chats" label={t("page.chats")} icon={<MessagesSquare size={20} />} />
+          <PageButton
+            page="today"
+            label={
+              today.badgeText()
+                ? t("today.badge.label", { count: today.badgeText() ?? "" })
+                : t("page.today")
+            }
+            icon={<CalendarCheck size={20} />}
+            badge={today.badgeText()}
+          />
           <PageButton page="workflows" label={t("page.workflows")} icon={<Workflow size={20} />} />
           <PageButton page="tasks" label={t("page.tasks")} icon={<ListChecks size={20} />} />
           <PageButton page="usage" label={t("page.usage")} icon={<ChartColumn size={20} />} />
