@@ -104,7 +104,7 @@ const TICK_MS = 15_000
 const POLL_MS = 100
 const RUNS_MAX = 100
 const TEXT_MAX = 20_000
-const TERMINAL = ["done", "failed", "cancelled"]
+const TERMINAL = ["done", "failed", "blocked", "cancelled"]
 
 const toRun = (r: RunRow): WorkflowRun => ({
   id: r.id,
@@ -265,6 +265,14 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             const detail = yield* tasks.get(taskId).pipe(Effect.orElseSucceed(() => null))
             return { ok: true as const, error: "", result: detail?.result ?? "" }
           }
+          // A blocked agent step is a failed step, with the reason of the block (spec 005, 010).
+          // The reason is the text of the agent, so it shows as it is.
+          if (end.state === "blocked")
+            return {
+              ok: false as const,
+              error: end.error_detail || (end.error_code ?? end.state),
+              result: "",
+            }
           return {
             ok: false as const,
             error: stepReason(end.error_code ?? end.state, end.error_detail),

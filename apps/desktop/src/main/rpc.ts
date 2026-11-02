@@ -14,6 +14,7 @@ import {
   PlaceKind,
   ProviderConnect,
   parseAddress,
+  REVIEW_CHANGES_MAX,
   RoutineInput,
   RoutinePatch,
   type RpcInput,
@@ -573,6 +574,27 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id, confirmed }) =>
         retryOptions(confirmed).pipe(Effect.flatMap((o) => Tasks.use((t) => t.retry(id, o)))),
       ),
+    ),
+  "tasks.accept": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Tasks.use((t) => t.accept(id))),
+      done,
+    ),
+  "tasks.requestChanges": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        // The text is checked for its length after it is trimmed (spec 005).
+        text: Schema.String.check(Schema.isMaxLength(REVIEW_CHANGES_MAX * 2)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ id, text }) => Tasks.use((t) => t.requestChanges(id, text))),
+      done,
+    ),
+  "tasks.endRequest": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Tasks.use((t) => t.endRequest(id))),
+      done,
     ),
   "channels.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(

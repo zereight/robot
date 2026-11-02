@@ -34,6 +34,8 @@ const sse = (chunks: { delay: number; text: string }[]) =>
 
 /** The model of each request, and the text of its last message. */
 const requests: { model: string; last: string }[] = []
+/** While true, a prompt with BLOCKME gets a reply that ends with a Blocked line (spec 005). */
+let blockReplies = false
 
 const server = Bun.serve({
   port: 0,
@@ -43,6 +45,8 @@ const server = Bun.serve({
     const body = (await req.json()) as { model: string; messages: { content: string }[] }
     requests.push({ model: body.model, last: body.messages.at(-1)?.content ?? "" })
     const last = body.messages.at(-1)?.content ?? ""
+    if (blockReplies && last.includes("BLOCKME"))
+      return sse([{ delay: 0, text: "I looked.\nBlocked: no access to the folder" }])
     if (last.includes("SLOW"))
       return sse(Array.from({ length: 100 }, () => ({ delay: 30, text: "tick " })))
     return sse([{ delay: 0, text: `Report: ${last}` }])
@@ -438,5 +442,68 @@ describe("late runs and the model of a routine", () => {
     expect(failed).toHaveLength(3)
     expect(failed[0]?.reason?.code).toBe("provider_not_connected")
     expect((await s.routine(routine.id))?.pausedAfterFailures?.code).toBe("provider_not_connected")
+  })
+  test("a Blocked run shows Blocked with its reason, and 3 in a row pause the routine (spec 009)", async () => {
+    blockReplies = true
+    try {
+      const s = await setup()
+      const routine = await s.create("BLOCKME in the folder", 2)
+      const t0 = routine.createdAt
+      for (let i = 1; i <= 3; i++) {
+        await s.tick(t0 + i * 2 * MIN + 1000)
+        await s.idle()
+      }
+      const runs = (await s.calendar()).filter((e) => e.state === "blocked")
+      expect(runs).toHaveLength(3)
+      expect(runs[0]?.reason).toEqual({ code: "blocked", detail: "no access to the folder" })
+      const paused = await s.routine(routine.id)
+      expect(paused?.enabled).toBe(false)
+      expect(paused?.pausedAfterFailures).toEqual({
+        code: "blocked",
+        detail: "no access to the folder",
+      })
+      // The line stays in the reply, and the task is Blocked.
+      expect((await s.tasks()).every((t) => t.state === "blocked")).toBe(true)
+      expect(messageText((await s.replies()).at(-1) as never)).toContain("Blocked: no access")
+    } finally {
+      blockReplies = false
+    }
+  })
+
+  test("a blocked run counts as a failed run: a Done run in between sets the count to 0", async () => {
+    const s = await setup()
+    const routine = await s.create("BLOCKME in the folder", 2)
+    const t0 = routine.createdAt
+    const round = async (n: number, blocked: boolean) => {
+      blockReplies = blocked
+      await s.tick(t0 + n * 2 * MIN + 1000)
+      await s.idle()
+    }
+    try {
+      await round(1, true)
+      await round(2, true)
+      await round(3, false)
+      await round(4, true)
+      expect((await s.tasks()).map((t) => t.state).sort()).toEqual([
+        "blocked",
+        "blocked",
+        "blocked",
+        "done",
+      ])
+      // Two blocked runs, one Done, one blocked: the routine is not paused.
+      const after = await s.routine(routine.id)
+      expect(after?.enabled).toBe(true)
+      expect(after?.pausedAfterFailures).toBeNull()
+    } finally {
+      blockReplies = false
+    }
+  })
+
+  test("a reply with no Blocked line ends the run as Done", async () => {
+    const s = await setup()
+    const routine = await s.create("BLOCKME in the folder", 2)
+    await s.tick(routine.createdAt + 2 * MIN + 1000)
+    await s.idle()
+    expect((await s.tasks()).map((t) => t.state)).toEqual(["done"])
   })
 })

@@ -5,6 +5,7 @@ import {
   askKind,
   askStep,
   askSummary,
+  BLOCKED_RULE,
   CHAIN_LIMIT_RULE,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
@@ -14,8 +15,10 @@ import {
   type ChannelMessage,
   type ChannelMessageKind,
   type ChannelPatch,
+  changesLabel,
   charLength,
   createReadGuard,
+  endOfTurn,
   hasVisibleReply,
   holdOutside,
   isTaskProgress,
@@ -30,11 +33,13 @@ import {
   outsideOfCall,
   type ParsedPlan,
   type PartChip,
+  type PartInfo,
   type PermissionLevel,
   PLAN_STEPS_MAX,
   parseMentions,
   parsePlan,
   planText,
+  requestOpen,
   runningStepKind,
   stepLabel,
   type Task,
@@ -42,6 +47,7 @@ import {
   type TaskState,
   type TurnMark,
   type TurnStarter,
+  toldAboutBlocked,
   toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
@@ -119,6 +125,7 @@ interface ChannelRow {
   topic: string
   lead_agent_id: string | null
   place_section_id: string | null
+  review_parts: number
 }
 
 interface MessageRow {
@@ -167,6 +174,8 @@ const LEAD_RULES = (members: readonly string[]) =>
   ].join("\n")
 
 const ACTIVE = "('queued', 'running', 'waiting')"
+/** How often the lead looks again at parts that wait for a review. */
+const PARTS_POLL_MS = 200
 
 export class Channels extends Context.Service<Channels, ChannelsService>()("robot/main/Channels") {
   static readonly layer = Layer.effect(
@@ -192,7 +201,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -230,6 +239,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             row.lead_agent_id && memberIds.includes(row.lead_agent_id) ? row.lead_agent_id : null,
           memberIds,
           sectionId: row.place_section_id,
+          reviewParts: row.review_parts === 1,
           unread,
           working: hasActiveWork(row.id),
         }
@@ -266,6 +276,39 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         )
         return isTaskProgress(found?.progress) ? { progress: found.progress } : {}
       }
+      /**
+       * The state of the part that a message belongs to, on the last message of that part. A
+       * message of the lead, a mention or the user has none (spec 004).
+       */
+      const partOf = (row: MessageRow): PartInfo | null => {
+        if (row.author !== "agent" || !row.task_id) return null
+        const part = db.get<{
+          state: Task["state"]
+          error_code: string | null
+          error_detail: string | null
+          origin: string | null
+          parent_id: string | null
+        }>(
+          "SELECT state, error_code, error_detail, origin, parent_id FROM task WHERE id = ?",
+          row.task_id,
+        )
+        if (!part?.parent_id) return null
+        const last = db.get<{ id: string }>(
+          `SELECT id FROM channel_message WHERE task_id = ? AND author = 'agent'
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          row.task_id,
+        )
+        if (last?.id !== row.id) return null
+        return {
+          taskId: row.task_id,
+          state: part.state,
+          error: part.error_code
+            ? { code: part.error_code, detail: part.error_detail ?? "" }
+            : null,
+          ownerName: part.origin === null ? null : tasks.computerName(part.origin),
+        }
+      }
+
       const toMessage = (row: MessageRow): ChannelMessage => ({
         id: row.id,
         channelId: row.channel_id,
@@ -286,6 +329,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         awaiting: row.awaiting === 1,
         chips: chipsFor(row),
         ...failedProgress(row),
+        part: partOf(row),
       })
       const messageRow = (id: string) =>
         db.get<MessageRow>("SELECT * FROM channel_message WHERE id = ?", id)
@@ -717,10 +761,23 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               kind,
               tools: true,
               turn,
-              system: channelSystem(channel, agent),
+              // A part of a plan, a routine or a workflow can say that it was blocked (spec 005).
+              system: channelSystem(channel, agent, toldAboutBlocked(task) ? BLOCKED_RULE : ""),
               turns,
             })
           }),
+          {
+            // A last line "Blocked: ..." ends the task as Blocked. With "Review parts" on, a part of
+            // a plan that ends well waits for the user. The setting is read when the part ends
+            // (spec 004, 005). The plan, the summary, a check and a reply to a mention are no parts.
+            finish: (reply) =>
+              endOfTurn(reply.text, {
+                review:
+                  task.source === "channel" &&
+                  task.parentId !== null &&
+                  channelRow(channel.id)?.review_parts === 1,
+              }),
+          },
         )
 
       const runRoutine = (
@@ -797,8 +854,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   RESULT_TEXT_MAX,
                 )
               : ""
+            // A blocked part gives its reason, so the summary can name both (spec 004).
             const head = `- ${p.label} (${p.agentName}): ${now.state}${
-              now.error ? ` (${now.error.code})` : ""
+              now.state === "blocked"
+                ? ` (reason: ${now.error?.detail || "none given"})`
+                : now.error
+                  ? ` (${now.error.code})`
+                  : ""
             }`
             return text ? `${head}\n${text}` : head
           })
@@ -875,12 +937,18 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             )
             emitMessage(reply.id)
 
-            // All parts ended: the lead sums them up, also when some failed.
+            // A part in review has not ended: the summary waits for the decision of the user. A
+            // part that "Request changes" starts is a new part of this request, so the wait
+            // looks at the parts again (spec 004, 005).
+            while (requestOpen(tasks.children(task.id).map((part) => part.state)))
+              yield* Effect.sleep(PARTS_POLL_MS)
+
+            // All parts ended: the lead sums them up, also when some failed or were blocked.
             const ended = tasks.children(task.id)
             const turns = channelTurns(channel.id, lead)
             turns.push({
               role: "user",
-              content: `All parts have ended:\n${partReport(ended)}\nWrite one short summary for the user. If a part failed, say so and what you suggest.`,
+              content: `All parts have ended:\n${partReport(ended)}\nWrite one short summary for the user. If a part failed, say so and what you suggest. If a part was blocked, name the part and give its reason.`,
             })
             const summary = yield* streamReply({
               channel,
@@ -944,6 +1012,32 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           } else {
             yield* startDirect(channel, agent.id, task.prompt, task.id)
           }
+        }),
+      )
+
+      // "Request changes" on a part in review (spec 005): a new part for the same member, with the
+      // text of the user as its prompt. It links to the old part and has the same parent, so it
+      // belongs to the same request. It can go to review again.
+      tasks.onChanges("channel", (old, text) =>
+        Effect.gen(function* () {
+          const channel = old.sourceId ? channelRow(old.sourceId) : undefined
+          if (!channel) return yield* new AppError({ code: "channel_not_found" })
+          const agent = agentRow(old.agentId)
+          if (!agent || agent.archived_at !== null)
+            return yield* new AppError({ code: "agent_not_found" })
+          if (!old.parentId) return yield* new AppError({ code: "cannot_request_changes" })
+          const part = yield* tasks.create({
+            agentId: agent.id,
+            prompt: text,
+            label: changesLabel(old.label),
+            source: "channel",
+            sourceId: channel.id,
+            parentId: old.parentId,
+            retryOf: old.id,
+          })
+          yield* background(
+            memberTurn(channel, agent, part, `Your part: ${part.label}\n${text}`, "text", null),
+          )
         }),
       )
 
@@ -1075,12 +1169,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         db.transaction(() => {
           db.run(
             `UPDATE channel SET name = ?, name_key = ?, topic = ?, lead_agent_id = ?, place_section_id = ?,
-              updated_at = ? WHERE id = ?`,
+              review_parts = ?, updated_at = ? WHERE id = ?`,
             name,
             name.toLocaleLowerCase(),
             topic,
             leadId,
             sectionId,
+            // Turning it off changes no part that is in review already (spec 004).
+            patch.reviewParts === undefined ? row.review_parts : patch.reviewParts ? 1 : 0,
             Date.now(),
             id,
           )
@@ -1182,9 +1278,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           const states = new Map<string, MemberState>()
           for (const a of yield* agents.list(channel.server_id, false)) states.set(a.id, a.state)
           // The newest lead job that still runs. Its parts are the plan steps.
+          // A job whose lead stopped (the app restarted) still shows a part that waits for review.
           const job = db.get<{ id: string }>(
             `SELECT id FROM task WHERE source = 'channel' AND source_id = ? AND parent_id IS NULL
-             AND state IN ${ACTIVE} AND EXISTS (SELECT 1 FROM task c WHERE c.parent_id = task.id)
+             AND (state IN ${ACTIVE}
+                  OR EXISTS (SELECT 1 FROM task r WHERE r.parent_id = task.id AND r.state = 'review'))
+             AND EXISTS (SELECT 1 FROM task c WHERE c.parent_id = task.id)
              ORDER BY created_at DESC LIMIT 1`,
             channelId,
           )
@@ -1232,7 +1331,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id FROM channel
+                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )

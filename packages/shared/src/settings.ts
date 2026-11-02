@@ -48,6 +48,11 @@ export const Settings = Schema.Struct({
     task_failed: Schema.Boolean,
     routine_failed: Schema.Boolean,
     /**
+     * A part of a plan waits for the review of the user (spec 004, 015). A setting that was saved
+     * before this kind existed has no value for it, and the kind counts as on.
+     */
+    part_review: Schema.optionalKey(Schema.Boolean),
+    /**
      * A notify step of a workflow. A setting that was saved before this kind existed has no
      * value for it, and the kind counts as on.
      */
@@ -92,6 +97,7 @@ export const defaultSettings: Settings = {
     question: true,
     task_failed: true,
     routine_failed: true,
+    part_review: true,
     workflow_notice: true,
   },
   island: "always",

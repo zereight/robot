@@ -708,6 +708,7 @@ interface ChannelRow {
   name: string
   topic: string
   lead_agent_id: string | null
+  review_parts: number
   created_at: number
   updated_at: number
   last_read_at: number
@@ -740,6 +741,8 @@ const channel: KindDef = {
     },
     topic: { check: (v) => typeof v === "string" && charLength(v) <= CHANNEL_TOPIC_MAX },
     lead: { check: nullable(str(100, 1)) },
+    // "Review parts" (spec 004). A computer of an older step has none, and it counts as off.
+    reviewParts: { check: (v) => typeof v === "boolean" },
     members: {
       check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
     },
@@ -758,6 +761,7 @@ const channel: KindDef = {
         name: r.name,
         topic: r.topic,
         lead: r.lead_agent_id,
+        reviewParts: r.review_parts === 1,
         members: ctx.db
           .all<{ agent_id: string }>(
             "SELECT agent_id FROM channel_member WHERE channel_id = ? ORDER BY position",
@@ -780,6 +784,7 @@ const channel: KindDef = {
       name_key: nameKey(f.name as string),
       topic: f.topic,
       lead_agent_id: f.lead,
+      review_parts: f.reviewParts === true ? 1 : 0,
       created_at: f.createdAt,
       updated_at: now,
       last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
@@ -797,6 +802,7 @@ const channel: KindDef = {
     }
     if (f.topic !== undefined) columns.topic = f.topic
     if (f.lead !== undefined) columns.lead_agent_id = f.lead
+    if (typeof f.reviewParts === "boolean") columns.review_parts = f.reviewParts ? 1 : 0
     if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
     columns.updated_at = ctx.now()
     update(ctx.db, "channel", "id = ?", [id], columns)

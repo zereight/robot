@@ -84,8 +84,15 @@
   color: var(--c-success);
 }
 
-.state[data-state="failed"] {
+.state[data-state="failed"],
+.state[data-state="blocked"] {
   color: var(--c-danger);
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .state[data-state="cancelled"],
