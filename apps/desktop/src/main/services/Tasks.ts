@@ -6,6 +6,7 @@ import {
   isFinal,
   isRuntimeKind,
   isTaskProgress,
+  isVerdict,
   type LoggedStep,
   messageText,
   type OutsideSource,
@@ -21,6 +22,7 @@ import {
   type TaskState,
   type TurnEnd,
   taskLabel,
+  type Verdict,
   validChanges,
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Layer, Semaphore } from "effect"
@@ -54,6 +56,11 @@ interface TaskRow {
   origin: string | null
   progress: string | null
   depth: number
+  done_test: string | null
+  verdict: string | null
+  verdict_reason: string | null
+  judged_at: number | null
+  decided_at: number | null
 }
 
 export interface TaskInput {
@@ -76,6 +83,8 @@ export interface TaskInput {
    * and a retry keep the depth of the task that made them, and any other task has depth 0.
    */
   readonly depth?: number
+  /** What a finished part must hold: one line, up to 200 characters (spec 004). */
+  readonly doneTest?: string | null
 }
 
 /** One step of a task for the action log (spec 007). */
@@ -155,6 +164,12 @@ export interface TasksService {
   setProgress(taskId: string, progress: TaskProgress): void
   /** Records which message holds the reply of a task. */
   setMessage(taskId: string, messageId: string): void
+  /**
+   * Saves the verdict of the lead for a part (spec 004, 005). A verdict is a field: the state of
+   * the part does not change. It is saved only for a part that is done, has a done test, has no
+   * verdict, and has no decision of the user. Gives true when it was saved.
+   */
+  judge(taskId: string, verdict: Verdict, reason: string | null): boolean
   /**
    * Records that the first part of the reply that the user sees is stored now (spec 005). Only the
    * first call counts.
@@ -237,6 +252,11 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   waitsFor:
     row.state === "queued" && row.origin === null ? (remote?.busyOn(row.agent_id) ?? null) : null,
   progress: isTaskProgress(row.progress) ? row.progress : null,
+  doneTest: row.done_test,
+  verdict: isVerdict(row.verdict) ? row.verdict : null,
+  verdictReason: row.verdict_reason,
+  judgedAt: row.judged_at,
+  decidedAt: row.decided_at,
 })
 
 /** How often a task that waits for the other computer looks again. */
@@ -423,8 +443,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           const depth = input.depth ?? depthOf(input.parentId ?? input.retryOf)
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
-               message_id, state, created_at, asked_at, depth, progress)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, 'not_sent')`,
+               message_id, state, created_at, asked_at, depth, progress, done_test)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, 'not_sent', ?)`,
             id,
             input.agentId,
             input.prompt,
@@ -437,6 +457,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             now,
             input.askedAt == null ? null : Math.min(input.askedAt, now),
             depth,
+            input.doneTest ?? null,
           )
           stops.set(id, Deferred.makeUnsafe<void>())
           changed(input.agentId)
@@ -604,9 +625,17 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           return Effect.succeed(current)
         })
 
+      /** The user decided on a part: the check gives it no verdict (spec 004). */
+      const decided = (id: string) =>
+        db.run("UPDATE task SET decided_at = ? WHERE id = ? AND decided_at IS NULL", Date.now(), id)
+
       const accept = (taskId: string) =>
         inReview(taskId).pipe(
-          Effect.map((current) => setState(current.id, current.agent_id, "done")),
+          Effect.map((current) => {
+            // The mark comes first, so the part is never done without it.
+            decided(current.id)
+            return setState(current.id, current.agent_id, "done")
+          }),
         )
 
       const requestChanges = (taskId: string, text: string) =>
@@ -618,6 +647,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           if (!handler) return yield* new AppError({ code: "cannot_request_changes" })
           // The new part exists before the old one is done, so the request is never without an open part.
           yield* handler(toTask(current, remote), value)
+          decided(current.id)
           setState(current.id, current.agent_id, "done")
         })
 
@@ -711,6 +741,30 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         },
         setMessage: (taskId, messageId) =>
           db.run("UPDATE task SET message_id = ? WHERE id = ?", messageId, taskId),
+        judge: (taskId, verdict, reason) => {
+          const current = row(taskId)
+          // Only the computer that owns a task judges it (spec 019).
+          if (
+            !current ||
+            current.origin !== null ||
+            current.state !== "done" ||
+            current.done_test === null ||
+            current.verdict !== null ||
+            current.decided_at !== null
+          )
+            return false
+          db.run(
+            "UPDATE task SET verdict = ?, verdict_reason = ?, judged_at = ? WHERE id = ?",
+            verdict,
+            verdict === "not_met" ? reason : null,
+            Date.now(),
+            taskId,
+          )
+          changed(current.agent_id)
+          if (current.source === "channel" && current.source_id)
+            bus.emit("channels.changed", { channelId: current.source_id })
+          return true
+        },
         replied: (taskId) => {
           const current = row(taskId)
           if (!current || current.first_reply_at !== null || current.origin !== null) return

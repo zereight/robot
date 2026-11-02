@@ -1630,6 +1630,11 @@ export const en = {
     "A part of a plan that ends well waits for you. You accept it, or you ask for changes. A part that is in review stays in review when you turn this off.",
   "channels.part.blocked": "This part is blocked.",
   "channels.part.failed": "This part failed.",
+  "tasks.doneTest": "Done test",
+  "tasks.verdict": "Verdict of the lead",
+  "tasks.verdict.met": "Met",
+  "tasks.verdict.not_met": "Not met",
+  "tasks.verdict.noReason": "The lead gave no reason.",
 } as const
 
 export type MessageKey = keyof typeof en

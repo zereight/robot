@@ -165,6 +165,32 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
             <TaskTimesList task={d().task} />
             <h3>{t("tasks.prompt")}</h3>
             <pre class={styles.text}>{d().task.prompt}</pre>
+            {/* The done test and the verdict of the lead belong to a part of a channel (spec 004, 005). */}
+            <Show when={d().task.doneTest}>
+              {(doneTest) => (
+                <>
+                  <h3>{t("tasks.doneTest")}</h3>
+                  <p class={styles.text} data-testid="task-done-test">
+                    {doneTest()}
+                  </p>
+                </>
+              )}
+            </Show>
+            <Show when={d().task.verdict}>
+              {(verdict) => (
+                <>
+                  <h3>{t("tasks.verdict")}</h3>
+                  <p class={styles.verdict} data-testid="task-verdict" data-verdict={verdict()}>
+                    {t(`tasks.verdict.${verdict()}` as MessageKey)}
+                  </p>
+                  <Show when={verdict() === "not_met"}>
+                    <p class={styles.text} data-testid="task-verdict-reason">
+                      {d().task.verdictReason || t("tasks.verdict.noReason")}
+                    </p>
+                  </Show>
+                </>
+              )}
+            </Show>
             <Show when={d().joined.length > 0}>
               <h3>{t("tasks.joined")}</h3>
               <ul class={styles.joined} data-testid="task-joined">
