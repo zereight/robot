@@ -249,4 +249,18 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE workflow ADD COLUMN notes TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  CREATE TABLE place_section (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES server (id),
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX place_section_name ON place_section (server_id, kind, name_key);
+  ALTER TABLE agent ADD COLUMN place_section_id TEXT REFERENCES place_section (id) ON DELETE SET NULL;
+  ALTER TABLE channel ADD COLUMN place_section_id TEXT REFERENCES place_section (id) ON DELETE SET NULL;
+  `,
 ]

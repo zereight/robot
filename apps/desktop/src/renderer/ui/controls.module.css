@@ -181,8 +181,36 @@
   outline: none;
 }
 
-.menuItem:active {
+.menuItem:active:not(:disabled) {
   transform: scale(var(--press-scale));
+}
+
+.menuItem:disabled {
+  color: var(--c-text-muted);
+  opacity: 0.5;
+}
+
+.menuItem:disabled:hover {
+  background: transparent;
+}
+
+/* A group of items under one heading. The check mark sits at the start of the current item. */
+.menuHeading {
+  padding: 6px 10px 2px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+/* The check mark is drawn by the style, so it is not part of the text of the item. */
+.menuItem[role="menuitemradio"]::before {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+}
+
+.menuItem[aria-checked="true"]::before {
+  content: "✓";
 }
 
 @keyframes menu-in {

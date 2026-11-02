@@ -15,6 +15,7 @@ import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { SectionSelect } from "../ui/SectionSelect.tsx"
 import styles from "./channels.module.css"
 
 /** Makes a channel, or changes the name, topic, members and lead of one. */
@@ -27,6 +28,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const [members, setMembers] = createSignal<string[]>([...(props.channel?.memberIds ?? [])])
   const [query, setQuery] = createSignal("")
   const [leadId, setLeadId] = createSignal<string | null>(props.channel?.leadId ?? null)
+  const [sectionId, setSectionId] = createSignal<string | null>(props.channel?.sectionId ?? null)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
@@ -57,6 +59,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             topic: topic().trim(),
             memberIds: members(),
             leadId: leadId(),
+            sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null,
           },
         })
       } else {
@@ -68,6 +71,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           topic: topic().trim(),
           memberIds: members(),
           leadId: leadId(),
+          sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null,
         })
         ui.selectPlace({ kind: "channel", id: channel.id })
       }
@@ -194,6 +198,16 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           </select>
           <span class={styles.hint}>{t("channels.lead.hint")}</span>
         </label>
+        <div class={styles.field}>
+          <span class={styles.label}>{t("sections.field")}</span>
+          <SectionSelect
+            kind="channel"
+            value={sectionId()}
+            onChange={setSectionId}
+            class={styles.input}
+            testId="channel-section"
+          />
+        </div>
         <Show when={error()}>
           {(err) => (
             <div class={styles.error} role="alert" data-testid="channel-error">

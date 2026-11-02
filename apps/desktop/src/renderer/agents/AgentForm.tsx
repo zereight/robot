@@ -26,6 +26,7 @@ import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
+import { SectionSelect } from "../ui/SectionSelect.tsx"
 import styles from "./agents.module.css"
 import { Face, faceColour } from "./Face.tsx"
 import { MemoryPanel } from "./MemoryPanel.tsx"
@@ -36,6 +37,8 @@ export interface AgentFormValues {
   instructions: string
   face: FaceValue
   model: AgentModel | null
+  /** The user section of the Agents list, or null for "No section". */
+  sectionId: string | null
   /** Only when an existing agent is edited. */
   permission?: PermissionLevel
   memoryEnabled?: boolean
@@ -70,6 +73,7 @@ export const AgentForm = (props: AgentFormProps) => {
   /** The face the user picked. Until then a new agent's face follows its name. */
   const [pickedFace, setPickedFace] = createSignal<FaceValue | undefined>(props.agent?.face)
   const [model, setModel] = createSignal<AgentModel | null>(props.agent?.model ?? null)
+  const [sectionId, setSectionId] = createSignal<string | null>(props.agent?.sectionId ?? null)
   const [permission, setPermission] = createSignal<PermissionLevel>(
     props.agent?.permission ?? "ask_risky",
   )
@@ -129,6 +133,8 @@ export const AgentForm = (props: AgentFormProps) => {
         instructions: instructions(),
         face: face(),
         model: model(),
+        // A section that was deleted while the form was open shows as "No section".
+        sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null,
         ...(props.agent ? { permission: permission(), memoryEnabled: memoryEnabled() } : {}),
       })
     } catch (e) {
@@ -291,6 +297,17 @@ export const AgentForm = (props: AgentFormProps) => {
       <div class={styles.field}>
         <span class={styles.label}>{t("agents.field.model")}</span>
         <ModelPicker value={model()} onChange={setModel} />
+      </div>
+
+      <div class={styles.field}>
+        <span class={styles.label}>{t("sections.field")}</span>
+        <SectionSelect
+          kind="agent"
+          value={sectionId()}
+          onChange={setSectionId}
+          class={styles.input}
+          testId="agent-section"
+        />
       </div>
 
       <Show when={props.agent}>
