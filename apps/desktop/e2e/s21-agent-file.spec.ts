@@ -85,8 +85,14 @@ test("agent file: export two agents, import the file in an empty app", async () 
   await page.getByTestId("agents-menu-import-file").click()
   const dialog = page.getByTestId("agent-import-dialog")
   await expect(dialog.getByTestId("agent-import-item")).toHaveCount(2)
-  await expect(dialog).toContainText("Every routine starts paused.")
-  await expect(dialog).toContainText("Routines: 1")
+  // The routine is listed under its agent, not ticked, and starts paused when ticked.
+  await expect(dialog.getByTestId("agent-import-routine")).toHaveCount(1)
+  await expect(dialog.getByTestId("agent-import-routine")).toContainText("Starts paused")
+  await expect(dialog.getByTestId("agent-import-routine-tick")).not.toBeChecked()
+  await dialog.getByTestId("agent-import-routine-tick").check()
+  await expect(dialog.getByTestId("agent-import-counts")).toHaveText(
+    "ROBot will make 2 agents, 1 routines (paused).",
+  )
   await dialog.getByTestId("model-model").selectOption("o3-mini")
   await shot(page, "s21-03-import")
   await dialog.getByTestId("agent-import-submit").click()

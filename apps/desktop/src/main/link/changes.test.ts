@@ -690,10 +690,12 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     ["knowledge.findings", { agentId: "x" }],
     ["agentFile.export", { serverId: "x", agentIds: [] }],
     ["agentFile.open", { serverId: "x" }],
-    ["agentFile.apply", { serverId: "x", model: null }],
+    ["agentFile.apply", { serverId: "x", model: null, pick: [] }],
+    ["checklists.forAgent", { agentId: "x" }],
+    ["checklists.forWorkflow", { workflowId: "x" }],
     ["workflowFile.export", { serverId: "x", workflowIds: [] }],
     ["workflowFile.open", { serverId: "x" }],
-    ["workflowFile.apply", { serverId: "x" }],
+    ["workflowFile.apply", { serverId: "x", pick: [] }],
   ]
 
   const sectionsOf = async (p: Awaited<ReturnType<typeof pair>>) =>
