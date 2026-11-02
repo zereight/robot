@@ -31,9 +31,8 @@ body,
   width: 460px;
 }
 
-/* The cards start below the camera notch. */
-.island[data-view="attention"],
-.island[data-view="result"] {
+/* The attention card has no bar. It starts below the camera notch. */
+.island[data-view="attention"] {
   padding-top: 38px;
 }
 
@@ -104,6 +103,10 @@ body,
 .card.detail {
   gap: 2px;
   padding: 2px 0 10px;
+}
+
+.card.result {
+  padding-top: 2px;
 }
 
 .row {
