@@ -228,8 +228,22 @@ export class Today extends Context.Service<Today, TodayService>()("robot/main/To
           day.start,
           day.end,
         )
+        // A failed check of a watch, and a run that could not start, are failed runs too
+        // (spec 009). They have no task: the run history keeps them with their reason.
+        const failedChecks = db.all<RunRow>(
+          `SELECT id, routine_id, 'failed' AS state, at AS created_at, at AS finished_at,
+                  json_extract(reason, '$.code') AS error_code,
+                  json_extract(reason, '$.detail') AS error_detail
+           FROM (
+             SELECT id, routine_id, at, reason,
+                    ROW_NUMBER() OVER (PARTITION BY routine_id ORDER BY at DESC) AS n
+             FROM routine_skip WHERE kind = 'failed'
+           ) WHERE n <= ${STREAK_LOOK} OR (at >= ? AND at < ?)`,
+          day.start,
+          day.end,
+        )
         const runs = new Map<string, Map<string, RunFacts>>()
-        for (const r of [...recent, ...failedToday]) {
+        for (const r of [...recent, ...failedToday, ...failedChecks]) {
           const list = runs.get(r.routine_id) ?? new Map<string, RunFacts>()
           list.set(r.id, runRow(r))
           runs.set(r.routine_id, list)
@@ -354,16 +368,24 @@ export class Today extends Context.Service<Today, TodayService>()("robot/main/To
       /** The next run of each routine that runs here and is on. */
       const routineRuns = (now: number) =>
         db
-          .all<{ id: string; name: string; agent_id: string; enabled: number; schedule: string }>(
-            "SELECT id, name, agent_id, enabled, schedule FROM routine WHERE runs_on IS NULL",
+          .all<{
+            id: string
+            name: string
+            agent_id: string
+            enabled: number
+            schedule: string
+            watch: string | null
+          }>(
+            "SELECT id, name, agent_id, enabled, schedule, watch FROM routine WHERE runs_on IS NULL",
           )
           .map((r) => ({
             id: r.id,
             name: r.name,
             agentId: r.agent_id,
             enabled: r.enabled === 1,
+            // A watch has no planned runs (spec 009).
             nextRun:
-              r.enabled === 1
+              r.enabled === 1 && r.watch === null
                 ? (runTimes(JSON.parse(r.schedule) as Schedule, now, 1, now + TODAY_AHEAD_MS)[0] ??
                   null)
                 : null,

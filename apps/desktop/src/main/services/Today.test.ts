@@ -407,6 +407,35 @@ describe("Today", () => {
       expect(await s.rows("wrong")).toEqual([])
     })
 
+    test("a watch paused after 3 failed checks has the row marked paused, and no next run", async () => {
+      const s = await setup()
+      const ada = await s.agent("Ada")
+      const routineId = s.routine(ada.id, { enabled: false, updated: at(0), name: "Inbox watch" })
+      s.db.run(
+        "UPDATE routine SET schedule = 'null', watch = ? WHERE id = ?",
+        JSON.stringify({
+          minutes: 5,
+          target: { kind: "path", path: "gone" },
+          postUnchanged: false,
+        }),
+        routineId,
+      )
+      for (const h of [1, 2, 3])
+        s.db.run(
+          "INSERT INTO routine_skip (id, routine_id, at, kind, reason) VALUES (?, ?, ?, 'failed', ?)",
+          `skip-${h}`,
+          routineId,
+          at(h),
+          JSON.stringify({ code: "watch_missing", detail: "gone" }),
+        )
+      const list = await s.rows("wrong")
+      expect(list.map((r) => r.kind)).toEqual(["routine_paused"])
+      expect(list[0]?.count).toBe(3)
+      expect(list[0]?.reason).toEqual({ code: "watch_missing", detail: "gone" })
+      s.db.run("UPDATE routine SET enabled = 1, updated_at = ? WHERE id = ?", at(6), routineId)
+      expect(await s.rows("next")).toEqual([])
+    })
+
     test("the paused routine keeps its row after midnight; a failed run of an on routine does not", async () => {
       const s = await setup()
       const ada = await s.agent("Ada")
