@@ -4,7 +4,7 @@ import { EVENT_CHANNEL } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
 import { app, BrowserWindow } from "electron"
 import { appLayer } from "./layers.ts"
-import { electronPlatform, setMainWindow } from "./platform-electron.ts"
+import { electronPlatform, isTestRun, setMainWindow } from "./platform-electron.ts"
 import { registerRpc } from "./register-rpc.ts"
 import { Database } from "./services/Database.ts"
 import { Notifier } from "./services/Notifier.ts"
@@ -80,7 +80,8 @@ const createWindow = () => {
     },
   })
   setMainWindow(win)
-  win.once("ready-to-show", () => win.show())
+  // A test run shows the window without the focus, so the test does not take it from the user.
+  win.once("ready-to-show", () => (isTestRun ? win.showInactive() : win.show()))
   // The window never navigates away from the app and never opens other windows.
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }))
   win.webContents.on("will-navigate", (event, url) => {
