@@ -113,6 +113,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           db.run("VACUUM INTO ?", copy)
           const out = new DatabaseSync(copy)
           try {
+            // A page keeps the bytes of a value that was replaced, unless the file is rebuilt.
+            // The copy is rebuilt after the keys are hidden (see below), so that no page holds one.
+            out.exec("PRAGMA secure_delete = ON")
             const rows = out.prepare("SELECT id, parts, error_detail FROM message").all() as {
               id: string
               parts: string
@@ -190,6 +193,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                 row.id,
               )
             }
+            // The pages of the first copy can hold the old text of a row, also in space that no
+            // row uses. A rebuild writes only the rows as they are now.
+            out.exec("VACUUM")
           } finally {
             out.close()
           }

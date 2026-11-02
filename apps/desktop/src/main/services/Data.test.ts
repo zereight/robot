@@ -102,6 +102,55 @@ describe("export and import", () => {
     expect(bDb.get<{ parts: string }>("SELECT parts FROM message")?.parts).toContain("[redacted]")
   })
 
+  test("a hidden key leaves no trace in the pages of the database file", async () => {
+    const out = join(testPlatform().dataDir, "export-pages.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    await a
+      .run(
+        Providers.use((p) =>
+          p.connect({ kind: "custom", name: "M", baseUrl: "http://127.0.0.1:9/v1", apiKey: KEY }),
+        ),
+      )
+      .catch(() => undefined)
+    const agent = await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    // The SQLite of some systems wipes a freed cell, and some does not (Electron). Test the second.
+    db.run("PRAGMA secure_delete = OFF")
+    // Many rows share a page. A value that is replaced by a shorter one must not stay in the page.
+    for (let i = 0; i < 60; i++) {
+      const filler = "x".repeat(10 + ((i * 37) % 90))
+      db.run(
+        `INSERT INTO message (id, agent_id, author, parts, status, created_at, finished_at)
+         VALUES (?, ?, 'user', ?, 'done', ?, ?)`,
+        `m${i}`,
+        agent.id,
+        JSON.stringify([{ kind: "text", text: `note ${i} ${filler} key ${KEY} ${filler} end` }]),
+        i,
+        i,
+      )
+      db.run(
+        `INSERT INTO task (id, agent_id, source, prompt, label, state, created_at)
+         VALUES (?, ?, 'chat', ?, ?, 'done', ?)`,
+        `t${i}`,
+        agent.id,
+        `${filler} use ${KEY} for it ${filler} ${filler}`,
+        `${filler} use ${KEY} for ${filler}`,
+        i,
+      )
+    }
+    await a.run(Data.use((d) => d.export()))
+    const entries = unzipSync(readFileSync(out))
+    const found = Object.entries(entries)
+      .filter(([, data]) => Buffer.from(data).includes(KEY))
+      .map(([name]) => name)
+    expect(found).toEqual([])
+  })
+
   test("knowledge is in the archive: articles without keys, sources as they are, and the changes", async () => {
     const out = join(testPlatform().dataDir, "export-knowledge.zip")
     const a = app({ save: out })
