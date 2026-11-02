@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import type { AgentEvent } from "../providers/agent.ts"
-import { mapPiEvent, newPiState, parsePiModels, piArgs, piFailure, piTools } from "./pi.ts"
+import {
+  mapPiEvent,
+  newPiState,
+  parsePiModels,
+  piArgs,
+  pickEfforts,
+  piFailure,
+  piTools,
+} from "./pi.ts"
 import type { RuntimeRun } from "./types.ts"
 
 const run = (patch: Partial<RuntimeRun> = {}): RuntimeRun => ({
@@ -42,6 +50,30 @@ describe("pi models", () => {
     expect(parsePiModels("provider model context max-out thinking images\n")).toEqual([])
     expect(parsePiModels("No models available.\n")).toEqual([])
     expect(parsePiModels("")).toEqual([])
+  })
+})
+
+describe("pi levels", () => {
+  test("a model keeps the levels it takes, in order, without off", () => {
+    expect(pickEfforts(["off", "minimal", "low", "medium", "high", "max"])).toEqual([
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "max",
+    ])
+    expect(pickEfforts(["low", "medium", "high", "xhigh", "max"])).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ])
+  })
+  test("a model without thinking has no level, and a level of the future is left out", () => {
+    expect(pickEfforts(["off"])).toEqual([])
+    expect(pickEfforts(["low", "ultra"])).toEqual(["low"])
+    expect(pickEfforts(null)).toEqual([])
   })
 })
 
