@@ -42,7 +42,7 @@ service holds it.
 | Workspace folders and the files in them | They are large and belong to a computer. Use git or a file service. |
 | Browser windows and their sessions | They belong to a computer. |
 | Settings, theme, language, notification choices, mutes | Settings are local (013). The silent limit (005) is one of them. |
-| Memory history, memory proposals, and the memory switches of an agent (on or off, save at once or ask first) (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are choices of one computer. A memory item that arrives by sync makes no history row. |
+| Memory history, memory proposals and memory switches (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are on or off, and save at once or ask first. They are choices of one computer. A memory item that arrives by sync makes no history row. |
 | Usage numbers | They count what ran on this computer. |
 | Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
 | User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives in the default section. |

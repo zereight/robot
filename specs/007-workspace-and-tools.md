@@ -59,7 +59,8 @@ Each agent works in its own folder with real tools, and the user stays in contro
 
 - The tool "search chats" searches the messages that the agent took part in: its direct chats,
   its threads, and the channels where it is a member. The match rule is the one of message
-  search (001), applied to the text that the agent writes.
+  search (001), applied to the words that the agent gives to the tool. It skips archived places, as the search
+  of the user does.
 - It gives at most 10 hits, newest first. A hit has the place, the time, who wrote the message,
   and a piece of the message of at most 300 characters around the first matching word. All
   pieces together have at most 4000 characters.

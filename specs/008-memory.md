@@ -10,8 +10,9 @@ keep, and can undo a change.
 - **Memory item**: a short text, the agent it belongs to, when it was made, and where it came from
   (a message, the user, or a proposal).
 - **Scope**: one agent. Agents do not read each other's memory.
-- **Memory saving**: a choice for each agent. "Save at once" is the default: the agent saves a
-  fact as a memory item. "Ask me first": the agent can only suggest a fact, and the user decides.
+- **Memory saving**: a choice for each agent. It sits on the memory page of the agent, above the
+  tabs. "Save at once" is the default: the agent saves a fact as a memory item. "Ask me first":
+  the agent can only suggest a fact, and the user decides.
 - **Proposal**: a fact that an agent suggests and the user has not accepted. A proposal is not
   memory. The agent does not read it.
 - **History**: the list of changes to the memory of one agent.
@@ -36,8 +37,9 @@ keep, and can undo a change.
    the text before and after. A row has the button "Undo".
    - Undo of "added" removes the item. Undo of "edited" puts back the text before. Undo of
      "deleted" makes the item again with its text.
-   - Undo works only while the item is as that change left it. If a newer change to the item
-     exists, Undo is off and the row says: "A newer change exists. Undo that one first."
+   - Undo is on only while the item is exactly as that change made it. After an edit, the item
+     has the new text. After a deletion, the item is missing. Otherwise Undo is off, and the row
+     says: "A newer change exists. Undo that one first."
    - An undo is a change too. It has its own row, and the user can undo it.
 5. Before each turn, the agent gets the memory items that relate to the new message, up to a
    limit set by the size of the model's context.
@@ -49,21 +51,26 @@ keep, and can undo a change.
 - The user can turn memory off per agent. Existing items stay but are not used. An agent with
   memory off has no tool to save, to suggest or to search past chats (see 007). The tabs stay
   open and the user can still change items.
-- A proposal is a text of at most 500 characters. The tool refuses a longer text, and tells the
-  agent. A proposal with the same text as an item or as another proposal (ignoring case and
-  spaces at both ends) is not added twice.
+- The memory tool accepts a text of at most 500 characters, for an item and for a proposal. It
+  refuses a longer text and tells the agent. The user can type longer items by hand.
+- A proposal with the same text as an item or as another proposal is not added. Spaces at both
+  ends and the case of letters do not matter. The tool tells the agent that the fact is known.
 - An agent has at most 20 proposals. A new proposal replaces the oldest one when 20 wait. A
-  proposal that nobody answers goes after 30 days.
-- A change of the choice does not touch the proposals. After the change to "Save at once", the
-  proposals stay in the tab until the user answers them.
-- The memory tool of the agent refuses a text that looks like a secret (see 014). It does not
-  save it and does not suggest it, and it tells the agent to leave the secret out. The user can
-  type such a text by hand.
+  proposal that nobody answers ends after 30 days.
+- A change of the choice leaves the proposals as they are. After the change to "Save at once",
+  the proposals stay in the tab until the user answers them.
+- The memory tool refuses a text that looks like a secret (see 014). It does not save it and does
+  not suggest it, and it tells the agent to leave the secret out. The user can type such a text
+  by hand.
 - Each change to an item makes a history row. A change that arrives by sync (019) makes none.
+  Such a change can turn an Undo off, because the item is not as that row left it.
 - History keeps 90 days and at most 1000 rows for each agent. The oldest rows go first. Removing
   a row does not change an item.
-- A history row whose text looks like a secret (see 014) shows "[hidden]" in place of the text and
-  has no Undo.
+- A history row whose text looks like a secret shows "[redacted]" in place of the text and has no
+  Undo.
+- The link in the line "Suggested for memory" and the undo control in the line "Saved to memory"
+  work on the computer where the change was made. On a linked device (012) and on the other
+  computer of a sync pair (019), the lines are plain text with no link and no undo control.
 
 ## Out of scope
 
@@ -85,4 +92,7 @@ keep, and can undo a change.
 - Ask the agent to remember a text that looks like a key: no item and no proposal is made, and
   the agent says that it left the secret out.
 - Make 21 proposals: the tab shows 20, and the oldest one is gone.
+- Ask the agent to save a fact twice: the second call adds nothing, and the agent is told that the
+  fact is known.
 - Turn memory off: the agent has no memory tools. The items stay in the tab.
+- Open the same agent on a linked device: the line "Saved to memory" has no undo control.

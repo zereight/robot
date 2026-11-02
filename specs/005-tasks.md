@@ -36,16 +36,16 @@ A turn is the work that one agent does for one task. Each turn has a progress:
 The progress only goes up. It never goes back. A task that is retried makes a new turn, which
 starts at "Not sent".
 
-When a turn fails, because of an error, a restart, the silent limit, or any other reason except a
-Stop by the user, the failed row (003) and the task show one line for the progress:
+A turn can fail because of an error, a restart, or the silent limit. Then the failed row (003) and
+the task show one line for the progress. A Stop by the user shows no line, because the user chose
+it. The lines are:
 
 - Not sent: "The request did not reach the model. It is safe to try again."
 - Sent: "The model may have started. Check the workspace before you try again."
 - Started: "The agent had started to work. Some steps may have run. Check the workspace before
   you try again."
 
-The line sits beside Retry. Retry works for every progress. A stop by the user shows no line,
-because the user chose it.
+The line sits beside Retry. Retry works for every progress.
 
 ## Silent turns
 
@@ -53,9 +53,12 @@ because the user chose it.
   limit is 10 minutes. The user can change it in Settings (see 013).
 - A sign of life is a new part of the reply, new thinking, a tool step that starts or ends, an
   approval request, or a question.
-- The clock stops, and starts again at 0 afterwards, in these cases: the turn waits for the user
-  (an approval or a question); the user holds the browser (007); a tool step runs, from its start
-  to its end as the app sees it. Time while the computer sleeps does not count.
+- The clock starts when the app hands the request over. It stops, and starts again at 0 after
+  the stop, in these cases: the turn waits for the user (an approval or a question); the user
+  holds the browser (007); a tool step runs, from its start to its end as the app sees it. Time
+  while the computer sleeps does not count.
+- A tool step has no limit of its own in this version. The user ends a step that does not end
+  with Stop.
 - When the limit is reached, the app stops the turn in the same way as a Stop of the user. The
   task fails with the reason "No answer for N minutes.", where N is the limit in minutes ("No
   answer for 1 minute." when N is 1). The failed row has Retry (003).

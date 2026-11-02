@@ -7,8 +7,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 ## Rules
 
 - One local database file holds servers, agents, conversations, tasks, routines, workflows,
-  memory (with its proposals and history, see 008), settings, permission rules, the action log (007), skills (017) and connections (018).
-  Attachments are files next to it.
+  memory (with its proposals and history, see 008), settings, permission rules, the action log
+  (007), skills (017) and connections (018). Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
 - The database is the source of truth. Nothing remote is a cache of it. Two computers that sync
   (019) each hold a full copy of the shared data. Both are sources of truth, and the rules of
@@ -38,7 +38,10 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up or to a page that an agent visits.
 - Secrets (keys, tokens, secret values of environment variables, secret values of a connection)
-  are in the system keychain. Logs and exports redact anything that looks like a secret. The keys
+  are in the system keychain. Logs and exports redact anything that looks like a secret. A text
+  looks like a secret when it equals a stored key, or holds a key or token of a known form: for
+  example a long string that starts with "sk-", "ghp_" or "xox", or a block from "-----BEGIN" to
+  "PRIVATE KEY-----". The keys
   of device links are secrets. A linked device never receives provider keys.
 
 ## Logs
@@ -58,8 +61,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - Export: one archive with the database, attachments, agent knowledge, and a readme of the
   format. Secrets are not included. The archive holds the rules, the action log, the skills and
   the connections without their secret values.
-- The memory history in the archive follows the rule for chats: text that looks like a secret is
-  replaced with "[redacted]".
+- The memory history in the archive follows the rule for secrets above: text that looks like a
+  secret is replaced with "[redacted]".
 - Import of a ROBot export into an empty app restores everything except secrets. Every
   connection comes back turned off (see 018), so an import never starts a program or sends data.
 

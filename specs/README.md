@@ -44,7 +44,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M7 | Changes listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S18 to S25 |
 | M8 | 016 | Agent knowledge: articles, sources, check |
 | M9 | 017, 018, and the changes to 007 and 009 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S29 to S32: routine limits, permission rules and action log, skills, connections |
-| M10 | 020, and the changes to 001, 003, 005, 006, 007, 008, 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S35 to S38: message search, silent and cut turns, the Today page, memory control |
+| M10 | 020, and the changes to 001, 003, 005, 006, 007, 008, 011, 012, 013, 014, 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S35 to S38: message search, silent and cut turns, the Today page, memory control |
 
 ## Template
 
