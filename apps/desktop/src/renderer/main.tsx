@@ -6,6 +6,7 @@ import { AppProvider, loadInitial, useApp } from "./state/app.tsx"
 import { ChannelsProvider } from "./state/channels.tsx"
 import { DevicesProvider } from "./state/devices.tsx"
 import { ProvidersProvider } from "./state/providers.tsx"
+import { TodayProvider } from "./state/today.tsx"
 import { loadUi, UiProvider } from "./state/ui.tsx"
 import { applyAppearance } from "./theme/apply.ts"
 
@@ -27,7 +28,9 @@ if (root) {
             <DevicesProvider>
               <AgentsProvider>
                 <ChannelsProvider>
-                  <App />
+                  <TodayProvider>
+                    <App />
+                  </TodayProvider>
                 </ChannelsProvider>
               </AgentsProvider>
             </DevicesProvider>

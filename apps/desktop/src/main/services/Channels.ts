@@ -432,6 +432,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   summary: askSummary(ask),
                   step: askStep(ask, toolNameOf(parts, callId)),
                   target: { kind: "channel", id: o.channel.id, messageId: id },
+                  ...(ask.askedAt !== undefined ? { askedAt: ask.askedAt } : {}),
                 })
               else notifier.clearAttention(o.agent.id, callId)
               changePart(callId, (p) => {

@@ -6,6 +6,7 @@ import { Chat } from "./Chat.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
+import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
 
 const KEY = "sk-chat-test"
@@ -190,6 +191,11 @@ describe("Chat", () => {
     await t.settled()
     ;({ messages } = await t.history())
     expect(messages.map((m) => m.status)).toEqual(["done", "done"])
+    // The new turn tries the failed task again, so the Today page drops its row (spec 005, 021).
+    const tasks = await t.run(Tasks.use((x) => x.list(t.local.id)))
+    const failed = tasks.find((x) => x.state === "failed")
+    expect(failed).toBeDefined()
+    expect(tasks.find((x) => x.retryOf === failed?.id)?.state).toBe("done")
   })
 
   test("a usage limit fails the turn with the reset time", async () => {

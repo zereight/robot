@@ -512,6 +512,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   summary: askSummary(ask),
                   step: askStep(ask, toolNameOf(parts, callId)),
                   target: { kind: "agent", id: agentId, messageId: reply.id },
+                  ...(ask.askedAt !== undefined ? { askedAt: ask.askedAt } : {}),
                 })
               else notifier.clearAttention(agentId, callId)
               changePart(callId, (p) => {
@@ -748,6 +749,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (!last || last.id !== messageId || last.author !== "agent" || last.status !== "failed") {
           return yield* new AppError({ code: "cannot_retry" })
         }
+        // The new turn tries the failed task again (spec 005), so the Today page drops its row.
+        const failed = db.get<{ id: string }>(
+          "SELECT id FROM task WHERE message_id = ? AND agent_id = ? AND state = 'failed' AND origin IS NULL ORDER BY created_at DESC LIMIT 1",
+          messageId,
+          agentId,
+        )
+        if (failed) retryLinks.set(agentId, failed.id)
         db.run("DELETE FROM message WHERE id = ?", messageId)
         bus.emit("chat.removed", { agentId, messageId })
         yield* kick(agentId)

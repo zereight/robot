@@ -61,11 +61,31 @@ export interface WaitingInput {
    */
   readonly always: boolean
   readonly target: PlaceTarget
+  /** When the agent asked (spec 007). Without it the time of the first notice counts. */
+  readonly askedAt?: number
 }
 
 interface WaitingItem extends IslandAttention {
   readonly serverId: string
   readonly channelId: string | null
+  /** When the request began to wait. The Today page orders its first group by it. */
+  readonly askedAt: number
+  /** The name of the other computer when the task runs there (spec 019), or null. */
+  readonly from: string | null
+}
+
+/** A request that waits, as the Today page needs it (spec 021). */
+export interface WaitingRequest {
+  readonly agentId: string
+  readonly callId: string
+  readonly kind: "approval" | "question"
+  /** The text of the step or of the question, cut by the island rules. */
+  readonly summary: string
+  /** The channel name, or null for a direct chat. */
+  readonly place: string | null
+  readonly target: PlaceTarget
+  readonly askedAt: number
+  readonly from: string | null
 }
 
 /** The linked server that a notice came from. */
@@ -89,6 +109,8 @@ export interface NotifierService {
   answeredLinked(linkId: string, agentId: string, callId: string): void
   /** The approvals and questions that wait now, for a linked device that connects. */
   waitingNotices(): readonly WireNotice[]
+  /** The requests that wait now, including those of the other computer of a sync pair. */
+  waitingRequests(): readonly WaitingRequest[]
   /**
    * An approval or a question waits: a notification and the island card. `from` names the other
    * computer when the task runs there (spec 015, 019).
@@ -210,7 +232,9 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
           working: agents.slice(0, ISLAND_WORKING_MAX),
           count: agents.length,
           rows: agents.slice(0, ISLAND_ROWS_MAX).map(rowOf),
-          waiting: waiting.map(({ serverId: _s, channelId: _c, ...item }) => item),
+          waiting: waiting.map(
+            ({ serverId: _s, channelId: _c, askedAt: _a, from: _f, ...item }) => item,
+          ),
           // The result card is for the mode "always" only.
           result: mode === "always" ? result : null,
         }
@@ -321,10 +345,24 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
             callId: w.callId,
             agentId: w.agentId,
           })),
+        waitingRequests: () =>
+          waiting.map((w) => ({
+            agentId: w.agentId,
+            callId: w.callId,
+            kind: w.kind,
+            summary: w.summary,
+            place: w.place,
+            target: w.target,
+            askedAt: w.askedAt,
+            from: w.from,
+          })),
         attention: (input, from) => {
           const agent = agentInfo(input.agentId)
           if (!agent) return
-          const { summary, ...rest } = input
+          const { summary, askedAt, ...rest } = input
+          const at = waiting.findIndex(
+            (w) => w.agentId === input.agentId && w.callId === input.callId,
+          )
           const item: WaitingItem = {
             ...rest,
             agent,
@@ -332,10 +370,10 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
             place: channelName(input.channelId),
             // A request of the other computer never has "Always allow" here, whatever the caller says.
             always: input.always && from === undefined,
+            // A request that is seen again keeps the time it began to wait.
+            askedAt: askedAt ?? waiting[at]?.askedAt ?? Date.now(),
+            from: from ?? null,
           }
-          const at = waiting.findIndex(
-            (w) => w.agentId === item.agentId && w.callId === item.callId,
-          )
           if (at >= 0) waiting[at] = item
           else waiting.push(item)
           // A request for attention replaces a result card at once.

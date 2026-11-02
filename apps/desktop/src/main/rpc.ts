@@ -59,6 +59,7 @@ import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
+import { Today } from "./services/Today.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
@@ -804,6 +805,7 @@ export const handlers: Handlers = {
       Effect.flatMap((size) => Platform.use((p) => Effect.sync(() => p.fitIsland(size)))),
       done,
     ),
+  "today.get": () => Today.use((t) => t.snapshot()),
   "usage.summary": (input) =>
     decode(
       Schema.Struct({
