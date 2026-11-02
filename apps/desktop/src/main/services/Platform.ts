@@ -1,3 +1,4 @@
+import type { IslandShape } from "@robot/shared"
 import { Context } from "effect"
 
 /** One browser window of one agent. Cookies and logins stay with the agent, on this computer. */
@@ -51,7 +52,9 @@ export interface PlatformService {
   /** Brings the main window to the front. */
   showWindow(): void
   /** The shape of the status island on macOS. Other systems ignore it. */
-  setIslandShape(shape: "hidden" | "bar" | "attention"): void
+  setIslandShape(shape: IslandShape): void
+  /** The island window takes the size of its content, in px. It stays at the top centre. */
+  fitIsland(size: { width: number; height: number }): void
   /** The browser window of an agent. The same agent always gets the same page object. */
   browser(agentId: string): BrowserPage
 }
