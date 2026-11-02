@@ -1,32 +1,71 @@
-import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import type { MemoryHistoryRow, MemoryMode, MemoryProposal, MessageKey } from "@robot/shared"
+import {
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  type JSX,
+  onCleanup,
+  Show,
+} from "solid-js"
+import { formatDateTime } from "../chat/format.ts"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
-import { Button } from "../ui/controls.tsx"
+import { clearMemoryTarget, type MemoryTab, memoryTarget } from "../state/memoryLink.ts"
+import { useUi } from "../state/ui.tsx"
+import { Button, Segmented } from "../ui/controls.tsx"
 import styles from "./agents.module.css"
 
+/** A line that shows why a call failed. */
+const Failure = (props: { error: ErrorText | undefined }) => {
+  const { t } = useApp()
+  return (
+    <Show when={props.error}>
+      {(err) => (
+        <span class={styles.error} role="alert" data-testid="memory-error">
+          {t(err().key, err().params)}
+        </span>
+      )}
+    </Show>
+  )
+}
+
+/** Runs a call and keeps its failure for the line above. */
+const guarded =
+  (setError: (error: ErrorText | undefined) => void) => async (run: () => Promise<unknown>) => {
+    setError(undefined)
+    try {
+      await run()
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+
 /** The memory items of one agent: search, add, edit and delete. */
-export const MemoryPanel = (props: { agentId: string }) => {
+const Items = (props: { agentId: string }) => {
   const { t } = useApp()
   const [query, setQuery] = createSignal("")
   const [draft, setDraft] = createSignal("")
   const [editing, setEditing] = createSignal<{ id: string; text: string }>()
+  const [error, setError] = createSignal<ErrorText>()
+  const run = guarded(setError)
   const [items, { refetch }] = createResource(
     () => ({ agentId: props.agentId, query: query() }),
     (input) => call("memory.list", input),
   )
   onCleanup(window.robot.on("memory.changed", () => void refetch()))
 
-  const add = async () => {
-    const text = draft().trim()
-    if (!text) return
-    setDraft("")
-    await call("memory.add", { agentId: props.agentId, text })
-  }
+  const add = () =>
+    run(async () => {
+      const text = draft().trim()
+      if (!text) return
+      await call("memory.add", { agentId: props.agentId, text })
+      setDraft("")
+    })
 
   return (
-    <div class={styles.field} data-testid="memory-panel">
-      <span class={styles.label}>{t("agents.memory.title")}</span>
-      <span class={styles.hint}>{t("agents.memory.hint")}</span>
+    <>
       <input
         class={styles.input}
         value={query()}
@@ -54,6 +93,7 @@ export const MemoryPanel = (props: { agentId: string }) => {
           {t("agents.memory.add")}
         </Button>
       </div>
+      <Failure error={error()} />
       <Show when={(items() ?? []).length === 0}>
         <span class={styles.hint}>{t("agents.memory.empty")}</span>
       </Show>
@@ -73,7 +113,7 @@ export const MemoryPanel = (props: { agentId: string }) => {
                     {t("agents.memory.edit")}
                   </Button>
                   <Button
-                    onClick={() => call("memory.delete", { id: item.id })}
+                    onClick={() => run(() => call("memory.delete", { id: item.id }))}
                     data-testid="memory-delete"
                   >
                     {t("agents.memory.delete")}
@@ -92,10 +132,12 @@ export const MemoryPanel = (props: { agentId: string }) => {
                   />
                   <Button
                     variant="primary"
-                    onClick={async () => {
-                      await call("memory.update", { id: item.id, text: edit().text })
-                      setEditing(undefined)
-                    }}
+                    onClick={() =>
+                      run(async () => {
+                        await call("memory.update", { id: item.id, text: edit().text })
+                        setEditing(undefined)
+                      })
+                    }
                     data-testid="memory-save"
                   >
                     {t("agents.memory.save")}
@@ -106,6 +148,290 @@ export const MemoryPanel = (props: { agentId: string }) => {
           </div>
         )}
       </For>
+    </>
+  )
+}
+
+/** The facts that the agent suggests: Save, Edit and save, or Dismiss. Oldest first. */
+const Proposals = (props: { proposals: readonly MemoryProposal[] }) => {
+  const app = useApp()
+  const { t } = app
+  const [editing, setEditing] = createSignal<{ id: string; text: string }>()
+  const [error, setError] = createSignal<ErrorText>()
+  const run = guarded(setError)
+  const saveEdited = (id: string) =>
+    run(async () => {
+      const edit = editing()
+      if (edit?.id !== id) return
+      await call("memory.proposal.accept", { id, text: edit.text })
+      setEditing(undefined)
+    })
+  const origin = (p: MemoryProposal) => {
+    if (!p.place) return undefined
+    return p.place.name === null
+      ? t("memory.proposals.fromGone")
+      : t("memory.proposals.from", { name: p.place.name })
+  }
+  return (
+    <>
+      <Failure error={error()} />
+      <Show when={props.proposals.length === 0}>
+        <span class={styles.hint} data-testid="memory-proposals-empty">
+          {t("memory.proposals.empty")}
+        </span>
+      </Show>
+      <For each={props.proposals}>
+        {(proposal) => (
+          <div class={styles.proposal} data-testid="memory-proposal">
+            <Show
+              when={editing()?.id === proposal.id ? editing() : undefined}
+              fallback={<span class={styles.memoryText}>{proposal.text}</span>}
+            >
+              {(edit) => (
+                <input
+                  class={styles.input}
+                  value={edit().text}
+                  aria-label={t("memory.proposals.edit")}
+                  onInput={(e) => setEditing({ id: proposal.id, text: e.currentTarget.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      void saveEdited(proposal.id)
+                    }
+                  }}
+                  data-testid="proposal-edit-input"
+                />
+              )}
+            </Show>
+            <span class={styles.hint} data-testid="memory-proposal-meta">
+              {formatDateTime(app.locale(), proposal.createdAt)}
+              <Show when={origin(proposal)}>{(from) => <> · {from()}</>}</Show>
+            </span>
+            <div class={styles.memoryActions}>
+              <Show
+                when={editing()?.id === proposal.id}
+                fallback={
+                  <>
+                    <Button
+                      variant="primary"
+                      onClick={() => run(() => call("memory.proposal.accept", { id: proposal.id }))}
+                      data-testid="proposal-save"
+                    >
+                      {t("memory.proposals.save")}
+                    </Button>
+                    <Button
+                      onClick={() => setEditing({ id: proposal.id, text: proposal.text })}
+                      data-testid="proposal-edit"
+                    >
+                      {t("memory.proposals.editSave")}
+                    </Button>
+                    <Button
+                      onClick={() =>
+                        run(() => call("memory.proposal.dismiss", { id: proposal.id }))
+                      }
+                      data-testid="proposal-dismiss"
+                    >
+                      {t("memory.proposals.dismiss")}
+                    </Button>
+                  </>
+                }
+              >
+                <Button
+                  variant="primary"
+                  onClick={() => saveEdited(proposal.id)}
+                  data-testid="proposal-save-edited"
+                >
+                  {t("memory.proposals.save")}
+                </Button>
+                <Button onClick={() => setEditing(undefined)} data-testid="proposal-cancel">
+                  {t("memory.proposals.cancel")}
+                </Button>
+              </Show>
+            </div>
+          </div>
+        )}
+      </For>
+    </>
+  )
+}
+
+/** The changes to the memory of the agent, newest first, each with its Undo. */
+const History = (props: { rows: readonly MemoryHistoryRow[] }) => {
+  const app = useApp()
+  const { t } = app
+  const [error, setError] = createSignal<ErrorText>()
+  const run = guarded(setError)
+  const text = (value: string | null): JSX.Element => (
+    <span class={styles.historyText}>{value}</span>
+  )
+  return (
+    <>
+      <Failure error={error()} />
+      <Show when={props.rows.length === 0}>
+        <span class={styles.hint} data-testid="memory-history-empty">
+          {t("memory.history.empty")}
+        </span>
+      </Show>
+      <For each={props.rows}>
+        {(row) => (
+          <div
+            class={styles.historyRow}
+            data-testid="memory-history-row"
+            data-kind={row.kind}
+            data-actor={row.actor}
+          >
+            <span class={styles.hint}>
+              {formatDateTime(app.locale(), row.at)} ·{" "}
+              {t(`memory.history.actor.${row.actor}` as MessageKey)} ·{" "}
+              {t(`memory.history.kind.${row.kind}` as MessageKey)}
+            </span>
+            <div class={styles.historyBody} data-testid="memory-history-text">
+              <Show
+                when={row.kind === "edited"}
+                fallback={text(row.kind === "deleted" ? row.before : row.after)}
+              >
+                <span class={styles.hint}>{t("memory.history.before")}</span>
+                {text(row.before)}
+                <span class={styles.hint}>{t("memory.history.after")}</span>
+                {text(row.after)}
+              </Show>
+            </div>
+            {/* A row whose text looks like a secret has no Undo. */}
+            <Show when={row.undo.on || row.undo.why !== "secret"}>
+              <div class={styles.memoryActions}>
+                <Button
+                  disabled={!row.undo.on}
+                  onClick={() => run(() => call("memory.undo", { id: row.id }))}
+                  data-testid="memory-history-undo"
+                >
+                  {t("memory.history.undo")}
+                </Button>
+                <Show when={!row.undo.on}>
+                  <span class={styles.hint} data-testid="memory-history-reason">
+                    {t("memory.history.newer")}
+                  </span>
+                </Show>
+              </div>
+            </Show>
+          </div>
+        )}
+      </For>
+    </>
+  )
+}
+
+/**
+ * The memory page of one agent (spec 008): the choice of how the agent saves, and three tabs.
+ * A linked device (012) sees the items only, and a line that tells where to open the rest.
+ */
+export const MemoryPanel = (props: { agentId: string }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const own = () => !ui.linked()
+  const [tab, setTab] = createSignal<MemoryTab>("items")
+  const [error, setError] = createSignal<ErrorText>()
+  let root: HTMLDivElement | undefined
+
+  const [mode, { refetch: refetchMode, mutate: setModeLocal }] = createResource(
+    () => (own() ? props.agentId : undefined),
+    (agentId) => call("memory.mode", { agentId }),
+  )
+  const [proposals, { refetch: refetchProposals }] = createResource(
+    () => (own() ? props.agentId : undefined),
+    (agentId) => call("memory.proposals", { agentId }),
+  )
+  const [history, { refetch: refetchHistory }] = createResource(
+    () => (own() ? props.agentId : undefined),
+    (agentId) => call("memory.history", { agentId }),
+  )
+  onCleanup(
+    window.robot.on("memory.changed", () => {
+      void refetchMode()
+      void refetchProposals()
+      void refetchHistory()
+    }),
+  )
+
+  // The tab Proposals shows when the choice is "Ask me first" or when a proposal waits.
+  const showProposals = () => mode() === "ask" || (proposals() ?? []).length > 0
+  const tabs = (): MemoryTab[] =>
+    !own() ? ["items"] : showProposals() ? ["items", "proposals", "history"] : ["items", "history"]
+  const active = (): MemoryTab => (tabs().includes(tab()) ? tab() : "items")
+
+  // The link in the chat opens this panel on the tab that it names, once.
+  createEffect(() => {
+    const target = memoryTarget()
+    if (!target || target.agentId !== props.agentId) return
+    setTab(target.tab)
+    clearMemoryTarget()
+    queueMicrotask(() => root?.scrollIntoView({ block: "nearest" }))
+  })
+
+  const choose = async (next: MemoryMode) => {
+    setError(undefined)
+    const before = mode()
+    setModeLocal(next)
+    try {
+      await call("memory.setMode", { agentId: props.agentId, mode: next })
+    } catch (e) {
+      setModeLocal(before)
+      setError(describeError(e))
+    }
+  }
+
+  return (
+    <div class={styles.field} data-testid="memory-panel" ref={root}>
+      <span class={styles.label}>{t("agents.memory.title")}</span>
+      <span class={styles.hint}>{t("agents.memory.hint")}</span>
+      <Show when={own() && mode()}>
+        {(current) => (
+          <div class={styles.field}>
+            <Segmented
+              label={t("memory.mode.label")}
+              value={current()}
+              options={[
+                { value: "now", label: t("memory.mode.now") },
+                { value: "ask", label: t("memory.mode.ask") },
+              ]}
+              onChange={choose}
+              testId="memory-mode"
+            />
+            <span class={styles.hint} data-testid="memory-mode-hint">
+              {t(current() === "ask" ? "memory.mode.hint.ask" : "memory.mode.hint.now")}
+            </span>
+            <Failure error={error()} />
+          </div>
+        )}
+      </Show>
+      <Show when={tabs().length > 1}>
+        <Segmented
+          label={t("memory.tabs")}
+          value={active()}
+          options={tabs().map((value) => ({
+            value,
+            label:
+              value === "proposals" && (proposals() ?? []).length > 0
+                ? `${t("memory.tab.proposals")} (${(proposals() ?? []).length})`
+                : t(`memory.tab.${value}` as MessageKey),
+          }))}
+          onChange={setTab}
+          testId="memory-tabs"
+        />
+      </Show>
+      <Show when={active() === "items"}>
+        <Items agentId={props.agentId} />
+      </Show>
+      <Show when={active() === "proposals"}>
+        <Proposals proposals={proposals() ?? []} />
+      </Show>
+      <Show when={active() === "history"}>
+        <History rows={history() ?? []} />
+      </Show>
+      <Show when={!own()}>
+        <span class={styles.hint} data-testid="memory-client-more">
+          {t("memory.client.more", { name: ui.server()?.name ?? "" })}
+        </span>
+      </Show>
     </div>
   )
 }

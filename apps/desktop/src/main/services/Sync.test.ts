@@ -505,6 +505,89 @@ describe("two computers that were apart", () => {
     expect(kept.find((m) => m.id === item.id)?.text).toBe("Likes juice")
   })
 
+  test("memory history, proposals and the memory choice stay on their computer; an item that arrives makes no history row", async () => {
+    const { a, b, agents } = await pair()
+    const id = agents[0]?.id ?? ""
+    const history = (rt: Rt) =>
+      run(
+        rt,
+        Memory.use((m) => m.history(id)),
+      )
+    const proposals = (rt: Rt) =>
+      run(
+        rt,
+        Memory.use((m) => m.proposals(id)),
+      )
+    const mode = (rt: Rt) =>
+      run(
+        rt,
+        Memory.use((m) => m.mode(id)),
+      )
+
+    // On the first computer: one saved item, then the choice "Ask me first" and one proposal.
+    await run(
+      a,
+      Memory.use((m) => m.save(id, "Likes tea")),
+    )
+    await run(
+      a,
+      Memory.use((m) => m.setMode(id, "ask")),
+    )
+    await run(
+      a,
+      Memory.use((m) => m.save(id, "Waits for the user")),
+    )
+    expect((await history(a)).map((r) => r.kind)).toEqual(["added"])
+    expect((await proposals(a)).length).toBe(1)
+
+    // The item crosses. It makes no history row on the second computer.
+    await waitFor(
+      () => memoryTexts(b, id),
+      (t) => t.length === 1,
+    )
+    expect(await memoryTexts(b, id)).toEqual(["Likes tea"])
+    expect(await history(b)).toEqual([])
+    expect(await proposals(b)).toEqual([])
+    expect(await mode(b)).toBe("now")
+    expect(await mode(a)).toBe("ask")
+
+    // An edit of the user on the first computer crosses as a change of the item, not as history.
+    const [item] = await run(
+      a,
+      Memory.use((m) => m.list(id)),
+    )
+    await run(
+      a,
+      Memory.use((m) => m.update(item?.id ?? "", "Likes coffee")),
+    )
+    await waitFor(
+      () => memoryTexts(b, id),
+      (t) => t[0] === "Likes coffee",
+    )
+    expect(await history(b)).toEqual([])
+    // The row of the first computer now says that the item is as its change left it.
+    expect((await history(a)).map((r) => [r.kind, r.undo.on])).toEqual([
+      ["edited", true],
+      ["added", false],
+    ])
+
+    // A change on the second computer makes a row there only, and turns an Undo off on the first.
+    await run(
+      b,
+      Memory.use((m) => m.update(item?.id ?? "", "Likes juice")),
+    )
+    expect((await history(b)).map((r) => [r.kind, r.before, r.after])).toEqual([
+      ["edited", "Likes coffee", "Likes juice"],
+    ])
+    await waitFor(
+      () => memoryTexts(a, id),
+      (t) => t[0] === "Likes juice",
+    )
+    expect((await history(a)).map((r) => r.kind)).toEqual(["edited", "added"])
+    expect((await history(a))[0]?.undo).toEqual({ on: false, why: "newer" })
+    expect((await proposals(b)).length).toBe(0)
+  })
+
   test("a name stays unique when both computers give one name to different agents", async () => {
     const { a, b, agents } = await pair(["P", "Q"])
     const [p, q] = agents
