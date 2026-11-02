@@ -160,6 +160,15 @@ export interface IslandAttention {
   readonly target: PlaceTarget
 }
 
+/**
+ * The answers that the attention card offers, in the order of its buttons. A question has none:
+ * the user answers it in the app. "Always allow" shows only when the request has that choice.
+ */
+export const attentionAnswers = (
+  a: Pick<IslandAttention, "kind" | "always">,
+): ("allow" | "always" | "deny")[] =>
+  a.kind !== "approval" ? [] : a.always ? ["allow", "always", "deny"] : ["allow", "deny"]
+
 /** What an agent does now, see "Detail card" in spec 015. */
 export type IslandDoing =
   | { readonly kind: "plan"; readonly label: string }

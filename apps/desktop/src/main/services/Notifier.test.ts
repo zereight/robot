@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { ChatMessage, WireNotice } from "@robot/shared"
+import { attentionAnswers, type ChatMessage, type WireNotice } from "@robot/shared"
 import { Effect, Fiber } from "effect"
 import { runRequest } from "../rpc.ts"
 import { Agents } from "./Agents.ts"
@@ -513,6 +513,83 @@ describe("the island, other computers and Always allow", () => {
     await s.idle()
   })
 
+  test("one list with a request of this computer and one of the sync peer: the buttons and the answers of each", async () => {
+    const s = await setup()
+    const peer = await s.addAgent("Bo")
+    const ownFile = file(s, "list-own.txt")
+    const peerFile = file(s, "list-peer.txt")
+    const ownNext = file(s, "list-own-next.txt")
+    const peerNext = file(s, "list-peer-next.txt")
+    await s.send(removal(ownFile))
+    await s.sendTo(peer.id, removal(peerFile))
+    await until(async () => (await s.island()).waiting.length === 2)
+    // The request of Bo is shown as one of the sync peer, as the sync service does.
+    const shown = (await s.island()).waiting.find((w) => w.agentId === peer.id)
+    if (!shown) throw new Error("no request of Bo")
+    await s.run(
+      Notifier.use((n) =>
+        Effect.sync(() =>
+          n.attention(
+            {
+              agentId: shown.agentId,
+              serverId: s.local.id,
+              channelId: null,
+              callId: shown.callId,
+              kind: shown.kind,
+              summary: shown.summary,
+              step: shown.step,
+              // The sync service passes false. A caller that passes true gets false as well.
+              always: true,
+              target: shown.target,
+            },
+            "MacBook 2",
+          ),
+        ),
+      ),
+    )
+    const list = (await s.island()).waiting
+    // The list keeps its order, and both requests show in it.
+    expect(list.map((w) => w.agentId)).toEqual([s.agent.id, peer.id])
+    const [own, other] = list
+    if (!own || !other) throw new Error("no list")
+    // The buttons: Allow, Always allow and Deny for this computer; Allow and Deny for the peer.
+    expect(attentionAnswers(own)).toEqual(["allow", "always", "deny"])
+    expect(attentionAnswers(other)).toEqual(["allow", "deny"])
+    expect(own.step).toBe("command")
+    expect(other.step).toBe("command")
+    expect(
+      await s.run(Notifier.use((n) => Effect.succeed(n.canAlways(own.agentId, own.callId)))),
+    ).toBe(true)
+    expect(
+      await s.run(Notifier.use((n) => Effect.succeed(n.canAlways(other.agentId, other.callId)))),
+    ).toBe(false)
+
+    // A stray "always" for the peer request is one "Allow": the step runs and no rule is saved.
+    await runRequest(s.t.runtime, "island.respond", {
+      agentId: other.agentId,
+      callId: other.callId,
+      answer: "always",
+    })
+    await until(() => !existsSync(peerFile))
+    expect((await s.island()).waiting.map((w) => w.agentId)).toEqual([s.agent.id])
+    await s.sendTo(peer.id, removal(peerNext))
+    await until(async () => (await s.island()).waiting.length === 2)
+    expect(existsSync(peerNext)).toBe(true)
+    expect((await s.island()).waiting.find((w) => w.agentId === peer.id)?.always).toBe(true)
+
+    // "Always allow" for the request of this computer saves the rule.
+    await runRequest(s.t.runtime, "island.respond", {
+      agentId: own.agentId,
+      callId: own.callId,
+      answer: "always",
+    })
+    await until(() => !existsSync(ownFile))
+    await s.send(removal(ownNext))
+    await until(() => !existsSync(ownNext))
+    await s.run(Tools.use((x) => x.respond(peer.id, "call_1", "deny")))
+    await s.idle()
+  })
+
   test("a request that is not known takes no Always allow", async () => {
     const s = await setup()
     expect(await s.run(Notifier.use((n) => Effect.succeed(n.canAlways(s.agent.id, "none"))))).toBe(
@@ -546,6 +623,20 @@ describe("the island, other computers and Always allow", () => {
     expect(Object.keys(s.t.shell.notices[0] ?? {}).sort()).toEqual(["body", "click", "title"])
     expect((await s.island()).waiting).toEqual([])
     expect(await s.run(Notifier.use((n) => Effect.succeed(n.waitingNotices())))).toEqual([])
+    // A reply or a failure of a linked server makes no result card either.
+    await s.run(
+      Notifier.use((n) =>
+        Effect.sync(() => {
+          const source = { linkId: "link-1", serverId: "server-b", serverName: "MacBook 2" }
+          const base = { channelId: null, title: "Ada", agentId: s.agent.id }
+          const target = { kind: "agent", id: s.agent.id } as const
+          n.notifyLinked(source, { ...base, kind: "reply", body: "Done", target })
+          n.notifyLinked(source, { ...base, kind: "task_failed", body: "Failed", target })
+        }),
+      ),
+    )
+    expect(s.t.shell.notices).toHaveLength(3)
+    expect((await s.island()).result).toBeNull()
   })
 
   test("a linked device or the sync peer that sends Always allow gives one Allow: the step runs, the card names the device, no rule is saved", async () => {
