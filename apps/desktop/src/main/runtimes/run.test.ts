@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
-import { claudeLogin, claudeVersion, runClaude } from "./claude.ts"
+import { claudeLogin, claudeUsage, claudeVersion, runClaude } from "./claude.ts"
 import { codexLogin, runCodex } from "./codex.ts"
 import { runMuse } from "./muse.ts"
 import { piLogin } from "./pi.ts"
@@ -49,6 +49,51 @@ describe("claude program", () => {
     })
     fake.setClaude({ loggedIn: false })
     expect((await claudeLogin(fake.claude)).signedIn).toBe(false)
+  })
+
+  test("the usage windows are asked without a turn, in a folder of their own", async () => {
+    fake.setClaude({
+      loggedIn: true,
+      authMethod: "claude.ai",
+      plan: "max",
+      usage: {
+        five_hour: { utilization: 12, resets_at: "2030-01-01T00:00:00Z" },
+        seven_day: { utilization: 40, resets_at: "2030-01-02T00:00:00Z" },
+      },
+    })
+    expect(await claudeUsage(fake.claude)).toEqual([
+      { window: "five_hour", used: 0.12, resetsAt: Date.parse("2030-01-01T00:00:00Z") },
+      { window: "seven_day", used: 0.4, resetsAt: Date.parse("2030-01-02T00:00:00Z") },
+    ])
+    const call = fake.claudeUsageCalls().findLast((c) => c.kind === "usage") as {
+      args: string[]
+      cwd: string
+    }
+    // No saved session, no servers of the user, no hooks of the user, no tools.
+    expect(call.args).toEqual(
+      expect.arrayContaining(["--no-session-persistence", "--strict-mcp-config", "--settings"]),
+    )
+    expect(call.args[call.args.indexOf("--settings") + 1]).toContain('"disableAllHooks":true')
+    expect(call.args.at(-2)).toBe("--tools")
+    expect(call.args.at(-1)).toBe("")
+    expect(call.cwd).not.toBe(process.cwd())
+    expect(call.cwd).toContain("robot-claude-probe")
+  })
+
+  test("the text of /usage is the second try, and a program that tells nothing gives null", async () => {
+    fake.setClaude({
+      loggedIn: true,
+      authMethod: "claude.ai",
+      usageText: "Current session: 7% used\nCurrent week (all models): 21% used\n",
+    })
+    expect(await claudeUsage(fake.claude)).toEqual([
+      { window: "five_hour", used: 0.07, resetsAt: null },
+      { window: "seven_day", used: 0.21, resetsAt: null },
+    ])
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai" })
+    expect(await claudeUsage(fake.claude)).toBeNull()
+    // A program that is not there tells nothing, and does not throw.
+    expect(await claudeUsage("/no/such/claude")).toBeNull()
   })
 
   test("a turn streams text, reports usage and limits", async () => {
