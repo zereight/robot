@@ -1,12 +1,13 @@
 import { type Agent, type AgentModel, runtimeModel } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
-import { createSignal, Show } from "solid-js"
+import { createEffect, createSignal, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import type { PlaceView } from "../shell/Shell.tsx"
 import { useApp } from "../state/app.tsx"
+import { memoryTarget } from "../state/memoryLink.ts"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
@@ -33,6 +34,10 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
   const ui = useUi()
   const providers = useProviders()
   const [open, setOpen] = createSignal(false)
+  // The line "Suggested for memory" in the chat opens the profile on the tab Proposals (spec 008).
+  createEffect(() => {
+    if (memoryTarget()?.agentId === props.agent.id) setOpen(true)
+  })
   const teach = useTeach()
   // A runtime model shows with its version. An API model shows its id, which has the version.
   const modelName = () => {

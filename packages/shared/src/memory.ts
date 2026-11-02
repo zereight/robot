@@ -1,18 +1,130 @@
+/** The longest text that the memory tool takes, for an item and for a proposal (spec 008). */
 export const MEMORY_TEXT_MAX = 500
+/** The longest item that the user types by hand. The tool takes less. */
+export const MEMORY_USER_TEXT_MAX = MEMORY_TEXT_MAX * 2
 /** The limits of what one turn may carry from memory. */
 export const MEMORY_ITEMS_MAX = 20
 export const MEMORY_CHARS_MAX = 4000
 /** With this many items or fewer, all of them are always given. */
 export const MEMORY_ALL_BELOW = 6
+/** An agent has at most this many proposals. A new one replaces the oldest. */
+export const MEMORY_PROPOSALS_MAX = 20
+/** A proposal that nobody answers ends after this many days. */
+export const MEMORY_PROPOSAL_DAYS = 30
+/** The history of an agent keeps this many days and this many rows. The oldest go first. */
+export const MEMORY_HISTORY_DAYS = 90
+export const MEMORY_HISTORY_MAX = 1000
+export const DAY_MS = 24 * 60 * 60 * 1000
+
+/** "Save at once" (`now`) or "Ask me first" (`ask`): what the memory tool does for an agent. */
+export const MEMORY_MODES = ["now", "ask"] as const
+export type MemoryMode = (typeof MEMORY_MODES)[number]
+export const DEFAULT_MEMORY_MODE: MemoryMode = "now"
+export const isMemoryMode = (value: unknown): value is MemoryMode =>
+  (MEMORY_MODES as readonly unknown[]).includes(value)
+
+/** Where an item came from: the user, the agent's own save, or a proposal that the user accepted. */
+export type MemorySource = "user" | "agent" | "proposal"
 
 export interface MemoryItem {
   readonly id: string
   readonly agentId: string
   readonly text: string
-  /** The user, or the agent that saved it. */
-  readonly source: "user" | "agent"
+  readonly source: MemorySource
   readonly createdAt: number
   readonly updatedAt: number
+}
+
+/** Where a proposal was made: the direct chat of the agent or a channel. */
+export interface MemoryPlace {
+  readonly kind: "agent" | "channel"
+  readonly id: string
+  /** The name of the chat now, or null when it is gone. */
+  readonly name: string | null
+}
+
+/** A fact that an agent suggests. It is not memory, and the agent does not read it. */
+export interface MemoryProposal {
+  readonly id: string
+  readonly agentId: string
+  readonly text: string
+  readonly createdAt: number
+  readonly place: MemoryPlace | null
+}
+
+/** Who made a change: the user, the agent, a proposal that the user accepted, or an undo. */
+export type MemoryActor = "user" | "agent" | "proposal" | "undo"
+export type MemoryChange = "added" | "edited" | "deleted"
+
+/**
+ * Whether Undo works on a row. It is off when the item is not as the change left it (`newer`),
+ * and for a row whose text looks like a secret (`secret`, which shows no reason).
+ */
+export type MemoryUndo =
+  | { readonly on: true }
+  | { readonly on: false; readonly why: "newer" | "secret" }
+
+export interface MemoryHistoryRow {
+  readonly id: string
+  readonly agentId: string
+  readonly at: number
+  readonly actor: MemoryActor
+  readonly kind: MemoryChange
+  /** The text before the change (edited, deleted), or null. "[redacted]" when it looks like a secret. */
+  readonly before: string | null
+  /** The text after the change (added, edited), or null. "[redacted]" when it looks like a secret. */
+  readonly after: string | null
+  readonly undo: MemoryUndo
+  /** True when an undo took this change back and that undo still stands. */
+  readonly undone: boolean
+}
+
+/** The line in the chat: what the memory tool did. It holds ids only, no text. */
+export type MemoryNote =
+  | { readonly kind: "saved"; readonly historyId: string }
+  | { readonly kind: "suggested"; readonly proposalId: string }
+
+/** What the memory tool did, for the agent and for the card. */
+export type MemorySave =
+  | { readonly kind: "saved"; readonly item: MemoryItem; readonly historyId: string }
+  | { readonly kind: "suggested"; readonly proposal: MemoryProposal }
+  /** The same fact is in the memory or among the proposals. */
+  | { readonly kind: "known" }
+  | { readonly kind: "empty" }
+  | { readonly kind: "too_long" }
+  | { readonly kind: "secret" }
+  /** Memory is off for this agent. */
+  | { readonly kind: "off" }
+
+/** The reason that a row shows when its Undo is off. */
+export const MEMORY_UNDO_NEWER = "A newer change exists. Undo that one first."
+
+/** Two texts are the same fact when they differ only in the spaces at the ends and in letter case. */
+export const sameMemoryText = (a: string, b: string): boolean =>
+  a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase()
+
+/** What the rule for Undo needs to know about one history row and its item. */
+export interface UndoFacts {
+  readonly kind: MemoryChange
+  /** The text that the change left (added, edited). */
+  readonly after: string | null
+  /** The text of the item now, or null when the item is missing. */
+  readonly itemText: string | null
+  /** True when an undo already put back what a deletion took away. */
+  readonly revived: boolean
+  /** True when the text of the row looks like a secret. */
+  readonly secret: boolean
+}
+
+/**
+ * Undo is on only while the item is exactly as that change made it (spec 008). After an add or an
+ * edit the item has the text that the change left. After a deletion the item is missing. Any
+ * other state means a newer change exists. A row whose text looks like a secret has no Undo.
+ */
+export const memoryUndo = (f: UndoFacts): MemoryUndo => {
+  if (f.secret) return { on: false, why: "secret" }
+  if (f.kind === "deleted") return f.revived ? { on: false, why: "newer" } : { on: true }
+  return f.itemText !== null && f.itemText === f.after ? { on: true } : { on: false, why: "newer" }
 }
 
 const words = (text: string) =>

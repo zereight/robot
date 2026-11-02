@@ -12,7 +12,14 @@ import {
 import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
-import { type ChatMessage, KNOWLEDGE_FOLDER, KNOWLEDGE_SOURCES, redactSecrets } from "@robot/shared"
+import {
+  type ChatMessage,
+  KNOWLEDGE_FOLDER,
+  KNOWLEDGE_SOURCES,
+  looksLikeSecret,
+  REDACTED,
+  redactSecrets,
+} from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { unzipSync, zipSync } from "fflate"
 import { Agents } from "./Agents.ts"
@@ -203,6 +210,32 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               out
                 .prepare("UPDATE memory SET text = ? WHERE id = ?")
                 .run(redactSecrets(row.text, known), row.id)
+            // The proposals and the history of memory follow the same rule. A history row whose
+            // text looks like a secret keeps no text, and the mark keeps its Undo off (spec 014).
+            for (const row of out.prepare("SELECT id, text FROM memory_proposal").all() as {
+              id: string
+              text: string
+            }[])
+              out
+                .prepare("UPDATE memory_proposal SET text = ? WHERE id = ?")
+                .run(redactSecrets(row.text, known), row.id)
+            for (const row of out
+              .prepare("SELECT id, old_text, new_text FROM memory_history")
+              .all() as { id: string; old_text: string | null; new_text: string | null }[]) {
+              const secret = [row.old_text, row.new_text].some(
+                (text) => text !== null && looksLikeSecret(text, known),
+              )
+              if (!secret) continue
+              out
+                .prepare(
+                  "UPDATE memory_history SET old_text = ?, new_text = ?, hidden = 1 WHERE id = ?",
+                )
+                .run(
+                  row.old_text === null ? null : REDACTED,
+                  row.new_text === null ? null : REDACTED,
+                  row.id,
+                )
+            }
             const update = out.prepare(
               "UPDATE message SET parts = ?, error_detail = ? WHERE id = ?",
             )
@@ -343,6 +376,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               )
               db.run("INSERT INTO message SELECT * FROM imp.message")
               db.run("INSERT INTO memory SELECT * FROM imp.memory")
+              db.run("INSERT INTO memory_proposal SELECT * FROM imp.memory_proposal")
+              db.run("INSERT INTO memory_history SELECT * FROM imp.memory_history")
               db.run("INSERT INTO knowledge_file SELECT * FROM imp.knowledge_file")
               db.run("INSERT INTO knowledge_change SELECT * FROM imp.knowledge_change")
               db.run("INSERT INTO agent_allow SELECT * FROM imp.agent_allow")

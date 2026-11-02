@@ -25,7 +25,7 @@ import type {
   ServerEntry,
   WireNotice,
 } from "./link.ts"
-import type { MemoryItem } from "./memory.ts"
+import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryProposal } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { ActionLogEntry, ActionResult } from "./outside.ts"
 import type {
@@ -277,6 +277,19 @@ export interface RpcMethods {
   "memory.add": { input: { agentId: string; text: string }; output: MemoryItem }
   "memory.update": { input: { id: string; text: string }; output: MemoryItem }
   "memory.delete": { input: { id: string }; output: undefined }
+  /** "Save at once" or "Ask me first" for one agent (spec 008). Not for a linked device. */
+  "memory.mode": { input: { agentId: string }; output: MemoryMode }
+  "memory.setMode": { input: { agentId: string; mode: MemoryMode }; output: undefined }
+  /** The proposals of an agent, oldest first. */
+  "memory.proposals": { input: { agentId: string }; output: readonly MemoryProposal[] }
+  /** Makes an item of a proposal. `text` is the edited text of "Edit and save". */
+  "memory.proposal.accept": { input: { id: string; text?: string }; output: MemoryItem }
+  "memory.proposal.dismiss": { input: { id: string }; output: undefined }
+  /** The changes to the memory of an agent, newest first. */
+  "memory.history": { input: { agentId: string }; output: readonly MemoryHistoryRow[] }
+  /** One row, for the line in the chat. Undefined when retention removed it. */
+  "memory.history.get": { input: { id: string }; output: MemoryHistoryRow | undefined }
+  "memory.undo": { input: { id: string }; output: undefined }
   /** The action log of this computer, newest first (spec 007). It is not offered to a linked device. */
   "actionLog.list": {
     input: { agentId?: string; result?: ActionResult }

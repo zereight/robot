@@ -23,3 +23,10 @@ export const redactSecrets = (text: string, known: readonly string[] = []): stri
   for (const pattern of PATTERNS) out = out.replace(pattern, REDACTED)
   return out
 }
+
+/**
+ * True when `text` looks like a secret (spec 014): it holds a stored value from `known`, or a key
+ * or token of a known form.
+ */
+export const looksLikeSecret = (text: string, known: readonly string[] = []): boolean =>
+  redactSecrets(text, known) !== text
