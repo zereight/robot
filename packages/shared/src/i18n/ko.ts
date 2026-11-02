@@ -351,6 +351,7 @@ export const ko: Record<MessageKey, string> = {
   "usage.col.replies": "답변",
   "usage.col.input": "입력 토큰",
   "usage.col.output": "출력 토큰",
+  "usage.col.firstReply": "첫 답변 (중앙값)",
   "usage.note":
     "토큰 수는 제공자가 알려 준 값이에요. 제공자가 비용을 알려 주지 않아서 비용은 표시하지 않아요.",
 
@@ -410,6 +411,12 @@ export const ko: Record<MessageKey, string> = {
   "tasks.openSource": "대화 열기",
   "tasks.close": "닫기",
   "tasks.retryOf": "이전 작업을 다시 시도한 작업이에요.",
+  "tasks.times": "시간",
+  "tasks.times.wait": "대기",
+  "tasks.times.firstReply": "첫 답변",
+  "tasks.times.total": "전체",
+  "time.seconds": "{value}초",
+  "time.unknown": "—",
   "error.app_stopped": "앱이 종료되었어요.",
   "error.cannot_retry_task": "실패하거나 취소된 작업만 다시 시도할 수 있어요.",
   "error.task_not_found": "이 작업은 더 이상 없어요.",
