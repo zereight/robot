@@ -174,7 +174,7 @@ test("agents: a new agent can get a random name suggestion", async () => {
   await app.close()
 })
 
-test("agents: name suggestions are Korean words in the Korean interface", async () => {
+test("agents: name suggestions stay English in the Korean interface", async () => {
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
   await resizeWindow(app, 1200, 800)
   await page.getByTestId("new-agent").click()
@@ -183,7 +183,7 @@ test("agents: name suggestions are Korean words in the Korean interface", async 
     "이름 추천받기",
   )
   await page.getByTestId("agent-name-suggest").click()
-  await expect(page.getByTestId("agent-name")).toHaveValue(/^[가-힣]+$/)
+  await expect(page.getByTestId("agent-name")).toHaveValue(/^[A-Za-z]+$/)
   await shot(page, "s3-07-suggested-name-ko")
   await app.close()
 })
