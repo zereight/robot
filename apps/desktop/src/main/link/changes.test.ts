@@ -6,6 +6,7 @@ import { runRequest } from "../rpc.ts"
 import { Activity } from "../services/Activity.ts"
 import { Database } from "../services/Database.ts"
 import { Devices } from "../services/Devices.ts"
+import { Memory } from "../services/Memory.ts"
 import { Providers } from "../services/Providers.ts"
 import { Remote } from "../services/Remote.ts"
 import { Servers } from "../services/Servers.ts"
@@ -468,6 +469,13 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     )
     expect(codeOf(await p.ask("memory.delete", { id: item.id }))).toBe("ok")
     expect(value<unknown[]>(await p.ask("memory.list", { agentId: a.id }))).toEqual([])
+    // What the client changed is in the history of the server, as a change by the user.
+    const rows = await p.server.runtime.runPromise(Memory.use((m) => m.history(a.id)))
+    expect(rows.map((r) => [r.actor, r.kind])).toEqual([
+      ["user", "deleted"],
+      ["user", "edited"],
+      ["user", "added"],
+    ])
   })
 
   test("a request that is too large or has the wrong type is refused", async () => {

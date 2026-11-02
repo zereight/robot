@@ -11,7 +11,7 @@ import {
   FACE_SHAPES,
   isOutsideSource,
   KNOWLEDGE_TITLE_MAX,
-  MEMORY_TEXT_MAX,
+  MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
   PERMISSION_LEVELS,
@@ -207,6 +207,18 @@ const knowledgeNoteCheck = (v: unknown): boolean => {
   return false
 }
 
+/**
+ * What the memory tool did, as it shows in the card of the message. The note holds ids only. The
+ * history and the proposals do not sync (019), so the other computer shows the line as plain
+ * text, with no undo and no link.
+ */
+const memoryNoteCheck = (v: unknown): boolean => {
+  if (!isObject(v)) return false
+  if (v.kind === "saved") return shape(["kind", "historyId"])(v) && str(100, 1)(v.historyId)
+  if (v.kind === "suggested") return shape(["kind", "proposalId"])(v) && str(100, 1)(v.proposalId)
+  return false
+}
+
 const partCheck = (v: unknown): boolean => {
   if (!isObject(v)) return false
   switch (v.kind) {
@@ -238,7 +250,7 @@ const partCheck = (v: unknown): boolean => {
       return (
         shape(
           ["kind", "id", "name", "label", "state", "input", "output"],
-          ["ask", "memoryId", "decision", "knowledge"],
+          ["ask", "memoryId", "memory", "decision", "knowledge"],
         )(v) &&
         str(200, 1)(v.id) &&
         str(200)(v.name) &&
@@ -248,6 +260,7 @@ const partCheck = (v: unknown): boolean => {
         str(TEXT_MAX)(v.output) &&
         (v.ask === undefined || askCheck(v.ask)) &&
         (v.memoryId === undefined || str(100)(v.memoryId)) &&
+        (v.memory === undefined || memoryNoteCheck(v.memory)) &&
         (v.knowledge === undefined || knowledgeNoteCheck(v.knowledge)) &&
         (v.decision === undefined ||
           (isObject(v.decision) &&
@@ -728,9 +741,10 @@ const memory: KindDef = {
   fields: {
     agentId: { check: str(100, 1) },
     text: {
-      check: (v) => typeof v === "string" && v.trim() !== "" && charLength(v) <= MEMORY_TEXT_MAX,
+      check: (v) =>
+        typeof v === "string" && v.trim() !== "" && charLength(v) <= MEMORY_USER_TEXT_MAX,
     },
-    source: { check: oneOf(["user", "agent"]) },
+    source: { check: oneOf(["user", "agent", "proposal"]) },
     createdAt: { check: int },
     updatedAt: { check: int },
   },

@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { KnowledgeNote } from "./knowledge.ts"
+import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
 
@@ -27,8 +28,8 @@ export type MessagePart =
       readonly output: string
       /** Set while the card waits for the user: an approval or a question. */
       readonly ask?: ToolAsk
-      /** Set for a tool that saved a memory item, so the card can offer undo. */
-      readonly memoryId?: string
+      /** Set for the memory tool: a saved item (with undo) or a suggestion (with a link). */
+      readonly memory?: MemoryNote
       /** Set when a linked device answered the approval: its answer and its name (spec 012). */
       readonly decision?: { readonly answer: "allow" | "deny"; readonly by: string }
       /** Set for a knowledge tool: what it read or changed, so the card can show it. */

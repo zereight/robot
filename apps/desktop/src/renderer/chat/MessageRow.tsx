@@ -4,6 +4,8 @@ import {
   catalogues,
   type FilePart,
   type KnowledgeNote,
+  type MemoryNote,
+  type MemoryUndo,
   type MessageKey,
   type MessagePart,
   messageFiles,
@@ -31,6 +33,7 @@ import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
+import { openMemory } from "../state/memoryLink.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
@@ -283,13 +286,6 @@ const ToolCard = (props: {
           <div class={styles.time}>{t("chat.tool.output")}</div>
           <pre>{props.part.output}</pre>
         </Show>
-        <Show when={props.part.memoryId}>
-          {(id) => (
-            <Button onClick={() => call("memory.delete", { id: id() })} data-testid="memory-undo">
-              {t("chat.tool.undoMemory")}
-            </Button>
-          )}
-        </Show>
       </div>
     </details>
   )
@@ -533,14 +529,103 @@ const KnowledgeLine = (props: {
   )
 }
 
-/** A tool step: a knowledge line when the tool is done, otherwise the plain card. */
+/** True for an Undo that is off because a newer change exists. */
+const newer = (undo: MemoryUndo) => !undo.on && undo.why === "newer"
+
+/**
+ * What the memory tool did: a muted line. A saved item has an undo control that does what Undo
+ * does in the history. A suggestion has a link to the tab Proposals. Both work on the computer
+ * where the change was made. A linked device and the other computer of a sync pair show plain
+ * text (012, 019).
+ */
+const MemoryLine = (props: { agent: Agent; note: MemoryNote; from: string | undefined }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const here = () => !ui.linked() && props.from === undefined
+  const [tick, setTick] = createSignal(0)
+  const [error, setError] = createSignal<ErrorText>()
+  onCleanup(
+    window.robot.on("memory.changed", (e) => {
+      if (e.agentId === props.agent.id) setTick((n) => n + 1)
+    }),
+  )
+  // The history keeps 90 days. A change that left it has no undo.
+  const [row] = createResource(
+    () => {
+      const note = props.note
+      return note.kind === "saved" && here() ? { id: note.historyId, tick: tick() } : undefined
+    },
+    ({ id }) => call("memory.history.get", { id }).catch(() => undefined),
+  )
+  const undo = async () => {
+    const note = props.note
+    if (note.kind !== "saved") return
+    setError(undefined)
+    try {
+      await call("memory.undo", { id: note.historyId })
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+  return (
+    <div
+      class={styles.knowledgeLine}
+      data-testid={props.note.kind === "saved" ? "memory-saved-line" : "memory-suggested-line"}
+    >
+      <span>{t(props.note.kind === "saved" ? "chat.memory.saved" : "chat.memory.suggested")}</span>
+      <Show when={props.note.kind === "suggested" && here()}>
+        <Button onClick={() => openMemory(props.agent.id, "proposals")} data-testid="memory-open">
+          {t("chat.memory.open")}
+        </Button>
+      </Show>
+      <Show when={row()}>
+        {(r) => (
+          <Show
+            when={!r().undone}
+            fallback={<span data-testid="memory-undone">{t("chat.memory.undone")}</span>}
+          >
+            <Show
+              when={r().undo.on}
+              fallback={
+                <Show when={newer(r().undo)}>
+                  <span data-testid="memory-undo-off">{t("memory.history.newer")}</span>
+                </Show>
+              }
+            >
+              <Button onClick={undo} data-testid="memory-undo">
+                {t("chat.memory.undo")}
+              </Button>
+            </Show>
+          </Show>
+        )}
+      </Show>
+      <Show when={error()}>
+        {(err) => (
+          <span class={styles.knowledgeError} role="alert">
+            {t(err().key, err().params)}
+          </span>
+        )}
+      </Show>
+    </div>
+  )
+}
+
+/** A tool step: a muted line when a knowledge or memory tool is done, otherwise the plain card. */
 const ToolStep = (props: { agent: Agent; part: ToolPart; from: string | undefined }) => {
-  const note = () =>
-    props.part.state === "done" || props.part.state === "failed" ? props.part.knowledge : undefined
+  const finished = () => props.part.state === "done" || props.part.state === "failed"
+  const note = () => (finished() ? props.part.knowledge : undefined)
+  const memory = () => (props.part.state === "done" ? props.part.memory : undefined)
   return (
     <Show
       when={note()}
-      fallback={<ToolCard agent={props.agent} part={props.part} from={props.from} />}
+      fallback={
+        <Show
+          when={memory()}
+          fallback={<ToolCard agent={props.agent} part={props.part} from={props.from} />}
+        >
+          {(m) => <MemoryLine agent={props.agent} note={m()} from={props.from} />}
+        </Show>
+      }
     >
       {(n) => <KnowledgeLine agent={props.agent} part={props.part} note={n()} from={props.from} />}
     </Show>

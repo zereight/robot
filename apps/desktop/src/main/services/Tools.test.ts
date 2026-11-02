@@ -323,7 +323,8 @@ describe("memory", () => {
     await s.send(call("save_memory", { text: "The user prefers green tea" }))
     await s.finished()
     const part = await s.toolPart()
-    expect(part?.memoryId).toBeTruthy()
+    expect(part?.memory).toMatchObject({ kind: "saved", historyId: expect.any(String) })
+    expect(part?.output).toBe("Saved to memory.")
     const items = await s.run(Memory.use((m) => m.list(s.agent.id)))
     expect(items.map((i) => [i.text, i.source])).toEqual([["The user prefers green tea", "agent"]])
     const given = await s.run(
@@ -336,6 +337,96 @@ describe("memory", () => {
     await s.run(Agents.use((a) => a.update(s.agent.id, { memoryEnabled: true })))
     await s.run(Memory.use((m) => m.remove(items[0]?.id ?? "")))
     expect(await s.run(Memory.use((m) => m.list(s.agent.id)))).toEqual([])
+  })
+})
+
+describe("memory control", () => {
+  const mode = (s: Awaited<ReturnType<typeof setup>>, value: "now" | "ask") =>
+    s.run(Memory.use((m) => m.setMode(s.agent.id, value)))
+  const items = (s: Awaited<ReturnType<typeof setup>>) =>
+    s.run(Memory.use((m) => m.list(s.agent.id)))
+  const proposals = (s: Awaited<ReturnType<typeof setup>>) =>
+    s.run(Memory.use((m) => m.proposals(s.agent.id)))
+  /** Waits until the agent has made `count` replies and the last one is not streaming. */
+  const replies = (s: Awaited<ReturnType<typeof setup>>, count: number) =>
+    until(async () => {
+      const list = (await s.run(Chat.use((c) => c.history(s.agent.id)))).messages.filter(
+        (m) => m.author === "agent",
+      )
+      return list.length === count && list.at(-1)?.status !== "streaming"
+    })
+
+  test("ask me first: the tool makes a proposal, names the chat, and the card links to it", async () => {
+    const s = await setup("full")
+    await mode(s, "ask")
+    await s.send(call("save_memory", { text: "Prefers short answers" }))
+    await s.finished()
+    expect(await items(s)).toEqual([])
+    const [proposal] = await proposals(s)
+    expect(proposal).toMatchObject({
+      text: "Prefers short answers",
+      place: { kind: "agent", id: s.agent.id, name: "Ada" },
+    })
+    const part = await s.toolPart()
+    expect(part?.memory).toEqual({ kind: "suggested", proposalId: proposal?.id ?? "" })
+    expect(part?.output).toContain("Suggested for memory")
+    // The model is told what happened.
+    expect((await s.reply())?.parts.at(-1)).toMatchObject({
+      text: expect.stringContaining("Suggested for memory"),
+    })
+  })
+
+  test("the tool refuses a long text, and says so to the agent", async () => {
+    const s = await setup("full")
+    await s.send(call("save_memory", { text: "x".repeat(501) }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part).toMatchObject({ state: "failed" })
+    expect(part?.output).toContain("500")
+    expect(part?.memory).toBeUndefined()
+    expect(await items(s)).toEqual([])
+  })
+
+  test("the tool leaves a secret out: no item, no proposal, and the agent is told", async () => {
+    const s = await setup("full")
+    await s.send(call("save_memory", { text: "The key is sk-abcdefghijklmnop1234" }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part).toMatchObject({ state: "failed" })
+    expect(part?.output).toContain("looks like a secret")
+    expect(part?.output).toContain("Leave the secret out")
+    expect(await items(s)).toEqual([])
+    await mode(s, "ask")
+    await s.send(call("save_memory", { text: "The key is sk-abcdefghijklmnop1234" }))
+    await replies(s, 2)
+    expect(await proposals(s)).toEqual([])
+  })
+
+  test("a fact that is saved twice is added once, and the agent is told it is known", async () => {
+    const s = await setup("full")
+    await s.send(call("save_memory", { text: "Likes green tea" }))
+    await s.finished()
+    await s.send(call("save_memory", { text: " likes GREEN tea " }))
+    await replies(s, 2)
+    const second = await s.toolPart()
+    expect(second?.output).toContain("already known")
+    expect(second?.state).toBe("done")
+    expect(second?.memory).toBeUndefined()
+    expect((await items(s)).length).toBe(1)
+  })
+
+  test("memory off: the tool is not offered", async () => {
+    const s = await setup("full")
+    await s.run(Agents.use((a) => a.update(s.agent.id, { memoryEnabled: false })))
+    await s.send(call("save_memory", { text: "Likes tea" }))
+    await s.finished()
+    // The model has no such tool, so it only answers in text.
+    expect(await s.toolPart()).toBeUndefined()
+    expect(await items(s)).toEqual([])
+    const defs = await s.run(
+      Tools.use((x) => Effect.succeed(x.defs({ memory: false, knowledge: false }))),
+    )
+    expect(defs.map((d) => d.name)).not.toContain("save_memory")
   })
 })
 

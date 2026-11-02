@@ -10,6 +10,7 @@ import { copyAttachments } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { Memory } from "./Memory.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Search } from "./Search.ts"
@@ -279,6 +280,64 @@ describe("export and import", () => {
     // It does not fall back to the account of this computer.
     const work = accounts.find((x) => x.id === "r2")
     expect(work).toMatchObject({ connected: false, signIn: "11111111-2222-3333-4444-555555555555" })
+  })
+
+  test("memory history and proposals are in the archive: text that looks like a secret is [redacted] and has no Undo; the rest comes back whole (spec 014, 008)", async () => {
+    const out = join(testPlatform().dataDir, "export-memory.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    await a
+      .run(
+        Providers.use((p) =>
+          p.connect({ kind: "custom", name: "M", baseUrl: "http://127.0.0.1:9/v1", apiKey: KEY }),
+        ),
+      )
+      .catch(() => undefined)
+    const ada = await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const secret = "my token sk-abcdefghijklmnop1234 end"
+    // The user types a secret by hand (allowed), edits an ordinary item, and the agent suggests.
+    const typed = await a.run(Memory.use((m) => m.add(ada.id, secret, "user")))
+    await a.run(Memory.use((m) => m.update(typed.id, `${secret} and the key ${KEY}`)))
+    const plain = await a.run(Memory.use((m) => m.add(ada.id, "Likes tea", "user")))
+    await a.run(Memory.use((m) => m.update(plain.id, "Likes green tea")))
+    await a.run(Memory.use((m) => m.setMode(ada.id, "ask")))
+    await a.run(Memory.use((m) => m.save(ada.id, "Lives in Busan")))
+    await a.run(Data.use((d) => d.export()))
+
+    // Nothing in the archive holds the secret, the key, or the text of the secret rows.
+    const entries = unzipSync(readFileSync(out))
+    for (const data of Object.values(entries)) {
+      expect(Buffer.from(data).includes("sk-abcdefghijklmnop1234")).toBe(false)
+      expect(Buffer.from(data).includes(KEY)).toBe(false)
+    }
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const [agent] = await b.run(Agents.use((x) => x.list(bLocal.id, false)))
+    const id = agent?.id ?? ""
+    const rows = await b.run(Memory.use((m) => m.history(id)))
+    // Newest first: the edit of the plain item, its add, the edit of the secret, its add.
+    expect(rows.map((r) => [r.kind, r.before, r.after, r.undo])).toEqual([
+      ["edited", "Likes tea", "Likes green tea", { on: true }],
+      ["added", null, "Likes tea", { on: false, why: "newer" }],
+      ["edited", "[redacted]", "[redacted]", { on: false, why: "secret" }],
+      ["added", null, "[redacted]", { on: false, why: "secret" }],
+    ])
+    // The rows of the secret stay without Undo after the import, as the mark is not a secret.
+    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(
+      bDb.all<{ hidden: number }>("SELECT hidden FROM memory_history ORDER BY at, rowid"),
+    ).toEqual([{ hidden: 1 }, { hidden: 1 }, { hidden: 0 }, { hidden: 0 }])
+    // The proposal and the choice of the agent come back too.
+    expect((await b.run(Memory.use((m) => m.proposals(id)))).map((p) => p.text)).toEqual([
+      "Lives in Busan",
+    ])
+    expect(await b.run(Memory.use((m) => m.mode(id)))).toBe("ask")
   })
 
   test("user sections and the places in them come back in the same order", async () => {
