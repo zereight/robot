@@ -7,7 +7,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 ## Rules
 
 - One local database file holds servers, agents, conversations, tasks, routines, workflows,
-  memory and settings. Attachments are files next to it.
+  memory, settings, permission rules, the action log (007), skills (017) and connections (018).
+  Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
 - The database is the source of truth. Nothing remote is a cache of it. The one exception is the
   articles and sources of agent knowledge (016): they are files in the agent workspace. An export
@@ -21,11 +22,17 @@ The user owns their data. It lives on their computer, it is easy to back up, and
     that the agent wrote and the role, label and value of each control of one window. It sends no
     screenshot. It sends no value of a secret control.
   - A local server on this computer is the only choice that sends nothing off the computer.
+  - There is one more exception: a connection that the user adds on purpose (see 018). The app
+    sends data to it only when an agent calls one of its tools. The data is what the agent wrote
+    in that call, and it can hold content from the conversation. The app sends no other
+    conversation text to it. A connection of the kind
+    "program on this computer" starts a program on this computer. That program can use the network
+    by itself, and the app cannot see this.
 - The app sends no usage events and no failure reports. It has no analytics at all.
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up or to a page that an agent visits.
-- Secrets (keys, tokens, secret values of environment variables) are in the system keychain. Logs
-  and exports redact anything that looks like a secret.
+- Secrets (keys, tokens, secret values of environment variables, secret values of a connection)
+  are in the system keychain. Logs and exports redact anything that looks like a secret.
 
 ## Logs
 
@@ -42,13 +49,18 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 ## Export and backup
 
 - Export: one archive with the database, attachments, agent knowledge, and a readme of the
-  format. Secrets are not included.
-- Import of a ROBot export into an empty app restores everything except secrets.
+  format. Secrets are not included. The archive holds the rules, the action log, the skills and
+  the connections without their secret values.
+- Import of a ROBot export into an empty app restores everything except secrets. Every
+  connection comes back turned off (see 018), so an import never starts a program or sends data.
 
 ## Acceptance
 
 - Run a channel job with the fast pick set up. The channels log holds one line for it. A search
   of the log finds neither the job text nor the key.
 - After an export, searching the archive for a stored key finds nothing.
+- Add a connection with a secret value, export, and search the archive for the value: it finds
+  nothing. Import the archive into an empty app: the connection shows and is turned off, and its
+  secret value is missing.
 - Copy the data folder to a new computer, start the app: all agents and history are there; the
   providers ask to sign in again.
