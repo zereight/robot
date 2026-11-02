@@ -24,6 +24,7 @@ import { formatElapsed, formatTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
+import { useRetry } from "../retry/RetryNote.tsx"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
@@ -81,6 +82,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   const { t } = app
   const ui = useUi()
   const [error, setError] = createSignal<ErrorText>()
+  const retry = useRetry()
   const [detail, { refetch }] = createResource(() => call("tasks.get", { id: props.id }))
   onCleanup(window.robot.on("tasks.changed", () => void refetch()))
   const act = async (run: () => Promise<unknown>) => {
@@ -98,6 +100,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   }
   return (
     <Dialog label={t("tasks.detail.title")} onClose={props.onClose} testId="task-detail">
+      {retry.dialog()}
       <Show when={detail()}>
         {(d) => (
           <div class={styles.detail}>
@@ -191,7 +194,16 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 }
               >
                 <Button
-                  onClick={() => act(() => call("tasks.retry", { id: d().task.id }))}
+                  onClick={() =>
+                    act(() =>
+                      retry.start((confirmed) =>
+                        call("tasks.retry", {
+                          id: d().task.id,
+                          ...(confirmed ? { confirmed } : {}),
+                        }),
+                      ),
+                    )
+                  }
                   data-testid="task-retry"
                 >
                   {t("tasks.retry")}

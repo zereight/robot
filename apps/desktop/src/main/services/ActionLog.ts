@@ -4,12 +4,14 @@ import {
   ACTION_LOG_MAX,
   ACTION_TARGET_MAX,
   type ActionDecider,
+  type ActionKind,
   type ActionLogEntry,
   type ActionResult,
-  type GuardedStep,
   isOutsideSource,
+  LOGGED_KINDS,
   type OutsideSource,
   redactSecrets,
+  type StepAccess,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
@@ -18,7 +20,9 @@ import { EventBus } from "./EventBus.ts"
 /** What a step adds to the log. The service adds the time, the name of the agent and the id. */
 export interface ActionLogInput {
   readonly agentId: string
-  readonly kind: GuardedStep
+  readonly kind: ActionKind
+  /** For a step of a file, whether it read or wrote. Left out for every other kind. */
+  readonly access?: StepAccess | null
   readonly target: string
   readonly decidedBy: ActionDecider
   readonly result: ActionResult
@@ -36,6 +40,11 @@ export interface ActionLogService {
   add(input: ActionLogInput): ActionLogEntry
   /** The entries, newest first, at most `limit`. */
   list(filter?: ActionLogFilter, limit?: number): Effect.Effect<readonly ActionLogEntry[]>
+  /**
+   * The steps of a task of the four kinds of "Permission rules" (file, shell command, web page,
+   * tool of a connection), oldest first. The retry note of spec 005 reads them.
+   */
+  ofTask(taskId: string): readonly ActionLogEntry[]
 }
 
 interface Row {
@@ -43,7 +52,8 @@ interface Row {
   at: number
   agent_id: string
   agent_name: string
-  kind: GuardedStep
+  kind: ActionKind
+  access: StepAccess | null
   target: string
   decided_by: ActionDecider
   result: ActionResult
@@ -67,6 +77,7 @@ const toEntry = (r: Row): ActionLogEntry => ({
   agentId: r.agent_id,
   agentName: r.agent_name,
   kind: r.kind,
+  access: r.access,
   target: r.target,
   decidedBy: r.decided_by,
   result: r.result,
@@ -99,13 +110,14 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", input.agentId)?.name ??
             ""
           db.run(
-            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, target, decided_by, result, task_id, outside)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             at,
             input.agentId,
             name,
             input.kind,
+            input.kind === "file" ? (input.access ?? null) : null,
             logTarget(input.target),
             input.decidedBy,
             input.result,
@@ -121,6 +133,15 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
           bus.emit("actionLog.changed", {})
           return toEntry(db.get<Row>("SELECT * FROM action_log WHERE id = ?", id) as Row)
         },
+        ofTask: (taskId) =>
+          db
+            .all<Row>(
+              `SELECT * FROM action_log WHERE task_id = ? AND kind IN (${LOGGED_KINDS.map(() => "?").join(", ")})
+               ORDER BY at, rowid`,
+              taskId,
+              ...LOGGED_KINDS,
+            )
+            .map(toEntry),
         list: (filter = {}, limit = 500) =>
           Effect.sync(() => {
             const where: string[] = []

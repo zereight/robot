@@ -165,7 +165,10 @@ describe("a memory save in a turn that holds outside content", () => {
     await s.finished()
     expect(await s.memory()).toEqual([])
     expect((await s.part("call_2"))?.state).toBe("failed")
-    expect(await s.log()).toMatchObject([
+    // The page that the turn fetched is a step of its own in the log (a web step, run by the level).
+    const entries = await s.log()
+    expect(entries.map((e) => e.kind)).toEqual(["memory", "web"])
+    expect(entries.filter((e) => e.kind === "memory")).toMatchObject([
       {
         kind: "memory",
         agentName: "Ada",
