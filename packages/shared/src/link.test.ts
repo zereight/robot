@@ -9,6 +9,7 @@ import {
   isChangeMethod,
   isClientMethod,
   isPairCode,
+  isRoutedMethod,
   numberedNames,
   PUSHED_EVENTS,
   parseAddress,
@@ -134,6 +135,52 @@ describe("client requests", () => {
     expect(isChangeMethod("agents.delete")).toBe(false)
     // The event that tells one device about its switch goes to that device only.
     expect((PUSHED_EVENTS as readonly string[]).includes(ACCESS_EVENT)).toBe(false)
+  })
+})
+
+describe("what a client cannot reach: sections, knowledge and files (spec 001, 012, 016)", () => {
+  /** The requests of the window that belong to this computer: a linked server never answers them. */
+  const refused = [
+    "sections.create",
+    "sections.rename",
+    "sections.move",
+    "sections.delete",
+    "places.move",
+    "knowledge.list",
+    "knowledge.get",
+    "knowledge.save",
+    "knowledge.delete",
+    "knowledge.deleteSource",
+    "knowledge.openSource",
+    "knowledge.openFolder",
+    "knowledge.changes",
+    "knowledge.change",
+    "knowledge.undo",
+    "knowledge.findings",
+    "agentFile.export",
+    "agentFile.open",
+    "agentFile.apply",
+    "workflowFile.export",
+    "workflowFile.open",
+    "workflowFile.apply",
+  ]
+
+  test("no method of sections, knowledge or files is on the list of a client", () => {
+    for (const method of refused) {
+      expect(isClientMethod(method)).toBe(false)
+      expect(isChangeMethod(method)).toBe(false)
+    }
+    // Nothing that starts like them is on the list either.
+    for (const method of CLIENT_METHODS) {
+      expect(method).not.toMatch(/^(sections|knowledge|agentFile|workflowFile)\./)
+    }
+  })
+
+  test("the window sends none of them to a linked server", () => {
+    for (const method of refused) expect(isRoutedMethod(method)).toBe(false)
+    // The list of places carries the sections and the section of each place, read only.
+    expect(isClientMethod("places.list")).toBe(true)
+    expect(isRoutedMethod("places.list")).toBe(true)
   })
 })
 

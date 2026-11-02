@@ -159,6 +159,12 @@ export const PlaceList = (props: PlaceListProps) => {
   let search: HTMLInputElement | undefined
   let list: HTMLDivElement | undefined
 
+  /**
+   * A linked server shows its sections and where its places are, and that is all (spec 001, 012):
+   * a client makes, renames, orders and deletes no section, and moves no place.
+   */
+  const readOnly = () => ui.linked()
+
   const sections = createMemo(() => filterPlaces(ui.sections(), query()))
   const searching = () => query().trim().length > 0
   const anyMatch = () => sections().some((s) => allPlaces(s).length > 0)
@@ -426,7 +432,7 @@ export const PlaceList = (props: PlaceListProps) => {
       <button
         type="button"
         class={styles.row}
-        draggable="true"
+        draggable={readOnly() ? "false" : "true"}
         data-place-row
         data-place-name={place.name}
         data-testid={`place-${place.kind}-${place.id}`}
@@ -435,8 +441,13 @@ export const PlaceList = (props: PlaceListProps) => {
         aria-current={selected()}
         aria-label={accessibleName(place)}
         onClick={() => ui.selectPlace({ kind: place.kind, id: place.id })}
-        onContextMenu={(event) => placeMenu(event, place)}
-        onDragStart={(event) => startDrag(event, place)}
+        onContextMenu={(event) => {
+          if (!readOnly()) placeMenu(event, place)
+        }}
+        onDragStart={(event) => {
+          if (readOnly()) event.preventDefault()
+          else startDrag(event, place)
+        }}
         onDragEnd={endDrag}
       >
         <span class={styles.mark}>
@@ -483,6 +494,7 @@ export const PlaceList = (props: PlaceListProps) => {
         data-testid="user-section"
         data-section-id={section.id}
         data-kind={kind}
+        data-readonly={readOnly() ? "true" : undefined}
       >
         {/* biome-ignore lint/a11y/noStaticElementInteractions: a right click is a shortcut; the menu button of the header does the same with the keyboard */}
         <div
@@ -490,10 +502,11 @@ export const PlaceList = (props: PlaceListProps) => {
           data-drop={dropKey() === section.id}
           data-testid="user-section-header"
           onContextMenu={(event) => {
+            if (readOnly()) return
             event.preventDefault()
             sectionMenu(menuAt(event, event.currentTarget), builtIn, section, toggle)
           }}
-          {...dropTarget(section.id, kind, section.id)}
+          {...(readOnly() ? {} : dropTarget(section.id, kind, section.id))}
         >
           <Show
             when={renaming() !== section.id}
@@ -521,20 +534,22 @@ export const PlaceList = (props: PlaceListProps) => {
             >
               {headerContent(<span data-user-data>{section.name}</span>, collapsed(), summary())}
             </button>
-            <IconButton
-              ref={more}
-              class={styles.sectionAction}
-              label={t("sections.menu", { name: section.name })}
-              aria-haspopup="menu"
-              onClick={() => {
-                const box = more?.getBoundingClientRect()
-                if (box)
-                  sectionMenu({ top: box.bottom + 4, left: box.left }, builtIn, section, more)
-              }}
-              data-testid="section-menu"
-            >
-              <Ellipsis size={14} />
-            </IconButton>
+            <Show when={!readOnly()}>
+              <IconButton
+                ref={more}
+                class={styles.sectionAction}
+                label={t("sections.menu", { name: section.name })}
+                aria-haspopup="menu"
+                onClick={() => {
+                  const box = more?.getBoundingClientRect()
+                  if (box)
+                    sectionMenu({ top: box.bottom + 4, left: box.left }, builtIn, section, more)
+                }}
+                data-testid="section-menu"
+              >
+                <Ellipsis size={14} />
+              </IconButton>
+            </Show>
           </Show>
         </div>
         <Presence when={!collapsed()}>
@@ -568,7 +583,7 @@ export const PlaceList = (props: PlaceListProps) => {
             class={styles.sectionTop}
             data-drop={dropKey() === `built-in:${section.id}`}
             data-testid={`section-header-${section.id}`}
-            {...dropTarget(`built-in:${section.id}`, kind, null)}
+            {...(readOnly() ? {} : dropTarget(`built-in:${section.id}`, kind, null))}
           >
             <button
               type="button"
@@ -604,7 +619,7 @@ export const PlaceList = (props: PlaceListProps) => {
                   <For each={section.places}>{renderRow}</For>
                   <For each={section.sections}>{(user) => renderUserSection(section.id, user)}</For>
                 </Show>
-                <Show when={ui.newSectionKind() === kind}>
+                <Show when={!readOnly() && ui.newSectionKind() === kind}>
                   <div class={styles.userSection}>
                     <NameBox
                       label={t("sections.name")}

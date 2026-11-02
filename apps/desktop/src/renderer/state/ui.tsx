@@ -94,6 +94,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
   const [newSectionKind, setNewSectionKind] = createSignal<PlaceKind>()
   /** A call to the server for the sections. A failure only reloads the list: it was stale. */
   const sectionCall = async (run: () => Promise<unknown>) => {
+    // The sections of a linked server are read only. These calls would change this computer.
+    if (server()?.kind === "linked") return
     try {
       await run()
     } catch {
@@ -151,6 +153,7 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
       ),
     /** Opens the name box of a new section in the list of a kind. It opens a closed list first. */
     startNewSection: (kind: PlaceKind) => {
+      if (server()?.kind === "linked") return
       const builtIn = builtInSection(kind)
       if (ui.collapsed.includes(builtIn))
         update({ collapsed: ui.collapsed.filter((id) => id !== builtIn) })
@@ -160,12 +163,13 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** Makes a section. A refused name throws, so the name box can show why. */
     createSection: async (kind: PlaceKind, name: string) => {
       const serverId = server()?.id
-      if (!serverId) return
+      if (!serverId || server()?.kind === "linked") return
       await call("sections.create", { serverId, kind, name })
       setNewSectionKind(undefined)
     },
     /** A refused name throws, so the name box can show why. */
     renameSection: async (id: string, name: string) => {
+      if (server()?.kind === "linked") return
       await call("sections.rename", { id, name })
     },
     moveSection: (id: string, direction: MoveDirection) =>

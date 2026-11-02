@@ -47,6 +47,13 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
     if (on && leadId() === agent.id) setLeadId(null)
   }
 
+  /**
+   * The section is a layout of this computer. A client has no sections to set (spec 012), and a
+   * section that was deleted while the form was open shows as "No section".
+   */
+  const sectionField = () =>
+    ui.linked() ? {} : { sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null }
+
   const submit = async (event: SubmitEvent) => {
     event.preventDefault()
     if (!valid() || busy()) return
@@ -61,7 +68,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             topic: topic().trim(),
             memberIds: members(),
             leadId: leadId(),
-            sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null,
+            ...sectionField(),
           },
         })
       } else {
@@ -73,7 +80,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           topic: topic().trim(),
           memberIds: members(),
           leadId: leadId(),
-          sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null,
+          ...sectionField(),
         })
         ui.selectPlace({ kind: "channel", id: channel.id })
       }
@@ -200,16 +207,18 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           </select>
           <span class={styles.hint}>{t("channels.lead.hint")}</span>
         </label>
-        <div class={styles.field}>
-          <span class={styles.label}>{t("sections.field")}</span>
-          <SectionSelect
-            kind="channel"
-            value={sectionId()}
-            onChange={setSectionId}
-            class={styles.input}
-            testId="channel-section"
-          />
-        </div>
+        <Show when={!ui.linked()}>
+          <div class={styles.field}>
+            <span class={styles.label}>{t("sections.field")}</span>
+            <SectionSelect
+              kind="channel"
+              value={sectionId()}
+              onChange={setSectionId}
+              class={styles.input}
+              testId="channel-section"
+            />
+          </div>
+        </Show>
         <Show when={error()}>
           {(err) => (
             <div class={styles.error} role="alert" data-testid="channel-error">

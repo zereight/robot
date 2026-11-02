@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { existsSync, readdirSync } from "node:fs"
-import type { Agent, DevicesState, RpcResult } from "@robot/shared"
+import type { Agent, DevicesState, PlaceSection, RpcResult, UserSection } from "@robot/shared"
 import { Effect } from "effect"
 import { runRequest } from "../rpc.ts"
 import { Activity } from "../services/Activity.ts"
@@ -667,4 +667,139 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     const local = await p.server.runtime.runPromise(Servers.use((s) => s.local))
     expect(local.id).toBe(p.serverId)
   })
+})
+
+describe("sections and knowledge on a linked server (spec 001, 012, 016)", () => {
+  /** The requests of the window that make or change a section, or that open knowledge or files. */
+  const own: readonly (readonly [string, unknown])[] = [
+    ["sections.create", { serverId: "x", kind: "agent", name: "Team" }],
+    ["sections.rename", { id: "x", name: "Team" }],
+    ["sections.move", { id: "x", direction: "up" }],
+    ["sections.delete", { id: "x" }],
+    ["places.move", { kind: "agent", id: "x", sectionId: null }],
+    ["knowledge.list", { agentId: "x" }],
+    ["knowledge.get", { agentId: "x", file: "a.md" }],
+    ["knowledge.save", { agentId: "x", file: "a.md", text: "t" }],
+    ["knowledge.delete", { agentId: "x", file: "a.md" }],
+    ["knowledge.deleteSource", { agentId: "x", name: "s" }],
+    ["knowledge.openSource", { agentId: "x", name: "s" }],
+    ["knowledge.openFolder", { agentId: "x" }],
+    ["knowledge.changes", { agentId: "x" }],
+    ["knowledge.change", { agentId: "x", changeId: "c" }],
+    ["knowledge.undo", { agentId: "x", changeId: "c" }],
+    ["knowledge.findings", { agentId: "x" }],
+    ["agentFile.export", { serverId: "x", agentIds: [] }],
+    ["agentFile.open", { serverId: "x" }],
+    ["agentFile.apply", { serverId: "x", model: null }],
+    ["workflowFile.export", { serverId: "x", workflowIds: [] }],
+    ["workflowFile.open", { serverId: "x" }],
+    ["workflowFile.apply", { serverId: "x" }],
+  ]
+
+  const sectionsOf = async (p: Awaited<ReturnType<typeof pair>>) =>
+    value<PlaceSection[]>(await p.onServer("places.list", { serverId: p.serverId }))
+
+  test("a client cannot reach them, with the switch on or off, and nothing changes", async () => {
+    for (const switchOn of [true, false]) {
+      const p = await pair(switchOn)
+      const server = value<Agent>(await p.onServer("agents.create", make(p.serverId, "Ada")))
+      for (const [method, input] of own) {
+        expect(await p.raw(method, input)).toBe("not_allowed")
+        // The handler of the window is not reached through the dispatcher of a linked device.
+        const viaDispatch = await p.client.runtime.runPromise(
+          Remote.use((r) => Effect.promise(() => r.invoke(p.serverId, method, input))),
+        )
+        expect(codeOf(viaDispatch)).not.toBe("ok")
+      }
+      // No section was made, no knowledge of the agent was opened, no file was written.
+      const lists = await sectionsOf(p)
+      expect(lists.flatMap((s) => s.sections)).toEqual([])
+      expect(value<Agent>(await p.onServer("agents.get", { id: server.id })).knowledgeEnabled).toBe(
+        true,
+      )
+    }
+  }, 40_000)
+
+  test("a client cannot name a section or the knowledge switch when it makes or changes", async () => {
+    const p = await pair(true)
+    const section = value<UserSection>(
+      await p.onServer("sections.create", { serverId: p.serverId, kind: "agent", name: "Team" }),
+    )
+    const channelSection = value<UserSection>(
+      await p.onServer("sections.create", { serverId: p.serverId, kind: "channel", name: "Docs" }),
+    )
+    const made = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    // A field that is not on the list of a client refuses the whole request.
+    expect(
+      codeOf(await p.ask("agents.create", make(p.serverId, "Other", { sectionId: section.id }))),
+    ).toBe("invalid_input")
+    expect(
+      codeOf(await p.ask("agents.update", { id: made.id, patch: { sectionId: section.id } })),
+    ).toBe("invalid_input")
+    expect(
+      codeOf(await p.ask("agents.update", { id: made.id, patch: { knowledgeEnabled: false } })),
+    ).toBe("invalid_input")
+    expect(
+      codeOf(
+        await p.ask("channels.create", {
+          serverId: p.serverId,
+          name: "Docs",
+          topic: "",
+          memberIds: [made.id],
+          leadId: null,
+          sectionId: channelSection.id,
+        }),
+      ),
+    ).toBe("invalid_input")
+    const channel = value<{ id: string }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Docs",
+        topic: "",
+        memberIds: [made.id],
+        leadId: null,
+      }),
+    )
+    expect(
+      codeOf(await p.ask("channels.update", { id: channel.id, patch: { sectionId: null } })),
+    ).toBe("invalid_input")
+    // What the client made starts in no section, and the knowledge of the agent stays on.
+    const there = value<Agent>(await p.onServer("agents.get", { id: made.id }))
+    expect(there.sectionId).toBeNull()
+    expect(there.knowledgeEnabled).toBe(true)
+    const places = await sectionsOf(p)
+    expect(places.flatMap((s) => s.sections.flatMap((u) => u.places))).toEqual([])
+  }, 30_000)
+
+  test("the list of places carries the sections and the section of each place; a change is pushed", async () => {
+    const p = await pair(false)
+    const ada = value<Agent>(await p.onServer("agents.create", make(p.serverId, "Ada")))
+    const bob = value<Agent>(await p.onServer("agents.create", make(p.serverId, "Bob")))
+    const team = value<UserSection>(
+      await p.onServer("sections.create", { serverId: p.serverId, kind: "agent", name: "Team" }),
+    )
+    await p.onServer("places.move", { kind: "agent", id: ada.id, sectionId: team.id })
+
+    const list = value<PlaceSection[]>(await p.ask("places.list", { serverId: p.serverId }))
+    const agents = list.find((s) => s.id === "agents")
+    expect(agents?.sections.map((s) => s.name)).toEqual(["Team"])
+    expect(agents?.sections[0]?.places.map((x) => x.id)).toEqual([ada.id])
+    expect(agents?.sections[0]?.places[0]?.sectionId).toBe(team.id)
+    expect(agents?.places.map((x) => x.id)).toEqual([bob.id])
+    expect(agents?.places[0]?.sectionId).toBeNull()
+
+    const pushes = () => p.client.events.filter((e) => e.event === "places.changed").length
+    const before = pushes()
+    await p.onServer("sections.rename", { id: team.id, name: "Crew" })
+    await waitFor(pushes, (n) => n > before)
+    expect(pushes()).toBeGreaterThan(before)
+    const next = pushes()
+    await p.onServer("places.move", { kind: "agent", id: bob.id, sectionId: team.id })
+    await waitFor(pushes, (n) => n > next)
+    expect(pushes()).toBeGreaterThan(next)
+    const after = value<PlaceSection[]>(await p.ask("places.list", { serverId: p.serverId }))
+    const crew = after.find((s) => s.id === "agents")?.sections[0]
+    expect(crew?.name).toBe("Crew")
+    expect(crew?.places.map((x) => x.id).sort()).toEqual([ada.id, bob.id].sort())
+  }, 30_000)
 })
