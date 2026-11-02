@@ -7,11 +7,23 @@ import {
   type MessageKey,
   type MessagePart,
   messageFiles,
+  messageSkill,
   messageText,
   type OutsideSource,
+  type SkillPart,
   type ToolAsk,
 } from "@robot/shared"
-import { BookOpen, Copy, Download, ExternalLink, Pencil, Reply, User, Wrench } from "lucide-solid"
+import {
+  BookOpen,
+  Copy,
+  Download,
+  ExternalLink,
+  Pencil,
+  Reply,
+  Sparkles,
+  User,
+  Wrench,
+} from "lucide-solid"
 import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -280,6 +292,35 @@ const ToolCard = (props: {
         </Show>
       </div>
     </details>
+  )
+}
+
+/**
+ * The skill chip of a message (spec 017). A click shows the instructions as they were sent, read
+ * only. A later edit of the skill does not change them.
+ */
+const SkillChip = (props: { skill: SkillPart }) => {
+  const { t } = useApp()
+  const [open, setOpen] = createSignal(false)
+  return (
+    <div class={styles.skillSent}>
+      <button
+        type="button"
+        class={styles.skillChip}
+        aria-expanded={open()}
+        title={t("skills.chip.show")}
+        onClick={() => setOpen(!open())}
+        data-testid="message-skill"
+      >
+        <Sparkles size={12} />
+        <span>{props.skill.name}</span>
+      </button>
+      <Show when={open()}>
+        <pre class={styles.skillSentText} data-testid="message-skill-text">
+          {props.skill.instructions}
+        </pre>
+      </Show>
+    </div>
   )
 }
 
@@ -671,6 +712,9 @@ export const MessageRow = (props: MessageRowProps) => {
             when={isAgent()}
             fallback={
               <>
+                <Show when={messageSkill(props.message)}>
+                  {(skill) => <SkillChip skill={skill()} />}
+                </Show>
                 <Show when={messageText(props.message)}>
                   <p class={styles.userText}>{messageText(props.message)}</p>
                 </Show>
