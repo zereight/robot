@@ -243,6 +243,7 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       ...(existing?.kind === "tool" && existing.decision ? { decision: existing.decision } : {}),
       ...(existing?.kind === "tool" && existing.knowledge ? { knowledge: existing.knowledge } : {}),
       ...(existing?.kind === "tool" && existing.answeredInChat ? { answeredInChat: true } : {}),
+      ...(existing?.kind === "tool" && existing.secret ? { secret: existing.secret } : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -267,6 +268,15 @@ const sameAsk = (a: ToolAsk, b: ToolAsk): boolean => {
     return (
       b.kind === "article" && a.title === b.title && a.before === b.before && a.after === b.after
     )
+  if (a.kind === "secret")
+    return (
+      b.kind === "secret" &&
+      a.name === b.name &&
+      a.origin === b.origin &&
+      a.replace === b.replace &&
+      JSON.stringify(a.auth) === JSON.stringify(b.auth)
+    )
+  if (a.kind !== "question") return false
   return (
     b.kind === "question" &&
     a.question === b.question &&
@@ -281,6 +291,17 @@ export const toolLabel = (name: string, input: string) => {
   try {
     args = JSON.parse(input || "{}") as Record<string, unknown>
   } catch {}
+  // The card of a request with a saved secret shows the name, the method and the address.
+  if (name === "secret_request" || name === "ask_secret" || name === "forget_secret") {
+    const words = [
+      typeof args.name === "string" ? `[${args.name}]` : "",
+      typeof args.method === "string" ? args.method.toUpperCase() : "",
+      typeof args.url === "string" ? args.url : typeof args.origin === "string" ? args.origin : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+    return words ? `${name}: ${words.replace(/\s+/g, " ").slice(0, 160)}` : name
+  }
   const first = ["path", "file_path", "command", "url", "query", "pattern", "question", "text"]
     .map((k) => args[k])
     .find((v): v is string => typeof v === "string")
@@ -734,6 +755,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             onDecision: (callId, answer, by) =>
               changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
+            onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
             knowledgeChanges: { count: 0 },
             turn: mark,
             taskId: task.id,

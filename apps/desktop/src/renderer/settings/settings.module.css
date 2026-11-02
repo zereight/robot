@@ -167,3 +167,37 @@
 .logTag[data-result="failed"] {
   color: var(--c-danger);
 }
+
+/* Saved secrets (spec 020). */
+.select,
+.input {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 5px 8px;
+  min-width: 140px;
+}
+
+.input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.error {
+  color: var(--c-danger);
+  font-size: var(--text-s);
+  margin-top: 8px;
+}
+
+.secretAgent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.logRow .actions {
+  margin-top: 6px;
+}

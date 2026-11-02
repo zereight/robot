@@ -20,6 +20,8 @@ import {
   RUN_STATES,
   RUNTIME_KINDS,
   ScheduleSchema,
+  SECRET_LABEL_MAX,
+  SECRET_REASON_MAX,
   SKILL_INSTRUCTIONS_MAX,
   SKILL_NAME_MAX,
   STEP_KINDS,
@@ -169,6 +171,25 @@ const askCheck = (v: unknown): boolean => {
       v.choices.every(str(1000))
     )
   }
+  // A protected card (spec 020). It holds no value: the other computer shows "Answer this on".
+  if (v.kind === "secret") {
+    const auth = v.auth
+    const authOk =
+      isObject(auth) &&
+      ((auth.kind === "bearer" && shape(["kind"])(auth)) ||
+        (auth.kind === "header" && shape(["kind", "header"])(auth) && str(200, 1)(auth.header)) ||
+        (auth.kind === "basic" && shape(["kind", "user"])(auth) && str(200, 1)(auth.user)))
+    return (
+      timeOk &&
+      shape(["kind", "name", "label", "reason", "origin", "auth"], ["replace", "askedAt"])(v) &&
+      str(40, 1)(v.name) &&
+      str(SECRET_LABEL_MAX)(v.label) &&
+      str(SECRET_REASON_MAX)(v.reason) &&
+      str(2000, 1)(v.origin) &&
+      authOk &&
+      (v.replace === undefined || bool(v.replace))
+    )
+  }
   // The agent wants to change an article that the user edited last (spec 019). The card holds the
   // old and the new text, so that the user can answer it on either computer.
   if (v.kind === "article") {
@@ -250,7 +271,7 @@ const partCheck = (v: unknown): boolean => {
       return (
         shape(
           ["kind", "id", "name", "label", "state", "input", "output"],
-          ["ask", "memoryId", "memory", "decision", "knowledge"],
+          ["ask", "memoryId", "memory", "decision", "knowledge", "secret"],
         )(v) &&
         str(200, 1)(v.id) &&
         str(200)(v.name) &&
@@ -262,6 +283,7 @@ const partCheck = (v: unknown): boolean => {
         (v.memoryId === undefined || str(100)(v.memoryId)) &&
         (v.memory === undefined || memoryNoteCheck(v.memory)) &&
         (v.knowledge === undefined || knowledgeNoteCheck(v.knowledge)) &&
+        (v.secret === undefined || oneOf(["saved", "cancelled"])(v.secret)) &&
         (v.decision === undefined ||
           (isObject(v.decision) &&
             shape(["answer", "by"])(v.decision) &&
