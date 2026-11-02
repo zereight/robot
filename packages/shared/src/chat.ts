@@ -30,7 +30,12 @@ export type MessagePart =
     }
 
 export type ToolAsk =
-  | { readonly kind: "approval"; readonly summary: string }
+  | {
+      readonly kind: "approval"
+      readonly summary: string
+      /** True when the card has no "Always allow": it asks again the next time. */
+      readonly once?: boolean
+    }
   | { readonly kind: "question"; readonly question: string; readonly choices: readonly string[] }
   /** The agent wants to change an article that the user edited last. Old and new text show side by side. */
   | {

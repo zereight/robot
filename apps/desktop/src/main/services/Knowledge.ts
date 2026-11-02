@@ -115,6 +115,12 @@ export interface KnowledgeService {
   ): Effect.Effect<KnowledgeArticle, AppError>
   /** Deletes an article for the user. */
   remove(agentId: string, file: string): Effect.Effect<void, AppError>
+  /**
+   * Checks the bytes of a source before it is kept: not too big, and no stored key, key or token.
+   * A source is copied as it is in an export, so the app refuses one that holds a key. Nothing is
+   * written.
+   */
+  checkSource(data: Uint8Array | string): Effect.Effect<void, AppError>
   /** Keeps a copy of a source. A copy with the same bytes is not made twice. */
   addSource(
     agentId: string,
@@ -284,6 +290,18 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
           .map((a) => secrets.get(secretKey(a.id)))
           .filter((k): k is string => k !== null)
       const looksSecret = (text: string) => redactSecrets(text, storedKeys()) !== text
+      /** A source can be any file. A stored key is found in the raw bytes too. */
+      const sourceHoldsSecret = (bytes: Uint8Array) => {
+        const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+        if (storedKeys().some((key) => key.length >= 8 && buffer.includes(key))) return true
+        return looksSecret(buffer.toString("utf8"))
+      }
+      const sourceBytes = (data: Uint8Array | string) =>
+        typeof data === "string" ? new TextEncoder().encode(data) : data
+      const checkSourceBytes = (bytes: Uint8Array) => {
+        if (bytes.length > KNOWLEDGE_SOURCE_BYTES) fail("knowledge_source_big")
+        if (sourceHoldsSecret(bytes)) fail("knowledge_secret")
+      }
 
       const rowsOf = (agentId: string) =>
         new Map(
@@ -835,13 +853,14 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
           attempt(() => {
             applyPlan(planOf(agentId, { type: "delete", file }), "user")
           }),
+        checkSource: (data) => attempt(() => checkSourceBytes(sourceBytes(data))),
         addSource: (agentId, input) =>
           attempt(() => {
             const info = needAgent(agentId)
             const folder = folderOf(info)
-            const bytes =
-              typeof input.data === "string" ? new TextEncoder().encode(input.data) : input.data
-            if (bytes.length > KNOWLEDGE_SOURCE_BYTES) fail("knowledge_source_big")
+            const bytes = sourceBytes(input.data)
+            // Nothing is written before the check: a refused source leaves no file and no folder.
+            checkSourceBytes(bytes)
             const dir = sourcesOf(folder)
             mkdirSync(dir, { recursive: true })
             const digest = createHash("sha256").update(bytes).digest("hex")

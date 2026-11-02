@@ -145,9 +145,11 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                     >
                       {t("chat.tool.allow")}
                     </Button>
-                    <Button onClick={() => respond("always")} data-testid="ask-always">
-                      {t("chat.tool.always")}
-                    </Button>
+                    <Show when={!(ask() as { once?: boolean }).once}>
+                      <Button onClick={() => respond("always")} data-testid="ask-always">
+                        {t("chat.tool.always")}
+                      </Button>
+                    </Show>
                     <Button onClick={() => respond("deny")} data-testid="ask-deny">
                       {t("chat.tool.deny")}
                     </Button>

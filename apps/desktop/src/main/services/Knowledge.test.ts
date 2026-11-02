@@ -306,6 +306,95 @@ describe("keys and tokens", () => {
     expect(row?.status).toBe("done")
     expect(part?.output).not.toContain(KEY)
   })
+
+  test("an agent file source that holds a stored key or a token is refused; no source is saved", async () => {
+    const s = await setup()
+    const dir = join(s.agent.workspace, "attachments")
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, "leak.txt"), `Config\nkey=${KEY}\n`)
+    writeFileSync(join(dir, "token.txt"), "Use ghp_abcdefghijklmnopqrstuvwxyz0123456789 here.")
+    // Not a text file: the key is found in the bytes.
+    writeFileSync(
+      join(dir, "data.bin"),
+      Buffer.concat([Buffer.from([0, 1, 255, 254]), Buffer.from(KEY)]),
+    )
+    writeFileSync(join(dir, "plain.txt"), "Nothing secret here.")
+    for (const name of ["leak.txt", "token.txt", "data.bin"]) {
+      await s.turn(call("add_source", { path: `attachments/${name}` }))
+      const part = (await s.toolParts())[0]
+      expect(part).toMatchObject({
+        name: "add_source",
+        state: "failed",
+        knowledge: { kind: "failed", title: `attachments/${name}`, code: "knowledge_secret" },
+      })
+      expect(part?.output).not.toContain(KEY)
+      // The turn went on, and nothing was kept: not the source, not even the folder.
+      expect((await s.reply())?.status).toBe("done")
+      expect(existsSync(s.folder)).toBe(false)
+    }
+    await s.turn(call("add_source", { path: "attachments/plain.txt" }))
+    expect((await s.toolParts())[0]?.knowledge).toEqual({ kind: "source", name: "plain.txt" })
+    expect(readdirSync(join(s.folder, "sources"))).toEqual(["plain.txt"])
+  })
+
+  test("a refused source does not ask about the first save in a chosen workspace", async () => {
+    const s = await setup()
+    const chosen = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", chosen, s.agent.id)
+    mkdirSync(join(chosen, "attachments"), { recursive: true })
+    writeFileSync(join(chosen, "attachments", "leak.txt"), `key=${KEY}`)
+    // The turn ends without a question: the card would wait for an answer.
+    await s.turn(call("add_source", { path: "attachments/leak.txt" }))
+    expect((await s.toolParts())[0]).toMatchObject({
+      state: "failed",
+      knowledge: { kind: "failed", code: "knowledge_secret" },
+    })
+    expect(existsSync(join(chosen, "Knowledge"))).toBe(false)
+  })
+
+  test("an agent web page source that holds a stored key is refused; no source is saved", async () => {
+    const s = await setup()
+    const page = Bun.serve({
+      port: 0,
+      fetch: (req) =>
+        new Response(
+          new URL(req.url).pathname === "/leak"
+            ? `<html><body><p>Settings page. Token: ${KEY}</p></body></html>`
+            : "<html><body><p>Public page.</p></body></html>",
+          { headers: { "content-type": "text/html" } },
+        ),
+    })
+    try {
+      await s.turn(call("add_source", { url: `http://127.0.0.1:${page.port}/leak` }))
+      const part = (await s.toolParts())[0]
+      expect(part).toMatchObject({
+        state: "failed",
+        knowledge: { kind: "failed", code: "knowledge_secret" },
+      })
+      expect(existsSync(s.folder)).toBe(false)
+      await s.turn(call("add_source", { url: `http://127.0.0.1:${page.port}/public` }))
+      expect((await s.toolParts())[0]?.knowledge).toMatchObject({ kind: "source" })
+      expect(readdirSync(join(s.folder, "sources"))).toHaveLength(1)
+    } finally {
+      page.stop(true)
+    }
+  })
+
+  test("the service refuses a source with a key too; a file put there by hand is not checked", async () => {
+    const s = await setup()
+    await expect(
+      s.k((x) => x.addSource(s.agent.id, { name: "a.txt", data: `x ${KEY} y` })),
+    ).rejects.toMatchObject({ code: "knowledge_secret" })
+    await expect(
+      s.k((x) => x.checkSource(new TextEncoder().encode(`Bearer abcdefghijklmnopqrstuvwxyz`))),
+    ).rejects.toMatchObject({ code: "knowledge_secret" })
+    expect(existsSync(s.folder)).toBe(false)
+    mkdirSync(join(s.folder, "sources"), { recursive: true })
+    writeFileSync(join(s.folder, "sources", "by-hand.txt"), `Kept by hand: ${KEY}`)
+    expect((await s.list()).sources.map((x) => x.name)).toEqual(["by-hand.txt"])
+    // The file is not touched.
+    expect(readFileSync(join(s.folder, "sources", "by-hand.txt"), "utf8")).toContain(KEY)
+  })
 })
 
 describe("changes and undo", () => {

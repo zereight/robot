@@ -221,7 +221,7 @@ const KNOWLEDGE_MESSAGES: Record<string, string> = {
   knowledge_title_taken: "Another article has this title.",
   knowledge_full: "The knowledge holds 500 articles. It cannot take more. Tell the user.",
   knowledge_secret:
-    "The text equals or looks like a key or a token. It was not saved. Do not put keys in articles.",
+    "The text equals or looks like a key or a token. It was not saved. Do not put keys in articles or sources.",
   knowledge_not_found: "There is no article with this title.",
   knowledge_turn_limit: "You made 5 article changes in this turn. Wait for the next turn.",
   knowledge_source_missing: "A named source does not exist. Add it with add_source first.",
@@ -486,10 +486,31 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         return { output: `Not done: ${reason}${detail}`, failed: true }
       }
 
+      /**
+       * The first save by the agent into a missing Knowledge folder of a chosen workspace asks
+       * first, and the card names the folder. At "Full access" nothing asks.
+       */
+      const approveFirstSave = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        folder: { path: string; exists: boolean; chosen: boolean },
+      ) => {
+        if (folder.exists || !folder.chosen || ctx.permission === "full") return
+        const answer = await wait(ctx, call.id, {
+          kind: "approval",
+          summary: folder.path,
+          once: true,
+        })
+        if (answer !== "allow") throw new Denied()
+      }
+
       /** Asks the user before the change that the rules call for: a first save in a chosen workspace, an article the user edited last. */
       const approveKnowledge = async (ctx: ToolContext, call: ToolCall, plan: KnowledgePlan) => {
-        if (plan.creates && plan.chosenWorkspace)
-          await approve(ctx, call, true, "knowledge_folder", plan.folder)
+        await approveFirstSave(ctx, call, {
+          path: plan.folder,
+          exists: !plan.creates,
+          chosen: plan.chosenWorkspace,
+        })
         if (!plan.protected || ctx.permission === "full") return
         const answer = await wait(ctx, call.id, {
           kind: "article",
@@ -595,10 +616,6 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           if (!knowledge.enabled(ctx.agentId)) throw new AppError({ code: "knowledge_off" })
           if (Boolean(path) === Boolean(url))
             throw new AppError({ code: "knowledge_source_invalid" })
-          const folder = await settle(knowledge.folder(ctx.agentId))
-          // Keeping the first source makes the folder, which is a save.
-          if (!folder.exists && folder.chosen && ctx.permission !== "full")
-            await approve(ctx, call, true, "knowledge_folder", folder.path)
           let data: Uint8Array | string
           let name = text(args, "name")
           if (path) {
@@ -624,6 +641,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             data = `Fetched from ${url}\n\n${page.body}\n`
             name = name || sourceName(url)
           }
+          // A source with a key is refused before anything is asked or written.
+          await settle(knowledge.checkSource(data))
+          // Keeping the first source makes the folder, which is a save.
+          await approveFirstSave(ctx, call, await settle(knowledge.folder(ctx.agentId)))
           const saved = await settle(knowledge.addSource(ctx.agentId, { name, data }))
           ctx.onKnowledge(call.id, { kind: "source", name: saved.name })
           return {
