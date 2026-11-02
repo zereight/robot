@@ -451,7 +451,20 @@ test("subscription: pi lists its own models and has no sign-in in the app", asyn
 
   // The effort levels follow the model, as pi tells them: the small model does not think, and the
   // large one takes a level that the old fixed list did not have.
+  const dialogs = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("[role=dialog]")].map(
+        (d) =>
+          `${d.getAttribute("data-testid")}|closing=${d.parentElement?.getAttribute("data-closing")}|forms=${d.querySelectorAll("form").length}`,
+      ),
+    )
+  console.log("DIAG before click", JSON.stringify(await dialogs()))
   await page.getByTestId("chat-header-model").click()
+  console.log("DIAG after click", JSON.stringify(await dialogs()))
+  if ((await page.getByTestId("model-model").count()) > 1) {
+    await shot(page, `diag-pi-${Date.now()}`)
+    console.log("DIAG TWO model-model", JSON.stringify(await dialogs()), new Date().toISOString())
+  }
   await page.getByTestId("model-model").selectOption("claude-bridge/fake-small")
   await expect(page.getByTestId("model-effort")).toHaveCount(0)
   await page.getByTestId("model-model").selectOption("anthropic/fake-large")

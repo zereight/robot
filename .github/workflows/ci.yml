@@ -36,7 +36,9 @@ jobs:
       - name: Install Electron system libraries
         run: sudo apt-get update && sudo apt-get install -y xvfb libnss3 libgbm1 libasound2t64 gnome-keyring
       - name: End-to-end tests
-        run: xvfb-run --auto-servernum bun run e2e
+        run: |
+          cd apps/desktop && bunx electron-vite build
+          xvfb-run --auto-servernum bunx playwright test e2e/s17-runtimes.spec.ts -g 'pi lists' --repeat-each=40 --workers=2
       - uses: actions/upload-artifact@v4
         if: always()
         with:
