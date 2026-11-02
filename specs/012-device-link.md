@@ -86,11 +86,11 @@ client shows it and sends commands.
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
 | See places in the sections of the server, unread counts, working dots | Delete or restore agents and channels |
-| Read messages, search places | Change model accounts, skills, connections and settings |
+| Read messages, search places and messages | Change model accounts, skills, connections and settings |
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
 | Answer approval cards and questions | Routines, workflows, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |
-| See the task list and task details; stop a task | Browser "Take control"; accept or request changes on a part in review (004) |
+| See the task list and task details; stop a task | Browser "Take control"; accept or request changes on a part in review (004); the Today page (021); memory proposals and memory history (008) |
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory | Export and import of data |
 
 A client sees the user sections of the server (001) and cannot make, rename, order or delete
@@ -155,9 +155,9 @@ button on a section, the agent profile, the channel settings, the memory list.
 ## Messages
 
 - A client asks for: server summary, places (with the user sections and the section of each
-  place), a page of messages, search, send message, stop, edit, retry, mark a place as read,
-  approve, answer question, upload attachment, download attachment, task list, task details,
-  stop a task.
+  place), a page of messages, search of places and of messages (001), send message, stop, edit,
+  retry, mark a place as read, approve, answer question, upload attachment, download attachment,
+  task list, task details, stop a task.
 - The phone app (011) may ask for more: end a request (see 004), start and fork a thread,
   compact a conversation, and run or edit a workflow. The aim of 011 is that the phone can do
   whatever the user can do in a conversation on the computer. A computer client does not offer

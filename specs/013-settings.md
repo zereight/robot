@@ -8,7 +8,9 @@ The user sets the app up the way they like in one place.
 
 - **General**: language (English, Korean, or follow the system), start at login, default folder
   for agent workspaces, the step limit of a task (a whole number from 20 to 2000; the default is
-  300; see 005), and "While an agent works, new messages" (see 003, "Messages during a turn").
+  300; see 005), "While an agent works, new messages" (see 003, "Messages during a turn"), and the
+  silent limit: how long a turn may show no sign of life before the app stops it (see 005). The
+  choices are 1, 5, 10 (default), 30 and 60 minutes, and Never.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
@@ -99,6 +101,8 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   `http://127.0.0.1:8000`: the app accepts it.
 - Save a key for the decision model, reload the settings page: the page shows "saved" and not
   the key.
+- Change the silent limit to 30 minutes: a turn that starts after the change fails after 30 minutes
+  of silence and not after 10. Choose Never: a silent turn does not fail by itself.
 - Two agents have the role lines "Designer" and "designer": the Roles page shows one role with
   two agents. Rename it to the role line of a third agent: all three agents have one role.
 - Remove a role: its agents have an empty role line and keep their chats.
