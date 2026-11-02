@@ -22,6 +22,12 @@ export interface RuntimeRun {
   readonly system: string
   /** The conversation so far, and the new message, as one text. */
   readonly prompt: string
+  /**
+   * The same conversation as one block for each message. A program that takes blocks (Claude
+   * Code) reads the start of the request from the cache of the model when the blocks are the
+   * same as in the turn before. Without it, the program gets `prompt` as one block.
+   */
+  readonly blocks?: readonly string[]
   readonly workspace: string
   readonly permission: PermissionLevel
   /** False when the program may only answer: no files, no commands. */

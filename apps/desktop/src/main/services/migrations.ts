@@ -266,4 +266,7 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE provider_account ADD COLUMN sign_in TEXT;
   `,
+  `
+  ALTER TABLE message ADD COLUMN context TEXT;
+  `,
 ]

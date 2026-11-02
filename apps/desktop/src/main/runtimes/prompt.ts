@@ -20,3 +20,62 @@ export const buildPrompt = (turns: readonly Turn[], historyMax = 60_000): string
   if (history.length > historyMax) history = `…${history.slice(history.length - historyMax)}`
   return `The chat so far:\n\n${history}\n\n---\nThe new message of the user:\n\n${newest}`
 }
+
+/**
+ * The cut of an old history moves in steps of this part of the limit. It does not move at each
+ * message, so the start of the text stays the same for several turns, and the history that stays
+ * is never less than the rest of the limit.
+ */
+const CUT_PARTS = 4
+
+const LEAD =
+  'The chat so far follows, with one block for each message. A block that starts with "User:" is a message of the user. A block that starts with "You:" is an earlier reply of yours. Answer the last message of the user.'
+
+const OMITTED = "(The oldest messages of this chat are left out here.)"
+
+/**
+ * The chat for a program that takes it as blocks, one block for each message. The model reads a
+ * start of the request from its cache when that start is the same as in the turn before. A block
+ * is the unit of that match, so a message that is its own block, with the same text in each turn,
+ * is read from the cache. The text of one block that grows or changes in the middle is not.
+ *
+ * The blocks of one turn are the blocks of the turn before, with the new ones at the end. Only
+ * the cut of an old history moves them, and it moves in steps of a quarter of the limit, whatever
+ * the size of the messages. The place of a step is counted from the first message of the chat, so
+ * the same chat gives the same cut in each turn.
+ */
+export const buildBlocks = (turns: readonly Turn[], historyMax = 60_000): string[] => {
+  const texts = turns.filter((t) => t.role !== "tool" && t.content.trim() !== "")
+  // The program answers the last message of the user, as in buildPrompt.
+  let end = texts.length
+  while (end > 0 && texts[end - 1]?.role !== "user") end--
+  if (end === 0) return [texts.at(-1)?.content ?? "(no text)"]
+  const items = texts.slice(0, end).map((t, i) => {
+    const body = t.content.trim()
+    return `${t.role === "user" ? "User" : "You"}: ${i === end - 1 ? body.slice(0, NEWEST_MAX) : body}`
+  })
+  let start = items.length - 1
+  let size = items[start]?.length ?? 0
+  while (start > 0 && size + (items[start - 1]?.length ?? 0) + 2 <= historyMax) {
+    start--
+    size += (items[start]?.length ?? 0) + 2
+  }
+  let cut = 0
+  if (start > 0) {
+    const step = Math.max(1, Math.floor(historyMax / CUT_PARTS))
+    // The characters before each message, counted from the first message of the chat.
+    const before: number[] = []
+    let sum = 0
+    for (const item of items) {
+      before.push(sum)
+      sum += item.length + 2
+    }
+    const target = Math.ceil((before[start] ?? 0) / step) * step
+    cut = Math.min(
+      before.findIndex((n) => n >= target),
+      items.length - 1,
+    )
+    if (cut < start) cut = items.length - 1
+  }
+  return [LEAD, ...(cut > 0 ? [OMITTED] : []), ...items.slice(cut)]
+}
