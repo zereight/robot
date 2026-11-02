@@ -13,7 +13,7 @@ import {
   watch,
   writeFileSync,
 } from "node:fs"
-import { dirname, join, resolve } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import {
   articleFileName,
   articleLimit,
@@ -51,6 +51,7 @@ import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
 import { secretKey } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
+import { SettingsStore } from "./Settings.ts"
 
 /** What a write asks for. The title names the article. */
 export interface KnowledgeWrite {
@@ -257,6 +258,7 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
       const bus = yield* EventBus
       const platform = yield* Platform
       const secrets = yield* Secrets
+      const settings = yield* SettingsStore
 
       /** What the app read from each file the last time, by agent and file name. */
       const cache = new Map<string, Map<string, Cached>>()
@@ -586,8 +588,19 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
         }
       }
 
-      const isChosen = (info: AgentInfo) =>
-        resolve(dirname(info.workspace)) !== resolve(platform.defaultWorkspaceRoot)
+      /**
+       * A workspace counts as chosen by the user when it is not in the default workspace folder.
+       * A folder under a root that the user set in Settings is in the default workspace folder, and
+       * so is a folder under the built-in root (an agent made before the user set a root).
+       */
+      const isChosen = (info: AgentInfo) => {
+        const roots = [Effect.runSync(settings.get).workspaceRoot, platform.defaultWorkspaceRoot]
+        return !roots.some((root) => {
+          if (!root) return false
+          const path = relative(resolve(root), resolve(info.workspace))
+          return path !== "" && !path.startsWith("..") && !isAbsolute(path)
+        })
+      }
 
       const takenFile = (folder: string, names: readonly string[]) => {
         const lower = new Set(names.map((n) => n.toLocaleLowerCase()))

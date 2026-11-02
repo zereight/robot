@@ -23,6 +23,7 @@ import { Knowledge } from "./Knowledge.ts"
 import { Providers, secretKey } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
@@ -829,10 +830,8 @@ describe("the first save in a workspace that the user chose", () => {
     db.run("UPDATE agent SET workspace = ? WHERE id = ?", chosen, s.agent.id)
     await s.send(call("write_article", { title: "Alpha", body: "x" }))
     const ask = await s.waitingCard()
-    expect(ask).toMatchObject({
-      kind: "approval",
-      summary: join(chosen, "Knowledge"),
-    })
+    // The card names the folder and has no "Always allow".
+    expect(ask).toEqual({ kind: "approval", summary: join(chosen, "Knowledge"), once: true })
     expect(existsSync(join(chosen, "Knowledge"))).toBe(false)
     await s.respond("deny")
     await s.finished()
@@ -846,6 +845,82 @@ describe("the first save in a workspace that the user chose", () => {
     // The folder exists now, so a second article asks nothing.
     await s.turn(call("write_article", { title: "Beta", body: "x" }))
     expect((await s.toolParts())[0]?.state).toBe("done")
+  })
+
+  test("a folder under a root that the user set in Settings is in the default workspace folder", async () => {
+    const s = await setup()
+    const root = mkdtempSync(join(tmpdir(), "robot-root-"))
+    await s.run(SettingsStore.use((x) => x.update({ workspaceRoot: root })))
+    const inside = join(root, "ada-1234")
+    mkdirSync(inside, { recursive: true })
+    ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", inside, s.agent.id)
+    expect((await s.k((x) => x.folder(s.agent.id))).chosen).toBe(false)
+    // No question: the turn ends by itself.
+    await s.turn(call("write_article", { title: "Alpha", body: "x" }))
+    expect((await s.toolParts())[0]?.state).toBe("done")
+    expect(existsSync(join(inside, "Knowledge", "Alpha.md"))).toBe(true)
+    // A folder next to the root, or the built-in root after the user set another one, is judged
+    // by the same rule.
+    const outside = mkdtempSync(join(tmpdir(), "robot-elsewhere-"))
+    ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", outside, s.agent.id)
+    expect((await s.k((x) => x.folder(s.agent.id))).chosen).toBe(true)
+    const builtIn = join(s.t.dataDir, "workspaces", "old-agent")
+    ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", builtIn, s.agent.id)
+    expect((await s.k((x) => x.folder(s.agent.id))).chosen).toBe(false)
+    // The root itself is not "in" itself: a user who points an agent at it chose that folder.
+    ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", root, s.agent.id)
+    expect((await s.k((x) => x.folder(s.agent.id))).chosen).toBe(true)
+  })
+
+  test("the first source asks too; Always allow is not offered and the folder asks again when it is missing", async () => {
+    const s = await setup()
+    const chosen = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", chosen, s.agent.id)
+    mkdirSync(join(chosen, "attachments"), { recursive: true })
+    writeFileSync(join(chosen, "attachments", "r.txt"), "Plain source.")
+    await s.send(call("add_source", { path: "attachments/r.txt" }))
+    expect(await s.waitingCard()).toEqual({
+      kind: "approval",
+      summary: join(chosen, "Knowledge"),
+      once: true,
+    })
+    // "always" is not a choice of this card: it does not allow.
+    await s.respond("always")
+    await s.finished()
+    expect((await s.toolParts())[0]).toMatchObject({
+      state: "failed",
+      knowledge: { kind: "failed", code: "knowledge_denied" },
+    })
+    expect(existsSync(join(chosen, "Knowledge"))).toBe(false)
+    await s.send(call("add_source", { path: "attachments/r.txt" }))
+    await s.waitingCard()
+    await s.respond("allow")
+    await s.finished()
+    expect(readFileSync(join(chosen, "Knowledge", "sources", "r.txt"), "utf8")).toBe(
+      "Plain source.",
+    )
+    // The folder goes away: the next save by the agent asks again.
+    rmSync(join(chosen, "Knowledge"), { recursive: true, force: true })
+    await s.send(call("write_article", { title: "Alpha", body: "x" }))
+    expect((await s.waitingCard())?.kind).toBe("approval")
+    await s.respond("deny")
+    await s.finished()
+  })
+
+  test("a save by the user asks nothing, and at full access nothing asks", async () => {
+    const s = await setup()
+    const chosen = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", chosen, s.agent.id)
+    await s.save("Mine", "text")
+    expect(existsSync(join(chosen, "Knowledge", "Mine.md"))).toBe(true)
+
+    const full = await setup("full")
+    const other = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    ;(await full.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", other, full.agent.id)
+    await full.turn(call("write_article", { title: "Alpha", body: "x" }))
+    expect((await full.toolParts())[0]).toMatchObject({ state: "done" })
+    expect((await full.toolParts())[0]?.ask).toBeUndefined()
+    expect(existsSync(join(other, "Knowledge", "Alpha.md"))).toBe(true)
   })
 })
 
