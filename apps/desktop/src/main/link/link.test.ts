@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { EventEmitter } from "node:events"
-import { LINK_PROTOCOL, type WireDevice } from "@robot/shared"
+import { createServer } from "node:net"
+import { type Address, LINK_PROTOCOL, type WireDevice } from "@robot/shared"
 import type WebSocket from "ws"
 import { Conn, pairingCiphers, SecureChannel } from "./channel.ts"
-import { LinkError, openAny, openLinked, pairWithCode } from "./client.ts"
+import { failureCode, LinkError, openAny, openLinked, pairWithCode } from "./client.ts"
 import { generateKeyPair } from "./crypto/noise.ts"
 import { codeToW } from "./crypto/spake2.ts"
 import { deviceIdOf, type Identity } from "./identity.ts"
@@ -180,6 +181,72 @@ describe("pairing run", () => {
     await pairWithCode(conn, "424242")
     expect(seen.join("")).not.toContain("424242")
   })
+})
+
+describe("code of a failed connection", () => {
+  // A web socket that follows the browser API (the one built into Bun 1.4.2) reports a failure
+  // as an event with no system code. The app asks the system, so this must give the same answer
+  // on every runtime.
+  const event = { type: "error", message: "Failed to connect" }
+  const closed = async (): Promise<Address> => {
+    const { server, port } = await rig()
+    server.close()
+    return { host: "127.0.0.1", port }
+  }
+
+  test("a system code of the error is kept as it is, with no second connection", async () => {
+    // A second connection to this closed port would say ECONNREFUSED.
+    const address = await closed()
+    for (const code of [
+      "ECONNREFUSED",
+      "ECONNRESET",
+      "ENOTFOUND",
+      "EHOSTUNREACH",
+      "ENETUNREACH",
+      "ETIMEDOUT",
+    ]) {
+      const error = Object.assign(new Error(code), { code })
+      expect(await failureCode(error, address, 1000)).toBe(code)
+    }
+  })
+
+  test("an error with no code, such as a handshake that timed out, is not a refusal", async () => {
+    const address = await closed()
+    const error = new Error("Opening handshake has timed out")
+    expect(await failureCode(error, address, 1000)).toBe("ERR")
+  })
+
+  test("an event with no code from a closed port is a refusal", async () => {
+    expect(await failureCode(event, await closed(), 1000)).toBe("ECONNREFUSED")
+  })
+
+  test("an event with no code from a port that accepts is not a refusal", async () => {
+    const listener = createServer((socket) => socket.destroy())
+    await new Promise<void>((resolve) => listener.listen(0, "127.0.0.1", resolve))
+    try {
+      const address = { host: "127.0.0.1", port: (listener.address() as { port: number }).port }
+      expect(await failureCode(event, address, 1000)).toBe("ERR")
+    } finally {
+      listener.close()
+    }
+  })
+
+  test("an event with no code from an unknown host is not a refusal", async () => {
+    const code = await failureCode(event, { host: "no-such-host.invalid", port: 81 }, 1500)
+    expect(code).not.toBe("ECONNREFUSED")
+  }, 10_000)
+
+  test("an event with no code from an address that never answers is not a refusal", async () => {
+    // 192.0.2.1 is a documentation address: no route, or no answer until the time ends.
+    const code = await failureCode(event, { host: "192.0.2.1", port: 81 }, 200)
+    expect(code).not.toBe("ECONNREFUSED")
+  }, 10_000)
+
+  test("an unknown host reads as a computer that is not reachable", async () => {
+    await expect(openAny(["no-such-host.invalid:81"], 1500)).rejects.toMatchObject({
+      code: "unreachable",
+    })
+  }, 10_000)
 })
 
 describe("linked connection", () => {

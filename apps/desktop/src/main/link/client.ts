@@ -1,3 +1,4 @@
+import { connect } from "node:net"
 import { type Address, LINK_PROTOCOL, parseAddress, type WireDevice } from "@robot/shared"
 import WebSocket from "ws"
 import { Conn, pairingCiphers, SecureChannel } from "./channel.ts"
@@ -27,6 +28,30 @@ export class LinkError extends Error {
 
 const url = (a: Address) => `ws://${a.host.includes(":") ? `[${a.host}]` : a.host}:${a.port}`
 
+/**
+ * The system code of a failed connection (for example ECONNREFUSED). The error of the `ws`
+ * package has the code. A web socket that follows the browser API, such as the one that is built
+ * into Bun 1.4.2, reports a failure as an event with no code, so "refused", "no such host" and
+ * "no route" look the same. Then one plain connect to the same address gives the real code.
+ * An error with no code (for example a handshake that timed out) is not probed: it stays "ERR".
+ */
+export const failureCode = (error: unknown, address: Address, ms: number): Promise<string> => {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code
+  if (code) return Promise.resolve(code)
+  if (error instanceof Error) return Promise.resolve("ERR")
+  return new Promise((resolve) => {
+    const socket = connect({ host: address.host, port: address.port })
+    const end = (result: string) => {
+      socket.destroy()
+      resolve(result)
+    }
+    socket.setTimeout(ms, () => end("ETIMEDOUT"))
+    // The port accepts a connection, so the reason is not a refusal.
+    socket.once("connect", () => end("ERR"))
+    socket.once("error", (reason: NodeJS.ErrnoException) => end(reason.code ?? "ERR"))
+  })
+}
+
 /** Opens one socket. Rejects with the error code of the system (for example ECONNREFUSED). */
 const open = (address: Address, ms: number) =>
   new Promise<Conn>((resolve, reject) => {
@@ -38,7 +63,9 @@ const open = (address: Address, ms: number) =>
     // The wrapper listens from the start, so a frame that comes with the open is not lost.
     const conn = new Conn(ws)
     ws.once("open", () => resolve(conn))
-    ws.once("error", (error: NodeJS.ErrnoException) => reject(new LinkError(error.code ?? "ERR")))
+    ws.once("error", (error: unknown) => {
+      void failureCode(error, address, ms).then((code) => reject(new LinkError(code)))
+    })
     ws.once("unexpected-response", () => {
       ws.terminate()
       reject(new LinkError("ERR"))
