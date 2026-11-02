@@ -133,6 +133,9 @@ export const createAgent = async (page: Page, name: string) => {
   await page.getByTestId("model-model").waitFor()
   await page.getByTestId("agent-submit").click()
   await page.getByTestId("chat-start").filter({ hasText: name }).waitFor()
+  // The box of the form plays an exit motion first. A test that goes on at once can meet the box
+  // twice: it holds the same controls as the next box (for example the one that picks a model).
+  await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
 }
 
 /**
