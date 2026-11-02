@@ -239,6 +239,10 @@ test("linked sections: a client sees the sections of the server and cannot chang
     await rpc(two.page, "places.move", { kind: "agent", id: s.ada, sectionId: null })
     await expect(rowOf(one.page, "Ada")).toBeVisible()
     expect(await namesIn(sectionOf(one.page, "Research"))).toEqual([])
+    // An empty section of the server shows a plain line, not the hint to drag a place into it.
+    await expect(sectionOf(one.page, "Research").getByTestId("user-section-empty")).toHaveText(
+      "No places in this section.",
+    )
     const bo = (
       await rpc<{ id: string; name: string }[]>(two.page, "agents.list", {
         serverId: await localServerId(two.page),

@@ -559,7 +559,7 @@ export const PlaceList = (props: PlaceListProps) => {
                 when={section.places.length > 0}
                 fallback={
                   <div class={styles.sectionEmpty} data-testid="user-section-empty">
-                    {t("sections.empty")}
+                    {t(readOnly() ? "sections.emptyLinked" : "sections.empty")}
                   </div>
                 }
               >

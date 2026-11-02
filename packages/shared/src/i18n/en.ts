@@ -77,6 +77,7 @@ export const en = {
   "sections.new": "New section",
   "sections.name": "Section name",
   "sections.empty": "Drag a place here, or use its menu: Move to section.",
+  "sections.emptyLinked": "No places in this section.",
   "sections.menu": "Menu of section {name}",
   "sections.rename": "Rename",
   "sections.moveUp": "Move up",

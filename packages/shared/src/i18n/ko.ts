@@ -79,6 +79,7 @@ export const ko: Record<MessageKey, string> = {
   "sections.new": "새 섹션",
   "sections.name": "섹션 이름",
   "sections.empty": "장소를 여기로 끌어 놓거나, 장소 메뉴의 '섹션으로 이동'을 쓰세요.",
+  "sections.emptyLinked": "이 섹션에 장소가 없습니다.",
   "sections.menu": "섹션 {name} 메뉴",
   "sections.rename": "이름 바꾸기",
   "sections.moveUp": "위로 이동",
