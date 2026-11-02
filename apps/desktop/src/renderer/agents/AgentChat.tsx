@@ -1,5 +1,5 @@
 import { type Agent, type AgentModel, runtimeModel } from "@robot/shared"
-import { createResource, createSignal, onCleanup, Show } from "solid-js"
+import { createSignal, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -14,42 +14,8 @@ import { Presence } from "../ui/Presence.tsx"
 import { AgentActivity } from "./AgentActivity.tsx"
 import { AgentProfileDialog } from "./AgentDialogs.tsx"
 import styles from "./agents.module.css"
+import { BrowserPane } from "./BrowserPane.tsx"
 import { Face } from "./Face.tsx"
-
-/** Shows while the agent has a browser window open: take the controls, give them back, close. */
-const BrowserControls = (props: { agentId: string }) => {
-  const { t } = useApp()
-  const [state, { refetch }] = createResource(
-    () => props.agentId,
-    (agentId) => call("browser.state", { agentId }),
-  )
-  onCleanup(
-    window.robot.on("browser.changed", ({ agentId }) => {
-      if (agentId === props.agentId) void refetch()
-    }),
-  )
-  return (
-    <Show when={state()?.open}>
-      <span class={styles.browserBar} data-testid="browser-bar" data-control={state()?.control}>
-        <span>{state()?.control ? t("browser.yours") : t("browser.agents")}</span>
-        <Button
-          onClick={() =>
-            call("browser.control", { agentId: props.agentId, control: !state()?.control })
-          }
-          data-testid="browser-control"
-        >
-          {state()?.control ? t("browser.giveBack") : t("browser.takeOver")}
-        </Button>
-        <Button
-          onClick={() => call("browser.close", { agentId: props.agentId })}
-          data-testid="browser-close"
-        >
-          {t("browser.close")}
-        </Button>
-      </span>
-    </Show>
-  )
-}
 
 const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
   const { t } = useApp()
@@ -100,9 +66,6 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         >
           {modelName()}
         </button>
-      </Show>
-      <Show when={!ui.linked()}>
-        <BrowserControls agentId={props.agent.id} />
       </Show>
       <Presence when={open()}>
         {() => <AgentProfileDialog agent={props.agent} onClose={() => setOpen(false)} />}
@@ -176,12 +139,20 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
     body: (
       <Show when={agent()}>
         {(a) => (
-          <ChatView
-            agent={a()}
-            start={<Start agent={a()} />}
-            onConnect={() => ui.openSettings("providers")}
-            onChooseModel={() => setPicking(true)}
-          />
+          <div class={styles.split}>
+            {/* A linked server has no browser view in a client: the client has no control of it. */}
+            <Show when={!ui.linked()}>
+              <BrowserPane agentId={a().id} />
+            </Show>
+            <div class={styles.chatColumn}>
+              <ChatView
+                agent={a()}
+                start={<Start agent={a()} />}
+                onConnect={() => ui.openSettings("providers")}
+                onChooseModel={() => setPicking(true)}
+              />
+            </div>
+          </div>
         )}
       </Show>
     ),

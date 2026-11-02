@@ -486,6 +486,7 @@ export const en = {
   "agents.memory.source.agent": "Agent",
   "error.memory_not_found": "This memory item does not exist any more.",
   "agents.memory.edit": "Edit",
+  "browser.title": "Browser",
   "browser.agents": "The agent uses the browser",
   "browser.yours": "You control the browser",
   "browser.takeOver": "Take control",

@@ -293,6 +293,17 @@ export interface RpcMethods {
   /** The user takes the controls of the agent's browser, or gives them back. */
   "browser.control": { input: { agentId: string; control: boolean }; output: undefined }
   "browser.close": { input: { agentId: string }; output: undefined }
+  /**
+   * The chat screen says where the browser of the agent shows, in CSS px of the app window. `null`
+   * hides it, for example when the screen shows another chat or a dialog covers the place.
+   */
+  "browser.place": {
+    input: {
+      agentId: string
+      bounds: { x: number; y: number; width: number; height: number } | null
+    }
+    output: undefined
+  }
   "routines.list": { input: { serverId: string }; output: readonly Routine[] }
   "routines.create": { input: RoutineInput; output: Routine }
   "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }

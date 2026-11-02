@@ -32,7 +32,7 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge, type KnowledgePlan } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
-import { Platform } from "./Platform.ts"
+import { type PageBounds, Platform } from "./Platform.ts"
 
 export interface ToolContext {
   readonly agentId: string
@@ -70,11 +70,16 @@ export interface ToolsService {
   respond(agentId: string, callId: string, answer: string): Effect.Effect<void>
   /** True while a task of this computer waits for the answer to this card. */
   isWaiting(agentId: string, callId: string): boolean
-  /** Whether the browser window of an agent is open, and whether the user holds the controls. */
+  /** Whether the browser of an agent is open, and whether the user holds the controls. */
   browserState(agentId: string): { open: boolean; control: boolean }
   /** The user takes the controls (`true`) or gives them back (`false`). */
   setBrowserControl(agentId: string, control: boolean): void
   closeBrowser(agentId: string): void
+  /**
+   * Where the browser of an agent shows in the app window. `undefined` hides it. The chat screen
+   * calls this each time its place changes.
+   */
+  placeBrowser(agentId: string, bounds: PageBounds | undefined): void
 }
 
 const READ_MAX = 100_000
@@ -142,7 +147,7 @@ const DEFS: Record<string, ToolDef> = {
   browser_open: {
     name: "browser_open",
     description:
-      "Open a web page in a browser window that the user can watch. Logins stay between runs.",
+      "Open a web page in a browser that the user can watch in the app window. Logins stay between runs.",
     schema: object({ url: str("An http or https address.") }, ["url"]),
   },
   browser_read: {
@@ -165,7 +170,7 @@ const DEFS: Record<string, ToolDef> = {
   },
   browser_close: {
     name: "browser_close",
-    description: "Close the browser window.",
+    description: "Close the browser.",
     schema: object({}, []),
   },
   save_memory: {
@@ -283,6 +288,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           wired.add(agentId)
           page.onClosed(() => {
             control.delete(agentId)
+            page.allowUserInput(false)
             browserChanged(agentId)
           })
         }
@@ -833,10 +839,13 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         setBrowserControl: (agentId, user) => {
           if (user) control.add(agentId)
           else control.delete(agentId)
+          // The page takes the clicks and keys of the user only while the user holds the controls.
+          pageOf(agentId).allowUserInput(user)
           browserChanged(agentId)
         },
         closeBrowser: (agentId) => platform.browser(agentId).close(),
         isWaiting: (agentId, callId) => waiting.has(`${agentId}:${callId}`),
+        placeBrowser: (agentId, bounds) => platform.browser(agentId).place(bounds),
         respond: (agentId, callId, answer) =>
           Effect.gen(function* () {
             // A linked device that answers is named on the card (spec 012).

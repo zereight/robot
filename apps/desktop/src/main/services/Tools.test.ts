@@ -339,7 +339,7 @@ describe("memory", () => {
 })
 
 describe("browser", () => {
-  test("pages open, read and act; the user holds the controls; stop closes the window", async () => {
+  test("pages open, read and act; the user holds the controls; stop closes the page", async () => {
     const s = await setup("full")
     await s.send(call("browser_open", { url: "https://example.com/a" }))
     await s.finished()
@@ -359,7 +359,7 @@ describe("browser", () => {
     await s.finished()
     expect(s.t.browserLog.some((l) => l.endsWith("click #go"))).toBe(true)
 
-    // Stop while the user holds the controls closes the window within 2 seconds.
+    // Stop while the user holds the controls closes the page within 2 seconds.
     await s.run(Tools.use((x) => Effect.sync(() => x.setBrowserControl(s.agent.id, true))))
     await s.send(call("browser_click", { selector: "#again" }))
     await Bun.sleep(300)
@@ -367,6 +367,32 @@ describe("browser", () => {
     await s.run(Chat.use((c) => c.stop(s.agent.id)))
     expect(Date.now() - started).toBeLessThan(2000)
     expect(s.t.browserLog.at(-1)).toBe(`${s.agent.id}:close`)
+  })
+
+  test("the page shows where the chat screen says; the input of the user goes in only with the controls", async () => {
+    const s = await setup("full")
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    const place = (bounds: { x: number; y: number; width: number; height: number } | undefined) =>
+      s.run(Tools.use((x) => Effect.sync(() => x.placeBrowser(s.agent.id, bounds))))
+    await place({ x: 312, y: 93, width: 708, height: 319 })
+    await place(undefined)
+    expect(s.t.browserPlaced).toEqual([`${s.agent.id}:312,93 708x319`, `${s.agent.id}:hidden`])
+
+    // The user's input is kept out until the user takes the controls, and again after give back.
+    expect(s.t.browserInput).toEqual([])
+    await s.run(Tools.use((x) => Effect.sync(() => x.setBrowserControl(s.agent.id, true))))
+    await s.run(Tools.use((x) => Effect.sync(() => x.setBrowserControl(s.agent.id, false))))
+    expect(s.t.browserInput).toEqual([`${s.agent.id}:on`, `${s.agent.id}:off`])
+
+    // Closing the page ends the controls of the user, and the input stays out.
+    await s.run(Tools.use((x) => Effect.sync(() => x.setBrowserControl(s.agent.id, true))))
+    await s.run(Tools.use((x) => Effect.sync(() => x.closeBrowser(s.agent.id))))
+    expect(s.t.browserInput.at(-1)).toBe(`${s.agent.id}:off`)
+    expect(await s.run(Tools.use((x) => Effect.succeed(x.browserState(s.agent.id))))).toEqual({
+      open: false,
+      control: false,
+    })
   })
 
   test("a non-web address fails without opening", async () => {

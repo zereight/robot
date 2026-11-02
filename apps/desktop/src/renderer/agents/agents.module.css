@@ -177,7 +177,7 @@
   padding: 4px 6px;
   border-radius: var(--radius-s);
   font-weight: 600;
-  /* A long name shrinks before the model name and the browser buttons do. */
+  /* A long name shrinks before the model name does. */
   flex: 0 1 auto;
   min-width: 0;
 }
@@ -268,13 +268,87 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * The chat and the browser of the agent share the window. In a narrow body, the browser sits above
+ * the chat. In a wide body, it sits beside it.
+ */
+.split {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
+}
+
+.chatColumn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.browserPane {
+  flex: 0 0 45%;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--c-border);
+}
+
 .browserBar {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-inline-start: auto;
-  flex-shrink: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--c-border);
   color: var(--c-text-muted);
+  flex-shrink: 0;
+}
+
+.browserBar[data-control="true"] {
+  color: var(--c-text);
+  box-shadow: inset 0 -2px 0 var(--c-accent);
+}
+
+.browserBar button {
+  white-space: nowrap;
+}
+
+.browserStatus {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The page itself is a native view above this box. The box keeps its place. */
+.browserView {
+  flex: 1;
+  min-height: 0;
+  background: var(--c-main);
+}
+
+@container (min-width: 900px) {
+  .split {
+    flex-direction: row;
+  }
+
+  .browserPane {
+    order: 2;
+    flex: 1 1 55%;
+    min-width: 0;
+    min-height: 0;
+    border-bottom: 0;
+    border-inline-start: 1px solid var(--c-border);
+  }
+
+  .chatColumn {
+    order: 1;
+    flex: 1 1 45%;
+  }
 }
 
 .pane {
