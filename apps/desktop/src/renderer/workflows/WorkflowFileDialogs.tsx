@@ -1,12 +1,16 @@
 import {
   type GraphFault,
+  startWorkflowTicks,
   WORKFLOW_FILE_MAX_WORKFLOWS,
   type Workflow,
   type WorkflowFileFailure,
   type WorkflowFilePreview,
+  workflowPicks,
 } from "@robot/shared"
 import { createSignal, For, Show } from "solid-js"
+import { NotImportedList, SecretMark } from "../agents/AgentFileDialogs.tsx"
 import styles from "../agents/agents.module.css"
+import review from "../imports/imports.module.css"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
@@ -170,25 +174,33 @@ const readFailure = (error: unknown): WorkflowFileFailure | undefined => {
   }
 }
 
-/** List what the file will make and which agents it cannot find, and ask to confirm. */
+/**
+ * The review before an import (spec 014): each workflow with a tick box, its trigger, its number
+ * of steps and the agent names that the app cannot find, the part "Not imported", the counts and
+ * the import button.
+ */
 export const ImportWorkflowsDialog = (props: {
   preview: WorkflowFilePreview
   onClose: () => void
 }) => {
   const { t } = useApp()
   const ui = useUi()
+  const [ticks, setTicks] = createSignal<boolean[]>(startWorkflowTicks(props.preview.workflows))
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<ErrorText>()
   /** Set when the import stopped: the workflows made so far stay, so it cannot run again. */
   const [stopped, setStopped] = createSignal(false)
+  const picks = () => workflowPicks(ticks())
+  const tick = (index: number, on: boolean) =>
+    setTicks(ticks().map((value, i) => (i === index ? on : value)))
 
   const submit = async () => {
     const serverId = ui.server()?.id
-    if (!serverId || busy() || stopped()) return
+    if (!serverId || busy() || stopped() || picks().length === 0) return
     setBusy(true)
     setError(undefined)
     try {
-      await call("workflowFile.apply", { serverId })
+      await call("workflowFile.apply", { serverId, pick: picks() })
       props.onClose()
     } catch (e) {
       const failure = readFailure(e)
@@ -217,45 +229,56 @@ export const ImportWorkflowsDialog = (props: {
     >
       <div class={styles.form}>
         <h2 class={styles.title}>{t("workflowFile.import.title")}</h2>
-        <p class={styles.hint}>{t("workflowFile.import.intro")}</p>
-        <ul class={styles.fileList} data-testid="workflow-import-list">
+        <p class={styles.hint}>{t("importReview.workflows.intro")}</p>
+        <ul class={review.review} data-testid="workflow-import-list">
           <For each={props.preview.workflows}>
-            {(item) => (
-              <li class={styles.fileRow} data-testid="workflow-import-item">
-                <span class={styles.fileText}>
-                  <span class={styles.label}>{item.name}</span>
-                  <Show when={item.fileName}>
-                    {(original) => (
-                      <span class={styles.hint}>
-                        {t("workflowFile.import.renamed", { name: original() })}
+            {(item, i) => (
+              <li
+                class={review.reviewItem}
+                data-testid="workflow-import-item"
+                data-ticked={ticks()[i()]}
+              >
+                <label class={review.row}>
+                  <input
+                    type="checkbox"
+                    checked={ticks()[i()]}
+                    onChange={(e) => tick(i(), e.currentTarget.checked)}
+                    data-testid="workflow-import-tick"
+                  />
+                  <span class={review.rowText}>
+                    <span class={styles.label}>{item.name}</span>
+                    <Show when={item.fileName}>
+                      {(original) => (
+                        <span class={styles.hint}>
+                          {t("workflowFile.import.renamed", { name: original() })}
+                        </span>
+                      )}
+                    </Show>
+                    <span class={styles.hint}>
+                      {t(`workflows.trigger.${item.trigger}` as const)} ·{" "}
+                      {t("workflowFile.import.counts", { steps: item.steps, notes: item.notes })}
+                    </span>
+                    <Show when={item.missingAgents.length > 0}>
+                      <span class={styles.hint} data-testid="workflow-import-missing">
+                        {t("importReview.missing", { names: item.missingAgents.join(", ") })}
                       </span>
-                    )}
-                  </Show>
-                  <span class={styles.hint}>
-                    {t(`workflows.trigger.${item.trigger}` as const)} ·{" "}
-                    {t("workflowFile.import.counts", { steps: item.steps, notes: item.notes })}
+                    </Show>
+                    <Show when={item.secretRemoved}>
+                      <SecretMark />
+                    </Show>
                   </span>
-                </span>
+                </label>
               </li>
             )}
           </For>
         </ul>
-        <Show when={props.preview.missingAgents.length > 0}>
-          <div data-testid="workflow-import-missing">
-            <p class={styles.hint}>{t("workflowFile.import.missing")}</p>
-            <ul>
-              <For each={props.preview.missingAgents}>
-                {(name) => <li data-testid="workflow-import-missing-name">{name}</li>}
-              </For>
-            </ul>
-          </div>
-        </Show>
-        <Show when={props.preview.postSteps > 0}>
-          <p class={styles.hint} data-testid="workflow-import-places">
-            {t("workflowFile.import.places", { count: props.preview.postSteps })}
-          </p>
-        </Show>
+        <NotImportedList items={props.preview.notImported} testId="workflow-import-not-imported" />
         <p class={styles.hint}>{t("workflowFile.import.off")}</p>
+        <p class={review.counts} role="status" data-testid="workflow-import-counts">
+          {picks().length === 0
+            ? t("importReview.nothing")
+            : t("importReview.counts.workflows", { workflows: picks().length })}
+        </p>
         <Show when={error()}>
           {(err) => (
             <div class={styles.error} role="alert" data-testid="workflow-import-error">
@@ -270,11 +293,11 @@ export const ImportWorkflowsDialog = (props: {
           <Show when={!stopped()}>
             <Button
               variant="primary"
-              disabled={busy()}
+              disabled={busy() || picks().length === 0}
               onClick={submit}
               data-testid="workflow-import-submit"
             >
-              {t("workflowFile.import.submit", { count: props.preview.workflows.length })}
+              {t("workflowFile.import.submit", { count: picks().length })}
             </Button>
           </Show>
         </div>

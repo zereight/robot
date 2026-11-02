@@ -7,8 +7,18 @@ import {
   type Schedule,
   validSchedule,
 } from "@robot/shared"
-import { createMemo, createResource, createSignal, For, Index, onCleanup, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  Index,
+  onCleanup,
+  Show,
+} from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
@@ -27,7 +37,7 @@ const useFormat = () => {
     new Intl.DateTimeFormat(app.locale(), { dateStyle: "medium", timeStyle: "short" }).format(at)
 }
 
-const useScheduleWords = () => {
+export const useScheduleWords = () => {
   const { t } = useApp()
   const app = useApp()
   const dayName = (d: number) =>
@@ -300,6 +310,18 @@ export const RoutinesView = () => {
     }),
   )
   onCleanup(window.robot.on("tasks.changed", () => void refetchEntries()))
+  // A checklist item asked for one routine: show its card in the list and focus its switch.
+  createEffect(() => {
+    const target = ui.revealTarget()
+    if (target?.kind !== "routine") return
+    setMode("list")
+    if (!routines().some((r) => r.id === target.id)) return
+    queueMicrotask(() => {
+      const card = document.querySelector<HTMLElement>(`[data-routine-id="${target.id}"]`)
+      if (card) showRevealed(card, "routine-enabled")
+      ui.clearReveal()
+    })
+  })
   const shift = (dir: number) => {
     const a = new Date(anchor())
     if (mode() === "week") a.setDate(a.getDate() + 7 * dir)
@@ -350,7 +372,12 @@ export const RoutinesView = () => {
         >
           <For each={routines()}>
             {(r) => (
-              <div class={styles.card} data-testid="routine-card" data-enabled={r.enabled}>
+              <div
+                class={styles.card}
+                data-testid="routine-card"
+                data-routine-id={r.id}
+                data-enabled={r.enabled}
+              >
                 <div class={styles.cardMain}>
                   <strong>{r.name}</strong>
                   <span class={styles.hint}>

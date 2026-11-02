@@ -275,9 +275,11 @@ test("workflow file: import into an app without the agent", async () => {
   await page.getByTestId("wf-menu-import-file").click()
   const dialog = page.getByTestId("workflow-import-dialog")
   await expect(dialog.getByTestId("workflow-import-item")).toHaveCount(1)
-  // The list names the agent that the app cannot find, and tells about the post step.
-  await expect(dialog.getByTestId("workflow-import-missing-name")).toHaveText(["Zed"])
-  await expect(dialog.getByTestId("workflow-import-places")).toContainText("Pick a place")
+  // The list names the agent that the app cannot find, and "Not imported" names the post step.
+  await expect(dialog.getByTestId("workflow-import-missing")).toHaveText("Agents not found: Zed")
+  await expect(dialog.getByTestId("workflow-import-not-imported")).toContainText(
+    "Ask Zed, step 2 “Share”: the channel",
+  )
   await shot(page, "s27-07-import-missing")
   await dialog.getByTestId("workflow-import-submit").click()
   await expect(dialog).toHaveCount(0)
