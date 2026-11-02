@@ -447,4 +447,21 @@ export const migrations: readonly string[] = [
   ALTER TABLE message ADD COLUMN joined_to TEXT;
   ALTER TABLE message ADD COLUMN read_at INTEGER;
   `,
+  `
+  -- Skills (spec 017): saved instructions that the user calls in a chat. They stay on this
+  -- computer: sync does not carry them (spec 019). \`agents\` is a JSON list of agent ids, or NULL
+  -- for all agents.
+  CREATE TABLE skill (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES server (id),
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    instructions TEXT NOT NULL,
+    agents TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX skill_name ON skill (server_id, name_key);
+  `,
 ]
