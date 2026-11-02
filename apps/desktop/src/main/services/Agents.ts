@@ -34,6 +34,7 @@ interface AgentRow {
   workspace: string
   permission: PermissionLevel
   memory_enabled: number
+  knowledge_enabled: number
   archived_at: number | null
   created_at: number
 }
@@ -105,6 +106,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           createdAt: row.created_at,
           permission: row.permission,
           memoryEnabled: row.memory_enabled === 1,
+          knowledgeEnabled: row.knowledge_enabled === 1,
         }
       }
 
@@ -198,6 +200,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         }
         if (patch.permission !== undefined) set("permission", patch.permission)
         if (patch.memoryEnabled !== undefined) set("memory_enabled", patch.memoryEnabled ? 1 : 0)
+        if (patch.knowledgeEnabled !== undefined)
+          set("knowledge_enabled", patch.knowledgeEnabled ? 1 : 0)
         set("updated_at", Date.now())
         db.run(`UPDATE agent SET ${sets.join(", ")} WHERE id = ?`, ...values, id)
         changed(row.server_id)

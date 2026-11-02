@@ -51,6 +51,8 @@ export interface Agent {
   readonly permission: PermissionLevel
   /** When off, the agent does not read its memory. Items stay. */
   readonly memoryEnabled: boolean
+  /** When off, the agent does not read its knowledge and has no knowledge tools. Articles stay. */
+  readonly knowledgeEnabled: boolean
   readonly createdAt: number
 }
 
@@ -72,6 +74,7 @@ export const AgentPatch = Schema.Struct({
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
   permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
   memoryEnabled: Schema.optionalKey(Schema.Boolean),
+  knowledgeEnabled: Schema.optionalKey(Schema.Boolean),
 })
 export type AgentPatch = typeof AgentPatch.Type
 

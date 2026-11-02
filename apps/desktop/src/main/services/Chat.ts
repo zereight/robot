@@ -4,6 +4,8 @@ import { basename, extname, join } from "node:path"
 import {
   ATTACH_BYTES,
   ATTACH_MAX,
+  askKind,
+  askSummary,
   type ChatMessage,
   type ChatSend,
   type FilePart,
@@ -25,6 +27,7 @@ import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
@@ -150,6 +153,7 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       state: event.state,
       output: event.state === "running" ? "" : event.output,
       ...(existing?.kind === "tool" && existing.memoryId ? { memoryId: existing.memoryId } : {}),
+      ...(existing?.kind === "tool" && existing.knowledge ? { knowledge: existing.knowledge } : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -190,6 +194,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const tasks = yield* Tasks
       const tools = yield* Tools
       const memory = yield* Memory
+      const knowledge = yield* Knowledge
       const notifier = yield* Notifier
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
@@ -361,12 +366,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             return yield* new AppError({ code: "provider_not_connected" })
           }
           const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
+          const known = knowledge.prompt(
+            agentId,
+            asked ? messageText(asked) : "",
+            providers.isRuntime(agent.model_account_id) ? "files" : "tools",
+          )
           const system = [
             agent.instructions,
             `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
             remembered.length > 0
               ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
               : "",
+            known ?? "",
           ]
             .filter(Boolean)
             .join("\n\n")
@@ -396,8 +407,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   serverId: agent.server_id,
                   channelId: null,
                   callId,
-                  kind: ask.kind,
-                  summary: islandSummary(ask.kind === "approval" ? ask.summary : ask.question),
+                  kind: askKind(ask),
+                  summary: islandSummary(askSummary(ask)),
                   target: { kind: "agent", id: agentId, messageId: reply.id },
                 })
               else notifier.clearAttention(agentId, callId)
@@ -407,6 +418,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               })
             },
             onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
+            onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
+            knowledgeChanges: { count: 0 },
           }
           const events = yield* providers.events(
             agent.model_account_id,
@@ -415,7 +428,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               effort: agent.model_effort,
               system,
               turns: buildTurns(agentId, reply.id),
-              tools: tools.defs(agent.memory_enabled === 1),
+              tools: tools.defs({
+                memory: agent.memory_enabled === 1,
+                knowledge: knowledge.enabled(agentId),
+              }),
               signal: controller.signal,
               workspace: agent.workspace,
               permission: agent.permission,
@@ -443,10 +459,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
 
         activity.setWorking(agentId, agent.server_id, true)
+        // A vendor program writes the Knowledge folder itself. The folder is read again after it.
+        const writesFiles = !!agent.model_account_id && providers.isRuntime(agent.model_account_id)
+        knowledge.begin(agentId)
         yield* tasks.run(task.id, agentId, stream).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
+              knowledge.end(agentId, writesFiles ? "agent" : "user")
               notifier.clearAgent(agentId)
               // A step that did not finish cannot keep a running mark or a question card.
               for (const [i, part] of parts.entries()) {

@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { readFileSync, realpathSync } from "node:fs"
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 import { type ChatMessage, messageText, type PermissionLevel } from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes, sha256, tarGzOf } from "../../../e2e/fake-runtimes.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
+import { Knowledge } from "./Knowledge.ts"
 import { Providers } from "./Providers.ts"
 import { Runtimes } from "./Runtimes.ts"
 import { Secrets } from "./Secrets.ts"
@@ -327,6 +329,50 @@ describe("a chat on a subscription", () => {
     await s.settled()
     expect((await s.reply())?.status).toBe("stopped")
     expect(Date.now() - started).toBeLessThan(3000)
+  })
+})
+
+describe("knowledge on a subscription", () => {
+  test("the program gets the contents list and the folder; files it writes are read again after the turn", async () => {
+    const s = await chatSetup("claude_code")
+    await s.run(
+      Knowledge.use((k) =>
+        k.save(s.agent.id, { file: null, title: "Alpha", summary: "first note", body: "x" }),
+      ),
+    )
+    await s.send("SLOW")
+    await until(
+      async () =>
+        messageText(((await s.reply()) ?? { parts: [] }) as ChatMessage) === "Thinking slowly",
+    )
+    const call = fake.claudeCalls().at(-1) as { args: string[] }
+    const instructions = call.args[call.args.indexOf("--append-system-prompt") + 1] ?? ""
+    expect(instructions).toContain("- Alpha: first note")
+    expect(instructions).toContain(join(s.agent.workspace, "Knowledge"))
+    expect(instructions).toContain("title:")
+    expect(instructions).not.toContain("write_article")
+    // The program writes a file with its own tools while the turn runs.
+    const folder = join(s.agent.workspace, "Knowledge")
+    mkdirSync(folder, { recursive: true })
+    writeFileSync(
+      join(folder, "Written.md"),
+      "---\ntitle: Written\nsummary: By the program\n---\n\nText.\n",
+    )
+    await s.run(Chat.use((c) => c.stop(s.agent.id)))
+    await s.settled()
+    const view = await s.run(Knowledge.use((k) => k.list(s.agent.id)))
+    expect(view.articles.map((a) => [a.title, a.editor])).toEqual([
+      ["Alpha", "user"],
+      ["Written", "agent"],
+    ])
+    // The contents list of the next turn has the new article.
+    const seen = fake.claudeCalls().length
+    await s.send("hello")
+    await until(() => fake.claudeCalls().length > seen)
+    const next = fake.claudeCalls().at(-1) as { args: string[] }
+    expect(next.args[next.args.indexOf("--append-system-prompt") + 1]).toContain(
+      "- Written: By the program",
+    )
   })
 })
 

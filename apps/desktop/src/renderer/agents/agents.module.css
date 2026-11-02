@@ -246,3 +246,13 @@
   margin-inline-start: auto;
   color: var(--c-text-muted);
 }
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pane[hidden] {
+  display: none;
+}
