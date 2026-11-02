@@ -367,6 +367,47 @@
   white-space: nowrap;
 }
 
+.queueHold {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.sendNow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.sendNow:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* A message of the user that the agent reads at the next step of its turn. */
+.unread {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.unreadDelete {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-text-muted);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.unreadDelete:hover {
+  color: var(--c-text);
+}
+
 .queueText {
   flex: 1;
   overflow: hidden;
