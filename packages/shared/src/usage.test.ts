@@ -8,6 +8,7 @@ const row = (day: string, agentId: string, input: number, output: number): Usage
   replies: 1,
   inputTokens: input,
   outputTokens: output,
+  firstReplyMs: null,
 })
 
 const rows = [

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { messageText } from "@robot/shared"
+import { messageText, taskTimes } from "@robot/shared"
 import { Exit } from "effect"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
@@ -57,6 +57,14 @@ const server = Bun.serve({
     if (last.endsWith("slow")) {
       return sse([
         ...Array.from({ length: 40 }, (_, i) => ({ delay: 25, data: delta(`w${i} `) })),
+        { delay: 0, data: "[DONE]" },
+      ])
+    }
+    // Thinks at once, and the text that the user sees comes 300 ms later.
+    if (last.endsWith("ponder")) {
+      return sse([
+        { delay: 0, data: { choices: [{ delta: { reasoning_content: "Hmm." } }] } },
+        { delay: 300, data: delta("Ready.") },
         { delay: 0, data: "[DONE]" },
       ])
     }
@@ -220,6 +228,45 @@ describe("Chat", () => {
       { kind: "thinking", text: "Let me see." },
       { kind: "text", text: "Answer." },
     ])
+  })
+
+  test("the first reply counts from the message, and thinking does not count (spec 005)", async () => {
+    const t = await setup()
+    await t.send("please ponder")
+    await t.settled()
+    const tasks = () => t.run(Tasks.use((s) => s.list(t.local.id)))
+    const [done] = await tasks()
+    const times = taskTimes(done as never)
+    expect(done?.askedAt).not.toBeNull()
+    expect(times.firstReply).toBeGreaterThanOrEqual(290)
+    expect(times.total).toBeGreaterThanOrEqual(times.firstReply ?? 0)
+    // A failed turn has no first reply. Its retry has its own times, from its own start.
+    failNext = true
+    await t.send("now fail")
+    await t.settled()
+    const [failed] = await tasks()
+    expect(failed?.state).toBe("failed")
+    expect(taskTimes(failed as never).firstReply).toBeNull()
+    const reply = (await t.history()).messages.at(-1)
+    await t.run(Chat.use((c) => c.retry(t.agent.id, reply?.id ?? "")))
+    await t.settled()
+    const [retried] = await tasks()
+    expect(retried?.id).not.toBe(failed?.id)
+    expect(retried?.askedAt).toBeNull()
+    expect(taskTimes(retried as never).firstReply).not.toBeNull()
+  })
+
+  test("a queued message counts its first reply from when it was sent", async () => {
+    const t = await setup()
+    await t.setDuringTurn("queue")
+    await t.send("go slow")
+    const sent = Date.now()
+    expect((await t.send("second")).queued).toBe(true)
+    await t.settled()
+    const [second] = await t.run(Tasks.use((s) => s.list(t.local.id)))
+    expect(second?.prompt).toBe("second")
+    expect(second?.askedAt).toBeGreaterThanOrEqual(sent - 5)
+    expect(second?.askedAt).toBeLessThan(second?.createdAt ?? 0)
   })
 
   test("editing the last user message replaces the reply", async () => {

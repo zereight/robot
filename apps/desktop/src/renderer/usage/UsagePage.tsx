@@ -8,6 +8,7 @@ import {
 } from "@robot/shared"
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { call } from "../lib/rpc.ts"
+import { formatSeconds } from "../lib/seconds.ts"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -34,7 +35,11 @@ export const UsagePage = () => {
   }
   const total = () => usageTotal(rows())
 
-  const Head = () => (
+  // The median "First reply" is a time of one agent on one day (spec 005), so only the day tables show it.
+  const firstReply = (ms: number | null) =>
+    ms === null ? t("time.unknown") : t("time.seconds", { value: formatSeconds(ms, locale()) })
+
+  const Head = (props: { day?: boolean }) => (
     <tr>
       <th scope="col">{t("usage.col.agent")}</th>
       <th scope="col" class={styles.num}>
@@ -46,6 +51,11 @@ export const UsagePage = () => {
       <th scope="col" class={styles.num}>
         {t("usage.col.output")}
       </th>
+      <Show when={props.day}>
+        <th scope="col" class={styles.num}>
+          {t("usage.col.firstReply")}
+        </th>
+      </Show>
     </tr>
   )
 
@@ -112,16 +122,23 @@ export const UsagePage = () => {
             <table class={styles.table} data-testid="usage-day">
               <caption>{dayLabel(day.day)}</caption>
               <thead>
-                <Head />
+                <Head day />
               </thead>
               <tbody>
                 <For each={day.agents}>
                   {(a) => (
-                    <tr>
+                    <tr data-testid="usage-day-row">
                       <th scope="row">{a.agentName}</th>
                       <td class={styles.num}>{number().format(a.replies)}</td>
                       <td class={styles.num}>{number().format(a.inputTokens)}</td>
                       <td class={styles.num}>{number().format(a.outputTokens)}</td>
+                      <td
+                        class={styles.num}
+                        data-testid="usage-first-reply"
+                        data-ms={a.firstReplyMs ?? ""}
+                      >
+                        {firstReply(a.firstReplyMs)}
+                      </td>
                     </tr>
                   )}
                 </For>

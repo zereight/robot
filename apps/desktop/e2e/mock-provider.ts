@@ -53,8 +53,30 @@ export const MARKDOWN_REPLY = [
 
 const failedOnce = new Set<string>()
 
-/** What the mock answers depends on the last user message. */
-const plan = (body: ChatBody) => {
+/** Parts of the stream "stream parts": one every 50 ms for 10 seconds (docs/performance.md). */
+export const STREAM_PARTS = 200
+export const streamPart = (i: number) => `p${String(i).padStart(3, "0")} `
+
+interface Plan {
+  readonly chunks?: readonly string[]
+  readonly delay?: number
+  readonly thinking?: string
+  readonly status?: number
+  /** A wait before the first part, in ms: "pause 2000ms" in the message. */
+  readonly pause?: number
+}
+
+/** What the mock answers depends on the last user message. "pause <n>ms" waits before it answers. */
+const plan = (body: ChatBody): Plan => {
+  const text =
+    String(body.messages.at(-1)?.content ?? "")
+      .split("\n")
+      .at(-1) ?? ""
+  const pause = Number(/pause (\d+)ms/.exec(text)?.[1] ?? 0)
+  return { ...answer(body), pause }
+}
+
+const answer = (body: ChatBody): Plan => {
   const last = body.messages.at(-1)?.content ?? ""
   const text = last.split("\n").at(-1) ?? ""
   // "Teach a task": the model writes a draft skill from the steps. A result that holds "fail
@@ -126,6 +148,8 @@ const plan = (body: ChatBody) => {
   if (text.includes("slow"))
     return { chunks: Array.from({ length: 60 }, (_, i) => `word${i} `), delay: 50 }
   if (text.includes("markdown")) return { chunks: [MARKDOWN_REPLY], delay: 0 }
+  if (text.includes("stream parts"))
+    return { chunks: Array.from({ length: STREAM_PARTS }, (_, i) => streamPart(i)), delay: 50 }
   if (text.includes("think"))
     return { thinking: "Weighing the options.", chunks: ["Decided."], delay: 0 }
   if (text.includes("fail once") && !failedOnce.has(text)) {
@@ -187,7 +211,13 @@ const knowledgeRead = (body: ChatBody) => {
   return []
 }
 
-const openAiReply = async (res: ServerResponse, body: ChatBody) => {
+/** When each text part was sent, for the performance report. */
+export interface SentPart {
+  readonly text: string
+  readonly at: number
+}
+
+const openAiReply = async (res: ServerResponse, body: ChatBody, sent: SentPart[]) => {
   const calls = toolCalls(body)
   if (calls.length > 0) {
     res.writeHead(200, { "content-type": "text/event-stream" })
@@ -219,10 +249,12 @@ const openAiReply = async (res: ServerResponse, body: ChatBody) => {
   if (p.status) return json(res, p.status, { error: { message: "mock server error" } })
   res.writeHead(200, { "content-type": "text/event-stream" })
   const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`)
+  if (p.pause) await sleep(p.pause)
   if (p.thinking) send({ choices: [{ delta: { reasoning_content: p.thinking } }] })
   for (const chunk of p.chunks ?? []) {
     if (res.destroyed) return
     send({ choices: [{ delta: { content: chunk } }] })
+    sent.push({ text: chunk, at: Date.now() })
     if (p.delay) await sleep(p.delay)
   }
   send({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 10 } })
@@ -240,6 +272,7 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
   const send = (event: string, data: unknown) =>
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
   send("message_start", { type: "message_start", message: { usage: { input_tokens: 20 } } })
+  if (p.pause) await sleep(p.pause)
   if (p.thinking) {
     send("content_block_start", {
       type: "content_block_start",
@@ -279,6 +312,7 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
  */
 export const startMockProvider = async () => {
   const requests: RecordedRequest[] = []
+  const sent: SentPart[] = []
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost")
     const body = await readBody(req)
@@ -326,7 +360,7 @@ export const startMockProvider = async () => {
         ],
       })
     }
-    if (url.pathname === "/v1/chat/completions") return openAiReply(res, body as ChatBody)
+    if (url.pathname === "/v1/chat/completions") return openAiReply(res, body as ChatBody, sent)
     if (url.pathname === "/anthropic/v1/messages") return anthropicReply(res, body as ChatBody)
     json(res, 404, { error: { message: "not found" } })
   })
@@ -336,6 +370,7 @@ export const startMockProvider = async () => {
     openaiUrl: `http://127.0.0.1:${port}/v1`,
     anthropicUrl: `http://127.0.0.1:${port}/anthropic`,
     requests,
+    sent,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   }
 }
