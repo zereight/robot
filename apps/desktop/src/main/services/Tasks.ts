@@ -3,13 +3,19 @@ import {
   type ActionDecider,
   blockedError,
   isActive,
+  isDecision,
+  isEndedAs,
   isFinal,
   isRuntimeKind,
   isTaskProgress,
   isVerdict,
   type LoggedStep,
+  lastChange,
   messageText,
   type OutsideSource,
+  RECENT_WORK_MAX,
+  type RecentPlace,
+  type RecentWorkRow,
   type RetryNote,
   type RetryResult,
   raiseProgress,
@@ -61,6 +67,10 @@ interface TaskRow {
   verdict_reason: string | null
   judged_at: number | null
   decided_at: number | null
+  ended_at: number | null
+  ended_as: string | null
+  decision: string | null
+  decision_text: string | null
 }
 
 export interface TaskInput {
@@ -221,6 +231,12 @@ export interface TasksService {
   onEnd(listener: (task: Task) => void): void
   list(serverId: string): Effect.Effect<readonly Task[]>
   get(taskId: string): Effect.Effect<TaskDetail, AppError>
+  /**
+   * The last 20 tasks of an agent, newest first, each with what it waits for (spec 002, "Recent
+   * work"): an approval or a question for a task that waits, and the place of the work that an
+   * agent runs now for a task that is queued.
+   */
+  recent(agentId: string): readonly RecentWorkRow[]
   /** The tasks that have this parent. */
   children(parentId: string): readonly Task[]
 }
@@ -257,6 +273,10 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   verdictReason: row.verdict_reason,
   judgedAt: row.judged_at,
   decidedAt: row.decided_at,
+  endedAt: row.ended_at,
+  endedAs: isEndedAs(row.ended_as) ? row.ended_as : null,
+  decision: isDecision(row.decision) ? row.decision : null,
+  decisionText: row.decision_text,
 })
 
 /** How often a task that waits for the other computer looks again. */
@@ -376,6 +396,17 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           now,
           id,
         )
+        // The turn ended: the moment and how it ended are kept once (spec 005, "Moments"). A task
+        // that never started has no turn, so it has no such moment. A later change of the state
+        // (the user accepts a part in review) leaves it as it is.
+        if (isFinal(state) || state === "review")
+          db.run(
+            `UPDATE task SET ended_at = ?, ended_as = ?
+             WHERE id = ? AND ended_at IS NULL AND started_at IS NOT NULL`,
+            now,
+            state,
+            id,
+          )
         changed(agentId)
         if (isFinal(state)) {
           const ended = endListeners.length > 0 ? row(id) : undefined
@@ -625,15 +656,24 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           return Effect.succeed(current)
         })
 
-      /** The user decided on a part: the check gives it no verdict (spec 004). */
-      const decided = (id: string) =>
-        db.run("UPDATE task SET decided_at = ? WHERE id = ? AND decided_at IS NULL", Date.now(), id)
+      /**
+       * The user decided on a part: the check gives it no verdict (spec 004). The decision and the
+       * text of a request for changes are kept for the moments of the task (spec 005).
+       */
+      const decided = (id: string, decision: "accepted" | "changes", text: string | null) =>
+        db.run(
+          "UPDATE task SET decided_at = ?, decision = ?, decision_text = ? WHERE id = ? AND decided_at IS NULL",
+          Date.now(),
+          decision,
+          text,
+          id,
+        )
 
       const accept = (taskId: string) =>
         inReview(taskId).pipe(
           Effect.map((current) => {
             // The mark comes first, so the part is never done without it.
-            decided(current.id)
+            decided(current.id, "accepted", null)
             return setState(current.id, current.agent_id, "done")
           }),
         )
@@ -647,7 +687,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           if (!handler) return yield* new AppError({ code: "cannot_request_changes" })
           // The new part exists before the old one is done, so the request is never without an open part.
           yield* handler(toTask(current, remote), value)
-          decided(current.id)
+          decided(current.id, "changes", value)
           setState(current.id, current.agent_id, "done")
         })
 
@@ -700,6 +740,15 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         return found ? messageText({ parts: JSON.parse(found.parts) }).slice(0, RESULT_MAX) : ""
       }
 
+      /** The agent that gave the task as a part of its plan: the agent of the parent task. */
+      const leadNameOf = (task: Task) =>
+        task.parentId && task.source === "channel"
+          ? (db.get<{ name: string }>(
+              "SELECT a.name AS name FROM task p JOIN agent a ON a.id = p.agent_id WHERE p.id = ?",
+              task.parentId,
+            )?.name ?? null)
+          : null
+
       /** The messages that the user sent into the turn of the task (spec 003). */
       const joinedOf = (task: Task) =>
         task.messageId
@@ -714,9 +763,69 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               }))
           : []
 
+      /** The place of the work that an agent runs now, as the name that a row shows. */
+      const placeOf = (agentId: string, exceptId: string): RecentPlace | null => {
+        const running = db.get<{ source: TaskSource; source_id: string | null }>(
+          `SELECT source, source_id FROM task
+           WHERE agent_id = ? AND id != ? AND state IN ('running', 'waiting') AND origin IS NULL
+           ORDER BY started_at DESC, rowid DESC LIMIT 1`,
+          agentId,
+          exceptId,
+        )
+        if (!running) {
+          // Both computers are online and the other one runs a task of this agent (spec 019).
+          const other = remote?.busyOn(agentId)
+          return other ? { kind: "computer", name: other } : null
+        }
+        const name = (sql: string) =>
+          running.source_id ? db.get<{ name: string }>(sql, running.source_id)?.name : undefined
+        switch (running.source) {
+          case "channel": {
+            const found = name("SELECT name FROM channel WHERE id = ?")
+            return found ? { kind: "channel", name: found } : null
+          }
+          case "routine": {
+            const found = name("SELECT name FROM routine WHERE id = ?")
+            return found ? { kind: "routine", name: found } : null
+          }
+          case "workflow": {
+            const found = name(
+              "SELECT w.name AS name FROM workflow_run r JOIN workflow w ON w.id = r.workflow_id WHERE r.id = ?",
+            )
+            return found ? { kind: "workflow", name: found } : null
+          }
+          case "chat":
+            return { kind: "chat" }
+          case "agent":
+            return { kind: "agent" }
+        }
+      }
+
+      const recent = (agentId: string): readonly RecentWorkRow[] => {
+        const waiting = notifier.waitingRequests()
+        return db
+          .all<TaskRow>(
+            `${SELECT} WHERE t.agent_id = ? ORDER BY t.created_at DESC, t.rowid DESC LIMIT ${RECENT_WORK_MAX}`,
+            agentId,
+          )
+          .map((r) => {
+            const task = toTask(r, remote)
+            // The agent runs one task at a time, so the request that waits is the one of this task.
+            const request =
+              task.state === "waiting" ? waiting.find((w) => w.agentId === agentId) : undefined
+            return {
+              task,
+              wait: task.state === "waiting" ? (request?.kind ?? "user") : null,
+              behind: task.state === "queued" && r.origin === null ? placeOf(agentId, r.id) : null,
+              changedAt: lastChange(task),
+            }
+          })
+      }
+
       return Tasks.of({
         create,
         run,
+        recent,
         waitingAfterRestart: () =>
           keepIds.flatMap((id) => {
             const r = row(id)
@@ -829,6 +938,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               children,
               result: resultOf(task),
               joined: joinedOf(task),
+              leadName: leadNameOf(task),
             })
           }),
         children: (parentId) => childRows(parentId).map((r) => toTask(r, remote)),

@@ -6,7 +6,9 @@ import {
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
   charLength,
+  DECISIONS,
   EdgeSchema,
+  ENDED_AS,
   FACE_HUES,
   FACE_SHAPES,
   INSTRUCTION_SOURCES,
@@ -15,6 +17,7 @@ import {
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
+  REVIEW_CHANGES_MAX,
   ROUTINE_NAME_MAX,
   ROUTINE_PROMPT_MAX,
   RUN_STATES,
@@ -1210,6 +1213,10 @@ interface TaskRow {
   verdict_reason: string | null
   judged_at: number | null
   decided_at: number | null
+  ended_at: number | null
+  ended_as: string | null
+  decision: string | null
+  decision_text: string | null
 }
 
 const task: KindDef = {
@@ -1246,6 +1253,11 @@ const task: KindDef = {
     verdictReason: { check: nullable(str(1000, 1)) },
     judgedAt: { check: nullable(int) },
     decidedAt: { check: nullable(int) },
+    // The moments of a task (spec 005, 019): when the turn ended and how, and what the user decided.
+    endedAt: { check: nullable(int) },
+    endedAs: { check: nullable(oneOf(ENDED_AS)) },
+    decision: { check: nullable(oneOf(DECISIONS)) },
+    decisionText: { check: nullable(str(REVIEW_CHANGES_MAX * 2)) },
   },
   required: [
     "agentId",
@@ -1268,6 +1280,10 @@ const task: KindDef = {
     "verdictReason",
     "judgedAt",
     "decidedAt",
+    "endedAt",
+    "endedAs",
+    "decision",
+    "decisionText",
   ],
   fixed: [
     "agentId",
@@ -1311,6 +1327,10 @@ const task: KindDef = {
         verdictReason: r.verdict_reason,
         judgedAt: r.judged_at,
         decidedAt: r.decided_at,
+        endedAt: r.ended_at,
+        endedAs: r.ended_as,
+        decision: r.decision,
+        decisionText: r.decision_text,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: r.finished_at ?? r.started_at ?? r.created_at,
@@ -1344,6 +1364,10 @@ const task: KindDef = {
       verdict_reason: f.verdictReason ?? null,
       judged_at: f.judgedAt ?? null,
       decided_at: f.decidedAt ?? null,
+      ended_at: f.endedAt ?? null,
+      ended_as: f.endedAs ?? null,
+      decision: f.decision ?? null,
+      decision_text: f.decisionText ?? null,
     })
     return true
   },
@@ -1355,6 +1379,10 @@ const task: KindDef = {
       ...(f.verdictReason !== undefined ? { verdict_reason: f.verdictReason } : {}),
       ...(f.judgedAt !== undefined ? { judged_at: f.judgedAt } : {}),
       ...(f.decidedAt !== undefined ? { decided_at: f.decidedAt } : {}),
+      ...(f.endedAt !== undefined ? { ended_at: f.endedAt } : {}),
+      ...(f.endedAs !== undefined ? { ended_as: f.endedAs } : {}),
+      ...(f.decision !== undefined ? { decision: f.decision } : {}),
+      ...(f.decisionText !== undefined ? { decision_text: f.decisionText } : {}),
       ...(f.messageId !== undefined ? { message_id: f.messageId } : {}),
       ...(f.state !== undefined ? { state: f.state } : {}),
       ...(f.error !== undefined

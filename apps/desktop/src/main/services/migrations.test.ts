@@ -20,6 +20,7 @@ const PROGRESS = migrations.findIndex((sql) => sql.includes("ALTER TABLE task AD
 /** The index of the step that keeps the done test and the verdict of a part (spec 004, 005). */
 const VERDICT = migrations.findIndex((sql) => sql.includes("ALTER TABLE task ADD COLUMN done_test"))
 /** The index of the step that S46 added: message search (spec 001). It follows the sync steps. */
+const MOMENTS = migrations.findIndex((sql) => sql.includes("ALTER TABLE task ADD COLUMN ended_at"))
 const SEARCH = migrations.findIndex((sql) => sql.includes("CREATE VIRTUAL TABLE message_fts"))
 
 const upTo = (count: number) => {
@@ -630,6 +631,66 @@ describe("the step of the done test and the verdict", () => {
     `)
     db.exec("DELETE FROM sync_dirty")
     db.exec("UPDATE task SET verdict = 'not_met', verdict_reason = 'No title', judged_at = 5")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([{ kind: "task", id: "t" }])
+  })
+})
+
+describe("the step of the moments of a task", () => {
+  const server = `
+    INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+    INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+      workspace, section, knowledge_enabled, created_at, updated_at)
+      VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 0, 1, 1);
+  `
+
+  test("it only adds nullable columns, once, after the step of the verdict", () => {
+    expect(MOMENTS).toBeGreaterThan(VERDICT)
+    expect(migrations.filter((sql) => sql.includes("ADD COLUMN ended_at"))).toHaveLength(1)
+    const sql = migrations[MOMENTS] ?? ""
+    expect(sql).not.toMatch(/DROP|DELETE|UPDATE |NOT NULL/i)
+    for (const column of ["ended_at", "ended_as", "decision", "decision_text"])
+      expect(sql).toContain(`ALTER TABLE task ADD COLUMN ${column}`)
+  })
+
+  test("a task from before it keeps its row, with no moment of the turn and no decision", () => {
+    const db = upTo(MOMENTS)
+    db.exec(server)
+    db.exec(`
+      INSERT INTO task (id, agent_id, prompt, label, source, state, created_at, started_at, finished_at)
+        VALUES ('t', 'a', 'old', 'old', 'channel', 'done', 1, 2, 3);
+    `)
+    db.exec(migrations[MOMENTS] as string)
+    expect(
+      db
+        .prepare(
+          "SELECT id, state, started_at, finished_at, ended_at, ended_as, decision, decision_text FROM task",
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: "t",
+        state: "done",
+        started_at: 2,
+        finished_at: 3,
+        ended_at: null,
+        ended_as: null,
+        decision: null,
+        decision_text: null,
+      },
+    ])
+  })
+
+  test("a change of a decision marks the task for sync, in a sync pair", () => {
+    const db = upTo(MOMENTS + 1)
+    db.exec(server)
+    db.exec(`
+      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+      INSERT INTO task (id, agent_id, prompt, label, source, state, created_at)
+        VALUES ('t', 'a', 'x', 'x', 'channel', 'review', 1);
+    `)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE task SET decision = 'changes', decision_text = 'Add a title', decided_at = 5")
     expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([{ kind: "task", id: "t" }])
   })
 })

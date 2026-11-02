@@ -129,6 +129,18 @@ export const changesLabel = (label: string, max = 48) => {
   return full.length > max ? `${full.slice(0, max - 1).join("")}…` : full.join("")
 }
 
+/** How a turn ended (spec 005, "Moments"): the state that the end gave the task. */
+export const ENDED_AS = ["done", "failed", "blocked", "cancelled", "review"] as const
+export type EndedAs = (typeof ENDED_AS)[number]
+export const isEndedAs = (value: unknown): value is EndedAs =>
+  typeof value === "string" && (ENDED_AS as readonly string[]).includes(value)
+
+/** What the user decided on a part in review: accepted it, or asked for changes. */
+export const DECISIONS = ["accepted", "changes"] as const
+export type Decision = (typeof DECISIONS)[number]
+export const isDecision = (value: unknown): value is Decision =>
+  typeof value === "string" && (DECISIONS as readonly string[]).includes(value)
+
 export const TASK_LABEL_MAX = 60
 
 /**
@@ -206,6 +218,16 @@ export interface Task {
   readonly judgedAt: number | null
   /** When the user decided on the part (accept, request changes). Null when not (spec 004). */
   readonly decidedAt: number | null
+  /**
+   * When the turn of the task ended, and how (spec 005, "Moments"). Null while the turn goes on,
+   * for a task that never started, and for a task that the app stopped (the real time is not
+   * known). A part that waits for review ended as `review`, also after the user decided.
+   */
+  readonly endedAt: number | null
+  readonly endedAs: EndedAs | null
+  /** What the user decided on a part, and for "changes" the text of the request. */
+  readonly decision: Decision | null
+  readonly decisionText: string | null
 }
 
 export interface TaskDetail {
@@ -216,6 +238,8 @@ export interface TaskDetail {
   readonly result: string
   /** The messages that the user sent into the turn of the task, oldest first (spec 003). */
   readonly joined: readonly { readonly text: string; readonly at: number }[]
+  /** The name of the agent that gave the task as a part of a plan (its lead). Null for any other. */
+  readonly leadName: string | null
 }
 
 /** One line of a prompt, cut to a label. */

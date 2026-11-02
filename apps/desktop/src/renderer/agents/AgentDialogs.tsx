@@ -12,6 +12,7 @@ import { Dialog } from "../ui/Dialog.tsx"
 import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
 import styles from "./agents.module.css"
 import { Face } from "./Face.tsx"
+import { RecentWork } from "./RecentWork.tsx"
 import { markBorn } from "./reactions.ts"
 import { openTeachForm, teachBlocked, useTeach } from "./Teach.tsx"
 
@@ -264,6 +265,8 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
             )}
           </Show>
         </Show>
+        {/* The last tasks of this agent. A device that cannot change the agent sees them too. */}
+        <RecentWork agent={props.agent} onNavigate={props.onClose} />
       </div>
       <Show when={tab() === "knowledge"}>
         {/* Knowledge belongs to the computer that runs the agent: a client does not open it. */}

@@ -59,6 +59,7 @@ import type { TodaySnapshot } from "./today.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
+import type { RecentWorkRow } from "./work.ts"
 import type { WorkflowFileImported, WorkflowFilePreview } from "./workflowFile.ts"
 import type {
   Workflow,
@@ -281,6 +282,11 @@ export interface RpcMethods {
   /** The newest 500 tasks of a server. */
   "tasks.list": { input: { serverId: string }; output: readonly Task[] }
   "tasks.get": { input: { id: string }; output: TaskDetail }
+  /**
+   * The last 20 tasks of one agent, newest first, each with what it waits for (spec 002, "Recent
+   * work"). A read: a linked device may call it.
+   */
+  "tasks.recent": { input: { agentId: string }; output: readonly RecentWorkRow[] }
   "tasks.stop": { input: { id: string }; output: undefined }
   /**
    * Tries a task again. When the first try ran steps that may have changed things, the answer

@@ -692,4 +692,15 @@ export const migrations: readonly string[] = [
   ALTER TABLE workflow_run ADD COLUMN started_by TEXT;
   ALTER TABLE workflow_run_step ADD COLUMN decided_by TEXT;
   `,
+  `
+  -- The moments of a task (spec 005). \`ended_at\` is when the turn ended and \`ended_as\` how
+  -- (done, failed, blocked, cancelled, review). A task from before this step, a task that never
+  -- started, and a task that the app stopped have none: the real time is not known. \`decision\` is
+  -- what the user decided on a part (accepted, changes) and \`decision_text\` the text of the request
+  -- for changes. Only fields are added. The dirty trigger of the task watches every column.
+  ALTER TABLE task ADD COLUMN ended_at INTEGER;
+  ALTER TABLE task ADD COLUMN ended_as TEXT;
+  ALTER TABLE task ADD COLUMN decision TEXT;
+  ALTER TABLE task ADD COLUMN decision_text TEXT;
+  `,
 ]
