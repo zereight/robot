@@ -7,14 +7,23 @@ import {
   type QueuedMessage,
   type QueueHold,
 } from "@robot/shared"
-import { CornerDownRight, Paperclip, Pencil, SendHorizontal, Square, X } from "lucide-solid"
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import {
+  CornerDownRight,
+  Paperclip,
+  Pencil,
+  SendHorizontal,
+  Sparkles,
+  Square,
+  X,
+} from "lucide-solid"
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
+import { pendingFill, takeFill } from "./fill.ts"
 
 export interface ComposerProps {
   agent: Agent
@@ -112,7 +121,22 @@ export const Composer = (props: ComposerProps) => {
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
   const [files, setFiles] = createSignal<string[]>([])
+  /** The skill chip at the start of the box (spec 017). One at a time. */
+  const [skill, setSkill] = createSignal<{ id: string; name: string }>()
   let input: HTMLTextAreaElement | undefined
+  // "Try it" on a draft skill card puts the chip and the result text in the box.
+  createEffect(() => {
+    const fill = pendingFill()
+    if (!fill || fill.agentId !== props.agent.id) return
+    takeFill()
+    setSkill(fill.skill)
+    setText(fill.text)
+    setError(undefined)
+    queueMicrotask(() => {
+      resize()
+      input?.focus()
+    })
+  })
   let dropZone: HTMLDivElement | undefined
   // Files dropped on the message box are attached. The box is no control, so the listeners
   // are added here and the box gets no interactive role.
@@ -154,7 +178,8 @@ export const Composer = (props: ComposerProps) => {
 
   const send = async () => {
     const value = text().trim()
-    if (!value && files().length === 0) return
+    const chip = skill()
+    if (!value && files().length === 0 && !chip) return
     setError(undefined)
     try {
       await call("chat.send", {
@@ -162,9 +187,11 @@ export const Composer = (props: ComposerProps) => {
         text: value,
         replyTo: props.replyTo?.id ?? null,
         files: [...files()],
+        ...(chip ? { skillId: chip.id } : {}),
       })
       setText("")
       setFiles([])
+      setSkill(undefined)
       queueMicrotask(resize)
       props.onCancelReply()
       props.onSent()
@@ -179,6 +206,15 @@ export const Composer = (props: ComposerProps) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       void send()
+    } else if (
+      event.key === "Backspace" &&
+      skill() &&
+      input?.selectionStart === 0 &&
+      input.selectionEnd === 0
+    ) {
+      // Backspace at the start of the box removes the chip.
+      event.preventDefault()
+      setSkill(undefined)
     } else if (event.key === "Escape" && props.replyTo) {
       props.onCancelReply()
     }
@@ -287,6 +323,23 @@ export const Composer = (props: ComposerProps) => {
             </For>
           </ul>
         </Show>
+        <Show when={skill()}>
+          {(chip) => (
+            <div class={styles.composerSkill}>
+              <span class={styles.skillChip} data-testid="composer-skill">
+                <Sparkles size={12} />
+                <span>{chip().name}</span>
+                <IconButton
+                  label={t("skills.chip.remove", { name: chip().name })}
+                  onClick={() => setSkill(undefined)}
+                  data-testid="composer-skill-remove"
+                >
+                  <X size={12} />
+                </IconButton>
+              </span>
+            </div>
+          )}
+        </Show>
         <div class={styles.box} ref={dropZone}>
           <IconButton label={t("chat.attach")} onClick={pick} data-testid="composer-attach">
             <Paperclip size={16} />
@@ -313,7 +366,7 @@ export const Composer = (props: ComposerProps) => {
                 class={styles.sendButton}
                 aria-label={t("chat.send")}
                 title={t("chat.send")}
-                disabled={!text().trim() && files().length === 0}
+                disabled={!text().trim() && files().length === 0 && !skill()}
                 onClick={send}
                 data-testid="composer-send"
               >

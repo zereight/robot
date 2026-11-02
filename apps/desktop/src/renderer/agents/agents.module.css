@@ -412,3 +412,105 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* "Teach a task" (spec 017): the bar above the browser while the user teaches. */
+.teachBar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--c-border);
+  box-shadow: inset 0 -2px 0 var(--c-accent);
+  flex-shrink: 0;
+}
+
+.teachBar[data-paused="true"] {
+  box-shadow: inset 0 -2px 0 var(--c-border);
+}
+
+.teachRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.teachRow button {
+  white-space: nowrap;
+}
+
+.teachMark {
+  font-weight: 600;
+  color: var(--c-accent);
+}
+
+.teachBar[data-paused="true"] .teachMark {
+  color: var(--c-text-muted);
+}
+
+.teachResult {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teachCount {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.teachAddress {
+  display: flex;
+  flex: 1 1 200px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.teachAddress input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The "Draft skill" card at the end of the chat. */
+.draftCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-l);
+  background: var(--c-elevated);
+}
+
+.draftHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.draftFields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.draftInstructions {
+  min-height: 160px;
+}
+
+.draftSaved {
+  margin-right: auto;
+  align-self: center;
+  color: var(--c-success);
+  font-weight: 500;
+}

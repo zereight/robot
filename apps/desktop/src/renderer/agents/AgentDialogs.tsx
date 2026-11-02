@@ -13,6 +13,7 @@ import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
 import styles from "./agents.module.css"
 import { Face } from "./Face.tsx"
 import { markBorn } from "./reactions.ts"
+import { openTeachForm, teachBlocked, useTeach } from "./Teach.tsx"
 
 /** "Last changed by <device name>, <time>", when a linked device made the last change (012). */
 const ChangedBy = (props: { agent: Agent }) => {
@@ -125,6 +126,7 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
   const ui = useUi()
   const [error, setError] = createSignal<ErrorText>()
   const [tab, setTab] = createSignal<"profile" | "knowledge">("profile")
+  const teach = useTeach()
   // A link to the memory tabs shows the page that holds them.
   createEffect(() => {
     if (memoryTarget()?.agentId === props.agent.id) setTab("profile")
@@ -229,6 +231,19 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
             >
               {t("agents.duplicate")}
             </Button>
+            {/* "Teach a task" needs the browser of this computer (spec 017). */}
+            <Show when={!ui.linked()}>
+              <Button
+                data-testid="agent-teach"
+                disabled={teachBlocked(teach(), props.agent.id) !== undefined}
+                onClick={() => {
+                  props.onClose()
+                  openTeachForm(props.agent.id)
+                }}
+              >
+                {t("teach.menu")}
+              </Button>
+            </Show>
             <Button
               data-testid="agent-archive"
               onClick={() =>
@@ -241,6 +256,13 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
               {t("agents.archive")}
             </Button>
           </div>
+          <Show when={!ui.linked() && teachBlocked(teach(), props.agent.id)}>
+            {(reason) => (
+              <span class={styles.hint} data-testid="agent-teach-reason">
+                {t(reason().key, reason().params)}
+              </span>
+            )}
+          </Show>
         </Show>
       </div>
       <Show when={tab() === "knowledge"}>

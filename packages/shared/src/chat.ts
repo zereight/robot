@@ -14,6 +14,8 @@ export type MessagePart =
       readonly size: number
     }
   | { readonly kind: "thinking"; readonly text: string }
+  /** A skill chip (spec 017): the name and a copy of the instructions at the time of sending. */
+  | { readonly kind: "skill"; readonly name: string; readonly instructions: string }
   | {
       readonly kind: "tool"
       readonly id: string
@@ -108,12 +110,15 @@ export interface ChatMessage {
 }
 
 export type FilePart = Extract<MessagePart, { kind: "file" }>
+export type SkillPart = Extract<MessagePart, { kind: "skill" }>
 
 export interface QueuedMessage {
   readonly id: string
   readonly text: string
   readonly files: readonly FilePart[]
   readonly replyTo: string | null
+  /** The skill chip of the message, with its copy of the instructions. */
+  readonly skill?: SkillPart
 }
 
 /**
@@ -143,6 +148,8 @@ export const ChatSend = Schema.Struct({
   replyTo: Schema.NullOr(Schema.String),
   /** Full paths of files to copy into the agent's workspace. */
   files: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(ATTACH_MAX))),
+  /** The skill of the chip in the message box (spec 017). */
+  skillId: Schema.optionalKey(Schema.String),
 })
 export type ChatSend = typeof ChatSend.Type
 
@@ -176,3 +183,7 @@ export const sameDay = (a: number, b: number) => {
     x.getDate() === y.getDate()
   )
 }
+
+/** The skill chip of a message, if it has one. */
+export const messageSkill = (message: Pick<ChatMessage, "parts">) =>
+  message.parts.find((p): p is SkillPart => p.kind === "skill")
