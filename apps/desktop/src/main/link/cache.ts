@@ -88,6 +88,23 @@ export class LinkCache {
     return this.#load(link).get(key)?.value
   }
 
+  /**
+   * The saved answers to one read, each with the input that asked for it. The search of saved
+   * messages uses it to find the places and the messages that a client holds.
+   */
+  entriesOf(link: string, method: string): { input: unknown; value: unknown }[] {
+    const found: { input: unknown; value: unknown }[] = []
+    for (const entry of this.#load(link).values()) {
+      if (!entry.key.startsWith(`${method}:`)) continue
+      try {
+        found.push({ input: JSON.parse(entry.key.slice(method.length + 1)), value: entry.value })
+      } catch {
+        // A key that does not read is a lost entry, no more.
+      }
+    }
+    return found
+  }
+
   set(link: string, key: string, value: unknown) {
     const entries = this.#load(link)
     entries.set(key, { key, value: this.#bounded(key, value) })
