@@ -107,7 +107,9 @@ if (args[0] === "serve") {
       args: JSON.stringify({ command: "ls" }),
     }
     note("item/started", { item: { ...open, status: "inProgress" } })
-    if (prompt.includes("[ask]")) {
+    // "[ask-other]" asks about another command, to show that a rule is not wider than its step.
+    const other = prompt.includes("[ask-other]")
+    if (prompt.includes("[ask]") || other) {
       rpc({
         id: 900,
         method: "approval/request",
@@ -117,7 +119,7 @@ if (args[0] === "serve") {
           itemId: "tool-1",
           toolName: "bash",
           rawArgs: "{}",
-          subject: { kind: "shell", command: "rm /etc/robot-test" },
+          subject: { kind: "shell", command: other ? "rm /etc/other-test" : "rm /etc/robot-test" },
           currentRequirementId: { approvalId: "approval-1", sourceIndex: 0 },
           availableChoices: [
             {

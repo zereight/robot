@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process"
 import { mkdirSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { createInterface } from "node:readline"
 import { insideWorkspace, type RuntimeLimit, riskyReason } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
@@ -36,6 +38,176 @@ export const claudeLogin = async (bin: string): Promise<Login> => {
   const done = await execute(bin, ["auth", "status"], { env: runtimeEnv(), timeoutMs: 15_000 })
   return parseClaudeStatus(done.stdout)
 }
+
+// ---- the usage windows, asked without a turn ------------------------------------------
+
+const PROBE_MS = 20_000
+const DAY_MS = 24 * 3_600_000
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+
+/**
+ * The arguments that make a run of the program a read only look: no saved session, no servers
+ * of the user, and no hooks of the user. The other settings of the user stay, so a limit on
+ * optional traffic that the user set still holds. The app never reads a token of the program:
+ * the program asks the vendor itself.
+ */
+const probeArgs = () => [
+  "--no-session-persistence",
+  "--strict-mcp-config",
+  "--settings",
+  JSON.stringify({ disableAllHooks: true, remoteControlAtStartup: false }),
+]
+
+const probeDir = () => {
+  const dir = join(tmpdir(), "robot-claude-probe")
+  mkdirSync(dir, { recursive: true })
+  return dir
+}
+
+/** The windows in the structured answer of the program. The share used comes as 0 to 100. */
+export const parseUsageReport = (report: unknown): RuntimeLimit[] | null => {
+  const windows = obj(obj(report).rate_limits)
+  const out: RuntimeLimit[] = []
+  for (const window of ["five_hour", "seven_day"]) {
+    const value = obj(windows[window])
+    if (typeof value.utilization !== "number") continue
+    const at = typeof value.resets_at === "string" ? Date.parse(value.resets_at) : Number.NaN
+    out.push({
+      window,
+      used: Math.min(1, Math.max(0, value.utilization / 100)),
+      resetsAt: Number.isNaN(at) ? null : at,
+    })
+  }
+  return out.length > 0 ? out : null
+}
+
+/**
+ * A reset time as the text writes it: "Nov 2 at 7:40pm (Asia/Seoul)", or "7pm (Asia/Seoul)" for
+ * a time that is near. A time in another zone than ours is not placed: null.
+ */
+const parseResetText = (text: string, now: number, zone: string): number | null => {
+  const found =
+    /^(?:([A-Za-z]{3,9})\.? (\d{1,2}),? (?:at )?)?(\d{1,2})(?::(\d{2}))?\s*([ap])m\b(?:\s*\(([^)]+)\))?/i.exec(
+      text.trim(),
+    )
+  if (!found) return null
+  const [, monthName, day, hour12, minute, half, textZone] = found
+  if (textZone && textZone !== zone) return null
+  const month = monthName ? MONTHS.indexOf(monthName.slice(0, 3).toLowerCase()) : -1
+  if (monthName && month < 0) return null
+  const hour = (Number(hour12) % 12) + (half?.toLowerCase() === "p" ? 12 : 0)
+  const today = new Date(now)
+  const date = new Date(
+    today.getFullYear(),
+    monthName ? month : today.getMonth(),
+    monthName ? Number(day) : today.getDate(),
+    hour,
+    Number(minute ?? 0),
+  )
+  // A date with no year that is long past is next year; a time with no date that is past is tomorrow.
+  if (monthName) {
+    if (date.getTime() < now - DAY_MS) date.setFullYear(date.getFullYear() + 1)
+  } else if (date.getTime() < now) date.setDate(date.getDate() + 1)
+  return date.getTime()
+}
+
+const USAGE_ROWS = [
+  ["five_hour", "Current session"],
+  ["seven_day", "Current week \\(all models\\)"],
+] as const
+
+/** The windows in the text of `/usage`, for a program that has no structured answer. */
+export const parseUsageText = (
+  text: string,
+  now = Date.now(),
+  zone = Intl.DateTimeFormat().resolvedOptions().timeZone,
+): RuntimeLimit[] | null => {
+  const out: RuntimeLimit[] = []
+  for (const [window, label] of USAGE_ROWS) {
+    const row = new RegExp(
+      `^${label}:\\s*(\\d+(?:\\.\\d+)?)%\\s*used(?:\\s*[·•|-]\\s*resets?\\s*(.*))?$`,
+      "im",
+    ).exec(text)
+    if (!row) continue
+    out.push({
+      window,
+      used: Math.min(1, Math.max(0, Number(row[1]) / 100)),
+      resetsAt: row[2] ? parseResetText(row[2], now, zone) : null,
+    })
+  }
+  return out.length > 0 ? out : null
+}
+
+/** Asks for the usage report with a control message. No model is called. */
+const askUsageReport = (bin: string): Promise<RuntimeLimit[] | null> =>
+  new Promise((resolve) => {
+    const id = "robot-usage"
+    let done = false
+    const child = spawn(
+      bin,
+      [
+        "-p",
+        ...probeArgs(),
+        "--input-format",
+        "stream-json",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--tools",
+        "",
+      ],
+      { cwd: probeDir(), env: runtimeEnv(), stdio: ["pipe", "pipe", "ignore"], windowsHide: true },
+    )
+    const lines = createInterface({ input: child.stdout })
+    const finish = (limits: RuntimeLimit[] | null) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      lines.close()
+      child.kill()
+      resolve(limits)
+    }
+    const timer = setTimeout(() => finish(null), PROBE_MS)
+    child.on("error", () => finish(null))
+    child.on("close", () => finish(null))
+    child.stdin.on("error", () => {})
+    lines.on("line", (line) => {
+      try {
+        const message = obj(JSON.parse(line))
+        const response = obj(message.response)
+        if (message.type !== "control_response" || response.request_id !== id) return
+        finish(response.subtype === "success" ? parseUsageReport(response.response) : null)
+      } catch {
+        // A line that is not JSON is not the answer.
+      }
+    })
+    child.stdin.write(
+      `${JSON.stringify({ type: "control_request", request_id: id, request: { subtype: "get_usage", skip_behaviors: true } })}\n`,
+    )
+  })
+
+/** Asks for the text of `/usage`. The program answers it itself, without a model. */
+const askUsageText = async (bin: string): Promise<RuntimeLimit[] | null> => {
+  const done = await execute(bin, ["-p", "/usage", ...probeArgs(), "--output-format", "json"], {
+    env: runtimeEnv(),
+    cwd: probeDir(),
+    timeoutMs: PROBE_MS,
+  })
+  if (done.code !== 0) return null
+  try {
+    return parseUsageText(str(obj(JSON.parse(done.stdout)).result))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The usage windows of the subscription, as the program reports them, without a turn. The
+ * structured answer comes first; the text of `/usage` is the second try. Null when neither
+ * tells a window, for example when the user limits optional traffic.
+ */
+export const claudeUsage = async (bin: string): Promise<RuntimeLimit[] | null> =>
+  (await askUsageReport(bin)) ?? (await askUsageText(bin))
 
 export const claudeVersion = async (bin: string): Promise<string | null> => {
   const done = await execute(bin, ["--version"], { env: runtimeEnv(), timeoutMs: 15_000 })

@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
-import { insideWorkspace, type RuntimeLimit, riskyReason } from "@robot/shared"
+import type { RuntimeLimit } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { bridgeToolName, museBridge } from "./bridge.ts"
@@ -370,15 +370,15 @@ export const museHostArgs = (run: RuntimeRun): string[] => [
   ...(run.bridge ? museBridge(run.bridge).args : []),
 ]
 
-const firstWord = (command: string) => command.trim().split(/\s+/)[0] ?? ""
-
 /**
  * What the card says about a step that the host asks about. The sandbox and the judge of the
  * program have already passed on the step, so the user has to decide it: every one of these is
- * risky for the app, and shows its card at "Ask for risky steps" too. The rules of the app only
- * pick the "always allow" key, so that "delete outside" and a plain command do not share a rule.
+ * risky for the app, and shows its card at "Ask for risky steps" too. The "always allow" key is
+ * not wider than the step on the card: the same command text, the same path, the same host. A
+ * step of a kind that the app does not know keeps its arguments in the key, so that a yes for
+ * one call is never a yes for the tool.
  */
-export const describeMuseApproval = (params: unknown, workspace: string): ApprovalRequest => {
+export const describeMuseApproval = (params: unknown): ApprovalRequest => {
   const request = obj(params)
   const subject = obj(request.subject)
   // The card sits on the tool call of the transcript, which the host names by its item.
@@ -386,35 +386,36 @@ export const describeMuseApproval = (params: unknown, workspace: string): Approv
   const kind = str(subject.kind)
   if (kind === "shell") {
     const command = str(subject.command)
-    const reason = riskyReason(command, workspace)
-    return {
-      callId,
-      risky: true,
-      key: `run_command:${reason ?? firstWord(command)}`,
-      summary: command,
-    }
+    return { callId, risky: true, key: `run_command:${command.trim()}`, summary: command }
   }
   if (kind === "fileAccess") {
     const path = str(subject.path) || "."
-    const inside = insideWorkspace(path, workspace)
     const base = subject.access === "write" ? "write_file" : "read_file"
     return {
       callId,
       risky: true,
-      key: `${base}${inside ? "" : ":outside"}`,
+      key: `${base}:${path}`,
       summary: `${str(request.toolName) || base}: ${path}`,
     }
   }
   const host = str(subject.host)
-  const target = host
-    ? `${str(subject.protocol) ? `${str(subject.protocol)}://` : ""}${host}${subject.port ? `:${num(subject.port)}` : ""}`
-    : ""
   const name = str(request.toolName) || kind || "tool"
+  if (kind === "network" && host) {
+    const protocol = str(subject.protocol)
+    const port = subject.port ? `:${num(subject.port)}` : ""
+    return {
+      callId,
+      risky: true,
+      key: `network:${host}`,
+      summary: `${protocol ? `${protocol}://` : ""}${host}${port}`,
+    }
+  }
+  const args = str(request.rawArgs)
   return {
     callId,
     risky: true,
-    key: `${kind || "tool"}:${host || name}`,
-    summary: target || `${name}: ${str(request.rawArgs)}`.slice(0, 500),
+    key: `${kind || "tool"}:${name}:${args}`,
+    summary: `${name}: ${args}`.slice(0, 500),
   }
 }
 
@@ -651,7 +652,7 @@ async function* runMuseHost(run: RuntimeRun): AsyncGenerator<AgentEvent> {
           allowedApprovals.has(approvalId) || bridgeToolName(str(params.toolName)) !== null
         if (!allowed) {
           try {
-            allowed = await run.approve(describeMuseApproval(params, root))
+            allowed = await run.approve(describeMuseApproval(params))
           } catch (error) {
             if (run.signal.aborted) return
             throw error

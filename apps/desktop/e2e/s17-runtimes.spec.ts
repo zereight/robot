@@ -109,6 +109,8 @@ test("subscription: Claude Code connects without a key, chats, and asks before a
   // The last report wins: the turn that hit the limit reported the window as full.
   await expect(page.getByTestId("runtime-limit").first()).toContainText("5-hour usage: 100% used")
   await expect(page.getByTestId("runtime-limit").last()).toContainText("Weekly usage: 40% used")
+  // The windows say when they were read.
+  await expect(page.getByTestId("runtime-limits-at")).toContainText("Usage read at")
   await shot(page, "s17-04-limits")
   await page.getByTestId("provider-disconnect").click()
   await expect(page.getByTestId("provider-status")).toHaveText("Not connected")
@@ -288,6 +290,22 @@ test("subscription: Muse Code signs in from the app, shows the code, and answers
   await page.getByTestId("ask-deny").click()
   await settled(page)
   await expect(page.getByTestId("message").last()).toContainText("Not allowed.")
+
+  // Always allow keeps this command allowed, and only this command.
+  await send(page, "third [ask]")
+  await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId("ask-always").click()
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Ran it.")
+  await send(page, "fourth [ask]")
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Ran it.")
+  await expect(page.getByTestId("ask-card")).toHaveCount(0)
+  await send(page, "other [ask-other]")
+  await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("ask-card")).toContainText("rm /etc/other-test")
+  await page.getByTestId("ask-deny").click()
+  await settled(page)
   await app.close()
 })
 
