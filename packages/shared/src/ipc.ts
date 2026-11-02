@@ -8,6 +8,7 @@ import type {
   ChannelPatch,
 } from "./channels.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
+import type { AgentPick, ImportChecklist } from "./importReview.ts"
 import type {
   KnowledgeArticle,
   KnowledgeChange,
@@ -208,11 +209,18 @@ export interface RpcMethods {
   }
   /** Asks for an agent file and reads it. `null` when cancelled. Nothing is made yet. */
   "agentFile.open": { input: { serverId: string }; output: AgentFilePreview | null }
-  /** Makes the agents of the file that `agentFile.open` read, all with this model. */
+  /**
+   * Makes the agents of the file that `agentFile.open` read that the user ticked, all with this
+   * model. Each new agent with something left to do gets a checklist.
+   */
   "agentFile.apply": {
-    input: { serverId: string; model: AgentModel | null }
+    input: { serverId: string; model: AgentModel | null; pick: readonly AgentPick[] }
     output: AgentFileImported
   }
+  /** The checklist that an import left in the chat of this agent, or null (spec 014). */
+  "checklists.forAgent": { input: { agentId: string }; output: ImportChecklist | null }
+  /** The checklist that an import left at the top of this workflow, or null (spec 014). */
+  "checklists.forWorkflow": { input: { workflowId: string }; output: ImportChecklist | null }
   "providers.list": { input: undefined; output: readonly ProviderAccount[] }
   "providers.connect": { input: ProviderConnect; output: ProviderAccount }
   "providers.check": { input: { accountId: string }; output: undefined }
@@ -356,8 +364,14 @@ export interface RpcMethods {
   }
   /** Asks for a workflow file and reads it. `null` when cancelled. Nothing is made yet. */
   "workflowFile.open": { input: { serverId: string }; output: WorkflowFilePreview | null }
-  /** Makes the workflows of the file that `workflowFile.open` read. All of them are off. */
-  "workflowFile.apply": { input: { serverId: string }; output: WorkflowFileImported }
+  /**
+   * Makes the workflows of the file that `workflowFile.open` read that the user ticked (`pick`:
+   * their places in the file, from 0). All of them are off.
+   */
+  "workflowFile.apply": {
+    input: { serverId: string; pick: readonly number[] }
+    output: WorkflowFileImported
+  }
   "notifications.mutes": { input: undefined; output: readonly Mute[] }
   "notifications.setMute": {
     input: { kind: "server" | "channel"; id: string; choice: MuteChoice }
