@@ -2,9 +2,9 @@
 
 ## Purpose
 
-An agent builds a small set of linked articles about what it learns, and reads them again in later
-chats. The user can read, edit and check every article. Memory (008) keeps short facts. Knowledge
-keeps longer, structured notes that cite where they come from.
+An agent builds a small set of linked articles about what it reads and does, and reads them again
+in later chats. The user can read, edit and check every article. Memory (008) keeps short facts.
+Knowledge keeps longer, structured notes that cite where they come from.
 
 ## Concepts
 
@@ -26,7 +26,7 @@ keeps longer, structured notes that cite where they come from.
 
 ## Flows
 
-1. Learn from the chat: the agent finds a lasting topic that is too long or too linked for a
+1. Write from the chat: the agent finds a lasting topic that is too long or too linked for a
    memory item. It writes a new article, or it updates an article that exists. The agent cannot
    rename an article. The chat shows a muted line, "Updated article: <title>", with an undo
    control. A turn makes at most 5 changes. Each saved add, edit or delete is one change. A
@@ -55,8 +55,11 @@ keeps longer, structured notes that cite where they come from.
 
 ## States
 
-- Empty: "No articles yet." One muted line says that the agent adds articles as it learns, and
+- Empty: "No articles yet." One muted line says that the agent adds articles as it works, and
   that the user can add one.
+- The page shows, under its title, the same muted line as the memory page (see 008): an agent gets
+  better through its instructions, memory and knowledge, and through skills that the user saves,
+  and ROBot does not train the model. The line shows also when knowledge is off.
 - Working: while the agent writes, the chat shows the reply as usual. The change line appears when
   the change is saved.
 - Failed: a change that cannot be saved shows its error in the card. The turn continues.

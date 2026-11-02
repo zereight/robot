@@ -33,7 +33,8 @@ tag, so the user reads their work as they read messages from colleagues.
    as compact cards inside the reply. The user can stop the agent at any time.
 3. Channel work: the user writes a job in a channel. The lead agent posts a plan. Each part shows
    as a step in the activity panel, and replies to a part are reachable from a small chip under
-   the message that started it.
+   the message that started it. When the parts end, the lead checks each result against the done
+   test that it wrote for the part, and then posts one summary (see 004).
 4. Phone: the user pairs the phone with a computer, then reads and sends messages and answers
    approval requests from the phone. The phone can pair with more than one computer.
 5. Other computers: the user pairs a second computer with the first. Each computer then shows the
@@ -54,6 +55,12 @@ tag, so the user reads their work as they read messages from colleagues.
   the user sets them up.
 - The app sends no analytics and no failure reports.
 - Secrets never appear in logs, exports or diagnostics.
+- ROBot does not train or change a model. An agent gets better at its job only through things that
+  the user can see and edit: its instructions (002), its memory (008), its knowledge (016), and the
+  skills that the user saves (017). Interface text and documents do not say that a model learns,
+  trains or evolves. The rule covers text that the user reads. It does not cover the instructions
+  that the app sends to a model. The memory page and the knowledge page of an agent show one muted
+  line with this fact (see 008 and 016).
 - The visual style is calm: flat surfaces, no decorative gradients or glows, sentence case,
   medium and semibold weights only, one line icon set, motion under 300 ms that respects reduced
   motion settings.

@@ -40,6 +40,11 @@ These are in the code today and the specs now say something else.
 | 006 | A vendor program from a crashed run can stay. | The app ends its own leftover programs at start. A runtime with a hung check never delays a turn of another provider. |
 | 008 | The agent saves memory at once. The only undo is the chat line. The agent can save any text. | A choice for each agent: save at once, or ask first with a tab for proposals. A history tab with undo. The memory tool refuses a text that looks like a secret. |
 | 001, 021 | Pages: agents and chats, workflows, tasks, usage. | Also the Today page, with a badge on its button for the items that wait in "Needs you". |
+| 000, 008, 016 | The texts say that an agent "learns". | One rule: ROBot does not train or change a model. An agent gets better through its instructions, memory, knowledge and the skills that the user saves. The memory page and the knowledge page show one muted line with this fact. |
+| 004, 005 | A part has a label. The check of the lead nudges, asks or does nothing. The summary names blocked parts. | A part can have a done test. In the check the lead gives a verdict, "Met" or "Not met", to each part that ended as Done and that the user did not decide on. "Not met" can lead to a nudge. The summary also names a part that stays "Not met". The verdict is a field, not a state. |
+| 005, 019 | The task view shows the prompt, the steps, the messages, the child tasks and the three times. | It also shows the done test and the verdict of a part, and a list of moments (given, started, ended, decided, judged, closed). The fields sync. |
+| 002 | The agent profile lists no work. | The profile has a block "Recent work" with the last 20 tasks, their state in words, and the time since the last change. |
+| 002, 009, 017 | Three templates: general assistant, code reviewer, researcher. | Five starters: Assistant, Briefer, Researcher, Reviewer, Organizer. A starter can also make a paused routine and skills for the new agent. |
 
 ## Slices
 
@@ -76,6 +81,22 @@ These are in the code today and the specs now say something else.
 | S47 | Silent and cut turns: the progress of a turn, the lines on a failed row, "Send again" in the restart notice, the silent limit and its setting, leftover programs ended at start. Follows S35: the line for the progress sits next to its retry note. | 005, 003, 006, 013, 019, 011 |
 | S48 | Today page: the page button and badge, the four groups, live update, the line for a group that cannot be read, the line on a linked server. | 021, 001, 012, 015 |
 | S49 | Memory control: the choice "save at once" or "ask me first", the tabs Items, Proposals and History, undo, the refusal of secrets, the limits, what syncs and what exports. | 008, 012, 014, 019 |
+| S50 | Honest wording: the rule that ROBot does not train a model, the muted line on the memory page (under the title, above "Memory saving" and the tabs) and on the knowledge page, "learns" removed from the texts of 008 and 016, and the same fact in the README. No data change. | 000, 008, 016 |
+| S51 | Verdicts in the check: the done test in the plan, the check of the lead (nudge, ask, nothing, the limit of 3 looks), the verdict "Met" or "Not met", the summary that waits for a nudge, the fields in the task view, and their sync. The check is not built yet. S51 builds only the check of S19. `@all`, the fast pick, the line "waits behind" and the archive of a channel stay in S19. | 004, 005, 019, 000 |
+| S52 | Work record: the list of moments in the task view, and the block "Recent work" in the agent profile with its words for what a task waits for. Needs S51 for the moment "Judged". | 005, 002 |
+| S53 | Starters: five starters with their own English and Korean text, the paused routine and the skills that a starter makes, the note in the chat when a part is not made, and the rule for a linked device. The limit of 50 routines is not built (S29): a starter checks it by itself, and the refusal in the form stays in S29. Skills are built (S31). | 002, 009, 017 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
+S50 needs no code change in the app besides text, and can go first. S52 follows S51. S53 does not depend on S50 to S52.
+
+## Decided against
+
+- The app writes an agent setup from a text that describes a job, and the user then reviews it and
+  presses a "Hire" button. Decided against on 2026-11-02. A starter (S53) is the way to begin a
+  job. The words "agent", "member" and "New agent" stay in the interface.
+- A new state for the review of the lead. The state "in review" belongs to the review of the user
+  (S37). The lead gives a verdict, which is a field. So a restart, a stop, or a blocked lead needs
+  no rule for a part that waits for the lead.
+- A coaching card, with which an agent proposes a change of its own instructions after the user
+  corrects it, is not in this list. It is open for a later change.
