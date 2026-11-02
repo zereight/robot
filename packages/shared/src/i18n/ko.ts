@@ -126,20 +126,62 @@ export const ko: Record<MessageKey, string> = {
   "agents.edit.title": "에이전트 편집",
   "agents.template": "시작 방법",
   "agents.template.blank": "빈 에이전트",
-  "agents.template.general": "일반 비서",
-  "agents.template.reviewer": "코드 리뷰어",
-  "agents.template.researcher": "리서처",
-  "template.general.name": "비서",
-  "template.general.role": "일상적인 질문과 글쓰기를 도와줘요.",
-  "template.general.instructions": "명확하고 짧게 답해요. 요청이 분명하지 않으면 질문을 하나 해요.",
-  "template.reviewer.name": "리뷰어",
-  "template.reviewer.role": "코드 변경을 읽고 문제를 찾아요.",
-  "template.reviewer.instructions":
-    "변경 내용을 꼼꼼히 읽어요. 실제 문제를 위험한 순서대로 먼저 적어요. 문제마다 고치는 방법을 제시해요. 버그를 숨기는 경우가 아니면 스타일은 지적하지 않아요.",
-  "template.researcher.name": "리서처",
-  "template.researcher.role": "자료를 찾고 핵심을 정리해요.",
-  "template.researcher.instructions":
-    "믿을 수 있는 자료에서 사실을 모아요. 사실마다 출처를 밝혀요. 사실과 내 결론을 구분해서 적어요.",
+  "starters.extra.routine": "일시 중지된 루틴 1개",
+  "starters.extra.skill": "스킬 1개",
+  "starters.extra.none": "추가로 만드는 것 없음",
+  "starters.makes": "에이전트 만들기를 누르면 앱이 이것도 만들어요:",
+  "starters.makes.routine":
+    "일시 중지된 루틴: “{name}”. 일정: {schedule}. 결과는 이 에이전트의 채팅에 올려요.",
+  "starters.makes.skill": "스킬: “{name}”. 켜진 상태이고, 이 에이전트만 써요.",
+  "starters.note.routine.limit":
+    "만들지 못한 루틴: “{name}”. 이 서버에 루틴이 이미 {n}개 있어서 더 만들 수 없어요.",
+  "starters.note.routine.error": "만들지 못한 루틴: “{name}”. 오류가 났어요.",
+  "starters.note.skill.limit":
+    "만들지 못한 스킬: “{name}”. 이 서버에 스킬이 이미 {n}개 있어서 더 만들 수 없어요.",
+  "starters.note.skill.error": "만들지 못한 스킬: “{name}”. 오류가 났어요.",
+  "starter.assistant.name": "비서",
+  "starter.assistant.job": "일상적인 질문에 답하고 글쓰기를 도와요.",
+  "starter.assistant.role": "일상 질문과 글쓰기를 도와요.",
+  "starter.assistant.instructions":
+    "답은 짧고 쉬운 말로 해요. 요청이 불분명하면 다른 일을 하기 전에 질문을 하나만 해요.",
+  "starter.briefer.name": "브리퍼",
+  "starter.briefer.job": "챙겨 보는 주제의 소식을 짧게 브리핑해요.",
+  "starter.briefer.role": "사용자가 챙겨 보는 주제를 짧게 브리핑해요.",
+  "starter.briefer.instructions":
+    "사용자가 챙겨 보는 주제로 짧은 브리핑을 써요.\n메모리에서 주제를 찾아요. 주제가 없으면 사용자에게 어떤 주제를 챙길지 묻고, 답을 메모리에 저장해요.\n각 주제의 최근 소식을 웹에서 검색해요.\n이 주제들에 가장 중요한 항목 한두 개를 맨 앞에 써요. 나머지는 한 줄씩 짧게 써요. 전체는 10줄 이내로 해요.\n줄마다 출처를 밝혀요.\n새 소식이 없으면 없다고 분명하게 말해요.",
+  "starter.briefer.routine.name": "평일 아침 브리핑",
+  "starter.briefer.routine.prompt": "오늘 브리핑을 써 줘요. 브리핑 지침을 따라요.",
+  "starter.briefer.skill.name": "지금 브리핑",
+  "starter.briefer.skill.description": "일정과 상관없이 지금 브리핑을 받아요.",
+  "starter.briefer.skill.instructions":
+    "지금 브리핑을 써 줘요. 평일 아침에 쓰는 것과 같은 방식으로 해요. 이 글 뒤에 주제를 적으면 그 주제도 넣어요.",
+  "starter.researcher.name": "리서처",
+  "starter.researcher.job": "사실을 찾아보고 출처로 하나씩 확인해요.",
+  "starter.researcher.role": "사실을 찾아보고 출처로 확인해요.",
+  "starter.researcher.instructions":
+    "모든 주장에 출처를 밝혀요. 출처가 말한 내용과 내 추측을 분명히 나눠서 써요. 출처끼리 다르면 짚어 줘요. 마지막에 아직 풀리지 않은 질문을 정리해요.",
+  "starter.researcher.skill.name": "주장 확인",
+  "starter.researcher.skill.description": "주장 하나를 출처로 확인해요.",
+  "starter.researcher.skill.instructions":
+    "이 글 뒤에 오는 주장을 확인해 줘요. 주장을 뒷받침하는 출처와 반박하는 출처를 둘 다 찾아요. 출처마다 얼마나 믿을 만한지 말해요. 그다음 주장이 맞는지, 틀린지, 어느 쪽도 확인되지 않았는지 말해요. 마지막에 아직 풀리지 않은 질문을 정리해요.",
+  "starter.reviewer.name": "리뷰어",
+  "starter.reviewer.job": "코드 변경을 읽고 문제를 찾아내요.",
+  "starter.reviewer.role": "코드 변경을 읽고 문제를 알려요.",
+  "starter.reviewer.instructions":
+    "행동하기 전에 먼저 읽어요. 사용자가 요청하지 않으면 파일을 바꾸지 않아요. 발견한 문제마다 코드의 위치와 중요한 이유를 적어요. 가장 위험한 문제부터 적어요. 문제가 없으면 없다고 분명하게 말해요.",
+  "starter.reviewer.skill.name": "최신 변경 리뷰",
+  "starter.reviewer.skill.description": "작업 폴더의 가장 최근 변경을 리뷰해요.",
+  "starter.reviewer.skill.instructions":
+    "작업 폴더에서 가장 최근 변경을 찾아 꼼꼼히 읽어요. 문제마다 위치와 중요한 이유를 적고, 가장 위험한 것부터 나열해요. 파일은 바꾸지 않아요. 문제가 없으면 없다고 분명하게 말해요.",
+  "starter.organizer.name": "정리 도우미",
+  "starter.organizer.job": "작업 폴더의 파일을 분류하고 이름을 붙여요.",
+  "starter.organizer.role": "작업 폴더의 파일을 분류하고 이름을 붙여요.",
+  "starter.organizer.instructions":
+    "파일을 옮기기 전에 계획을 먼저 보여 줘요. 파일은 절대 삭제하지 않아요. 확실하지 않은 파일은 검토용 폴더로 옮겨요. 끝나면 파일을 몇 개 옮겼는지 사용자에게 알려 줘요.",
+  "starter.organizer.skill.name": "폴더 정리",
+  "starter.organizer.skill.description": "폴더 하나의 파일을 분류해요.",
+  "starter.organizer.skill.instructions":
+    "이 글 뒤에 내가 적는 폴더를 정리해 줘요. 먼저 파일을 살펴봐요. 계획을 보여 주고 내 답을 기다려요. 내가 동의하면 계획대로 파일을 옮겨요. 파일은 절대 삭제하지 않아요. 확실하지 않은 파일은 검토용 폴더로 옮겨요. 파일을 몇 개 옮겼는지 알려 줘요.",
   "agents.field.name": "이름",
   "agents.suggestName": "이름 추천받기",
   "agents.field.role": "역할",

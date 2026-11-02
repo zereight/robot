@@ -82,18 +82,38 @@
   font-size: var(--text-s);
 }
 
-.templates {
-  display: flex;
-  flex-wrap: wrap;
+/* A fieldset that looks like the other fields of the form. */
+.group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.group > legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+/* The "Start from" choice: Blank, then the starters. Each starter shows its name, one line about
+   the job, and a muted line about what else it makes. */
+.starters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 6px;
 }
 
-.chip {
+.starter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  text-align: start;
   border: 1px solid var(--c-border);
   background: var(--c-main);
   border-radius: var(--radius-m);
-  padding: 4px 12px;
-  font-weight: 500;
+  padding: 8px 12px;
   color: var(--c-text-muted);
   transition:
     background var(--motion-fast) var(--ease-out),
@@ -102,18 +122,45 @@
     transform var(--motion-fast) var(--ease-out);
 }
 
-.chip:active {
+.starter:active {
   transform: scale(var(--press-scale));
 }
 
-.chip:hover {
+.starter:hover {
   color: var(--c-text);
 }
 
-.chip[aria-pressed="true"] {
+.starter[aria-pressed="true"] {
   border-color: var(--c-accent);
   color: var(--c-text);
   background: var(--c-selected);
+}
+
+.starterName {
+  font-weight: 500;
+  color: var(--c-text);
+}
+
+.starterJob {
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.starterExtras {
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+}
+
+/* What the picked starter also makes when the user presses Create. */
+.makes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
 }
 
 .faceRow {

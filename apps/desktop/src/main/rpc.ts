@@ -2,6 +2,7 @@ import {
   AgentCreate,
   AgentModel,
   AgentPatch,
+  AgentStarterCreate,
   ChannelCreate,
   ChannelPatch,
   ChatSend,
@@ -66,6 +67,7 @@ import { Search } from "./services/Search.ts"
 import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
@@ -420,6 +422,10 @@ export const handlers: Handlers = {
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.get(id)))),
   "agents.create": (input) =>
     decode(AgentCreate)(input).pipe(Effect.flatMap((data) => Agents.use((a) => a.create(data)))),
+  "agents.createFromStarter": (input) =>
+    decode(AgentStarterCreate)(input).pipe(
+      Effect.flatMap((data) => Starters.use((s) => s.create(data))),
+    ),
   "agents.update": (input) =>
     decode(Schema.Struct({ id: Schema.String, patch: AgentPatch }))(input).pipe(
       Effect.flatMap(({ id, patch }) => Agents.use((a) => a.update(id, patch))),

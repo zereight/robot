@@ -11,6 +11,7 @@ import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
 import styles from "./agents.module.css"
+import { createAgent } from "./createAgent.ts"
 import { Face } from "./Face.tsx"
 import { RecentWork } from "./RecentWork.tsx"
 import { markBorn } from "./reactions.ts"
@@ -108,7 +109,7 @@ export const NewAgentDialog = (props: { onClose: () => void }) => {
         onSubmit={async (values) => {
           const serverId = ui.server()?.id
           if (!serverId) return
-          const agent = await call("agents.create", { serverId, ...values })
+          const agent = await createAgent(serverId, values)
           markBorn(agent.id)
           props.onClose()
           ui.selectPlace({ kind: "agent", id: agent.id })

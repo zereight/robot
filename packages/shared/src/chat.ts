@@ -25,6 +25,18 @@ export type MessagePart =
    * "Post when nothing changed"). `routine` is the name of the routine at that time.
    */
   | { readonly kind: "note"; readonly note: "watch_unchanged"; readonly routine: string }
+  /**
+   * A muted line with no task: a part of a starter was not made (spec 002, "Starters"). `name` is
+   * the name that the routine or skill would have had. `why` is "limit" when the server held 50
+   * routines or 100 skills, and "error" for any other failure. The model never reads it.
+   */
+  | {
+      readonly kind: "note"
+      readonly note: "starter_not_made"
+      readonly what: "routine" | "skill"
+      readonly name: string
+      readonly why: "limit" | "error"
+    }
   | {
       readonly kind: "tool"
       readonly id: string

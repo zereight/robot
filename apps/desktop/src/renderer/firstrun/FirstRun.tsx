@@ -1,7 +1,7 @@
 import { createSignal, Match, Show, Switch as SwitchCase } from "solid-js"
 import { AgentForm } from "../agents/AgentForm.tsx"
+import { createAgent } from "../agents/createAgent.ts"
 import { markBorn } from "../agents/reactions.ts"
-import { call } from "../lib/rpc.ts"
 import { ConnectForm } from "../providers/ProvidersSection.tsx"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
@@ -108,7 +108,7 @@ export const FirstRunDialog = () => {
               onSubmit={async (values) => {
                 const serverId = ui.server()?.id
                 if (!serverId) return
-                const agent = await call("agents.create", { serverId, ...values })
+                const agent = await createAgent(serverId, values)
                 markBorn(agent.id)
                 await finish()
                 ui.selectPlace({ kind: "agent", id: agent.id })

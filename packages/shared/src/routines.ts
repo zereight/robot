@@ -5,6 +5,8 @@ import { type Watch, WatchSchema } from "./watch.ts"
 
 export const ROUTINE_NAME_MAX = 60
 export const ROUTINE_PROMPT_MAX = 20_000
+/** A server holds at most this many routines. A paused routine counts (spec 009). */
+export const ROUTINES_MAX = 50
 
 const Time = Schema.String.check(Schema.isPattern(/^\d{1,2}:\d{2}$/))
 

@@ -29,6 +29,7 @@ import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Skills } from "./services/Skills.ts"
+import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
@@ -92,7 +93,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const agents = Layer.mergeAll(Chat.layer, Usage.layer).pipe(Layer.provideMerge(tasks))
   const channels = Channels.layer.pipe(Layer.provideMerge(agents))
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
-  const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))
+  const starters = Starters.layer.pipe(Layer.provideMerge(routines))
+  const workflows = Workflows.layer.pipe(Layer.provideMerge(starters))
   const teach = Teach.layer.pipe(Layer.provideMerge(workflows))
   const places = Places.layer.pipe(Layer.provideMerge(teach))
   const today = Today.layer.pipe(Layer.provideMerge(places))

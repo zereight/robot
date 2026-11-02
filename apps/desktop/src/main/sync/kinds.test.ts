@@ -598,6 +598,73 @@ describe("the moments of a task sync with it (spec 005, 019)", () => {
   })
 })
 
+describe("the note of a starter syncs with its message (spec 002, 019)", () => {
+  const note = {
+    kind: "note",
+    note: "starter_not_made",
+    what: "routine",
+    name: "Weekday briefing",
+    why: "limit",
+  }
+
+  test("the note passes the strict check, and a changed note does not", async () => {
+    const a = await source()
+    a.db.run(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('note-1', ?, 'agent', ?, 'done', ?)",
+      a.ada.id,
+      JSON.stringify([note]),
+      NOW,
+    )
+    const dir = join(testRuntime().dataDir, "kinds")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.message.read(ctxA, "note-1")?.fields) as Fields
+    const opOf = (parts: unknown) =>
+      parseOp(
+        {
+          k: "message",
+          i: "note-1",
+          o: "dev-a",
+          f: Object.fromEntries(
+            Object.entries({ ...fields, parts }).map(([n, v]) => [n, { v, s: stamp }]),
+          ),
+        },
+        NOW,
+      )
+    expect(opOf([note])).toBeDefined()
+    expect(opOf([{ ...note, what: "skill", why: "error" }])).toBeDefined()
+    // The old note of a watch still passes.
+    expect(opOf([{ kind: "note", note: "watch_unchanged", routine: "Check" }])).toBeDefined()
+    for (const bad of [
+      { ...note, what: "agent" },
+      { ...note, why: "full" },
+      { ...note, name: "" },
+      { ...note, name: "x".repeat(200) },
+      { ...note, extra: "x" },
+      { kind: "note", note: "starter_not_made", what: "routine", why: "limit" },
+      { kind: "note", note: "other", routine: "Check" },
+    ])
+      expect(opOf([bad]), JSON.stringify(bad)).toBeUndefined()
+  })
+
+  test("the note arrives with its message and reads back the same", async () => {
+    const a = await source()
+    a.db.run(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('note-1', ?, 'agent', ?, 'done', ?)",
+      a.ada.id,
+      JSON.stringify([note]),
+      NOW,
+    )
+    const dir = join(testRuntime().dataDir, "kinds")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const b = target(openDatabase(":memory:"), dir)
+    const ada = KINDS.agent.read(ctxA, a.ada.id)
+    expect(KINDS.agent.create(b, a.ada.id, copy(ada?.fields) as Fields)).toBe(true)
+    const fields = copy(KINDS.message.read(ctxA, "note-1")?.fields) as Fields
+    expect(KINDS.message.create(b, "note-1", fields)).toBe(true)
+    expect(KINDS.message.read(b, "note-1")?.fields.parts).toEqual([note])
+  })
+})
+
 describe("one item of every kind is made from its first copy", () => {
   test("each kind passes the strict check, satisfies every column that must have a value, and reads back the same", async () => {
     const a = await source()

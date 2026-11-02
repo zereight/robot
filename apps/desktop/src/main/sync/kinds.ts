@@ -311,6 +311,15 @@ const partCheck = (v: unknown): boolean => {
         str(SKILL_INSTRUCTIONS_MAX, 1)(v.instructions)
       )
     case "note":
+      // A note travels as a code with its names. The window writes the words (spec 002, 009).
+      if (v.note === "starter_not_made")
+        return (
+          shape(["kind", "note", "what", "name", "why"])(v) &&
+          oneOf(["routine", "skill"])(v.what) &&
+          // A name of 40 characters can take two code units for each.
+          str(Math.max(ROUTINE_NAME_MAX, SKILL_NAME_MAX * 2), 1)(v.name) &&
+          oneOf(["limit", "error"])(v.why)
+        )
       return (
         shape(["kind", "note", "routine"])(v) &&
         oneOf(["watch_unchanged"])(v.note) &&

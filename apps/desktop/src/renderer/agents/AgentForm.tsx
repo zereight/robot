@@ -2,10 +2,8 @@ import {
   AGENT_NAME_MAX,
   AGENT_NAMES,
   AGENT_ROLE_MAX,
-  AGENT_TEMPLATES,
   type Agent,
   type AgentModel,
-  type AgentTemplate,
   charLength,
   FACE_HUES,
   FACE_SHAPES,
@@ -13,6 +11,7 @@ import {
   faceFromName,
   isLooser,
   isRuntimeKind,
+  type Locale,
   levelNeedsConfirm,
   type MessageKey,
   nameKey,
@@ -20,6 +19,13 @@ import {
   type PermissionLevel,
   type ProviderKind,
   type RuntimeKind,
+  STARTER_PLANS,
+  STARTER_ROUTINE_SCHEDULE,
+  STARTERS,
+  type StarterId,
+  type StarterPick,
+  starterExtras,
+  starterText,
   suggestName,
 } from "@robot/shared"
 import { Dices } from "lucide-solid"
@@ -36,6 +42,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
+import { useScheduleWords } from "../routines/RoutinesPage.tsx"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -60,6 +67,11 @@ export interface AgentFormValues {
   permission?: PermissionLevel
   /** Only when an existing agent is edited. */
   memoryEnabled?: boolean
+  /**
+   * Set when the user picked a starter on this computer: the app also makes its routine and its
+   * skill (spec 002). A linked server gets the three fields only, so a form there sends none.
+   */
+  starter?: StarterPick
 }
 
 export interface AgentFormProps {
@@ -81,8 +93,10 @@ const Counter = (props: { used: number; max: number }) => {
 }
 
 export const AgentForm = (props: AgentFormProps) => {
-  const { t } = useApp()
+  const app = useApp()
+  const { t } = app
   const ui = useUi()
+  const scheduleWords = useScheduleWords()
   // On a linked server the same screen works with fewer fields (spec 012): no picture, no memory
   // switch, no section, and a level that can only get stricter.
   const remote = () => ui.linked()
@@ -91,7 +105,9 @@ export const AgentForm = (props: AgentFormProps) => {
       ? PERMISSION_LEVELS.filter((level) => !isLooser(level, (props.agent as Agent).permission))
       : PERMISSION_LEVELS
   const nameId = createUniqueId()
-  const [template, setTemplate] = createSignal<AgentTemplate | "blank">("blank")
+  const [starter, setStarter] = createSignal<StarterId | "blank">("blank")
+  /** The language of the interface when the user picked the starter (spec 002). */
+  const [starterLocale, setStarterLocale] = createSignal<Locale>(app.locale())
   const [name, setName] = createSignal(props.agent?.name ?? "")
   const [role, setRole] = createSignal(props.agent?.role ?? "")
   const [instructions, setInstructions] = createSignal(props.agent?.instructions ?? "")
@@ -164,17 +180,32 @@ export const AgentForm = (props: AgentFormProps) => {
   const valid = () =>
     nameLength() >= 1 && nameLength() <= AGENT_NAME_MAX && charLength(role()) <= AGENT_ROLE_MAX
 
-  const pickTemplate = (next: AgentTemplate | "blank") => {
-    setTemplate(next)
+  /** A starter fills the name, the role line and the instructions. Blank clears them. */
+  const pickStarter = (next: StarterId | "blank") => {
+    setStarter(next)
     if (next === "blank") {
       setName("")
       setRole("")
       setInstructions("")
-    } else {
-      setName(t(`template.${next}.name` as MessageKey))
-      setRole(t(`template.${next}.role` as MessageKey))
-      setInstructions(t(`template.${next}.instructions` as MessageKey))
+      return
     }
+    const locale = app.locale()
+    setStarterLocale(locale)
+    const text = starterText(locale, next)
+    setName(text.name)
+    setRole(text.role)
+    setInstructions(text.instructions)
+  }
+
+  /**
+   * What the picked starter also makes on Create, in the language of the pick. A linked server
+   * makes none of it, so the form says nothing about it there.
+   */
+  const makes = () => {
+    const picked = starter()
+    if (picked === "blank" || remote()) return undefined
+    const plan = STARTER_PLANS[picked]
+    return plan.routine || plan.skill ? starterText(starterLocale(), picked) : undefined
   }
 
   /**
@@ -210,6 +241,10 @@ export const AgentForm = (props: AgentFormProps) => {
         instructions: instructions(),
         face: face(),
         model: model(),
+        // A linked server gets the three fields only: it has no routine or skill to make (012).
+        ...(!props.agent && !remote() && starter() !== "blank"
+          ? { starter: { id: starter() as StarterId, locale: starterLocale() } }
+          : {}),
         // A client has no sections (012). A section that was deleted while the form was open
         // shows as "No section".
         ...(remote()
@@ -246,24 +281,65 @@ export const AgentForm = (props: AgentFormProps) => {
       </h2>
 
       <Show when={!props.agent}>
-        <div class={styles.field}>
-          <span class={styles.label}>{t("agents.template")}</span>
-          <div class={styles.templates}>
-            <For each={["blank", ...AGENT_TEMPLATES] as const}>
-              {(item) => (
+        <fieldset class={`${styles.field} ${styles.group}`}>
+          <legend class={styles.label}>{t("agents.template")}</legend>
+          <div class={styles.starters}>
+            <button
+              type="button"
+              class={styles.starter}
+              aria-pressed={starter() === "blank"}
+              data-testid="starter-blank"
+              onClick={() => pickStarter("blank")}
+            >
+              <span class={styles.starterName}>{t("agents.template.blank")}</span>
+            </button>
+            <For each={STARTERS}>
+              {(id) => (
                 <button
                   type="button"
-                  class={styles.chip}
-                  aria-pressed={template() === item}
-                  data-testid={`template-${item}`}
-                  onClick={() => pickTemplate(item)}
+                  class={styles.starter}
+                  aria-pressed={starter() === id}
+                  data-testid={`starter-${id}`}
+                  onClick={() => pickStarter(id)}
                 >
-                  {t(`agents.template.${item}` as MessageKey)}
+                  <span class={styles.starterName}>{starterText(app.locale(), id).name}</span>
+                  <span class={styles.starterJob}>{starterText(app.locale(), id).job}</span>
+                  <Show when={!remote()}>
+                    <span class={styles.starterExtras} data-testid={`starter-${id}-extras`}>
+                      {starterExtras(app.locale(), id)}
+                    </span>
+                  </Show>
                 </button>
               )}
             </For>
           </div>
-        </div>
+          <Show when={makes()}>
+            {(text) => (
+              <>
+                <span class={styles.hint}>{t("starters.makes")}</span>
+                <ul class={styles.makes} data-testid="starter-makes">
+                  <Show when={text().routine}>
+                    {(routine) => (
+                      <li data-testid="starter-makes-routine">
+                        {t("starters.makes.routine", {
+                          name: routine().name,
+                          schedule: scheduleWords(STARTER_ROUTINE_SCHEDULE),
+                        })}
+                      </li>
+                    )}
+                  </Show>
+                  <Show when={text().skill}>
+                    {(skill) => (
+                      <li data-testid="starter-makes-skill">
+                        {t("starters.makes.skill", { name: skill().name })}
+                      </li>
+                    )}
+                  </Show>
+                </ul>
+              </>
+            )}
+          </Show>
+        </fieldset>
       </Show>
 
       <div class={styles.field}>

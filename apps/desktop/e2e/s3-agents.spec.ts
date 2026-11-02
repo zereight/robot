@@ -25,9 +25,9 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   let { app, page } = await launch(userData, env)
   await resizeWindow(app, 1200, 800)
 
-  // Create from a template.
+  // Create from a starter.
   await page.getByTestId("new-agent").click()
-  await page.getByTestId("template-general").click()
+  await page.getByTestId("starter-assistant").click()
   await expect(page.getByTestId("agent-name")).toHaveValue("Assistant")
   await expect(page.getByTestId("agent-instructions")).not.toHaveValue("")
   await page.getByTestId("agent-name").fill("Ada")
@@ -38,7 +38,7 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
 
   await expect(page.getByTestId("chat-start")).toContainText("Ada")
   await expect(page.getByTestId("chat-start")).toContainText("This is the start of your chat.")
-  await expect(page.getByTestId("chat-start")).toContainText("Helps with everyday questions")
+  await expect(page.getByTestId("chat-start")).toContainText("Answers daily questions")
   await expect(rowNamed(page, "Ada")).toHaveAttribute("aria-current", "true")
   await expect(page.getByTestId("chat-start").locator("svg")).toHaveAttribute(
     "data-face-shape",
@@ -126,7 +126,7 @@ test("agents: a long name stays on one line in the chat header", async () => {
   await resizeWindow(app, 1000, 700)
   const name = "Account Research Partner for Quarterly Reviews"
   await page.getByTestId("new-agent").click()
-  await page.getByTestId("template-general").click()
+  await page.getByTestId("starter-assistant").click()
   await page.getByTestId("agent-name").fill(name.slice(0, 40))
   await page.getByTestId("agent-submit").click()
   await expect(page.getByTestId("chat-start")).toBeVisible()
@@ -156,7 +156,7 @@ test("agents: the profile box of an agent scrolls in a short window", async () =
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
   await resizeWindow(app, 1000, 460)
   await page.getByTestId("new-agent").click()
-  await page.getByTestId("template-general").click()
+  await page.getByTestId("starter-assistant").click()
   await page.getByTestId("agent-name").fill("Tall")
   await page.getByTestId("agent-submit").click()
   await expect(page.getByTestId("chat-start")).toBeVisible()
@@ -180,9 +180,9 @@ test("agents: a new agent can get a random name suggestion", async () => {
   const nameField = page.getByTestId("agent-name")
   const suggest = page.getByTestId("agent-name-suggest")
 
-  // Each press fills the field with a new, valid name. A template name is replaced.
+  // Each press fills the field with a new, valid name. A starter name is replaced.
   await page.getByTestId("new-agent").click()
-  await page.getByTestId("template-general").click()
+  await page.getByTestId("starter-assistant").click()
   await expect(nameField).toHaveValue("Assistant")
   await suggest.click()
   await expect(nameField).not.toHaveValue("Assistant")

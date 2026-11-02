@@ -124,21 +124,63 @@ export const en = {
   "agents.edit.title": "Edit agent",
   "agents.template": "Start from",
   "agents.template.blank": "Blank",
-  "agents.template.general": "General assistant",
-  "agents.template.reviewer": "Code reviewer",
-  "agents.template.researcher": "Researcher",
-  "template.general.name": "Assistant",
-  "template.general.role": "Helps with everyday questions and writing.",
-  "template.general.instructions":
-    "Answer clearly and briefly. Ask one question when the request is not clear.",
-  "template.reviewer.name": "Reviewer",
-  "template.reviewer.role": "Reads code changes and finds problems.",
-  "template.reviewer.instructions":
-    "Read the change with care. List real problems first, the most risky first. Give a fix for each. Do not comment on style unless it hides a bug.",
-  "template.researcher.name": "Researcher",
-  "template.researcher.role": "Finds sources and sums up what they say.",
-  "template.researcher.instructions":
-    "Collect facts from sources you can trust. Say where each fact comes from. Keep facts apart from your own conclusions.",
+  "starters.extra.routine": "A paused routine",
+  "starters.extra.skill": "1 skill",
+  "starters.extra.none": "Makes nothing else",
+  "starters.makes": "When you press Create, the app also makes:",
+  "starters.makes.routine":
+    "A paused routine: “{name}”. Schedule: {schedule}. It posts in the chat of this agent.",
+  "starters.makes.skill": "A skill: “{name}”. It is on, for this agent only.",
+  "starters.note.routine.limit":
+    "Not made: the routine “{name}”. This server already has {n} routines, the most that it can hold.",
+  "starters.note.routine.error": "Not made: the routine “{name}”. An error stopped it.",
+  "starters.note.skill.limit":
+    "Not made: the skill “{name}”. This server already has {n} skills, the most that it can hold.",
+  "starters.note.skill.error": "Not made: the skill “{name}”. An error stopped it.",
+  "starter.assistant.name": "Assistant",
+  "starter.assistant.job": "Answers everyday questions and helps you write.",
+  "starter.assistant.role": "Answers daily questions and helps with writing.",
+  "starter.assistant.instructions":
+    "Keep every answer short and in plain words. If a request is not clear, ask one question before you do anything else.",
+  "starter.briefer.name": "Briefer",
+  "starter.briefer.job": "Gives you a short briefing on the topics you follow.",
+  "starter.briefer.role": "Prepares a short briefing on the topics its user follows.",
+  "starter.briefer.instructions":
+    "Your job is to write a short briefing on the topics that the user follows.\nLook in your memory for the topics. If it has none, ask the user which topics to follow, and save the answer in memory.\nSearch the web for recent news on each topic.\nStart with the one or two items that matter most for these topics. Then give the other items, one short line each. Use 10 lines or fewer in all.\nName the source on each line.\nIf nothing is new, say so in plain words.",
+  "starter.briefer.routine.name": "Weekday briefing",
+  "starter.briefer.routine.prompt":
+    "Write today's briefing for me. Follow your instructions for a briefing.",
+  "starter.briefer.skill.name": "Brief me now",
+  "starter.briefer.skill.description": "Get the briefing now, outside the schedule.",
+  "starter.briefer.skill.instructions":
+    "Write my briefing now, in the same way as on a weekday morning. If I name a topic after this text, include that topic too.",
+  "starter.researcher.name": "Researcher",
+  "starter.researcher.job": "Looks up facts and checks each one against sources.",
+  "starter.researcher.role": "Looks up facts and checks them against sources.",
+  "starter.researcher.instructions":
+    "Name the source for every claim. Show clearly what a source says and what you only guess. If two sources disagree, point it out. Finish with the questions that are still open.",
+  "starter.researcher.skill.name": "Check a claim",
+  "starter.researcher.skill.description": "Check one claim against its sources.",
+  "starter.researcher.skill.instructions":
+    "Check the claim that comes after this text. Look for sources that support it and for sources that argue against it. Say how far you trust each source. Then say if the claim is true, false, or not shown either way. Finish with the questions that are still open.",
+  "starter.reviewer.name": "Reviewer",
+  "starter.reviewer.job": "Reads code changes and finds problems in them.",
+  "starter.reviewer.role": "Reads code changes and reports problems.",
+  "starter.reviewer.instructions":
+    "Read before you act. Do not change a file unless the user asks you to. For each finding, give its place in the code and say why it matters. Put the most risky finding first. If you find no problem, say so plainly.",
+  "starter.reviewer.skill.name": "Review latest change",
+  "starter.reviewer.skill.description": "Review the newest change in the workspace.",
+  "starter.reviewer.skill.instructions":
+    "Find the newest change in the workspace and read it closely. List each problem with its place and the reason it matters, the most risky first. Do not edit a file. If the change has no problem, say so plainly.",
+  "starter.organizer.name": "Organizer",
+  "starter.organizer.job": "Sorts and names the files in its workspace.",
+  "starter.organizer.role": "Sorts and names the files of its workspace.",
+  "starter.organizer.instructions":
+    "Show a plan before you move a file. Never delete a file. If you are not sure about a file, move it to a folder for review. When you finish, tell the user how many files you moved.",
+  "starter.organizer.skill.name": "Tidy a folder",
+  "starter.organizer.skill.description": "Sort the files of one folder.",
+  "starter.organizer.skill.instructions":
+    "Tidy the folder that I name after this text. Look at its files first. Show your plan and wait for my answer. After I agree, move the files as planned. Never delete a file. Move a file that you doubt to a folder for review. Tell me how many files you moved.",
   "agents.field.name": "Name",
   "agents.suggestName": "Suggest a name",
   "agents.field.role": "Role",
