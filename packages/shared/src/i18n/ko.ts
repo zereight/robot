@@ -756,4 +756,51 @@ export const ko: Record<MessageKey, string> = {
   "workflows.enabled.label": "{name} 켜기",
   "workflows.off": "꺼짐",
   "error.provider_busy": "모델이 바빠요. 잠시 뒤에 다시 시도해 주세요.",
+  "workflowFile.menu": "워크플로우 파일",
+  "workflowFile.menu.export": "워크플로우 내보내기…",
+  "workflowFile.menu.import": "워크플로우 가져오기…",
+  "workflowFile.close": "닫기",
+  "workflowFile.export.title": "워크플로우 내보내기",
+  "workflowFile.export.hint":
+    "고른 워크플로우의 이름, 트리거, 단계, 연결, 메모를 저장해요. 에이전트 단계에는 에이전트의 이름이 들어가요. 실행 기록, 버전, 대화, 키, 채널은 저장하지 않아요.",
+  "workflowFile.export.empty": "내보낼 워크플로우가 없어요.",
+  "workflowFile.export.all": "모두 선택",
+  "workflowFile.export.limit": "파일 하나에는 워크플로우를 최대 20개까지 담을 수 있어요.",
+  "workflowFile.export.submit": "내보내기…",
+  "workflowFile.exported": "워크플로우 {count}개를 {path}에 저장했어요.",
+  "workflowFile.import.title": "워크플로우 가져오기",
+  "workflowFile.import.intro":
+    "아래 워크플로우를 새로 만들어요. 이미 있는 워크플로우는 바꾸지 않아요.",
+  "workflowFile.import.renamed": "파일에 적힌 이름: {name}",
+  "workflowFile.import.counts": "단계 {steps}개, 메모 {notes}개",
+  "workflowFile.import.off":
+    "가져온 워크플로우는 모두 꺼진 상태예요. 트리거가 동작해야 할 때 켜 주세요.",
+  "workflowFile.import.missing":
+    '아래 에이전트를 찾지 못했어요. 이 에이전트를 가리키는 단계에는 에이전트를 고를 때까지 "에이전트 고르기"가 표시돼요:',
+  "workflowFile.import.places":
+    '파일에 채널이 없어서 메시지 게시 단계 {count}개에 "장소 고르기"가 표시돼요.',
+  "workflowFile.import.submit": "워크플로우 {count}개 가져오기",
+  "workflowFile.import.stopped":
+    "{name}에서 가져오기가 멈췄어요. 워크플로우 {made}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
+  "workflowFile.graph.too_many_steps":
+    "워크플로우 “{workflow}”에 단계가 {n}개 있어요. 워크플로우에는 단계를 최대 30개까지 담을 수 있어요.",
+  "workflowFile.graph.unknown_step": "워크플로우 “{workflow}”의 {n}번 연결이 없는 단계를 가리켜요.",
+  "workflowFile.graph.self_connection":
+    "워크플로우 “{workflow}”의 {n}번 연결이 단계를 자기 자신에게 이어요.",
+  "workflowFile.graph.missing_branch":
+    "워크플로우 “{workflow}”의 {n}번 연결은 조건에서 나오는데 예 또는 아니오 분기가 없어요.",
+  "workflowFile.graph.branches":
+    "워크플로우 “{workflow}”의 {n}번 단계는 조건이에요. 예 연결과 아니오 연결이 모두 있어야 해요.",
+  "workflowFile.graph.cycle": "워크플로우 “{workflow}”의 {n}번 연결이 순환을 만들어요.",
+  "error.workflow_file_format": "워크플로우 파일이 아니에요.",
+  "error.workflow_file_version": "이 파일은 형식 버전 {detail}이에요. 이 앱은 버전 1을 읽어요.",
+  "error.workflow_file_too_large": "파일이 10 MB보다 커요.",
+  "error.workflow_file_too_many": "파일 하나에는 워크플로우를 최대 20개까지 담을 수 있어요.",
+  "error.workflow_file_empty": "워크플로우 파일에는 워크플로우가 하나 이상 있어야 해요.",
+  "error.workflow_file_duplicate": "파일에 이름이 {detail}인 워크플로우가 둘 있어요.",
+  "error.workflow_file_field": "값이 없거나 올바르지 않아요: {detail}",
+  "error.workflow_file_name_length": "이름은 1자에서 60자 사이여야 해요: {detail}",
+  "error.workflow_file_schedule": "일정이 올바르지 않아요: {detail}",
+  "error.workflow_file_write": "파일을 쓰지 못했어요: {detail}",
+  "error.workflow_file_failed": "가져오기가 멈췄어요. {detail}",
 }

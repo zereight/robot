@@ -763,6 +763,54 @@ export const en = {
   "workflows.enabled.label": "Turn on {name}",
   "workflows.off": "Off",
   "error.provider_busy": "The model is busy. Try again later.",
+  "workflowFile.menu": "Workflow files",
+  "workflowFile.menu.export": "Export workflows…",
+  "workflowFile.menu.import": "Import workflows…",
+  "workflowFile.close": "Close",
+  "workflowFile.export.title": "Export workflows",
+  "workflowFile.export.hint":
+    "ROBot saves the name, trigger, steps, connections and notes of each workflow that you pick. An agent step is saved with the name of its agent. It saves no run, version, chat, key or channel.",
+  "workflowFile.export.empty": "There are no workflows to export.",
+  "workflowFile.export.all": "Select all",
+  "workflowFile.export.limit": "A file holds at most 20 workflows.",
+  "workflowFile.export.submit": "Export…",
+  "workflowFile.exported": "Saved {count} workflows to {path}",
+  "workflowFile.import.title": "Import workflows",
+  "workflowFile.import.intro":
+    "ROBot makes these workflows as new ones. It does not change a workflow that exists.",
+  "workflowFile.import.renamed": "Name in the file: {name}",
+  "workflowFile.import.counts": "{steps} steps, {notes} notes",
+  "workflowFile.import.off":
+    "Every imported workflow is off. Turn it on when its trigger should work.",
+  "workflowFile.import.missing":
+    'These agents are not found. A step that names one shows "Pick an agent" until you pick an agent:',
+  "workflowFile.import.places":
+    '{count} post steps show "Pick a place", because the file holds no channel.',
+  "workflowFile.import.submit": "Import {count} workflows",
+  "workflowFile.import.stopped":
+    "The import stopped at {name}. {made} workflows were made and stay. Reason: {reason}",
+  "workflowFile.graph.too_many_steps":
+    "The workflow “{workflow}” has {n} steps. A workflow holds at most 30 steps.",
+  "workflowFile.graph.unknown_step":
+    "In the workflow “{workflow}”, connection {n} joins a step that does not exist.",
+  "workflowFile.graph.self_connection":
+    "In the workflow “{workflow}”, connection {n} joins a step to itself.",
+  "workflowFile.graph.missing_branch":
+    "In the workflow “{workflow}”, connection {n} leaves a condition and has no branch Yes or No.",
+  "workflowFile.graph.branches":
+    "In the workflow “{workflow}”, step {n} is a condition. It needs a connection for Yes and one for No.",
+  "workflowFile.graph.cycle": "In the workflow “{workflow}”, connection {n} makes a loop.",
+  "error.workflow_file_format": "This file is not a workflow file.",
+  "error.workflow_file_version": "This file has format version {detail}. This app reads version 1.",
+  "error.workflow_file_too_large": "The file is larger than 10 MB.",
+  "error.workflow_file_too_many": "A file holds at most 20 workflows.",
+  "error.workflow_file_empty": "A workflow file needs at least one workflow.",
+  "error.workflow_file_duplicate": "Two workflows in the file have the name {detail}.",
+  "error.workflow_file_field": "The value at {detail} is missing or not valid.",
+  "error.workflow_file_name_length": "The name at {detail} must have 1 to 60 characters.",
+  "error.workflow_file_schedule": "The schedule at {detail} is not valid.",
+  "error.workflow_file_write": "ROBot could not write the file: {detail}",
+  "error.workflow_file_failed": "The import stopped. {detail}",
 } as const
 
 export type MessageKey = keyof typeof en

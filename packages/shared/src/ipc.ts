@@ -29,6 +29,7 @@ import type { Task, TaskDetail } from "./task.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
+import type { WorkflowFileImported, WorkflowFilePreview } from "./workflowFile.ts"
 import type {
   Workflow,
   WorkflowInput,
@@ -186,6 +187,15 @@ export interface RpcMethods {
   }
   "workflows.runs": { input: { workflowId: string }; output: readonly WorkflowRun[] }
   "workflows.runDetail": { input: { runId: string }; output: WorkflowRunDetail }
+  /** Asks where to save, then writes one workflow file. `path` is null when cancelled. */
+  "workflowFile.export": {
+    input: { serverId: string; workflowIds: readonly string[] }
+    output: { path: string | null; count: number }
+  }
+  /** Asks for a workflow file and reads it. `null` when cancelled. Nothing is made yet. */
+  "workflowFile.open": { input: { serverId: string }; output: WorkflowFilePreview | null }
+  /** Makes the workflows of the file that `workflowFile.open` read. All of them are off. */
+  "workflowFile.import": { input: { serverId: string }; output: WorkflowFileImported }
   "notifications.mutes": { input: undefined; output: readonly Mute[] }
   "notifications.setMute": {
     input: { kind: "server" | "channel"; id: string; choice: MuteChoice }

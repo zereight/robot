@@ -62,6 +62,8 @@ export const testPlatform = () => {
     pickArchive: async () => undefined,
     pickAgentFileSave: async () => undefined,
     pickAgentFile: async () => undefined,
+    pickWorkflowFileSave: async () => undefined,
+    pickWorkflowFile: async () => undefined,
     openPath: async () => {},
     setStartAtLogin: () => {},
     setThemeSource: () => {},

@@ -1,12 +1,22 @@
-import type { MessageKey, Workflow } from "@robot/shared"
+import type { MessageKey, Workflow, WorkflowFilePreview } from "@robot/shared"
+import { Ellipsis } from "lucide-solid"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import type { ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { RoutinesView } from "../routines/RoutinesPage.tsx"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
+import { Menu } from "../ui/Menu.tsx"
+import { Presence } from "../ui/Presence.tsx"
 import { WorkflowEditor } from "./WorkflowEditor.tsx"
+import {
+  describeFileError,
+  ExportWorkflowsDialog,
+  ImportWorkflowsDialog,
+  WorkflowFileProblemDialog,
+} from "./WorkflowFileDialogs.tsx"
 import styles from "./workflows.module.css"
 
 const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) => {
@@ -18,13 +28,61 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
     { initialValue: [] as readonly Workflow[] },
   )
   onCleanup(window.robot.on("workflows.changed", () => void refetch()))
+  const [exporting, setExporting] = createSignal(false)
+  const [importPreview, setImportPreview] = createSignal<WorkflowFilePreview>()
+  const [fileProblem, setFileProblem] = createSignal<ErrorText>()
+
+  /** Asks for a workflow file. A readable file opens the dialog that lists its workflows. */
+  const startImport = async () => {
+    const serverId = ui.server()?.id
+    if (!serverId) return
+    try {
+      const found = await call("workflowFile.open", { serverId })
+      if (found) setImportPreview(found)
+    } catch (e) {
+      setFileProblem(describeFileError(e))
+    }
+  }
+
   return (
     <div class={styles.list} data-testid="wf-list">
       <div class={styles.bar}>
         <Button variant="primary" onClick={() => props.onOpen(null)} data-testid="wf-new">
           {t("workflows.new")}
         </Button>
+        <Menu
+          label={t("workflowFile.menu")}
+          icon={<Ellipsis size={16} />}
+          testId="wf-menu"
+          items={[
+            {
+              label: t("workflowFile.menu.export"),
+              onSelect: () => setExporting(true),
+              testId: "wf-menu-export",
+            },
+            {
+              label: t("workflowFile.menu.import"),
+              onSelect: () => void startImport(),
+              testId: "wf-menu-import",
+            },
+          ]}
+        />
       </div>
+      <Presence when={exporting()}>
+        {() => (
+          <ExportWorkflowsDialog workflows={workflows()} onClose={() => setExporting(false)} />
+        )}
+      </Presence>
+      <Presence when={importPreview()}>
+        {(preview) => (
+          <ImportWorkflowsDialog preview={preview} onClose={() => setImportPreview(undefined)} />
+        )}
+      </Presence>
+      <Presence when={fileProblem()}>
+        {(problem) => (
+          <WorkflowFileProblemDialog problem={problem} onClose={() => setFileProblem(undefined)} />
+        )}
+      </Presence>
       <Show
         when={workflows().length > 0}
         fallback={
