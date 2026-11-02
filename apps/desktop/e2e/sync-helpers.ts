@@ -60,8 +60,11 @@ export const agentNames = async (page: Page) =>
     .filter(Boolean)
     .sort()
 
-/** MacBook 2 opens MacBook 1. Settings > Devices is open on both. */
-export const link = async (one: Launched, two: Launched, twoWay: boolean) => {
+/**
+ * MacBook 2 opens MacBook 1. Settings > Devices is open on both. `canChange` is the switch "Let
+ * <device name> create and change agents" of the Allow dialog (spec 012); it is on at first.
+ */
+export const link = async (one: Launched, two: Launched, twoWay: boolean, canChange = true) => {
   await one.page.getByTestId("pair-open").click()
   const turnOn = one.page.getByTestId("pair-turn-on")
   if (await turnOn.isVisible().catch(() => false)) await turnOn.click()
@@ -80,6 +83,7 @@ export const link = async (one: Launched, two: Launched, twoWay: boolean) => {
   await expect(two.page.getByTestId("connect-found")).toBeVisible()
   if (!twoWay) await two.page.getByTestId("connect-two-way").click()
   await two.page.getByTestId("connect-finish").click()
+  if (!canChange) await one.page.getByTestId("join-can-change").click()
   await one.page.getByTestId("join-allow").click()
   await expect(two.page.getByTestId("connect-dialog")).toBeHidden()
   await one.page.getByTestId("pair-close").click()
@@ -129,12 +133,12 @@ export const synced = async (
   return { mock, data1, data2, one, two, ports, extra }
 }
 
-export const turnOnSync = async (one: Launched, two: Launched, wait = "live") => {
+export const turnOnSync = async (one: Launched, two: Launched, wait = "live", canChange = true) => {
   await openDevices(one.page)
   await setName(one.page, "MacBook 1")
   await openDevices(two.page)
   await setName(two.page, "MacBook 2")
-  await link(one, two, true)
+  await link(one, two, true, canChange)
   await startSync(two, "merge")
   await one.page.getByTestId("sync-request-allow").click()
   await expect(syncState(two.page, "MacBook 1")).toHaveAttribute("data-state", wait, {
