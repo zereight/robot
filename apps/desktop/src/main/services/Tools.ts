@@ -109,6 +109,11 @@ export interface ToolsService {
   browserState(agentId: string): { open: boolean; control: boolean }
   /** The user takes the controls (`true`) or gives them back (`false`). */
   setBrowserControl(agentId: string, control: boolean): void
+  /**
+   * "Teach a task" (spec 017) holds the browser of the agent for the user, also when the page is
+   * closed and opened again. Browser steps of the agent wait until it ends.
+   */
+  setTeaching(agentId: string, teaching: boolean): void
   closeBrowser(agentId: string): void
   /**
    * Where the browser of an agent shows in the app window. `undefined` hides it. The chat screen
@@ -318,6 +323,9 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const platform = yield* Platform
       const bus = yield* EventBus
       const control = new Set<string>()
+      /** Agents whose browser the user holds to teach a task. */
+      const teaching = new Set<string>()
+      const holds = (agentId: string) => control.has(agentId) || teaching.has(agentId)
       const wired = new Set<string>()
       const browserChanged = (agentId: string) => bus.emit("browser.changed", { agentId })
       const pageOf = (agentId: string) => {
@@ -572,7 +580,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
 
       /** Waits while the user holds the controls of the browser. Stop ends the wait. */
       const whileUserHolds = async (ctx: ToolContext) => {
-        while (control.has(ctx.agentId) && !ctx.signal.aborted)
+        while (holds(ctx.agentId) && !ctx.signal.aborted)
           await new Promise((r) => setTimeout(r, 200))
       }
 
@@ -957,13 +965,19 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         },
         browserState: (agentId) => ({
           open: platform.browser(agentId).isOpen(),
-          control: control.has(agentId),
+          control: holds(agentId),
         }),
         setBrowserControl: (agentId, user) => {
           if (user) control.add(agentId)
           else control.delete(agentId)
           // The page takes the clicks and keys of the user only while the user holds the controls.
-          pageOf(agentId).allowUserInput(user)
+          pageOf(agentId).allowUserInput(holds(agentId))
+          browserChanged(agentId)
+        },
+        setTeaching: (agentId, on) => {
+          if (on) teaching.add(agentId)
+          else teaching.delete(agentId)
+          pageOf(agentId).allowUserInput(holds(agentId))
           browserChanged(agentId)
         },
         closeBrowser: (agentId) => platform.browser(agentId).close(),

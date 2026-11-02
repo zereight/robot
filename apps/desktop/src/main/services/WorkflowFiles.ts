@@ -1,9 +1,12 @@
 import { readFileSync, statSync, writeFileSync } from "node:fs"
 import {
+  type ChecklistItem,
   type Edge,
   graphFault,
+  ignoredWorkflowFields,
   mapFileTexts,
   missingAgentNames,
+  type NotImported,
   nameKey,
   parseWorkflowFile,
   planNames,
@@ -25,6 +28,7 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer } from "effect"
 import { Agents } from "./Agents.ts"
+import { Checklists } from "./Checklists.ts"
 import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, secretKey } from "./Providers.ts"
@@ -39,8 +43,14 @@ export interface WorkflowFilesService {
   }): Effect.Effect<{ path: string | null; count: number }, AppError>
   /** Asks for a workflow file and reads it. Returns what an import would make, or null if cancelled. */
   open(serverId: string): Effect.Effect<WorkflowFilePreview | null, AppError>
-  /** Makes the workflows of the file that `open` read. All of them are off. */
-  import(input: { serverId: string }): Effect.Effect<WorkflowFileImported, AppError>
+  /**
+   * Makes the workflows of the file that `open` read that the user ticked (`pick`: their places
+   * in the file). All of them are off. A new workflow with something left to do gets a checklist.
+   */
+  import(input: {
+    serverId: string
+    pick: readonly number[]
+  }): Effect.Effect<WorkflowFileImported, AppError>
 }
 
 export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesService>()(
@@ -54,6 +64,7 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
       const providers = yield* Providers
       const secrets = yield* Secrets
       const platform = yield* Platform
+      const checklists = yield* Checklists
       /** The file that `open` read last. `import` makes its workflows. */
       let pending: string | undefined
 
@@ -89,9 +100,21 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         if (!parsed.ok) return yield* refusal(parsed)
         const hide = yield* hider
         const file: WorkflowFile = mapFileTexts(parsed.file, hide)
+        // A workflow where the app hid a secret in one of its texts starts not ticked.
+        const secrets = parsed.file.workflows.map((w) => {
+          let found = false
+          mapFileTexts({ workflows: [w] }, (text) => {
+            if (hide(text) !== text) found = true
+            return text
+          })
+          return found
+        })
         const taken = (yield* workflows.list(serverId)).map((w) => w.name)
         return {
           file,
+          secrets,
+          ignored: ignoredWorkflowFields(text),
+          taken,
           names: planNames(
             file.workflows.map((w) => w.name),
             taken,
@@ -227,6 +250,20 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         if (!path) return null
         const loaded = yield* load(path, serverId)
         pending = path
+        const notImported: NotImported[] = loaded.ignored.map((f) => ({
+          reason: "unknown_field",
+          ...f,
+        }))
+        // The file holds no channel: the place of each post step is not made.
+        for (const [i, w] of loaded.file.workflows.entries())
+          for (const [j, step] of w.steps.entries())
+            if (step.kind === "post")
+              notImported.push({
+                reason: "no_place",
+                owner: loaded.names[i] ?? w.name,
+                step: j + 1,
+                name: step.name,
+              })
         return {
           workflows: loaded.file.workflows.map((w, i) => {
             const name = loaded.names[i] ?? w.name
@@ -236,31 +273,60 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
               trigger: w.trigger.kind,
               steps: w.steps.length,
               notes: w.notes.length,
+              missingAgents: missingAgentNames({ workflows: [w] }, (key) =>
+                loaded.agentIds.has(key),
+              ),
+              secretRemoved: loaded.secrets[i] ?? false,
             }
           }),
-          missingAgents: missingAgentNames(loaded.file, (key) => loaded.agentIds.has(key)),
-          postSteps: loaded.file.workflows.reduce(
-            (sum, w) => sum + w.steps.filter((s) => s.kind === "post").length,
-            0,
-          ),
+          notImported,
         } satisfies WorkflowFilePreview
       })
 
       const importWorkflows = Effect.fn("WorkflowFiles.apply")(function* (input: {
         serverId: string
+        pick: readonly number[]
       }) {
         if (!pending) return yield* new AppError({ code: "invalid_input" })
         const loaded = yield* load(pending, input.serverId)
-        let made = 0
-        for (const [i, workflow] of loaded.file.workflows.entries()) {
-          const name = loaded.names[i] ?? workflow.name
-          const exit = yield* Effect.exit(
-            // Every imported workflow is off: its schedule does not fire until the user says so.
-            workflows.create(
-              toWorkflowInput(input.serverId, workflow, name, (key) => loaded.agentIds.get(key)),
-              { enabled: false },
-            ),
+        const picked = new Set(input.pick)
+        if (
+          picked.size !== input.pick.length ||
+          input.pick.some((i) => loaded.file.workflows[i] === undefined)
+        )
+          return yield* new AppError({ code: "invalid_input" })
+        if (picked.size === 0) return yield* new AppError({ code: "import_nothing_picked" })
+        const chosen = loaded.file.workflows.filter((_, i) => picked.has(i))
+        // Only the workflows that are made take a name.
+        const names = planNames(
+          chosen.map((w) => w.name),
+          loaded.taken,
+          WORKFLOW_NAME_MAX,
+        )
+        /** Makes one workflow, off, and the checklist of what it still needs. */
+        const makeOne = Effect.fn("WorkflowFiles.makeOne")(function* (
+          workflow: WorkflowFileWorkflow,
+          name: string,
+        ) {
+          // Every imported workflow is off: its schedule does not fire until the user says so.
+          const created = yield* workflows.create(
+            toWorkflowInput(input.serverId, workflow, name, (key) => loaded.agentIds.get(key)),
+            { enabled: false },
           )
+          const todo: ChecklistItem[] = []
+          for (const step of created.steps) {
+            if (step.kind === "agent" && step.agentId === "")
+              todo.push({ kind: "stepAgent", stepId: step.id, name: step.name })
+            if (step.kind === "post" && step.channelId === "")
+              todo.push({ kind: "stepPlace", stepId: step.id, name: step.name })
+          }
+          if (created.trigger.kind === "schedule") todo.push({ kind: "workflowOn" })
+          yield* checklists.create({ workflowId: created.id }, todo)
+        })
+        let made = 0
+        for (const [i, workflow] of chosen.entries()) {
+          const name = names[i] ?? workflow.name
+          const exit = yield* Effect.exit(makeOne(workflow, name))
           if (Exit.isFailure(exit)) {
             // The workflows made so far stay. The error names the one that stopped the import.
             const failed = exit.cause.reasons.find(Cause.isFailReason)

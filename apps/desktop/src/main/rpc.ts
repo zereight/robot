@@ -42,6 +42,7 @@ import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
+import { Checklists } from "./services/Checklists.ts"
 import { Data } from "./services/Data.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
@@ -60,6 +61,7 @@ import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
+import { Teach } from "./services/Teach.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
@@ -420,9 +422,27 @@ export const handlers: Handlers = {
       Effect.flatMap(({ serverId }) => AgentFiles.use((f) => f.open(serverId))),
     ),
   "agentFile.apply": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, model: Schema.NullOr(AgentModel) }))(
-      input,
-    ).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        model: Schema.NullOr(AgentModel),
+        pick: Schema.Array(
+          Schema.Struct({
+            index: Schema.Int,
+            instructions: Schema.Boolean,
+            routines: Schema.Array(Schema.Int),
+          }),
+        ),
+      }),
+    )(input).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
+  "checklists.forAgent": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Checklists.use((c) => c.forAgent(agentId))),
+    ),
+  "checklists.forWorkflow": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Checklists.use((c) => c.forWorkflow(workflowId))),
+    ),
   "providers.list": () => Providers.use((p) => p.list),
   "providers.connect": (input) =>
     decode(ProviderConnect)(input).pipe(
@@ -671,6 +691,33 @@ export const handlers: Handlers = {
       ),
       done,
     ),
+  "teach.state": () => Teach.use((t) => t.state),
+  "teach.start": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, result: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, result }) => Teach.use((t) => t.start(agentId, result))),
+    ),
+  "teach.open": (input) =>
+    decode(Schema.Struct({ url: Schema.String.check(Schema.isMaxLength(4000)) }))(input).pipe(
+      Effect.flatMap(({ url }) => Teach.use((t) => t.open(url))),
+      done,
+    ),
+  "teach.pause": (input) =>
+    decode(Schema.Struct({ paused: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ paused }) => Teach.use((t) => t.pause(paused))),
+      done,
+    ),
+  "teach.stop": () => Teach.use((t) => t.stop),
+  "teach.cancel": () => Teach.use((t) => t.cancel).pipe(done),
+  "teach.retry": () => Teach.use((t) => t.retry).pipe(done),
+  "teach.save": (input) =>
+    decode(
+      Schema.Struct({
+        name: Schema.String.check(Schema.isMaxLength(1000)),
+        description: Schema.String.check(Schema.isMaxLength(10_000)),
+        instructions: Schema.String.check(Schema.isMaxLength(100_000)),
+      }),
+    )(input).pipe(Effect.flatMap((draft) => Teach.use((t) => t.save(draft)))),
+  "teach.discard": () => Teach.use((t) => t.discard).pipe(done),
   "routines.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Routines.use((r) => r.list(serverId))),
@@ -753,7 +800,7 @@ export const handlers: Handlers = {
       Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
     ),
   "workflowFile.apply": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+    decode(Schema.Struct({ serverId: Schema.String, pick: Schema.Array(Schema.Int) }))(input).pipe(
       Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data))),
     ),
   "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),

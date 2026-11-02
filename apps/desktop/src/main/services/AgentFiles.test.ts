@@ -6,13 +6,16 @@ import {
   AGENT_FILE_MAX_BYTES,
   AGENT_NAME_MAX,
   type AgentFileFailure,
+  type AgentFilePreview,
   type AgentModel,
+  type AgentPick,
   charLength,
 } from "@robot/shared"
 import { Effect, Exit, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { AgentFiles } from "./AgentFiles.ts"
 import { Agents } from "./Agents.ts"
+import { Checklists } from "./Checklists.ts"
 import { Database } from "./Database.ts"
 import { Memory } from "./Memory.ts"
 import { secretKey } from "./Providers.ts"
@@ -22,6 +25,14 @@ import { Servers } from "./Servers.ts"
 import { testPlatform } from "./testing.ts"
 
 const KEY = "stored-key-0123456789abcdef"
+
+/** The ticks of a review where the user ticks every part. */
+const everything = (preview: AgentFilePreview | null): AgentPick[] =>
+  (preview?.agents ?? []).map((a, index) => ({
+    index,
+    instructions: true,
+    routines: a.routines.map((_, j) => j),
+  }))
 const SECRET_LOOKALIKE = "sk-looks-like-a-key-0123456789abcdef"
 
 /** One app with an in-memory database. `pick` sets what the file dialogs answer. */
@@ -72,13 +83,22 @@ const setup = async () => {
     pick.open = path
     return run(AgentFiles.use((f) => f.open(server.id)))
   }
+  /** Opens the file and imports every part of it: each agent, its instructions and routines. */
   const importFile = (path: string, picked: AgentModel | null = model) =>
-    openFile(path).then(() =>
-      run(AgentFiles.use((f) => f.import({ serverId: server.id, model: picked }))),
+    openFile(path).then((preview) =>
+      run(
+        AgentFiles.use((f) =>
+          f.import({ serverId: server.id, model: picked, pick: everything(preview) }),
+        ),
+      ),
     )
   const importExit = (path: string, picked: AgentModel | null = model) =>
-    openFile(path).then(() =>
-      exit(AgentFiles.use((f) => f.import({ serverId: server.id, model: picked }))),
+    openFile(path).then((preview) =>
+      exit(
+        AgentFiles.use((f) =>
+          f.import({ serverId: server.id, model: picked, pick: everything(preview) }),
+        ),
+      ),
     )
   const write = (name: string, value: unknown) => {
     const path = join(dataDir, name)
@@ -280,7 +300,7 @@ describe("import", () => {
     const path = await twoAgents()
     const app = await setup()
     const preview = await app.openFile(path)
-    expect(preview?.agents.map((a) => [a.name, a.fileName, a.routines])).toEqual([
+    expect(preview?.agents.map((a) => [a.name, a.fileName, a.routines.length])).toEqual([
       ["Ada", null, 1],
       ["Bob", null, 1],
     ])
@@ -526,7 +546,7 @@ describe("import", () => {
   test("an import needs a file that open read", async () => {
     const app = await setup()
     const result = await app.exit(
-      AgentFiles.use((f) => f.import({ serverId: app.server.id, model: null })),
+      AgentFiles.use((f) => f.import({ serverId: app.server.id, model: null, pick: [] })),
     )
     expect(failure(result)?.code).toBe("invalid_input")
     app.pick.open = undefined
@@ -562,5 +582,127 @@ describe("import", () => {
     const info = JSON.parse(failure(result)?.detail ?? "{}") as AgentFileFailure
     expect(info).toMatchObject({ name: "Ada", made: 0, code: "workspace_failed" })
     expect(await app.list()).toEqual([])
+  })
+})
+
+describe("review before an import (spec 014)", () => {
+  const routine = (name: string, prompt = "Say hi") => ({
+    name,
+    prompt,
+    schedule: { kind: "daily", times: ["08:30"] },
+  })
+  const pickIt = (app: App, pick: readonly AgentPick[]) =>
+    app.exit(AgentFiles.use((f) => f.import({ serverId: app.server.id, model: app.model, pick })))
+  const checklistOf = (app: App, agentId: string) =>
+    app.run(Checklists.use((c) => c.forAgent(agentId)))
+
+  test("the preview lists each part, marks hidden secrets, and names what is not imported", async () => {
+    const app = await setup()
+    const path = app.write(
+      "review.json",
+      file([
+        {
+          name: "Ada",
+          instructions: `Use ${SECRET_LOOKALIKE} here.`,
+          model: { accountId: "x", model: "y" },
+          routines: [routine("One"), { ...routine("Two", `with ${KEY}`), place: "general" }],
+        },
+        { name: "Bob", role: `Key ${KEY}`, instructions: "" },
+      ]),
+    )
+    const preview = await app.openFile(path)
+    expect(preview?.agents.map((a) => [a.name, a.secretRemoved, a.instructions])).toEqual([
+      ["Ada", false, { length: [..."Use [redacted] here."].length, secretRemoved: true }],
+      ["Bob", true, { length: 0, secretRemoved: false }],
+    ])
+    expect(preview?.agents[0]?.routines.map((r) => [r.name, r.secretRemoved])).toEqual([
+      ["One", false],
+      ["Two", true],
+    ])
+    expect(preview?.notImported).toEqual([
+      { reason: "unknown_field", owner: "Ada", field: "model" },
+      { reason: "unknown_field", owner: "Ada", field: "routines[1].place" },
+    ])
+    // Opening makes nothing.
+    expect(await app.list()).toEqual([])
+  })
+
+  test("one routine ticked and one agent not ticked: one agent with one paused routine and a checklist", async () => {
+    const app = await setup()
+    const path = app.write(
+      "two.json",
+      file([
+        { name: "Ada", instructions: "Be brief.", routines: [routine("One"), routine("Two")] },
+        { name: "Bob", routines: [routine("Three")] },
+      ]),
+    )
+    await app.openFile(path)
+    expect(
+      Exit.isSuccess(await pickIt(app, [{ index: 0, instructions: true, routines: [1] }])),
+    ).toBe(true)
+    const agents = await app.list()
+    expect(agents.map((a) => a.name)).toEqual(["Ada"])
+    const ada = agents[0]
+    if (!ada) throw new Error("no agent")
+    expect(ada.instructions).toBe("Be brief.")
+    const routines = await routineOf(app, ada.id)
+    expect(routines.map((r) => [r.name, r.enabled])).toEqual([["Two", false]])
+    const checklist = await checklistOf(app, ada.id)
+    expect(checklist?.items).toEqual([
+      { kind: "routine", routineId: routines[0]?.id ?? "", name: "Two" },
+    ])
+  })
+
+  test("instructions that are not ticked leave the agent empty; an agent without routines has no checklist", async () => {
+    const app = await setup()
+    const path = app.write("one.json", file([{ name: "Ada", instructions: "Secret plan" }]))
+    await app.openFile(path)
+    await pickIt(app, [{ index: 0, instructions: false, routines: [] }])
+    const [ada] = await app.list()
+    expect(ada?.instructions).toBe("")
+    expect(await checklistOf(app, ada?.id ?? "")).toBeNull()
+  })
+
+  test("an agent that is not ticked takes no name: the next agent keeps its own", async () => {
+    const app = await setup()
+    await app.make("Ada")
+    const path = app.write("names.json", file([{ name: "Ada" }, { name: "Ada 2" }]))
+    const preview = await app.openFile(path)
+    expect(preview?.agents.map((a) => a.name)).toEqual(["Ada 2", "Ada 2 2"])
+    await pickIt(app, [{ index: 1, instructions: true, routines: [] }])
+    expect((await app.list()).map((a) => a.name).sort()).toEqual(["Ada", "Ada 2"])
+  })
+
+  test("nothing ticked, or a place that the file does not have, is refused and makes nothing", async () => {
+    const app = await setup()
+    const path = app.write("one.json", file([{ name: "Ada", routines: [routine("One")] }]))
+    await app.openFile(path)
+    expect(failure(await pickIt(app, []))?.code).toBe("import_nothing_picked")
+    expect(failure(await pickIt(app, [{ index: 3, instructions: true, routines: [] }]))?.code).toBe(
+      "invalid_input",
+    )
+    expect(
+      failure(await pickIt(app, [{ index: 0, instructions: true, routines: [5] }]))?.code,
+    ).toBe("invalid_input")
+    expect(await app.list()).toEqual([])
+  })
+
+  test("a refused file is still refused before the review", async () => {
+    const app = await setup()
+    const path = app.write("bad.json", file([{ name: "Ada" }, { name: "ada" }]))
+    app.pick.open = path
+    const result = await app.exit(AgentFiles.use((f) => f.open(app.server.id)))
+    expect(failure(result)?.code).toBe("agent_file_duplicate")
+  })
+
+  test("deleting the agent deletes its checklist", async () => {
+    const app = await setup()
+    const path = app.write("one.json", file([{ name: "Ada", routines: [routine("One")] }]))
+    await app.openFile(path)
+    await pickIt(app, [{ index: 0, instructions: true, routines: [0] }])
+    const [ada] = await app.list()
+    expect(await checklistOf(app, ada?.id ?? "")).not.toBeNull()
+    app.db.run("DELETE FROM agent WHERE id = ?", ada?.id ?? "")
+    expect(app.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM import_checklist")?.n).toBe(0)
   })
 })

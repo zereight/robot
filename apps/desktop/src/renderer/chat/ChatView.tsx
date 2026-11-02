@@ -10,6 +10,7 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { AgentChecklist } from "../imports/ImportChecklist.tsx"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { focusMessage, setFocusMessage } from "../state/focus.ts"
@@ -25,6 +26,8 @@ export interface ChatViewProps {
   start: JSX.Element
   onConnect: () => void
   onChooseModel: () => void
+  /** Shows at the end of the list, after the messages, for example a draft skill card. */
+  end?: JSX.Element
 }
 
 const NEAR_BOTTOM_PX = 48
@@ -127,6 +130,7 @@ export const ChatView = (props: ChatViewProps) => {
       <div class={styles.scroller} ref={scroller} onScroll={onScroll} data-testid="chat-scroller">
         <div class={styles.list} role="log" aria-label={t("chat.messages")}>
           {props.start}
+          <AgentChecklist agentId={props.agent.id} />
           <For each={chat.messages}>
             {(message, index) => {
               const previous = () => chat.messages[index() - 1]
@@ -171,6 +175,7 @@ export const ChatView = (props: ChatViewProps) => {
           <Show when={working()}>
             <WorkingLine since={streaming()?.createdAt ?? Date.now()} />
           </Show>
+          {props.end}
         </div>
       </div>
       <Show when={!atBottom() || backTo() !== undefined}>

@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { TeachEvent } from "@robot/shared"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
@@ -19,6 +20,8 @@ export const testPlatform = () => {
   /** Whether the input of the user was let in or kept out, as "agent:on" or "agent:off". */
   const browserInput: string[] = []
   const pages = new Map<string, BrowserPage>()
+  /** The recorders of "Teach a task" that run now, by agent. A test calls one to act as the user. */
+  const recorders = new Map<string, (event: TeachEvent) => void>()
   const shell = {
     focused: true,
     notices: [] as { title: string; body: string; click: () => void }[],
@@ -63,6 +66,10 @@ export const testPlatform = () => {
       },
       onClosed: (l) => {
         listeners.push(l)
+      },
+      record: (listener) => {
+        if (listener) recorders.set(agentId, listener)
+        else recorders.delete(agentId)
       },
     }
   }
@@ -111,12 +118,12 @@ export const testPlatform = () => {
       return page
     },
   }
-  return { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, shell }
+  return { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, recorders, shell }
 }
 
 /** The full app layer on an in-memory database, with recorded events. */
 export const testRuntime = (options: { name?: string; network?: MemoryNetwork } = {}) => {
-  const { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, shell } =
+  const { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, recorders, shell } =
     testPlatform()
   const events: { event: string; payload: unknown }[] = []
   const runtime = ManagedRuntime.make(
@@ -132,7 +139,17 @@ export const testRuntime = (options: { name?: string; network?: MemoryNetwork } 
   )
   // The requests of linked devices run the real handlers, as in the app.
   void bindLinkDispatcher(runtime)
-  return { runtime, dataDir, trashed, events, browserLog, browserPlaced, browserInput, shell }
+  return {
+    runtime,
+    dataDir,
+    trashed,
+    events,
+    browserLog,
+    browserPlaced,
+    browserInput,
+    recorders,
+    shell,
+  }
 }
 
 export type TestRuntime = ReturnType<typeof testRuntime>["runtime"]

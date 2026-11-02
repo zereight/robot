@@ -188,6 +188,11 @@ describe("the steps of the device link and of sync", () => {
     // The number of steps is the data version that two computers compare before they sync.
     // Later steps follow these three.
     expect(migrations.length).toBeGreaterThan(MAIN_STEPS + 2)
+    // S44: the checklist that an import leaves is a step of its own, after the action log (S39).
+    const checklist = migrations.findIndex((sql) => sql.includes("CREATE TABLE import_checklist"))
+    const actionLog = migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log"))
+    expect(checklist).toBeGreaterThan(actionLog)
+    expect(migrations[checklist]).not.toContain("action_log")
   })
 
   test("a database that ran only the steps of main opens, migrates, and keeps its data", () => {
@@ -275,5 +280,19 @@ describe("the step of messages during a turn", () => {
     migrate(db)
     const columns = db.prepare("PRAGMA table_info(message)").all() as { name: string }[]
     expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining(["joined_to", "read_at"]))
+  })
+})
+
+describe("the step of skills (S45)", () => {
+  test("it comes after the step of messages during a turn, and no trigger of sync watches it", () => {
+    const joined = migrations.findIndex((sql) => sql.includes("ADD COLUMN joined_to"))
+    const step = migrations.findIndex((sql) => sql.includes("CREATE TABLE skill"))
+    expect(step).toBe(joined + 1)
+    const db = new DatabaseSync(":memory:")
+    for (const sql of migrations) db.exec(sql)
+    const triggers = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'skill'")
+      .all()
+    expect(triggers).toEqual([])
   })
 })
