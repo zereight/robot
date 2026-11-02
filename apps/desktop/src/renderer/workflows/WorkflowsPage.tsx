@@ -5,7 +5,7 @@ import { RoutinesView } from "../routines/RoutinesPage.tsx"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
-import { Button, Segmented } from "../ui/controls.tsx"
+import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { WorkflowEditor } from "./WorkflowEditor.tsx"
 import styles from "./workflows.module.css"
 
@@ -35,15 +35,27 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
       >
         <For each={workflows()}>
           {(w) => (
-            <div class={styles.card} data-testid="wf-card" data-running={w.running}>
+            <div
+              class={styles.card}
+              data-testid="wf-card"
+              data-running={w.running}
+              data-enabled={w.enabled}
+            >
               <div class={styles.cardMain}>
                 <strong>{w.name}</strong>
                 <span class={styles.hint}>
                   {t(`workflows.trigger.${w.trigger.kind}` as MessageKey)} ·{" "}
                   {t("workflows.stepCount", { n: w.steps.length })}
                   {w.running ? ` · ${t("workflows.runState.running")}` : ""}
+                  {w.enabled ? "" : ` · ${t("workflows.off")}`}
                 </span>
               </div>
+              <Switch
+                label={t("workflows.enabled.label", { name: w.name })}
+                checked={w.enabled}
+                onChange={(enabled) => call("workflows.update", { id: w.id, patch: { enabled } })}
+                testId="wf-enabled"
+              />
               <Button
                 onClick={() => call("workflows.run", { id: w.id })}
                 disabled={w.running}

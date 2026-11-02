@@ -16,6 +16,8 @@ export class ProviderFailure extends Error {
       | "provider_unreachable"
       | "provider_error"
       | "provider_limit"
+      /** The model is overloaded and asks to try later. */
+      | "provider_busy"
       /** The subscription sign-in of an agent runtime is gone or refused. */
       | "runtime_signed_out",
     readonly detail?: string,
@@ -68,6 +70,9 @@ export const failureFrom = async (response: Response): Promise<ProviderFailure> 
     return new ProviderFailure("provider_auth", message)
   if (response.status === 429)
     return new ProviderFailure("provider_limit", message, resetTime(response))
+  // 503 is the status of an overloaded OpenAI model; 529 is the status that Anthropic uses.
+  if (response.status === 503 || response.status === 529 || /overloaded/i.test(message))
+    return new ProviderFailure("provider_busy", message)
   return new ProviderFailure("provider_error", `${response.status} ${message}`)
 }
 

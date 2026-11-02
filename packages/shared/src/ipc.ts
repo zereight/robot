@@ -238,6 +238,7 @@ export interface RpcEvents {
   "workflows.run": { runId: string }
   "island.state": IslandState
   "app.openPlace": PlaceTarget
+  "app.openPage": { page: "workflows" }
   "notifications.changed": Record<string, never>
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }

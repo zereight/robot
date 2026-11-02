@@ -76,7 +76,7 @@ export const NotificationsSection = () => {
             <span>{t(`settings.notify.kind.${kind}` as MessageKey)}</span>
             <Switch
               label={t(`settings.notify.kind.${kind}` as MessageKey)}
-              checked={kinds()[kind]}
+              checked={kinds()[kind] !== false}
               onChange={(on) => app.update({ notifyKinds: { ...kinds(), [kind]: on } })}
               testId={`notify-${kind}`}
             />
