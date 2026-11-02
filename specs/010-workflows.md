@@ -101,6 +101,9 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 - A workflow cannot be edited while it runs; the editor shows it read-only until the run ends.
 - When two computers sync (019), a workflow runs on one computer only. The other computer shows
   "Runs on <name>".
+- A linked client (012, "Workflows") sees the workflows of the server and runs and stops them.
+  It changes them only with the switch "Can create and change agents". The assistant and the
+  workflow file stay on the server.
 - After an app restart, a run that was going is marked failed with the reason "The app
   stopped". This includes a run that waits at an approval step. Its tasks fail the same way,
   also a task that waits for an approval or a question (see 005).
