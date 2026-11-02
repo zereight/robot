@@ -162,3 +162,8 @@
 .entryState {
   color: var(--c-text-muted);
 }
+
+/* An item that the Today page asks for lights up for a moment. */
+.card[data-flash="true"] {
+  background: var(--c-selected);
+}
