@@ -26,6 +26,9 @@ chat. Later you put several agents in a channel and give them one job together.
 Your conversations, files and settings stay on your computer. Only the model provider you
 choose receives the messages you send to it.
 
+ROBot does not train or change a model. An agent gets better at its job through things that you
+can see and edit: its instructions, its memory, its knowledge, and the skills that you save.
+
 > **Status: early alpha.** Milestone M1 (agents and direct chat) is in progress. Builds are
 > unsigned pre-releases. Expect changes to data and settings between versions.
 

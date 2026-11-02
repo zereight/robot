@@ -714,6 +714,8 @@ export const ko: Record<MessageKey, string> = {
   "agents.history.restore": "복원",
   "agents.history.current": "현재",
   "agents.memory.title": "메모리",
+  "honest.line":
+    "에이전트는 지침, 메모리, 지식, 그리고 사용자가 저장한 스킬로 더 나아집니다. ROBot은 모델을 훈련하지 않습니다.",
   "agents.memory.hint": "이 에이전트가 기억하는 짧은 사실입니다. 메시지와 관련된 항목만 읽습니다.",
   "agents.memory.empty": "저장된 항목이 없습니다.",
   "agents.memory.add": "추가",
@@ -781,9 +783,9 @@ export const ko: Record<MessageKey, string> = {
   "teach.result.hint":
     "녹화는 이 컴퓨터에만 남아요. 초안을 쓰려고 단계 목록만 에이전트의 모델에 한 번 보내요.",
   "teach.start": "시작",
-  "teach.busy.self": "이 에이전트는 지금 작업을 배우는 중이에요.",
+  "teach.busy.self": "이 에이전트의 작업을 지금 녹화하고 있어요.",
   "teach.busy.other":
-    "{name}이(가) 지금 작업을 배우는 중이에요. 그 작업을 먼저 끝내거나 취소해 주세요.",
+    "{name}의 작업을 지금 녹화하고 있어요. 그 녹화를 먼저 끝내거나 취소해 주세요.",
   "teach.teaching": "가르치는 중",
   "teach.paused": "일시 정지됨",
   "teach.steps": "단계: {count}",
@@ -812,8 +814,7 @@ export const ko: Record<MessageKey, string> = {
   "teach.draft.try": "써 보기",
   "skills.chip.show": "보냈을 때의 지시 사항 보기",
   "skills.chip.remove": "스킬 {name} 빼기",
-  "error.teach_busy":
-    "{detail}이(가) 지금 작업을 배우는 중이에요. 녹화는 한 번에 하나만 할 수 있어요.",
+  "error.teach_busy": "{detail}의 작업을 지금 녹화하고 있어요. 녹화는 한 번에 하나만 할 수 있어요.",
   "error.teach_result_invalid": "결과를 1자에서 500자 사이로 써 주세요.",
   "error.teach_not_recording": "지금 가르치는 작업이 없어요.",
   "error.teach_bad_address": "이 주소는 열 수 없어요. example.com 같은 웹 주소를 써 주세요.",
@@ -1249,7 +1250,7 @@ export const ko: Record<MessageKey, string> = {
   "knowledge.enabled": "지식 사용",
   "knowledge.off": "이 에이전트는 지식을 끄고 있습니다.",
   "knowledge.empty": "아직 글이 없습니다.",
-  "knowledge.empty.hint": "에이전트는 배우면서 글을 추가합니다. 직접 추가할 수도 있습니다.",
+  "knowledge.empty.hint": "에이전트는 작업하면서 글을 추가합니다. 직접 추가할 수도 있습니다.",
   "knowledge.count": "글 {count}개 / 최대 {max}개",
   "knowledge.full": "글 {max}개 한도에 도달했습니다. 에이전트는 더 추가할 수 없습니다.",
   "knowledge.search": "글 검색",
