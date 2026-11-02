@@ -317,3 +317,26 @@ describe("the step of skills (S45)", () => {
     expect(triggers).toEqual([])
   })
 })
+
+describe("the step for the times of a task", () => {
+  test("it adds two empty columns, and old tasks keep their rows with unknown times", () => {
+    const step = migrations.findIndex((sql) => sql.includes("ADD COLUMN first_reply_at"))
+    // It follows the step of the import checklist, the last step of main when it was added.
+    expect(step).toBeGreaterThan(
+      migrations.findIndex((sql) => sql.includes("CREATE TABLE import_checklist")),
+    )
+    const db = upTo(step)
+    db.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, created_at, updated_at)
+        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1);
+      INSERT INTO task (id, agent_id, prompt, label, source, state, created_at)
+        VALUES ('t', 'a', 'hi', 'hi', 'chat', 'done', 5);
+    `)
+    db.exec(migrations[step] as string)
+    expect(db.prepare("SELECT id, asked_at, first_reply_at FROM task").all()).toEqual([
+      { id: "t", asked_at: null, first_reply_at: null },
+    ])
+  })
+})

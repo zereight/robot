@@ -13,6 +13,7 @@ import {
   type ChatSend,
   type CutNotice,
   type FilePart,
+  hasVisibleReply,
   holdOutside,
   isTaskProgress,
   type MessagePart,
@@ -317,6 +318,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const live = new Map<string, LiveTurn>()
       /** Agents whose last turn ended with messages that the agent did not read. */
       const unreadLeft = new Set<string>()
+      /**
+       * When the user sent a message or a queued item, by its id. The times of the task that answers
+       * it count from here (spec 005). A turn that no new message started has no entry.
+       */
+      const asks = new Map<string, number>()
       /** Writes a queued item as a message, and moves its origin to the message. */
       const insertQueued = (agentId: string, next: QueuedMessage) => {
         const sender = senders.get(next.id)
@@ -336,6 +342,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (origin) {
           origins.delete(next.id)
           origins.set(row.id, origin)
+        }
+        const asked = asks.get(next.id)
+        if (asked !== undefined) {
+          asks.delete(next.id)
+          asks.set(row.id, asked)
         }
       }
 
@@ -564,6 +575,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const open = all
           .slice(lastReply + 1)
           .filter((r) => r.author === "user" && r.joined_to === null)
+        const askedAt = lastUser ? asks.get(lastUser.id) : undefined
+        if (lastUser) asks.delete(lastUser.id)
+        const source = (lastUser ? origins.get(lastUser.id)?.source : undefined) ?? "chat"
         const prompt =
           (open.length > 1
             ? open.map((r) => textOf(toMessage(r))).join("\n\n")
@@ -575,10 +589,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           (yield* tasks.create({
             agentId,
             prompt,
-            source: (lastUser ? origins.get(lastUser.id)?.source : undefined) ?? "chat",
+            source,
             sourceId: (lastUser ? origins.get(lastUser.id)?.sourceId : undefined) ?? agentId,
             messageId: reply.id,
             retryOf: retryLinks.get(agentId) ?? null,
+            // A routine or a workflow starts its task with no message of the user (spec 005).
+            askedAt: source === "chat" && !retryLinks.has(agentId) ? (askedAt ?? null) : null,
           }))
         if (!resumed) {
           retryLinks.delete(agentId)
@@ -644,6 +660,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           },
         }
         live.set(agentId, turn)
+        // The first part that the user sees is saved and shown at once, and its time is kept.
+        let replied = task.firstReplyAt !== null
+        const firstReply = () => !replied && hasVisibleReply(parts)
+        const markReplied = () => {
+          replied = true
+          tasks.replied(task.id)
+        }
 
         const save = (
           status: MessageStatus,
@@ -686,14 +709,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             const boundary = applyEvent(parts, event)
             activity.setStep(agentId, runningStepKind(parts))
             const now = Date.now()
-            if (boundary || now - lastSave >= SAVE_EVERY_MS) {
+            const first = firstReply()
+            if (boundary || first || now - lastSave >= SAVE_EVERY_MS) {
               save("streaming")
               lastSave = now
             }
-            if (boundary || now - lastEmit >= EMIT_EVERY_MS) {
+            if (boundary || first || now - lastEmit >= EMIT_EVERY_MS) {
               publish()
               lastEmit = now
             }
+            if (first) markReplied()
           })
 
         const stream = Effect.gen(function* () {
@@ -740,6 +765,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             parts[index] = change(part)
             save("streaming")
             publish()
+            // A question card or an approval card is a reply that the user sees.
+            if (firstReply()) markReplied()
           }
           const context: ToolContext = {
             agentId,
@@ -1040,6 +1067,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             files,
             ...(skill ? { skill } : {}),
           }
+          asks.set(item.id, Date.now())
           if (origin) origins.set(item.id, origin)
           if (sender) senders.set(item.id, sender)
           queue.push(item)
@@ -1058,6 +1086,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           null,
           skill,
         )
+        asks.set(row.id, row.created_at)
         if (origin) origins.set(row.id, origin)
         yield* kick(input.agentId)
         return { queued: false }
@@ -1143,7 +1172,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
         for (const later of all.slice(index + 1))
           bus.emit("chat.removed", { agentId, messageId: later.id })
-        emitMessage(messageRow(messageId) as MessageRow)
+        const edited = messageRow(messageId) as MessageRow
+        asks.set(messageId, edited.edited_at ?? Date.now())
+        emitMessage(edited)
         yield* kick(agentId)
       })
 

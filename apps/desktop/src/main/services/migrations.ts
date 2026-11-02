@@ -478,6 +478,12 @@ export const migrations: readonly string[] = [
   CREATE INDEX import_checklist_workflow ON import_checklist (workflow_id);
   `,
   `
+  -- The times of a task (spec 005): when the message that started it was sent, and when the first
+  -- part of the reply that the user can see was stored. Both stay empty when they are not known.
+  ALTER TABLE task ADD COLUMN asked_at INTEGER;
+  ALTER TABLE task ADD COLUMN first_reply_at INTEGER;
+  `,
+  `
   -- How far the turn of a task went: not_sent, sent or started (spec 005). It only goes up. A task
   -- from before this step has none, and shows no line about it.
   ALTER TABLE task ADD COLUMN progress TEXT;
