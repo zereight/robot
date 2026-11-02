@@ -33,6 +33,10 @@ export interface PlatformService {
   pickAgentFileSave(defaultName: string): Promise<string | undefined>
   /** An agent file to open, or undefined when cancelled. */
   pickAgentFile(): Promise<string | undefined>
+  /** Where to save a workflow file, or undefined when cancelled. */
+  pickWorkflowFileSave(defaultName: string): Promise<string | undefined>
+  /** A workflow file to open, or undefined when cancelled. */
+  pickWorkflowFile(): Promise<string | undefined>
   openPath(path: string): Promise<void>
   setStartAtLogin(enabled: boolean): void
   setThemeSource(theme: "system" | "dark" | "light"): void

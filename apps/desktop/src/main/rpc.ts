@@ -48,6 +48,7 @@ import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
+import { WorkflowFiles } from "./services/WorkflowFiles.ts"
 import { Workflows } from "./services/Workflows.ts"
 
 export type Services = AppServices
@@ -472,6 +473,18 @@ export const handlers: Handlers = {
   "workflows.runDetail": (input) =>
     decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
       Effect.flatMap(({ runId }) => Workflows.use((w) => w.runDetail(runId))),
+    ),
+  "workflowFile.export": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, workflowIds: Schema.Array(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.export(data)))),
+  "workflowFile.open": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
+    ),
+  "workflowFile.apply": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data))),
     ),
   "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),
   "notifications.setMute": (input) =>

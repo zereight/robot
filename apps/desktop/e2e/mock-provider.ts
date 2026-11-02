@@ -57,6 +57,9 @@ const failedOnce = new Set<string>()
 const plan = (body: ChatBody) => {
   const last = body.messages.at(-1)?.content ?? ""
   const text = last.split("\n").at(-1) ?? ""
+  // A condition in the mode "Ask a model": the model answers yes when the text holds "Hello".
+  if (text === "Reply with yes or no only.")
+    return { chunks: [last.includes("Hello") ? "Yes" : "No"], delay: 0 }
   // A lead that splits a job answers with a plan. The members are Bo and Cy.
   if (text.includes("split two"))
     return {

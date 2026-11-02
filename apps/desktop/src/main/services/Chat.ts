@@ -12,17 +12,20 @@ import {
   islandSummary,
   type MessagePart,
   type MessageStatus,
+  type ModelInfo,
   messageFiles,
   messageText,
   type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
+  type StepEffort,
+  stepTurnEffort,
   type TaskSource,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -70,6 +73,11 @@ export interface TaskOrigin {
   readonly sourceId: string
   /** Called when the task of the message starts, with its id. */
   readonly onStart?: (taskId: string) => void
+  /**
+   * The effort that this one turn asks for (a step of a workflow). It counts only when the
+   * model offers it. The agent keeps its own effort for every other turn.
+   */
+  readonly effort?: StepEffort
 }
 
 export interface ChatService {
@@ -296,6 +304,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           .filter((r) => r.author === "user")
           .at(-1)
         const asked = lastUser ? toMessage(lastUser) : undefined
+        const turnEffort = lastUser ? origins.get(lastUser.id)?.effort : undefined
         const prompt =
           (asked
             ? messageText(asked) ||
@@ -421,11 +430,24 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             knowledgeChanges: { count: 0 },
           }
+          // A step of a workflow can ask for its own effort for this one turn. It is read for each
+          // turn, so a retry decides again from the step and the model, not from the first try.
+          // The levels come from the model list of the account, as for the effort of an agent. A
+          // list that cannot be read leaves the levels that the vendor documents for the model.
+          let offered: readonly string[] = []
+          if (turnEffort) {
+            const accounts = yield* providers.list
+            const listed = yield* providers
+              .models(agent.model_account_id)
+              .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+            const kind = accounts.find((a) => a.id === agent.model_account_id)?.kind ?? "custom"
+            offered = offeredEfforts(kind, agent.model_name, listed)
+          }
           const events = yield* providers.events(
             agent.model_account_id,
             {
               model: agent.model_name,
-              effort: agent.model_effort,
+              effort: stepTurnEffort(turnEffort, agent.model_effort, offered),
               system,
               turns: buildTurns(agentId, reply.id),
               tools: tools.defs({

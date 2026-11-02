@@ -46,6 +46,8 @@ export const App = () => {
       setFocusMessage(target.messageId)
     }),
   )
+  // A notice from a workflow opens the page of workflows.
+  onCleanup(window.robot.on("app.openPage", ({ page }) => ui.selectPage(page)))
   const [newChannel, setNewChannel] = createSignal(false)
   const [newAgent, setNewAgent] = createSignal(false)
   const [exportAgents, setExportAgents] = createSignal(false)

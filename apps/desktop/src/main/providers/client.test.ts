@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import type { ModelInfo } from "@robot/shared"
-import { effortsFromCapabilities, keepEffort, listModels } from "./client.ts"
+import { effortsFromCapabilities, keepEffort, listModels, offeredEfforts } from "./client.ts"
 
 const level = (supported: boolean) => ({ supported })
 
@@ -45,6 +45,50 @@ describe("effortsFromCapabilities", () => {
     expect(effortsFromCapabilities(undefined)).toBeNull()
     expect(effortsFromCapabilities(null)).toBeNull()
     expect(effortsFromCapabilities({ batch: level(true) })).toBeNull()
+  })
+})
+
+describe("offeredEfforts", () => {
+  const listed: ModelInfo[] = [
+    { id: "claude-opus-5-5", label: "Opus", efforts: ["low", "medium", "high", "xhigh", "max"] },
+    { id: "claude-sonnet-4-6", label: "Sonnet 4.6", efforts: ["low", "medium", "high", "max"] },
+    { id: "opus", label: "Opus 5.5", efforts: ["low", "medium", "high", "xhigh", "max"] },
+  ]
+
+  test("the list of the account decides for a model that it names", () => {
+    expect(offeredEfforts("anthropic", "claude-sonnet-4-6", listed)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "max",
+    ])
+    // The list wins over the name, also when it says that the model takes none.
+    const none: ModelInfo[] = [{ id: "claude-opus-5-5", label: "Opus", efforts: [] }]
+    expect(offeredEfforts("anthropic", "claude-opus-5-5", none)).toEqual([])
+  })
+
+  test("a model that the list does not name, or no list, leaves the documented levels", () => {
+    expect(offeredEfforts("anthropic", "claude-fable-5-1", listed)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ])
+    expect(offeredEfforts("anthropic", "claude-opus-4-5")).toEqual(["low", "medium", "high"])
+    expect(offeredEfforts("openai", "o3-mini")).toEqual(["low", "medium", "high"])
+  })
+
+  test("an agent runtime and a custom address have only what the list says", () => {
+    expect(offeredEfforts("claude_code", "opus", listed)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ])
+    expect(offeredEfforts("claude_code", "sonnet", listed)).toEqual([])
+    expect(offeredEfforts("custom", "anything")).toEqual([])
   })
 })
 
