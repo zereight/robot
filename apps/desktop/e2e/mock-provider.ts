@@ -83,7 +83,8 @@ const plan = (body: ChatBody) => {
     }
   // "Check knowledge": the agent reports what the app found, line by line.
   if (last.includes("The app found this:")) {
-    const found = last.split("The app found this:")[1]?.trim() ?? ""
+    // What the app found is the lines up to the request that follows them.
+    const found = last.split("The app found this:")[1]?.split("\n\n")[0]?.trim() ?? ""
     return { chunks: [`Report of the check:\n${found}`], delay: 0 }
   }
   if (text.includes("slow"))

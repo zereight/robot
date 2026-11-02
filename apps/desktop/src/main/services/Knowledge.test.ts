@@ -856,7 +856,7 @@ describe("knowledge tools in a turn", () => {
     part = (await s.toolParts())[0]
     expect(part?.knowledge).toMatchObject({ kind: "write", change: "delete" })
     expect(existsSync(join(s.folder, "Vite config.md"))).toBe(false)
-    // A new chat turn cannot use it...
+    // A later turn cannot use it...
     await s.turn("hello")
     expect(seen.at(-1)?.system).not.toContain("Vite config")
     // ...until the delete is undone.

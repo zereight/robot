@@ -4,10 +4,12 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { DatabaseSync } from "node:sqlite"
 import { expect, type Page, test } from "@playwright/test"
 import { unzipSync } from "fflate"
 import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
@@ -36,6 +38,10 @@ const openKnowledge = async (page: Page) => {
   await expect(page.getByTestId("agent-profile").getByTestId("agent-name")).toBeFocused()
   await page.getByTestId("profile-tabs").getByText("Knowledge").click()
   await expect(page.getByTestId("knowledge-page")).toBeVisible()
+}
+/** Opens the folded list of changes on the Knowledge page. */
+const openChanges = async (page: Page) => {
+  await page.getByTestId("knowledge-changes-fold").locator("summary").first().click()
 }
 const closeProfile = async (page: Page) => {
   await page.keyboard.press("Escape")
@@ -113,8 +119,10 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   )
   expect(readFileSync(join(folder, "Quarterly revenue.md"), "utf8")).toContain("source: report.txt")
 
-  // A later turn gets the contents list, opens the article, and uses it.
-  await send(page, "What do you know about the quarterly revenue growth?")
+  // In a later turn, the agent gets the contents list, opens the article, and uses it. The reply
+  // comes from the list and the opened article, not from earlier messages.
+  const question = "What do you know about the quarterly revenue growth?"
+  await send(page, question)
   await settled(page)
   await expect(page.getByTestId("knowledge-read-card").last()).toContainText(
     "Read article: Quarterly revenue",
@@ -122,6 +130,20 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.locator("[data-testid=message][data-author=agent]").last()).toContainText(
     "Revenue grew 4 percent",
   )
+  type Chat = { messages: { role: string; content: string }[] }
+  const chats = () =>
+    mock.requests.filter((r) => r.path === "/v1/chat/completions").map((r) => r.body as Chat)
+  const first = chats().findIndex((b) => b.messages.at(-1)?.content.includes(question))
+  expect(first).toBeGreaterThan(-1)
+  // The first request of the turn: the instructions hold the contents list.
+  expect(chats()[first]?.messages[0]?.content).toContain(
+    "- Quarterly revenue: Revenue figures of the quarter",
+  )
+  // The next request: the article that the agent opened, as the result of its read.
+  const opened = chats()[first + 1]?.messages.at(-1)
+  expect(opened?.role).toBe("tool")
+  expect(opened?.content).toContain("Title: Quarterly revenue")
+  expect(opened?.content).toContain("Revenue grew 4 percent.")
   await shot(page, "s18-03-read-card")
 
   // The Knowledge page: list, reading pane, a broken link, a source, the time of the last change.
@@ -164,7 +186,8 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("knowledge-error")).toContainText("Another article has this title.")
   await page.getByTestId("knowledge-cancel").click()
 
-  // Delete an article: a later turn cannot use it. Undo from the change list: it can.
+  // Delete an article: a later turn cannot use it. Undo the delete: it can. Undo the undo: it is
+  // deleted again.
   await page.getByTestId("knowledge-item").filter({ hasText: "Costs" }).click()
   await page.getByTestId("knowledge-delete").click()
   await expect(page.getByTestId("knowledge-item")).toHaveCount(1)
@@ -175,16 +198,39 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await settled(page)
   await expect(page.getByTestId("knowledge-read-card")).toHaveCount(reads)
   await openKnowledge(page)
-  await page.getByTestId("knowledge-changes-fold").locator("summary").first().click()
+  await openChanges(page)
   await expect(page.getByTestId("knowledge-change").first()).toContainText("Deleted: Costs")
   await shot(page, "s18-05-changes")
   await page.getByTestId("knowledge-change-undo").first().click()
   await expect(page.getByTestId("knowledge-item")).toHaveCount(2)
   expect(readFileSync(join(folder, "Costs.md"), "utf8")).toContain("Costs fell 2 percent.")
+  // The undo is a new change of the user, with its own undo control.
+  await expect(page.getByTestId("knowledge-change").first()).toContainText("Added: Costs")
+  await expect(page.getByTestId("knowledge-change").first()).toContainText("You")
+  await expect(page.getByTestId("knowledge-change-undo").first()).toBeVisible()
   await closeProfile(page)
   await send(page, "Tell me about the costs once more.")
   await settled(page)
   await expect(page.getByTestId("knowledge-read-card").last()).toContainText("Read article: Costs")
+  // Undo the undo: the article is deleted again, and a later turn cannot use it.
+  await openKnowledge(page)
+  await openChanges(page)
+  await page.getByTestId("knowledge-change-undo").first().click()
+  await expect(page.getByTestId("knowledge-item")).toHaveCount(1)
+  await expect(page.getByTestId("knowledge-change").first()).toContainText("Deleted: Costs")
+  expect(existsSync(join(folder, "Costs.md"))).toBe(false)
+  await shot(page, "s18-05b-undo-of-undo")
+  await closeProfile(page)
+  const readsAgain = await page.getByTestId("knowledge-read-card").count()
+  await send(page, "Tell me about the costs after the second undo.")
+  await settled(page)
+  await expect(page.getByTestId("knowledge-read-card")).toHaveCount(readsAgain)
+  // Undo once more, so that the article is back for the steps that follow.
+  await openKnowledge(page)
+  await openChanges(page)
+  await page.getByTestId("knowledge-change-undo").first().click()
+  await expect(page.getByTestId("knowledge-item")).toHaveCount(2)
+  await closeProfile(page)
 
   // Undo from the line in the chat.
   await send(
@@ -239,6 +285,46 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await shot(page, "s18-07-key-refused")
   expect(existsSync(join(folder, "Secret.md"))).toBe(false)
   expect(allText(folder).some((text) => text.includes(GOOD_KEY))).toBe(false)
+
+  // A source that holds a stored key is refused too. The card says so, and no source is saved.
+  writeFileSync(join(workspace, "leak.txt"), `Settings page. Token: ${GOOD_KEY}\n`)
+  await send(page, `TOOL add_source ${JSON.stringify({ path: "leak.txt" })}`)
+  await settled(page)
+  await expect(page.getByTestId("knowledge-failed").last()).toContainText(
+    "Could not add source: leak.txt",
+  )
+  await expect(page.getByTestId("knowledge-failed").last()).toContainText(
+    "looks like a key or a token",
+  )
+  await shot(page, "s18-07b-source-key-refused")
+  expect(existsSync(join(folder, "sources", "leak.txt"))).toBe(false)
+  expect(readdirSync(join(folder, "sources"))).toEqual(["report.txt"])
+  expect(allText(folder).some((text) => text.includes(GOOD_KEY))).toBe(false)
+
+  // A file of an article that another app changed counts as an edit by the user: an approval
+  // card shows the text of the file beside the new text. Deny keeps the text of the file.
+  await send(
+    page,
+    `TOOL write_article ${JSON.stringify({ title: "Notes", summary: "n", body: "Agent text." })}`,
+  )
+  await settled(page)
+  const notes = join(folder, "Notes.md")
+  expect(readFileSync(notes, "utf8")).toContain("Agent text.")
+  writeFileSync(notes, `${readFileSync(notes, "utf8")}\nEdited in another app.\n`)
+  await send(
+    page,
+    `TOOL write_article ${JSON.stringify({ title: "Notes", body: "Agent rewrite" })}`,
+  )
+  await expect(page.getByTestId("ask-article")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("ask-before")).toContainText("Edited in another app.")
+  await expect(page.getByTestId("ask-after")).toContainText("Agent rewrite")
+  await expect(page.getByTestId("ask-always")).toHaveCount(0)
+  await shot(page, "s18-07c-outside-edit-asks")
+  await page.getByTestId("ask-deny").click()
+  await settled(page)
+  expect(readFileSync(notes, "utf8")).toContain("Edited in another app.")
+  expect(readFileSync(notes, "utf8")).not.toContain("Agent rewrite")
+  rmSync(notes)
 
   // A file made by another app shows up on its own.
   await openKnowledge(page)
@@ -301,10 +387,15 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   const names = Object.keys(entries).filter((n) => n.startsWith("knowledge/"))
   expect(names.some((n) => n.endsWith("/Quarterly revenue.md"))).toBe(true)
   expect(names.some((n) => n.endsWith("/sources/report.txt"))).toBe(true)
+  expect(names.some((n) => n.endsWith("leak.txt"))).toBe(false)
   const source = Object.entries(entries).find(([n]) => n.endsWith("/sources/report.txt"))
   expect(Buffer.from(source?.[1] ?? []).toString()).toBe("Revenue grew 4 percent in the quarter.")
-  for (const data of Object.values(entries))
-    expect(Buffer.from(data).includes(GOOD_KEY)).toBe(false)
+  // Nothing in the archive holds a stored key: not the articles, not the sources, not the chats.
+  expect(
+    Object.entries(entries)
+      .filter(([, data]) => Buffer.from(data).includes(GOOD_KEY))
+      .map(([name]) => name),
+  ).toEqual([])
 
   // Over the limit: with 500 articles the page says so, and a user cannot add more.
   for (let i = 0; i < 499; i++)
@@ -334,34 +425,94 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await app.close()
 })
 
-test("knowledge: the first save in a workspace that the user chose asks first", async () => {
-  test.setTimeout(120_000)
+test("knowledge: Open folder, 5 changes in a turn, and the first save in a chosen workspace", async () => {
+  test.setTimeout(240_000)
   const mock = await startMockProvider()
+  const rooted = mkdtempSync(join(tmpdir(), "robot-s18-root-"))
   const chosen = mkdtempSync(join(tmpdir(), "robot-s18-chosen-"))
   const userData = freshUserData()
-  const { app, page } = await launch(userData, {
-    ROBOT_SYSTEM_LOCALE: "en-US",
-    ROBOT_TEST_PICK_FOLDER: chosen,
-  })
+  const env = { ROBOT_SYSTEM_LOCALE: "en-US", ROBOT_TEST_PICK_FOLDER: rooted }
+  let { app, page } = await launch(userData, env)
   await resizeWindow(app, 1300, 860)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
-  // The folder for new workspaces is the user's choice, not the default.
+  // The user sets a folder for new workspaces. A folder under it is in the default workspace
+  // folder, so a first save there asks nothing.
   await page.getByTestId("open-settings").click()
   await page.getByTestId("setting-workspace-root").getByRole("button").last().click()
-  await expect(page.getByTestId("setting-workspace-root")).toContainText(chosen)
+  await expect(page.getByTestId("setting-workspace-root")).toContainText(rooted)
   await page.getByTestId("settings-close").click()
   await createAgent(page, "Bo")
+  const [boName] = readdirSync(rooted)
+  const bo = join(rooted, boName ?? "")
+  const boFolder = join(bo, "Knowledge")
+
+  // A source makes the folder, but no article is saved yet: Open folder stays off.
+  writeFileSync(join(bo, "plain.txt"), "Plain source.")
+  await send(page, `TOOL add_source ${JSON.stringify({ path: "plain.txt" })}`)
+  await settled(page)
+  await expect(page.getByTestId("ask-card")).toHaveCount(0)
+  await expect(page.getByTestId("knowledge-source-line")).toContainText("Added source: plain.txt")
+  expect(existsSync(join(boFolder, "sources", "plain.txt"))).toBe(true)
+  await openKnowledge(page)
+  await expect(page.getByTestId("knowledge-empty")).toContainText("No articles yet.")
+  await expect(page.getByTestId("knowledge-open-folder")).toBeDisabled()
+  await closeProfile(page)
+
+  // 6 changes in one turn: 5 are saved, and the sixth fails with a plain error in its card.
+  const six = Array.from({ length: 6 }, (_, i) => ({
+    name: "write_article",
+    args: { title: `Six ${i + 1}`, summary: "s", body: "x" },
+  }))
+  await send(page, `Save six articles. TOOLS ${JSON.stringify(six)}`)
+  await settled(page)
+  await expect(page.getByTestId("ask-card")).toHaveCount(0)
+  await expect(page.getByTestId("knowledge-line")).toHaveCount(5)
+  await expect(page.getByTestId("knowledge-failed")).toHaveCount(1)
+  await expect(page.getByTestId("knowledge-failed")).toContainText("Could not save article: Six 6")
+  await expect(page.getByTestId("knowledge-failed")).toContainText(
+    "The agent made 5 article changes in this turn. This is the limit.",
+  )
+  await shot(page, "s18-13-six-changes")
+  expect(
+    readdirSync(boFolder)
+      .filter((n) => n.endsWith(".md"))
+      .sort(),
+  ).toEqual(["Six 1.md", "Six 2.md", "Six 3.md", "Six 4.md", "Six 5.md"])
+  // The first article is saved, so the folder control is on.
+  await openKnowledge(page)
+  await expect(page.getByTestId("knowledge-count")).toContainText("5 of 500 articles")
+  await expect(page.getByTestId("knowledge-open-folder")).toBeEnabled()
+  await closeProfile(page)
+
+  // A second agent works in a folder that the user chose, outside the default workspace folder.
+  await createAgent(page, "Cy")
+  await app.close()
+  const db = new DatabaseSync(join(userData, "robot.db"))
+  const cyDir = join(chosen, "cy")
+  mkdirSync(cyDir)
+  db.prepare("UPDATE agent SET workspace = ? WHERE name = 'Cy'").run(cyDir)
+  db.close()
+  ;({ app, page } = await launch(userData, env))
+  await resizeWindow(app, 1300, 860)
+  await page
+    .getByTestId("section-agents")
+    .locator("[data-place-row]")
+    .filter({ hasText: "Cy" })
+    .click()
+  await expect(page.getByTestId("chat-start").filter({ hasText: "Cy" })).toBeVisible()
   await send(
     page,
     `TOOL write_article ${JSON.stringify({ title: "Alpha", summary: "a", body: "First." })}`,
   )
   await expect(page.getByTestId("ask-card")).toContainText("Knowledge", { timeout: 15_000 })
-  await expect(page.getByTestId("ask-card")).toContainText(chosen)
+  await expect(page.getByTestId("ask-card")).toContainText(join(cyDir, "Knowledge"))
+  // The card for a first save has no "Always allow": it asks again when the folder is missing.
+  await expect(page.getByTestId("ask-always")).toHaveCount(0)
   await shot(page, "s18-12-first-save-asks")
+  expect(existsSync(join(cyDir, "Knowledge"))).toBe(false)
   await page.getByTestId("ask-allow").click()
   await settled(page)
-  const [agentDir] = readdirSync(chosen)
-  expect(existsSync(join(chosen, agentDir ?? "", "Knowledge", "Alpha.md"))).toBe(true)
+  expect(existsSync(join(cyDir, "Knowledge", "Alpha.md"))).toBe(true)
   // The folder exists now: a second article asks nothing.
   await send(
     page,
@@ -370,6 +521,5 @@ test("knowledge: the first save in a workspace that the user chose asks first", 
   await settled(page)
   await expect(page.getByTestId("ask-card")).toHaveCount(0)
   await expect(page.getByTestId("knowledge-line").last()).toContainText("Updated article: Beta")
-  mkdirSync(chosen, { recursive: true })
   await app.close()
 })
