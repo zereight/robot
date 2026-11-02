@@ -164,6 +164,18 @@ export type ProviderConnect = typeof ProviderConnect.Type
 const CLAUDE_5_AND_LATER = /^claude-[a-z]+-(?:[5-9]|[1-9]\d)(?:-|$)/
 
 /**
+ * Claude models that think with a token budget and take no effort setting: Sonnet 4.5, Haiku 4.5,
+ * Opus 4 and 4.1, Sonnet 4, and Claude 3.7. For these, the level of the picker sets the budget.
+ */
+export const takesThinkingBudget = (modelId: string): boolean => {
+  const id = modelId.toLowerCase()
+  return (
+    /^claude-(?:sonnet-4-5|haiku-4-5|3-7-)/.test(id) ||
+    /^claude-(?:opus|sonnet)-4(?:-[01])?(?:-\d{8}|-latest)?$/.test(id)
+  )
+}
+
+/**
  * The effort levels that Anthropic documents for a Claude model id. The model list of the vendor
  * tells this too, and the app prefers it; this is for a list that does not.
  */
@@ -171,6 +183,7 @@ const claudeEfforts = (id: string): readonly string[] => {
   if (CLAUDE_5_AND_LATER.test(id) || /^claude-opus-4-[78](?:-|$)/.test(id)) return CLAUDE_EFFORTS
   if (/^claude-(?:opus|sonnet)-4-6(?:-|$)/.test(id)) return ["low", "medium", "high", "max"]
   if (/^claude-opus-4-5(?:-|$)/.test(id)) return EFFORTS
+  if (takesThinkingBudget(id)) return EFFORTS
   return []
 }
 

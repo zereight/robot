@@ -1,5 +1,5 @@
 import type { ModelInfo, ProviderKind, RuntimeKind } from "@robot/shared"
-import { CLAUDE_EFFORTS, effortsFor } from "@robot/shared"
+import { CLAUDE_EFFORTS, EFFORTS, effortsFor, takesThinkingBudget } from "@robot/shared"
 
 export interface Connection {
   /** Agent runtimes have no connection: they have no key and no address. */
@@ -114,6 +114,18 @@ export const offeredEfforts = (
 ): readonly string[] => listed?.find((m) => m.id === model)?.efforts ?? effortsFor(kind, model)
 
 /**
+ * The levels of an Anthropic model. The model list tells them when it can. A model that takes no
+ * effort setting but thinks with a token budget has the three levels that set the budget. When the
+ * list says nothing, the model name decides.
+ */
+export const anthropicEfforts = (id: string, capabilities: unknown): readonly string[] => {
+  const told = effortsFromCapabilities(capabilities)
+  if (told === null) return effortsFor("anthropic", id)
+  if (told.length > 0) return told
+  return takesThinkingBudget(id) ? EFFORTS : []
+}
+
+/**
  * The effort of an agent, kept only if an Anthropic model still takes it. The agent keeps the level
  * it was given; a model that takes no such level would refuse the request. `listed` is the model
  * list of the account when the app has it. Without it, the model name decides.
@@ -140,8 +152,7 @@ export const listModels = async (c: Connection): Promise<ModelInfo[]> => {
       id: m.id,
       label: m.display_name ?? m.id,
       efforts:
-        (c.kind === "anthropic" ? effortsFromCapabilities(m.capabilities) : null) ??
-        effortsFor(c.kind, m.id),
+        c.kind === "anthropic" ? anthropicEfforts(m.id, m.capabilities) : effortsFor(c.kind, m.id),
     }))
     .sort((a, b) => a.id.localeCompare(b.id))
 }
