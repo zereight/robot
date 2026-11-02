@@ -9,7 +9,7 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
-import { type Connection, listModels, ProviderFailure } from "../providers/client.ts"
+import { type Connection, keepEffort, listModels, ProviderFailure } from "../providers/client.ts"
 import type { TurnHooks, TurnInput } from "../providers/turn.ts"
 import { buildPrompt } from "../runtimes/prompt.ts"
 import { Database } from "./Database.ts"
@@ -183,7 +183,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
               {
                 connection: conn,
                 model: input.model,
-                effort: input.effort,
+                effort: keepEffort(row.kind, input.model, input.effort, modelCache.get(id)),
                 system: input.system,
                 turns: input.turns,
                 ...(input.tools ? { tools: input.tools } : {}),
