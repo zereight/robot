@@ -446,8 +446,13 @@ describe("the agent file", () => {
       a.section = "Secret Section"
     }
     writeFileSync(file, JSON.stringify(parsed))
-    await run(AgentFiles.use((f) => f.open(server.id)))
-    await run(AgentFiles.use((f) => f.import({ serverId: server.id, model: null })))
+    const preview = await run(AgentFiles.use((f) => f.open(server.id)))
+    const picks = (preview?.agents ?? []).map((_, index) => ({
+      index,
+      instructions: true,
+      routines: [],
+    }))
+    await run(AgentFiles.use((f) => f.import({ serverId: server.id, model: null, pick: picks })))
     const made = (await run(Agents.use((a) => a.list(server.id, false)))).find(
       (a) => a.name === "Ada 2",
     )

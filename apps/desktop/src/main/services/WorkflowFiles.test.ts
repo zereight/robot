@@ -14,6 +14,7 @@ import { Effect, Exit, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
+import { Checklists } from "./Checklists.ts"
 import { Database } from "./Database.ts"
 import { secretKey } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
@@ -92,8 +93,18 @@ const setup = async () => {
     pick.open = path
     return run(WorkflowFiles.use((f) => f.open(server.id)))
   }
+  /** Opens the file and imports every workflow of it. */
   const importFile = (path: string) =>
-    openFile(path).then(() => run(WorkflowFiles.use((f) => f.import({ serverId: server.id }))))
+    openFile(path).then((preview) =>
+      run(
+        WorkflowFiles.use((f) =>
+          f.import({
+            serverId: server.id,
+            pick: (preview?.workflows ?? []).map((_, i) => i),
+          }),
+        ),
+      ),
+    )
   const openExit = (path: string) => {
     pick.open = path
     return exit(WorkflowFiles.use((f) => f.open(server.id)))
@@ -440,9 +451,18 @@ describe("import", () => {
     const ada = await app.agent("Ada")
     const preview = await app.openFile(path)
     expect(preview).toEqual({
-      workflows: [{ name: "Digest", fileName: null, trigger: "schedule", steps: 5, notes: 1 }],
-      missingAgents: [],
-      postSteps: 1,
+      workflows: [
+        {
+          name: "Digest",
+          fileName: null,
+          trigger: "schedule",
+          steps: 5,
+          notes: 1,
+          missingAgents: [],
+          secretRemoved: false,
+        },
+      ],
+      notImported: [{ reason: "no_place", owner: "Digest", step: 4, name: "Post" }],
     })
     expect(await app.importFile(path)).toEqual({ workflows: 1 })
 
@@ -491,7 +511,7 @@ describe("import", () => {
     const path = await exported()
     const app = await setup()
     const preview = await app.openFile(path)
-    expect(preview?.missingAgents).toEqual(["Ada"])
+    expect(preview?.workflows[0]?.missingAgents).toEqual(["Ada"])
     await app.importFile(path)
     const [made] = await app.list()
     expect(made?.steps[0]).toMatchObject({ kind: "agent", agentId: "" })
@@ -538,7 +558,7 @@ describe("import", () => {
       ]),
     )
     const preview = await app.openFile(path)
-    expect(preview?.missingAgents).toEqual(["bob"])
+    expect(preview?.workflows[0]?.missingAgents).toEqual(["bob"])
     await app.importFile(path)
     const [made] = await app.list()
     expect(made?.steps.map((s) => (s.kind === "agent" ? s.agentId : null))).toEqual([ada.id, ""])
@@ -618,7 +638,9 @@ describe("import", () => {
     app.pick.open = undefined
     expect(await app.run(WorkflowFiles.use((f) => f.open(app.server.id)))).toBeNull()
     expect(
-      failure(await app.exit(WorkflowFiles.use((f) => f.import({ serverId: app.server.id })))),
+      failure(
+        await app.exit(WorkflowFiles.use((f) => f.import({ serverId: app.server.id, pick: [0] }))),
+      ),
     ).toMatchObject({ code: "invalid_input" })
   })
 })
@@ -655,7 +677,9 @@ describe("a file that is refused", () => {
     await nothingMade(app)
     // An import after a refused open has nothing to make.
     expect(
-      failure(await app.exit(WorkflowFiles.use((f) => f.import({ serverId: app.server.id })))),
+      failure(
+        await app.exit(WorkflowFiles.use((f) => f.import({ serverId: app.server.id, pick: [0] }))),
+      ),
     ).toMatchObject({ code: "invalid_input" })
   })
 
@@ -754,12 +778,98 @@ describe("the round trip", () => {
       "CREATE TRIGGER stop_two BEFORE INSERT ON workflow WHEN NEW.name = 'Two' BEGIN SELECT RAISE(ABORT, 'no'); END",
     )
     const error = failure(
-      await app.exit(WorkflowFiles.use((f) => f.import({ serverId: app.server.id }))),
+      await app.exit(WorkflowFiles.use((f) => f.import({ serverId: app.server.id, pick: [0, 1] }))),
     )
     expect(error?.code).toBe("workflow_file_failed")
     const info = JSON.parse(error?.detail ?? "{}") as WorkflowFileFailure
     expect(info).toMatchObject({ name: "Two", made: 1 })
     expect((await app.list()).map((w) => w.name)).toEqual(["One"])
+  })
+})
+
+describe("review before an import (spec 014)", () => {
+  const pickIt = (app: App, pick: readonly number[]) =>
+    app.exit(WorkflowFiles.use((f) => f.import({ serverId: app.server.id, pick })))
+  const checklistOf = (app: App, workflowId: string) =>
+    app.run(Checklists.use((c) => c.forWorkflow(workflowId)))
+
+  const hand = {
+    name: "Ask Zed",
+    trigger: { kind: "schedule", schedule: { kind: "daily", times: ["08:30"] } },
+    steps: [
+      { kind: "agent", name: "Zed works", agent: "Zed", prompt: "Say hi", model: "fast" },
+      { kind: "post", name: "Share", channel: "general" },
+      { kind: "agent", name: "Ada works", agent: "Ada" },
+    ],
+    connections: [
+      { from: 1, to: 2 },
+      { from: 2, to: 3 },
+    ],
+    color: "red",
+  }
+
+  test("the preview names the missing agents of each workflow, the place of a post step and unknown fields", async () => {
+    const app = await setup()
+    await app.agent("Ada")
+    const path = app.write(
+      "hand.json",
+      file([hand, { name: "Clean", steps: [{ kind: "notify", name: "N" }] }]),
+    )
+    const preview = await app.openFile(path)
+    expect(preview?.workflows.map((w) => [w.name, w.missingAgents, w.secretRemoved])).toEqual([
+      ["Ask Zed", ["Zed"], false],
+      ["Clean", [], false],
+    ])
+    expect(preview?.notImported).toEqual([
+      { reason: "unknown_field", owner: "Ask Zed", field: "color" },
+      { reason: "unknown_field", owner: "Ask Zed", field: "steps[0].model" },
+      { reason: "unknown_field", owner: "Ask Zed", field: "steps[1].channel" },
+      { reason: "no_place", owner: "Ask Zed", step: 2, name: "Share" },
+    ])
+  })
+
+  test("a workflow with a hidden secret is marked, and only the ticked workflows are made", async () => {
+    const app = await setup()
+    const path = app.write(
+      "two.json",
+      file([
+        { name: "Keyed", steps: [{ kind: "notify", name: "N", title: `Use ${LOOKALIKE}` }] },
+        { name: "Plain", steps: [{ kind: "notify", name: "N" }] },
+      ]),
+    )
+    const preview = await app.openFile(path)
+    expect(preview?.workflows.map((w) => w.secretRemoved)).toEqual([true, false])
+    expect(Exit.isSuccess(await pickIt(app, [1]))).toBe(true)
+    const made = await app.list()
+    expect(made.map((w) => w.name)).toEqual(["Plain"])
+    // A workflow with nothing to do has no checklist.
+    expect(await checklistOf(app, made[0]?.id ?? "")).toBeNull()
+  })
+
+  test("the new workflow has a checklist: pick an agent, pick a place, turn it on", async () => {
+    const app = await setup()
+    await app.agent("Ada")
+    const path = app.write("hand.json", file([hand]))
+    await app.openFile(path)
+    await pickIt(app, [0])
+    const [made] = await app.list()
+    expect(made?.enabled).toBe(false)
+    const checklist = await checklistOf(app, made?.id ?? "")
+    expect(checklist?.items).toEqual([
+      { kind: "stepAgent", stepId: "s1", name: "Zed works" },
+      { kind: "stepPlace", stepId: "s2", name: "Share" },
+      { kind: "workflowOn" },
+    ])
+  })
+
+  test("nothing ticked, or a place that the file does not have, is refused", async () => {
+    const app = await setup()
+    const path = app.write("one.json", file([{ name: "One" }]))
+    await app.openFile(path)
+    expect(failure(await pickIt(app, []))?.code).toBe("import_nothing_picked")
+    expect(failure(await pickIt(app, [2]))?.code).toBe("invalid_input")
+    expect(failure(await pickIt(app, [0, 0]))?.code).toBe("invalid_input")
+    expect(await app.list()).toHaveLength(0)
   })
 })
 

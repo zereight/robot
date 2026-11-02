@@ -30,6 +30,12 @@ export const loadUi = async () => {
   return { ui, servers }
 }
 
+/** A routine or workflow that the page of routines and workflows shows and focuses. */
+export interface RevealTarget {
+  readonly kind: "routine" | "workflow"
+  readonly id: string
+}
+
 const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
   const [ui, setUi] = createStore<UiState>(initial)
   // The linked servers come and go, and change state. A store keeps the rows (and their focus).
@@ -107,6 +113,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
   const [snapping, setSnapping] = createSignal(false)
   /** The open settings section, or undefined when settings are closed. Not kept between runs. */
   const [settingsSection, setSettingsSection] = createSignal<string>()
+  /** A routine or workflow that a checklist item asked to show. The page clears it when shown. */
+  const [revealTarget, setRevealTarget] = createSignal<RevealTarget>()
 
   return {
     ui,
@@ -137,6 +145,13 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
       if (id) update({ serverId: id, places: { ...ui.places, [id]: ref }, page: "chats" })
     },
     selectPage: (page: Page) => update({ page }),
+    revealTarget,
+    /** Opens the page of routines and workflows at one routine or workflow (spec 014). */
+    reveal: (target: RevealTarget) => {
+      setRevealTarget(target)
+      update({ page: "workflows" })
+    },
+    clearReveal: () => setRevealTarget(undefined),
     toggleSection: (sectionId: string) =>
       update({
         collapsed: ui.collapsed.includes(sectionId)
