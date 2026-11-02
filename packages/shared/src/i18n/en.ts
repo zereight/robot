@@ -246,6 +246,24 @@ export const en = {
   "runtime.signingIn": "Waiting for the sign-in in your browser…",
   "runtime.cancel": "Cancel",
   "runtime.recheck": "Check again",
+  "runtime.state.checking": "Checking",
+  "runtime.state.ready": "Ready",
+  "runtime.state.needs_sign_in": "Needs sign-in",
+  "runtime.state.needs_repair": "Needs repair",
+  "runtime.state.not_installed": "Not installed",
+  "runtime.reason.gone": "The file of the program is gone or was moved.",
+  "runtime.reason.start": "The program does not start.",
+  "runtime.reason.answer": "The program does not answer.",
+  "runtime.reason.unreadable": "The app cannot read the answer of the program.",
+  "runtime.checkedAt": "Checked at {time}",
+  "runtime.repair": "Repair",
+  "runtime.repairing": "Repairing…",
+  "runtime.repair.note":
+    "Repair looks for the program again. If the app downloaded the program, it downloads it again and checks it. Your sign-in does not change.",
+  "runtime.repair.help.system":
+    "Install the program again, or put it back where it was. Then choose Repair.",
+  "runtime.repair.help.download": "Check your network. Then choose Repair again.",
+  "runtime.problem.repair": "Repair did not work. {detail}",
   "runtime.limit.five_hour": "5-hour usage: {percent}% used, resets {time}",
   "runtime.limit.seven_day": "Weekly usage: {percent}% used, resets {time}",
   "runtime.limit.window": "Current window: {percent}% used, resets {time}",
@@ -281,7 +299,18 @@ export const en = {
   "error.provider_limit": "The usage limit of this account is reached.",
   "error.provider_not_found": "This account does not exist any more.",
   "error.provider_not_connected": "This account is not connected.",
-  "error.runtime_missing": "The program is not on this computer. Download it in Settings.",
+  "error.runtime_missing":
+    "Not installed: the program is not on this computer. Open Providers to install it.",
+  "error.runtime_repair_gone":
+    "The program needs repair: its file is gone or was moved. Open Providers and choose Repair.",
+  "error.runtime_repair_start":
+    "The program needs repair: it does not start. Open Providers and choose Repair.",
+  "error.runtime_repair_answer":
+    "The program needs repair: it does not answer. Open Providers and choose Repair.",
+  "error.runtime_repair_unreadable":
+    "The program needs repair: the app cannot read its answer. Open Providers and choose Repair.",
+  "error.read_only_unsupported":
+    "This agent is at the level Read only, and its program has no read-only mode. Pick another level.",
   "error.runtime_not_signed_in": "The program is not signed in. Sign in first.",
   "error.runtime_api_key_login":
     "The program is signed in with an API key, not a subscription. Sign in with your subscription.",
@@ -341,6 +370,12 @@ export const en = {
   "chat.connect": "Connect account",
   "chat.noModel": "This agent has no model yet.",
   "chat.chooseModel": "Choose model",
+  "chat.runtime.needs_repair": "The program of this agent needs repair.",
+  "chat.runtime.not_installed": "The program of this agent is not installed.",
+  "chat.runtime.repair": "Repair",
+  "chat.runtime.repairing": "Repairing…",
+  "chat.runtime.providers": "Providers",
+  "chat.tool.refusedReadOnly": "Refused: read only",
   "chat.today": "Today",
   "chat.yesterday": "Yesterday",
   "chat.messages": "Messages",
@@ -596,8 +631,47 @@ export const en = {
   "agents.permission.ask_all": "Ask for everything",
   "agents.permission.ask_risky": "Ask for risky steps",
   "agents.permission.full": "Full access",
-  "agents.permission.hint":
-    "Risky steps: deleting outside the workspace, sudo, installing software, sending data over the network.",
+  "agents.permission.read_only": "Read only",
+  "agents.permission.readOnlyOff": "{program} has no read-only mode.",
+  "agents.permission.line.app.read_only":
+    "The app decides each step. It refuses writing files, shell commands, the browser, tools of connections, computer use, messages to agents, and workflows.",
+  "agents.permission.line.app.ask_all": "The app decides each step. It asks before every step.",
+  "agents.permission.line.app.ask_risky":
+    "The app decides each step. It asks before risky steps: deleting outside the workspace, sudo, installing software, sending data over the network.",
+  "agents.permission.line.app.full": "The app decides each step. It asks for nothing.",
+  "agents.permission.line.claude_code.read_only":
+    "Claude Code starts with only its read and web tools. It cannot change files or run commands.",
+  "agents.permission.line.claude_code.ask_all":
+    "Claude Code starts as usual. The app asks before every step.",
+  "agents.permission.line.claude_code.ask_risky":
+    "Claude Code starts as usual. The app asks before risky steps.",
+  "agents.permission.line.claude_code.full":
+    "Claude Code starts as usual. The app asks for nothing.",
+  "agents.permission.line.codex.read_only":
+    "Codex starts in its read-only sandbox. It cannot change files or run commands that change things.",
+  "agents.permission.line.codex.ask_all":
+    "Codex starts in its read-only sandbox. It cannot change files.",
+  "agents.permission.line.codex.ask_risky":
+    "Codex starts in its workspace-write sandbox. It can change files in the workspace and cannot reach the network.",
+  "agents.permission.line.codex.full": "Codex starts with its sandbox turned off.",
+  "agents.permission.line.muse.read_only":
+    "Muse Code starts with its write and shell tools turned off.",
+  "agents.permission.line.muse.ask_all":
+    "Muse Code starts with its write and shell tools turned off. The app asks before other steps.",
+  "agents.permission.line.muse.ask_risky":
+    "Muse Code starts with its sandbox on. The app asks about steps that the sandbox does not allow.",
+  "agents.permission.line.muse.full":
+    "Muse Code starts with its approval and its sandbox turned off.",
+  "agents.permission.line.pi.read_only": "pi starts with only its read and search tools.",
+  "agents.permission.line.pi.ask_all": "pi starts with only its read and search tools.",
+  "agents.permission.line.pi.ask_risky":
+    "pi starts with its read, search, edit and write tools, and no shell.",
+  "agents.permission.line.pi.full": "pi starts with all its tools.",
+  "agents.permission.confirm.title": "Use Full access?",
+  "agents.permission.confirm.body":
+    "The agent changes files and runs commands without asking. Deny rules still apply.",
+  "agents.permission.confirm.use": "Use Full access",
+  "agents.permission.confirm.back": "Back",
   "agents.field.memory": "Use memory",
   "agents.history.title": "Instruction history ({count})",
   "agents.history.hint": "Each change of the instructions is kept here. At most 50 versions stay.",

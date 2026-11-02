@@ -32,6 +32,11 @@ export interface FakeRuntimes {
   codexCalls(): Record<string, unknown>[]
   museCalls(): Record<string, unknown>[]
   piCalls(): Record<string, unknown>[]
+  /**
+   * Every call that a program got, oldest first, as its first three arguments. A check shows
+   * here as a version or a sign-in question; a turn shows as `exec` or the like.
+   */
+  asks(program: "claude" | "codex" | "muse" | "pi"): string[][]
 }
 
 const calls = (file: string) => {
@@ -70,6 +75,7 @@ export const makeFakeRuntimes = (): FakeRuntimes => {
     claudeCalls: () => calls(join(dir, "claude-calls.jsonl")),
     claudeUsageCalls: () => calls(join(dir, "claude-usage-calls.jsonl")),
     codexCalls: () => calls(join(dir, "codex-calls.jsonl")),
+    asks: (program) => calls(join(dir, `${program}-asks.jsonl`)) as unknown as string[][],
   }
 }
 

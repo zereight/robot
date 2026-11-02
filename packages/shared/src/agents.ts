@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { RuntimeProblem } from "./providers.ts"
 import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
 
 export const AGENT_NAME_MAX = 40
@@ -58,6 +59,12 @@ export interface Agent {
   readonly sectionId: string | null
   readonly archived: boolean
   readonly state: AgentState
+  /**
+   * Set when the state is "offline" because the program of the agent needs repair or is not
+   * installed (spec 006). The message box says so and offers "Repair" or "Providers". It is
+   * a fact of this computer and does not sync (spec 019).
+   */
+  readonly runtimeProblem?: RuntimeProblem | null
   readonly permission: PermissionLevel
   /** When off, the agent does not read its memory. Items stay. */
   readonly memoryEnabled: boolean
@@ -76,6 +83,8 @@ export const AgentCreate = Schema.Struct({
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
   sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The level of the new agent. Without it the agent starts at the default (spec 007). */
+  permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
 })
 export type AgentCreate = typeof AgentCreate.Type
 

@@ -9,6 +9,7 @@ import { ProviderFailure } from "../providers/client.ts"
 import { bridgeToolName, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
+import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { ApprovalRequest, Login, RuntimeRun } from "./types.ts"
 
 export const parseVersion = (text: string): string | null =>
@@ -47,7 +48,22 @@ export const claudeEnv = (dir?: string): NodeJS.ProcessEnv => {
 
 export const claudeLogin = async (bin: string, dir?: string): Promise<Login> => {
   const done = await execute(bin, ["auth", "status"], { env: claudeEnv(dir), timeoutMs: 15_000 })
+  const fail = loginFailure(done)
+  if (fail) return { signedIn: false, method: null, user: null, plan: null, fail }
+  // The program prints its answer as JSON. Text that is not JSON is an answer that the app cannot
+  // read. No text at all is a program that is signed out.
+  if (done.stdout.trim() && !isJson(done.stdout))
+    return { signedIn: false, method: null, user: null, plan: null, fail: "unreadable" }
   return parseClaudeStatus(done.stdout)
+}
+
+const isJson = (text: string) => {
+  try {
+    JSON.parse(text)
+    return true
+  } catch {
+    return false
+  }
 }
 
 // ---- the usage windows, asked without a turn ------------------------------------------
@@ -225,9 +241,14 @@ const askUsageText = async (bin: string, dir?: string): Promise<RuntimeLimit[] |
 export const claudeUsage = async (bin: string, dir?: string): Promise<RuntimeLimit[] | null> =>
   (await askUsageReport(bin, dir)) ?? (await askUsageText(bin, dir))
 
-export const claudeVersion = async (bin: string): Promise<string | null> => {
+export const claudeProbe = async (bin: string): Promise<VersionProbe> => {
   const done = await execute(bin, ["--version"], { env: runtimeEnv(), timeoutMs: 15_000 })
-  return done.code === 0 ? parseVersion(done.stdout) : null
+  return versionProbe(done, parseVersion(done.stdout))
+}
+
+export const claudeVersion = async (bin: string): Promise<string | null> => {
+  const probe = await claudeProbe(bin)
+  return "version" in probe ? probe.version : null
 }
 
 /** Opens the sign-in of the subscription in the browser, and ends when the vendor program ends. */
@@ -447,6 +468,9 @@ export const describeRequest = (
 
 // ---- running a turn --------------------------------------------------------------------
 
+/** The built-in tools of Claude Code at "Read only": read, search and fetch. */
+export const CLAUDE_READ_ONLY_TOOLS = "Read,Grep,Glob,WebFetch,WebSearch"
+
 /** `mcpConfig` is the file that lets the program reach the tools of the app (see bridge.ts). */
 export const claudeArgs = (run: RuntimeRun, mcpConfig?: string): string[] => {
   const args = [
@@ -475,6 +499,9 @@ export const claudeArgs = (run: RuntimeRun, mcpConfig?: string): string[] => {
   if (run.system.trim()) args.push("--append-system-prompt", run.system)
   if (run.useTools) args.push("--disallowedTools", "AskUserQuestion")
   else args.push("--tools", "")
+  // "Read only": the program starts with the tools that read and fetch, and no tool that writes a
+  // file or runs a command. The program itself has nothing to do the work with (spec 007).
+  if (run.useTools && run.permission === "read_only") args.push("--tools", CLAUDE_READ_ONLY_TOOLS)
   return args
 }
 
@@ -607,9 +634,12 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
     if (run.signal.aborted) return
     if (!result) {
       const code = await exited
-      throw new ProviderFailure(
-        "provider_error",
-        startError?.message ?? (stderr.trim() || `The program ended with code ${code}.`),
+      throw (
+        startFailure(startError, code) ??
+        new ProviderFailure(
+          "provider_error",
+          stderr.trim() || `The program ended with code ${code}.`,
+        )
       )
     }
     if (!result.ok) throw claudeFailure(result.text, rejected ? limitsResetAt : null)

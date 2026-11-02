@@ -1,5 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   type ChatMessage,
@@ -1088,5 +1098,300 @@ describe("the browser for a subscription: the status island", () => {
     expect((await island(s)).waiting).toEqual([])
     expect(steps).toContain("browser")
     expect(steps).not.toContain("connection")
+  })
+})
+
+describe("runtime states (spec 006)", () => {
+  /** A program of its own that runs the stand-in, so a test can remove it, or make it fail. */
+  const wrapped = (flag?: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "robot-wrap-"))
+    const path = join(dir, "codex")
+    const body = `#!/bin/sh\n${flag ? `[ -f "${flag}" ] && exec /no/such/program\n` : ""}exec "${fake.codex}" "$@"\n`
+    const put = () => {
+      writeFileSync(path, body)
+      chmodSync(path, 0o755)
+    }
+    put()
+    return { dir, path, put }
+  }
+  const using = async <T>(
+    bin: string,
+    task: () => Promise<T>,
+    extra: Record<string, string> = {},
+  ) => {
+    const before = { bin: process.env.ROBOT_CODEX_BIN, ms: process.env.ROBOT_CHECK_MS }
+    process.env.ROBOT_CODEX_BIN = bin
+    Object.assign(process.env, extra)
+    try {
+      return await task()
+    } finally {
+      process.env.ROBOT_CODEX_BIN = before.bin
+      if (before.ms === undefined) delete process.env.ROBOT_CHECK_MS
+      else process.env.ROBOT_CHECK_MS = before.ms
+    }
+  }
+  const look = (t: ReturnType<typeof testRuntime>) =>
+    t.runtime.runPromise(Runtimes.use((r) => r.status("codex")))
+  const signedIn = { loggedIn: true, method: "chatgpt" }
+
+  test("a program that was never found is Not installed", async () => {
+    fake.setCodex(signedIn)
+    await using("/no/such/codex", async () => {
+      const state = await look(testRuntime())
+      expect(state).toMatchObject({ state: "not_installed", reason: null, busy: null })
+      expect(state.checkedAt).toBeGreaterThan(0)
+    })
+  })
+
+  test("a program that answers and is signed in is Ready, with the time of the check", async () => {
+    fake.setCodex(signedIn)
+    const before = Date.now()
+    const state = await look(testRuntime())
+    expect(state).toMatchObject({ state: "ready", reason: null, signedIn: true })
+    expect(state.checkedAt).toBeGreaterThanOrEqual(before)
+  })
+
+  test("a program that is signed out Needs sign-in", async () => {
+    fake.setCodex({ loggedIn: false })
+    expect(await look(testRuntime())).toMatchObject({ state: "needs_sign_in", reason: null })
+  })
+
+  test("Check again asks only for the version and the sign-in state: no turn, no sign-in change", async () => {
+    fake.setCodex(signedIn)
+    const t = testRuntime()
+    const asked = fake.asks("codex").length
+    const turns = fake.codexCalls().length
+    await look(t)
+    await look(t)
+    const calls = fake.asks("codex").slice(asked)
+    expect(calls.length).toBeGreaterThan(0)
+    for (const call of calls) expect([["--version"], ["login", "status"]]).toContainEqual(call)
+    expect(fake.codexCalls()).toHaveLength(turns)
+  })
+
+  test("a program that was found and is gone Needs repair; Repair finds it again and leaves the sign-in alone", async () => {
+    fake.setCodex(signedIn)
+    const program = wrapped()
+    await using(program.path, async () => {
+      const t = testRuntime()
+      expect(await look(t)).toMatchObject({ state: "ready" })
+      rmSync(program.path)
+      expect(await look(t)).toMatchObject({ state: "needs_repair", reason: "gone" })
+      // A look that is not "Repair" does not bring it back.
+      expect(await look(t)).toMatchObject({ state: "needs_repair", reason: "gone" })
+      program.put()
+      const asked = fake.asks("codex").length
+      const fixed = await t.runtime.runPromise(Runtimes.use((r) => r.repair("codex")))
+      expect(fixed).toMatchObject({ state: "ready", reason: null, busy: null, problem: null })
+      // Repair checks. It signs nothing in and nothing out.
+      for (const call of fake.asks("codex").slice(asked))
+        expect([["--version"], ["login", "status"]]).toContainEqual(call)
+      expect(JSON.parse(readFileSync(join(fake.dir, "codex-state.json"), "utf8"))).toEqual(signedIn)
+    })
+  })
+
+  test("a program that exits at start, or gives an answer with no version, Needs repair, each with its reason", async () => {
+    const t = testRuntime()
+    fake.setCodex({ ...signedIn, exitAtStart: true })
+    expect(await look(t)).toMatchObject({ state: "needs_repair", reason: "start" })
+    fake.setCodex({ ...signedIn, garbage: true })
+    expect(await look(t)).toMatchObject({ state: "needs_repair", reason: "unreadable" })
+    fake.setCodex(signedIn)
+    expect(await look(t)).toMatchObject({ state: "ready" })
+  })
+
+  test("a program that does not answer ends the check in a state, within the limit", async () => {
+    fake.setCodex({ ...signedIn, hang: 1_500 })
+    const t = testRuntime()
+    await using(
+      fake.codex,
+      async () => {
+        const started = Date.now()
+        const running = look(t)
+        // While the check runs, the row shows Checking.
+        await Bun.sleep(30)
+        expect(
+          await t.runtime.runPromise(Runtimes.use((r) => Effect.sync(() => r.cached("codex")))),
+        ).toMatchObject({ state: "checking" })
+        expect(await running).toMatchObject({ state: "needs_repair", reason: "answer" })
+        expect(Date.now() - started).toBeLessThan(5_000)
+        // The late answer of the program does not undo the state.
+        await Bun.sleep(100)
+        expect(
+          await t.runtime.runPromise(Runtimes.use((r) => Effect.sync(() => r.cached("codex")))),
+        ).toMatchObject({ state: "needs_repair", reason: "answer" })
+      },
+      { ROBOT_CHECK_MS: "300" },
+    )
+  })
+
+  test("a turn that cannot start the program sets Needs repair at once; the next turn fails at once, in words", async () => {
+    fake.setCodex(signedIn)
+    const flag = join(mkdtempSync(join(tmpdir(), "robot-flag-")), "broken")
+    const program = wrapped(flag)
+    await using(program.path, async () => {
+      const s = await chatSetup("codex")
+      // The program works for the check and breaks after it.
+      expect(await s.run(Runtimes.use((r) => Effect.sync(() => r.cached("codex"))))).toMatchObject({
+        state: "ready",
+      })
+      writeFileSync(flag, "x")
+      await s.send("hello")
+      await s.settled()
+      const reply = await s.reply()
+      expect(reply?.status).toBe("failed")
+      expect(reply?.error).toMatchObject({ code: "runtime_repair_start" })
+      expect(await s.run(Runtimes.use((r) => Effect.sync(() => r.cached("codex"))))).toMatchObject({
+        state: "needs_repair",
+        reason: "start",
+      })
+      // The agent shows the problem, so the message box can be off.
+      const agent = await s.run(Agents.use((a) => a.get(s.agent.id)))
+      expect(agent.runtimeProblem).toMatchObject({ state: "needs_repair", reason: "start" })
+      // The next turn fails at once, with the state in words, and does not start the program.
+      const asked = fake.asks("codex").length
+      const next = await s.run(
+        Chat.use((c) => c.send({ agentId: s.agent.id, text: "again", replyTo: null })).pipe(
+          Effect.exit,
+        ),
+      )
+      expect(code(next as Exit.Exit<unknown, { code: string }>)).toBe("runtime_repair_start")
+      expect(fake.asks("codex")).toHaveLength(asked)
+    })
+  })
+
+  test("a program that was never found fails a turn at once, with the state in words", async () => {
+    fake.setCodex(signedIn)
+    const s = await chatSetup("codex")
+    // The app never saw the program at the place that is set now.
+    rmSync(join(s.t.dataDir, "runtimes", "places.json"), { force: true })
+    await using("/no/such/codex", async () => {
+      await s.run(Runtimes.use((r) => r.status("codex")))
+      const next = await s.run(
+        Chat.use((c) => c.send({ agentId: s.agent.id, text: "hello", replyTo: null })).pipe(
+          Effect.exit,
+        ),
+      )
+      expect(code(next as Exit.Exit<unknown, { code: string }>)).toBe("runtime_missing")
+      const agent = await s.run(Agents.use((a) => a.get(s.agent.id)))
+      expect(agent.runtimeProblem).toMatchObject({ state: "not_installed" })
+    })
+  })
+
+  test("a task from a routine, a channel or a workflow fails at once, with the state in words", async () => {
+    fake.setCodex(signedIn)
+    const s = await chatSetup("codex")
+    await using("/no/such/codex", async () => {
+      // The program was there before, so the state is Needs repair.
+      await s.run(Runtimes.use((r) => r.status("codex")))
+      const exit = await s.run(
+        Chat.use((c) =>
+          c.send(
+            { agentId: s.agent.id, text: "from a routine", replyTo: null },
+            { source: "routine", sourceId: "r1" },
+          ),
+        ).pipe(Effect.exit),
+      )
+      expect(code(exit as Exit.Exit<unknown, { code: string }>)).toBe("runtime_repair_gone")
+    })
+  })
+})
+
+describe("the level Read only on a vendor program (spec 007)", () => {
+  test("a program with no read-only mode refuses the level for an agent; one with a mode takes it", async () => {
+    fake.setClaude({
+      loggedIn: true,
+      authMethod: "claude.ai",
+      email: "a@b.c",
+      plan: "max",
+      noReadOnly: true,
+    })
+    fake.setCodex({ loggedIn: true, method: "chatgpt" })
+    const t = testRuntime()
+    const run = t.runtime.runPromise
+    const local = await run(Servers.use((s) => s.local))
+    const claude = await run(Providers.use((p) => p.connect({ kind: "claude_code", name: "C" })))
+    const codex = await run(Providers.use((p) => p.connect({ kind: "codex", name: "X" })))
+    expect(await run(Providers.use((p) => p.readOnlySupported(claude.id)))).toBe(false)
+    expect(await run(Providers.use((p) => p.readOnlySupported(codex.id)))).toBe(true)
+    let n = 0
+    const make = (accountId: string, model: string, permission?: PermissionLevel) =>
+      run(
+        Agents.use((a) =>
+          a.create({
+            serverId: local.id,
+            name: `Ada ${++n}`,
+            role: "",
+            instructions: "",
+            model: { accountId, model, effort: null },
+            ...(permission ? { permission } : {}),
+          }),
+        ).pipe(Effect.exit),
+      )
+    expect(code((await make(claude.id, "sonnet", "read_only")) as never)).toBe(
+      "read_only_unsupported",
+    )
+    expect(code((await make(claude.id, "sonnet", "ask_all")) as never)).toBe("ok")
+    const ok = await make(codex.id, "default", "read_only")
+    expect(code(ok as never)).toBe("ok")
+    // An agent at Read only cannot move to a program that has no mode, and a level cannot be set
+    // on an agent whose program has none.
+    const agent = (ok as unknown as Exit.Success<{ id: string }>).value
+    expect(
+      code(
+        (await run(
+          Agents.use((a) =>
+            a.update(agent.id, { model: { accountId: claude.id, model: "sonnet", effort: null } }),
+          ).pipe(Effect.exit),
+        )) as never,
+      ),
+    ).toBe("read_only_unsupported")
+  })
+
+  test("the program starts in its own read-only mode", async () => {
+    const codex = await chatSetup("codex", "read_only")
+    await codex.send("hello")
+    await codex.settled()
+    const codexArgs = (fake.codexCalls().at(-1) as { args: string[] }).args
+    expect(codexArgs[codexArgs.indexOf("-s") + 1]).toBe("read-only")
+
+    const claude = await chatSetup("claude_code", "read_only")
+    await claude.send("hello")
+    await claude.settled()
+    const claudeArgs = (
+      fake
+        .claudeCalls()
+        .filter((c) => "prompt" in c)
+        .at(-1) as { args: string[] }
+    ).args
+    expect(claudeArgs[claudeArgs.lastIndexOf("--tools") + 1]).toBe(
+      "Read,Grep,Glob,WebFetch,WebSearch",
+    )
+
+    const muse = await chatSetup("muse", "read_only")
+    await muse.send("hello")
+    await muse.settled()
+    const museArgs = JSON.stringify(fake.museCalls().at(-1))
+    expect(museArgs).toContain("--disable-write")
+    expect(museArgs).toContain("--disable-shell")
+  })
+
+  test("a step that the program asks about is refused by the level, before any card or rule", async () => {
+    const s = await chatSetup("claude_code", "read_only")
+    await s.send("RUN: touch a.txt")
+    await s.settled()
+    // No card waited: the app refused the step, and the program was told.
+    expect((await s.card())?.state).toBe("failed")
+    expect(await s.card()).toMatchObject({ refused: "read_only" })
+    expect(messageText((await s.reply()) as ChatMessage)).toBe("It was denied.")
+  })
+
+  test("the browser of the app is refused at Read only for a vendor program too", async () => {
+    const s = await chatSetup("claude_code", "read_only")
+    await s.send('BROWSER:browser_open {"url":"https://example.com/a"}')
+    await s.settled()
+    expect(s.t.browserLog).toEqual([])
+    expect((await s.card())?.state).toBe("failed")
+    expect(await s.card()).toMatchObject({ refused: "read_only" })
   })
 })

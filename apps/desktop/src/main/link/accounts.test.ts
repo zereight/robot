@@ -36,6 +36,8 @@ describe("a linked device and the accounts of a computer", () => {
       "runtimes.install",
       "runtimes.signIn",
       "runtimes.cancel",
+      "runtimes.repair",
+      "runtimes.readOnly",
     ]) {
       expect(accountMethods).toContain(method)
     }
