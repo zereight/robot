@@ -68,6 +68,7 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         type="button"
         class={styles.headerName}
         aria-label={t("agents.openProfile", { name: props.agent.name })}
+        title={props.agent.name}
         onClick={() => setOpen(true)}
         data-testid="chat-header-agent"
       >
