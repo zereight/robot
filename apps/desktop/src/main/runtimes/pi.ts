@@ -19,8 +19,16 @@ export const piVersion = async (bin: string): Promise<string | null> => {
 }
 
 /**
+ * The thinking levels of pi that the user can pick, from the lowest. "off" is not in the list:
+ * it is the lack of an effort level, which the choice "Default" already covers.
+ */
+export const PI_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const
+
+/**
  * Reads the table of `pi --list-models`: provider, model, context, max output, thinking, images.
  * The program lists the models that it can use right now, so the table is also its sign-in state.
+ * The table only says if a model thinks. The levels that the model takes come from `piEfforts`;
+ * the levels here are what the app uses when pi cannot tell them.
  */
 export const parsePiModels = (stdout: string): ModelInfo[] => {
   const models: ModelInfo[] = []
@@ -44,7 +52,12 @@ export const parsePiModels = (stdout: string): ModelInfo[] => {
  */
 export const piLogin = async (bin: string): Promise<Login> => {
   const done = await execute(bin, ["--list-models"], { env: env(), timeoutMs: 60_000 })
-  const models = done.code === 0 ? parsePiModels(done.stdout) : []
+  const listed = done.code === 0 ? parsePiModels(done.stdout) : []
+  const levels = await piEfforts(
+    bin,
+    listed.filter((m) => m.efforts.length > 0).map((m) => m.id),
+  )
+  const models = listed.map((m) => ({ ...m, efforts: levels.get(m.id) ?? m.efforts }))
   return {
     signedIn: models.length > 0,
     // Each model of pi has its own billing, which the user chose in pi.
@@ -60,6 +73,92 @@ const obj = (value: unknown): Json =>
   value !== null && typeof value === "object" ? (value as Json) : {}
 const str = (value: unknown) => (typeof value === "string" ? value : "")
 const num = (value: unknown) => (typeof value === "number" ? value : 0)
+
+/** The levels of the list that pi gave for a model, in the order of `PI_EFFORTS`. */
+export const pickEfforts = (levels: unknown): string[] =>
+  Array.isArray(levels) ? PI_EFFORTS.filter((level) => levels.includes(level)) : []
+
+const LEVELS_TIMEOUT = 60_000
+
+/**
+ * Asks pi which thinking levels each model takes. One program in RPC mode serves all questions:
+ * for each model, it takes the model, then tells the levels of that model. A model that pi cannot
+ * answer for is not in the result, and the caller keeps what it has.
+ */
+export const piEfforts = async (
+  bin: string,
+  ids: readonly string[],
+  timeoutMs = LEVELS_TIMEOUT,
+): Promise<Map<string, string[]>> => {
+  const found = new Map<string, string[]>()
+  if (ids.length === 0) return found
+  const child = spawn(
+    bin,
+    [
+      "--mode",
+      "rpc",
+      "--no-session",
+      "--no-context-files",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-mcp",
+      "--no-tools",
+    ],
+    { env: env(), stdio: ["pipe", "pipe", "ignore"], windowsHide: true },
+  )
+  child.on("error", () => {})
+  child.stdin.on("error", () => {})
+  const pending = new Map<string, (answer: Json | null) => void>()
+  const lines = createInterface({ input: child.stdout })
+  lines.on("line", (line) => {
+    if (!line.startsWith("{")) return
+    let message: Json
+    try {
+      message = obj(JSON.parse(line))
+    } catch {
+      return
+    }
+    // Other lines are events, for example from the extensions of the user.
+    if (message.type !== "response") return
+    const answer = pending.get(str(message.id))
+    pending.delete(str(message.id))
+    answer?.(message)
+  })
+  // When the program ends, no answer will come.
+  child.on("close", () => {
+    for (const answer of pending.values()) answer(null)
+    pending.clear()
+  })
+  const timer = setTimeout(() => child.kill(), timeoutMs)
+  let count = 0
+  const ask = (command: Json) =>
+    new Promise<Json | null>((resolve) => {
+      if (child.exitCode !== null || child.killed) return resolve(null)
+      const id = String(++count)
+      pending.set(id, resolve)
+      child.stdin.write(`${JSON.stringify({ id, ...command })}\n`)
+    })
+  try {
+    for (const id of ids) {
+      const slash = id.indexOf("/")
+      const set = await ask({
+        type: "set_model",
+        provider: id.slice(0, slash),
+        modelId: id.slice(slash + 1),
+      })
+      if (set === null) break
+      if (set.success !== true) continue
+      const answer = await ask({ type: "get_available_thinking_levels" })
+      if (answer === null) break
+      if (answer.success === true) found.set(id, pickEfforts(obj(answer.data).levels))
+    }
+  } finally {
+    clearTimeout(timer)
+    lines.close()
+    child.kill()
+  }
+  return found
+}
 
 /**
  * pi asks nothing before a step, so the permission level becomes the list of tools. "Ask for
