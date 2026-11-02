@@ -197,7 +197,17 @@ export const en = {
   "providers.cancel": "Cancel",
   "providers.empty": "No accounts yet. Add one to give your agents a model.",
   "providers.runtimes":
-    "Claude Code, Codex, Muse Code and pi use the sign-ins you already have. ROBot starts the program on this computer; it does not read or keep your sign-in. pi uses the models that you set up in pi, with their own billing.",
+    "Claude Code, Codex, Muse Code and pi use the sign-ins you already have. ROBot starts the program on this computer; it never reads a sign-in. A separate Claude Code sign-in is kept by the program, in the data folder of ROBot. pi uses the models that you set up in pi, with their own billing.",
+  "providers.signIn.choice": "Claude account",
+  "providers.signIn.computer": "This computer's account",
+  "providers.signIn.own": "Another account",
+  "providers.signIn.computerHint":
+    "Uses the account that Claude Code is signed in to on this computer.",
+  "providers.signIn.ownHint":
+    "Sign in below with the account you want to add. This sign-in is only for ROBot; the sign-in of Claude Code on this computer does not change.",
+  "providers.signIn.taken":
+    "“{name}” already uses the account of this computer. Sign in below with another account.",
+  "providers.signIn.badge": "Separate sign-in",
   "providers.model.default": "Default (chosen by the program)",
   "runtime.checking": "Looking for the program…",
   "runtime.missing": "The program is not on this computer.",
@@ -565,6 +575,9 @@ export const en = {
   "workflows.canvas.empty": "Add a step to start.",
   "workflows.panel.empty": "Select a step to edit it.",
   "workflows.readOnly": "This workflow is running. It is read-only until the run ends.",
+  "workflows.saved": "Workflow saved.",
+  "workflows.saveFailed": "Could not save the workflow. {reason}",
+  "toast.dismiss": "Close message",
   "workflows.history": "Runs",
   "workflows.history.empty": "No runs yet.",
   "workflows.runState.running": "Running",

@@ -264,6 +264,9 @@ export const migrations: readonly string[] = [
   ALTER TABLE channel ADD COLUMN place_section_id TEXT REFERENCES place_section (id) ON DELETE SET NULL;
   `,
   `
+  ALTER TABLE provider_account ADD COLUMN sign_in TEXT;
+  `,
+  `
   ALTER TABLE message ADD COLUMN context TEXT;
   `,
 ]

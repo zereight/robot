@@ -6,6 +6,7 @@ import {
   type ProviderConnect,
   type ProviderKind,
   type RuntimeKind,
+  runtimeHasSeparateSignIn,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
@@ -26,7 +27,11 @@ interface AccountRow {
   base_url: string
   /** 1 when the user disconnected a runtime account. */
   off: number
+  /** The separate sign-in of a runtime account, or null. */
+  sign_in: string | null
 }
+
+const COLUMNS = "id, kind, name, base_url, off, sign_in"
 
 export interface ProvidersService {
   readonly list: Effect.Effect<readonly ProviderAccount[]>
@@ -43,6 +48,11 @@ export interface ProvidersService {
   isRuntime(accountId: string): boolean
   /** Which vendor program answers for the account, or null for an API account. */
   runtimeKind(accountId: string): RuntimeKind | null
+  /**
+   * Gives up a separate sign-in that the user made in a form and did not keep: signs it out and
+   * deletes its folder. A sign-in that an account uses is left as it is.
+   */
+  discardSignIn(kind: RuntimeKind, signIn: string): Effect.Effect<void>
   /** Like `isConnected`, but looks at an agent runtime again when the last look is old. */
   verify(accountId: string): Effect.Effect<boolean>
   /**
@@ -77,21 +87,19 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
 
       const rowConnected = (row: AccountRow) =>
         isRuntimeKind(row.kind)
-          ? row.off === 0 && runtimes.ready(row.kind)
+          ? row.off === 0 && runtimes.ready(row.kind, row.sign_in)
           : secrets.get(secretKey(row.id)) !== null
       const toAccount = (row: AccountRow): ProviderAccount => ({
         id: row.id,
         kind: row.kind,
         name: row.name,
         baseUrl: row.base_url,
+        signIn: row.sign_in,
         connected: rowConnected(row),
-        ...(isRuntimeKind(row.kind) ? { runtime: runtimes.cached(row.kind) } : {}),
+        ...(isRuntimeKind(row.kind) ? { runtime: runtimes.cached(row.kind, row.sign_in) } : {}),
       })
       const lookup = (id: string) =>
-        db.get<AccountRow>(
-          "SELECT id, kind, name, base_url, off FROM provider_account WHERE id = ?",
-          id,
-        )
+        db.get<AccountRow>(`SELECT ${COLUMNS} FROM provider_account WHERE id = ?`, id)
       const isConnected = (id: string) => {
         const row = lookup(id)
         return row ? rowConnected(row) : false
@@ -130,9 +138,11 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
         )
 
       /** A runtime must be on the computer, and signed in with a subscription. */
-      const checkRuntime = (kind: RuntimeKind, fresh: boolean) =>
+      const checkRuntime = (kind: RuntimeKind, signIn: string | null, fresh: boolean) =>
         Effect.gen(function* () {
-          const status = yield* fresh ? runtimes.status(kind) : runtimes.statusIfStale(kind)
+          const status = yield* fresh
+            ? runtimes.status(kind, signIn)
+            : runtimes.statusIfStale(kind, signIn)
           if (status.source === null) return yield* new AppError({ code: "runtime_missing" })
           if (!status.signedIn) return yield* new AppError({ code: "runtime_not_signed_in" })
           if (status.method !== "subscription")
@@ -142,8 +152,20 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
       const connect = Effect.fn("Providers.connect")(function* (input: ProviderConnect) {
         const runtime = isRuntimeKind(input.kind) ? input.kind : null
         let models: readonly ModelInfo[] = []
+        // The sign-in of an account is set when it is made. An account that is connected again
+        // keeps it, as long as it stays an account of the same kind.
+        const before = input.accountId ? yield* findRow(input.accountId) : null
+        if (input.signIn && !(runtime && runtimeHasSeparateSignIn(runtime)))
+          return yield* new AppError({ code: "invalid_input" })
+        const signIn = !runtime
+          ? null
+          : before
+            ? before.kind === runtime
+              ? before.sign_in
+              : null
+            : (input.signIn ?? null)
         if (runtime) {
-          yield* checkRuntime(runtime, true)
+          yield* checkRuntime(runtime, signIn, true)
         } else {
           if (!input.baseUrl || !input.apiKey) return yield* new AppError({ code: "invalid_input" })
           models = yield* fetchModels({
@@ -154,22 +176,26 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
         }
         const baseUrl = runtime ? "" : (input.baseUrl ?? "")
         const id = input.accountId ?? randomUUID()
-        if (input.accountId) {
-          yield* findRow(input.accountId)
+        if (before) {
           db.run(
-            "UPDATE provider_account SET kind = ?, name = ?, base_url = ?, off = 0 WHERE id = ?",
+            "UPDATE provider_account SET kind = ?, name = ?, base_url = ?, off = 0, sign_in = ? WHERE id = ?",
             input.kind,
             input.name.trim(),
             baseUrl,
+            signIn,
             id,
           )
+          // The account is no longer of a kind that has its own sign-in: nothing uses the folder.
+          if (before.sign_in && before.sign_in !== signIn)
+            yield* runtimes.forget(before.kind as RuntimeKind, before.sign_in)
         } else {
           db.run(
-            "INSERT INTO provider_account (id, kind, name, base_url, created_at) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO provider_account (id, kind, name, base_url, sign_in, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             id,
             input.kind,
             input.name.trim(),
             baseUrl,
+            signIn,
             Date.now(),
           )
         }
@@ -201,7 +227,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           }
           const kind = row.kind
           if (row.off !== 0) return yield* new AppError({ code: "provider_not_connected" })
-          yield* checkRuntime(kind, false)
+          yield* checkRuntime(kind, row.sign_in, false)
           return (async function* () {
             // The program reaches the browser of the agent through the app, for this turn only.
             // When the access cannot open, the turn goes on without the browser.
@@ -210,25 +236,29 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                 ? await grantBridge(hooks.bridge).catch(() => undefined)
                 : undefined
             try {
-              yield* runtimes.run(kind, {
-                model: input.model,
-                effort: input.effort,
-                system: input.system,
-                prompt: buildPrompt(input.turns),
-                // Claude Code reads the start of a request from the cache of the model when its
-                // blocks are the same as in the turn before. The other programs get the text.
-                ...(kind === "claude_code" ? { blocks: buildBlocks(input.turns) } : {}),
-                workspace: input.workspace,
-                permission: input.permission,
-                useTools: input.useTools,
-                signal: input.signal,
-                approve: hooks.approve,
-                ...(grant ? { bridge: grant } : {}),
-              })
+              yield* runtimes.run(
+                kind,
+                {
+                  model: input.model,
+                  effort: input.effort,
+                  system: input.system,
+                  prompt: buildPrompt(input.turns),
+                  // Claude Code reads the start of a request from the cache of the model when its
+                  // blocks are the same as in the turn before. The other programs get the text.
+                  ...(kind === "claude_code" ? { blocks: buildBlocks(input.turns) } : {}),
+                  workspace: input.workspace,
+                  permission: input.permission,
+                  useTools: input.useTools,
+                  signal: input.signal,
+                  approve: hooks.approve,
+                  ...(grant ? { bridge: grant } : {}),
+                },
+                row.sign_in,
+              )
             } catch (error) {
               // The sign-in is gone: look again, so that the account shows the truth.
               if (error instanceof ProviderFailure && error.code === "runtime_signed_out")
-                runtimes.invalidate(kind)
+                runtimes.invalidate(kind, row.sign_in)
               throw error
             } finally {
               grant?.release()
@@ -236,17 +266,15 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           })()
         })
 
+      /** Every sign-in that an account uses is looked at, once for each. */
       const refreshRuntimes = () =>
         Effect.forEach(
-          [
-            ...new Set(
-              db
-                .all<{ kind: ProviderKind }>("SELECT DISTINCT kind FROM provider_account")
-                .map((r) => r.kind)
-                .filter(isRuntimeKind),
-            ),
-          ],
-          (kind) => runtimes.statusIfStale(kind),
+          db
+            .all<{ kind: ProviderKind; sign_in: string | null }>(
+              "SELECT DISTINCT kind, sign_in FROM provider_account",
+            )
+            .flatMap((r) => (isRuntimeKind(r.kind) ? [{ kind: r.kind, signIn: r.sign_in }] : [])),
+          ({ kind, signIn }) => runtimes.statusIfStale(kind, signIn),
           { concurrency: "unbounded", discard: true },
         )
 
@@ -254,9 +282,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
         list: Effect.gen(function* () {
           yield* refreshRuntimes()
           return db
-            .all<AccountRow>(
-              "SELECT id, kind, name, base_url, off FROM provider_account ORDER BY created_at",
-            )
+            .all<AccountRow>(`SELECT ${COLUMNS} FROM provider_account ORDER BY created_at`)
             .map(toAccount)
         }),
         connect,
@@ -265,7 +291,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
             Effect.flatMap((row) => {
               if (isRuntimeKind(row.kind)) {
                 const kind = row.kind
-                return checkRuntime(kind, true).pipe(
+                return checkRuntime(kind, row.sign_in, true).pipe(
                   Effect.tap(() =>
                     Effect.sync(() => {
                       // A check by the user also takes back a disconnect.
@@ -310,6 +336,13 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                 changed()
               }),
             ),
+            // The sign-in that the account made for itself goes with it. The sign-in of the
+            // program on this computer is not the app's to remove.
+            Effect.tap((row) =>
+              row.sign_in && isRuntimeKind(row.kind)
+                ? runtimes.forget(row.kind, row.sign_in)
+                : Effect.void,
+            ),
             Effect.asVoid,
           ),
         models: (id) =>
@@ -332,9 +365,15 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           Effect.gen(function* () {
             const row = lookup(id)
             if (!row) return false
-            if (isRuntimeKind(row.kind)) yield* runtimes.statusIfStale(row.kind)
+            if (isRuntimeKind(row.kind)) yield* runtimes.statusIfStale(row.kind, row.sign_in)
             return rowConnected(row)
           }),
+        discardSignIn: (kind, signIn) =>
+          Effect.suspend(() =>
+            db.get("SELECT 1 AS x FROM provider_account WHERE sign_in = ?", signIn)
+              ? Effect.void
+              : runtimes.forget(kind, signIn),
+          ),
         events,
       })
     }),

@@ -5,13 +5,14 @@ import {
   type ProviderAccount,
   type ProviderKind,
   type RuntimeKind,
+  runtimeHasSeparateSignIn,
 } from "@robot/shared"
-import { createSignal, For, Show } from "solid-js"
+import { createEffect, createSignal, For, onCleanup, Show, untrack } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
-import { Button } from "../ui/controls.tsx"
+import { Button, Segmented } from "../ui/controls.tsx"
 import styles from "./providers.module.css"
 import { isReady, RuntimePanel, RuntimeSummary } from "./RuntimePanel.tsx"
 
@@ -29,6 +30,7 @@ const kinds: readonly ProviderKind[] = [
 /** Add a new account, or give a new key to an existing one. */
 export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => void }) => {
   const { t } = useApp()
+  const providers = useProviders()
   const [kind, setKind] = createSignal<ProviderKind>(props.account?.kind ?? "claude_code")
   const [ready, setReady] = createSignal(false)
   const [name, setName] = createSignal(props.account?.name ?? "")
@@ -36,6 +38,38 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
   const [apiKey, setApiKey] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<ErrorText>()
+
+  // A program that can have more than one sign-in. The account may use the sign-in that the
+  // program has on this computer, but only one account does; any other account signs in on its own.
+  const separate = () => runtimeHasSeparateSignIn(kind())
+  const holder = () =>
+    providers
+      .accounts()
+      .find((a) => a.kind === kind() && a.signIn === null && a.id !== props.account?.id)
+  const [own, setOwn] = createSignal(!props.account && !!holder() && separate())
+  const wantsOwn = () => !props.account && separate() && (own() || !!holder())
+  // The id of the separate sign-in, made when the form needs one. It is given up again when the
+  // form closes without an account that keeps it.
+  const [draft, setDraft] = createSignal<string | null>(wantsOwn() ? crypto.randomUUID() : null)
+  let kept = false
+  const discard = (id: string | null) => {
+    if (id)
+      void call("providers.discardSignIn", { kind: "claude_code", signIn: id }).catch(() => {})
+  }
+  createEffect(() => {
+    const want = wantsOwn()
+    const current = untrack(draft)
+    if (want && current === null) setDraft(crypto.randomUUID())
+    if (!want && current !== null) {
+      discard(current)
+      setDraft(null)
+    }
+  })
+  onCleanup(() => {
+    if (!kept) discard(untrack(draft))
+  })
+  /** The sign-in that this account uses: its own, or null for the one of the computer. */
+  const signIn = () => (props.account ? props.account.signIn : wantsOwn() ? draft() : null)
 
   const changeKind = (next: ProviderKind) => {
     // Keep an address the user typed; replace one that was only a default.
@@ -49,11 +83,27 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
     setError(undefined)
     try {
       const account = props.account ? { accountId: props.account.id } : {}
-      const accountName = name().trim() || t(`providers.kind.${kind()}` as MessageKey)
+      // Two accounts with the same name cannot be told apart in a list, so a name that the user
+      // did not type gets a number.
+      const taken = new Set(
+        providers
+          .accounts()
+          .filter((a) => a.id !== props.account?.id)
+          .map((a) => a.name),
+      )
+      const label = t(`providers.kind.${kind()}` as MessageKey)
+      let fallback = label
+      for (let n = 2; taken.has(fallback); n++) fallback = `${label} ${n}`
+      const accountName = name().trim() || fallback
       await call(
         "providers.connect",
         isRuntimeKind(kind())
-          ? { ...account, kind: kind(), name: accountName }
+          ? {
+              ...account,
+              kind: kind(),
+              name: accountName,
+              ...(!props.account && signIn() ? { signIn: signIn() as string } : {}),
+            }
           : {
               ...account,
               kind: kind(),
@@ -63,6 +113,7 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
             },
       )
       setApiKey("")
+      kept = true
       props.onDone()
     } catch (e) {
       setError(describeError(e))
@@ -125,8 +176,33 @@ export const ConnectForm = (props: { account?: ProviderAccount; onDone: () => vo
           </>
         }
       >
-        <Show when={kind()} keyed>
-          {(k) => <RuntimePanel kind={k as RuntimeKind} onReady={setReady} />}
+        <Show when={separate() && !props.account}>
+          <Show
+            when={!holder()}
+            fallback={
+              <div class={styles.hint} data-testid="provider-signin-hint">
+                {t("providers.signIn.taken", { name: holder()?.name ?? "" })}
+              </div>
+            }
+          >
+            <Segmented
+              label={t("providers.signIn.choice")}
+              value={own() ? "own" : "computer"}
+              options={[
+                { value: "computer", label: t("providers.signIn.computer") },
+                { value: "own", label: t("providers.signIn.own") },
+              ]}
+              onChange={(value) => setOwn(value === "own")}
+              testId="provider-signin-choice"
+            />
+            <div class={styles.hint} data-testid="provider-signin-hint">
+              {t(own() ? "providers.signIn.ownHint" : "providers.signIn.computerHint")}
+            </div>
+          </Show>
+        </Show>
+        {/* The panel is made again when the program or the sign-in changes. */}
+        <Show when={{ kind: kind() as RuntimeKind, signIn: signIn() }} keyed>
+          {(panel) => <RuntimePanel kind={panel.kind} signIn={panel.signIn} onReady={setReady} />}
         </Show>
       </Show>
       <Show when={error()}>
@@ -174,6 +250,19 @@ const AccountItem = (props: { account: ProviderAccount }) => {
           {t(`providers.kind.${props.account.kind}` as MessageKey)}
           {props.account.baseUrl ? ` · ${props.account.baseUrl}` : ""}
         </div>
+        {/* The e-mail address tells accounts of one program apart. */}
+        <Show
+          when={props.account.connected && (props.account.runtime?.user || props.account.signIn)}
+        >
+          <div class={`${styles.itemMeta} ${styles.itemWho}`} data-testid="provider-who">
+            {[
+              props.account.runtime?.user,
+              props.account.signIn ? t("providers.signIn.badge") : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        </Show>
         <Show when={props.account.runtime}>
           {(runtime) => (
             <Show when={isReady(runtime())}>
