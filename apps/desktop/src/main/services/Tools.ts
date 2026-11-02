@@ -9,7 +9,12 @@ import {
 } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
 import {
+  type ActionDecider,
   type ApprovalAnswer,
+  type GuardedStep,
+  guardDecision,
+  holdOutside,
+  hostOf,
   insideWorkspace,
   KNOWLEDGE_FOLDER,
   KNOWLEDGE_SOURCE_BYTES,
@@ -20,12 +25,14 @@ import {
   type PermissionLevel,
   riskyReason,
   type ToolAsk,
+  type TurnMark,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer } from "effect"
 import type { ToolEvent, ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall, ToolDef } from "../providers/chat.ts"
 import { BRIDGE_TOOL_NAMES, type BridgeHandler, SEARCH_TOOL_NAME } from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
+import { ActionLog } from "./ActionLog.ts"
 import { CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -50,6 +57,27 @@ export interface ToolContext {
   readonly onKnowledge: (callId: string, note: KnowledgeNote) => void
   /** The article changes that this turn made so far. A turn makes at most 5. */
   readonly knowledgeChanges: { count: number }
+  /**
+   * Who started the turn, and the first source of outside content in it (spec 007, "Outside
+   * content"). A tool that gives outside content to the agent marks it with `holdOutside`.
+   */
+  readonly turn: TurnMark
+  /** The task of the turn, for the action log. */
+  readonly taskId: string | null
+}
+
+/**
+ * A guarded step (spec 007, "Outside content"): its kind, the text that the card and the log
+ * show, and the work. `usual` is the way the step goes in a turn with no outside content; it
+ * resolves with who decided, or throws to refuse. With no `usual`, the step runs at once.
+ * `denied` is true when a Deny rule matches the step.
+ */
+export interface GuardedRequest<A> {
+  readonly step: GuardedStep
+  readonly target: string
+  readonly work: () => Promise<A>
+  readonly usual?: () => Promise<ActionDecider>
+  readonly denied?: boolean
 }
 
 export interface ToolsService {
@@ -67,6 +95,13 @@ export interface ToolsService {
    * agent, at the permission level of the agent. `show` puts the card of the call in the reply.
    */
   bridge(context: ToolContext, show: (event: ToolEvent) => void): BridgeHandler
+  /**
+   * Runs a guarded step of a turn. It asks with a card that has Allow once and Deny only when
+   * the turn holds outside content, refuses it on a Deny rule, and writes the action log entry.
+   * A tool of a later slice calls this for its own guarded step. Rejects with the refusal, which
+   * `execute` gives to the agent as a failed step.
+   */
+  guarded<A>(context: ToolContext, callId: string, request: GuardedRequest<A>): Promise<A>
   /** Answers a card that waits. Unknown cards are ignored. */
   respond(agentId: string, callId: string, answer: string): Effect.Effect<void>
   /** True while a task of this computer waits for the answer to this card. */
@@ -278,6 +313,8 @@ const cut = (value: string, max: number) =>
     : value
 
 class Denied extends Error {}
+/** A guarded step that a Deny rule or the level "Read only" refuses. The agent reads the message. */
+class Refused extends Error {}
 
 export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/Tools") {
   static readonly layer = Layer.effect(
@@ -286,6 +323,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const db = yield* Database
       const memory = yield* Memory
       const search = yield* Search
+      const actionLog = yield* ActionLog
       const knowledge = yield* Knowledge
       const platform = yield* Platform
       const bus = yield* EventBus
@@ -353,6 +391,81 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         if (answer === "always") {
           if (!reply.by) allow(ctx.agentId, key)
         } else if (answer !== "allow") throw new Denied()
+      }
+
+      /** See `ToolsService.guarded`. */
+      const guarded = async <A>(
+        ctx: ToolContext,
+        callId: string,
+        request: GuardedRequest<A>,
+      ): Promise<A> => {
+        // The source as it is now: a step that gives outside content later does not change it.
+        const outside = ctx.turn.source
+        const log = (decidedBy: ActionDecider, result: "ran" | "failed" | "refused" | "stopped") =>
+          actionLog.add({
+            agentId: ctx.agentId,
+            kind: request.step,
+            target: request.target,
+            decidedBy,
+            result,
+            taskId: ctx.taskId,
+            outside,
+          })
+        const verdict = guardDecision({
+          step: request.step,
+          level: ctx.permission,
+          outside: outside !== null,
+          starter: ctx.turn.starter,
+          denied: request.denied === true,
+        })
+        if (verdict === "refuse_rule") {
+          log("deny_rule", "refused")
+          throw new Refused("Denied by a rule.")
+        }
+        if (verdict === "refuse_read_only") {
+          log("level", "refused")
+          throw new Refused("Refused: read only.")
+        }
+        let decidedBy: ActionDecider = "level"
+        if (verdict === "ask") {
+          let reply: { answer: string; by: string | null }
+          try {
+            reply = await wait(ctx, callId, {
+              kind: "approval",
+              summary: request.target,
+              once: true,
+              ...(outside ? { outside } : {}),
+            })
+          } catch (error) {
+            log("level", "stopped")
+            throw error
+          }
+          const yes = reply.answer === "allow" || reply.answer === "always"
+          if (reply.by) ctx.onDecision?.(callId, yes ? "allow" : "deny", reply.by)
+          decidedBy = "user"
+          if (!yes) {
+            log("user", "refused")
+            throw new Denied()
+          }
+        } else if (verdict === "usual" && request.usual) {
+          try {
+            decidedBy = await request.usual()
+          } catch (error) {
+            log(
+              error instanceof Denied ? "user" : "level",
+              ctx.signal.aborted ? "stopped" : "refused",
+            )
+            throw error
+          }
+        }
+        try {
+          const value = await request.work()
+          log(decidedBy, "ran")
+          return value
+        } catch (error) {
+          log(decidedBy, ctx.signal.aborted ? "stopped" : "failed")
+          throw error
+        }
       }
 
       /** The real path of a file or of its nearest folder that exists, so symlinks count. */
@@ -460,6 +573,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             .replace(/&nbsp;/g, " ")
             .replace(/\s+/g, " ")
             .trim()
+        // The text of the page reaches the agent: the turn holds outside content from now on.
+        holdOutside(ctx.turn, { kind: "page", host: hostOf(response.url || url) })
         return { status: response.status, ok: response.ok, body }
       }
 
@@ -494,6 +609,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             await approve(ctx, call, false, "browser_open", url)
             await whileUserHolds(ctx)
             const opened = await page.open(url)
+            holdOutside(ctx.turn, { kind: "page", host: hostOf(opened.url || url) })
             browserChanged(ctx.agentId)
             return { output: `Opened ${opened.url}\nTitle: ${opened.title}`, failed: false }
           }
@@ -502,6 +618,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           if (ctx.signal.aborted) throw new Error("stopped")
           if (call.name === "browser_read") {
             const read = await page.read()
+            holdOutside(ctx.turn, { kind: "page", host: hostOf(read.url) })
             return { output: `${read.url}\nTitle: ${read.title}\n\n${read.text}`, failed: false }
           }
           if (call.name === "browser_click") await page.click(text(args, "selector"))
@@ -782,9 +899,13 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return search.forAgent(ctx.agentId, text(args, "query"))
           }
           case "save_memory": {
-            const item = await Effect.runPromise(
-              memory.add(ctx.agentId, text(args, "text"), "agent"),
-            )
+            // A save in a turn that holds outside content asks first (spec 008).
+            const value = text(args, "text")
+            const item = await guarded(ctx, call.id, {
+              step: "memory",
+              target: value,
+              work: () => Effect.runPromise(memory.add(ctx.agentId, value, "agent")),
+            })
             ctx.onMemory(call.id, item.id)
             return { output: "Saved to memory.", failed: false }
           }
@@ -805,6 +926,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           return await run(ctx, call)
         } catch (error) {
           if (error instanceof Denied) return { output: "The user denied this step.", failed: true }
+          if (error instanceof Refused) return { output: error.message, failed: true }
           if (ctx.signal.aborted) throw error
           return { output: error instanceof Error ? error.message : String(error), failed: true }
         }
@@ -818,6 +940,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)),
           ),
         execute,
+        guarded,
         bridge: (ctx, show) => {
           let count = 0
           return {
