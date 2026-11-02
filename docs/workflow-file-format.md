@@ -212,8 +212,9 @@ A tool must not write secrets into a workflow file.
 
 1. ROBot checks the size, then the whole file. If one value is not valid, or one workflow breaks
    the rules of the graph, ROBot refuses the whole file and makes no workflow.
-2. The user sees the list of workflows that ROBot will make and the agent names that ROBot cannot
-   find. The user confirms.
+2. The user sees the review screen (spec 014, "Review before an import"): each workflow with a
+   tick box, the agent names that ROBot cannot find, and the parts that ROBot does not make. The
+   user confirms.
 3. ROBot makes the workflows in the order of the file. It makes **new workflows only**. It never
    changes a workflow that exists. It makes no agent, no channel and no routine.
 4. If the name of a workflow is taken, ignoring case, the workflow gets a number: `Digest` becomes
