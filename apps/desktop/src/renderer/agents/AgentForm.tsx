@@ -1,5 +1,6 @@
 import {
   AGENT_NAME_MAX,
+  AGENT_NAMES,
   AGENT_ROLE_MAX,
   AGENT_TEMPLATES,
   type Agent,
@@ -14,7 +15,6 @@ import {
   nameKey,
   PERMISSION_LEVELS,
   type PermissionLevel,
-  SUGGESTED_NAME_COUNT,
   suggestName,
 } from "@robot/shared"
 import { Dices } from "lucide-solid"
@@ -114,10 +114,7 @@ export const AgentForm = (props: AgentFormProps) => {
         // The server still checks the name when the agent is made.
       }
     }
-    const names = Array.from({ length: SUGGESTED_NAME_COUNT }, (_, i) =>
-      t(`agents.suggest.name.${i + 1}` as MessageKey),
-    )
-    setName(suggestName(names, (candidate) => used.has(nameKey(candidate)), name()))
+    setName(suggestName(AGENT_NAMES, (candidate) => used.has(nameKey(candidate)), name()))
   }
 
   const submit = async (event: SubmitEvent) => {

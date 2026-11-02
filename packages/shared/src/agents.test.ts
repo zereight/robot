@@ -2,16 +2,16 @@ import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
   AGENT_NAME_MAX,
+  AGENT_NAMES,
   AgentCreate,
   charLength,
   copyName,
   faceFromName,
   filterAgents,
   nameKey,
-  SUGGESTED_NAME_COUNT,
   suggestName,
 } from "./agents.ts"
-import { catalogues, type MessageKey } from "./i18n/index.ts"
+import { catalogues } from "./i18n/index.ts"
 
 describe("agents", () => {
   test("names are 1 to 40 characters after trimming", () => {
@@ -118,22 +118,20 @@ describe("agents", () => {
       expect(suggestName([], none, "")).toBe("")
     })
 
+    test("the name list holds at least 80 different English first names", () => {
+      expect(AGENT_NAMES.length).toBeGreaterThanOrEqual(80)
+      expect(new Set(AGENT_NAMES.map(nameKey)).size).toBe(AGENT_NAMES.length)
+      for (const n of AGENT_NAMES) {
+        expect(n).toMatch(/^[A-Z][a-z]+$/)
+        expect(charLength(n)).toBeLessThanOrEqual(AGENT_NAME_MAX)
+      }
+    })
+
     for (const [locale, catalogue] of Object.entries(catalogues)) {
-      test(`${locale} has ${SUGGESTED_NAME_COUNT} valid, different suggested names`, () => {
-        const list = Array.from(
-          { length: SUGGESTED_NAME_COUNT },
-          (_, i) => catalogue[`agents.suggest.name.${i + 1}` as MessageKey],
+      test(`${locale} has no names in its catalogue: names stay English`, () => {
+        expect(Object.keys(catalogue).filter((k) => k.startsWith("agents.suggest.name."))).toEqual(
+          [],
         )
-        expect(list.every((n) => typeof n === "string")).toBe(true)
-        for (const n of list) {
-          expect(n).toBe(n.trim())
-          expect(charLength(n)).toBeGreaterThanOrEqual(1)
-          expect(charLength(n)).toBeLessThanOrEqual(AGENT_NAME_MAX)
-        }
-        expect(new Set(list.map(nameKey)).size).toBe(SUGGESTED_NAME_COUNT)
-        expect(
-          Object.keys(catalogue).filter((k) => k.startsWith("agents.suggest.name.")).length,
-        ).toBe(SUGGESTED_NAME_COUNT)
       })
     }
   })

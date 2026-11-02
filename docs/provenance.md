@@ -41,3 +41,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-02 | D3: agent faces react once when a reply ends, fails or asks, and land when new; new face shapes come in softly in the form; first start steps move in from the side | Implementer | 000, 002, 003 |
 | 2026-11-02 | D4: activity panel of a direct chat shows the running tasks of the agent with time and stop; plan steps and member cards of a channel come in one after the other, status icons change with motion, the done check is drawn on | Implementer | 001, 004, 005 |
 | 2026-11-02 | Channels: search in the member list of the channel form (name or role line), the choice stays when a search hides a member, count of chosen members | Implementer | 004 |
+| 2026-11-02 | Fix: name suggestions are English first names in every interface language, from a list of at least 80 | Implementer | 002 |
