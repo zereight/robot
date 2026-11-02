@@ -42,7 +42,8 @@ tag, so the user reads their work as they read messages from colleagues.
   database is the source of truth.
 - Model providers and pages the agent visits use the network. Nothing else sends conversation
   content off the computer, except a decision model that the user sets up on purpose (see 013 and
-  014). It is off by default.
+  014), and the connections that the user adds on purpose (see 018 and 014). Both are off until
+  the user sets them up.
 - The app sends no analytics and no failure reports.
 - Secrets never appear in logs, exports or diagnostics.
 - The visual style is calm: flat surfaces, no decorative gradients or glows, sentence case,
@@ -59,4 +60,5 @@ tag, so the user reads their work as they read messages from colleagues.
 
 - A new user can go from first start to a streamed agent reply without reading documentation.
 - A channel job with two parts shows two plan steps, and both reply chips open the right replies.
-- With the network off except for the model provider, all features in this spec still work.
+- With the network off except for the model provider, all features in this spec still work. The
+  connections of 018 that use a web address are the exception: they need their address.

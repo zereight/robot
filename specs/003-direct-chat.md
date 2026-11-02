@@ -34,8 +34,10 @@ The user gives an agent work in plain language and sees what the agent does whil
 6. Approve: when the agent asks for permission (see 007), an approval card shows in the chat with
    Allow and Deny. The agent waits until the user answers.
 7. Command picker: when the user types a slash as the first character of a message, a list opens
-   above the box. It shows the commands first, then the skills of the agent, if its runtime
-   reports skills (see 006). The list narrows as the user types. It shows at most 30 skills.
+   above the box. It shows the commands first, then the skills that the user saved for this agent
+   (see 017), then the skills of the agent, if its runtime reports skills (see 006). A skill of a
+   runtime shows the name of the runtime. The list narrows as the user types. It shows at most 30
+   skills, in this order. A skill that the user saved sets a chip in the box when picked (see 017).
    A slash in any other place is plain text, so a path such as `~/notes/todo` never opens the list.
 8. Compact: the user runs the command "compact" from the list, or uses the Compact control of the
    context meter. The app asks the model to replace the older part of the conversation with a
@@ -110,6 +112,8 @@ and its role line. Nothing moves.
 - Send, stop mid-reply, send again: both turns are stored and the first is marked stopped.
 - A queued message is sent automatically when the turn ends.
 - Type `/` first in the box: the list opens. Type `~/notes/todo`: no list opens.
+- Save a skill for an agent, open the chat, type `/` and the first letters of its name: the list
+  shows the skill after the commands. Pick it: a chip with its name shows in the box (017).
 - Fork at the third message of a chat of eight messages: the new thread has three messages and
   the original has eight. Fork at a message of a running turn: the app refuses.
 - Restart the app while an agent works on a request: the chat shows the notice. Continue sends a
