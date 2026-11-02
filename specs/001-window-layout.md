@@ -13,8 +13,8 @@ new user knows where to look.
   shows the first letter of the computer's name and the connection state (012).
 - **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
   (see 020), workflows, tasks, usage. At the bottom: help and settings. The Today button shows a
-  badge with the number of requests that wait for the user (020). The badge hides at 0 and reads
-  "99+" above 99.
+  badge with the number of items in "Needs you" (020). The badge hides at 0, and it reads "99+"
+  above 99. It hides when a linked server is on the screen.
 - **Place list**: a column beside the rail. A search field at the top, then sections. A section has
   a name and its places. A place is an agent (direct chat) or a channel. The search field also
   searches messages (see "Message search").
@@ -102,14 +102,17 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - The search covers the text of sent messages of the user and of agents, in direct chats (every
   thread) and in channels, on the server on screen. It does not cover tool cards, thinking,
   files, memory, queued messages, or places that are archived.
-- A message matches when it holds every word of the text. The order of the words and the case of
-  the letters do not matter. The app uses the first 6 words and ignores the rest.
+- A message matches when it holds every word of the text. A word matches as a part of a word, so
+  "bud" finds "budget", and the last word matches while the user still types it. The order of
+  the words and the case of the letters do not matter. The app uses the first 6 words and ignores
+  the rest.
+- The first 20 hits show within 1 second when the server holds 50,000 messages.
 - Hits come newest first, 20 at a time. While more hits exist, the last row of the group is
   "Show more". The app finds at most 200 hits. If more messages match, the group ends with a line
   that asks the user to type more words.
 - A hit row shows the face or the `#` mark and the name of the place, the time, and a short
-  piece of the message around the first matching word, about 120 characters. The matching words
-  are marked. The piece is plain text. The app does not read Markdown or HTML in it.
+  piece of the message around the first matching word, at most 120 characters, with "…" at a cut
+  end. The matching words are marked. The piece is plain text. The app does not read Markdown or HTML in it.
 - A click on a hit opens the place, and the thread that holds the message. The chat scrolls to
   the message and flashes it, in the same way as a click on a quote (see 003). The "Back"
   control returns to where the user was.
@@ -173,9 +176,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - Send "The budget is 4200 euros" to an agent. Search "euros budget": the group "Messages" shows
   the message with both words marked. A click opens the chat at that message and flashes it.
   "Back" returns to the earlier place.
-- Search one letter: the group "Messages" does not show. Search `<b>x</b>`: a hit shows the tags
-  as plain text.
+- Search one letter: the group "Messages" does not show. Send a message that holds the text `<b>bold</b>`.
+  Search "bold": the hit shows the tags as plain text and does not make the word bold.
 - Archive the agent: its messages do not match any more. Restore it: they match again.
-- With 50,000 stored messages, a search of two words shows its first hits in less than 1 second.
 - Cut the link to a linked server and search: only cached messages match, and a muted line says
   this.

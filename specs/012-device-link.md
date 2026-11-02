@@ -153,9 +153,9 @@ button on a section, the agent profile, the channel settings, the memory list.
 ## Messages
 
 - A client asks for: server summary, places (with the user sections and the section of each
-  place), a page of messages, search of places and of messages (001), send message, stop, edit, retry, mark a place as read,
-  approve, answer question, upload attachment, download attachment, task list, task details,
-  stop a task.
+  place), a page of messages, search of places and of messages (001), send message, stop, edit,
+  retry, mark a place as read, approve, answer question, upload attachment, download attachment,
+  task list, task details, stop a task.
 - The phone app (011) may ask for more: end a request (see 004), start and fork a thread,
   compact a conversation, and run or edit a workflow. The aim of 011 is that the phone can do
   whatever the user can do in a conversation on the computer. A computer client does not offer

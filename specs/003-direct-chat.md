@@ -102,8 +102,11 @@ and its role line. Nothing moves.
   not send the old request again, so no side effect repeats unless the user chooses it. A stop by
   the user shows no notice.
 - If the cut request had not reached the model (see 005, "How far a turn went"), the notice says
-  so. It has the button "Send again" and no "Continue". "Send again" sends the same request
-  again, because no step ran.
+  so. It has the button "Send again" and no "Continue". "Send again" does what Retry does for the
+  task (005): it sends the same request again, because no step ran. On a linked device (012), it
+  asks the server to retry the task.
+- If the cut request had reached the model ("Sent" or "Started"), the notice shows the line of
+  005 for that progress, and keeps "Continue".
 - Scrolling up stops auto-scroll. A "Jump to latest" button brings it back.
 - For 3 seconds after a chat opens, an upward scroll that the reader did not cause (no wheel,
   touch, drag or key) returns the chat to the latest message, as long as the chat follows the
