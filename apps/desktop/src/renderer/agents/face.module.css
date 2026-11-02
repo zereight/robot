@@ -1,0 +1,29 @@
+.face {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* The eyes turn about their own middle, so a blink closes them where they are. */
+.eyes {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+.skin {
+  transition: fill var(--motion-medium) var(--ease-out);
+}
+
+/* A new shape comes in softly. The blur hides the moment where two drawings would overlap. */
+.swap {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: face-swap var(--motion-fast) var(--ease-out);
+}
+
+@keyframes face-swap {
+  from {
+    opacity: 0;
+    filter: blur(2px);
+    transform: scale(0.92);
+  }
+}

@@ -1,5 +1,6 @@
 import { createSignal, Match, Show, Switch as SwitchCase } from "solid-js"
 import { AgentForm } from "../agents/AgentForm.tsx"
+import { markBorn } from "../agents/reactions.ts"
 import { call } from "../lib/rpc.ts"
 import { ConnectForm } from "../providers/ProvidersSection.tsx"
 import { useApp } from "../state/app.tsx"
@@ -18,8 +19,13 @@ export const FirstRunDialog = () => {
   const ui = useUi()
   const providers = useProviders()
   const [step, setStep] = createSignal(1)
+  // The new step comes in from the side that the user moves toward.
+  const [direction, setDirection] = createSignal<"forward" | "back">("forward")
   const finish = () => app.update({ firstRunDone: true })
-  const next = () => setStep((s) => Math.min(STEPS, s + 1))
+  const next = () => {
+    setDirection("forward")
+    setStep((s) => Math.min(STEPS, s + 1))
+  }
   const connected = () => providers.accounts().find((a) => a.connected)
 
   return (
@@ -33,7 +39,7 @@ export const FirstRunDialog = () => {
 
       <SwitchCase>
         <Match when={step() === 1}>
-          <section class={styles.section} data-testid="first-run-look">
+          <section class={styles.section} data-direction={direction()} data-testid="first-run-look">
             <h3>{t("firstRun.look.title")}</h3>
             <p>{t("firstRun.look.body")}</p>
             <div class={styles.row}>
@@ -67,7 +73,11 @@ export const FirstRunDialog = () => {
           </section>
         </Match>
         <Match when={step() === 2}>
-          <section class={styles.section} data-testid="first-run-account">
+          <section
+            class={styles.section}
+            data-direction={direction()}
+            data-testid="first-run-account"
+          >
             <h3>{t("firstRun.account.title")}</h3>
             <p>{t("firstRun.account.body")}</p>
             <Show when={connected()} fallback={<ConnectForm onDone={next} />} keyed>
@@ -87,7 +97,11 @@ export const FirstRunDialog = () => {
           </section>
         </Match>
         <Match when={step() === 3}>
-          <section class={styles.section} data-testid="first-run-agent">
+          <section
+            class={styles.section}
+            data-direction={direction()}
+            data-testid="first-run-agent"
+          >
             <p>{t("firstRun.agent.body")}</p>
             <AgentForm
               onCancel={finish}
@@ -95,6 +109,7 @@ export const FirstRunDialog = () => {
                 const serverId = ui.server()?.id
                 if (!serverId) return
                 const agent = await call("agents.create", { serverId, ...values })
+                markBorn(agent.id)
                 await finish()
                 ui.selectPlace({ kind: "agent", id: agent.id })
               }}
@@ -105,7 +120,13 @@ export const FirstRunDialog = () => {
 
       <div class={styles.footer}>
         <Show when={step() > 1}>
-          <Button onClick={() => setStep((s) => s - 1)} data-testid="first-run-back">
+          <Button
+            onClick={() => {
+              setDirection("back")
+              setStep((s) => s - 1)
+            }}
+            data-testid="first-run-back"
+          >
             {t("firstRun.back")}
           </Button>
         </Show>

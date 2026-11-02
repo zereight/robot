@@ -9,6 +9,7 @@ import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { AgentForm } from "./AgentForm.tsx"
 import styles from "./agents.module.css"
+import { markBorn } from "./reactions.ts"
 
 export const NewAgentDialog = (props: { onClose: () => void }) => {
   const { t } = useApp()
@@ -21,6 +22,7 @@ export const NewAgentDialog = (props: { onClose: () => void }) => {
           const serverId = ui.server()?.id
           if (!serverId) return
           const agent = await call("agents.create", { serverId, ...values })
+          markBorn(agent.id)
           props.onClose()
           ui.selectPlace({ kind: "agent", id: agent.id })
         }}
