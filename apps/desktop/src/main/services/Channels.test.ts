@@ -5,6 +5,7 @@ import type { ChannelMessage } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
+import { Memory } from "./Memory.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
@@ -86,6 +87,14 @@ const server = Bun.serve({
       reply = plan([
         { member: "Bo", label: "Fine", prompt: "Do it" },
         { member: "Cy", label: "Broken", prompt: "FAIL it" },
+      ])
+    if (last.includes("split memory"))
+      reply = plan([
+        {
+          member: "Bo",
+          label: "Remember",
+          prompt: `TOOL save_memory ${JSON.stringify({ text: "Bo answers yes" })}`,
+        },
       ])
     if (last.includes("split slow"))
       reply = plan([{ member: "Bo", label: "Slow work", prompt: "SLOW work" }])
@@ -363,5 +372,47 @@ describe("tools in channels", () => {
     const ended = (await s.history()).find((m) => m.author === "agent")
     expect(ended?.status).toBe("stopped")
     expect(ended?.parts.find((p) => p.kind === "tool")).toMatchObject({ state: "failed" })
+  })
+
+  test("a part from the lead holds outside content from its start: a memory save asks", async () => {
+    const s = await setup()
+    await s.send("split memory")
+    await until(async () => (await s.tasks()).some((t) => t.state === "waiting"))
+    const card = (await s.history())
+      .find((m) => m.agentId === s.bo.id)
+      ?.parts.find((p) => p.kind === "tool")
+    expect(card).toMatchObject({
+      name: "save_memory",
+      state: "waiting",
+      ask: { kind: "approval", once: true, outside: { kind: "agent", name: "Lia" } },
+    })
+    await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
+    await s.idle()
+    expect(await s.run(Memory.use((m) => m.list(s.bo.id)))).toEqual([])
+  })
+
+  test("a mention: a save asks only when the history holds a message of another agent", async () => {
+    const s = await setup({ lead: false })
+    const save = `@Bo TOOL save_memory ${JSON.stringify({ text: "Ship on Friday" })}`
+    await s.send(save)
+    await s.idle()
+    expect((await s.run(Memory.use((m) => m.list(s.bo.id)))).map((i) => i.text)).toEqual([
+      "Ship on Friday",
+    ])
+    // Cy is asked next. Cy reads the message of Bo, so the same save of Cy asks (the mock
+    // model repeats the request that it reads in the channel).
+    await s.send(`@Cy ${save.slice(4)}`)
+    await until(async () => (await s.tasks()).some((t) => t.state === "waiting"))
+    const waiting = (await s.history())
+      .filter((m) => m.agentId === s.cy.id)
+      .at(-1)
+      ?.parts.find((p) => p.kind === "tool")
+    expect(waiting).toMatchObject({
+      name: "save_memory",
+      state: "waiting",
+      ask: { once: true, outside: { kind: "agent", name: "Bo" } },
+    })
+    await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
+    await s.idle()
   })
 })

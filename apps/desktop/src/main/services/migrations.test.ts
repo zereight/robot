@@ -185,16 +185,18 @@ describe("the steps of the device link and of sync", () => {
     for (const sql of migrations.slice(MAIN_STEPS)) {
       expect(sql).not.toMatch(/ALTER TABLE provider_account/i)
     }
-    // The step for the progress of a task (spec 005) follows them.
-    expect(migrations[MAIN_STEPS + 3]?.trim()).toContain(
+    // The step for the progress of a task (spec 005) follows the action log.
+    expect(migrations[MAIN_STEPS + 3]).toContain("CREATE TABLE action_log")
+    expect(migrations[MAIN_STEPS + 4]?.trim()).toContain(
       "ALTER TABLE task ADD COLUMN progress TEXT;",
     )
     // The number of steps is the data version that two computers compare before they sync.
-    expect(migrations.length).toBe(MAIN_STEPS + 4)
+    // Later steps follow these five.
+    expect(migrations.length).toBeGreaterThan(MAIN_STEPS + 4)
   })
 
   test("a task from before the progress step keeps its row and shows no progress", () => {
-    const db = upTo(MAIN_STEPS + 3)
+    const db = upTo(MAIN_STEPS + 4)
     db.exec(`
       INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
       INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
@@ -203,7 +205,7 @@ describe("the steps of the device link and of sync", () => {
       INSERT INTO task (id, agent_id, prompt, label, source, state, created_at)
         VALUES ('t', 'a', 'old', 'old', 'chat', 'failed', 1);
     `)
-    db.exec(migrations[MAIN_STEPS + 3] as string)
+    db.exec(migrations[MAIN_STEPS + 4] as string)
     expect(db.prepare("SELECT id, progress FROM task").all()).toEqual([{ id: "t", progress: null }])
   })
 
@@ -265,5 +267,18 @@ describe("the steps of the device link and of sync", () => {
     migrate(db)
     migrate(db)
     expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })
+  })
+})
+
+describe("the step of the action log", () => {
+  test("it makes the table of the log, which no trigger of sync watches", () => {
+    const step = migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log"))
+    expect(step).toBeGreaterThan(MAIN_STEPS + 2)
+    const db = new DatabaseSync(":memory:")
+    for (const sql of migrations) db.exec(sql)
+    const triggers = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'action_log'")
+      .all()
+    expect(triggers).toEqual([])
   })
 })

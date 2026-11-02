@@ -9,6 +9,7 @@ import {
   EdgeSchema,
   FACE_HUES,
   FACE_SHAPES,
+  isOutsideSource,
   KNOWLEDGE_TITLE_MAX,
   MEMORY_TEXT_MAX,
   NoteSchema,
@@ -147,12 +148,14 @@ const askCheck = (v: unknown): boolean => {
   const timeOk = v.askedAt === undefined || int(v.askedAt)
   if (v.kind === "approval") {
     return (
-      shape(["kind", "summary"], ["askedAt", "once"])(v) &&
+      shape(["kind", "summary"], ["askedAt", "once", "outside"])(v) &&
       // The summary is the command text as the program or the model wrote it, so it may be as
       // long as the input of the same card. A cut would show the user less than what runs.
       str(TEXT_MAX)(v.summary) &&
       timeOk &&
-      (v.once === undefined || bool(v.once))
+      (v.once === undefined || bool(v.once)) &&
+      // A guarded step in a turn that holds outside content names its first source (spec 007).
+      (v.outside === undefined || isOutsideSource(v.outside))
     )
   }
   if (v.kind === "question") {
