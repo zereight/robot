@@ -221,6 +221,32 @@ export const electronPlatform = (): PlatformService => {
         : await dialog.showOpenDialog(options)
       return result.canceled ? undefined : result.filePaths[0]
     },
+    pickAgentFileSave: async (defaultName) => {
+      if (isTestRun && process.env.ROBOT_TEST_AGENT_FILE_SAVE)
+        return process.env.ROBOT_TEST_AGENT_FILE_SAVE
+      const options = {
+        defaultPath: join(app.getPath("documents"), defaultName),
+        filters: [{ name: "ROBot agents", extensions: ["json"] }],
+      }
+      const parent = BrowserWindow.getFocusedWindow()
+      const result = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options)
+      return result.canceled ? undefined : result.filePath
+    },
+    pickAgentFile: async () => {
+      if (isTestRun && process.env.ROBOT_TEST_AGENT_FILE_OPEN)
+        return process.env.ROBOT_TEST_AGENT_FILE_OPEN
+      const options = {
+        filters: [{ name: "ROBot agents", extensions: ["json"] }],
+        properties: ["openFile"] as "openFile"[],
+      }
+      const parent = BrowserWindow.getFocusedWindow()
+      const result = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options)
+      return result.canceled ? undefined : result.filePaths[0]
+    },
     openPath: async (path) => {
       // A folder that is not there yet is made. A file is opened as it is.
       if (!existsSync(path)) mkdirSync(path, { recursive: true })
