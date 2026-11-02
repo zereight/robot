@@ -29,7 +29,8 @@ test("task times: wait, first reply and total, kept through a restart, median on
   await send(page, "hello pause 2000ms")
   await settled(page)
   // A turn that fails before any reply.
-  await send(page, "fail once please")
+  // Its own words: the fake provider fails a message once per run of the tests.
+  await send(page, "fail once for the times")
   await expect(page.locator("[data-testid=message][data-status=failed]")).toHaveCount(1)
 
   await page.getByTestId("page-tasks").click()
