@@ -17,7 +17,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 007 | [Agent workspace and tools: files, shell, browser, approvals, other agents, computer use](007-workspace-and-tools.md) | Draft |
 | 008 | [Memory: what an agent keeps between chats, and how the user edits it](008-memory.md) | Draft |
 | 009 | [Routines: scheduled jobs, calendar, missed runs](009-routines.md) | Draft |
-| 010 | [Workflows: a graph of steps and triggers, with an assistant](010-workflows.md) | Draft |
+| 010 | [Workflows: a graph of steps and triggers, with an assistant and workflow files](010-workflows.md) | Draft |
 | 011 | [Phone app: pair with a computer, read and send, notifications](011-phone-app.md) | Draft |
 | 012 | [Desktop-to-phone link: messages, identity, offline behaviour](012-desktop-phone-link.md) | Draft |
 | 013 | [Settings, themes, languages, decision model and roles](013-settings.md) | Draft |
