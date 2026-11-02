@@ -1,0 +1,48 @@
+# An approval card on the phone, the "Needs you" list, and the answer (spec 011, 007, 012).
+# Runs after 02-conversation, in the chat of Ada. The computer sends the step that asks.
+appId: host.exp.Exponent
+---
+- tapOn:
+    id: "composer.input"
+- inputText: "ready for approval"
+- tapOn:
+    id: "composer.send"
+- extendedWaitUntil:
+    visible:
+      id: "ask.approval"
+    timeout: 90000
+# A linked device has no "Always allow".
+- assertNotVisible:
+    id: "ask.always"
+- takeScreenshot: phone-09-approval-card
+# Back to the places of the server (the back button of the header).
+- tapOn:
+    point: "9%,9%"
+- extendedWaitUntil:
+    visible:
+      id: "places.needsYou"
+    timeout: 15000
+- tapOn:
+    id: "places.needsYou"
+- extendedWaitUntil:
+    visible:
+      id: "needs.approval"
+    timeout: 15000
+- takeScreenshot: phone-10-needs-you
+- tapOn:
+    id: "needs.approval"
+- extendedWaitUntil:
+    visible:
+      id: "ask.allow"
+    timeout: 15000
+- tapOn:
+    id: "ask.allow"
+- extendedWaitUntil:
+    notVisible:
+      id: "ask.allow"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      text: ".*iPhone of Kim.*"
+    timeout: 30000
+- takeScreenshot: phone-11-allowed

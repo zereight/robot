@@ -22,6 +22,7 @@ import { Effect } from "effect"
 import { Agents } from "../services/Agents.ts"
 import { Chat } from "../services/Chat.ts"
 import { Devices } from "../services/Devices.ts"
+import { EventBus } from "../services/EventBus.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
@@ -291,6 +292,21 @@ describe("the phone on a real computer", () => {
     // The cache holds what the phone opened.
     await phone.flush()
     expect([...storage.files.keys()].some((k) => k.startsWith(`cache/${link.id}/chat-`))).toBe(true)
+
+    // Workflows of the computer are Phone 2 (spec 011). Their events reach the phone, and the
+    // phone ignores them: it stays online, shows no notice, and the link still answers.
+    await pc.run(
+      EventBus.use((b) =>
+        Effect.sync(() => {
+          b.emit("workflows.changed", { serverId: pc.local.id })
+          b.emit("workflows.run", { runId: "r1" })
+        }),
+      ),
+    )
+    await new Promise((r) => setTimeout(r, 200))
+    expect(view(phone, link.id).state).toBe("online")
+    expect(notices.some((n) => n.kind === "workflow_notice")).toBe(false)
+    await phone.request(link.id, "places.list", { serverId: pc.local.id })
 
     // The computer removes the phone: the state is "Not allowed", the data and cache go.
     await pc.run(Devices.use((d) => d.removeClient(phone.deviceId)))

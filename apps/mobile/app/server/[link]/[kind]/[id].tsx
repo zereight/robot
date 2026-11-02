@@ -1,7 +1,7 @@
 import type { PlaceKind } from "@robot/phone"
 import type { Agent, ChannelMessage } from "@robot/shared"
 import * as Clipboard from "expo-clipboard"
-import { Stack, useLocalSearchParams } from "expo-router"
+import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   FlatList,
@@ -13,9 +13,11 @@ import {
   View,
 } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { AskCard } from "../../../../src/chat/AskCard.tsx"
 import { Composer } from "../../../../src/chat/Composer.tsx"
 import { MessageRow, type RowActions, type ShownMessage } from "../../../../src/chat/MessageRow.tsx"
 import { buildRows, messageText, quoteText, type Row } from "../../../../src/chat/rows.ts"
+import { setShownPlace } from "../../../../src/notices.ts"
 import { downloadAndOpen, uploadSource } from "../../../../src/platform/files.ts"
 import { useApp, useHubState, useServer } from "../../../../src/state/context.tsx"
 import { radius, space, text } from "../../../../src/theme/palette.ts"
@@ -48,6 +50,14 @@ export default function Conversation() {
     void hub.openPlace(link, { kind, id })
     return () => hub.closePlace(link, { kind, id })
   }, [hub, link, kind, id])
+
+  // No notification for the place on the screen.
+  useFocusEffect(
+    useCallback(() => {
+      setShownPlace({ linkId: link, kind, id })
+      return () => setShownPlace(null)
+    }, [link, kind, id]),
+  )
 
   const data = view?.data
   const agents = data?.agents ?? []
@@ -122,6 +132,9 @@ export default function Conversation() {
     onQuotePress: jumpTo,
     onFile: openFile,
     ...(kind === "agent" ? { onRetry: (m: ShownMessage) => runRetry(m) } : {}),
+    renderAsk: (message, tool) => (
+      <AskCard linkId={link} agentId={message.agentId ?? id} tool={tool} />
+    ),
   }
 
   if (!view) return null

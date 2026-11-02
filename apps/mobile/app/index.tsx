@@ -20,6 +20,13 @@ export default function Servers() {
     <>
       <Stack.Screen
         options={{
+          headerLeft: () => (
+            <HeaderButton
+              testID="servers.settings"
+              label={t("servers.settings")}
+              onPress={() => router.push("/settings")}
+            />
+          ),
           headerRight: () => (
             <HeaderButton
               testID="servers.add"

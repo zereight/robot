@@ -75,6 +75,11 @@
     "license": "ISC"
   },
   {
+    "name": "abort-controller",
+    "version": "3.0.0",
+    "license": "MIT"
+  },
+  {
     "name": "ansi-styles",
     "version": "5.2.0",
     "license": "MIT"
@@ -85,8 +90,18 @@
     "license": "MIT"
   },
   {
+    "name": "event-target-shim",
+    "version": "5.0.1",
+    "license": "MIT"
+  },
+  {
     "name": "expo",
     "version": "58.0.22",
+    "license": "MIT"
+  },
+  {
+    "name": "expo-application",
+    "version": "58.1.2",
     "license": "MIT"
   },
   {
@@ -147,6 +162,11 @@
   {
     "name": "expo-modules-core",
     "version": "58.0.29",
+    "license": "MIT"
+  },
+  {
+    "name": "expo-notifications",
+    "version": "58.1.7",
     "license": "MIT"
   },
   {

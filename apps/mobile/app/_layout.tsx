@@ -12,6 +12,7 @@ import {
 } from "../src/platform/index.ts"
 import { type Prefs, readPrefs } from "../src/prefs.ts"
 import { AppProvider, useApp } from "../src/state/context.tsx"
+import { Watcher } from "../src/state/Watcher.tsx"
 
 interface Ready {
   readonly hub: PhoneHub
@@ -40,6 +41,7 @@ const Screens = () => {
   return (
     <>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <Watcher />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: palette.background },
@@ -52,6 +54,7 @@ const Screens = () => {
         <Stack.Screen name="index" options={{ title: t("servers.title") }} />
         <Stack.Screen name="welcome" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="pair" options={{ title: t("pair.title"), presentation: "modal" }} />
+        <Stack.Screen name="settings" options={{ title: t("settings.title") }} />
       </Stack>
     </>
   )

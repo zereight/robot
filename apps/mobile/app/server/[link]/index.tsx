@@ -6,7 +6,7 @@ import { toggleSection } from "../../../src/prefs.ts"
 import { useApp, useServer } from "../../../src/state/context.tsx"
 import { radius, space, text } from "../../../src/theme/palette.ts"
 import { Face } from "../../../src/ui/Face.tsx"
-import { Body, Button, Notice, Screen } from "../../../src/ui/kit.tsx"
+import { Body, Button, HeaderButton, Notice, Screen } from "../../../src/ui/kit.tsx"
 import { stateText } from "../../../src/ui/states.ts"
 
 /**
@@ -20,12 +20,24 @@ export default function Places() {
   if (!view) return <Screen>{null}</Screen>
   const { data, state } = view
   const closed = prefs.closed[link] ?? []
+  const waiting = data.attention.filter(
+    (n) => n.kind === "approval" || n.kind === "question",
+  ).length
 
   return (
     <>
       <Stack.Screen
         options={{
           title: view.link.name,
+          headerRight: () => (
+            <HeaderButton
+              testID="places.needsYou"
+              label={
+                waiting > 0 ? t("places.needsYou.count", { count: waiting }) : t("places.needsYou")
+              }
+              onPress={() => router.push({ pathname: "/server/[link]/needs", params: { link } })}
+            />
+          ),
         }}
       />
       <Screen testID="places" onRefresh={() => hub.refresh(link)}>

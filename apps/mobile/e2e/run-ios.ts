@@ -58,7 +58,8 @@ try {
   const { address, code } = JSON.parse(readFileSync(join(out, "host.json"), "utf8"))
 
   if (!(await metroUp())) {
-    const metro = spawn("bunx", ["expo", "start", "--port", String(metroPort)], {
+    // `--ios` makes the Expo CLI install Expo Go on the booted simulator when it is missing.
+    const metro = spawn("bunx", ["expo", "start", "--ios", "--port", String(metroPort)], {
       cwd: mobile,
       stdio: ["ignore", "inherit", "inherit"],
       detached: true,
@@ -69,7 +70,8 @@ try {
   }
   // The flags stop the first-time menu and the tools button of Expo Go (the Expo CLI sets them too).
   const url = `exp://127.0.0.1:${metroPort}?__expo_disable_onboarding=1&__expo_disable_fab=1`
-  const names = flows.length > 0 ? flows : ["01-pair", "02-conversation", "03-approval"]
+  const names =
+    flows.length > 0 ? flows : ["01-pair", "02-conversation", "03-approval", "04-settings"]
   const steps: Record<string, boolean> = {}
   for (const name of names) {
     const flow = join(mobile, "e2e/flows", `${name}.yaml`)
@@ -91,7 +93,12 @@ try {
         `CODE=${code}`,
         flow,
       ],
-      { stdio: "inherit", env: { ...process.env, MAESTRO_CLI_NO_ANALYTICS: "1" } },
+      {
+        stdio: "inherit",
+        // A flow that hangs ends here, so the computer and Metro are stopped below.
+        timeout: 15 * 60_000,
+        env: { ...process.env, MAESTRO_CLI_NO_ANALYTICS: "1" },
+      },
     )
     steps[name] = run.status === 0
     // Maestro keeps the screenshots of a flow in its own folder; a copy goes next to the others.
@@ -105,7 +112,7 @@ try {
       break
     }
   }
-  writeFileSync(join(out, "done"), JSON.stringify({ chat: steps["02-conversation"] === true }))
+  writeFileSync(join(out, "done"), JSON.stringify(steps))
   // After a failed flow the desktop may still wait for the phone; it is stopped below.
   if (!failed && (await hostDone) !== 0) failed = true
   writeFileSync(join(out, "result.json"), JSON.stringify({ steps, failed }, null, 2))
