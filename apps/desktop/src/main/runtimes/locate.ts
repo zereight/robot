@@ -1,7 +1,7 @@
 import { accessSync, constants, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { delimiter, join } from "node:path"
-import type { RuntimeKind } from "@robot/shared"
+import { type RuntimeKind, SIGN_IN_ID } from "@robot/shared"
 
 const NAMES: Record<RuntimeKind, string> = {
   claude_code: "claude",
@@ -15,6 +15,15 @@ export const binaryName = (kind: RuntimeKind, platform = process.platform) =>
 
 /** Where the app keeps the copy that it downloaded. */
 export const managedDir = (dataDir: string, kind: RuntimeKind) => join(dataDir, "runtimes", kind)
+
+/**
+ * The folder of one separate sign-in. It is next to the downloaded programs and not inside their
+ * folder, which the install cleans. The id is checked, because it becomes a folder name.
+ */
+export const signInDir = (dataDir: string, kind: RuntimeKind, signIn: string) => {
+  if (!SIGN_IN_ID.test(signIn)) throw new Error("The id of the sign-in is not valid.")
+  return join(dataDir, "sign-ins", kind, signIn)
+}
 
 /** The environment variable that points tests, or a user with an odd setup, to a program. */
 export const overrideVariable = (kind: RuntimeKind) =>

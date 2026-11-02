@@ -197,7 +197,16 @@ export const ko: Record<MessageKey, string> = {
   "providers.cancel": "취소",
   "providers.empty": "아직 계정이 없어요. 계정을 추가해서 에이전트에게 모델을 연결하세요.",
   "providers.runtimes":
-    "Claude Code, Codex, Muse Code, pi는 이미 로그인한 계정을 그대로 써요. ROBot은 이 컴퓨터에서 프로그램을 실행만 하고, 로그인 정보를 읽거나 보관하지 않아요. pi는 pi에서 설정한 모델을 쓰며, 요금도 그 설정을 따라요.",
+    "Claude Code, Codex, Muse Code, pi는 이미 로그인한 계정을 그대로 써요. ROBot은 이 컴퓨터에서 프로그램을 실행만 하고, 로그인 정보를 읽지 않아요. 별도 Claude Code 로그인은 프로그램이 ROBot 데이터 폴더에 보관해요. pi는 pi에서 설정한 모델을 쓰며, 요금도 그 설정을 따라요.",
+  "providers.signIn.choice": "Claude 계정",
+  "providers.signIn.computer": "이 컴퓨터의 계정",
+  "providers.signIn.own": "다른 계정",
+  "providers.signIn.computerHint": "이 컴퓨터에서 Claude Code가 로그인된 계정을 써요.",
+  "providers.signIn.ownHint":
+    "추가할 계정으로 아래에서 로그인하세요. 이 로그인은 ROBot에서만 쓰고, 이 컴퓨터의 Claude Code 로그인은 바뀌지 않아요.",
+  "providers.signIn.taken":
+    "“{name}” 계정이 이미 이 컴퓨터의 계정을 쓰고 있어요. 아래에서 다른 계정으로 로그인하세요.",
+  "providers.signIn.badge": "별도 로그인",
   "providers.model.default": "기본값 (프로그램이 선택)",
   "runtime.checking": "프로그램을 찾는 중…",
   "runtime.missing": "이 컴퓨터에 프로그램이 없어요.",
