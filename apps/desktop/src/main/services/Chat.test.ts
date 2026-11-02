@@ -258,6 +258,7 @@ describe("Chat", () => {
 
   test("a queued message counts its first reply from when it was sent", async () => {
     const t = await setup()
+    await t.setDuringTurn("queue")
     await t.send("go slow")
     const sent = Date.now()
     expect((await t.send("second")).queued).toBe(true)
