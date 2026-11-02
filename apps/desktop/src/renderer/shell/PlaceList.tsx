@@ -366,6 +366,7 @@ export const PlaceList = (props: PlaceListProps) => {
     setDropKey(undefined)
     window.removeEventListener("keydown", onDragKey, true)
   }
+  onCleanup(() => window.removeEventListener("keydown", onDragKey, true))
   // Escape cancels the drag. The system cancels it too, but a drop that follows must do nothing.
   function onDragKey(event: KeyboardEvent) {
     if (event.key !== "Escape") return
@@ -518,7 +519,7 @@ export const PlaceList = (props: PlaceListProps) => {
               onClick={() => ui.toggleSection(section.id)}
               data-testid="user-section-toggle"
             >
-              {headerContent(section.name, collapsed(), summary())}
+              {headerContent(<span data-user-data>{section.name}</span>, collapsed(), summary())}
             </button>
             <IconButton
               ref={more}

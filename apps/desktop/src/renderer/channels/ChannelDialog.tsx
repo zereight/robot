@@ -59,7 +59,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             topic: topic().trim(),
             memberIds: members(),
             leadId: leadId(),
-            sectionId: sectionId(),
+            sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null,
           },
         })
       } else {
@@ -71,7 +71,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           topic: topic().trim(),
           memberIds: members(),
           leadId: leadId(),
-          sectionId: sectionId(),
+          sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null,
         })
         ui.selectPlace({ kind: "channel", id: channel.id })
       }

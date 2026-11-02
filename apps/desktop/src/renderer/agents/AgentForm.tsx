@@ -133,7 +133,8 @@ export const AgentForm = (props: AgentFormProps) => {
         instructions: instructions(),
         face: face(),
         model: model(),
-        sectionId: sectionId(),
+        // A section that was deleted while the form was open shows as "No section".
+        sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null,
         ...(props.agent ? { permission: permission(), memoryEnabled: memoryEnabled() } : {}),
       })
     } catch (e) {

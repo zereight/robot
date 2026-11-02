@@ -106,6 +106,12 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
       }),
     toggleActivityPanel: () => update({ activityPanel: !ui.activityPanel }),
     newSectionKind,
+    /** True when the section still exists in the list of its kind. */
+    hasSection: (kind: PlaceKind, sectionId: string | null) =>
+      sectionId !== null &&
+      (sectionStore.list.find((s) => s.id === builtInSection(kind))?.sections ?? []).some(
+        (s) => s.id === sectionId,
+      ),
     /** Opens the name box of a new section in the list of a kind. It opens a closed list first. */
     startNewSection: (kind: PlaceKind) => {
       const builtIn = builtInSection(kind)
