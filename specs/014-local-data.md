@@ -41,8 +41,17 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   are in the system keychain. Logs and exports redact anything that looks like a secret. A text
   looks like a secret when it equals a stored key, or holds a key or token of a known form: for
   example a long string that starts with "sk-", "ghp_" or "xox", or a block from "-----BEGIN" to
-  "PRIVATE KEY-----". The keys
-  of device links are secrets. A linked device never receives provider keys.
+  "PRIVATE KEY-----". The keys of device links are secrets. A linked device never receives
+  provider keys. The values of saved secrets (020) are in the keychain too.
+- A service that an agent has a saved secret for (020) gets what the agent writes in a request
+  with that secret. The app sends it nothing else.
+- A watch routine on a tool of a connection (009) calls that tool at each check, with the
+  arguments that the user saved.
+- The local database also holds the instruction history of each agent (002) and the times of
+  each task (005). The times hold no message text.
+- A recording of "Teach a task" (017) stays on this computer. The app sends its list of steps to
+  the model of the agent once, to write the draft skill. The app deletes the recording when the
+  user saves or discards the draft.
 
 ## Logs
 
@@ -66,6 +75,35 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - Import of a ROBot export into an empty app restores everything except secrets. Every
   connection comes back turned off (see 018), so an import never starts a program or sends data.
 
+## Review before an import
+
+An import of an agent file (002) or a workflow file (010) shows a review screen before it makes
+anything. The user sees each part that the file holds and picks what to keep.
+
+- The screen lists each agent or workflow of the file with a tick box. Under each agent are its
+  instructions and each of its routines, each with a tick box. Under each workflow are its
+  trigger, the number of its steps, and the agent names that ROBot cannot find.
+- Ticks at the start:
+  - Agents, workflows and instructions are ticked.
+  - Routines are not ticked, because they run by themselves. A routine that the user ticks still
+    starts paused.
+  - A part whose text had a secret that the app hid (see "Secrets in text" in the file formats)
+    is not ticked. It shows the mark "A secret was removed".
+- An agent that is not ticked takes its instructions and routines with it. Instructions that are
+  not ticked leave the new agent with empty instructions.
+- The screen has a part "Not imported". It lists what the file holds that ROBot does not make,
+  each with the reason, for example a field that this version does not know, or a post step that
+  has no place.
+- The screen shows the counts that it will make, for example "2 agents, 1 routine (paused)". The
+  import button is off when nothing is ticked.
+- After the import, the chat of each new agent shows one message from the app, not from the
+  agent: a checklist of what still needs the user. For example a paused routine ("Turn on"), or a
+  workflow step that needs an agent or a place ("Pick"). Each item opens the place where the user
+  does it. An item ticks itself when it is done. A new workflow shows the same checklist at the
+  top of its canvas. A new item with nothing to do makes no checklist.
+- The review changes nothing in the rules of the file formats. A file that the formats refuse is
+  still refused before the review screen.
+
 ## Acceptance
 
 - Run a channel job with the fast pick set up. The channels log holds one line for it. A search
@@ -76,3 +114,10 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   secret value is missing.
 - Copy the data folder to a new computer, start the app: all agents and history are there; the
   providers ask to sign in again.
+- Import an agent file with two agents and three routines. The review screen shows the routines
+  not ticked. Tick one routine and untick one agent: one agent is made, with one paused routine,
+  and its chat shows a checklist with "Turn on" for the routine. Turn it on: the item ticks.
+- An agent file whose instructions held a key: the review shows the instructions not ticked,
+  with "A secret was removed".
+- Import a workflow file with a post step: "Not imported" names the place of the step, and the
+  canvas of the new workflow shows the checklist item "Pick".

@@ -7,16 +7,18 @@ The user sets the app up the way they like in one place.
 ## Sections
 
 - **General**: language (English, Korean, or follow the system), start at login, default folder
-  for agent workspaces, the step limit of a task (a whole number from 20 to 2000; the
-  default is 300; see 005), and the silent limit: how long a turn may show no sign of life
-  before the app stops it (see 005). The choices are 1, 5, 10 (default), 30 and 60 minutes,
-  and Never.
+  for agent workspaces, the step limit of a task (a whole number from 20 to 2000; the default is
+  300; see 005), "While an agent works, new messages" (see 003, "Messages during a turn"), and the
+  silent limit: how long a turn may show no sign of life before the app stops it (see 005). The
+  choices are 1, 5, 10 (default), 30 and 60 minutes, and Never.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
 - **Decision model**: the fast model for channel picks and computer use. See "Decision model".
 - **Roles**: the role lines of all agents. See "Roles".
-- **Permissions**: the rules that allow or deny steps, and the action log. See 007.
+- **Permissions**: the rules that allow or deny steps, the action log (see 007), the saved
+  secrets, and the switch "Allow saved secrets on this computer and the local network" (see
+  020).
 - **Skills**: the saved instructions that the user calls with a slash. See 017.
 - **Connections**: the outside tools that agents can use. See 018.
 - **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
