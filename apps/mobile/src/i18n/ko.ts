@@ -38,6 +38,7 @@ export const ko: Record<MessageKey, string> = {
   "pair.code.placeholder": "123 456",
   "pair.submit": "페어링",
   "pair.checking": "코드를 확인하고 있어요…",
+  "pair.checking.hint": "휴대폰에서는 최대 30초 정도 걸릴 수 있어요.",
   "pair.waiting": "{name}에서 허용하기를 기다리고 있어요…",
   "pair.waiting.hint": "{name}에서 허용을 눌러 주세요.",
   "pair.vpn":

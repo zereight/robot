@@ -36,6 +36,7 @@ export const en = {
   "pair.code.placeholder": "123 456",
   "pair.submit": "Pair",
   "pair.checking": "Checking the code…",
+  "pair.checking.hint": "On a phone this can take up to half a minute.",
   "pair.waiting": "Waiting for {name} to allow…",
   "pair.waiting.hint": "On {name}, choose Allow.",
   "pair.vpn":

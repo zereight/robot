@@ -48,6 +48,8 @@ test("a computer for the phone app", async () => {
 
     // The phone asks: "Allow <phone name>?" with the kind phone and no two-way choice.
     await expect(page.getByTestId("join-dialog")).toBeVisible({ timeout: 10 * 60_000 })
+    // Phone 1 has no screens to change agents, so the switch is off at first for a phone.
+    await expect(page.getByTestId("join-can-change")).toHaveAttribute("aria-checked", "false")
     await shot(page, "desktop-02-allow-phone")
     await page.getByTestId("join-allow").click()
     await expect(page.getByTestId("pair-ended")).toBeVisible()

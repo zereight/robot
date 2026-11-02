@@ -54,6 +54,16 @@ appId: host.exp.Exponent
     visible:
       id: "pair.busy"
     timeout: 30000
+# While the phone works out the key, the line says that this can take up to half a minute.
+- extendedWaitUntil:
+    visible:
+      text: ".*half a minute.*|.*최대 30초.*"
+    timeout: 10000
+- takeScreenshot: phone-04-checking-the-code
+- extendedWaitUntil:
+    visible:
+      text: ".*Waiting for .* to allow.*|.*허용하기를 기다리고.*"
+    timeout: 60000
 - takeScreenshot: phone-04-waiting-to-allow
 # After the first pairing the system asks about notifications (Korean or English simulator).
 - extendedWaitUntil:

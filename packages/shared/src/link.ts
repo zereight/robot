@@ -44,6 +44,12 @@ export const CACHED_METHODS = [
 export const isCachedMethod = (method: string) =>
   (CACHED_METHODS as readonly string[]).includes(method)
 
+/**
+ * The first value of the switch "Can create and change agents" in "Allow <name>?" (spec 012, 011).
+ * A phone has no screens for it in Phone 1, so it is off for a phone and on for a computer.
+ */
+export const defaultCanChange = (kind: DeviceKind): boolean => kind !== "phone"
+
 /** Page buttons that a client cannot use on a linked server (spec 012, "What a client can do"). */
 export const CLIENT_BLOCKED_PAGES = ["today", "usage"] as const
 

@@ -66,7 +66,9 @@ export default function Pair() {
           </Title>
           {phase.kind === "waiting" ? (
             <Body muted>{t("pair.waiting.hint", { name: phase.name })}</Body>
-          ) : null}
+          ) : (
+            <Body muted>{t("pair.checking.hint")}</Body>
+          )}
           <Button kind="secondary" label={t("common.cancel")} onPress={cancel} />
         </View>
       </Screen>
