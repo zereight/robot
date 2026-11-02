@@ -83,7 +83,8 @@ and its role line. Nothing moves.
   The Korean phrases read as spoken Korean, not as a translation. For a turn started by a routine,
   the line names the routine. The stop button shows whenever this line shows, in every place
   where the agent works (chat, channel, routine, workflow).
-- Failed: an error row with the reason in plain words and a Retry button.
+- Failed: an error row with the reason in plain words and a Retry button. Retry shows the retry
+  note (see 005) when the first try ran steps that may have changed things.
 - Provider not connected: the message box is disabled with a button to connect it.
 - Interrupted by a restart: see "Rules".
 

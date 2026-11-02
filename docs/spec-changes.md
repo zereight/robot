@@ -24,6 +24,12 @@ These are in the code today and the specs now say something else.
 | 009 | No limit on routines, and a routine that fails keeps running. | At most 50 routines. A note for a schedule under 15 minutes. A routine pauses after 3 failed runs in a row. |
 | 003 | The command list shows commands and runtime skills. | It also shows the skills that the user saved (017). A message can hold a skill chip. |
 | 015 | The island shows faces and a count while agents work, and the first waiting request. | A detail card with one row for each working agent (place, what it does, time). The attention card shows the place and the kind of step, and the user can go through all waiting requests ("1 of N"). In the mode "always", a result card shows when a reply ends or a task or routine fails. |
+| 005, 007, 013 | Nothing limits a chain of agent messages, the steps of a task, or repeated reads. | A message chain stops at depth 8. A task stops at 300 steps by default (a setting from 20 to 2000). The third read with the same target and the same result is refused. |
+| 005, 003, 004 | Retry starts a new task at once. | Retry shows a note first when the earlier try ran steps that may have changed things. |
+| 006 | A runtime shows as found or not found, and signed in or not. | Five states: Checking, Ready, Needs sign-in, Needs repair, Not installed. "Check again" changes nothing. "Repair" is the only action that changes the program. |
+| 007 | Three permission levels. Full access needs no confirm. | A fourth level, "Read only", the strictest. Full access asks for a confirm. The action log says whether a file step read or wrote. |
+| 004, 005 | A part ends as done, failed or cancelled. | A channel can ask for review. A part is then in review until the user accepts it or asks for changes. |
+| 005, 009 | A turn that ends with no error is done. | A task from a part, a message of another agent, a routine or a workflow ends as Blocked when the agent says it could not do the work. A blocked run counts as failed for the pause of a routine. |
 
 ## Slices
 
@@ -45,5 +51,8 @@ These are in the code today and the specs now say something else.
 | S32 | Connections: the Connections page, test, tool cards, risky-step rule, rules for connection tools, time and size limits, import turns them off. Needs S30. | 018, 007, 013, 014, 000 |
 | S33 | Status island detail: the detail card of working agents, the richer attention card with "1 of N", the result card in the mode "always". | 015 |
 | S34 | Waiting tasks survive a restart: a task with no parent that waits for an approval or a question still waits after the app starts again, its card shows again, the island and the notification ask once, and Allow lets it go on. Other work that was running or queued is still marked failed with the restart reason. | 005, 007, 015 |
+| S35 | Limits of a task: message chain depth, step limit and its setting, refusal of repeated reads. The retry note in chat, channel and Tasks page. | 005, 007, 003, 004, 013, 019 |
+| S36 | Runtime states with "Check again" and "Repair", and the disabled message box. The level "Read only", the confirm for "Full access", the line under the level, the read or write mark in the log. | 006, 007, 003, 012, 019 |
+| S37 | Review of parts and the state Blocked: the channel setting, the eye and stop sign icons, the actions on the part and on the Tasks page, labels in routines, workflows and notices. Needs S35 (both change the Tasks page). | 004, 005, 009, 010, 012, 015, 019 |
 
-S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30.
+S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35.
