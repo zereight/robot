@@ -10,16 +10,7 @@ import {
   messageText,
   type ToolAsk,
 } from "@robot/shared"
-import {
-  BookOpen,
-  Copy,
-  Download,
-  ExternalLink,
-  Pencil,
-  Reply,
-  User,
-  Wrench,
-} from "lucide-solid"
+import { BookOpen, Copy, Download, ExternalLink, Pencil, Reply, User, Wrench } from "lucide-solid"
 import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"

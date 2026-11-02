@@ -143,7 +143,9 @@ export const AgentForm = (props: AgentFormProps) => {
         model: model(),
         // A client has no sections (012). A section that was deleted while the form was open
         // shows as "No section".
-        ...(remote() ? {} : { sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null }),
+        ...(remote()
+          ? {}
+          : { sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null }),
         ...(props.agent && !remote()
           ? { permission: permission(), memoryEnabled: memoryEnabled() }
           : props.agent

@@ -191,13 +191,19 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
 }
 
 /** True when two cards ask the same thing. The time of the ask does not count. */
-const sameAsk = (a: ToolAsk, b: ToolAsk): boolean =>
-  a.kind === "approval"
-    ? b.kind === "approval" && a.summary === b.summary
-    : b.kind === "question" &&
-      a.question === b.question &&
-      a.choices.length === b.choices.length &&
-      a.choices.every((c, i) => c === b.choices[i])
+const sameAsk = (a: ToolAsk, b: ToolAsk): boolean => {
+  if (a.kind === "approval") return b.kind === "approval" && a.summary === b.summary
+  if (a.kind === "article")
+    return (
+      b.kind === "article" && a.title === b.title && a.before === b.before && a.after === b.after
+    )
+  return (
+    b.kind === "question" &&
+    a.question === b.question &&
+    a.choices.length === b.choices.length &&
+    a.choices.every((c, i) => c === b.choices[i])
+  )
+}
 
 /** A short line for a tool card, from the tool name and its arguments. */
 export const toolLabel = (name: string, input: string) => {

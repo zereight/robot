@@ -121,7 +121,8 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
       const BODY = (text: string) => cut(text)
 
       /** The body of a notice from a workflow is the first characters of the input as they are. */
-      const bodyOf = (n: Notice) => (n.kind === "workflow_notice" ? notifyBody(n.body) : cut(n.body))
+      const bodyOf = (n: Notice) =>
+        n.kind === "workflow_notice" ? notifyBody(n.body) : cut(n.body)
 
       /** Linked devices get every notice and decide by their own settings. */
       const push = (n: Notice, ids?: { callId: string; agentId: string }) =>
@@ -130,7 +131,8 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
           channelId: n.channelId ?? null,
           title: n.title,
           body: bodyOf(n),
-          target: n.target,
+          ...(n.target ? { target: n.target } : {}),
+          ...(n.page ? { page: n.page } : {}),
           ...(ids ? { callId: ids.callId, agentId: ids.agentId } : {}),
         })
 
@@ -170,11 +172,14 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
           platform.notify(
             {
               title: `${notice.title} · ${source.serverName}`,
-              body: cut(notice.body),
+              body: notice.kind === "workflow_notice" ? notifyBody(notice.body) : cut(notice.body),
             },
             () => {
               platform.showWindow()
-              bus.emit("app.openPlace", { ...notice.target, serverId: source.serverId })
+              if (notice.page)
+                bus.emit("app.openPage", { page: notice.page, serverId: source.serverId })
+              else if (notice.target)
+                bus.emit("app.openPlace", { ...notice.target, serverId: source.serverId })
             },
           )
         },

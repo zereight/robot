@@ -14,6 +14,8 @@ import {
 import { join, sep } from "node:path"
 import {
   ATTACH_BYTES,
+  askKind,
+  askSummary,
   CLOCK_WARN_MS,
   COUNTED_KINDS,
   type DownloadChunk,
@@ -434,10 +436,8 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
                 serverId: localServerId(),
                 channelId: row.channel_id ?? null,
                 callId: part.id,
-                kind: part.ask.kind,
-                summary: islandSummary(
-                  part.ask.kind === "approval" ? part.ask.summary : part.ask.question,
-                ),
+                kind: askKind(part.ask),
+                summary: islandSummary(askSummary(part.ask)),
                 target: row.channel_id
                   ? { kind: "channel", id: row.channel_id, messageId: id }
                   : { kind: "agent", id: row.agent_id, messageId: id },

@@ -9,6 +9,12 @@ import type {
 } from "./channels.ts"
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
 import type {
+  KnowledgeArticle,
+  KnowledgeChange,
+  KnowledgeFindings,
+  KnowledgeView,
+} from "./knowledge.ts"
+import type {
   ConnectProbe,
   DevicesState,
   JoinRequest,
@@ -18,12 +24,6 @@ import type {
   ServerEntry,
   WireNotice,
 } from "./link.ts"
-import type {
-  KnowledgeArticle,
-  KnowledgeChange,
-  KnowledgeFindings,
-  KnowledgeView,
-} from "./knowledge.ts"
 import type { MemoryItem } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type {
@@ -386,7 +386,8 @@ export interface RpcEvents {
   "workflows.run": { runId: string }
   "island.state": IslandState
   "app.openPlace": PlaceTarget
-  "app.openPage": { page: "workflows" }
+  /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
+  "app.openPage": { page: "workflows"; serverId?: string }
   "notifications.changed": Record<string, never>
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }

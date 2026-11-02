@@ -1169,7 +1169,13 @@ describe("the first save in a workspace that the user chose", () => {
     await s.send(call("write_article", { title: "Alpha", body: "x" }))
     const ask = await s.waitingCard()
     // The card names the folder and has no "Always allow".
-    expect(ask).toEqual({ kind: "approval", summary: join(chosen, "Knowledge"), once: true })
+    // The card also holds the time when the agent asked (spec 007).
+    expect(ask).toEqual({
+      kind: "approval",
+      summary: join(chosen, "Knowledge"),
+      once: true,
+      askedAt: expect.any(Number),
+    })
     expect(existsSync(join(chosen, "Knowledge"))).toBe(false)
     await s.respond("deny")
     await s.finished()
@@ -1221,6 +1227,7 @@ describe("the first save in a workspace that the user chose", () => {
       kind: "approval",
       summary: join(chosen, "Knowledge"),
       once: true,
+      askedAt: expect.any(Number),
     })
     // "always" is not a choice of this card: it does not allow.
     await s.respond("always")

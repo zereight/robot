@@ -50,7 +50,12 @@ export const App = () => {
     }),
   )
   // A notice from a workflow opens the page of workflows.
-  onCleanup(window.robot.on("app.openPage", ({ page }) => ui.selectPage(page)))
+  onCleanup(
+    window.robot.on("app.openPage", ({ page, serverId }) => {
+      if (serverId) ui.selectServer(serverId)
+      ui.selectPage(page)
+    }),
+  )
   const [newChannel, setNewChannel] = createSignal(false)
   const [newAgent, setNewAgent] = createSignal(false)
   const [exportAgents, setExportAgents] = createSignal(false)

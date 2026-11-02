@@ -322,15 +322,24 @@ export type WireMessage =
 
 /** A system notice that a server pushes, so a client can show it by its own settings. */
 export interface WireNotice {
-  readonly kind: "reply" | "mention" | "approval" | "question" | "task_failed" | "routine_failed"
+  readonly kind:
+    | "reply"
+    | "mention"
+    | "approval"
+    | "question"
+    | "task_failed"
+    | "routine_failed"
+    | "workflow_notice"
   readonly channelId: string | null
   readonly title: string
   readonly body: string
-  readonly target: {
+  /** The place to open on a click. A notice of a workflow has a page instead (spec 010, 015). */
+  readonly target?: {
     readonly kind: "agent" | "channel"
     readonly id: string
     readonly messageId?: string
   }
+  readonly page?: "workflows"
   /** For an approval or a question: the call that waits, so one answer ends the notice everywhere. */
   readonly callId?: string
   readonly agentId?: string
