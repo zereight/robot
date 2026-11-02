@@ -27,8 +27,8 @@ Agents do repeat work on a schedule without the user starting it.
   two runs shows a note under the next run times: "This runs about N times a day." N is the
   count for a full day. The note does not stop the save.
 - **Repeated failure**: a routine that fails 3 runs in a row pauses itself.
-  - A run that ends as Done sets the count of failed runs to 0. A run that ends as Failed adds 1.
-    Cancelled, Skipped and Missed runs do not change the count.
+  - A run that ends as Done sets the count of failed runs to 0. A run that ends as Failed or
+    Blocked adds 1. Cancelled, Skipped and Missed runs do not change the count.
   - A run started with Run now counts in the same way as a scheduled run.
   - The routine shows "Paused after 3 failed runs" in the routines list and in its detail, with
     the reason of the last failure. The calendar keeps all past runs.
@@ -43,6 +43,8 @@ Agents do repeat work on a schedule without the user starting it.
   line of the agent names the routine (see 003), because a run has no step text of its own.
 - A run whose tasks are all cancelled by the user shows as "Cancelled" in the calendar and the
   run list, not as done.
+- A run whose task ends as Blocked (see 005) shows as "Blocked" in the calendar and the run list,
+  with the reason of the block. A blocked run counts as a failed run for the pause above.
 - Missed runs while the computer was off or asleep: on wake, the app runs at most one missed run
   per routine, and only if it is less than 12 hours late. The others show as "Missed".
 - A run does not start while the previous run of the same routine is still going; it is marked
@@ -55,6 +57,8 @@ Agents do repeat work on a schedule without the user starting it.
 - A routine every 2 minutes runs twice in 5 minutes and posts both results.
 - Sleep through 3 runs, wake: one run starts and two show "Missed".
 - Cancel the only task of a run: the run shows as "Cancelled".
+- The agent of a routine ends its reply with "Blocked: no access to the folder" in 3 runs in a
+  row: each run shows "Blocked" with that reason, and the routine is paused after the third.
 - A routine whose agent has no connected provider fails 3 runs in a row: the routine is paused
   with the text "Paused after 3 failed runs", the fourth run does not start, and one
   notification says that the routine is paused. Resume starts the checks again.

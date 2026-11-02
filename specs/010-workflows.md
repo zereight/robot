@@ -95,7 +95,8 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 ## Rules
 
 - A step starts when all its inputs are done.
-- A failed step stops the run unless the step is marked "Continue on failure".
+- A failed step stops the run unless the step is marked "Continue on failure". An agent step
+  whose task ends as Blocked (see 005) is a failed step, with the reason of the block.
 - A workflow cannot be edited while it runs; the editor shows it read-only until the run ends.
 - When two computers sync (019), a workflow runs on one computer only. The other computer shows
   "Runs on <name>".

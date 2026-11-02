@@ -7,8 +7,8 @@ The user gives a job to a group of agents in one place and watches them divide a
 ## Concepts
 
 - **Channel**: name (1 to 60 characters), topic (up to 200), members (agents), one optional lead
-  agent, and an optional section: a user section of the Channels list (see 001, "User
-  sections"). With no section, the channel shows in the Channels list itself.
+  agent, the setting "Review parts" (off by default), and an optional section: a user section of
+  the Channels list (see 001, "User sections"). With no section, the channel shows in the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
   parts and give each part to a member.
 - **Part**: a child task (see 005) given to one member, with a short label.
@@ -37,7 +37,9 @@ The user gives a job to a group of agents in one place and watches them divide a
 4. Thread chips: under the message that started a part, a chip shows the member's face, the part
    label and the reply count. A click scrolls to the newest reply of that part and flashes it,
    with a "Back to the message" control.
-5. Finish: when all parts end, the lead posts one summary message.
+5. Finish: when all parts end, the lead posts one summary message. A part in review has not
+   ended, so the summary waits for the decision. The summary names each blocked part and its
+   reason.
 6. Change members: the user adds or removes members in channel settings. A member that works
    cannot be removed until its part ends or the user stops it.
 7. Archive: the user archives a channel from its menu. It leaves the place list. Its messages stay.
@@ -45,11 +47,30 @@ The user gives a job to a group of agents in one place and watches them divide a
    interface text says "archived", not "deleted", for a channel that is not gone. A channel keeps
    its section while archived. A restore puts it back in that section. If the section is gone, it
    returns with no section.
-8. Retry or end: a failed part shows a card with "Retry" and "End the request". Retry makes a new
-   part (see 005). "End the request" asks the user to confirm. It then cancels every part of the
+8. Retry or end: a failed or blocked part shows a card with "Retry" and "End the request". A
+   blocked part shows its reason on the card. Retry makes a new part (see 005) and shows the
+   retry note of 005 when it applies. "End the request" asks the user to confirm. It then cancels every part of the
    same job that is not final, and the wait of the lead for them. Parts that are done keep their
    results. The lead posts no summary. The confirm dialog has a "Back" button, so no two buttons
    say the same word with opposite meanings.
+9. Review: in the channel settings the user turns on "Review parts". From then on, a part of a
+   plan that ends with no error and no "Blocked:" line (see 005) is in review, not done. The
+   user opens the part and chooses "Accept", or "Request changes" and types what to change (see
+   "Review of parts"). Turning the setting off does not change a part that is in review.
+
+## Review of parts
+
+- The setting counts only for parts. The plan, the summary and a check of the lead, and a reply
+  to a mention or `@all`, are never in review.
+- A part in review shows an eye icon with a text label in the plan steps. Its chip and its
+  messages stay. Under the last message of the part, a bar shows "Accept" and "Request
+  changes". The Tasks page (005) offers the same two actions.
+- "Request changes" opens a text field of 1 to 2000 characters. The new part has the label of
+  the old part with the prefix "Changes: ", cut at 48 characters in all. Its chip shows under
+  the first message of the new part.
+- The user gets a notification of the kind "part in review" (015). A click opens the part.
+- A part in review does not count as running for the check of the lead, and it does not hold
+  the place of its member (005).
 
 ## Fast pick
 
@@ -75,14 +96,14 @@ The user gives a job to a group of agents in one place and watches them divide a
 ## Check by the lead
 
 - A check happens only when the channel has a lead that is not archived and not blocked by a
-  usage limit, and only when work in the channel has stopped: no part is queued, running or
-  waiting, and at least one part ended since the last check.
+  usage limit, and only when work in the channel has stopped: no part is queued, running,
+  waiting or in review, and at least one part ended since the last check.
 - The lead reads a short state of the channel: its topic, the older summary, the members with
   their role lines, the open and failed parts, and the last 12 messages, each cut to 600
   characters. The lead treats all of that text as data, not as orders.
 - The lead then does exactly one of three things:
-  1. Nudge: a member stopped early, a result is missing or partial, or a part failed and another
-     try can help. The lead gives that member one more concrete instruction. It shows in the
+  1. Nudge: a member stopped early, a result is missing or partial, or a part failed or is blocked
+     and another try can help. The lead gives that member one more concrete instruction. It shows in the
      channel as a message of the lead, and it starts a new part (see 005).
   2. Ask: only the user can go on (a decision, a missing fact, an approval). The lead posts one
      specific question in the channel.
@@ -99,7 +120,7 @@ The user gives a job to a group of agents in one place and watches them divide a
 - One card per member: face, name, state (idle, working, waiting, offline).
 - When a member leads active work, its card lists the plan steps: up to 8 steps, labels cut at
   48 characters, each with a state icon: to do (empty circle), running (spinner), done (check),
-  failed (cross). Each icon has a text label for screen readers.
+  failed (cross), in review (eye), blocked (stop sign). Each icon has a text label for screen readers.
 - Cancelled parts do not show. When all work ends, the steps leave the card.
 
 ## Rules
@@ -116,9 +137,9 @@ The user gives a job to a group of agents in one place and watches them divide a
 - A part never stays in "working" after its turn has ended. This holds also when the link between
   the conversation of the member and the channel is lost. The chat of the member then stops
   saying that it works in the channel.
-- The user can stop one part or all work in the channel.
-- A failed part shows its error in the channel; the lead decides whether to retry or report, or
-  the user retries or ends the request (flow 8).
+- The user can stop one part or all work in the channel. Stop does not change a part in review.
+- A failed part shows its error, and a blocked part shows its reason, in the channel. The lead
+  decides whether to retry or report, or the user retries or ends the request (flow 8).
 
 ## Acceptance
 
@@ -134,3 +155,12 @@ The user gives a job to a group of agents in one place and watches them divide a
 - A part fails. "End the request" cancels its sibling parts, and the done parts keep their results.
 - A member runs a job in channel A. A job for the same member in channel B shows that it waits
   behind channel A.
+- Turn on "Review parts" and post a job that the lead splits into two parts. Both parts end and
+  show in review, with the eye icon. The lead posts no summary. Accept the first part: it shows
+  done. Request changes on the second part with the text "Add a title": the old part shows done,
+  a new part "Changes: <label>" runs and goes to review. Accept it: the lead posts one summary.
+- A part is in review. Choose "End the request": the part shows cancelled and the lead posts no
+  summary. Restart the app with a part in review: the part is still in review.
+- A member ends a part with the line "Blocked: no access to the repository". The plan step shows
+  the stop sign, the card shows the reason, and the summary of the lead names the part with that
+  reason.
