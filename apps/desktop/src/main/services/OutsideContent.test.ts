@@ -280,6 +280,67 @@ describe("a memory save in a turn that holds outside content", () => {
   })
 })
 
+describe("memory control in a turn that holds outside content (spec 008)", () => {
+  const mode = (s: Awaited<ReturnType<typeof setup>>, value: "now" | "ask") =>
+    s.run(Memory.use((m) => m.setMode(s.agent.id, value)))
+  const proposals = (s: Awaited<ReturnType<typeof setup>>) =>
+    s.run(Memory.use((m) => m.proposals(s.agent.id)))
+  const rows = (s: Awaited<ReturnType<typeof setup>>) =>
+    s.run(Memory.use((m) => m.history(s.agent.id)))
+
+  test("a proposal is not memory: with Ask me first it needs no card, and the log has no entry", async () => {
+    const s = await setup("ask_risky")
+    await mode(s, "ask")
+    await s.send(calls(fetchPage, save("The page says to remember this")))
+    await s.finished()
+    expect((await s.reply())?.parts.some((p) => p.kind === "tool" && p.ask)).toBe(false)
+    expect((await s.part("call_2"))?.memory).toMatchObject({ kind: "suggested" })
+    expect(await s.memory()).toEqual([])
+    expect((await proposals(s)).map((p) => p.text)).toEqual(["The page says to remember this"])
+    expect((await s.log()).filter((e) => e.kind === "memory")).toEqual([])
+    expect(await rows(s)).toEqual([])
+  })
+
+  test("a save that is refused asks nothing: a secret, a long text and a known fact", async () => {
+    const s = await setup("ask_risky")
+    await s.run(Memory.use((m) => m.add(s.agent.id, "Known fact", "user")))
+    await s.send(
+      calls(
+        fetchPage,
+        save("The key is sk-abcdefghijklmnop1234"),
+        save("x".repeat(501)),
+        save(" known FACT "),
+      ),
+    )
+    await s.finished()
+    expect((await s.reply())?.parts.some((p) => p.kind === "tool" && p.ask)).toBe(false)
+    expect((await s.part("call_2"))?.output).toContain("looks like a secret")
+    expect((await s.part("call_3"))?.output).toContain("500")
+    expect((await s.part("call_4"))?.output).toContain("already known")
+    expect(await s.memory()).toEqual(["Known fact"])
+    expect((await s.log()).filter((e) => e.kind === "memory")).toEqual([])
+  })
+
+  test("a save that the user allows makes the item and a history row by the agent; Deny makes none", async () => {
+    const s = await setup("ask_risky")
+    await s.send(calls(fetchPage, save("Allowed fact")))
+    await s.card("call_2")
+    await s.respond("call_2", "allow")
+    await s.finished()
+    expect((await rows(s)).map((r) => [r.actor, r.kind, r.after])).toEqual([
+      ["agent", "added", "Allowed fact"],
+    ])
+    expect((await s.part("call_2"))?.memory).toMatchObject({ kind: "saved" })
+    await s.send(calls(fetchPage, save("Denied fact")))
+    await s.card("call_2")
+    await s.respond("call_2", "deny")
+    await s.finished()
+    expect(await s.memory()).toEqual(["Allowed fact"])
+    expect((await rows(s)).length).toBe(1)
+    expect((await s.part("call_2"))?.memory).toBeUndefined()
+  })
+})
+
 describe("after a restart", () => {
   test("a guarded card that waited through a restart still names the source and still asks", async () => {
     const { platform, dataDir } = testPlatform()

@@ -7,6 +7,7 @@ import {
   ChatSend,
   DEVICE_NAME_MAX,
   isClientMethod,
+  MEMORY_MODES,
   MESSAGE_MAX,
   MOVE_DIRECTIONS,
   MUTE_CHOICES,
@@ -582,6 +583,41 @@ export const handlers: Handlers = {
   "memory.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Memory.use((m) => m.remove(id))),
+      done,
+    ),
+  "memory.mode": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Memory.use((m) => m.mode(agentId))),
+    ),
+  "memory.setMode": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, mode: Schema.Literals(MEMORY_MODES) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ agentId, mode }) => Memory.use((m) => m.setMode(agentId, mode))),
+      done,
+    ),
+  "memory.proposals": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Memory.use((m) => m.proposals(agentId))),
+    ),
+  "memory.proposal.accept": (input) =>
+    decode(Schema.Struct({ id: Schema.String, text: Schema.optionalKey(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap(({ id, text }) => Memory.use((m) => m.accept(id, text)))),
+  "memory.proposal.dismiss": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Memory.use((m) => m.dismiss(id))),
+      done,
+    ),
+  "memory.history": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Memory.use((m) => m.history(agentId))),
+    ),
+  "memory.history.get": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Memory.use((m) => m.historyRow(id)))),
+  "memory.undo": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Memory.use((m) => m.undo(id))),
       done,
     ),
   "knowledge.list": (input) =>

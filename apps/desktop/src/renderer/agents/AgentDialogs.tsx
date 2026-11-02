@@ -1,10 +1,11 @@
 import type { Agent, AgentPatch, MessageKey } from "@robot/shared"
-import { createSignal, Show } from "solid-js"
+import { createEffect, createSignal, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
 import { KnowledgePage } from "../knowledge/KnowledgePage.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { memoryTarget } from "../state/memoryLink.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -126,6 +127,10 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
   const [error, setError] = createSignal<ErrorText>()
   const [tab, setTab] = createSignal<"profile" | "knowledge">("profile")
   const teach = useTeach()
+  // A link to the memory tabs shows the page that holds them.
+  createEffect(() => {
+    if (memoryTarget()?.agentId === props.agent.id) setTab("profile")
+  })
 
   const act = async (run: () => Promise<void>) => {
     setError(undefined)

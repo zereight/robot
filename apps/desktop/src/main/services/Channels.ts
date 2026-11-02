@@ -461,7 +461,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 return ask ? { ...rest, state: "waiting", ask } : { ...rest, state: "running" }
               })
             },
-            onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
+            onMemory: (callId, memory) => changePart(callId, (p) => ({ ...p, memory })),
+            origin: { kind: "channel", id: o.channel.id, messageId: id },
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             knowledgeChanges: { count: 0 },
             turn: mark,

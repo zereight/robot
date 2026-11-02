@@ -1,7 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
-import { RUNTIME_KINDS, WORKFLOW_NOTES_MAX } from "@robot/shared"
+import {
+  MEMORY_TEXT_MAX,
+  MEMORY_USER_TEXT_MAX,
+  RUNTIME_KINDS,
+  WORKFLOW_NOTES_MAX,
+} from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "../services/Agents.ts"
 import { Channels } from "../services/Channels.ts"
@@ -181,6 +186,27 @@ const source = async () => {
       output: "",
       knowledge: { kind: "source", name: "data.bin" },
     },
+    // The lines of the memory tool hold ids only (spec 008, 019).
+    {
+      kind: "tool",
+      id: "c8",
+      name: "save_memory",
+      label: "save_memory",
+      state: "done",
+      input: "",
+      output: "Saved to memory.",
+      memory: { kind: "saved", historyId: "hist-1" },
+    },
+    {
+      kind: "tool",
+      id: "c9",
+      name: "save_memory",
+      label: "save_memory",
+      state: "done",
+      input: "",
+      output: "Suggested for memory.",
+      memory: { kind: "suggested", proposalId: "prop-1" },
+    },
     // A step of Muse Code that waits for an approval: the card holds the whole command.
     {
       kind: "tool",
@@ -263,6 +289,18 @@ const source = async () => {
   )
   sql("UPDATE agent SET place_section_id = 'sec-1' WHERE id = ?", ada.id)
   sql("UPDATE channel SET place_section_id = 'sec-2' WHERE id = ?", channel.id)
+  // The memory choice, the proposals and the history of the first agent: sync must not carry them.
+  sql("UPDATE agent SET memory_mode = 'ask' WHERE id = ?", ada.id)
+  sql(
+    "INSERT INTO memory_proposal (id, agent_id, text, created_at) VALUES ('prop-1', ?, 'Waits for the user', ?)",
+    ada.id,
+    NOW,
+  )
+  sql(
+    "INSERT INTO memory_history (id, agent_id, memory_id, at, actor, kind, source, new_text) VALUES ('hist-1', ?, 'mem-1', ?, 'user', 'added', 'user', 'Likes tea')",
+    ada.id,
+    NOW,
+  )
   // The knowledge of the first agent: sync must not carry it.
   sql("UPDATE agent SET knowledge_enabled = 1 WHERE id = ?", ada.id)
   sql(
@@ -377,7 +415,7 @@ describe("one item of every kind is made from its first copy", () => {
     ])
     // The tool cards arrived with their asks and their knowledge notes.
     const parts = (KINDS.message.read(b, "msg-1")?.fields.parts ?? []) as { kind: string }[]
-    expect(parts.length).toBe(9)
+    expect(parts.length).toBe(11)
 
     // The new agent and channel are in no user section here, and no section was made.
     expect(
@@ -405,6 +443,20 @@ describe("one item of every kind is made from its first copy", () => {
     expect(b.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM knowledge_change")?.n).toBe(0)
     // The source still has its article.
     expect(a.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM knowledge_file")?.n).toBe(1)
+
+    // The history, the proposals and the choice of memory did not travel either (spec 019). The
+    // item of memory did, and it made no history row.
+    expect(watch.statements.filter((x) => /memory_(history|proposal|mode)/i.test(x))).toEqual([])
+    expect(b.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM memory")?.n).toBe(1)
+    expect(b.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM memory_history")?.n).toBe(0)
+    expect(b.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM memory_proposal")?.n).toBe(0)
+    expect(b.db.all("SELECT memory_mode FROM agent")).toEqual([
+      { memory_mode: "now" },
+      { memory_mode: "now" },
+    ])
+    expect(a.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM memory_history")?.n).toBe(1)
+    expect(a.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM memory_proposal")?.n).toBe(1)
+    expect(KINDS.agent.read(ctxA, a.ada.id)?.fields).not.toHaveProperty("memoryMode")
   })
 
   test("a change and a removal of every kind never touch a knowledge table", async () => {
@@ -427,6 +479,7 @@ describe("one item of every kind is made from its first copy", () => {
       }
     }
     expect(watch.statements.filter((s) => /knowledge/i.test(s))).toEqual([])
+    expect(watch.statements.filter((s) => /memory_(history|proposal|mode)/i.test(s))).toEqual([])
     expect(b.db.all("SELECT id FROM agent")).toEqual([])
   })
 })
@@ -622,6 +675,56 @@ describe("the cards that ask and the notes of knowledge tools in a message", () 
     bad({ knowledge: { kind: "read", title: 5 } })
     bad({ knowledge: { kind: "other" } })
     bad({ knowledge: "read" })
+  })
+
+  test("the line of the memory tool passes in both forms and holds an id only", () => {
+    ok({ memory: { kind: "saved", historyId: "h-1" } })
+    ok({ memory: { kind: "suggested", proposalId: "p-1" } })
+    bad({ memory: { kind: "saved" } })
+    bad({ memory: { kind: "saved", historyId: "h-1", text: "Likes tea" } })
+    bad({ memory: { kind: "suggested", proposalId: "" } })
+    bad({ memory: { kind: "undone", historyId: "h-1" } })
+    bad({ memory: "saved" })
+  })
+})
+
+describe("memory in a sync (spec 008, 019)", () => {
+  const field = (v: unknown) => ({ v, s: stamp })
+  const itemOp = (extra: Record<string, unknown>) => ({
+    k: "memory",
+    i: "mem-9",
+    o: "dev-b",
+    f: {
+      agentId: field("agent-1"),
+      text: field("Likes tea"),
+      source: field("user"),
+      createdAt: field(NOW),
+      updatedAt: field(NOW),
+      ...Object.fromEntries(Object.entries(extra).map(([n, v]) => [n, field(v)])),
+    },
+  })
+
+  test("an item that came from a proposal passes; an unknown source does not", () => {
+    expect(parseOp(itemOp({ source: "proposal" }), NOW)).toBeDefined()
+    expect(parseOp(itemOp({ source: "agent" }), NOW)).toBeDefined()
+    expect(parseOp(itemOp({ source: "undo" }), NOW)).toBeUndefined()
+  })
+
+  test("a text typed by hand may be longer than the tool takes, up to the limit of the user", () => {
+    expect(parseOp(itemOp({ text: "x".repeat(MEMORY_TEXT_MAX + 1) }), NOW)).toBeDefined()
+    expect(parseOp(itemOp({ text: "x".repeat(MEMORY_USER_TEXT_MAX) }), NOW)).toBeDefined()
+    expect(parseOp(itemOp({ text: "x".repeat(MEMORY_USER_TEXT_MAX + 1) }), NOW)).toBeUndefined()
+    expect(parseOp(itemOp({ text: "   " }), NOW)).toBeUndefined()
+  })
+
+  test("the history, a proposal and the choice are not fields of an item or of an agent", () => {
+    for (const name of ["history", "proposals", "memoryMode", "mode", "actor"]) {
+      expect(parseOp(itemOp({ [name]: "x" }), NOW), name).toBeUndefined()
+    }
+    expect(Object.keys(KINDS.agent.fields)).not.toContain("memoryMode")
+    expect(Object.keys(KINDS.memory.fields).sort()).toEqual(
+      ["agentId", "createdAt", "source", "text", "updatedAt"].sort(),
+    )
   })
 })
 

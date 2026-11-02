@@ -238,7 +238,7 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       ...base,
       state: event.state,
       output: event.state === "running" ? "" : event.output,
-      ...(existing?.kind === "tool" && existing.memoryId ? { memoryId: existing.memoryId } : {}),
+      ...(existing?.kind === "tool" && existing.memory ? { memory: existing.memory } : {}),
       // Who answered the approval stays on the card when the call ends (spec 012).
       ...(existing?.kind === "tool" && existing.decision ? { decision: existing.decision } : {}),
       ...(existing?.kind === "tool" && existing.knowledge ? { knowledge: existing.knowledge } : {}),
@@ -729,7 +729,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 }
               })
             },
-            onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
+            onMemory: (callId, memory) => changePart(callId, (p) => ({ ...p, memory })),
+            origin: { kind: "agent", id: agentId, messageId: reply.id },
             onDecision: (callId, answer, by) =>
               changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
