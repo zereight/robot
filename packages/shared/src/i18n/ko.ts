@@ -1461,7 +1461,7 @@ export const ko: Record<MessageKey, string> = {
   "routines.model.same": "에이전트와 같음",
   "routines.model.own": "이 루틴만의 모델",
   "routines.paused": "3번 연속 실패해서 일시 중지됨",
-  "routines.paused.notice": "{name}이(가) 3번 연속 실패해서 일시 중지됐어요.",
+  "error.routine_paused": "{detail}이(가) 3번 연속 실패해서 일시 중지됐어요.",
   "routines.note.unchanged": "{name}: 확인했어요, 바뀐 것 없음.",
   "error.invalid_watch": "감시 설정이 올바르지 않아요.",
   "error.watch_missing": "경로가 없어요: {detail}",

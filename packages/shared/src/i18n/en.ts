@@ -1472,7 +1472,7 @@ export const en = {
   "routines.model.same": "Same as the agent",
   "routines.model.own": "A model for this routine",
   "routines.paused": "Paused after 3 failed runs",
-  "routines.paused.notice": "{name} is paused after 3 failed runs.",
+  "error.routine_paused": "{detail} is paused after 3 failed runs.",
   "routines.note.unchanged": "{name}: checked, nothing changed.",
   "error.invalid_watch": "The watch is not valid.",
   "error.watch_missing": "The path does not exist: {detail}",
