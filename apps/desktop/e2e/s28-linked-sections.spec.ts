@@ -9,6 +9,7 @@ import {
   shot,
 } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, openDevices, report, rpc, setName } from "./sync-helpers.ts"
 
 // Specs 001 (user sections), 012 (linked server) and 016 (knowledge). MacBook 1 (the client) opens
@@ -178,7 +179,7 @@ const start = async (
 
 test("linked sections: a client sees the sections of the server and cannot change them", async () => {
   test.setTimeout(240_000)
-  const s = await start([47931, 47932], "Research")
+  const s = await start(await freePortPair(), "Research")
   const { one, two, mock } = s
   try {
     await tile(one.page, "MacBook 2").click()
@@ -292,7 +293,7 @@ test("linked sections: a client sees the sections of the server and cannot chang
 
 test("linked knowledge: a client is told where to open it, and cannot reach it", async () => {
   test.setTimeout(240_000)
-  const s = await start([47933, 47934], "Research")
+  const s = await start(await freePortPair(), "Research")
   const { one, two, mock } = s
   try {
     // On the server: the Knowledge page shows the article.
@@ -359,7 +360,7 @@ test("linked knowledge: a client is told where to open it, and cannot reach it",
 
 test("linked sections and knowledge: in Korean the client screens have no English left", async () => {
   test.setTimeout(240_000)
-  const s = await start([47935, 47936], "연구", { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  const s = await start(await freePortPair(), "연구", { ROBOT_SYSTEM_LOCALE: "ko-KR" })
   const { one, mock, two } = s
   try {
     await tile(one.page, "MacBook 2").click()

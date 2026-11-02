@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { type ElectronApplication, _electron as electron, type Page } from "@playwright/test"
+import { freeNearbyPort } from "./ports.ts"
 
 const appDir = resolve(import.meta.dirname, "..")
 export const shotsDir = resolve(appDir, "../../build/e2e/screenshots")
@@ -12,6 +13,16 @@ export interface Launched {
   readonly app: ElectronApplication
   readonly page: Page
   readonly userData: string
+}
+
+let nearbyOfWorker: Promise<number> | undefined
+/**
+ * One port for the name service of the copies that this worker starts. Without it, a copy that
+ * shows a pairing code speaks on the real port, and reaches other computers and other test runs.
+ */
+const nearbyPortOfWorker = () => {
+  nearbyOfWorker ??= freeNearbyPort()
+  return nearbyOfWorker
 }
 
 export const freshUserData = () => mkdtempSync(join(tmpdir(), "robot-e2e-"))
@@ -49,6 +60,7 @@ export const launch = async (
       ROBOT_TEST_SECRETS: `${userData}-secrets.json`,
       // Tests skip the first start guide. A test of the guide sets this to an empty string.
       ROBOT_SKIP_FIRST_RUN: "1",
+      ROBOT_LINK_NEARBY_PORT: String(await nearbyPortOfWorker()),
       ...env,
     } as Record<string, string>,
   })
