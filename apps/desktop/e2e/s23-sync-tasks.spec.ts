@@ -236,6 +236,31 @@ test("sync tasks: a card of a computer that is off says so", async () => {
     await expect(two.page.getByTestId("tool-origin")).toContainText("from MacBook 1")
     // The first computer is lost at once, as when its power goes: its task does not end by itself.
     const proc = one.app.process()
+    const mainOne = await one.app.evaluate(() => process.pid)
+    const mainTwo = await two.app.evaluate(() => process.pid)
+    console.log(
+      "DIAG s23 pids: spawned one",
+      proc.pid,
+      "app says one",
+      mainOne,
+      "spawned two",
+      two.app.process().pid,
+      "app says two",
+      mainTwo,
+    )
+    if (process.platform === "win32") {
+      const r = spawnSync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Get-CimInstance Win32_Process -Filter \"Name='ROBot.exe'\" | Where-Object { $_.CommandLine -notmatch '--type=' } | Select-Object ProcessId,ParentProcessId,CreationDate | Format-Table -AutoSize | Out-String -Width 200",
+        ],
+        { encoding: "utf8" },
+      )
+      console.log("DIAG s23 main processes before kill\n" + (r.stdout ?? "") + (r.stderr ?? ""))
+    }
     const pid = proc.pid
     console.log("DIAG s23 kill returned", proc.kill("SIGKILL"), "pid", pid)
     for (const wait of [1000, 4000, 10000]) {
