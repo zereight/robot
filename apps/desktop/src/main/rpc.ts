@@ -63,6 +63,7 @@ import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
+import { Teach } from "./services/Teach.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
@@ -674,6 +675,33 @@ export const handlers: Handlers = {
       ),
       done,
     ),
+  "teach.state": () => Teach.use((t) => t.state),
+  "teach.start": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, result: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, result }) => Teach.use((t) => t.start(agentId, result))),
+    ),
+  "teach.open": (input) =>
+    decode(Schema.Struct({ url: Schema.String.check(Schema.isMaxLength(4000)) }))(input).pipe(
+      Effect.flatMap(({ url }) => Teach.use((t) => t.open(url))),
+      done,
+    ),
+  "teach.pause": (input) =>
+    decode(Schema.Struct({ paused: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ paused }) => Teach.use((t) => t.pause(paused))),
+      done,
+    ),
+  "teach.stop": () => Teach.use((t) => t.stop),
+  "teach.cancel": () => Teach.use((t) => t.cancel).pipe(done),
+  "teach.retry": () => Teach.use((t) => t.retry).pipe(done),
+  "teach.save": (input) =>
+    decode(
+      Schema.Struct({
+        name: Schema.String.check(Schema.isMaxLength(1000)),
+        description: Schema.String.check(Schema.isMaxLength(10_000)),
+        instructions: Schema.String.check(Schema.isMaxLength(100_000)),
+      }),
+    )(input).pipe(Effect.flatMap((draft) => Teach.use((t) => t.save(draft)))),
+  "teach.discard": () => Teach.use((t) => t.discard).pipe(done),
   "routines.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Routines.use((r) => r.list(serverId))),

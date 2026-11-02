@@ -39,6 +39,7 @@ import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routin
 import type { SearchPage } from "./search.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type { Skill, SkillInput } from "./skills.ts"
 import type {
   SyncChangeEntry,
   SyncGuard,
@@ -48,6 +49,7 @@ import type {
   SyncStatus,
 } from "./sync.ts"
 import type { Task, TaskDetail } from "./task.ts"
+import type { TeachState } from "./teach.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
@@ -311,6 +313,18 @@ export interface RpcMethods {
     }
     output: undefined
   }
+  /** "Teach a task" (spec 017). One recording at a time on this computer. */
+  "teach.state": { input: undefined; output: TeachState }
+  "teach.start": { input: { agentId: string; result: string }; output: TeachState }
+  /** Opens an address in the browser that the user teaches with. */
+  "teach.open": { input: { url: string }; output: undefined }
+  "teach.pause": { input: { paused: boolean }; output: undefined }
+  /** Ends the recording and asks for a draft. `empty` is true when no step was recorded. */
+  "teach.stop": { input: undefined; output: { empty: boolean } }
+  "teach.cancel": { input: undefined; output: undefined }
+  "teach.retry": { input: undefined; output: undefined }
+  "teach.save": { input: SkillInput; output: Skill }
+  "teach.discard": { input: undefined; output: undefined }
   "routines.list": { input: { serverId: string }; output: readonly Routine[] }
   "routines.create": { input: RoutineInput; output: Routine }
   "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }
@@ -420,6 +434,8 @@ export interface RpcEvents {
   /** An article, a source or the change list of an agent changed. */
   "knowledge.changed": { agentId: string }
   "browser.changed": { agentId: string }
+  /** "Teach a task" started, recorded a step, paused, stopped, made a draft, or ended. */
+  "teach.changed": TeachState
   "routines.changed": { serverId: string }
   "workflows.changed": { serverId: string }
   "workflows.run": { runId: string }
