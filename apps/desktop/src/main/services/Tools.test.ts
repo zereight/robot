@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { ChatMessage, MessagePart } from "@robot/shared"
+import { type ChatMessage, type MessagePart, newTurnMark } from "@robot/shared"
 import { Effect } from "effect"
 import type { ToolEvent } from "../providers/agent.ts"
 import { BRIDGE_TOOL_NAMES } from "../runtimes/bridge.ts"
@@ -511,6 +511,8 @@ describe("browser for an agent runtime", () => {
       onMemory: () => {},
       onKnowledge: () => {},
       knowledgeChanges: { count: 0 },
+      turn: newTurnMark("user"),
+      taskId: null,
     }
     const bridge = await s.run(
       Tools.use((x) => Effect.succeed(x.bridge(context, (event) => shown.push(event)))),

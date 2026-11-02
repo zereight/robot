@@ -11,20 +11,27 @@ import {
   type ChatMessage,
   type ChatSend,
   type FilePart,
+  holdOutside,
   type MessagePart,
   type MessageStatus,
   type ModelInfo,
   messageFiles,
   messageText,
+  newTurnMark,
+  type OutsideSource,
+  outsideOfCall,
+  outsideOfParts,
   type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
   runningStepKind,
   type StepEffort,
+  starterOf,
   stepTurnEffort,
   type Task,
   type TaskSource,
   type ToolAsk,
+  type TurnStarter,
   toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
@@ -86,6 +93,16 @@ interface AgentModelRow {
 export interface TaskOrigin {
   readonly source: TaskSource
   readonly sourceId: string
+  /**
+   * Who started the turn, when the source does not tell it: a message from another agent is
+   * "agent". By default it comes from the source (spec 007, "Outside content").
+   */
+  readonly starter?: TurnStarter
+  /**
+   * The turn holds outside content from its start: a message from another agent, or the change
+   * that starts a watch routine. This is its source.
+   */
+  readonly outside?: OutsideSource
   /** Called when the task of the message starts, with its id. */
   readonly onStart?: (taskId: string) => void
   /**
@@ -395,6 +412,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
         const parts: MessagePart[] = kept ? (JSON.parse(kept.parts) as MessagePart[]) : []
         const resume = kept ? resumeOf(parts) : undefined
+        // The mark of the turn (spec 007, "Outside content"). A turn that waited through a
+        // restart gets it back from its saved steps and from the card that waits.
+        const origin = lastUser && !resumed ? origins.get(lastUser.id) : undefined
+        const mark = newTurnMark(origin?.starter ?? starterOf(task.source), origin?.outside ?? null)
+        if (kept) holdOutside(mark, outsideOfParts(parts))
         const counted = kept
           ? db.get<{ input_tokens: number | null; output_tokens: number | null }>(
               "SELECT input_tokens, output_tokens FROM message WHERE id = ?",
@@ -531,6 +553,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             knowledgeChanges: { count: 0 },
+            turn: mark,
+            taskId: task.id,
           }
           // A step of a workflow can ask for its own effort for this one turn. It is read for each
           // turn, so a retry decides again from the step and the model, not from the first try.
@@ -591,11 +615,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           }
           yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(
             // The program also reports its own calls of these tools. The app shows its own cards.
-            Stream.runForEach((event) =>
-              isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null
-                ? Effect.void
-                : onEvent(event),
-            ),
+            Stream.runForEach((event) => {
+              if (isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null)
+                return Effect.void
+              // A web, browser or connection step of the program itself gives outside content.
+              if (isRuntime && event.type === "tool" && event.state !== "running")
+                holdOutside(mark, outsideOfCall(event.call.name, event.call.input))
+              return onEvent(event)
+            }),
           )
         })
 
