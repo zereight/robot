@@ -65,7 +65,7 @@ const isObject = (value: unknown): value is Json =>
 const isInt = (value: unknown, min: number, max = Number.POSITIVE_INFINITY): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= min && value <= max
 
-const readSchedule = (value: unknown): Schedule | null => {
+export const readSchedule = (value: unknown): Schedule | null => {
   if (!isObject(value)) return null
   let schedule: Schedule
   switch (value.kind) {
@@ -218,14 +218,19 @@ export const writeAgentFile = (agents: readonly AgentFileAgent[]): string =>
 
 /**
  * The name of an imported agent: the name itself, or "Name 2", "Name 3" and so on when it is
- * taken. The base is shortened when the result would be longer than the name limit.
+ * taken. The base is shortened when the result would be longer than the name limit (`max`, the
+ * limit of agent names unless another one is given, as for a workflow).
  */
-export const numberedName = (name: string, taken: (candidate: string) => boolean): string => {
+export const numberedName = (
+  name: string,
+  taken: (candidate: string) => boolean,
+  max = AGENT_NAME_MAX,
+): string => {
   const base = name.trim()
   if (!taken(base)) return base
   for (let n = 2; ; n++) {
     const tail = ` ${n}`
-    const room = AGENT_NAME_MAX - charLength(tail)
+    const room = max - charLength(tail)
     const candidate = [...base].slice(0, room).join("").trimEnd() + tail
     if (!taken(candidate)) return candidate
   }
@@ -235,11 +240,15 @@ export const numberedName = (name: string, taken: (candidate: string) => boolean
  * The names that an import gives, in file order. A name that an agent on the server has, or that
  * an earlier agent of the file got, is numbered. Names compare by `nameKey`, ignoring case.
  */
-export const planNames = (names: readonly string[], existing: Iterable<string>): string[] => {
+export const planNames = (
+  names: readonly string[],
+  existing: Iterable<string>,
+  max = AGENT_NAME_MAX,
+): string[] => {
   const used = new Set<string>()
   for (const name of existing) used.add(nameKey(name))
   return names.map((name) => {
-    const planned = numberedName(name, (candidate) => used.has(nameKey(candidate)))
+    const planned = numberedName(name, (candidate) => used.has(nameKey(candidate)), max)
     used.add(nameKey(planned))
     return planned
   })

@@ -263,12 +263,15 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
     if (readOnly() || graph.notes.length >= WORKFLOW_NOTES_MAX) return
     const count = graph.notes.length
     const v = view()
+    // A new note goes below the lowest step, in the part of the canvas that shows now.
+    const top = (40 - v.y) / v.zoom
+    const below = graph.steps.reduce((low, s) => Math.max(low, s.y + NODE_H + 30), top)
     const note: Note = {
       id: newId(),
       text: "",
       tone: "yellow",
       x: Math.round((40 - v.x) / v.zoom + (count % 3) * (NOTE_W + 30)),
-      y: Math.round((40 - v.y) / v.zoom + 4 * 110 + Math.floor(count / 3) * 110),
+      y: Math.round(below + Math.floor(count / 3) * 110),
     }
     setGraph("notes", (notes) => [...notes, note])
     setSelected({ kind: "note", id: note.id })
