@@ -162,6 +162,9 @@ const electronBrowser = (agentId: string): BrowserPage => {
     },
     allowUserInput: (allowed) => {
       userInput = allowed
+      // A test run never moves the system focus: this call makes the app the active program.
+      // No test checks where the keys go.
+      if (isTestRun) return
       // The keys go where the control is: into the page, or back to the chat.
       const v = live()
       if (allowed) v?.webContents.focus()
