@@ -334,6 +334,21 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         return { full, inside }
       }
 
+      /**
+       * The file tools do not work on a source, and do not work in the Knowledge folder while
+       * knowledge is on. The agent gets a plain error and uses the article tools. A path is
+       * compared in lower case, because a disk can ignore case.
+       */
+      const knowledgeBlock = (ctx: ToolContext, full: string): string | null => {
+        const root = realOf(join(ctx.workspace, KNOWLEDGE_FOLDER)).toLowerCase()
+        const target = realOf(full).toLowerCase()
+        if (insideWorkspace(target, join(root, KNOWLEDGE_SOURCES.toLowerCase())))
+          return "A source cannot be read or changed with the file tools."
+        if (insideWorkspace(target, root) && knowledge.enabled(ctx.agentId))
+          return "Use read_article, write_article and delete_article for the Knowledge folder."
+        return null
+      }
+
       const runCommand = (ctx: ToolContext, command: string) =>
         new Promise<ToolOutcome>((done) => {
           const child = spawn(command, {
@@ -371,7 +386,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           })
         })
 
-      const searchFiles = (root: string, query: string) => {
+      const searchFiles = (root: string, query: string, skip: (dir: string) => boolean) => {
         const hits: string[] = []
         const q = query.toLocaleLowerCase()
         const walk = (dir: string) => {
@@ -379,7 +394,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             if (hits.length >= SEARCH_MAX) return
             const path = join(dir, entry.name)
             if (entry.isDirectory()) {
-              if (!SKIP_DIRS.has(entry.name)) walk(path)
+              if (!SKIP_DIRS.has(entry.name) && !skip(path)) walk(path)
             } else if (entry.isFile() && statSync(path).size < 1_000_000) {
               const lines = readFileSync(path, "utf8").split("\n")
               for (const [i, line] of lines.entries()) {
@@ -661,6 +676,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         switch (call.name) {
           case "list_files": {
             const p = place(ctx, text(args, "path"))
+            const blocked = knowledgeBlock(ctx, p.full)
+            if (blocked) return { output: blocked, failed: true }
             await approve(ctx, call, !p.inside, `list_files${p.inside ? "" : ":outside"}`, p.full)
             const entries = readdirSync(p.full, { withFileTypes: true })
               .slice(0, LIST_MAX)
@@ -669,21 +686,15 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
           case "read_file": {
             const p = place(ctx, text(args, "path"))
+            const blocked = knowledgeBlock(ctx, p.full)
+            if (blocked) return { output: blocked, failed: true }
             await approve(ctx, call, !p.inside, `read_file${p.inside ? "" : ":outside"}`, p.full)
             return { output: cut(readFileSync(p.full, "utf8"), READ_MAX), failed: false }
           }
           case "write_file": {
             const p = place(ctx, text(args, "path"))
-            const knowledgeRoot = realOf(join(ctx.workspace, KNOWLEDGE_FOLDER))
-            const target = realOf(p.full)
-            // A source never changes, and the articles have their own tools.
-            if (insideWorkspace(target, join(knowledgeRoot, KNOWLEDGE_SOURCES)))
-              return { output: "A source cannot be changed.", failed: true }
-            if (insideWorkspace(target, knowledgeRoot) && knowledge.enabled(ctx.agentId))
-              return {
-                output: "Use write_article and delete_article for the Knowledge folder.",
-                failed: true,
-              }
+            const blocked = knowledgeBlock(ctx, p.full)
+            if (blocked) return { output: blocked, failed: true }
             await approve(ctx, call, !p.inside, `write_file${p.inside ? "" : ":outside"}`, p.full)
             mkdirSync(dirname(p.full), { recursive: true })
             const content = text(args, "content")
@@ -691,7 +702,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return { output: `Wrote ${content.length} characters to ${p.full}`, failed: false }
           }
           case "search_files": {
-            const hits = searchFiles(ctx.workspace, text(args, "query"))
+            // The search leaves out the sources, and the articles while knowledge is on.
+            const hits = searchFiles(ctx.workspace, text(args, "query"), (dir) => {
+              return knowledgeBlock(ctx, dir) !== null
+            })
             return { output: hits.join("\n") || "No matches.", failed: false }
           }
           case "run_command": {

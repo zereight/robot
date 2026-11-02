@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs"
@@ -735,6 +736,61 @@ describe("knowledge tools in a turn", () => {
     expect(existsSync(join(s.folder, "Sneaky.md"))).toBe(false)
     // The copy is read-only for other programs too (not on Windows, which has no mode bits).
     if (process.platform !== "win32") expect(statSync(kept).mode & 0o222).toBe(0)
+  })
+
+  test("no file tool works on a source, or in the Knowledge folder while knowledge is on", async () => {
+    const s = await setup()
+    mkdirSync(join(s.agent.workspace, "attachments"), { recursive: true })
+    writeFileSync(join(s.agent.workspace, "attachments", "r.txt"), "needle in a source")
+    writeFileSync(join(s.agent.workspace, "plain.txt"), "needle in a plain file")
+    await s.turn(call("add_source", { path: "attachments/r.txt" }))
+    await s.turn(call("write_article", { title: "Alpha", body: "needle in an article" }))
+    const refused = async (name: string, args: object) => {
+      await s.turn(call(name, args))
+      const part = (await s.toolParts())[0]
+      expect(part).toMatchObject({ name, state: "failed" })
+      return part?.output ?? ""
+    }
+    // A source: never, with any file tool.
+    expect(await refused("read_file", { path: "Knowledge/sources/r.txt" })).toContain("source")
+    expect(await refused("list_files", { path: "Knowledge/sources" })).toContain("source")
+    expect(
+      await refused("write_file", { path: "Knowledge/sources/r.txt", content: "x" }),
+    ).toContain("source")
+    // The folder: not while knowledge is on. The error names the article tools.
+    expect(await refused("read_file", { path: "Knowledge/Alpha.md" })).toContain("read_article")
+    expect(await refused("list_files", { path: "Knowledge" })).toContain("write_article")
+    expect(await refused("write_file", { path: "Knowledge/New.md", content: "x" })).toContain(
+      "delete_article",
+    )
+    // The same with another spelling of the path, and through a symbolic link.
+    expect(await refused("read_file", { path: "./knowledge/../Knowledge/Alpha.md" })).toContain(
+      "read_article",
+    )
+    if (process.platform !== "win32") {
+      symlinkSync(join(s.folder, "Alpha.md"), join(s.agent.workspace, "shortcut.md"))
+      expect(await refused("read_file", { path: "shortcut.md" })).toContain("read_article")
+    }
+    expect(existsSync(join(s.folder, "New.md"))).toBe(false)
+    // A search finds the plain file only: not the article, not the source.
+    await s.turn(call("search_files", { query: "needle" }))
+    const found = (await s.toolParts())[0]?.output ?? ""
+    expect(found).toContain("plain.txt")
+    expect(found).not.toContain("Knowledge")
+    // The listing of the workspace itself still works.
+    await s.turn(call("list_files", { path: "" }))
+    expect((await s.toolParts())[0]).toMatchObject({ state: "done" })
+
+    // Knowledge off: the folder is a plain folder again. A source stays closed.
+    await s.run(Agents.use((a) => a.update(s.agent.id, { knowledgeEnabled: false })))
+    await s.turn(call("read_file", { path: "Knowledge/Alpha.md" }))
+    expect((await s.toolParts())[0]).toMatchObject({ state: "done" })
+    expect((await s.toolParts())[0]?.output).toContain("needle in an article")
+    await refused("read_file", { path: "Knowledge/sources/r.txt" })
+    await s.turn(call("search_files", { query: "needle" }))
+    const off = (await s.toolParts())[0]?.output ?? ""
+    expect(off).toContain("Alpha.md")
+    expect(off).not.toContain("sources")
   })
 
   test("a web page is kept as text with its address", async () => {
