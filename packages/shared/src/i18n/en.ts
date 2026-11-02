@@ -313,6 +313,23 @@ export const en = {
   "chat.queued": "Waiting to send",
   "chat.queue.edit": "Edit queued message",
   "chat.queue.remove": "Remove queued message",
+  "chat.queue.sendNow": "Send now",
+  "chat.unread": "Read at the next step",
+  "chat.unread.delete": "Delete",
+  "chat.hold.codex":
+    "Codex reads no messages during a turn. Your messages wait here until the turn ends.",
+  "chat.hold.muse":
+    "Muse Code reads no messages during a turn. Your messages wait here until the turn ends.",
+  "chat.hold.pi":
+    "pi reads no messages during a turn. Your messages wait here until the turn ends.",
+  "chat.tool.answeredInChat": "Answered in the chat",
+  "settings.duringTurn": "While an agent works, new messages",
+  "settings.duringTurn.hint":
+    "A message can change the course of the work now, or wait until the work ends.",
+  "settings.duringTurn.join": "Join the current turn",
+  "settings.duringTurn.queue": "Wait in a queue",
+  "tasks.joined": "Messages during the turn",
+  "error.message_read": "The agent has read this message already.",
   "chat.thinking": "Thinking…",
   "chat.thought": "Thought",
   "chat.tool.running": "Running",

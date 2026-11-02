@@ -218,6 +218,7 @@ export const ChatView = (props: ChatViewProps) => {
         agent={props.agent}
         working={working()}
         queue={chat.queue}
+        hold={chat.hold}
         replyTo={replyTo()}
         onCancelReply={() => setReplyTo(undefined)}
         onSent={() => {

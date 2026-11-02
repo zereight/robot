@@ -6,6 +6,7 @@ import {
   type ToolCall,
   type Turn,
 } from "./chat.ts"
+import type { TurnInbox } from "./turn.ts"
 
 export interface ToolOutcome {
   readonly output: string
@@ -22,13 +23,23 @@ export type ToolEvent =
       readonly output: string
     }
 
-export type AgentEvent = Exclude<StreamEvent, { type: "toolcall" }> | ToolEvent
+/** The agent read a message that the user sent into the turn (spec 003). */
+export interface JoinedEvent {
+  readonly type: "joined"
+  readonly id: string
+}
+
+export type AgentEvent = Exclude<StreamEvent, { type: "toolcall" }> | ToolEvent | JoinedEvent
 
 export const MAX_ROUNDS = 12
 
 /**
  * Asks the model, runs the tools it calls, gives it the results, and asks again, until it
  * answers without a tool call. Tools of one round run one after another, in order.
+ *
+ * Messages that the user sends during the turn (`inbox`) go to the model with the next request:
+ * after the tool step that runs, or after the reply that streams. A reply with no tool call ends
+ * the turn only when no message waits.
  */
 export async function* runAgent(
   req: ChatRequest,
@@ -38,9 +49,18 @@ export async function* runAgent(
    * turn that made the call. The turn goes on with this call and asks the model after it.
    */
   resume?: ToolCall,
+  inbox?: TurnInbox,
 ): AsyncGenerator<AgentEvent> {
   const turns: Turn[] = [...req.turns]
   let pending = resume
+  /** Gives the waiting messages to the model, as one message of the user. False when none waits. */
+  const join = function* (): Generator<AgentEvent, boolean> {
+    const joined = inbox?.take() ?? []
+    if (joined.length === 0) return false
+    for (const message of joined) yield { type: "joined", id: message.id }
+    turns.push({ role: "user", content: joined.map((m) => m.text).join("\n\n") })
+    return true
+  }
   for (let round = 0; round < MAX_ROUNDS; round++) {
     let text = ""
     let blocks: readonly ReplyBlock[] | undefined
@@ -57,7 +77,12 @@ export async function* runAgent(
           yield event
         }
       }
-      if (calls.length === 0) return
+      if (calls.length === 0) {
+        // The reply goes back as a turn of its own, so the messages of the user follow it.
+        turns.push({ role: "assistant", content: text })
+        if (yield* join()) continue
+        return
+      }
       // A reply with thinking goes back as the model made it, so that it goes on thinking.
       turns.push({
         role: "assistant",
@@ -85,6 +110,7 @@ export async function* runAgent(
       turns.push({ role: "tool", callId: call.id, name: call.name, content: outcome.output })
     }
     pending = undefined
+    yield* join()
   }
   yield { type: "text", text: "\n\n(Stopped: too many tool rounds.)" }
 }

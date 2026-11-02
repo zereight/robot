@@ -5,6 +5,25 @@ import type { ToolOutcome } from "./agent.ts"
 import type { ToolCall, ToolDef, Turn } from "./chat.ts"
 import type { Resume } from "./resume.ts"
 
+/** A message that the user sent into the turn while it runs (spec 003). */
+export interface JoinedMessage {
+  /** The id of the message in the chat. A program that takes input gets it as the id of its input. */
+  readonly id: string
+  /** The text for the model: the quote, the text and the attached files of the message. */
+  readonly text: string
+}
+
+/**
+ * The messages that wait for the next step of the turn. A message that `take` gave is no longer in
+ * the inbox: from then on it cannot be deleted. The turn tells when the agent read it with an
+ * event `joined`.
+ */
+export interface TurnInbox {
+  take(): readonly JoinedMessage[]
+  /** Calls `ready` each time a new message comes. Returns the function that ends the calls. */
+  watch(ready: () => void): () => void
+}
+
 /** What one turn of an agent needs, whatever kind of account answers it. */
 export interface TurnInput {
   readonly model: string
@@ -20,6 +39,11 @@ export interface TurnInput {
   readonly useTools: boolean
   /** Set when the turn goes on after a restart, at a card that waits (spec 005). API accounts only. */
   readonly resume?: Resume
+  /**
+   * The messages that the user sends while the turn runs. Absent when messages cannot join, for
+   * example in a channel, or for a program that takes no input during a turn.
+   */
+  readonly inbox?: TurnInbox
 }
 
 /** How a turn reaches the user and the tools. */

@@ -7,6 +7,7 @@ import {
   type ProviderKind,
   type RuntimeKind,
   runtimeHasSeparateSignIn,
+  runtimeTakesInput,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
@@ -224,6 +225,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
               },
               hooks.execute,
               input.resume?.call,
+              input.inbox,
             )
           }
           const kind = row.kind
@@ -253,6 +255,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                   signal: input.signal,
                   approve: hooks.approve,
                   ...(grant ? { bridge: grant } : {}),
+                  ...(input.inbox && runtimeTakesInput(kind) ? { inbox: input.inbox } : {}),
                 },
                 row.sign_in,
               )

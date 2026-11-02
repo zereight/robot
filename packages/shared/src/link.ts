@@ -126,6 +126,8 @@ export const CLIENT_METHODS = [
   "chat.edit",
   "chat.queue.update",
   "chat.queue.remove",
+  "chat.queue.sendNow",
+  "chat.unread.delete",
   "chat.markRead",
   "tools.respond",
   "tasks.list",
