@@ -30,6 +30,7 @@ import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
 import styles from "./agents.module.css"
 import { Face, faceColour } from "./Face.tsx"
+import { InstructionHistory } from "./InstructionHistory.tsx"
 import { MemoryPanel } from "./MemoryPanel.tsx"
 
 export interface AgentFormValues {
@@ -249,6 +250,10 @@ export const AgentForm = (props: AgentFormProps) => {
         />
         <span class={styles.hint}>{t("agents.field.instructions.hint")}</span>
       </label>
+      {/* The history stays on the computer of the agent and its sync peer (spec 002, 012). */}
+      <Show when={!remote() ? props.agent : undefined}>
+        {(agent) => <InstructionHistory agentId={agent().id} onRestored={setInstructions} />}
+      </Show>
 
       <div class={styles.field}>
         <span class={styles.label}>{t("agents.field.face")}</span>

@@ -533,3 +533,34 @@ describe("the step of saved secrets", () => {
     ])
   })
 })
+
+describe("the step of the instruction history", () => {
+  test("it makes the table, which sync watches and which goes with its agent", () => {
+    const step = migrations.findIndex((sql) => sql.includes("CREATE TABLE instruction_version"))
+    expect(step).toBeGreaterThan(
+      migrations.findIndex((sql) => sql.includes("CREATE TABLE saved_secret")),
+    )
+    // Later steps follow it (the progress of a task, spec 005, comes after it).
+    expect(step).toBeLessThan(migrations.length)
+    const db = upTo(migrations.length)
+    const triggers = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'instruction_version' ORDER BY name",
+      )
+      .all()
+      .map((r) => (r as { name: string }).name)
+    expect(triggers).toEqual([
+      "sync_dirty_instruction_version_delete",
+      "sync_dirty_instruction_version_insert",
+      "sync_dirty_instruction_version_update",
+    ])
+    db.exec(
+      "INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0); INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue, workspace, section, created_at, updated_at) VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1)",
+    )
+    db.exec(
+      "INSERT INTO instruction_version (id, agent_id, text, source, created_at) VALUES ('v', 'a', 'x', 'chat', 1)",
+    )
+    db.exec("DELETE FROM agent WHERE id = 'a'")
+    expect(db.prepare("SELECT COUNT(*) AS n FROM instruction_version").get()).toEqual({ n: 0 })
+  })
+})

@@ -40,6 +40,7 @@ import { modelChoices } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { ActionLog } from "./services/ActionLog.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
+import { AgentSettings } from "./services/AgentSettings.ts"
 import { Agents } from "./services/Agents.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
@@ -91,6 +92,11 @@ const decode =
     )
 
 const ById = Schema.Struct({ id: Schema.String })
+const SettingsLine = Schema.Struct({
+  agentId: Schema.String,
+  messageId: Schema.String,
+  callId: Schema.String,
+})
 const ByAccount = Schema.Struct({ accountId: Schema.String })
 const SignInId = Schema.String.check(Schema.isPattern(SIGN_IN_ID))
 const ByRuntime = Schema.Struct({
@@ -417,6 +423,33 @@ export const handlers: Handlers = {
   "agents.setFaceImage": (input) =>
     decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
       Effect.flatMap(({ id, dataUrl }) => Agents.use((a) => a.setFaceImage(id, dataUrl))),
+    ),
+  "agents.history.list": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => AgentSettings.use((s) => s.history(agentId))),
+    ),
+  "agents.history.restore": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, versionId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, versionId }) =>
+        AgentSettings.use((s) => s.restore(agentId, versionId)),
+      ),
+    ),
+  "agents.settings.line": (input) =>
+    decode(SettingsLine)(input).pipe(
+      Effect.flatMap(({ agentId, messageId, callId }) =>
+        AgentSettings.use((s) => s.lineState(agentId, messageId, callId)),
+      ),
+    ),
+  "agents.settings.undo": (input) =>
+    decode(SettingsLine)(input).pipe(
+      Effect.flatMap(({ agentId, messageId, callId }) =>
+        Effect.gen(function* () {
+          yield* AgentSettings.use((s) => s.undo(agentId, messageId, callId))
+          // The line of the message shows that it was undone.
+          yield* Chat.use((c) => Effect.sync(() => c.announce(messageId)))
+        }),
+      ),
+      Effect.as(undefined),
     ),
   "models.available": () => modelChoices,
   "agentFile.export": (input) =>

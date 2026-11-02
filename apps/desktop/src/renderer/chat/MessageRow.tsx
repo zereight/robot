@@ -14,6 +14,9 @@ import {
   type OutsideSource,
   type SecretAsk,
   type SecretAuth,
+  type SettingChange,
+  type SettingsNote,
+  type SettingValue,
   type SkillPart,
   type ToolAsk,
 } from "@robot/shared"
@@ -748,24 +751,172 @@ const MemoryLine = (props: { agent: Agent; note: MemoryNote; from: string | unde
   )
 }
 
-/** A tool step: a muted line when a knowledge or memory tool is done, otherwise the plain card. */
-const ToolStep = (props: { agent: Agent; part: ToolPart; from: string | undefined }) => {
+type Translate = ReturnType<typeof useApp>["t"]
+
+/** The text of one change from the chat, for its muted line (spec 002). */
+const changeText = (t: Translate, change: SettingChange): string => {
+  const plain = (v: SettingValue) => (typeof v === "string" && v ? v : t("chat.settings.none"))
+  const pair = (key: MessageKey, show: (v: SettingValue) => string) =>
+    t(key, { before: show(change.before), after: show(change.after) })
+  const option = (prefix: string) => (v: SettingValue) => {
+    const key = `${prefix}.${String(v)}` as MessageKey
+    return key in catalogues.en ? t(key) : String(v)
+  }
+  switch (change.field) {
+    case "name":
+      return pair("chat.settings.name", plain)
+    case "role":
+      return pair("chat.settings.role", plain)
+    case "instructions":
+      return t("chat.settings.instructions")
+    case "face":
+      return t("chat.settings.face")
+    case "model": {
+      const model = (v: SettingValue) =>
+        v && typeof v === "object" && "model" in v ? v : undefined
+      const before = model(change.before)
+      const after = model(change.after)
+      // Only the effort changed: the line names the effort.
+      if (before && after && before.model === after.model && before.accountId === after.accountId)
+        return pair(
+          "chat.settings.effort",
+          (v) => model(v)?.effort ?? t("chat.settings.effortDefault"),
+        )
+      return pair("chat.settings.model", (v) => model(v)?.model ?? t("chat.settings.none"))
+    }
+    case "language":
+      return pair("chat.settings.language", option("settings.language"))
+    case "theme":
+      return pair("chat.settings.theme", option("settings.theme"))
+    case "textSize":
+      return pair("chat.settings.textSize", option("settings.textSize"))
+    case "compactPlaces":
+      return t(change.after ? "chat.settings.compactPlaces.on" : "chat.settings.compactPlaces.off")
+    case "reduceMotion":
+      return pair("chat.settings.reduceMotion", option("settings.reduceMotion"))
+  }
+}
+
+/**
+ * What a call of the settings tool changed: a muted line with Undo (spec 002). Undo is off when a
+ * field changed again since, with the reason. A client of a linked server shows no Undo.
+ */
+const SettingsLine = (props: {
+  agent: Agent
+  message: ChatMessage
+  part: ToolPart
+  note: SettingsNote
+}) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const [tick, setTick] = createSignal(0)
+  const [error, setError] = createSignal<ErrorText>()
+  const bump = () => setTick((n) => n + 1)
+  onCleanup(window.robot.on("agents.changed", bump))
+  onCleanup(window.robot.on("settings.changed", bump))
+  const [state] = createResource(
+    () =>
+      ui.linked()
+        ? undefined
+        : { tick: tick(), undone: props.note.undone === true, status: props.message.status },
+    () =>
+      call("agents.settings.line", {
+        agentId: props.agent.id,
+        messageId: props.message.id,
+        callId: props.part.id,
+      }).catch(() => undefined),
+  )
+  const undo = async () => {
+    setError(undefined)
+    try {
+      await call("agents.settings.undo", {
+        agentId: props.agent.id,
+        messageId: props.message.id,
+        callId: props.part.id,
+      })
+      bump()
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+  return (
+    <div class={styles.knowledgeLine} data-testid="settings-line" data-state={state() ?? ""}>
+      <For each={props.note.changes}>
+        {(change) => <span data-testid="settings-change">{changeText(t, change)}</span>}
+      </For>
+      <Show when={state()}>
+        {(s) => (
+          <Switch>
+            <Match when={s() === "undone"}>
+              <span data-testid="settings-undone">{t("chat.settings.undone")}</span>
+            </Match>
+            <Match when={s() === "changed"}>
+              <Button disabled data-testid="settings-undo">
+                {t("chat.settings.undo")}
+              </Button>
+              <span data-testid="settings-changed-again">{t("chat.settings.changedAgain")}</span>
+            </Match>
+            <Match when={s() === "ready"}>
+              <Button
+                onClick={undo}
+                disabled={props.message.status === "streaming"}
+                data-testid="settings-undo"
+              >
+                {t("chat.settings.undo")}
+              </Button>
+            </Match>
+          </Switch>
+        )}
+      </Show>
+      <Show when={error()}>
+        {(err) => (
+          <span class={styles.knowledgeError} role="alert">
+            {t(err().key, err().params)}
+          </span>
+        )}
+      </Show>
+    </div>
+  )
+}
+
+/**
+ * A tool step: a knowledge, memory or settings line when the tool is done, otherwise the plain
+ * card.
+ */
+const ToolStep = (props: {
+  agent: Agent
+  message: ChatMessage
+  part: ToolPart
+  from: string | undefined
+}) => {
   const finished = () => props.part.state === "done" || props.part.state === "failed"
   const note = () => (finished() ? props.part.knowledge : undefined)
   const memory = () => (props.part.state === "done" ? props.part.memory : undefined)
+  const settings = () => (props.part.state === "done" ? props.part.settings : undefined)
   return (
     <Show
-      when={note()}
+      when={settings()}
       fallback={
         <Show
-          when={memory()}
-          fallback={<ToolCard agent={props.agent} part={props.part} from={props.from} />}
+          when={note()}
+          fallback={
+            <Show
+              when={memory()}
+              fallback={<ToolCard agent={props.agent} part={props.part} from={props.from} />}
+            >
+              {(m) => <MemoryLine agent={props.agent} note={m()} from={props.from} />}
+            </Show>
+          }
         >
-          {(m) => <MemoryLine agent={props.agent} note={m()} from={props.from} />}
+          {(n) => (
+            <KnowledgeLine agent={props.agent} part={props.part} note={n()} from={props.from} />
+          )}
         </Show>
       }
     >
-      {(n) => <KnowledgeLine agent={props.agent} part={props.part} note={n()} from={props.from} />}
+      {(n) => (
+        <SettingsLine agent={props.agent} message={props.message} part={props.part} note={n()} />
+      )}
     </Show>
   )
 }
@@ -989,6 +1140,7 @@ export const MessageRow = (props: MessageRowProps) => {
                   <Match when={part.kind === "tool"}>
                     <ToolStep
                       agent={props.agent}
+                      message={props.message}
                       part={part as Extract<MessagePart, { kind: "tool" }>}
                       from={fromOther()}
                     />

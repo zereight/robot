@@ -7,6 +7,7 @@ import {
   type AgentPatch,
   copyName,
   faceFromName,
+  type InstructionSource,
   nameKey,
   type PermissionLevel,
 } from "@robot/shared"
@@ -16,6 +17,7 @@ import { CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { recordVersion } from "./instructionHistory.ts"
 import { Platform } from "./Platform.ts"
 import { Providers } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
@@ -48,7 +50,15 @@ export interface AgentsService {
   list(serverId: string, archived: boolean): Effect.Effect<readonly Agent[]>
   get(id: string): Effect.Effect<Agent, AppError>
   create(input: AgentCreate): Effect.Effect<Agent, AppError>
-  update(id: string, patch: AgentPatch): Effect.Effect<Agent, AppError>
+  /**
+   * Changes the fields of an agent. A change of the instructions is kept in the history; `source`
+   * says where it came from. By default it is the profile, or a linked device when one asks.
+   */
+  update(
+    id: string,
+    patch: AgentPatch,
+    options?: { readonly source?: InstructionSource },
+  ): Effect.Effect<Agent, AppError>
   duplicate(id: string, suffix: string): Effect.Effect<Agent, AppError>
   archive(id: string): Effect.Effect<Agent, AppError>
   restore(id: string): Effect.Effect<Agent, AppError>
@@ -199,7 +209,11 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         return toAgent(yield* findRow(id))
       })
 
-      const update = Effect.fn("Agents.update")(function* (id: string, patch: AgentPatch) {
+      const update = Effect.fn("Agents.update")(function* (
+        id: string,
+        patch: AgentPatch,
+        options?: { readonly source?: InstructionSource },
+      ) {
         const row = yield* findRow(id)
         const name = patch.name?.trim()
         if (name !== undefined && nameTaken(row.server_id, name, id)) {
@@ -238,6 +252,14 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           set("knowledge_enabled", patch.knowledgeEnabled ? 1 : 0)
         set("updated_at", Date.now())
         db.run(`UPDATE agent SET ${sets.join(", ")} WHERE id = ?`, ...values, id)
+        if (patch.instructions !== undefined)
+          recordVersion(
+            db,
+            id,
+            row.instructions,
+            patch.instructions,
+            options?.source ?? (by.by !== null ? "device" : "profile"),
+          )
         changed(row.server_id)
         return toAgent(yield* findRow(id))
       })
