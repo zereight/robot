@@ -177,7 +177,17 @@
   padding: 4px 6px;
   border-radius: var(--radius-s);
   font-weight: 600;
+  /* A long name shrinks before the model name and the browser buttons do. */
+  flex: 0 1 auto;
   min-width: 0;
+}
+
+/* The name stays on one line. What does not fit ends with an ellipsis. */
+.headerName > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .headerName:hover {
@@ -188,6 +198,7 @@
   color: var(--c-text-muted);
   font-size: var(--text-xs);
   white-space: nowrap;
+  flex-shrink: 0;
   border: 0;
   background: transparent;
   padding: 4px 6px;
@@ -210,6 +221,7 @@
 .start h2 {
   font-size: var(--text-2xl);
   margin-top: 8px;
+  overflow-wrap: anywhere;
 }
 
 .start p {
@@ -261,6 +273,7 @@
   align-items: center;
   gap: 8px;
   margin-inline-start: auto;
+  flex-shrink: 0;
   color: var(--c-text-muted);
 }
 
