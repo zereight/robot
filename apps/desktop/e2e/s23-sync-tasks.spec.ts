@@ -403,6 +403,10 @@ test("sync tasks: a file of a message that is not on this computer is copied fro
     await send(one.page, "and again")
     await settled(one.page)
     await expect(two.page.getByTestId("message-file")).toHaveCount(2, { timeout: 20_000 })
+    // The name of the origin comes with the message, but it can come a moment after the file. The
+    // chip says "not here" only for a message from the other computer, so wait for both names
+    // before the first computer goes. What it still holds when it goes would wait for its return.
+    await expect(two.page.getByTestId("from-device")).toHaveCount(2, { timeout: 20_000 })
     await one.app.close()
     const second = two.page.getByTestId("message-file").nth(1)
     await expect(second.getByTestId("message-file-missing")).toBeVisible()
