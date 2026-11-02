@@ -152,6 +152,28 @@ test("agents: a long name stays on one line in the chat header", async () => {
   await app.close()
 })
 
+test("agents: the profile box of an agent scrolls in a short window", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1000, 460)
+  await page.getByTestId("new-agent").click()
+  await page.getByTestId("template-general").click()
+  await page.getByTestId("agent-name").fill("Tall")
+  await page.getByTestId("agent-submit").click()
+  await expect(page.getByTestId("chat-start")).toBeVisible()
+  await page.getByTestId("chat-header-agent").click()
+  const box = page.getByTestId("agent-profile")
+  await expect(box).toBeVisible()
+  // The box never grows past the window. What does not fit scrolls, so every button stays in reach.
+  const heights = await box.evaluate((el) => ({
+    box: el.getBoundingClientRect().height,
+    window: innerHeight,
+  }))
+  expect(heights.box).toBeLessThanOrEqual(heights.window)
+  await page.getByTestId("agent-archive").click({ timeout: 5_000 })
+  await expect(page.getByTestId("no-place")).toBeVisible()
+  await app.close()
+})
+
 test("agents: a new agent can get a random name suggestion", async () => {
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
   await resizeWindow(app, 1200, 800)
