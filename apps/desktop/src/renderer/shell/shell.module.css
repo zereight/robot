@@ -550,6 +550,9 @@
   border-radius: var(--radius-l);
   padding: 20px;
   max-width: min(580px, 92vw);
+  /* A short window never cuts a box off: what does not fit scrolls. */
+  max-height: 94vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
