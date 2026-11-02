@@ -6,5 +6,5 @@
     "jsxImportSource": "solid-js",
     "types": ["bun", "node"]
   },
-  "include": ["src", "e2e", "electron.vite.config.ts", "playwright.config.ts"]
+  "include": ["src", "e2e", "perf", "scripts", "electron.vite.config.ts", "playwright.config.ts"]
 }
