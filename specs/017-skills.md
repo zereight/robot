@@ -101,6 +101,9 @@ agent, and the agent writes a draft skill from what the user did.
   keep them too.
 - A message needs text, a file, or a chip. A chip alone is valid.
 - A server holds at most 100 skills.
+- A starter (see 002) can make skills for its new agent. They are for that agent only, they are
+  on, and they count in the limit of 100. They are shortcuts for the chat. They do not run in a
+  routine (see the next rule).
 - Skills work in direct chats and threads. They do not work in channels, routines or workflows in
   this version.
 - Skills are stored in the local database. An export holds them (see 014). An agent file (see

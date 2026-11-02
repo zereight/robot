@@ -32,8 +32,8 @@ An agent has:
    least 80 first names. A pick skips names that agents on the server already use, ignoring case.
    When every name is used, a number follows the name. The names stay English in every
    interface language.
-3. Create from a template: the user picks one of a few starter agents (for example a general
-   assistant, a code reviewer, a researcher). The fields are filled in and can be changed.
+3. Create from a starter: the user picks one of the starters (see "Starters"). The fields are
+   filled in and can be changed.
 4. Edit: the user opens the agent profile and changes any field, also the section. Changes apply to
    the next turn. A change of section applies at once.
 5. Choose a role line: the role box of the profile shows a list of the role lines that other
@@ -54,6 +54,7 @@ An agent has:
     name. The app writes one file. Import agents: the user picks such a file. The app shows the
     review screen (see 014, "Review before an import"), asks for one model for all of them (see
     006), and asks to confirm.
+11. Recent work: the profile lists the latest tasks of the agent (see "Recent work").
 
 ## Changes from the chat
 
@@ -112,6 +113,57 @@ The user can ask an agent in plain words to change itself, for example "use a fa
   a number, ignoring case, inside the length limit. Every imported routine starts paused.
 - If an import fails, the agents made so far stay. The error says why it stopped.
 
+## Starters
+
+A **starter** is a ready setup for one job. It fills the new agent form. It can also make a routine
+and skills for the new agent.
+
+- The choice "Start from" of the form lists "Blank" and then the starters in this order:
+  Assistant, Briefer, Researcher, Reviewer, Organizer. Each choice shows the job name and one line
+  that says what the agent does. A muted line says what else the starter makes, for example "A
+  paused routine, 1 skill". For a starter that makes nothing else, the line says so.
+- A starter fills the name, the role line and the instructions. The user can change all of them
+  before Create. The text of a starter follows the language of the interface at the moment when the
+  user picks the starter. English and Korean each have their own text. "Blank" clears the fields
+  that a starter filled.
+- The extra setup is made when the user presses Create, not when the user picks the starter.
+  - The routine (see 009) is made paused. It uses a schedule and posts in the chat of the new
+    agent. The user turns it on. The form shows its schedule in words.
+  - Each skill (see 017) is made for the new agent only, and it is on. A name that is taken gets a
+    number. A starter skill is a shortcut for the chat. It does not run in a routine.
+  - If the server holds 50 routines, no routine is made. If the server holds 100 skills, no skill
+    is made. The agent is made anyway. A note in the chat of the new agent says what was not made
+    and why. The model does not read the note.
+- A starter does not set a model, a permission level or a workspace. The agent starts with the
+  defaults (see 006 and 007). A starter makes no memory and no knowledge.
+- A linked device (see 012) that makes an agent from a starter gets the three fields only. It
+  makes no routine and no skill, and its choice shows no muted line.
+- The instructions of a starter guide the agent. They do not limit it. The permission level limits
+  it (see 007).
+- The user cannot make or edit starters in this version. The app does not write an agent setup
+  from a text that describes a job.
+
+| Starter | The role line says that the agent | The instructions tell the agent to | Extra setup |
+| --- | --- | --- | --- |
+| Assistant | Helps with everyday questions and writing. | Answer short and plain. Ask one question when a request is unclear. | None. |
+| Briefer | Prepares a short briefing on topics that the user follows. | Ask for the topics when memory has none, and keep them in memory. Search the web for news on them. Lead with the one or two items that matter most to those topics, then give the rest in short lines, at most 10 lines in all. Name the source of each line. Say so plainly when nothing is new. | A routine on weekdays at 08:00, paused, that asks for the briefing. One skill that asks for a briefing now. |
+| Researcher | Finds facts and checks them. | Say which source supports each claim. Keep what a source says apart from its own guess. Say when sources disagree. End with the open questions. | One skill that checks one claim. |
+| Reviewer | Reads code changes and finds problems. | Read first. Change no file unless the user asks. List each finding with its place and why it matters, the most risky first. Say so plainly when there is no problem. | One skill that reviews the newest change in the workspace. |
+| Organizer | Sorts and names the files of its workspace. | Propose a plan before it moves a file. Do not delete a file. Move a file to a folder for review instead. Report how many files it moved. | One skill that tidies the folder that the user names. |
+
+## Recent work
+
+- The agent profile shows a block "Recent work". It lists the last 20 tasks of this agent (see
+  005), newest first. The Today page (021) is for all agents. This block is for one agent.
+- A row shows the label of the task, its source (the chat, a channel, a routine, a workflow, or
+  another agent), its state in words, and the time since its last change. For a task that has not
+  ended, the words say what it waits for: "Waits for your approval", "Waits for your answer",
+  "Waits for your review", or "Waits behind <place>". A blocked task shows "Blocked" and its
+  reason.
+- A row opens the task view. "Show all" opens the Tasks page with the filter set to this agent.
+- The block changes while the profile is open. With no task, one muted line says "No work yet."
+- The block does not show the thinking of the agent.
+
 ## Rules
 
 - Changing the model keeps the agent's history, memory and workspace.
@@ -119,7 +171,7 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - A linked device that the user allows can create, edit, duplicate and archive agents on this
   computer, with limits on the folder, the permission level and the model accounts (012).
 - The face is the same everywhere: list, messages, activity panel, phone.
-- Agents made by other ways than the form (an import, a tool of another agent, a template) keep
+- Agents made by other ways than the form (an import, a tool of another agent, a starter) keep
   the name they were given.
 
 ## Acceptance
@@ -142,3 +194,15 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - Ask the agent to rewrite its instructions: the history has one more version, from the chat.
   Restore the older version: the instructions are the old text, and the history has a version
   from a restore.
+- Pick the starter Briefer and press Create: the agent has the role line and the instructions of
+  the starter, one paused routine at 08:00 on weekdays that posts in its chat, and one skill that
+  only this agent lists.
+- Pick Reviewer, change its role line, and press Create: the agent keeps the changed role line.
+  Pick Blank: the form clears the fields that a starter filled.
+- Create a starter agent on a server that holds 50 routines: the agent exists, no routine is made,
+  and the first note in its chat says why.
+- Make two agents from Researcher: the second skill gets a number, and both agents list their own
+  skill.
+- Open the profile of an agent that has 25 tasks: "Recent work" lists 20. A task that waits for an
+  approval says "Waits for your approval". A part in review says "Waits for your review". "Show
+  all" opens the Tasks page for this agent.

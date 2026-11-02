@@ -26,7 +26,7 @@ service holds it.
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
 | Channels | Name, topic, members, lead, the "Review parts" setting, archive state. |
 | Messages | Direct chats and channels, with tool cards, plan steps and reply chips. |
-| Tasks | State (also in review and blocked), reason and result, and how far a failed turn went (005). They show on the tasks page with the name of the origin. |
+| Tasks | State (also in review and blocked), reason and result, and how far a failed turn went (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent. |
 | Routines and workflows | The definition (for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
 | Read state | The last place that the user read in each chat. |

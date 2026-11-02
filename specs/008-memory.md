@@ -19,12 +19,16 @@ keep, and can undo a change.
 
 ## Flows
 
-1. The agent learns a lasting fact (a preference, a name, a decision).
+1. The agent finds a lasting fact (a preference, a name, a decision).
    - With "Save at once", it saves a memory item. The chat shows a muted "Saved to memory" line
      with an undo control. The control does the same as "Undo" in the history (see 4).
    - With "Ask me first", it makes a proposal. The chat shows a muted "Suggested for memory"
      line with a link that opens the tab Proposals.
-2. The user opens the memory page of the agent. It has three tabs.
+2. The user opens the memory page of the agent. Under the page title, above the choice "Memory
+   saving" and the tabs, one muted line says how an agent gets better: through its instructions,
+   memory and knowledge, and through skills that the user saves. The line also says that ROBot
+   does not train the model (see 000). It shows on every tab, when the list is empty, and when
+   memory is off. The page has three tabs.
    - **Items**: a list, newest first, with search. The user can add, edit, or delete items.
    - **Proposals**: the proposals, oldest first. The tab shows when the choice is "Ask me first"
      or when a proposal waits.
