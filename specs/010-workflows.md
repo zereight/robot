@@ -10,7 +10,12 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 - **Trigger**: manual, schedule (as in 009), or a message in a chosen channel that matches text.
 - **Step kinds**: agent step (an agent and a prompt that can use earlier results), model step (a
   prompt for a model with no tools and no chat), condition (if/else on a result), wait for
-  approval, and post message.
+  approval, post message, and notify.
+- **Notify step**: shows a system notification (see 015). The title is a text that the user sets.
+  The body is the first 200 characters of the input of the step. The run view shows the whole
+  input. The step passes its input on unchanged.
+- **Note**: a text on the canvas, in one of four tones. A note has no connection, no node number
+  and no effect on a run. It does not count towards the limit of steps.
 - **Condition modes**: "contains text" tests the input for a text, ignoring case. "Ask a model"
   asks a model a yes or no question about the input.
 - **Node number**: every step on the canvas shows its number. The numbers are in the order of the
@@ -32,6 +37,36 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
    never has to guess. The panel is off, with the reason, while the workflow is read-only.
 5. Versions: the editor lists the versions of a workflow. The user opens one and can restore it.
    A restore also keeps the current graph as a version.
+6. Export workflows: from the menu of the Workflows page, the user picks workflows and a file
+   name. The app writes one file. Import workflows: the user picks such a file. The app lists
+   what it will make and which agent names it cannot find, and asks to confirm.
+
+## Workflow file
+
+- The file holds, for each workflow: name, trigger, steps, connections and notes. A step holds its
+  kind, its name, its place on the canvas and the fields of its kind. A condition holds its mode
+  and its text. An agent step names its agent by the name of the agent, and it holds its prompt,
+  its effort and its "Continue on failure" mark.
+- The trigger in the file is manual or a schedule. A workflow with a message trigger is written
+  with the manual trigger. A post step is written with no place, because the file holds no
+  channel.
+- The file holds no run, no version, no chat, no key and no secret. Text in the file that looks
+  like a secret is hidden, as in an export (see 014).
+- The file holds at most 20 workflows and is at most 10 MB. A file with two workflows of one name
+  is refused.
+- Import makes new workflows only. It never changes a workflow that exists. A name that is taken
+  gets a number, ignoring case, inside the length limit.
+- Every imported workflow is off: its schedule does not fire until the user turns it on. Import
+  makes no agent, no channel and no routine.
+- An agent step is linked to the agent that has the same name, ignoring case, and is not
+  archived. If there is none, the step has no agent. It shows "Pick an agent", and a run fails at
+  that step with the reason "No agent".
+- A post step from a file shows "Pick a place", and a run fails at that step with the reason "No
+  place".
+- If a workflow in the file breaks the rules of the graph (a connection to a step that does not
+  exist, a condition without both branches, or more steps than the limit), the app refuses the
+  whole file and names the workflow and the place of the fault.
+- Notes in the file keep their text, tone and place.
 
 ## Assistant
 
@@ -88,6 +123,13 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
   list holds the graph from before.
 - Ask the assistant to run the workflow: one run starts, and the assistant reports its status.
 - Ask the assistant for a schedule: it tells the user to set the schedule on the canvas.
+- Export a workflow with an agent step, a condition in "Ask a model" mode, a notify step and a
+  note. Make an agent with the same name in an empty app, and import the file: the workflow
+  exists and is off. It has the same steps, node numbers and note, and the agent step is linked.
+- Import the same file into an app that has no agent of that name: the list names the missing
+  agent, and the step shows "Pick an agent".
+- Run a workflow with a notify step and the window hidden: a notification shows the title, and the
+  run view holds the whole input.
 - A model step fails on the first try and works on the second: the run goes on, and the log holds
   one retry line.
 - An agent step with effort "low" runs with low effort. The next chat turn of that agent uses

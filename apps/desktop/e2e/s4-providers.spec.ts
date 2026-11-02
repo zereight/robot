@@ -72,6 +72,7 @@ test("providers: connect a key, pick a model, switch, disconnect, reconnect", as
   await page.getByTestId("chat-header-model").click()
   await page.getByTestId("model-account").selectOption({ label: "Anthropic" })
   await expect(page.getByTestId("model-model").locator("option")).toHaveText([
+    "Claude Haiku 3.5",
     "Claude Haiku 5.5",
     "Claude Sonnet 4.5",
   ])
@@ -101,12 +102,31 @@ test("providers: connect a key, pick a model, switch, disconnect, reconnect", as
   })
   expect(JSON.stringify(sent?.body)).not.toContain("budget_tokens")
 
-  // A model that takes no effort shows no effort control.
+  // A model that does not think shows no effort control.
   await page.getByTestId("chat-header-model").click()
-  await page.getByTestId("model-model").selectOption("claude-sonnet-4-5")
+  await page.getByTestId("model-model").selectOption("claude-3-5-haiku-latest")
   await expect(page.getByTestId("model-effort")).toHaveCount(0)
+
+  // An older model has no effort setting but thinks with a budget: three levels, no more.
+  await page.getByTestId("model-model").selectOption("claude-sonnet-4-5")
+  await expect(page.getByTestId("model-effort").locator("option")).toHaveText([
+    "Default",
+    "Low",
+    "Medium",
+    "High",
+  ])
+  await page.getByTestId("model-effort").selectOption("medium")
   await page.getByTestId("model-save").click()
   await expect(page.getByTestId("chat-header-model")).toHaveText("claude-sonnet-4-5")
+  await page.getByTestId("composer-input").fill("think again")
+  await page.getByTestId("composer-input").press("Enter")
+  await expect(page.getByTestId("thinking")).toHaveCount(2)
+  const older = mock.requests.filter((r) => r.path === "/anthropic/v1/messages").at(-1)
+  expect(older?.body).toMatchObject({
+    model: "claude-sonnet-4-5",
+    thinking: { type: "enabled", budget_tokens: 8192 },
+  })
+  expect(JSON.stringify(older?.body)).not.toContain("output_config")
   await expect(page.getByTestId("chat-start")).toContainText("Ada")
 
   // The key is nowhere in the data folder.

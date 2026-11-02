@@ -1,14 +1,45 @@
-import { type ChatMessage, messageText, type PlaceSection } from "@robot/shared"
+import {
+  type ChatMessage,
+  messageText,
+  type Place,
+  type PlaceKind,
+  type PlaceSection,
+  type UserSection,
+} from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Database } from "./Database.ts"
+import { Sections } from "./Sections.ts"
 
 export interface PlacesService {
   list(serverId: string): Effect.Effect<readonly PlaceSection[]>
 }
 
 const LAST_MESSAGE_MAX = 140
+
+/**
+ * Puts places in their sections. A place with no section, or with a section that is not in the
+ * list, goes to the built-in part. The order inside each part does not change.
+ */
+const group = (
+  id: PlaceSection["id"],
+  kind: PlaceKind,
+  places: readonly Place[],
+  userSections: readonly UserSection[],
+): PlaceSection => {
+  const mine = userSections.filter((s) => s.kind === kind).sort((a, b) => a.position - b.position)
+  const known = new Set(mine.map((s) => s.id))
+  return {
+    id,
+    places: places.filter((p) => p.sectionId === null || !known.has(p.sectionId)),
+    sections: mine.map((s) => ({
+      id: s.id,
+      name: s.name,
+      places: places.filter((p) => p.sectionId === s.id),
+    })),
+  }
+}
 
 /** Builds the place list of a server: channels, then direct chats with agents. */
 export class Places extends Context.Service<Places, PlacesService>()("robot/main/Places") {
@@ -18,6 +49,7 @@ export class Places extends Context.Service<Places, PlacesService>()("robot/main
       const agents = yield* Agents
       const db = yield* Database
       const channels = yield* Channels
+      const sections = yield* Sections
 
       const lastMessage = (agentId: string) => {
         const row = db.get<{ parts: string }>(
@@ -39,30 +71,44 @@ export class Places extends Context.Service<Places, PlacesService>()("robot/main
 
       return Places.of({
         list: (serverId) =>
-          Effect.zip(agents.list(serverId, false), channels.list(serverId)).pipe(
-            Effect.map(([list, channelList]): PlaceSection[] => [
-              {
-                id: "channels",
-                places: channelList.map((c) => ({
-                  kind: "channel" as const,
-                  id: c.id,
-                  name: c.name,
-                  unread: c.unread,
-                  working: c.working,
-                  lastMessage: channels.lastMessage(c.id),
-                })),
-              },
-              {
-                id: "agents",
-                places: list.map((a) => ({
-                  kind: "agent" as const,
-                  id: a.id,
-                  name: a.name,
-                  unread: unread(a.id),
-                  working: a.state === "working",
-                  lastMessage: lastMessage(a.id),
-                })),
-              },
+          Effect.all([
+            agents.list(serverId, false),
+            channels.list(serverId),
+            sections.list(serverId),
+          ]).pipe(
+            Effect.map(([list, channelList, userSections]): PlaceSection[] => [
+              group(
+                "channels",
+                "channel",
+                channelList.map(
+                  (c): Place => ({
+                    kind: "channel",
+                    id: c.id,
+                    name: c.name,
+                    unread: c.unread,
+                    working: c.working,
+                    lastMessage: channels.lastMessage(c.id),
+                    sectionId: c.sectionId,
+                  }),
+                ),
+                userSections,
+              ),
+              group(
+                "agents",
+                "agent",
+                list.map(
+                  (a): Place => ({
+                    kind: "agent",
+                    id: a.id,
+                    name: a.name,
+                    unread: unread(a.id),
+                    working: a.state === "working",
+                    lastMessage: lastMessage(a.id),
+                    sectionId: a.sectionId,
+                  }),
+                ),
+                userSections,
+              ),
             ]),
           ),
       })

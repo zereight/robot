@@ -1,5 +1,5 @@
 import type { ModelInfo, ProviderKind, RuntimeKind } from "@robot/shared"
-import { CLAUDE_EFFORTS, effortsFor } from "@robot/shared"
+import { CLAUDE_EFFORTS, EFFORTS, effortsFor, takesThinkingBudget } from "@robot/shared"
 
 export interface Connection {
   /** Agent runtimes have no connection: they have no key and no address. */
@@ -16,6 +16,8 @@ export class ProviderFailure extends Error {
       | "provider_unreachable"
       | "provider_error"
       | "provider_limit"
+      /** The model is overloaded and asks to try later. */
+      | "provider_busy"
       /** The subscription sign-in of an agent runtime is gone or refused. */
       | "runtime_signed_out",
     readonly detail?: string,
@@ -68,6 +70,9 @@ export const failureFrom = async (response: Response): Promise<ProviderFailure> 
     return new ProviderFailure("provider_auth", message)
   if (response.status === 429)
     return new ProviderFailure("provider_limit", message, resetTime(response))
+  // 503 is the status of an overloaded OpenAI model; 529 is the status that Anthropic uses.
+  if (response.status === 503 || response.status === 529 || /overloaded/i.test(message))
+    return new ProviderFailure("provider_busy", message)
   return new ProviderFailure("provider_error", `${response.status} ${message}`)
 }
 
@@ -98,6 +103,29 @@ export const effortsFromCapabilities = (capabilities: unknown): readonly string[
 }
 
 /**
+ * The effort levels that a model takes. The model list of the account counts when it names the
+ * model. Without that, what the vendor documents for the model id decides. An agent runtime has
+ * no such document, so for a model that its list does not name there is no level.
+ */
+export const offeredEfforts = (
+  kind: ProviderKind,
+  model: string,
+  listed?: readonly ModelInfo[],
+): readonly string[] => listed?.find((m) => m.id === model)?.efforts ?? effortsFor(kind, model)
+
+/**
+ * The levels of an Anthropic model. The model list tells them when it can. A model that takes no
+ * effort setting but thinks with a token budget has the three levels that set the budget. When the
+ * list says nothing, the model name decides.
+ */
+export const anthropicEfforts = (id: string, capabilities: unknown): readonly string[] => {
+  const told = effortsFromCapabilities(capabilities)
+  if (told === null) return effortsFor("anthropic", id)
+  if (told.length > 0) return told
+  return takesThinkingBudget(id) ? EFFORTS : []
+}
+
+/**
  * The effort of an agent, kept only if an Anthropic model still takes it. The agent keeps the level
  * it was given; a model that takes no such level would refuse the request. `listed` is the model
  * list of the account when the app has it. Without it, the model name decides.
@@ -109,8 +137,7 @@ export const keepEffort = (
   listed?: readonly ModelInfo[],
 ): string | null => {
   if (effort === null || kind !== "anthropic") return effort
-  const offered = listed?.find((m) => m.id === model)?.efforts ?? effortsFor(kind, model)
-  return offered.includes(effort) ? effort : null
+  return offeredEfforts(kind, model, listed).includes(effort) ? effort : null
 }
 
 /** Lists the models of an account. It is also the connection check: one small request. */
@@ -125,8 +152,7 @@ export const listModels = async (c: Connection): Promise<ModelInfo[]> => {
       id: m.id,
       label: m.display_name ?? m.id,
       efforts:
-        (c.kind === "anthropic" ? effortsFromCapabilities(m.capabilities) : null) ??
-        effortsFor(c.kind, m.id),
+        c.kind === "anthropic" ? anthropicEfforts(m.id, m.capabilities) : effortsFor(c.kind, m.id),
     }))
     .sort((a, b) => a.id.localeCompare(b.id))
 }

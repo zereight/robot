@@ -1,6 +1,7 @@
 import { join } from "node:path"
 import { Layer } from "effect"
 import { Activity } from "./services/Activity.ts"
+import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
@@ -16,12 +17,14 @@ import { Providers } from "./services/Providers.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import type { Secrets } from "./services/Secrets.ts"
+import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
+import { WorkflowFiles } from "./services/WorkflowFiles.ts"
 import { Workflows } from "./services/Workflows.ts"
 
 export interface AppLayerOptions {
@@ -44,6 +47,7 @@ export const appLayer = (options: AppLayerOptions) => {
     SettingsStore.layer,
     UiStore.layer,
     Servers.layer(options.localServerName),
+    Sections.layer,
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
   const runtimes = Runtimes.layer.pipe(Layer.provideMerge(stores))
@@ -60,7 +64,9 @@ export const appLayer = (options: AppLayerOptions) => {
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))
   const places = Places.layer.pipe(Layer.provideMerge(workflows))
-  return Data.layer.pipe(Layer.provideMerge(places))
+  const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(places))
+  const workflowFiles = WorkflowFiles.layer.pipe(Layer.provideMerge(agentFiles))
+  return Data.layer.pipe(Layer.provideMerge(workflowFiles))
 }
 
 export type AppServices = Layer.Success<ReturnType<typeof appLayer>>

@@ -148,3 +148,74 @@
   background: var(--c-hover);
   color: var(--c-text);
 }
+
+.menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--c-elevated);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+  animation: menu-in var(--motion-fast) var(--ease-out);
+}
+
+.menuItem {
+  border: 0;
+  background: transparent;
+  text-align: start;
+  padding: 6px 10px;
+  /* The menu has 4px of padding, so an item takes the box radius minus 4px. */
+  border-radius: calc(var(--radius-m) - 4px);
+  color: var(--c-text);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+  background: var(--c-hover);
+  outline: none;
+}
+
+.menuItem:active:not(:disabled) {
+  transform: scale(var(--press-scale));
+}
+
+.menuItem:disabled {
+  color: var(--c-text-muted);
+  opacity: 0.5;
+}
+
+.menuItem:disabled:hover {
+  background: transparent;
+}
+
+/* A group of items under one heading. The check mark sits at the start of the current item. */
+.menuHeading {
+  padding: 6px 10px 2px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+/* The check mark is drawn by the style, so it is not part of the text of the item. */
+.menuItem[role="menuitemradio"]::before {
+  content: "";
+  display: inline-block;
+  width: 1.2em;
+}
+
+.menuItem[aria-checked="true"]::before {
+  content: "✓";
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}

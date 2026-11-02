@@ -1,4 +1,5 @@
-import type { Agent, AgentCreate, AgentPatch } from "./agents.ts"
+import type { AgentFileImported, AgentFilePreview } from "./agentFile.ts"
+import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
 import type {
   Channel,
   ChannelActivity,
@@ -23,11 +24,13 @@ import type {
   RuntimeStatus,
 } from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
+import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Task, TaskDetail } from "./task.ts"
 import type { ApprovalAnswer } from "./tools.ts"
-import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
+import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
+import type { WorkflowFileImported, WorkflowFilePreview } from "./workflowFile.ts"
 import type {
   Workflow,
   WorkflowInput,
@@ -68,6 +71,17 @@ export interface RpcMethods {
   "data.openFolder": { input: undefined; output: undefined }
   "servers.list": { input: undefined; output: readonly Server[] }
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
+  /** Moves a place into a user section of its kind, or out of any (`sectionId` null). */
+  "places.move": {
+    input: { kind: PlaceKind; id: string; sectionId: string | null }
+    output: undefined
+  }
+  "sections.create": { input: SectionCreate; output: UserSection }
+  "sections.rename": { input: { id: string; name: string }; output: UserSection }
+  /** One step in the order of the sections of its kind. At an end it changes nothing. */
+  "sections.move": { input: { id: string; direction: MoveDirection }; output: undefined }
+  /** Deletes the section. Its places move to "No section"; none is deleted. */
+  "sections.delete": { input: { id: string }; output: undefined }
   "ui.get": { input: undefined; output: UiState }
   "ui.update": { input: UiStatePatch; output: UiState }
   "agents.list": { input: { serverId: string; archived: boolean }; output: readonly Agent[] }
@@ -79,6 +93,18 @@ export interface RpcMethods {
   "agents.restore": { input: { id: string }; output: Agent }
   "agents.delete": { input: { id: string }; output: undefined }
   "agents.setFaceImage": { input: { id: string; dataUrl: string | null }; output: Agent }
+  /** Asks where to save, then writes one agent file. `path` is null when cancelled. */
+  "agentFile.export": {
+    input: { serverId: string; agentIds: readonly string[] }
+    output: { path: string | null; count: number }
+  }
+  /** Asks for an agent file and reads it. `null` when cancelled. Nothing is made yet. */
+  "agentFile.open": { input: { serverId: string }; output: AgentFilePreview | null }
+  /** Makes the agents of the file that `agentFile.open` read, all with this model. */
+  "agentFile.apply": {
+    input: { serverId: string; model: AgentModel | null }
+    output: AgentFileImported
+  }
   "providers.list": { input: undefined; output: readonly ProviderAccount[] }
   "providers.connect": { input: ProviderConnect; output: ProviderAccount }
   "providers.check": { input: { accountId: string }; output: undefined }
@@ -173,6 +199,15 @@ export interface RpcMethods {
   }
   "workflows.runs": { input: { workflowId: string }; output: readonly WorkflowRun[] }
   "workflows.runDetail": { input: { runId: string }; output: WorkflowRunDetail }
+  /** Asks where to save, then writes one workflow file. `path` is null when cancelled. */
+  "workflowFile.export": {
+    input: { serverId: string; workflowIds: readonly string[] }
+    output: { path: string | null; count: number }
+  }
+  /** Asks for a workflow file and reads it. `null` when cancelled. Nothing is made yet. */
+  "workflowFile.open": { input: { serverId: string }; output: WorkflowFilePreview | null }
+  /** Makes the workflows of the file that `workflowFile.open` read. All of them are off. */
+  "workflowFile.apply": { input: { serverId: string }; output: WorkflowFileImported }
   "notifications.mutes": { input: undefined; output: readonly Mute[] }
   "notifications.setMute": {
     input: { kind: "server" | "channel"; id: string; choice: MuteChoice }
@@ -225,6 +260,7 @@ export interface RpcEvents {
   "workflows.run": { runId: string }
   "island.state": IslandState
   "app.openPlace": PlaceTarget
+  "app.openPage": { page: "workflows" }
   "notifications.changed": Record<string, never>
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }

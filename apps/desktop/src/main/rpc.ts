@@ -1,12 +1,15 @@
 import {
   AgentCreate,
+  AgentModel,
   AgentPatch,
   ChannelCreate,
   ChannelPatch,
   ChatSend,
   INVOKE_CHANNEL,
   MESSAGE_MAX,
+  MOVE_DIRECTIONS,
   MUTE_CHOICES,
+  PlaceKind,
   ProviderConnect,
   RoutineInput,
   RoutinePatch,
@@ -16,6 +19,7 @@ import {
   type RpcResult,
   RUNTIME_KINDS,
   redactSecrets,
+  SectionCreate,
   SettingsPatch,
   UiStatePatch,
   USAGE_RANGES,
@@ -26,6 +30,7 @@ import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import { ipcMain } from "electron"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
+import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
@@ -40,12 +45,14 @@ import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
+import { WorkflowFiles } from "./services/WorkflowFiles.ts"
 import { Workflows } from "./services/Workflows.ts"
 
 export type Services = AppServices
@@ -137,6 +144,39 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Places.use((p) => p.list(serverId))),
     ),
+  "places.move": (input) =>
+    decode(
+      Schema.Struct({
+        kind: PlaceKind,
+        id: Schema.String,
+        sectionId: Schema.NullOr(Schema.String),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ kind, id, sectionId }) =>
+        Sections.use((s) => s.assign({ kind, id }, sectionId)),
+      ),
+      done,
+    ),
+  "sections.create": (input) =>
+    decode(SectionCreate)(input).pipe(
+      Effect.flatMap((data) => Sections.use((s) => s.create(data))),
+    ),
+  "sections.rename": (input) =>
+    decode(Schema.Struct({ id: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, name }) => Sections.use((s) => s.rename(id, name))),
+    ),
+  "sections.move": (input) =>
+    decode(Schema.Struct({ id: Schema.String, direction: Schema.Literals(MOVE_DIRECTIONS) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, direction }) => Sections.use((s) => s.move(id, direction))),
+      done,
+    ),
+  "sections.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Sections.use((s) => s.remove(id))),
+      done,
+    ),
   "ui.get": () => UiStore.use((s) => s.get),
   "ui.update": (input) =>
     decode(UiStatePatch)(input).pipe(
@@ -171,6 +211,18 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
       Effect.flatMap(({ id, dataUrl }) => Agents.use((a) => a.setFaceImage(id, dataUrl))),
     ),
+  "agentFile.export": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, agentIds: Schema.Array(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.export(data)))),
+  "agentFile.open": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => AgentFiles.use((f) => f.open(serverId))),
+    ),
+  "agentFile.apply": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, model: Schema.NullOr(AgentModel) }))(
+      input,
+    ).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
   "providers.list": () => Providers.use((p) => p.list),
   "providers.connect": (input) =>
     decode(ProviderConnect)(input).pipe(
@@ -458,6 +510,18 @@ export const handlers: Handlers = {
   "workflows.runDetail": (input) =>
     decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
       Effect.flatMap(({ runId }) => Workflows.use((w) => w.runDetail(runId))),
+    ),
+  "workflowFile.export": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, workflowIds: Schema.Array(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.export(data)))),
+  "workflowFile.open": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
+    ),
+  "workflowFile.apply": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data))),
     ),
   "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),
   "notifications.setMute": (input) =>

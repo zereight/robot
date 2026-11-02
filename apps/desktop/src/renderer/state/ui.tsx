@@ -1,6 +1,9 @@
 import {
+  builtInSection,
+  type MoveDirection,
   NARROW_WIDTH,
   type Page,
+  type PlaceKind,
   type PlaceRef,
   type PlaceSection,
   type Server,
@@ -60,6 +63,16 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     return id ? ui.places[id] : undefined
   })
   const narrow = () => width() < NARROW_WIDTH
+  /** The kind whose list shows the box for the name of a new section, or undefined. */
+  const [newSectionKind, setNewSectionKind] = createSignal<PlaceKind>()
+  /** A call to the server for the sections. A failure only reloads the list: it was stale. */
+  const sectionCall = async (run: () => Promise<unknown>) => {
+    try {
+      await run()
+    } catch {
+      void refetchPlaces()
+    }
+  }
   // Past its limits the list edge follows the pointer with growing resistance, then springs back.
   const [stretch, setStretch] = createSignal(0)
   const [snapping, setSnapping] = createSignal(false)
@@ -92,6 +105,43 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
           : [...ui.collapsed, sectionId],
       }),
     toggleActivityPanel: () => update({ activityPanel: !ui.activityPanel }),
+    newSectionKind,
+    /** True when the section still exists in the list of its kind. */
+    hasSection: (kind: PlaceKind, sectionId: string | null) =>
+      sectionId !== null &&
+      (sectionStore.list.find((s) => s.id === builtInSection(kind))?.sections ?? []).some(
+        (s) => s.id === sectionId,
+      ),
+    /** Opens the name box of a new section in the list of a kind. It opens a closed list first. */
+    startNewSection: (kind: PlaceKind) => {
+      const builtIn = builtInSection(kind)
+      if (ui.collapsed.includes(builtIn))
+        update({ collapsed: ui.collapsed.filter((id) => id !== builtIn) })
+      setNewSectionKind(kind)
+    },
+    cancelNewSection: () => setNewSectionKind(undefined),
+    /** Makes a section. A refused name throws, so the name box can show why. */
+    createSection: async (kind: PlaceKind, name: string) => {
+      const serverId = server()?.id
+      if (!serverId) return
+      await call("sections.create", { serverId, kind, name })
+      setNewSectionKind(undefined)
+    },
+    /** A refused name throws, so the name box can show why. */
+    renameSection: async (id: string, name: string) => {
+      await call("sections.rename", { id, name })
+    },
+    moveSection: (id: string, direction: MoveDirection) =>
+      sectionCall(() => call("sections.move", { id, direction })),
+    deleteSection: (id: string) =>
+      sectionCall(async () => {
+        await call("sections.delete", { id })
+        // The state of a section that is gone is not kept.
+        if (ui.collapsed.includes(id)) update({ collapsed: ui.collapsed.filter((c) => c !== id) })
+      }),
+    /** Puts a place in a section of its kind, or in none (`null`). */
+    movePlace: (ref: PlaceRef, sectionId: string | null) =>
+      sectionCall(() => call("places.move", { ...ref, sectionId })),
     /** Changes the width on screen only. Call `saveWidth` when the drag ends. */
     previewWidth: (placeListWidth: number) => setUi({ placeListWidth }),
     /** Extra width in px (negative or positive) while a drag is past a limit. Only on screen. */

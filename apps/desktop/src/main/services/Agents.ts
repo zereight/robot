@@ -17,6 +17,7 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
 import { Providers } from "./Providers.ts"
+import { Sections } from "./Sections.ts"
 import { SettingsStore } from "./Settings.ts"
 
 interface AgentRow {
@@ -35,6 +36,7 @@ interface AgentRow {
   permission: PermissionLevel
   memory_enabled: number
   knowledge_enabled: number
+  place_section_id: string | null
   archived_at: number | null
   created_at: number
 }
@@ -75,6 +77,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
       const bus = yield* EventBus
       const activity = yield* Activity
       const providers = yield* Providers
+      const sections = yield* Sections
       const facesDir = join(platform.dataDir, "faces")
 
       const toAgent = (row: AgentRow): Agent => {
@@ -97,6 +100,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
               : null,
           workspace: row.workspace,
           section: "agents",
+          sectionId: row.place_section_id,
           archived: row.archived_at !== null,
           state: activity.isWorking(row.id)
             ? "working"
@@ -144,14 +148,16 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         const name = input.name.trim()
         if (nameTaken(input.serverId, name))
           return yield* new AppError({ code: "agent_name_taken" })
+        const sectionId = yield* sections.check(input.serverId, "agent", input.sectionId ?? null)
         const id = randomUUID()
         const workspace = yield* makeWorkspace(name, id)
         const face = input.face ?? faceFromName(name)
         const now = Date.now()
         db.run(
           `INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
-            model_account_id, model_name, model_effort, workspace, section, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?)`,
+            model_account_id, model_name, model_effort, workspace, section, place_section_id,
+            created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?)`,
           id,
           input.serverId,
           name,
@@ -164,6 +170,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           input.model?.model ?? null,
           input.model?.effort ?? null,
           workspace,
+          sectionId,
           now,
           now,
         )
@@ -197,6 +204,9 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           set("model_account_id", patch.model?.accountId ?? null)
           set("model_name", patch.model?.model ?? null)
           set("model_effort", patch.model?.effort ?? null)
+        }
+        if (patch.sectionId !== undefined) {
+          set("place_section_id", yield* sections.check(row.server_id, "agent", patch.sectionId))
         }
         if (patch.permission !== undefined) set("permission", patch.permission)
         if (patch.memoryEnabled !== undefined) set("memory_enabled", patch.memoryEnabled ? 1 : 0)
@@ -291,6 +301,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
                     effort: row.model_effort,
                   }
                 : null,
+            // The copy joins the section of the original.
+            sectionId: row.place_section_id,
           })
         }),
         archive: setArchived(true),

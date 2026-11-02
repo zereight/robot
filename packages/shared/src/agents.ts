@@ -45,7 +45,10 @@ export interface Agent {
   readonly faceImage: string | null
   readonly model: AgentModel | null
   readonly workspace: string
+  /** The built-in section. The user section is `sectionId`. */
   readonly section: "agents"
+  /** The user section of the Agents list that holds the agent, or null for "No section". */
+  readonly sectionId: string | null
   readonly archived: boolean
   readonly state: AgentState
   readonly permission: PermissionLevel
@@ -63,6 +66,7 @@ export const AgentCreate = Schema.Struct({
   instructions: Schema.String,
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
+  sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type AgentCreate = typeof AgentCreate.Type
 
@@ -75,6 +79,7 @@ export const AgentPatch = Schema.Struct({
   permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
   memoryEnabled: Schema.optionalKey(Schema.Boolean),
   knowledgeEnabled: Schema.optionalKey(Schema.Boolean),
+  sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type AgentPatch = typeof AgentPatch.Type
 

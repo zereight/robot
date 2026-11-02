@@ -9,8 +9,10 @@ import { copyAttachments } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
+import { Sections } from "./Sections.ts"
 import { Servers } from "./Servers.ts"
 import { testPlatform } from "./testing.ts"
 
@@ -252,6 +254,34 @@ describe("export and import", () => {
     )
     const accounts = await b.run(Providers.use((p) => p.list))
     expect(accounts.find((x) => x.id === "r1")?.connected).toBe(false)
+  })
+
+  test("user sections and the places in them come back in the same order", async () => {
+    const out = join(testPlatform().dataDir, "export-sections.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const research = await a.run(
+      Sections.use((s) => s.create({ serverId: local.id, kind: "agent", name: "Research" })),
+    )
+    await a.run(Sections.use((s) => s.create({ serverId: local.id, kind: "agent", name: "Ops" })))
+    const ada = await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    await a.run(Sections.use((s) => s.assign({ kind: "agent", id: ada.id }, research.id)))
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const list = await b.run(Places.use((p) => p.list(bLocal.id)))
+    const agents = list.find((s) => s.id === "agents")
+    expect(agents?.places).toEqual([])
+    expect(agents?.sections.map((s) => [s.name, s.places.map((p) => p.name)])).toEqual([
+      ["Research", ["Ada"]],
+      ["Ops", []],
+    ])
   })
 
   test("import refuses an app that already has an agent, and a file that is not an export", async () => {

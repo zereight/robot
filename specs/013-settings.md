@@ -13,6 +13,9 @@ The user sets the app up the way they like in one place.
 - **Providers**: see 006.
 - **Decision model**: the fast model for channel picks and computer use. See "Decision model".
 - **Roles**: the role lines of all agents. See "Roles".
+- **Permissions**: the rules that allow or deny steps, and the action log. See 007.
+- **Skills**: the saved instructions that the user calls with a slash. See 017.
+- **Connections**: the outside tools that agents can use. See 018.
 - **Devices**: pairing and paired phones, see 012.
 - **Notifications**: see 015.
 - **Archive**: archived agents and channels with restore and delete.
@@ -93,3 +96,4 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Two agents have the role lines "Designer" and "designer": the Roles page shows one role with
   two agents. Rename it to the role line of a third agent: all three agents have one role.
 - Remove a role: its agents have an empty role line and keep their chats.
+- The settings list shows Permissions, Skills and Connections. Each opens its own page.
