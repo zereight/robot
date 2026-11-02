@@ -33,6 +33,8 @@ import {
   TASK_STATES,
   TriggerSchema,
   validSchedule,
+  validWatch,
+  WatchSchema,
   WORKFLOW_NAME_MAX,
   WORKFLOW_NOTES_MAX,
   WORKFLOW_STEPS_MAX,
@@ -303,6 +305,12 @@ const partCheck = (v: unknown): boolean => {
         // A name of 40 characters can take two code units for each.
         str(SKILL_NAME_MAX * 2, 1)(v.name) &&
         str(SKILL_INSTRUCTIONS_MAX, 1)(v.instructions)
+      )
+    case "note":
+      return (
+        shape(["kind", "note", "routine"])(v) &&
+        oneOf(["watch_unchanged"])(v.note) &&
+        str(ROUTINE_NAME_MAX)(v.routine)
       )
     case "file":
       return (
@@ -1327,9 +1335,34 @@ interface RoutineRow {
   created_at: number
   updated_at: number
   runs_on: string | null
+  watch: string | null
+  model_account_id: string | null
+  model_name: string | null
+  model_effort: string | null
 }
 
 const isSchedule = strictly(ScheduleSchema as unknown as Schema.Codec<unknown, unknown>)
+const isWatch = strictly(WatchSchema as unknown as Schema.Codec<unknown, unknown>)
+const modelCheck = nullable(
+  (v) =>
+    isObject(v) &&
+    shape(["accountId", "model", "effort"])(v) &&
+    str(100, 1)(v.accountId) &&
+    str(300, 1)(v.model) &&
+    nullable(str(40))(v.effort),
+)
+/**
+ * The routine model as columns. The model stays also when its account is not here: a run then
+ * fails as "not connected" and does not use another model (spec 009).
+ */
+const routineModelOf = (ctx: Ctx, value: unknown) =>
+  isObject(value)
+    ? {
+        model_account_id: ctx.accountOf(value.accountId as string),
+        model_name: value.model,
+        model_effort: value.effort,
+      }
+    : { model_account_id: null, model_name: null, model_effort: null }
 
 const routine: KindDef = {
   kind: "routine",
@@ -1338,9 +1371,16 @@ const routine: KindDef = {
     agentId: { check: str(100, 1) },
     name: { check: str(ROUTINE_NAME_MAX, 1) },
     prompt: { check: str(ROUTINE_PROMPT_MAX, 1) },
+    // A routine has a schedule or a watch (spec 009): the other one is null.
     schedule: {
-      check: (v) => isSchedule(v) && validSchedule(v as Parameters<typeof validSchedule>[0]),
+      check: nullable(
+        (v) => isSchedule(v) && validSchedule(v as Parameters<typeof validSchedule>[0]),
+      ),
     },
+    watch: {
+      check: nullable((v) => isWatch(v) && validWatch(v as Parameters<typeof validWatch>[0])),
+    },
+    model: { check: modelCheck },
     channelId: { check: nullable(str(100, 1)) },
     enabled: { check: bool },
     runsOn: { check: str(64, 1) },
@@ -1351,6 +1391,8 @@ const routine: KindDef = {
     "name",
     "prompt",
     "schedule",
+    "watch",
+    "model",
     "channelId",
     "enabled",
     "runsOn",
@@ -1367,7 +1409,12 @@ const routine: KindDef = {
         agentId: r.agent_id,
         name: r.name,
         prompt: r.prompt,
-        schedule: JSON.parse(r.schedule),
+        schedule: r.watch === null ? JSON.parse(r.schedule) : null,
+        watch: r.watch === null ? null : JSON.parse(r.watch),
+        model:
+          r.model_account_id && r.model_name
+            ? { accountId: r.model_account_id, model: r.model_name, effort: r.model_effort }
+            : null,
         channelId: r.channel_id,
         enabled: r.enabled === 1,
         runsOn: r.runs_on ?? ctx.self,
@@ -1379,6 +1426,8 @@ const routine: KindDef = {
   },
   create: (ctx, id, f) => {
     if (!has(ctx.db, "agent", f.agentId as string)) return false
+    // Exactly one trigger.
+    if ((f.schedule === null) === (f.watch === null)) return false
     const now = ctx.now()
     insert(ctx.db, "routine", {
       id,
@@ -1387,6 +1436,8 @@ const routine: KindDef = {
       name: f.name,
       prompt: f.prompt,
       schedule: JSON.stringify(f.schedule),
+      watch: f.watch === null ? null : JSON.stringify(f.watch),
+      ...routineModelOf(ctx, f.model),
       channel_id: f.channelId,
       enabled: f.enabled ? 1 : 0,
       // The missed-run rule counts from the time the routine came to this computer.
@@ -1402,6 +1453,8 @@ const routine: KindDef = {
     if (f.name !== undefined) columns.name = f.name
     if (f.prompt !== undefined) columns.prompt = f.prompt
     if (f.schedule !== undefined) columns.schedule = JSON.stringify(f.schedule)
+    if (f.watch !== undefined) columns.watch = f.watch === null ? null : JSON.stringify(f.watch)
+    if (f.model !== undefined) Object.assign(columns, routineModelOf(ctx, f.model))
     if (f.channelId !== undefined) columns.channel_id = f.channelId
     if (f.enabled !== undefined) columns.enabled = f.enabled ? 1 : 0
     // A change that makes it run on this computer is ignored: the user here decides that.
@@ -1410,6 +1463,9 @@ const routine: KindDef = {
       columns.last_checked_at = ctx.now()
     }
     if (f.schedule !== undefined || f.enabled !== undefined) columns.last_checked_at = ctx.now()
+    // A new watch keeps its first result again at its first check.
+    if (f.watch !== undefined)
+      ctx.db.run("UPDATE routine_state SET watch_result = NULL WHERE routine_id = ?", id)
     columns.updated_at = ctx.now()
     update(ctx.db, "routine", "id = ?", [id], columns)
   },
@@ -1423,27 +1479,45 @@ const rskip: KindDef = {
   fields: {
     routineId: { check: str(100, 1) },
     at: { check: int },
-    kind: { check: oneOf(["missed", "skipped"]) },
+    kind: { check: oneOf(["missed", "skipped", "failed"]) },
+    // Why a check failed or a run could not start.
+    reason: {
+      check: nullable(
+        (v) =>
+          isObject(v) && shape(["code", "detail"])(v) && str(200)(v.code) && str(2000)(v.detail),
+      ),
+    },
   },
   required: ["routineId", "at", "kind"],
   fixed: ["routineId", "at", "kind"],
   count: (db) => q.count(db, "routine_skip"),
   ids: (db, after, limit) => q.ids(db, "routine_skip", after, limit),
   read: (ctx, id) => {
-    const r = ctx.db.get<{ routine_id: string; at: number; kind: string }>(
+    const r = ctx.db.get<{ routine_id: string; at: number; kind: string; reason: string | null }>(
       "SELECT * FROM routine_skip WHERE id = ?",
       id,
     )
     if (!r) return undefined
     return {
-      fields: { routineId: r.routine_id, at: r.at, kind: r.kind },
+      fields: {
+        routineId: r.routine_id,
+        at: r.at,
+        kind: r.kind,
+        reason: r.reason === null ? null : JSON.parse(r.reason),
+      },
       parent: { kind: "routine", id: r.routine_id },
       wall: r.at,
     }
   },
   create: (ctx, id, f) => {
     if (!has(ctx.db, "routine", f.routineId as string)) return false
-    insert(ctx.db, "routine_skip", { id, routine_id: f.routineId, at: f.at, kind: f.kind })
+    insert(ctx.db, "routine_skip", {
+      id,
+      routine_id: f.routineId,
+      at: f.at,
+      kind: f.kind,
+      reason: f.reason ? JSON.stringify(f.reason) : null,
+    })
     return true
   },
   write: () => {},

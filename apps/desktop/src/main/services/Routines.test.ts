@@ -1,4 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { messageText, type Watch } from "@robot/shared"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
@@ -28,19 +32,27 @@ const sse = (chunks: { delay: number; text: string }[]) =>
     { headers: { "content-type": "text/event-stream" } },
   )
 
+/** The model of each request, and the text of its last message. */
+const requests: { model: string; last: string }[] = []
+
 const server = Bun.serve({
   port: 0,
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as { messages: { content: string }[] }
+    const body = (await req.json()) as { model: string; messages: { content: string }[] }
+    requests.push({ model: body.model, last: body.messages.at(-1)?.content ?? "" })
     const last = body.messages.at(-1)?.content ?? ""
     if (last.includes("SLOW"))
       return sse(Array.from({ length: 100 }, () => ({ delay: 30, text: "tick " })))
     return sse([{ delay: 0, text: `Report: ${last}` }])
   },
 })
-afterAll(() => server.stop())
+const folders = mkdtempSync(join(tmpdir(), "robot-routines-"))
+afterAll(() => {
+  server.stop()
+  rmSync(folders, { recursive: true, force: true })
+})
 
 const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
   const end = Date.now() + ms
@@ -105,7 +117,41 @@ const setup = async () => {
     )
   const replies = async () =>
     (await run(Chat.use((c) => c.history(agent.id)))).messages.filter((m) => m.author === "agent")
-  return { run, local, agent, create, tick, tasks, idle, calendar, replies }
+  const asked = async () =>
+    (await run(Chat.use((c) => c.history(agent.id)))).messages
+      .filter((m) => m.author === "user")
+      .map(messageText)
+  const watch = (target: Watch["target"], extra: Partial<Watch> = {}, more: object = {}) =>
+    run(
+      Routines.use((r) =>
+        r.create({
+          serverId: local.id,
+          agentId: agent.id,
+          name: "Watcher",
+          prompt: "Look at the change.",
+          watch: { minutes: 5, target, postUnchanged: false, ...extra },
+          place: { kind: "agent" },
+          ...more,
+        }),
+      ),
+    )
+  const routine = async (id: string) =>
+    (await run(Routines.use((r) => r.list(local.id)))).find((r) => r.id === id)
+  return {
+    run,
+    local,
+    agent,
+    account,
+    create,
+    watch,
+    routine,
+    tick,
+    tasks,
+    idle,
+    calendar,
+    replies,
+    asked,
+  }
 }
 
 describe("routines", () => {
@@ -218,5 +264,179 @@ describe("routines", () => {
         (e) => e,
       )
     expect(refused).toMatchObject({ code: "agent_not_in_channel" })
+  })
+})
+
+describe("watch routines", () => {
+  test("a folder: the first check does not run; a new file runs it with its name; no change makes no task", async () => {
+    const s = await setup()
+    const dir = mkdtempSync(join(folders, "inbox-"))
+    writeFileSync(join(dir, "old.txt"), "old")
+    const r = await s.watch({ kind: "path", path: dir })
+    expect(r.schedule).toBeNull()
+    expect(r.nextRuns).toEqual([])
+    expect(r.nextCheck).not.toBeNull()
+    const t0 = Date.now()
+    await s.tick(t0)
+    expect(await s.tasks()).toHaveLength(0)
+    // Not due yet: 5 minutes have not passed.
+    writeFileSync(join(dir, "new-report.txt"), "new")
+    await s.tick(t0 + 2 * MIN)
+    expect(await s.tasks()).toHaveLength(0)
+    await s.tick(t0 + 5 * MIN)
+    await s.idle()
+    const runs = (await s.tasks()).filter((t) => t.source === "routine")
+    expect(runs).toHaveLength(1)
+    expect(runs[0]?.state).toBe("done")
+    const text = (await s.asked()).at(-1) ?? ""
+    expect(text.startsWith("Look at the change.")).toBe(true)
+    expect(text).toContain("Added: new-report.txt")
+    // The next check sees no change: no task, and no line while the switch is off.
+    await s.tick(t0 + 10 * MIN)
+    await s.idle()
+    expect((await s.tasks()).filter((t) => t.source === "routine")).toHaveLength(1)
+    expect(await s.replies()).toHaveLength(1)
+    // The calendar has the run and no planned runs.
+    const entries = await s.calendar()
+    expect(entries.map((e) => e.state)).toEqual(["done"])
+  })
+
+  test('"Post when nothing changed" posts one muted line with no task', async () => {
+    const s = await setup()
+    const dir = mkdtempSync(join(folders, "same-"))
+    const r = await s.watch({ kind: "path", path: dir }, { postUnchanged: true })
+    const t0 = Date.now()
+    await s.tick(t0)
+    await s.tick(t0 + 5 * MIN)
+    const replies = await s.replies()
+    expect(replies).toHaveLength(1)
+    expect(replies[0]?.parts).toEqual([{ kind: "note", note: "watch_unchanged", routine: r.name }])
+    expect(await s.tasks()).toHaveLength(0)
+  })
+
+  test("a command that ends with a code that is not 0 is no failure", async () => {
+    const s = await setup()
+    const r = await s.watch({ kind: "command", command: "cat missing.txt" })
+    const t0 = Date.now()
+    for (let i = 0; i < 4; i++) await s.tick(t0 + i * 5 * MIN)
+    expect((await s.calendar()).filter((e) => e.state === "failed")).toHaveLength(0)
+    expect((await s.routine(r.id))?.enabled).toBe(true)
+    expect(await s.tasks()).toHaveLength(0)
+  })
+
+  test("a path that does not exist fails 3 checks in a row: the routine pauses itself", async () => {
+    const s = await setup()
+    const r = await s.watch({ kind: "path", path: join(folders, "not-there") })
+    const t0 = Date.now()
+    for (let i = 0; i < 3; i++) await s.tick(t0 + i * 5 * MIN)
+    const failed = (await s.calendar()).filter((e) => e.state === "failed")
+    expect(failed).toHaveLength(3)
+    expect(failed[0]?.reason?.code).toBe("watch_missing")
+    const paused = await s.routine(r.id)
+    expect(paused?.enabled).toBe(false)
+    expect(paused?.pausedAfterFailures?.code).toBe("watch_missing")
+    expect(paused?.nextCheck).toBeNull()
+    // No check while paused.
+    await s.tick(t0 + 60 * MIN)
+    expect((await s.calendar()).filter((e) => e.state === "failed")).toHaveLength(3)
+    // Resume sets the count to 0: two more failures do not pause it.
+    await s.run(Routines.use((x) => x.update(r.id, { enabled: true })))
+    expect((await s.routine(r.id))?.pausedAfterFailures).toBeNull()
+    const t1 = Date.now()
+    await s.tick(t1)
+    await s.tick(t1 + 5 * MIN)
+    expect((await s.routine(r.id))?.enabled).toBe(true)
+  })
+
+  test("a check waits while the last run goes, then runs once", async () => {
+    const s = await setup()
+    const dir = mkdtempSync(join(folders, "slow-"))
+    const r = await s.watch({ kind: "path", path: dir })
+    await s.run(Routines.use((x) => x.update(r.id, { prompt: "SLOW look" })))
+    const t0 = Date.now()
+    await s.tick(t0)
+    writeFileSync(join(dir, "a.txt"), "a")
+    await s.tick(t0 + 5 * MIN)
+    await until(async () => (await s.tasks()).some((t) => t.state === "running"))
+    writeFileSync(join(dir, "b.txt"), "b")
+    await s.tick(t0 + 10 * MIN)
+    // The check waited: still one task, and nothing was skipped.
+    expect((await s.tasks()).filter((t) => t.source === "routine")).toHaveLength(1)
+    expect((await s.calendar()).filter((e) => e.state === "skipped")).toHaveLength(0)
+    await s.run(Chat.use((c) => c.stop(s.agent.id)))
+    await s.idle()
+    await s.tick(t0 + 10 * MIN + 1000)
+    await s.idle()
+    expect((await s.tasks()).filter((t) => t.source === "routine")).toHaveLength(2)
+    expect((await s.asked()).at(-1)).toContain("Added: b.txt")
+  })
+
+  test("one trigger only: a schedule and a watch together are refused", async () => {
+    const s = await setup()
+    const both = await s
+      .watch({ kind: "path", path: "x" }, {}, { schedule: { kind: "cron", expr: "* * * * *" } })
+      .then(
+        () => "ok",
+        (e) => e,
+      )
+    expect(both).toMatchObject({ code: "invalid_schedule" })
+    const bad = await s.watch({ kind: "path", path: "x" }, { minutes: 7 }).then(
+      () => "ok",
+      (e) => e,
+    )
+    expect(bad).toMatchObject({ code: "invalid_watch" })
+  })
+})
+
+describe("late runs and the model of a routine", () => {
+  test("a run 40 minutes late gets the planned time and the start time", async () => {
+    const s = await setup()
+    const routine = await s.create("Say good morning", 60)
+    await s.tick(routine.createdAt + 100 * MIN)
+    await s.idle()
+    const text = (await s.asked()).at(-1) ?? ""
+    expect(text.startsWith("Say good morning")).toBe(true)
+    expect(text).toContain("this run was planned for")
+    expect(text).toContain("It runs late.")
+  })
+
+  test("a run on time gets the prompt only", async () => {
+    const s = await setup()
+    const routine = await s.create("On time", 60)
+    await s.tick(routine.createdAt + 60 * MIN + 1000)
+    await s.idle()
+    expect((await s.asked()).at(-1)).toBe("On time")
+  })
+
+  test("a routine with its own model uses it, while its agent uses another", async () => {
+    const s = await setup()
+    const routine = await s.create("Cheap check", 2, {
+      model: { accountId: s.account.id, model: "mock-small", effort: null },
+    })
+    expect(routine.model).toEqual({ accountId: s.account.id, model: "mock-small", effort: null })
+    const before = requests.length
+    await s.tick(routine.createdAt + 2 * MIN + 1000)
+    await s.idle()
+    const sent = requests.slice(before)
+    expect(sent.map((r) => r.model)).toEqual(["mock-small"])
+    // The chat of the agent still uses the model of the agent.
+    await s.run(Chat.use((c) => c.send({ agentId: s.agent.id, text: "hello", replyTo: null })))
+    await s.idle()
+    expect(requests.at(-1)?.model).toBe("mock")
+  })
+
+  test("a routine whose model account is not connected fails, and does not use another model", async () => {
+    const s = await setup()
+    const routine = await s.create("No account", 2, {
+      model: { accountId: "gone-account", model: "other", effort: null },
+    })
+    const before = requests.length
+    const t0 = routine.createdAt
+    for (let i = 1; i <= 3; i++) await s.tick(t0 + i * 2 * MIN + 1000)
+    expect(requests.length).toBe(before)
+    const failed = (await s.calendar()).filter((e) => e.state === "failed")
+    expect(failed).toHaveLength(3)
+    expect(failed[0]?.reason?.code).toBe("provider_not_connected")
+    expect((await s.routine(routine.id))?.pausedAfterFailures?.code).toBe("provider_not_connected")
   })
 })
