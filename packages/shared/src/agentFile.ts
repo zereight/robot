@@ -7,6 +7,7 @@ import {
   type Face,
   nameKey,
 } from "./agents.ts"
+import type { NotImported } from "./importReview.ts"
 import { ROUTINE_NAME_MAX, ROUTINE_PROMPT_MAX } from "./routines.ts"
 import { type Schedule, validSchedule } from "./schedule.ts"
 
@@ -254,7 +255,15 @@ export const planNames = (
   })
 }
 
-/** What an import will make, for the dialog that asks the user to confirm. */
+/** A routine of an agent in the review before an import. */
+export interface AgentFilePreviewRoutine {
+  readonly name: string
+  readonly schedule: Schedule
+  /** True when the app hid a secret in its name or prompt. It starts not ticked. */
+  readonly secretRemoved: boolean
+}
+
+/** What an import will make, for the review screen (spec 014, "Review before an import"). */
 export interface AgentFilePreviewItem {
   /** The name that the new agent gets. */
   readonly name: string
@@ -262,11 +271,21 @@ export interface AgentFilePreviewItem {
   readonly fileName: string | null
   readonly role: string
   readonly face: Face
-  readonly routines: number
+  /** True when the app hid a secret in the name or the role line. It starts not ticked. */
+  readonly secretRemoved: boolean
+  readonly instructions: {
+    /** The length in characters. 0: the file gives no instructions. */
+    readonly length: number
+    /** True when the app hid a secret in them. They start not ticked. */
+    readonly secretRemoved: boolean
+  }
+  readonly routines: readonly AgentFilePreviewRoutine[]
 }
 
 export interface AgentFilePreview {
   readonly agents: readonly AgentFilePreviewItem[]
+  /** What the file holds that the import does not make, with the reason. */
+  readonly notImported: readonly NotImported[]
 }
 
 export interface AgentFileImported {
