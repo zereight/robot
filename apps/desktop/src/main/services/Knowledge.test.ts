@@ -625,6 +625,9 @@ describe("files are the truth", () => {
     await s.save("Alpha")
     const events = s.t.events
     const before = events.filter((e) => e.event === "knowledge.changed").length
+    // The system starts a watcher a moment after `watch` returns. A file that is written in that
+    // moment is not announced (seen on macOS), so the test lets the watcher start first.
+    await Bun.sleep(100)
     writeFileSync(join(s.folder, "Beta.md"), "# Beta\n\nNew.\n")
     await until(() => events.filter((e) => e.event === "knowledge.changed").length > before, 3000)
     expect((await s.list()).articles.map((a) => a.title)).toEqual(["Alpha", "Beta"])
