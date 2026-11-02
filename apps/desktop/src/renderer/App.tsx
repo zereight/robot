@@ -4,6 +4,7 @@ import { agentPlaceView } from "./agents/AgentChat.tsx"
 import { NewAgentDialog } from "./agents/AgentDialogs.tsx"
 import { ArchiveSection } from "./agents/ArchiveSection.tsx"
 import { Face } from "./agents/Face.tsx"
+import { watchReactions } from "./agents/reactions.ts"
 import { ChannelDialog } from "./channels/ChannelDialog.tsx"
 import { ChannelPanel } from "./channels/ChannelPanel.tsx"
 import { ChannelHeader, ChannelView } from "./channels/ChannelView.tsx"
@@ -28,6 +29,7 @@ export const App = () => {
   const agents = useAgents()
   const channels = useChannels()
   const ui = useUi()
+  onCleanup(watchReactions())
   // A click on a notification, or on the island, opens the place and shows the message.
   onCleanup(
     window.robot.on("app.openPlace", (target) => {
@@ -43,7 +45,9 @@ export const App = () => {
       <Shell
         face={(place) => {
           const agent = agents.byId(place.id)
-          return agent ? <Face face={agent.face} image={agent.faceImage} size={24} /> : null
+          return agent ? (
+            <Face face={agent.face} image={agent.faceImage} size={24} agentId={agent.id} />
+          ) : null
         }}
         placeExists={(ref) =>
           ref.kind === "agent"
