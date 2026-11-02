@@ -59,7 +59,7 @@ const allText = (dir: string): string[] =>
 test("knowledge: sources, articles, read cards, undo, protection, check, off, key refusal", async () => {
   test.setTimeout(240_000)
   const mock = await startMockProvider()
-  const work = mkdtempSync(join(tmpdir(), "robot-s18-"))
+  const work = mkdtempSync(join(tmpdir(), "robot-s26-"))
   const report = join(work, "report.txt")
   writeFileSync(report, "Revenue grew 4 percent in the quarter.")
   const archive = join(work, "export.zip")
@@ -80,7 +80,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("knowledge-empty")).toContainText("No articles yet.")
   await expect(page.getByTestId("knowledge-open-folder")).toBeDisabled()
   await expect(page.getByTestId("knowledge-check")).toBeDisabled()
-  await shot(page, "s18-01-empty")
+  await shot(page, "s26-01-empty")
   await closeProfile(page)
   const workspace = knowledgeDir(userData)
   const folder = join(workspace, "Knowledge")
@@ -109,7 +109,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
     "Updated article: Quarterly revenue",
   )
   await expect(page.getByTestId("knowledge-undo")).toBeVisible()
-  await shot(page, "s18-02-change-line")
+  await shot(page, "s26-02-change-line")
   expect(readFileSync(report, "utf8")).toBe("Revenue grew 4 percent in the quarter.")
   expect(readFileSync(join(folder, "sources", "report.txt"), "utf8")).toBe(
     "Revenue grew 4 percent in the quarter.",
@@ -144,7 +144,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   expect(opened?.role).toBe("tool")
   expect(opened?.content).toContain("Title: Quarterly revenue")
   expect(opened?.content).toContain("Revenue grew 4 percent.")
-  await shot(page, "s18-03-read-card")
+  await shot(page, "s26-03-read-card")
 
   // The Knowledge page: list, reading pane, a broken link, a source, the time of the last change.
   await openKnowledge(page)
@@ -158,7 +158,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("knowledge-source")).toContainText("report.txt")
   await expect(page.getByTestId("knowledge-updated")).toContainText("Changed")
   await expect(page.getByTestId("knowledge-updated")).toContainText("The agent edited it last.")
-  await shot(page, "s18-04-page")
+  await shot(page, "s26-04-page")
   await page.getByTestId("knowledge-open-folder").click()
   await expect.poll(() => readFileSync(join(work, "opened.log"), "utf8")).toContain(folder)
 
@@ -200,7 +200,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await openKnowledge(page)
   await openChanges(page)
   await expect(page.getByTestId("knowledge-change").first()).toContainText("Deleted: Costs")
-  await shot(page, "s18-05-changes")
+  await shot(page, "s26-05-changes")
   await page.getByTestId("knowledge-change-undo").first().click()
   await expect(page.getByTestId("knowledge-item")).toHaveCount(2)
   expect(readFileSync(join(folder, "Costs.md"), "utf8")).toContain("Costs fell 2 percent.")
@@ -219,7 +219,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("knowledge-item")).toHaveCount(1)
   await expect(page.getByTestId("knowledge-change").first()).toContainText("Deleted: Costs")
   expect(existsSync(join(folder, "Costs.md"))).toBe(false)
-  await shot(page, "s18-05b-undo-of-undo")
+  await shot(page, "s26-05b-undo-of-undo")
   await closeProfile(page)
   const readsAgain = await page.getByTestId("knowledge-read-card").count()
   await send(page, "Tell me about the costs after the second undo.")
@@ -264,7 +264,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("ask-before")).toContainText("Revenue grew 5 percent")
   await expect(page.getByTestId("ask-after")).toContainText("Agent rewrite")
   await expect(page.getByTestId("ask-always")).toHaveCount(0)
-  await shot(page, "s18-06-protection")
+  await shot(page, "s26-06-protection")
   await page.getByTestId("ask-deny").click()
   await settled(page)
   expect(readFileSync(join(folder, "Quarterly revenue.md"), "utf8")).toContain("5 percent")
@@ -282,7 +282,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("knowledge-failed").last()).toContainText(
     "looks like a key or a token",
   )
-  await shot(page, "s18-07-key-refused")
+  await shot(page, "s26-07-key-refused")
   expect(existsSync(join(folder, "Secret.md"))).toBe(false)
   expect(allText(folder).some((text) => text.includes(GOOD_KEY))).toBe(false)
 
@@ -296,7 +296,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("knowledge-failed").last()).toContainText(
     "looks like a key or a token",
   )
-  await shot(page, "s18-07b-source-key-refused")
+  await shot(page, "s26-07b-source-key-refused")
   expect(existsSync(join(folder, "sources", "leak.txt"))).toBe(false)
   expect(readdirSync(join(folder, "sources"))).toEqual(["report.txt"])
   expect(allText(folder).some((text) => text.includes(GOOD_KEY))).toBe(false)
@@ -319,7 +319,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("ask-before")).toContainText("Edited in another app.")
   await expect(page.getByTestId("ask-after")).toContainText("Agent rewrite")
   await expect(page.getByTestId("ask-always")).toHaveCount(0)
-  await shot(page, "s18-07c-outside-edit-asks")
+  await shot(page, "s26-07c-outside-edit-asks")
   await page.getByTestId("ask-deny").click()
   await settled(page)
   expect(readFileSync(notes, "utf8")).toContain("Edited in another app.")
@@ -351,7 +351,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(report_).toContainText(
     "Quarterly revenue links to Costs. This article does not exist.",
   )
-  await shot(page, "s18-08-check")
+  await shot(page, "s26-08-check")
   expect(readFileSync(join(folder, "Quarterly revenue.md"), "utf8")).toBe(before)
 
   // Off: the list stays, the muted line shows, and a turn does not read the articles.
@@ -359,7 +359,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await page.getByTestId("knowledge-enabled").click()
   await expect(page.getByTestId("knowledge-off")).toHaveText("Knowledge is off for this agent.")
   await expect(page.getByTestId("knowledge-item")).toHaveCount(1)
-  await shot(page, "s18-09-off")
+  await shot(page, "s26-09-off")
   await closeProfile(page)
   const readsOff = await page.getByTestId("knowledge-read-card").count()
   await send(page, "What do you know about the quarterly revenue growth?")
@@ -406,7 +406,7 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   })
   await expect(page.getByTestId("knowledge-full")).toContainText("The limit of 500 articles")
   await expect(page.getByTestId("knowledge-add")).toBeDisabled()
-  await shot(page, "s18-10-full")
+  await shot(page, "s26-10-full")
   await closeProfile(page)
   await app.close()
 
@@ -421,15 +421,15 @@ test("knowledge: sources, articles, read cards, undo, protection, check, off, ke
   await expect(page.getByTestId("knowledge-article-title")).toHaveText("Quarterly revenue")
   await expect(page.getByTestId("knowledge-updated")).toContainText("마지막으로")
   await expect(page.getByTestId("knowledge-check")).toHaveText("지식 점검")
-  await shot(page, "s18-11-korean")
+  await shot(page, "s26-11-korean")
   await app.close()
 })
 
 test("knowledge: Open folder, 5 changes in a turn, and the first save in a chosen workspace", async () => {
   test.setTimeout(240_000)
   const mock = await startMockProvider()
-  const rooted = mkdtempSync(join(tmpdir(), "robot-s18-root-"))
-  const chosen = mkdtempSync(join(tmpdir(), "robot-s18-chosen-"))
+  const rooted = mkdtempSync(join(tmpdir(), "robot-s26-root-"))
+  const chosen = mkdtempSync(join(tmpdir(), "robot-s26-chosen-"))
   const userData = freshUserData()
   const env = { ROBOT_SYSTEM_LOCALE: "en-US", ROBOT_TEST_PICK_FOLDER: rooted }
   let { app, page } = await launch(userData, env)
@@ -472,7 +472,7 @@ test("knowledge: Open folder, 5 changes in a turn, and the first save in a chose
   await expect(page.getByTestId("knowledge-failed")).toContainText(
     "The agent made 5 article changes in this turn. This is the limit.",
   )
-  await shot(page, "s18-13-six-changes")
+  await shot(page, "s26-13-six-changes")
   expect(
     readdirSync(boFolder)
       .filter((n) => n.endsWith(".md"))
@@ -508,7 +508,7 @@ test("knowledge: Open folder, 5 changes in a turn, and the first save in a chose
   await expect(page.getByTestId("ask-card")).toContainText(join(cyDir, "Knowledge"))
   // The card for a first save has no "Always allow": it asks again when the folder is missing.
   await expect(page.getByTestId("ask-always")).toHaveCount(0)
-  await shot(page, "s18-12-first-save-asks")
+  await shot(page, "s26-12-first-save-asks")
   expect(existsSync(join(cyDir, "Knowledge"))).toBe(false)
   await page.getByTestId("ask-allow").click()
   await settled(page)
