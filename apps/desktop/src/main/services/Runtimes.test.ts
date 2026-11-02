@@ -18,6 +18,7 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Runtimes } from "./Runtimes.ts"
@@ -558,7 +559,94 @@ describe("a chat on a subscription", () => {
     const prompt = (fake.claudeCalls().at(-1) as { prompt: string }).prompt
     expect(prompt).toContain("User: first")
     expect(prompt).toContain("You: Echo: first")
-    expect(prompt.endsWith("second")).toBe(true)
+    expect(prompt.endsWith("User: second")).toBe(true)
+  })
+
+  test("the blocks of a turn begin with the blocks of the turn before, so the model can read them from its cache", async () => {
+    const s = await chatSetup("claude_code")
+    await s.send("first")
+    await s.settled()
+    await s.send("second")
+    await until(
+      async () =>
+        (await s.history()).messages.filter((m) => m.author === "agent" && m.status === "done")
+          .length === 2,
+    )
+    await s.send("third")
+    await until(
+      async () =>
+        (await s.history()).messages.filter((m) => m.author === "agent" && m.status === "done")
+          .length === 3,
+    )
+    const [one, two, three] = fake.claudeCalls().slice(-3) as { blocks: string[] }[]
+    expect(one?.blocks.slice(1)).toEqual(["User: first"])
+    expect(two?.blocks.slice(0, one?.blocks.length)).toEqual(one?.blocks)
+    expect(three?.blocks.slice(0, two?.blocks.length)).toEqual(two?.blocks)
+    expect(three?.blocks.slice(1)).toEqual([
+      "User: first",
+      "You: Echo: first",
+      "User: second",
+      "You: Echo: second",
+      "User: third",
+    ])
+  })
+
+  test("for Claude Code, the memory goes with the message and stays the same in the next turns", async () => {
+    const s = await chatSetup("claude_code")
+    await s.run(Memory.use((m) => m.add(s.agent.id, "Likes tea.", "user")))
+    await s.send("first")
+    await s.settled()
+    await s.run(Memory.use((m) => m.add(s.agent.id, "Has a cat.", "user")))
+    await s.send("second")
+    await until(
+      async () =>
+        (await s.history()).messages.filter((m) => m.author === "agent" && m.status === "done")
+          .length === 2,
+    )
+    const [one, two] = fake.claudeCalls().slice(-2) as { args: string[]; blocks: string[] }[]
+    const system = (call?: { args: string[] }) =>
+      call?.args[(call?.args.indexOf("--append-system-prompt") ?? -2) + 1] ?? ""
+    // The instructions come first in the request. They do not change from turn to turn.
+    expect(system(one)).toContain("Be brief.")
+    expect(system(one)).not.toContain("Likes tea.")
+    expect(system(two)).toBe(system(one))
+    // The notes are in the block of the message, and the message keeps them in the next turn.
+    expect(one?.blocks.at(-1)).toContain("What you remember:\n- Likes tea.")
+    expect(two?.blocks.slice(0, one?.blocks.length)).toEqual(one?.blocks)
+    expect(two?.blocks.at(-1)).toContain("- Has a cat.")
+    expect(two?.blocks.at(-1)).toContain("- Likes tea.")
+    // The page of the chat shows the text of the user only.
+    const shown = (await s.history()).messages.filter((m) => m.author === "user")
+    expect(shown.map((m) => messageText(m))).toEqual(["first", "second"])
+    const db = await s.run(Database.use((d) => Effect.succeed(d)))
+    expect(
+      db
+        .all<{ context: string | null }>(
+          "SELECT context FROM message WHERE author = 'user' ORDER BY created_at, rowid",
+        )
+        .map((r) => r.context?.includes("Has a cat.")),
+    ).toEqual([false, true])
+  })
+
+  test("a turn with no memory keeps no notes", async () => {
+    const s = await chatSetup("claude_code")
+    await s.send("plain")
+    await s.settled()
+    const call = fake.claudeCalls().at(-1) as { blocks: string[] }
+    expect(call.blocks.slice(1)).toEqual(["User: plain"])
+    const db = await s.run(Database.use((d) => Effect.succeed(d)))
+    expect(db.get<{ context: string | null }>("SELECT context FROM message")?.context).toBeNull()
+  })
+
+  test("Codex still gets the memory in its instructions, and keeps no notes", async () => {
+    const s = await chatSetup("codex")
+    await s.run(Memory.use((m) => m.add(s.agent.id, "Likes tea.", "user")))
+    await s.send("hi")
+    await s.settled()
+    const call = fake.codexCalls().at(-1) as { prompt: string }
+    expect(call.prompt).toContain("What you remember:\n- Likes tea.")
+    const db = await s.run(Database.use((d) => Effect.succeed(d)))
+    expect(db.get<{ context: string | null }>("SELECT context FROM message")?.context).toBeNull()
   })
 
   test("the usage limits of the plan are kept", async () => {

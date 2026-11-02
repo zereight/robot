@@ -11,8 +11,10 @@ const SECTIONS = 14
 const KNOWLEDGE = 12
 /** The index of the migration that spec 006 added: the separate sign-in of an account. */
 const SIGN_IN = SECTIONS + 1
+/** The index of the migration that spec 003 added: the notes kept with a message. */
+const CONTEXT = SIGN_IN + 1
 /** Main has this many steps. The steps of the device link and of sync follow them. */
-const MAIN_STEPS = SIGN_IN + 1
+const MAIN_STEPS = CONTEXT + 1
 
 const upTo = (count: number) => {
   const db = new DatabaseSync(":memory:")
@@ -175,6 +177,7 @@ describe("the steps of the device link and of sync", () => {
     expect(migrations[SIGN_IN]?.trim()).toBe(
       "ALTER TABLE provider_account ADD COLUMN sign_in TEXT;",
     )
+    expect(migrations[CONTEXT]?.trim()).toBe("ALTER TABLE message ADD COLUMN context TEXT;")
     expect(migrations[MAIN_STEPS]).toContain("CREATE TABLE device_link")
     expect(migrations[MAIN_STEPS + 1]).toContain("CREATE TABLE sync_pair")
     expect(migrations[MAIN_STEPS + 2]).toContain("ALTER TABLE device_link ADD COLUMN can_change")

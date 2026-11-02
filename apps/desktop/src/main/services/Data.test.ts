@@ -75,10 +75,11 @@ describe("export and import", () => {
     )
     const db = await a.run(Database.use((d) => Effect.succeed(d)))
     db.run(
-      `INSERT INTO message (id, agent_id, author, parts, status, created_at, finished_at)
-       VALUES ('m1', ?, 'user', ?, 'done', 1, 1)`,
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at, finished_at, context)
+       VALUES ('m1', ?, 'user', ?, 'done', 1, 1, ?)`,
       agent.id,
       JSON.stringify([{ kind: "text", text: `my key is ${KEY}` }]),
+      `What you remember:\n- the key is ${KEY}`,
     )
     mkdirSync(join(agent.workspace, "attachments"), { recursive: true })
     writeFileSync(join(agent.workspace, "attachments", "note.txt"), "hello file")
@@ -104,6 +105,10 @@ describe("export and import", () => {
     expect(existsSync(join(list[0]?.workspace ?? "", "attachments", "note.txt"))).toBe(true)
     const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
     expect(bDb.get<{ parts: string }>("SELECT parts FROM message")?.parts).toContain("[redacted]")
+    // The notes of a turn are memory items, so a key in them is hidden like a key in the memory.
+    expect(bDb.get<{ context: string }>("SELECT context FROM message")?.context).toBe(
+      "What you remember:\n- the key is [redacted]",
+    )
   })
 
   test("a hidden key leaves no trace in the pages of the database file", async () => {

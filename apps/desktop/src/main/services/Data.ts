@@ -182,6 +182,14 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                 out
                   .prepare("UPDATE knowledge_change SET earlier = ? WHERE id = ?")
                   .run(redactSecrets(row.earlier, known), row.id)
+            // The notes of a turn are memory items copied into the message, so a key in them is
+            // hidden like a key in the memory.
+            for (const row of out
+              .prepare("SELECT id, context FROM message WHERE context IS NOT NULL")
+              .all() as { id: string; context: string }[])
+              out
+                .prepare("UPDATE message SET context = ? WHERE id = ?")
+                .run(redactSecrets(row.context, known), row.id)
             for (const row of out.prepare("SELECT id, text FROM memory").all() as {
               id: string
               text: string

@@ -283,6 +283,9 @@ export const migrations: readonly string[] = [
   ALTER TABLE provider_account ADD COLUMN sign_in TEXT;
   `,
   `
+  ALTER TABLE message ADD COLUMN context TEXT;
+  `,
+  `
   CREATE TABLE device_link (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
