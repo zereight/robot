@@ -11,7 +11,9 @@ through, and is never stored on, a third-party server.
 ## Concepts
 
 - **Device**: a phone or a computer that runs ROBot. It has a name that the user chooses, a kind
-  (phone or computer), and an identity that the app makes on first start.
+  (phone or computer), and an identity that the app makes on first start. A computer is a Mac with Apple
+  silicon. A phone is an iPhone or a phone with Android. The link and its messages are the same for both
+  phone systems.
 - **Server**: a computer and its agents (see 000). Every computer is a server for its own
   agents. A phone is never a server.
 - **Client**: a device that opens a server. A phone is always a client. A computer is a client
@@ -210,6 +212,8 @@ accept connections, this is the same computer.
 
 - Sync of agents and data between computers. See 019. A link alone copies nothing.
 - An agent on one computer that joins a channel of another computer.
+- A server that is not a Mac with Apple silicon: an Intel Mac, a Windows or Linux computer, a
+  phone, or a service on the internet. So a phone with no such Mac has no server to open (000).
 - A relay or a connection service that links devices which share no network. The user uses a
   VPN for this.
 - Setting up or checking the VPN.

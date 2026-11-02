@@ -25,6 +25,15 @@ tag, so the user reads their work as they read messages from colleagues.
 - **Routine**: a task that runs on a schedule.
 - **Workflow**: a set of connected steps that runs when a trigger fires.
 
+## Platforms
+
+- **Computer**: a Mac with Apple silicon (M1 or later) that runs macOS. This holds for a MacBook,
+  a Mac mini, an iMac and any other Mac with such a chip. ROBot has no app for an Intel Mac, for
+  Windows or for Linux. A server (see 012) is always a Mac with Apple silicon.
+- **Phone**: an iPhone (iOS) or a phone with Android. Both systems have the same features (011).
+- A phone is a client only. It needs a Mac that runs ROBot and that the phone has paired with.
+  A user who has no Mac cannot use ROBot with a phone alone.
+
 ## Main flows
 
 1. First start: the user picks a language and theme, connects at least one model account, and
@@ -69,11 +78,14 @@ tag, so the user reads their work as they read messages from colleagues.
 
 - Selling or billing.
 - Hosting agents on a remote cloud service.
+- An app for an Intel Mac, for Windows or for Linux.
+- Use of ROBot on a phone alone, with no Mac. The phone runs no agents (012).
 - Import of data from other apps. A separate tool may do this later; it is not part of ROBot.
 
 ## Acceptance
 
 - A new user can go from first start to a streamed agent reply without reading documentation.
+- The same Mac pairs with an iPhone and with an Android phone, and both work the same way (011).
 - A channel job with two parts shows two plan steps, and both reply chips open the right replies.
 - With the network off except for the model provider, all features in this spec still work. The
   connections of 018 that use a web address are the exception: they need their address.

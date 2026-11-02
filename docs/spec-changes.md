@@ -46,6 +46,7 @@ These are in the code today and the specs now say something else.
 | 002 | The agent profile lists no work. | The profile has a block "Recent work" with the last 20 tasks, their state in words, and the time since the last change. |
 | 002, 009, 017 | Three templates: general assistant, code reviewer, researcher. | Five starters: Assistant, Briefer, Researcher, Reviewer, Organizer. A starter can also make a paused routine and skills for the new agent. |
 | 002, 017 | Deleting an agent leaves a skill that was only for it. It is listed nowhere and counts in the limit of 100. | The delete removes the agent from the list of every skill. A skill that was only for it is deleted, and the confirm text says how many. |
+| 000, 001, 011, 012, 015 | The desktop app is built for macOS, Windows and Linux. Search opens with Cmd or Ctrl+K. | The desktop app is for Macs with Apple silicon only. Search opens with Cmd+K. The phone app is for iOS and Android. A phone with no such Mac cannot be used. |
 
 ## Slices
 
@@ -87,10 +88,12 @@ These are in the code today and the specs now say something else.
 | S52 | Work record: the list of moments in the task view, and the block "Recent work" in the agent profile with its words for what a task waits for. Needs S51 for the moment "Judged". | 005, 002 |
 | S53 | Starters: five starters with their own English and Korean text, the paused routine and the skills that a starter makes, the note in the chat when a part is not made, and the rule for a linked device. The limit of 50 routines is not built (S29): a starter checks it by itself, and the refusal in the form stays in S29. The storage of skills exists (it came with S45), but the Skills page and the command list are S31 and are not built. So the skills of a starter are made and counted, and the user cannot call them until S31 lands. | 002, 009, 017 |
 | S54 | Skills go with their only agent: the confirm text of the delete names the count, the agent leaves the list of every skill, and a skill that was only for it is deleted. It covers skills of starters and of "Teach a task". Archive changes nothing. | 002, 017 |
+| S55 | Apple silicon only: packaging, the release workflow, CI, the README and `docs/release.md` list the macOS arm64 build only. The build for Intel Macs (x64) and its runner go. The code paths, tests and texts for Windows, Linux and Intel go (program search, path rules, key storage, the Ctrl key for search, the platform test for the island). The rows of `docs/spec-questions.md` for the delivery of the app (000) and for the default of the island (015) lose "x64", "Windows", "Linux" and "on macOS only". The end-to-end suite runs on an Apple silicon runner, so the CI jobs for it need one. The phone app (M5b) is for iOS and Android. It is not built yet, and this slice adds none of it. | 000, 001, 011, 012, 015 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
 S50 needs no code change in the app besides text, and can go first. S52 follows S51. S53 does not depend on S50 to S52. S54 follows S53.
+S55 does not depend on the other slices. It removes code, so it goes best when no other slice is open on the same files.
 
 ## Decided against
 
