@@ -1,13 +1,92 @@
-import type { Agent } from "@robot/shared"
+import type { Agent, AgentPatch, MessageKey } from "@robot/shared"
 import { createSignal, Show } from "solid-js"
+import { formatDateTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
-import { AgentForm } from "./AgentForm.tsx"
+import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
 import styles from "./agents.module.css"
+import { Face } from "./Face.tsx"
+
+/** "Last changed by <device name>, <time>", when a linked device made the last change (012). */
+const ChangedBy = (props: { agent: Agent }) => {
+  const app = useApp()
+  return (
+    <Show when={props.agent.changedBy}>
+      {(change) => (
+        <span class={styles.hint} data-testid="agent-changed-by">
+          {app.t("agents.changedBy", {
+            name: change().by,
+            time: formatDateTime(app.locale(), change().at),
+          })}
+        </span>
+      )}
+    </Show>
+  )
+}
+
+/**
+ * A client sends only what the user changed. A field that did not change is left out, so a
+ * stale value cannot make the level looser, and a model whose account was disconnected on the
+ * server does not stop an edit of the instructions.
+ */
+const changesOf = (agent: Agent, values: AgentFormValues): AgentPatch => ({
+  ...(values.name !== agent.name ? { name: values.name } : {}),
+  ...(values.role !== agent.role ? { role: values.role } : {}),
+  ...(values.instructions !== agent.instructions ? { instructions: values.instructions } : {}),
+  ...(values.face.shape !== agent.face.shape || values.face.hue !== agent.face.hue
+    ? { face: values.face }
+    : {}),
+  ...(values.model?.accountId !== agent.model?.accountId ||
+  values.model?.model !== agent.model?.model ||
+  values.model?.effort !== agent.model?.effort
+    ? { model: values.model }
+    : {}),
+  ...(values.permission && values.permission !== agent.permission
+    ? { permission: values.permission }
+    : {}),
+})
+
+/** The profile of an agent as text only. A device without the switch sees this (012). */
+const AgentProfileView = (props: { agent: Agent }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const line = (label: MessageKey, text: string, testId: string) => (
+    <div class={styles.field}>
+      <span class={styles.label}>{t(label)}</span>
+      <span class={styles.readonly} data-testid={testId} data-user-data>
+        {text || "—"}
+      </span>
+    </div>
+  )
+  return (
+    <div class={styles.form} data-testid="agent-profile-view">
+      <h2 class={styles.title}>{t("agents.profile")}</h2>
+      <div class={styles.faceRow}>
+        <Face face={props.agent.face} image={props.agent.faceImage} size={64} />
+      </div>
+      {line("agents.field.name", props.agent.name, "agent-view-name")}
+      {line("agents.field.role", props.agent.role, "agent-view-role")}
+      {line("agents.field.instructions", props.agent.instructions, "agent-view-instructions")}
+      {line(
+        "agents.field.model",
+        props.agent.model?.model ?? t("agents.noModel"),
+        "agent-view-model",
+      )}
+      {line(
+        "agents.field.permission",
+        t(`agents.permission.${props.agent.permission}` as MessageKey),
+        "agent-view-permission",
+      )}
+      <span class={styles.hint} data-testid="agent-readonly-hint">
+        {t("agents.readonly.hint", { name: ui.server()?.name ?? "" })}
+      </span>
+    </div>
+  )
+}
 
 export const NewAgentDialog = (props: { onClose: () => void }) => {
   const { t } = useApp()
@@ -28,7 +107,7 @@ export const NewAgentDialog = (props: { onClose: () => void }) => {
   )
 }
 
-/** Edit an agent, or duplicate or archive it. */
+/** Edit an agent, or duplicate or archive it. On a linked server, as far as the server allows. */
 export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
@@ -45,57 +124,87 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
 
   return (
     <Dialog label={t("agents.profile")} onClose={props.onClose} testId="agent-profile">
-      <AgentForm
-        agent={props.agent}
-        onCancel={props.onClose}
-        onSubmit={async (values) => {
-          await call("agents.update", { id: props.agent.id, patch: values })
-          props.onClose()
-        }}
-        onPicture={async (dataUrl) => {
-          await call("agents.setFaceImage", { id: props.agent.id, dataUrl })
-        }}
-      />
+      <Show when={ui.canChange()} fallback={<AgentProfileView agent={props.agent} />}>
+        <AgentForm
+          agent={props.agent}
+          onCancel={props.onClose}
+          onSubmit={async (values) => {
+            if (!ui.linked()) {
+              await call("agents.update", { id: props.agent.id, patch: values })
+              props.onClose()
+              return
+            }
+            // The error stays on the dialog, also when the form goes read-only because the
+            // server turned the switch off.
+            await act(async () => {
+              await call("agents.update", {
+                id: props.agent.id,
+                patch: changesOf(props.agent, values),
+              })
+              props.onClose()
+            })
+          }}
+          {...(ui.linked()
+            ? {}
+            : {
+                onPicture: async (dataUrl: string | null) => {
+                  await call("agents.setFaceImage", { id: props.agent.id, dataUrl })
+                },
+              })}
+        />
+      </Show>
       <div class={styles.spread}>
-        <span class={styles.hint} title={props.agent.workspace} data-user-data>
-          {t("agents.workspace")}: {props.agent.workspace}
-        </span>
+        <Show
+          when={ui.linked()}
+          fallback={
+            <span class={styles.hint} title={props.agent.workspace} data-user-data>
+              {t("agents.workspace")}: {props.agent.workspace}
+            </span>
+          }
+        >
+          <span class={styles.hint} data-testid="agent-workspace-on">
+            {t("agents.workspace.on", { name: ui.server()?.name ?? "" })}
+          </span>
+        </Show>
+        <ChangedBy agent={props.agent} />
       </div>
       <Show when={error()}>
         {(err) => (
-          <div class={styles.error} role="alert">
+          <div class={styles.error} role="alert" data-testid="agent-error">
             {t(err().key, err().params)}
           </div>
         )}
       </Show>
-      <div class={styles.actions}>
-        <Button
-          data-testid="agent-duplicate"
-          onClick={() =>
-            act(async () => {
-              const copy = await call("agents.duplicate", {
-                id: props.agent.id,
-                suffix: t("agents.copySuffix"),
+      <Show when={ui.canChange()}>
+        <div class={styles.actions}>
+          <Button
+            data-testid="agent-duplicate"
+            onClick={() =>
+              act(async () => {
+                const copy = await call("agents.duplicate", {
+                  id: props.agent.id,
+                  suffix: t("agents.copySuffix"),
+                })
+                props.onClose()
+                ui.selectPlace({ kind: "agent", id: copy.id })
               })
-              props.onClose()
-              ui.selectPlace({ kind: "agent", id: copy.id })
-            })
-          }
-        >
-          {t("agents.duplicate")}
-        </Button>
-        <Button
-          data-testid="agent-archive"
-          onClick={() =>
-            act(async () => {
-              await call("agents.archive", { id: props.agent.id })
-              props.onClose()
-            })
-          }
-        >
-          {t("agents.archive")}
-        </Button>
-      </div>
+            }
+          >
+            {t("agents.duplicate")}
+          </Button>
+          <Button
+            data-testid="agent-archive"
+            onClick={() =>
+              act(async () => {
+                await call("agents.archive", { id: props.agent.id })
+                props.onClose()
+              })
+            }
+          >
+            {t("agents.archive")}
+          </Button>
+        </div>
+      </Show>
     </Dialog>
   )
 }

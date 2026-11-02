@@ -170,7 +170,8 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           )}
         </Show>
         <div class={styles.actions}>
-          <Show when={props.channel}>
+          {/* A client cannot delete a channel of a server (spec 012). */}
+          <Show when={props.channel && !ui.linked()}>
             <Show
               when={confirmDelete()}
               fallback={

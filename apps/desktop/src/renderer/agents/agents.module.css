@@ -38,6 +38,14 @@
   color: var(--c-danger);
 }
 
+/* The text of a field in a profile that cannot be changed. */
+.readonly {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
 .input,
 .textarea {
   border: 1px solid var(--c-border);

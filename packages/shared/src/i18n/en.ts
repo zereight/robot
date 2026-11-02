@@ -137,6 +137,11 @@ export const en = {
   "agents.archive.empty": "No archived agents.",
   "agents.archive.agents": "Agents",
   "agents.workspace": "Workspace",
+  "agents.workspace.on": "Workspace: on {name}",
+  "agents.changedBy": "Last changed by {name}, {time}",
+  "agents.readonly.hint":
+    "{name} does not let this device change agents. Turn it on in Settings → Devices on that computer.",
+  "agents.permission.stricter": "This device can make an agent more careful, but not less.",
   "chat.start": "This is the start of your chat.",
 
   "error.agent_name_taken": "Another agent on this server has this name.",
@@ -223,6 +228,7 @@ export const en = {
   "model.loading": "Loading models…",
   "model.manual": "Model ID",
   "model.noAccounts": "Connect a model account in settings first.",
+  "model.noAccounts.remote": "No model account is connected on {name}.",
   "model.save": "Save",
 
   "error.provider_auth": "The provider refused the key.",

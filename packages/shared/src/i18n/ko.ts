@@ -137,6 +137,12 @@ export const ko: Record<MessageKey, string> = {
   "agents.archive.empty": "보관한 에이전트가 없어요.",
   "agents.archive.agents": "에이전트",
   "agents.workspace": "작업 폴더",
+  "agents.workspace.on": "작업 폴더: {name}에 있어요",
+  "agents.changedBy": "{name}이(가) {time}에 마지막으로 바꿨어요",
+  "agents.readonly.hint":
+    "{name}이(가) 이 기기에서 에이전트를 바꾸는 것을 허용하지 않았어요. 그 컴퓨터의 설정 → 기기에서 켜 주세요.",
+  "agents.permission.stricter":
+    "이 기기에서는 에이전트를 더 신중하게만 바꿀 수 있고, 덜 신중하게는 바꿀 수 없어요.",
   "chat.start": "대화의 시작이에요.",
 
   "error.agent_name_taken": "이 서버에 같은 이름의 에이전트가 이미 있어요.",
@@ -223,6 +229,7 @@ export const ko: Record<MessageKey, string> = {
   "model.loading": "모델 목록을 불러오는 중…",
   "model.manual": "모델 ID",
   "model.noAccounts": "먼저 설정에서 모델 계정을 연결하세요.",
+  "model.noAccounts.remote": "{name}에 연결된 모델 계정이 없어요.",
   "model.save": "저장",
 
   "error.provider_auth": "제공자가 키를 거부했어요.",

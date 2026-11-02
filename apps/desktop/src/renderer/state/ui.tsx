@@ -97,6 +97,11 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** This computer, also when a linked server is open. Settings about this computer use it. */
     localServer,
     linked: () => server()?.kind === "linked",
+    /**
+     * True when the user can create and change agents and channels of the open server: always on
+     * this computer, and on a linked server only while it is online and lets this device (012).
+     */
+    canChange: () => server()?.kind !== "linked" || server()?.canChange === true,
     serverOffline,
     sections,
     refetchPlaces,

@@ -66,7 +66,7 @@ export const ChannelHeader = (props: { channel: Channel }) => {
           {props.channel.topic}
         </span>
       </Show>
-      <Show when={!ui.linked()}>
+      <Show when={ui.canChange()}>
         <IconButton
           label={t("channels.settings")}
           onClick={() => setOpen(true)}

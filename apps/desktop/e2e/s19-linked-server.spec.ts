@@ -96,6 +96,9 @@ test("linked server: an agent of another computer works in this window, offline 
     await one.page.getByTestId("connect-next").click()
     await one.page.getByTestId("connect-two-way").click() // one way is enough here
     await one.page.getByTestId("connect-finish").click()
+    // This test is about a client without the switch "Can create and change agents" (012).
+    await two.page.getByTestId("join-can-change").click()
+    await expect(two.page.getByTestId("join-can-change")).toHaveAttribute("aria-checked", "false")
     await two.page.getByTestId("join-allow").click()
     await expect(one.page.getByTestId("connect-dialog")).toBeHidden()
     await two.page.getByTestId("pair-close").click()
@@ -113,6 +116,21 @@ test("linked server: an agent of another computer works in this window, offline 
     await expect(one.page.getByTestId("new-agent")).toHaveCount(0)
     await expect(one.page.getByTestId("new-channel")).toHaveCount(0)
     await shot(one.page, "s19-01-linked-server")
+
+    // The profile opens as text only, with the line that says where to turn the switch on.
+    await one.page.getByTestId("chat-header-agent").click()
+    await expect(one.page.getByTestId("agent-profile-view")).toBeVisible()
+    await expect(one.page.getByTestId("agent-view-name")).toHaveText("Ada")
+    await expect(one.page.getByTestId("agent-form")).toHaveCount(0)
+    await expect(one.page.getByTestId("agent-submit")).toHaveCount(0)
+    await expect(one.page.getByTestId("agent-archive")).toHaveCount(0)
+    await expect(one.page.getByTestId("agent-readonly-hint")).toContainText(
+      "MacBook 2 does not let this device change agents. Turn it on in Settings → Devices on that computer.",
+    )
+    await expect(one.page.getByTestId("agent-workspace-on")).toHaveText("Workspace: on MacBook 2")
+    await shot(one.page, "s19-01b-read-only-profile")
+    await one.page.keyboard.press("Escape")
+    await expect(one.page.getByTestId("agent-profile")).toBeHidden()
 
     // Send from MacBook 1: the reply streams in both windows.
     await send(one.page, "hello from the laptop")

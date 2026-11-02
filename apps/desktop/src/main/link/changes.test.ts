@@ -575,45 +575,50 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     )
   })
 
-  test("the server tells a device when its switch changes; the summary holds the value", async () => {
+  test("the summary holds the value; a device hears a change of its switch, and only a change", async () => {
     const p = await pair(true)
     const id = await p.clientLink
-    const heard: boolean[] = []
-    await p.client.runtime.runPromise(
-      Remote.use((r) =>
-        Effect.sync(() =>
-          r.onEvent((_link, event, payload) => {
-            if (event === "access") heard.push((payload as { canChange: boolean }).canChange)
-          }),
-        ),
-      ),
-    )
     const summary = async () =>
       (await p.client.runtime.runPromise(
         Remote.use((r) =>
           Effect.promise(() => r.request(p.entry.id, "server.summary", undefined, 5000)),
         ),
       )) as { canChange: boolean }
+    const tile = async () =>
+      (await p.client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.servers()))))[0]
+    const changes = () => p.client.events.filter((e) => e.event === "servers.changed").length
     const set = (on: boolean) =>
       p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, on)))
 
     expect((await summary()).canChange).toBe(true)
+    await waitFor(tile, (t) => t?.canChange === true)
     await set(false)
-    await waitFor(
-      () => heard.length,
-      (n) => n >= 1,
-    )
-    expect(heard).toEqual([false])
+    await waitFor(tile, (t) => t?.canChange === false)
     expect((await summary()).canChange).toBe(false)
     // The same value again is not a change: the device hears nothing.
+    const before = changes()
     await set(false)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(changes()).toBe(before)
     await set(true)
-    await waitFor(
-      () => heard.length,
-      (n) => n >= 2,
-    )
-    expect(heard).toEqual([false, true])
+    await waitFor(tile, (t) => t?.canChange === true)
     expect((await summary()).canChange).toBe(true)
+  })
+
+  test("the server tile of the client says whether it may change agents, and follows the server", async () => {
+    const p = await pair(true)
+    const id = await p.clientLink
+    const tile = async () =>
+      (await p.client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.servers()))))[0]
+    expect((await waitFor(tile, (t) => t?.canChange === true))?.canChange).toBe(true)
+
+    // The server turns the switch off: the tile follows at once, without a request of the client.
+    await p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, false)))
+    expect((await waitFor(tile, (t) => t?.canChange === false))?.canChange).toBe(false)
+    await p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, true)))
+    expect((await waitFor(tile, (t) => t?.canChange === true))?.canChange).toBe(true)
+    // The window of the client is told about each change of the tile.
+    expect(p.client.events.filter((e) => e.event === "servers.changed").length).toBeGreaterThan(1)
   })
 
   test("the user cannot change the switch of a device that does not exist or is not a client", async () => {

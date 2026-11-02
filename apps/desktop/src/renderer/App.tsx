@@ -63,8 +63,8 @@ export const App = () => {
           }
         }}
         sectionAction={(section) =>
-          // A client does not create agents or channels on a server (spec 012).
-          ui.linked() ? null : section === "agents" ? (
+          // A client creates agents and channels on a server only when the server lets it (012).
+          !ui.canChange() ? null : section === "agents" ? (
             <IconButton
               label={t("agents.new")}
               onClick={() => setNewAgent(true)}

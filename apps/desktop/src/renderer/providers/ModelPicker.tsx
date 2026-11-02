@@ -4,6 +4,7 @@ import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
+import { useUi } from "../state/ui.tsx"
 import styles from "./providers.module.css"
 
 /** Picks account, model and effort. Reports `null` while nothing complete is picked. */
@@ -13,15 +14,32 @@ export const ModelPicker = (props: {
 }) => {
   const { t } = useApp()
   const providers = useProviders()
-  const [accountId, setAccountId] = createSignal(
-    props.value?.accountId ?? providers.accounts()[0]?.id ?? "",
+  const ui = useUi()
+  // On a linked server the choices are the accounts that are connected on that server, with their
+  // models. The window never sees a key, and cannot add or change an account there (spec 012).
+  const remote = () => ui.linked()
+  const [offered] = createResource(
+    () => (remote() ? (ui.server()?.id ?? "") : ""),
+    (id) => (id ? call("models.available").catch(() => []) : []),
   )
+  const accounts = (): readonly { id: string; name: string; connected: boolean }[] =>
+    remote()
+      ? (offered() ?? []).map((c) => ({ id: c.accountId, name: c.accountName, connected: true }))
+      : providers.accounts()
+  const [accountId, setAccountId] = createSignal(props.value?.accountId ?? accounts()[0]?.id ?? "")
   const [model, setModel] = createSignal(props.value?.model ?? "")
   const [effort, setEffort] = createSignal<string | null>(props.value?.effort ?? null)
 
   const [models] = createResource(
     accountId,
     async (id): Promise<{ list: readonly ModelInfo[]; error?: MessageKey }> => {
+      if (remote()) {
+        return {
+          list:
+            (await call("models.available").catch(() => [])).find((c) => c.accountId === id)
+              ?.models ?? [],
+        }
+      }
       if (!id || !providers.byId(id)?.connected) return { list: [] }
       try {
         return { list: await call("providers.models", { accountId: id }) }
@@ -35,7 +53,7 @@ export const ModelPicker = (props: {
 
   // The account list can arrive after the picker opens, for example right after a connect.
   createEffect(() => {
-    const first = providers.accounts()[0]
+    const first = accounts()[0]
     if (first && !accountId()) setAccountId(first.id)
   })
   // Pick the first model when the account changes and the old model is not in its list.
@@ -59,8 +77,14 @@ export const ModelPicker = (props: {
 
   return (
     <Show
-      when={providers.accounts().length > 0}
-      fallback={<p class={styles.muted}>{t("model.noAccounts")}</p>}
+      when={accounts().length > 0}
+      fallback={
+        <p class={styles.muted} data-testid="model-no-accounts">
+          {remote()
+            ? t("model.noAccounts.remote", { name: ui.server()?.name ?? "" })
+            : t("model.noAccounts")}
+        </p>
+      }
     >
       <div class={styles.picker} data-testid="model-picker">
         <label class={`${styles.field} ${styles.pickerWide}`}>
@@ -71,7 +95,7 @@ export const ModelPicker = (props: {
             onChange={(e) => setAccountId(e.currentTarget.value)}
             data-testid="model-account"
           >
-            <For each={providers.accounts()}>
+            <For each={accounts()}>
               {(a) => (
                 <option value={a.id} selected={a.id === accountId()}>
                   {a.name}

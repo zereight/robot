@@ -3,6 +3,7 @@ import { closeSync, openSync, readSync, statSync, writeFileSync } from "node:fs"
 import { basename, join } from "node:path"
 import {
   ACCESS_EVENT,
+  type AccessPayload,
   ATTACH_BYTES,
   ATTACH_MAX,
   type ConnectProbe,
@@ -105,6 +106,8 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
 
       const connections = new Map<string, Connection>()
       const sides = new Map<string, "this" | "server" | null>()
+      /** What each server lets this device do: the switch "Can create and change agents" (012). */
+      const access = new Map<string, boolean>()
       const eventHandlers: ((linkId: string, event: string, payload: unknown) => void)[] = []
       const removedHandlers: ((linkId: string) => void)[] = []
       const onlineHandlers: ((linkId: string) => void)[] = []
@@ -114,6 +117,24 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
       const serversChanged = () => {
         bus.emit("servers.changed", {})
         bus.emit("devices.changed", {})
+      }
+
+      const setAccess = (linkId: string, on: boolean) => {
+        if (access.get(linkId) === on) return
+        access.set(linkId, on)
+        serversChanged()
+      }
+
+      /** Reads what the server lets this device do. A value that is not known counts as off. */
+      const loadAccess = async (linkId: string) => {
+        try {
+          const summary = (await connections.get(linkId)?.request("server.summary")) as
+            | { canChange?: unknown }
+            | undefined
+          setAccess(linkId, summary?.canChange === true)
+        } catch {
+          // The next connection reads it again; until then the screens stay read-only.
+        }
       }
 
       /** A notice of a linked server shows by the settings of this computer, and names the server. */
@@ -153,12 +174,15 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               serversChanged()
             },
             onEvent: (event, payload) => {
+              if (event === ACCESS_EVENT) {
+                // Only this device is told. The window sees it as a change of the server tile.
+                setAccess(row.id, (payload as AccessPayload | undefined)?.canChange === true)
+                return
+              }
               if (event === "notice") showNotice(row.id, payload as WireNotice)
               cache.applyEvent(row.id, event, payload)
               // The window shows these. They do not go to the devices of this computer.
-              if (event !== "notice" && event !== "revoked" && event !== ACCESS_EVENT) {
-                bus.window(event as never, payload)
-              }
+              if (event !== "notice" && event !== "revoked") bus.window(event as never, payload)
               for (const h of eventHandlers) h(row.id, event, payload)
             },
             onOnline: (info) => {
@@ -174,12 +198,14 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
                   bus.window(event, { serverId })
                 }
               }
+              void loadAccess(row.id)
               void catchUp(row.id)
               for (const h of onlineHandlers) h(row.id)
             },
             onRevoked: () => {
               // "Not allowed": the cache of the server goes with the link.
               cache.delete(row.id)
+              access.delete(row.id)
               for (const h of removedHandlers) h(row.id)
               serversChanged()
               // The window drops what it shows of that server: the lists read again and fail.
@@ -203,6 +229,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
           connection.stop()
           connections.delete(id)
           sides.delete(id)
+          access.delete(id)
           cache.delete(id)
         }
         for (const row of wanted.values()) if (!connections.has(row.id)) connect(row)
@@ -347,6 +374,8 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               // "<server name> does not let this device change agents": the name is the one that
               // this device shows for the server (the server sent its own name).
               if (error.code === "change_off") {
+                // The server turned the switch off and the event did not arrive yet.
+                setAccess(link.id, false)
                 return failure(error.code, entryOf(link.id)?.name ?? error.detail ?? error.code)
               }
               return failure(error.code, error.detail ?? error.code)
@@ -508,6 +537,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
                 kind: "linked" as const,
                 state,
                 updateSide: sides.get(r.id) ?? null,
+                canChange: state === "online" && access.get(r.id) === true,
               }
             }),
         remove: (linkId) =>
@@ -516,6 +546,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
             connections.get(linkId)?.stop()
             connections.delete(linkId)
             sides.delete(linkId)
+            access.delete(linkId)
             cache.delete(linkId)
             for (const h of removedHandlers) h(linkId)
             devices.removeOutbound(linkId)

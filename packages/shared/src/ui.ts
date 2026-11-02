@@ -56,6 +56,11 @@ export interface Server {
   readonly state?: LinkState
   /** Which side must update the app, when the state is `update_app`. */
   readonly updateSide?: "this" | "server" | null
+  /**
+   * True when the server is online and lets this device create and change agents (spec 012). The
+   * plus buttons and the fields of agents and channels show only then. Absent for this computer.
+   */
+  readonly canChange?: boolean
 }
 
 /** One row in the place list. */

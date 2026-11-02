@@ -55,29 +55,20 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
   const [open, setOpen] = createSignal(false)
   return (
     <>
-      <Show
-        when={!ui.linked()}
-        fallback={
-          // A client does not edit the agents of a server (spec 012): the name is only shown.
-          <span class={styles.headerName} data-testid="chat-header-agent" data-readonly="true">
-            <Face face={props.agent.face} image={props.agent.faceImage} size={24} />
-            <span>{props.agent.name}</span>
-          </span>
-        }
+      {/* A client without the switch opens the profile too, as read-only text (spec 012). */}
+      <button
+        type="button"
+        class={styles.headerName}
+        aria-label={t("agents.openProfile", { name: props.agent.name })}
+        onClick={() => setOpen(true)}
+        data-readonly={ui.canChange() ? undefined : "true"}
+        data-testid="chat-header-agent"
       >
-        <button
-          type="button"
-          class={styles.headerName}
-          aria-label={t("agents.openProfile", { name: props.agent.name })}
-          onClick={() => setOpen(true)}
-          data-testid="chat-header-agent"
-        >
-          <Face face={props.agent.face} image={props.agent.faceImage} size={24} />
-          <span>{props.agent.name}</span>
-        </button>
-      </Show>
+        <Face face={props.agent.face} image={props.agent.faceImage} size={24} />
+        <span>{props.agent.name}</span>
+      </button>
       <Show
-        when={!ui.linked()}
+        when={ui.canChange()}
         fallback={
           <span class={styles.headerModel} data-testid="chat-header-model" data-readonly="true">
             {props.agent.model?.model ?? t("agents.noModel")}

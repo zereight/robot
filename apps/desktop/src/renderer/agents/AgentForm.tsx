@@ -10,6 +10,7 @@ import {
   FACE_SHAPES,
   type Face as FaceValue,
   faceFromName,
+  isLooser,
   type MessageKey,
   PERMISSION_LEVELS,
   type PermissionLevel,
@@ -19,6 +20,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useApp } from "../state/app.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import styles from "./agents.module.css"
 import { Face, faceColour } from "./Face.tsx"
@@ -55,6 +57,14 @@ const Counter = (props: { used: number; max: number }) => {
 
 export const AgentForm = (props: AgentFormProps) => {
   const { t } = useApp()
+  const ui = useUi()
+  // On a linked server the same screen works with fewer fields (spec 012): no picture, no memory
+  // switch, and a level that can only get stricter.
+  const remote = () => ui.linked()
+  const levels = () =>
+    remote() && props.agent
+      ? PERMISSION_LEVELS.filter((level) => !isLooser(level, (props.agent as Agent).permission))
+      : PERMISSION_LEVELS
   const [template, setTemplate] = createSignal<AgentTemplate | "blank">("blank")
   const [name, setName] = createSignal(props.agent?.name ?? "")
   const [role, setRole] = createSignal(props.agent?.role ?? "")
@@ -100,7 +110,11 @@ export const AgentForm = (props: AgentFormProps) => {
         instructions: instructions(),
         face: face(),
         model: model(),
-        ...(props.agent ? { permission: permission(), memoryEnabled: memoryEnabled() } : {}),
+        ...(props.agent && !remote()
+          ? { permission: permission(), memoryEnabled: memoryEnabled() }
+          : props.agent
+            ? { permission: permission() }
+            : {}),
       })
     } catch (e) {
       setError(describeError(e))
@@ -258,7 +272,7 @@ export const AgentForm = (props: AgentFormProps) => {
               <Segmented
                 label={t("agents.field.permission")}
                 value={permission()}
-                options={PERMISSION_LEVELS.map((value) => ({
+                options={levels().map((value) => ({
                   value,
                   label: t(`agents.permission.${value}` as MessageKey),
                 }))}
@@ -266,16 +280,23 @@ export const AgentForm = (props: AgentFormProps) => {
                 testId="agent-permission"
               />
               <span class={styles.hint}>{t("agents.permission.hint")}</span>
+              <Show when={remote()}>
+                <span class={styles.hint} data-testid="agent-permission-stricter">
+                  {t("agents.permission.stricter")}
+                </span>
+              </Show>
             </div>
-            <div class={styles.field}>
-              <span class={styles.label}>{t("agents.field.memory")}</span>
-              <Switch
-                label={t("agents.field.memory")}
-                checked={memoryEnabled()}
-                onChange={setMemoryEnabled}
-                testId="agent-memory-enabled"
-              />
-            </div>
+            <Show when={!remote()}>
+              <div class={styles.field}>
+                <span class={styles.label}>{t("agents.field.memory")}</span>
+                <Switch
+                  label={t("agents.field.memory")}
+                  checked={memoryEnabled()}
+                  onChange={setMemoryEnabled}
+                  testId="agent-memory-enabled"
+                />
+              </div>
+            </Show>
             <MemoryPanel agentId={agent().id} />
           </>
         )}
