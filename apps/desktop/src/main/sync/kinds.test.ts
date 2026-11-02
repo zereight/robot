@@ -683,6 +683,29 @@ describe("the cards that ask and the notes of knowledge tools in a message", () 
   const ok = (tool: Record<string, unknown>) => expect(parseOp(message(tool), NOW)).toBeDefined()
   const bad = (tool: Record<string, unknown>) => expect(parseOp(message(tool), NOW)).toBeUndefined()
 
+  test("a protected card of a saved secret passes without a value; the end of the card passes", () => {
+    const secret = {
+      kind: "secret",
+      name: "test_api",
+      label: "Test key",
+      reason: "To read it.",
+      origin: "https://api.example.com",
+      auth: { kind: "bearer" },
+    }
+    ok({ ask: secret })
+    ok({ ask: { ...secret, replace: true, askedAt: NOW } })
+    ok({ ask: { ...secret, auth: { kind: "header", header: "X-Key" } } })
+    ok({ ask: { ...secret, auth: { kind: "basic", user: "ada" } } })
+    ok({ secret: "saved" })
+    ok({ secret: "cancelled" })
+    // A card never carries a value, and an unknown field is refused.
+    bad({ ask: { ...secret, value: "tok" } })
+    bad({ ask: { ...secret, auth: { kind: "bearer", value: "tok" } } })
+    bad({ ask: { ...secret, auth: { kind: "header" } } })
+    bad({ ask: { ...secret, name: "" } })
+    bad({ secret: "maybe" })
+  })
+
   test("an approval, a question and an article card pass; a card with a wrong field does not", () => {
     ok({ ask: { kind: "approval", summary: "Run ls" } })
     ok({ ask: { kind: "approval", summary: "Run ls", askedAt: NOW, once: true } })
