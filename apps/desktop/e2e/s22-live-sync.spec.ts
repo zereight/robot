@@ -280,8 +280,26 @@ test("live sync: a delete reaches the other computer and keeps its folder; many 
     await expect.poll(() => agentNames(two.page), { timeout: 20_000 }).toHaveLength(9)
     for (const id of ids) await rpc(one.page, "agents.archive", { id })
     await expect.poll(() => archivedCount(two.page, serverTwo), { timeout: 20_000 }).toBe(8)
-    for (const id of ids) await rpc(one.page, "agents.delete", { id })
-    await expect(two.page.getByTestId("sync-guard-dialog")).toBeVisible({ timeout: 20_000 })
+    const first0 = Date.now()
+    const firstMarks: number[] = []
+    for (const id of ids) {
+      await rpc(one.page, "agents.delete", { id })
+      firstMarks.push(Date.now() - first0)
+    }
+    console.log("DIAG s22 first delete marks ms", JSON.stringify(firstMarks))
+    try {
+      await expect(two.page.getByTestId("sync-guard-dialog")).toBeVisible({ timeout: 20_000 })
+    } catch (error) {
+      console.log(
+        "DIAG s22 first: no guard: archived on two",
+        await archivedCount(two.page, serverTwo),
+        "archived on one",
+        await archivedCount(one.page, serverOne),
+        "sync two",
+        JSON.stringify(await rpc(two.page, "sync.list")),
+      )
+      throw error
+    }
     await expect(two.page.getByTestId("sync-guard-body")).toContainText(
       "MacBook 1 wants to delete 8 agents and channels here.",
     )

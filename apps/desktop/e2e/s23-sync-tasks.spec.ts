@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -235,26 +235,28 @@ test("sync tasks: a card of a computer that is off says so", async () => {
     await expect(two.page.getByTestId("ask-origin-offline")).toHaveCount(0)
     await expect(two.page.getByTestId("tool-origin")).toContainText("from MacBook 1")
     // The first computer is lost at once, as when its power goes: its task does not end by itself.
-    const pid = one.app.process().pid
-    console.log("DIAG s23 kill returned", one.app.process().kill("SIGKILL"), "pid", pid)
-    await new Promise((r) => setTimeout(r, 3000))
-    console.log(
-      "DIAG s23 exitCode",
-      one.app.process().exitCode,
-      "signal",
-      one.app.process().signalCode,
-    )
-    try {
-      const cmd =
-        process.platform === "win32"
-          ? 'netstat -ano | findstr "4789"; tasklist /FI "IMAGENAME eq ROBot.exe"'
-          : "lsof -nP -iTCP:47895 -iTCP:47896 || true"
+    const proc = one.app.process()
+    const pid = proc.pid
+    console.log("DIAG s23 kill returned", proc.kill("SIGKILL"), "pid", pid)
+    for (const wait of [1000, 4000, 10000]) {
+      await new Promise((r) => setTimeout(r, wait))
+      const states = await rpc<{ name: string; state: string }[]>(two.page, "servers.list")
       console.log(
-        "DIAG s23 sockets\n",
-        execSync(cmd, { shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh" }).toString(),
+        "DIAG s23 after",
+        wait,
+        "ms servers on two",
+        JSON.stringify(states.map((x) => `${x.name}:${x.state}`)),
       )
-    } catch (e) {
-      console.log("DIAG s23 sockets failed", String(e))
+      const run = (cmd: string, args: string[]) =>
+        spawnSync(cmd, args, { encoding: "utf8" }).stdout?.trim() ?? ""
+      if (process.platform === "win32") {
+        console.log("DIAG s23 netstat\n" + run("cmd.exe", ["/c", "netstat -ano | findstr 4789"]))
+        console.log("DIAG s23 tasklist\n" + run("tasklist", ["/FI", "IMAGENAME eq ROBot.exe"]))
+      } else {
+        console.log(
+          "DIAG s23 lsof\n" + run("/bin/sh", ["-c", "lsof -nP -iTCP:47895 -iTCP:47896 || true"]),
+        )
+      }
     }
     await expect(two.page.getByTestId("ask-origin-offline")).toHaveText("MacBook 1 is offline.", {
       timeout: 30_000,
