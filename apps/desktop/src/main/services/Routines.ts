@@ -13,11 +13,9 @@ import {
   type RoutineInput,
   type RoutinePatch,
   type RoutinePlace,
-  resolveLocale,
   runText,
   runTimes,
   type Schedule,
-  translate,
   validSchedule,
   validWatch,
   type Watch,
@@ -30,8 +28,6 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Notifier } from "./Notifier.ts"
-import { Platform } from "./Platform.ts"
-import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { type CheckOutcome, runCheck, type ToolCaller } from "./watchCheck.ts"
 
@@ -140,8 +136,6 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       const chat = yield* Chat
       const channels = yield* Channels
       const notifier = yield* Notifier
-      const settings = yield* SettingsStore
-      const platform = yield* Platform
 
       const stateOf = (id: string): StateRow =>
         db.get<StateRow>("SELECT * FROM routine_state WHERE routine_id = ?", id) ?? {
@@ -253,15 +247,16 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
         if (count < ROUTINE_FAILURES_MAX || r.enabled !== 1) return
         setState(routineId, { paused_failure: JSON.stringify(reason) })
         db.run("UPDATE routine SET enabled = 0, updated_at = ? WHERE id = ?", Date.now(), r.id)
-        const locale = resolveLocale(Effect.runSync(settings.get).language, platform.systemLocale())
+        // The main process holds no interface text: the window and the island show the reason
+        // "routine_paused" in the language of the interface.
         notifier.notify({
           kind: "routine_failed",
           agentId: r.agent_id,
           serverId: r.server_id,
           channelId: r.channel_id,
           title: r.agent_name,
-          body: translate(locale, "routines.paused.notice", { name: r.name }),
-          reason,
+          body: r.name,
+          reason: { code: "routine_paused", detail: r.name },
           page: "workflows",
         })
         changed(r.server_id)
