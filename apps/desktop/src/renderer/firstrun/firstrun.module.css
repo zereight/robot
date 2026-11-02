@@ -6,13 +6,13 @@
 }
 
 .title {
-  font-size: 1.15rem;
+  font-size: var(--text-xl);
   font-weight: 600;
   margin: 0;
 }
 
 .step {
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
   color: var(--c-text-muted);
 }
 
@@ -26,7 +26,7 @@
 }
 
 .section h3 {
-  font-size: 1rem;
+  font-size: var(--text-m);
   font-weight: 600;
   margin: 0;
 }

@@ -13,7 +13,7 @@
 }
 
 .topTitle {
-  font-size: 1.1rem;
+  font-size: var(--text-l);
   flex: 1;
 }
 
@@ -25,7 +25,7 @@
 
 .muted {
   color: var(--c-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
 }
 
 .panes {
@@ -107,7 +107,7 @@
 
 .itemSummary {
   color: var(--c-text-muted);
-  font-size: 0.82rem;
+  font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -124,7 +124,7 @@
 .fold {
   border-top: 1px solid var(--c-border);
   padding-top: 6px;
-  font-size: 0.88rem;
+  font-size: var(--text-s);
 }
 
 .fold summary {
@@ -153,7 +153,7 @@
   margin: 4px 0 0;
   white-space: pre-wrap;
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   max-height: 120px;
   overflow: auto;
 }
@@ -167,7 +167,7 @@
 .articleTitle {
   flex: 1;
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--text-l);
   overflow-wrap: anywhere;
 }
 
@@ -186,7 +186,7 @@
 
 .sectionTitle {
   font-weight: 500;
-  font-size: 0.88rem;
+  font-size: var(--text-s);
 }
 
 .chips {
@@ -203,7 +203,7 @@
   background: var(--c-elevated);
   border-radius: 999px;
   padding: 2px 10px;
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
 }
 
 .link:hover {
@@ -243,12 +243,12 @@
 .editorBody {
   min-height: 200px;
   font-family: var(--font-mono);
-  font-size: 0.88rem;
+  font-size: var(--text-s);
 }
 
 .error {
   color: var(--c-danger);
-  font-size: 0.9rem;
+  font-size: var(--text-s);
 }
 
 .muted[data-over="true"] {

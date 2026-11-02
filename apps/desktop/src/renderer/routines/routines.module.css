@@ -39,7 +39,7 @@
 
 .hint {
   color: var(--c-text-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
 }
 
 .form {
@@ -53,7 +53,7 @@
 
 .title {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--text-l);
 }
 
 .field {
@@ -121,7 +121,7 @@
   padding: 4px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius-s);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   overflow: hidden;
 }
 
