@@ -11,6 +11,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -20,6 +21,7 @@ import styles from "./channels.module.css"
 export const ChannelDialog = (props: { channel?: Channel; onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
+  const devices = useDevices()
   const agents = useAgents()
   const [name, setName] = createSignal(props.channel?.name ?? "")
   const [topic, setTopic] = createSignal(props.channel?.topic ?? "")
@@ -178,6 +180,13 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
               }
             >
               <span class={styles.hint}>{t("channels.delete.confirm")}</span>
+              <Show when={devices.sync.pairName()}>
+                {(name) => (
+                  <span class={styles.hint} data-testid="delete-sync-line">
+                    {t("channels.delete.sync", { name: name() })}
+                  </span>
+                )}
+              </Show>
               <Button onClick={remove} data-testid="channel-delete-confirm">
                 {t("channels.delete")}
               </Button>

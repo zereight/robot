@@ -780,6 +780,10 @@ export const ko: Record<MessageKey, string> = {
   "sync.kind.rskip": "놓친 실행",
   "sync.kind.wrun": "워크플로 실행",
   "sync.kind.wstep": "워크플로 단계",
+  "agents.delete.sync":
+    "{name}이(가) 이 컴퓨터와 동기화하고 있어서 에이전트가 {name}에서도 삭제돼요. 그쪽 작업 폴더는 그대로 남아요.",
+  "channels.delete.sync":
+    "{name}이(가) 이 컴퓨터와 동기화하고 있어서 채널과 메시지가 {name}에서도 삭제돼요.",
   "error.sync_busy": "컴퓨터 하나와만 동기화할 수 있어요.",
   "error.sync_off": "이 컴퓨터는 그 컴퓨터와 동기화하고 있지 않아요.",
 

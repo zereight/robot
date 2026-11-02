@@ -8,6 +8,7 @@ import type {
 } from "@robot/shared"
 import {
   createContext,
+  createMemo,
   createResource,
   createSignal,
   onCleanup,
@@ -35,6 +36,10 @@ const createDevicesState = () => {
   const [syncList, { refetch: refetchSync }] = createResource(() => call("sync.list"))
   const [guard, { refetch: refetchGuard }] = createResource(() => call("sync.guard"))
   const [changes, { refetch: refetchChanges }] = createResource(() => call("sync.changes"))
+  // The question keeps one identity while its numbers stay the same, so its dialog does not redraw.
+  const guardNow = createMemo(() => guard.latest ?? null, null, {
+    equals: (a, b) => a?.count === b?.count && a?.peerName === b?.peerName,
+  })
   const refreshSync = () => {
     void refetchSync()
     void refetchGuard()
@@ -61,8 +66,15 @@ const createDevicesState = () => {
         (syncList.latest ?? []).find((s) => s.linkId === linkId),
       /** The computer that is the sync pair, if any. */
       active: (): SyncStatus | undefined => (syncList.latest ?? []).find((s) => s.state !== "off"),
+      /** The name of the computer that syncs with this one, once it has allowed the sync. */
+      pairName: (): string | undefined => {
+        const active = (syncList.latest ?? []).find(
+          (s) => s.state !== "off" && s.state !== "offered",
+        )
+        return active ? state.latest?.servers.find((e) => e.id === active.linkId)?.name : undefined
+      },
       requests: syncRequests,
-      guard: () => guard.latest ?? null,
+      guard: guardNow,
       changes: (): readonly SyncChangeEntry[] => changes.latest ?? [],
       errors: syncErrors,
       clearError: (linkId: string) =>

@@ -84,6 +84,8 @@ export interface ChatService {
   updateQueued(agentId: string, itemId: string, text: string): Effect.Effect<void, AppError>
   removeQueued(agentId: string, itemId: string): Effect.Effect<void>
   markRead(agentId: string): Effect.Effect<void>
+  /** Tells the windows about a message that sync wrote, so an open chat shows it at once. */
+  announce(messageId: string): void
 }
 
 /** How often a streaming reply is sent to the window and written to disk. */
@@ -660,6 +662,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       )
 
       return Chat.of({
+        announce: (messageId) => {
+          const row = db.get<MessageRow>("SELECT * FROM message WHERE id = ?", messageId)
+          if (row) emitMessage(row)
+        },
         history: (agentId) =>
           Effect.sync(() => ({
             messages: rows(agentId).map(toMessage),

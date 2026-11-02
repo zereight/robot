@@ -808,6 +808,8 @@ export class SyncEngine {
       id,
     )
     if (!other) return name
+    // A rename here that waits to be recorded counts: both computers compare the same two stamps.
+    this.#settle(kind, other.id)
     const row = this.#fieldRows(kind as SyncKind, other.id).get("name")
     const otherStamp = row ? stampOf(row) : NO_STAMP
     const order = compareStamps(stamp, otherStamp) || (id < other.id ? -1 : 1)

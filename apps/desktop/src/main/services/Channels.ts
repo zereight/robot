@@ -66,6 +66,8 @@ export interface ChannelsService {
   ): Effect.Effect<void, AppError>
   activity(channelId: string): Effect.Effect<ChannelActivity>
   markRead(channelId: string): Effect.Effect<void>
+  /** Tells the windows about a message that sync wrote, so an open channel shows it at once. */
+  announce(messageId: string): void
   /** The text of the newest message of a channel, for the place list. */
   lastMessage(channelId: string): string | null
 }
@@ -968,6 +970,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         })
 
       return Channels.of({
+        announce: (messageId) => emitMessage(messageId),
         list: (serverId) =>
           Effect.sync(() =>
             db

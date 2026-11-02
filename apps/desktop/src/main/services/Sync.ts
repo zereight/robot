@@ -36,6 +36,8 @@ import {
   type WireOp,
 } from "../sync/wire.ts"
 import { workspaceFolderName } from "./Agents.ts"
+import { Channels } from "./Channels.ts"
+import { Chat } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
@@ -131,6 +133,8 @@ const readCounts = (v: unknown): SyncCounts | undefined =>
 const SCHEMA = migrations.length
 /** How many items one part of the first copy holds, and a pause after each part. Tests turn them. */
 const SNAPSHOT_BATCH = Math.max(1, Number(process.env.ROBOT_SYNC_BATCH) || 250)
+/** Tests turn the clock that this computer reports to the other one. */
+const wall = () => Date.now() + (Number(process.env.ROBOT_SYNC_CLOCK_SKEW_MS) || 0)
 const SNAPSHOT_DELAY_MS = Math.max(0, Number(process.env.ROBOT_SYNC_DELAY_MS) || 0)
 const yieldNow = () => new Promise<void>((resolve) => setImmediate(resolve))
 const invalid = () => new AppError({ code: "invalid_input" })
@@ -148,6 +152,8 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       const settings = yield* SettingsStore
       const servers = yield* Servers
       const data = yield* Data
+      const chat = yield* Chat
+      const channels = yield* Channels
 
       const current = () => Effect.runSync(settings.get)
       const localServerId = () => Effect.runSync(servers.local).id
@@ -206,7 +212,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       const setHeld = (list: Held[]) => stateSet("guard", list.length ? JSON.stringify(list) : null)
 
       // ------------------------------------------------------------------ events for the window
-      const touched = (touches: readonly Touch[]) => {
+      const touched = (touches: readonly Touch[], live = true) => {
         const serverId = localServerId()
         const seen = new Set<string>()
         const once = (key: string, run: () => void) => {
@@ -243,6 +249,19 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
               break
             case "task":
               once("tasks", () => bus.emit("tasks.changed", { serverId }))
+              break
+            case "message":
+              // A first copy holds a long history: it makes one event, not one for each message.
+              if (live && t.action === "deleted") {
+                bus.emit("chat.removed", { agentId: t.parent?.id ?? "", messageId: t.id })
+              } else if (live) once(`m:${t.id}`, () => chat.announce(t.id))
+              once("places", () => bus.emit("places.changed", { serverId }))
+              break
+            case "cmessage":
+              if (live && t.action === "deleted") {
+                bus.emit("channel.removed", { channelId: t.parent?.id ?? "", messageId: t.id })
+              } else if (live) once(`c:${t.id}`, () => channels.announce(t.id))
+              once("places", () => bus.emit("places.changed", { serverId }))
               break
             default:
               once("places", () => bus.emit("places.changed", { serverId }))
@@ -467,8 +486,26 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
           void pump()
         }, ms)
       }
+      // A change gets its stamp when it is made, not when it is sent: the later edit of two
+      // wins, also when the pump of the other computer ran first.
+      let recording = false
+      const recordSoon = () => {
+        if (recording) return
+        recording = true
+        queueMicrotask(() => {
+          recording = false
+          if (!active) return
+          try {
+            if (engine.flush(200)) setImmediate(recordSoon)
+          } catch (error) {
+            console.error("sync record failed", error)
+          }
+        })
+      }
       db.onWrite(() => {
-        if (active) schedule()
+        if (!active) return
+        recordSoon()
+        schedule()
       })
       const interval = setInterval(() => schedule(0), 3000)
       interval.unref?.()
@@ -507,11 +544,11 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         const mine: Omit<Hello, "paired"> = {
           wire: SYNC_WIRE,
           schema: SCHEMA,
-          now: Date.now(),
+          now: wall(),
           ctl: p.ctl,
           paused: p.paused === 1,
         }
-        const sentAt = Date.now()
+        const sentAt = wall()
         let reply: Hello
         try {
           reply = readHello(await remote.request(p.peer_id, "sync.hello", mine, 10_000))
@@ -533,7 +570,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
           stopLocal("peer")
           return false
         }
-        const skew = reply.now - (sentAt + Date.now()) / 2
+        const skew = reply.now - (sentAt + wall()) / 2
         clockIssue.set(p.peer_id, skew)
         updatePair({ clock_offset: Math.round(skew) })
         if (reply.ctl > p.ctl) {
@@ -774,7 +811,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         if (now && now.phase === "copying" && now.out_complete === 1 && now.in_complete === 1) {
           finishCopy()
         }
-        touched(result.touches)
+        touched(result.touches, parsed.snap === undefined)
         if (parsed.refused > 0) console.error("sync: refused changes", parsed.refused)
         // Changes that came in are not news to the other computer.
         return { applied: result.applied, dropped: result.dropped, refused: parsed.refused }
@@ -906,7 +943,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
             return {
               wire: SYNC_WIRE,
               schema: SCHEMA,
-              now: Date.now(),
+              now: wall(),
               ctl: pairRow()?.ctl ?? 0,
               paused: pairRow()?.paused === 1,
               paired,

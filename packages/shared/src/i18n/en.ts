@@ -788,6 +788,10 @@ export const en = {
   "sync.kind.rskip": "Missed run",
   "sync.kind.wrun": "Workflow run",
   "sync.kind.wstep": "Workflow step",
+  "agents.delete.sync":
+    "{name} syncs with this computer, so the agent is also deleted on {name}. The workspace folder there stays where it is.",
+  "channels.delete.sync":
+    "{name} syncs with this computer, so the channel and its messages are also deleted on {name}.",
   "error.sync_busy": "A computer can sync with one other computer only.",
   "error.sync_off": "This computer does not sync with that computer.",
 

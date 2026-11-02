@@ -9,6 +9,7 @@ import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
 import { Memory } from "./Memory.ts"
+import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Remote } from "./Remote.ts"
 import { Servers } from "./Servers.ts"
@@ -372,5 +373,234 @@ describe("sync between two computers", () => {
     )
     expect(history.messages).toHaveLength(1)
     void Channels
+  })
+})
+
+/** The link id that a computer uses for the other one. */
+const linkOf = async (rt: Rt) => (await status(rt))?.linkId ?? ""
+
+/** Both computers stop sending, as if they were apart. */
+const apart = async (a: Rt, b: Rt) => {
+  const id = await linkOf(b)
+  await run(
+    b,
+    Sync.use((s) => s.setPaused(id, true)),
+  )
+  await waitFor(
+    () => status(a),
+    (x) => x?.state === "paused",
+  )
+}
+const together = async (a: Rt, b: Rt) => {
+  const id = await linkOf(b)
+  await run(
+    b,
+    Sync.use((s) => s.setPaused(id, false)),
+  )
+  for (const rt of [a, b]) {
+    await waitFor(
+      () => status(rt),
+      (x) => x?.state === "live",
+    )
+  }
+}
+const settle = () => new Promise((r) => setTimeout(r, 25))
+
+const agentRows = async (rt: Rt) => {
+  const id = await localId(rt)
+  const list = await run(
+    rt,
+    Agents.use((a) => a.list(id, false)),
+  )
+  return list.map((a) => `${a.id}|${a.name}|${a.role}|${a.instructions}`).sort()
+}
+const memoryTexts = async (rt: Rt, agentId: string) =>
+  (
+    await run(
+      rt,
+      Memory.use((m) => m.list(agentId)),
+    )
+  )
+    .map((m) => m.text)
+    .sort()
+
+describe("two computers that were apart", () => {
+  const pair = async (names = ["Ada"]) => {
+    const a = side("MacBook 1")
+    const b = side("MacBook 2")
+    const agents = []
+    for (const name of names) agents.push(await makeAgent(a, name))
+    const entry = await link(a, b, true)
+    await turnOn(a, b, entry.id, "merge")
+    return { a, b, agents }
+  }
+
+  test("changes of different fields both stay; the newest change of one field wins on both", async () => {
+    const { a, b, agents } = await pair()
+    const ada = agents[0]
+    await apart(a, b)
+    await run(
+      a,
+      Agents.use((x) => x.update(ada?.id ?? "", { role: "Writer", instructions: "From A." })),
+    )
+    await settle()
+    await run(
+      b,
+      Agents.use((x) => x.update(ada?.id ?? "", { instructions: "From B, later." })),
+    )
+    await together(a, b)
+    // Each computer needs the change of the other: the role comes from A, the instructions from B.
+    const both = (r: string[]) => r[0]?.includes("|Writer|From B, later.") === true
+    const rowsA = await waitFor(() => agentRows(a), both)
+    const rowsB = await waitFor(() => agentRows(b), both)
+    expect(rowsA).toEqual(rowsB)
+    expect(rowsA[0]).toContain("|Writer|From B, later.")
+  })
+
+  test("the same memory item edited on both: the newest text stays and the other text is saved as a new item", async () => {
+    const { a, b, agents } = await pair()
+    const ada = agents[0]
+    const item = await run(
+      a,
+      Memory.use((m) => m.add(ada?.id ?? "", "Likes tea", "user")),
+    )
+    await waitFor(
+      () => memoryTexts(b, ada?.id ?? ""),
+      (t) => t.length === 1,
+    )
+    await apart(a, b)
+    await run(
+      a,
+      Memory.use((m) => m.update(item.id, "Likes coffee")),
+    )
+    await settle()
+    await run(
+      b,
+      Memory.use((m) => m.update(item.id, "Likes juice")),
+    )
+    await together(a, b)
+    const want = ["Likes coffee", "Likes juice"]
+    expect(
+      await waitFor(
+        () => memoryTexts(a, ada?.id ?? ""),
+        (t) => t.length === 2,
+      ),
+    ).toEqual(want)
+    expect(
+      await waitFor(
+        () => memoryTexts(b, ada?.id ?? ""),
+        (t) => t.length === 2,
+      ),
+    ).toEqual(want)
+    // The newest text keeps the item. Both computers made the same second item, so there are two.
+    const kept = await run(
+      a,
+      Memory.use((m) => m.list(ada?.id ?? "")),
+    )
+    expect(kept.find((m) => m.id === item.id)?.text).toBe("Likes juice")
+  })
+
+  test("a name stays unique when both computers give one name to different agents", async () => {
+    const { a, b, agents } = await pair(["P", "Q"])
+    const [p, q] = agents
+    await apart(a, b)
+    await run(
+      a,
+      Agents.use((x) => x.update(p?.id ?? "", { name: "Same" })),
+    )
+    await run(
+      b,
+      Agents.use((x) => x.update(q?.id ?? "", { name: "Same" })),
+    )
+    await together(a, b)
+    const namesA = await waitFor(
+      () => agentNames(a),
+      (n) => n.some((x) => x.startsWith("Same (")),
+    )
+    const namesB = await waitFor(
+      () => agentNames(b),
+      (n) => n.some((x) => x.startsWith("Same (")),
+    )
+    expect(namesA).toEqual(namesB)
+    expect(namesA).toHaveLength(2)
+    expect(namesA.filter((n) => n === "Same")).toHaveLength(1)
+    expect(await agentRows(a)).toEqual(await agentRows(b))
+  })
+
+  test("a deletion that was made while apart reaches the other computer", async () => {
+    const { a, b, agents } = await pair()
+    const ada = agents[0]
+    await run(
+      a,
+      Agents.use((x) => x.archive(ada?.id ?? "")),
+    )
+    await waitFor(
+      () => agentNames(b),
+      (n) => n.length === 0,
+    )
+    await apart(a, b)
+    await run(
+      a,
+      Agents.use((x) => x.remove(ada?.id ?? "")),
+    )
+    await together(a, b)
+    expect(
+      await waitFor(
+        async () =>
+          (
+            await run(
+              b,
+              Agents.use((x) => x.list("*", true)),
+            )
+          ).length,
+        (n) => n === 0,
+      ),
+    ).toBe(0)
+  })
+
+  test("reading a place on one computer clears its count on the other", async () => {
+    const { a, b, agents } = await pair()
+    const ada = agents[0]
+    await run(
+      a,
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.run(
+            `INSERT INTO message (id, agent_id, author, parts, status, created_at, finished_at) VALUES ('r1', ?, 'agent', ?, 'done', ?, ?)`,
+            ada?.id ?? "",
+            JSON.stringify([{ kind: "text", text: "A reply" }]),
+            Date.now(),
+            Date.now(),
+          ),
+        ),
+      ),
+    )
+    const unread = async (rt: Rt) => {
+      const id = await localId(rt)
+      const sections = await run(
+        rt,
+        Places.use((p) => p.list(id)),
+      )
+      return sections.flatMap((s) => s.places).find((p) => p.id === ada?.id)?.unread ?? -1
+    }
+    expect(
+      await waitFor(
+        () => unread(b),
+        (n) => n === 1,
+      ),
+    ).toBe(1)
+    expect(await unread(a)).toBe(1)
+    await new Promise((r) => setTimeout(r, 20))
+    await run(
+      a,
+      Chat.use((c) => c.markRead(ada?.id ?? "")),
+    )
+    expect(
+      await waitFor(
+        () => unread(b),
+        (n) => n === 0,
+      ),
+    ).toBe(0)
+    expect(await unread(a)).toBe(0)
   })
 })
