@@ -1,5 +1,5 @@
 import type { ModelInfo, ProviderKind, RuntimeKind } from "@robot/shared"
-import { effortsFor } from "@robot/shared"
+import { CLAUDE_EFFORTS, effortsFor } from "@robot/shared"
 
 export interface Connection {
   /** Agent runtimes have no connection: they have no key and no address. */
@@ -83,12 +83,50 @@ export const request = async (url: string, init: RequestInit, signal?: AbortSign
   }
 }
 
+/**
+ * The effort levels that a model of the Anthropic list says it takes. Null when the entry does not
+ * say, as with a proxy that leaves the capabilities out; the caller then goes by the model name.
+ */
+export const effortsFromCapabilities = (capabilities: unknown): readonly string[] | null => {
+  const effort = (capabilities as { effort?: unknown } | null | undefined)?.effort
+  if (effort === null || typeof effort !== "object") return null
+  const levels = effort as Record<string, unknown>
+  if (levels.supported !== true) return []
+  return CLAUDE_EFFORTS.filter(
+    (level) => (levels[level] as { supported?: unknown } | null | undefined)?.supported === true,
+  )
+}
+
+/**
+ * The effort of an agent, kept only if an Anthropic model still takes it. The agent keeps the level
+ * it was given; a model that takes no such level would refuse the request. `listed` is the model
+ * list of the account when the app has it. Without it, the model name decides.
+ */
+export const keepEffort = (
+  kind: ProviderKind,
+  model: string,
+  effort: string | null,
+  listed?: readonly ModelInfo[],
+): string | null => {
+  if (effort === null || kind !== "anthropic") return effort
+  const offered = listed?.find((m) => m.id === model)?.efforts ?? effortsFor(kind, model)
+  return offered.includes(effort) ? effort : null
+}
+
 /** Lists the models of an account. It is also the connection check: one small request. */
 export const listModels = async (c: Connection): Promise<ModelInfo[]> => {
   const response = await request(urlFor(c, "models"), { headers: headersFor(c) })
   if (!response.ok) throw await failureFrom(response)
-  const body = (await response.json()) as { data?: { id: string; display_name?: string }[] }
+  const body = (await response.json()) as {
+    data?: { id: string; display_name?: string; capabilities?: unknown }[]
+  }
   return (body.data ?? [])
-    .map((m) => ({ id: m.id, label: m.display_name ?? m.id, efforts: effortsFor(c.kind, m.id) }))
+    .map((m) => ({
+      id: m.id,
+      label: m.display_name ?? m.id,
+      efforts:
+        (c.kind === "anthropic" ? effortsFromCapabilities(m.capabilities) : null) ??
+        effortsFor(c.kind, m.id),
+    }))
     .sort((a, b) => a.id.localeCompare(b.id))
 }

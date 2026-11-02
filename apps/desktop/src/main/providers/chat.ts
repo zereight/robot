@@ -1,3 +1,4 @@
+import { takesAdaptiveThinking } from "@robot/shared"
 import {
   type Connection,
   failureFrom,
@@ -130,7 +131,18 @@ const anthropicMessages = (turns: readonly Turn[]) => {
   return out
 }
 
-const thinkingBudget: Record<string, number> = { low: 2048, medium: 8192, high: 24576 }
+/**
+ * The most tokens that an Anthropic reply may use. The thinking of the model counts toward it, so
+ * a higher effort level gets more room. The top value stays within what every model that takes
+ * an effort level allows.
+ */
+const outputTokens: Record<string, number> = {
+  low: 10240,
+  medium: 16384,
+  high: 32768,
+  xhigh: 49152,
+  max: 64000,
+}
 const OUTPUT_TOKENS = 8192
 
 const post = async (req: ChatRequest, body: unknown) => {
@@ -227,25 +239,34 @@ async function* openAiStream(req: ChatRequest): AsyncGenerator<StreamEvent> {
   yield* flush()
 }
 
+/**
+ * The body of one request to the Anthropic API. A chosen effort level goes in `output_config`.
+ * With no level the body has none of it, and the model uses its own default.
+ */
+export const anthropicBody = (req: ChatRequest) => ({
+  model: req.model,
+  max_tokens: (req.effort ? outputTokens[req.effort] : undefined) ?? OUTPUT_TOKENS,
+  stream: true,
+  ...(req.system.trim() ? { system: req.system } : {}),
+  messages: anthropicMessages(normaliseTurns(req.turns)),
+  ...(req.tools?.length
+    ? {
+        tools: req.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.schema,
+        })),
+      }
+    : {}),
+  ...(req.effort ? { output_config: { effort: req.effort } } : {}),
+  // The text of the thinking is hidden unless asked for, and the chat shows it.
+  ...(req.effort && takesAdaptiveThinking(req.model)
+    ? { thinking: { type: "adaptive", display: "summarized" } }
+    : {}),
+})
+
 async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent> {
-  const budget = req.effort ? thinkingBudget[req.effort] : undefined
-  const body = await post(req, {
-    model: req.model,
-    max_tokens: OUTPUT_TOKENS + (budget ?? 0),
-    stream: true,
-    ...(req.system.trim() ? { system: req.system } : {}),
-    messages: anthropicMessages(normaliseTurns(req.turns)),
-    ...(req.tools?.length
-      ? {
-          tools: req.tools.map((t) => ({
-            name: t.name,
-            description: t.description,
-            input_schema: t.schema,
-          })),
-        }
-      : {}),
-    ...(budget ? { thinking: { type: "enabled", budget_tokens: budget } } : {}),
-  })
+  const body = await post(req, anthropicBody(req))
   const blocks = new Map<number, { id: string; name: string; input: string }>()
   for await (const event of readSse(body)) {
     const data = JSON.parse(event.data) as {
