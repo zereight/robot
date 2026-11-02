@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
+import { CLAUDE_EFFORTS, effortsFor } from "./providers.ts"
 import {
   ANSWER_ERROR_MAX,
   ASK_RETRY_MS,
@@ -124,6 +125,12 @@ describe("notes and limits", () => {
       expect(Schema.is(StepSchema)({ ...agent, effort })).toBe(true)
     expect(Schema.is(StepSchema)({ ...agent, effort: "minimal" })).toBe(false)
     expect(Schema.is(StepSchema)(agent)).toBe(true)
+  })
+  test("the levels of a step are the levels of the current Claude models", () => {
+    expect(STEP_EFFORTS as readonly string[]).toEqual([...CLAUDE_EFFORTS])
+    expect(STEP_EFFORTS as readonly string[]).toEqual([
+      ...effortsFor("anthropic", "claude-opus-5-5"),
+    ])
   })
   test("a notify step has a title of at most 100 characters", () => {
     const notify = { id: "n", kind: "notify", name: "n", x: 0, y: 0, title: "Done" }

@@ -12,6 +12,7 @@ import {
   islandSummary,
   type MessagePart,
   type MessageStatus,
+  type ModelInfo,
   messageFiles,
   messageText,
   type PermissionLevel,
@@ -24,7 +25,7 @@ import {
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -431,14 +432,17 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           }
           // A step of a workflow can ask for its own effort for this one turn. It is read for each
           // turn, so a retry decides again from the step and the model, not from the first try.
-          const offered = turnEffort
-            ? yield* providers.models(agent.model_account_id).pipe(
-                Effect.map(
-                  (models) => models.find((m) => m.id === agent.model_name)?.efforts ?? [],
-                ),
-                Effect.orElseSucceed((): readonly string[] => []),
-              )
-            : []
+          // The levels come from the model list of the account, as for the effort of an agent. A
+          // list that cannot be read leaves the levels that the vendor documents for the model.
+          let offered: readonly string[] = []
+          if (turnEffort) {
+            const accounts = yield* providers.list
+            const listed = yield* providers
+              .models(agent.model_account_id)
+              .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+            const kind = accounts.find((a) => a.id === agent.model_account_id)?.kind ?? "custom"
+            offered = offeredEfforts(kind, agent.model_name, listed)
+          }
           const events = yield* providers.events(
             agent.model_account_id,
             {

@@ -167,14 +167,22 @@
   background: transparent;
   text-align: start;
   padding: 6px 10px;
-  border-radius: var(--radius-s);
+  /* The menu has 4px of padding, so an item takes the box radius minus 4px. */
+  border-radius: calc(var(--radius-m) - 4px);
   color: var(--c-text);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 
 .menuItem:hover,
 .menuItem:focus-visible {
   background: var(--c-hover);
   outline: none;
+}
+
+.menuItem:active {
+  transform: scale(var(--press-scale));
 }
 
 @keyframes menu-in {
