@@ -185,8 +185,26 @@ describe("the steps of the device link and of sync", () => {
     for (const sql of migrations.slice(MAIN_STEPS)) {
       expect(sql).not.toMatch(/ALTER TABLE provider_account/i)
     }
+    // The step for the progress of a task (spec 005) follows them.
+    expect(migrations[MAIN_STEPS + 3]?.trim()).toContain(
+      "ALTER TABLE task ADD COLUMN progress TEXT;",
+    )
     // The number of steps is the data version that two computers compare before they sync.
-    expect(migrations.length).toBe(MAIN_STEPS + 3)
+    expect(migrations.length).toBe(MAIN_STEPS + 4)
+  })
+
+  test("a task from before the progress step keeps its row and shows no progress", () => {
+    const db = upTo(MAIN_STEPS + 3)
+    db.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, knowledge_enabled, created_at, updated_at)
+        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 0, 1, 1);
+      INSERT INTO task (id, agent_id, prompt, label, source, state, created_at)
+        VALUES ('t', 'a', 'old', 'old', 'chat', 'failed', 1);
+    `)
+    db.exec(migrations[MAIN_STEPS + 3] as string)
+    expect(db.prepare("SELECT id, progress FROM task").all()).toEqual([{ id: "t", progress: null }])
   })
 
   test("a database that ran only the steps of main opens, migrates, and keeps its data", () => {

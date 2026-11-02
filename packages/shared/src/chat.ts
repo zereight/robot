@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { KnowledgeNote } from "./knowledge.ts"
+import type { TaskProgress } from "./task.ts"
 
 export type MessagePart =
   | { readonly kind: "text"; readonly text: string }
@@ -90,6 +91,23 @@ export interface ChatMessage {
   readonly editedAt: number | null
   /** The name of the linked device that sent this message. Null for this computer (spec 012). */
   readonly fromDevice: string | null
+  /**
+   * How far the turn of a failed reply went (spec 005), for the line on its failed row. Set only
+   * for a failed reply whose task is known.
+   */
+  readonly progress?: TaskProgress | null
+}
+
+/**
+ * A request that a restart cut off, and that the user has not answered since (spec 003, "Rules").
+ * The notice shows above the message box while the reply `messageId` is the last message.
+ */
+export interface CutNotice {
+  /** The task that the restart ended. "Send again" retries it. */
+  readonly taskId: string
+  /** The reply of that task. The notice shows only while this is the last message of the chat. */
+  readonly messageId: string
+  readonly progress: TaskProgress
 }
 
 export type FilePart = Extract<MessagePart, { kind: "file" }>

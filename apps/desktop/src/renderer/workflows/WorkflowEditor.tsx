@@ -11,6 +11,7 @@ import {
   type Note,
   nodeNumbers,
   type Schedule,
+  SILENT_CODE,
   STEP_EFFORTS,
   STEP_KINDS,
   type Step,
@@ -378,6 +379,9 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
       return t("workflows.error.answer_not_yes_no", {
         answer: reason.slice(ANSWER_ERROR.length + 1).trim(),
       })
+    // The silent limit keeps its number of minutes: "silent_limit:30".
+    if (reason.startsWith(`${SILENT_CODE}:`))
+      return t("error.silent_limit", { detail: reason.slice(SILENT_CODE.length + 1) })
     for (const key of [`workflows.error.${reason}`, `error.${reason}`])
       if (key in catalogues.en) return t(key as MessageKey)
     return reason

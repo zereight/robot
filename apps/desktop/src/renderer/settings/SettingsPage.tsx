@@ -1,4 +1,10 @@
-import type { LicenseEntry, MessageKey, MessageParams } from "@robot/shared"
+import {
+  type LicenseEntry,
+  type MessageKey,
+  type MessageParams,
+  SILENT_LIMITS,
+  type SilentLimit,
+} from "@robot/shared"
 import { X } from "lucide-solid"
 import {
   createResource,
@@ -84,6 +90,21 @@ const General = () => {
             {t("settings.workspaceRoot.change")}
           </Button>
         </div>
+      </Row>
+      <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
+        <Segmented
+          label={t("settings.silentLimit")}
+          testId="setting-silent-limit"
+          value={String(app.settings.silentLimit)}
+          onChange={(value) => app.update({ silentLimit: Number(value) as SilentLimit })}
+          options={SILENT_LIMITS.map((minutes) => ({
+            value: String(minutes),
+            label:
+              minutes === 0
+                ? t("settings.silentLimit.never")
+                : t("settings.silentLimit.option", { count: minutes }),
+          }))}
+        />
       </Row>
     </>
   )

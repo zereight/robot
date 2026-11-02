@@ -192,6 +192,12 @@ const openAiReply = async (res: ServerResponse, body: ChatBody) => {
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`)
     return res.end("data: [DONE]\n\n")
   }
+  // "go silent": the answer opens and nothing follows, until the app closes the request.
+  if ((body.messages.at(-1)?.content ?? "").split("\n").at(-1)?.includes("go silent")) {
+    res.writeHead(200, { "content-type": "text/event-stream" })
+    res.flushHeaders()
+    return
+  }
   const p = plan(body)
   if (p.status === 429) {
     res.writeHead(429, { "content-type": "application/json", "retry-after": "120" })
@@ -317,6 +323,11 @@ export const startMockProvider = async () => {
     openaiUrl: `http://127.0.0.1:${port}/v1`,
     anthropicUrl: `http://127.0.0.1:${port}/anthropic`,
     requests,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve())
+        // A request that is held with no answer would keep the server open.
+        server.closeAllConnections()
+      }),
   }
 }

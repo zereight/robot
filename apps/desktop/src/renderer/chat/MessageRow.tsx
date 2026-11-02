@@ -505,6 +505,14 @@ const FailedRow = (props: { message: ChatMessage; onRetry: () => void }) => {
       <Button onClick={props.onRetry} data-testid="retry">
         {t("chat.retry")}
       </Button>
+      {/* How far the turn went (spec 005). It sits beside Retry. */}
+      <Show when={props.message.progress}>
+        {(progress) => (
+          <p class={styles.failedLine} data-testid="progress-line" data-progress={progress()}>
+            {t(`progress.line.${progress()}` as MessageKey)}
+          </p>
+        )}
+      </Show>
     </div>
   )
 }

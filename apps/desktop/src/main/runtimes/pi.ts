@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -10,6 +9,7 @@ import { stage } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
+import { spawnProgram } from "./programs.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
 const env = () => runtimeEnv(process.env, undefined, "pi")
@@ -93,7 +93,7 @@ export const piEfforts = async (
 ): Promise<Map<string, string[]>> => {
   const found = new Map<string, string[]>()
   if (ids.length === 0) return found
-  const child = spawn(
+  const child = spawnProgram(
     bin,
     [
       "--mode",
@@ -306,7 +306,7 @@ export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
     writeFileSync(systemFile, run.system, { mode: 0o600 })
   }
   const staged = run.bridge ? stage(run.bridge) : null
-  const child = spawn(run.bin, piArgs(run, systemFile, staged?.piExtension), {
+  const child = spawnProgram(run.bin, piArgs(run, systemFile, staged?.piExtension), {
     cwd: run.workspace,
     env: env(),
     stdio: ["pipe", "pipe", "pipe"],

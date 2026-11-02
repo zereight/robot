@@ -1120,4 +1120,20 @@ export const ko: Record<MessageKey, string> = {
   "error.section_limit": "한 목록에는 섹션을 20개까지 만들 수 있어요.",
   "error.section_not_found": "이 섹션은 더 이상 없어요.",
   "error.section_kind_mismatch": "섹션에는 같은 종류의 장소만 넣을 수 있어요.",
+  "error.silent_limit": "{detail}분 동안 답이 없어요.",
+  "error.silent_limit_1": "1분 동안 답이 없어요.",
+  "progress.line.not_sent": "요청이 모델에 닿지 않았어요. 안전하게 다시 시도할 수 있어요.",
+  "progress.line.sent":
+    "모델이 작업을 시작했을 수 있어요. 다시 시도하기 전에 작업 공간을 확인해 주세요.",
+  "progress.line.started":
+    "에이전트가 작업을 시작했어요. 일부 단계는 이미 실행되었을 수 있어요. 다시 시도하기 전에 작업 공간을 확인해 주세요.",
+  "chat.restart.notice": "앱이 다시 시작되면서 마지막 요청이 멈췄어요.",
+  "chat.restart.continue": "이어서 하기",
+  "chat.restart.sendAgain": "다시 보내기",
+  "chat.restart.continueMessage": "하던 일을 이어서 해 주세요.",
+  "settings.silentLimit": "응답이 없는 작업을 멈추는 시간",
+  "settings.silentLimit.hint":
+    "에이전트에게서 아무 신호가 없을 때 앱이 작업을 멈추기까지 기다리는 시간이에요.",
+  "settings.silentLimit.option": "{count}분",
+  "settings.silentLimit.never": "안 함",
 }

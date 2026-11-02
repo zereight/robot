@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ChannelMessage } from "@robot/shared"
@@ -8,6 +8,9 @@ import { Channels } from "./Channels.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
+import { fakeClock } from "./silence.testing.ts"
+import { useClockForTests } from "./silence.ts"
 import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
 
@@ -68,6 +71,11 @@ const server = Bun.serve({
       ])
     const last = (body.messages.at(-1)?.content ?? "").split("\n").at(-1) ?? ""
     if (last.includes("FAIL")) return Response.json({ error: { message: "boom" } }, { status: 500 })
+    // A model that shows no sign of life: the answer opens and nothing follows.
+    if (last.includes("HANG"))
+      return new Response(new ReadableStream({ start() {} }), {
+        headers: { "content-type": "text/event-stream" },
+      })
     let reply = `Echo: ${last}`
     if (last.includes("split two"))
       reply = plan([
@@ -91,7 +99,8 @@ const server = Bun.serve({
     ])
   },
 })
-afterAll(() => server.stop())
+// Some requests are held with no answer on purpose, so the stop must close them.
+afterAll(() => server.stop(true))
 
 const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
   const end = Date.now() + ms
@@ -153,6 +162,8 @@ const setup = async (options: { lead?: boolean } = { lead: true }) => {
 
 const kinds = (list: readonly ChannelMessage[]) => list.map((m) => `${m.author}:${m.kind}`)
 
+afterEach(() => useClockForTests(undefined))
+
 describe("channel jobs", () => {
   test("the lead splits a job; members reply under their name; one summary ends it", async () => {
     const s = await setup()
@@ -209,6 +220,24 @@ describe("channel jobs", () => {
     expect(parts.map((t) => t.state).sort()).toEqual(["done", "failed"])
     // The summary asked for the facts about the failure.
     expect(list.at(-1)?.status).toBe("done")
+  })
+
+  test("a part that shows no sign of life fails at the silent limit, with how far it went (spec 005)", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ silentLimit: 1 })))
+    await s.send("@bo HANG here")
+    await until(async () => (await s.tasks())[0]?.progress === "sent")
+    fake.advance(59_000)
+    expect((await s.tasks())[0]?.state).toBe("running")
+    fake.advance(1_000)
+    await until(async () => (await s.tasks())[0]?.state === "failed")
+    const task = (await s.tasks())[0]
+    expect(task?.error).toEqual({ code: "silent_limit_1", detail: "1" })
+    const failed = (await s.history()).find((m) => m.status === "failed")
+    expect(failed?.error?.code).toBe("silent_limit_1")
+    expect(failed?.progress).toBe("sent")
   })
 
   test("an ordinary answer of the lead is no plan", async () => {

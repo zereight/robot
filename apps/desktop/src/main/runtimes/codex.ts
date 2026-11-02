@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import { createInterface } from "node:readline"
 import type { PermissionLevel } from "@robot/shared"
@@ -7,6 +6,7 @@ import { ProviderFailure } from "../providers/client.ts"
 import { codexBridgeArgs, type Staged, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
+import { spawnProgram } from "./programs.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
 /** Reads the answer of `codex login status`. The text can come on either output. */
@@ -194,7 +194,7 @@ const TAIL = 2000
 export async function* runCodex(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
   const staged = run.bridge ? stage(run.bridge) : null
-  const child = spawn(run.bin, codexArgs(run, staged ?? undefined), {
+  const child = spawnProgram(run.bin, codexArgs(run, staged ?? undefined), {
     cwd: run.workspace,
     env: runtimeEnv(),
     stdio: ["pipe", "pipe", "pipe"],

@@ -1132,6 +1132,21 @@ export const en = {
   "error.section_limit": "A list holds at most 20 sections.",
   "error.section_not_found": "This section does not exist any more.",
   "error.section_kind_mismatch": "A section holds only places of its own kind.",
+  "error.silent_limit": "No answer for {detail} minutes.",
+  "error.silent_limit_1": "No answer for 1 minute.",
+  "progress.line.not_sent": "The request did not reach the model. It is safe to try again.",
+  "progress.line.sent": "The model may have started. Check the workspace before you try again.",
+  "progress.line.started":
+    "The agent had started to work. Some steps may have run. Check the workspace before you try again.",
+  "chat.restart.notice": "The app restarted and stopped your last request.",
+  "chat.restart.continue": "Continue",
+  "chat.restart.sendAgain": "Send again",
+  "chat.restart.continueMessage": "Please go on with what you were doing.",
+  "settings.silentLimit": "Stop a silent turn after",
+  "settings.silentLimit.hint":
+    "How long an agent may show no sign of life before the app stops its turn.",
+  "settings.silentLimit.option": "{count} min",
+  "settings.silentLimit.never": "Never",
 } as const
 
 export type MessageKey = keyof typeof en

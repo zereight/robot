@@ -7,7 +7,7 @@ import type {
   ChannelMessage,
   ChannelPatch,
 } from "./channels.ts"
-import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
+import type { ChatMessage, ChatSend, CutNotice, QueuedMessage } from "./chat.ts"
 import type {
   KnowledgeArticle,
   KnowledgeChange,
@@ -361,7 +361,12 @@ export interface RpcMethods {
   }
   "chat.history": {
     input: { agentId: string }
-    output: { messages: readonly ChatMessage[]; queue: readonly QueuedMessage[] }
+    output: {
+      messages: readonly ChatMessage[]
+      queue: readonly QueuedMessage[]
+      /** The request that a restart cut off, or null (spec 003). */
+      cut?: CutNotice | null
+    }
   }
   "chat.send": { input: ChatSend; output: { queued: boolean } }
   "chat.stop": { input: { agentId: string }; output: undefined }

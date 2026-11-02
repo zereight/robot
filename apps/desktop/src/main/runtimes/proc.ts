@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process"
+import { spawnProgram } from "./programs.ts"
 
 export interface Finished {
   readonly code: number | null
@@ -7,6 +7,9 @@ export interface Finished {
   /** Set when the program could not start, or when the time ran out. */
   readonly failure?: string
 }
+
+/** How long a program that was told to end may take to close, before the caller goes on. */
+const KILL_GRACE_MS = 1000
 
 /** Runs a program to its end and collects its output. It never throws. */
 export const execute = (
@@ -25,13 +28,28 @@ export const execute = (
     let stdout = ""
     let stderr = ""
     let failure: string | undefined
-    const child = spawn(bin, [...args], {
+    let settled = false
+    let grace: ReturnType<typeof setTimeout> | undefined
+    const child = spawnProgram(bin, [...args], {
       env: options.env,
       ...(options.cwd ? { cwd: options.cwd } : {}),
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     })
-    const kill = () => child.kill()
+    const finish = (code: number | null) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      clearTimeout(grace)
+      options.signal?.removeEventListener("abort", kill)
+      resolve({ code, stdout, stderr, ...(failure ? { failure } : {}) })
+    }
+    // A program that is killed can leave a child of its own that holds the pipes open, and then
+    // the program never reports that it closed. The caller must not wait for that (spec 006).
+    const kill = () => {
+      child.kill()
+      grace ??= setTimeout(() => finish(null), KILL_GRACE_MS)
+    }
     const timer = setTimeout(() => {
       failure = "timeout"
       kill()
@@ -48,9 +66,5 @@ export const execute = (
     child.on("error", (error) => {
       failure = error.message
     })
-    child.on("close", (code) => {
-      clearTimeout(timer)
-      options.signal?.removeEventListener("abort", kill)
-      resolve({ code, stdout, stderr, ...(failure ? { failure } : {}) })
-    })
+    child.on("close", (code) => finish(code))
   })

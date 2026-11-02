@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -9,6 +8,7 @@ import { ProviderFailure } from "../providers/client.ts"
 import { bridgeToolName, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
+import { spawnProgram } from "./programs.ts"
 import type { ApprovalRequest, Login, RuntimeRun } from "./types.ts"
 
 export const parseVersion = (text: string): string | null =>
@@ -154,7 +154,7 @@ const askUsageReport = (bin: string, dir?: string): Promise<RuntimeLimit[] | nul
   new Promise((resolve) => {
     const id = "robot-usage"
     let done = false
-    const child = spawn(
+    const child = spawnProgram(
       bin,
       [
         "-p",
@@ -487,7 +487,7 @@ export const claudeContent = (run: RuntimeRun) =>
 export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
   const staged = run.bridge ? stage(run.bridge) : null
-  const child = spawn(run.bin, claudeArgs(run, staged?.claudeConfig), {
+  const child = spawnProgram(run.bin, claudeArgs(run, staged?.claudeConfig), {
     cwd: run.workspace,
     env: claudeEnv(run.signInDir),
     stdio: ["pipe", "pipe", "pipe"],
