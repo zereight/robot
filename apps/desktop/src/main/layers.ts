@@ -4,6 +4,7 @@ import type { OpenSocket } from "./link/nearby.ts"
 import { ActionLog } from "./services/ActionLog.ts"
 import { Activity } from "./services/Activity.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
+import { AgentSettings } from "./services/AgentSettings.ts"
 import { Agents } from "./services/Agents.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
@@ -80,13 +81,14 @@ export const appLayer = (options: AppLayerOptions) => {
     ActionLog.layer,
     Search.layer,
     SavedSecrets.layer,
+    Agents.layer,
   ).pipe(Layer.provideMerge(notifier))
-  const knowledge = Knowledge.layer.pipe(Layer.provideMerge(memory))
+  // The settings tool changes agents, so agents come before the tools (spec 002).
+  const agentSettings = AgentSettings.layer.pipe(Layer.provideMerge(memory))
+  const knowledge = Knowledge.layer.pipe(Layer.provideMerge(agentSettings))
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
-  const agents = Layer.mergeAll(Agents.layer, Chat.layer, Usage.layer).pipe(
-    Layer.provideMerge(tasks),
-  )
+  const agents = Layer.mergeAll(Chat.layer, Usage.layer).pipe(Layer.provideMerge(tasks))
   const channels = Channels.layer.pipe(Layer.provideMerge(agents))
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))

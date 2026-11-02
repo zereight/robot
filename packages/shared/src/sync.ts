@@ -17,6 +17,7 @@ export const SYNC_KINDS = [
   "rskip",
   "wrun",
   "wstep",
+  "iversion",
 ] as const
 export type SyncKind = (typeof SYNC_KINDS)[number]
 
