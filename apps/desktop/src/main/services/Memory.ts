@@ -38,6 +38,12 @@ export interface MemoryOrigin {
   readonly messageId: string
 }
 
+/** What a save would do, with no change made. A text that is refused has its reason. */
+export type MemoryPlan =
+  | { readonly kind: "item" }
+  | { readonly kind: "proposal" }
+  | Extract<MemorySave, { kind: "known" | "empty" | "too_long" | "secret" | "off" }>
+
 export interface MemoryService {
   /** The items of one agent, newest first. A query keeps the items that contain it. */
   list(agentId: string, query?: string): Effect.Effect<readonly MemoryItem[]>
@@ -56,6 +62,11 @@ export interface MemoryService {
   /** What an agent reads before a turn: the items that relate to the message. Empty when off. */
   forTurn(agentId: string, message: string): readonly MemoryItem[]
 
+  /**
+   * What `save` would do for this text: make an item, make a proposal, or refuse. It changes
+   * nothing, so the tool can ask the user before a save that is guarded (spec 007).
+   */
+  plan(agentId: string, text: string): Effect.Effect<MemoryPlan>
   /** What the memory tool does for an agent: it saves at once or makes a proposal. */
   save(agentId: string, text: string, origin?: MemoryOrigin): Effect.Effect<MemorySave>
   mode(agentId: string): Effect.Effect<MemoryMode>
@@ -300,6 +311,31 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
         )
       }
 
+      /**
+       * What a save of this text does. The tool does not save a secret and does not suggest one
+       * (the user can type it). A fact that is known is not added again: spaces at both ends and
+       * the case of letters do not matter, and a proposal counts as known only while the agent
+       * suggests.
+       */
+      type Decision =
+        | { kind: "refuse"; result: MemoryPlan & MemorySave }
+        | { kind: "item" | "proposal"; value: string }
+      const decide = (agentId: string, text: string): Decision => {
+        const agent = needAgent(agentId)
+        if (agent?.memory_enabled !== 1) return { kind: "refuse", result: { kind: "off" } }
+        const value = text.trim()
+        if (!value) return { kind: "refuse", result: { kind: "empty" } }
+        if (charLength(value) > MEMORY_TEXT_MAX)
+          return { kind: "refuse", result: { kind: "too_long" } }
+        if (looksSecret(value)) return { kind: "refuse", result: { kind: "secret" } }
+        if (rows(agentId).some((i) => sameMemoryText(i.text, value)))
+          return { kind: "refuse", result: { kind: "known" } }
+        if (agent.memory_mode !== "ask") return { kind: "item", value }
+        if (proposalRows(agentId).some((p) => sameMemoryText(p.text, value)))
+          return { kind: "refuse", result: { kind: "known" } }
+        return { kind: "proposal", value }
+      }
+
       // Proposals that ended while the app was off, and history past its limits, go at the start.
       for (const a of db.all<{ id: string }>("SELECT id FROM agent")) {
         pruneProposals(a.id)
@@ -355,26 +391,20 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
           return relevantMemory(rows(agentId).map(toItem), message)
         },
 
+        plan: (agentId, text) =>
+          Effect.sync((): MemoryPlan => {
+            const d = decide(agentId, text)
+            return d.kind === "refuse" ? d.result : { kind: d.kind }
+          }),
         save: (agentId, text, origin) =>
           Effect.sync((): MemorySave => {
-            const agent = needAgent(agentId)
-            if (agent?.memory_enabled !== 1) return { kind: "off" }
-            const value = text.trim()
-            if (!value) return { kind: "empty" }
-            if (charLength(value) > MEMORY_TEXT_MAX) return { kind: "too_long" }
-            // The tool does not save a secret and does not suggest one. The user can type it.
-            if (looksSecret(value)) return { kind: "secret" }
-            const ask = agent.memory_mode === "ask"
-            const known = rows(agentId).some((i) => sameMemoryText(i.text, value))
-            if (known) return { kind: "known" }
-            if (!ask) {
-              // The guard for a turn that holds outside content (spec 007) belongs before this
-              // line, in the tool, when that slice is built. This is the only way in.
-              const saved = addItem(agentId, value, "agent", "agent", origin?.messageId ?? null)
+            const d = decide(agentId, text)
+            if (d.kind === "refuse") return d.result
+            if (d.kind === "item") {
+              const saved = addItem(agentId, d.value, "agent", "agent", origin?.messageId ?? null)
               return { kind: "saved", item: saved.item, historyId: saved.historyId }
             }
             const waiting = proposalRows(agentId)
-            if (waiting.some((p) => sameMemoryText(p.text, value))) return { kind: "known" }
             // At most 20 wait. A new one replaces the oldest.
             const over = waiting.length - (MEMORY_PROPOSALS_MAX - 1)
             for (const old of waiting.slice(0, Math.max(0, over)))
@@ -385,7 +415,7 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
                VALUES (?, ?, ?, ?, ?, ?, ?)`,
               id,
               agentId,
-              value,
+              d.value,
               origin?.kind ?? null,
               origin?.id ?? null,
               origin?.messageId ?? null,

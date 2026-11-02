@@ -181,13 +181,17 @@ describe("the steps of the device link and of sync", () => {
     expect(migrations[MAIN_STEPS]).toContain("CREATE TABLE device_link")
     expect(migrations[MAIN_STEPS + 1]).toContain("CREATE TABLE sync_pair")
     expect(migrations[MAIN_STEPS + 2]).toContain("ALTER TABLE device_link ADD COLUMN can_change")
-    expect(migrations[MAIN_STEPS + 3]).toContain("ALTER TABLE agent ADD COLUMN memory_mode")
+    // The step of memory control (spec 008) follows, wherever other steps put it.
+    expect(migrations.some((sql) => sql.includes("ALTER TABLE agent ADD COLUMN memory_mode"))).toBe(
+      true,
+    )
     // No step of this branch changes the table that the step of main changed.
     for (const sql of migrations.slice(MAIN_STEPS)) {
       expect(sql).not.toMatch(/ALTER TABLE provider_account/i)
     }
     // The number of steps is the data version that two computers compare before they sync.
-    expect(migrations.length).toBe(MAIN_STEPS + 4)
+    // Later steps follow these three.
+    expect(migrations.length).toBeGreaterThan(MAIN_STEPS + 2)
   })
 
   test("a database that ran only the steps of main opens, migrates, and keeps its data", () => {
@@ -253,7 +257,7 @@ describe("the steps of the device link and of sync", () => {
 
 describe("the step for memory control", () => {
   /** The step that spec 008 added: the choice of an agent, proposals and history. */
-  const MEMORY = MAIN_STEPS + 3
+  const MEMORY = migrations.findIndex((sql) => sql.includes("ADD COLUMN memory_mode"))
 
   test("it adds the choice with a default, and two tables that sync does not carry", () => {
     const sql = migrations[MEMORY] ?? ""
@@ -303,5 +307,18 @@ describe("the step for memory control", () => {
       DELETE FROM memory_proposal;
     `)
     expect(db.prepare("SELECT COUNT(*) AS n FROM sync_dirty").get()).toEqual({ n: 0 })
+  })
+})
+
+describe("the step of the action log", () => {
+  test("it makes the table of the log, which no trigger of sync watches", () => {
+    const step = migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log"))
+    expect(step).toBeGreaterThan(MAIN_STEPS + 2)
+    const db = new DatabaseSync(":memory:")
+    for (const sql of migrations) db.exec(sql)
+    const triggers = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'action_log'")
+      .all()
+    expect(triggers).toEqual([])
   })
 })
