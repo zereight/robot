@@ -188,6 +188,12 @@ docs/                Spec questions, provenance, release process
 End-to-end runs write screenshots, a report and a motion video under `build/e2e`. CI keeps them
 as an artifact for each run.
 
+Tests that run two copies of the app ask the system for free ports (`apps/desktop/e2e/ports.ts`) and
+give every worker its own port for the network name service. So they can run in parallel
+(`bunx playwright test --workers=4 --fully-parallel`), next to other runs, and next to an open ROBot.
+Some hosted test machines block multicast; the test of nearby computers then checks the rest of
+its flow without the list.
+
 ## Release
 
 A version tag builds and tests all four apps, then makes a draft release:
