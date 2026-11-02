@@ -641,6 +641,20 @@ describe("the cards that ask and the notes of knowledge tools in a message", () 
     bad({ ask: { kind: "approval", summary: "x".repeat(2_000_001) } })
     bad({ ask: { kind: "approval", summary: "Run ls", once: "yes" } })
     bad({ ask: { kind: "approval", summary: "Run ls", extra: 1 } })
+    // A guarded step in a turn that holds outside content names its first source (spec 007).
+    ok({
+      ask: {
+        kind: "approval",
+        summary: "Say yes",
+        once: true,
+        outside: { kind: "page", host: "example.com" },
+      },
+    })
+    ok({
+      ask: { kind: "approval", summary: "x", once: true, outside: { kind: "agent", name: "Bo" } },
+    })
+    bad({ ask: { kind: "approval", summary: "x", outside: { kind: "page" } } })
+    bad({ ask: { kind: "approval", summary: "x", outside: { kind: "mail", name: "a" } } })
     bad({ ask: { kind: "article", title: "Alpha", before: "old" } })
     bad({ ask: { kind: "article", title: "Alpha", before: null, after: "x" } })
     bad({ ask: { kind: "article", title: "Alpha", before: "old", after: 5 } })

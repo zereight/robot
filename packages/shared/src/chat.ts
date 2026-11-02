@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { KnowledgeNote } from "./knowledge.ts"
+import type { OutsideSource } from "./outside.ts"
 import type { TaskProgress } from "./task.ts"
 
 export type MessagePart =
@@ -40,6 +41,11 @@ export type ToolAsk =
       readonly askedAt?: number
       /** True when the card has no "Always allow": it asks again the next time. */
       readonly once?: boolean
+      /**
+       * Set when a guarded step asks because the turn holds outside content (spec 007). The card
+       * says so and names this first source. Such a card always has `once`.
+       */
+      readonly outside?: OutsideSource
     }
   | {
       readonly kind: "question"

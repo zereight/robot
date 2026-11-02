@@ -26,6 +26,7 @@ import type {
 } from "./link.ts"
 import type { MemoryItem } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
+import type { ActionLogEntry, ActionResult } from "./outside.ts"
 import type {
   ModelInfo,
   ProviderAccount,
@@ -264,6 +265,11 @@ export interface RpcMethods {
   "memory.add": { input: { agentId: string; text: string }; output: MemoryItem }
   "memory.update": { input: { id: string; text: string }; output: MemoryItem }
   "memory.delete": { input: { id: string }; output: undefined }
+  /** The action log of this computer, newest first (spec 007). It is not offered to a linked device. */
+  "actionLog.list": {
+    input: { agentId?: string; result?: ActionResult }
+    output: readonly ActionLogEntry[]
+  }
   "knowledge.list": { input: { agentId: string; query?: string }; output: KnowledgeView }
   "knowledge.get": { input: { agentId: string; file: string }; output: KnowledgeArticle }
   /** Saves an article as the user. `file` is null for a new article. */
@@ -404,6 +410,7 @@ export interface RpcEvents {
   "runtimes.changed": RuntimeStatus
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
+  "actionLog.changed": Record<string, never>
   /** An article, a source or the change list of an agent changed. */
   "knowledge.changed": { agentId: string }
   "browser.changed": { agentId: string }

@@ -703,6 +703,20 @@
   padding: 8px 0;
 }
 
+/* The line of a guarded step in a turn that holds outside content. */
+.outside {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-left: 3px solid var(--c-danger);
+  padding: 4px 0 4px 10px;
+}
+
+.outsideHint {
+  color: var(--c-text-muted);
+  font-size: 0.85rem;
+}
+
 .askActions {
   display: flex;
   flex-wrap: wrap;

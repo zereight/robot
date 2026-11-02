@@ -13,6 +13,7 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   charLength,
+  holdOutside,
   isTaskProgress,
   MESSAGE_MAX,
   type MemberState,
@@ -20,6 +21,9 @@ import {
   type MessageStatus,
   mentionsUser,
   messageText,
+  newTurnMark,
+  type OutsideSource,
+  outsideOfCall,
   type ParsedPlan,
   type PartChip,
   type PermissionLevel,
@@ -32,6 +36,8 @@ import {
   type Task,
   type TaskProgress,
   type TaskState,
+  type TurnMark,
+  type TurnStarter,
   toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
@@ -346,6 +352,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         hideRaw?: boolean
         /** The agent may use tools in this reply. Plans and summaries do not. */
         tools?: boolean
+        /** Who started the turn, and its outside content (spec 007). Plans and summaries need none. */
+        turn?: TurnMark
       }) {
         const id = randomUUID()
         const parts: MessagePart[] = []
@@ -423,6 +431,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           if (!o.agent.model_account_id || !o.agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
           const useTools = o.tools === true
+          const mark = o.turn ?? newTurnMark("user")
           const isRuntime = providers.isRuntime(o.agent.model_account_id)
           const changePart = (
             callId: string,
@@ -465,6 +474,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             knowledgeChanges: { count: 0 },
+            turn: mark,
+            taskId: o.taskId,
           }
           const events = yield* providers.events(
             o.agent.model_account_id,
@@ -521,6 +532,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 watch.sense(event)
                 return Effect.void
               }
+              // A web, browser or connection step of the program itself gives outside content.
+              if (isRuntime && event.type === "tool" && event.state !== "running")
+                holdOutside(mark, outsideOfCall(event.call.name, event.call.input))
               return onEvent(event)
             }),
           )
@@ -589,13 +603,37 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const background = (effect: Effect.Effect<unknown, unknown, never>) =>
         Effect.forkDetach(Effect.exit(effect)).pipe(Effect.asVoid)
 
-      /** One agent answers in the channel: a task of its own, with the reply as its message. */
+      /**
+       * The newest message of another agent among the messages that a turn of `agent` reads, as
+       * an outside source (spec 007): the turn reads it, so it holds outside content.
+       */
+      const otherVoice = (channelId: string, agent: AgentRow): OutsideSource | null => {
+        const row = db.get<{ name: string }>(
+          `SELECT a.name AS name FROM (
+             SELECT agent_id, author, created_at, rowid AS r FROM channel_message
+             WHERE channel_id = ? AND status IN ('done', 'stopped')
+             ORDER BY created_at DESC, rowid DESC LIMIT ${HISTORY_TURNS}
+           ) m JOIN agent a ON a.id = m.agent_id
+           WHERE m.author = 'agent' AND m.agent_id != ?
+           ORDER BY m.created_at DESC, m.r DESC LIMIT 1`,
+          channelId,
+          agent.id,
+        )
+        return row ? { kind: "agent", name: row.name } : null
+      }
+
+      /**
+       * One agent answers in the channel: a task of its own, with the reply as its message.
+       * `from` is the lead that gave the agent its part: the turn starts with a message from
+       * another agent.
+       */
       const memberTurn = (
         channel: ChannelRow,
         agent: AgentRow,
         task: Task,
         extraTurn: string | null,
         kind: ChannelMessageKind = "text",
+        from: AgentRow | null = null,
       ) =>
         tasks.run(
           task.id,
@@ -603,12 +641,19 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.suspend(() => {
             const turns = channelTurns(channel.id, agent)
             if (extraTurn) turns.push({ role: "user", content: extraTurn })
+            const starter: TurnStarter =
+              task.source === "routine" ? "routine" : from ? "agent" : "user"
+            const turn = newTurnMark(
+              starter,
+              from ? { kind: "agent", name: from.name } : otherVoice(channel.id, agent),
+            )
             return streamReply({
               channel,
               agent,
               taskId: task.id,
               kind,
               tools: true,
+              turn,
               system: channelSystem(channel, agent),
               turns,
             })
@@ -727,7 +772,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               partTasks,
               ({ task: partTask, agent, prompt }) =>
                 Effect.exit(
-                  memberTurn(channel, agent, partTask, `Your part: ${partTask.label}\n${prompt}`),
+                  memberTurn(
+                    channel,
+                    agent,
+                    partTask,
+                    `Your part: ${partTask.label}\n${prompt}`,
+                    "text",
+                    lead,
+                  ),
                 ),
               { concurrency: "unbounded", discard: true },
             )
@@ -786,8 +838,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               parentId: task.parentId,
               retryOf: task.id,
             })
+            const lead = channel.lead_agent_id ? agentRow(channel.lead_agent_id) : undefined
             yield* background(
-              memberTurn(channel, agent, part, `Your part: ${part.label}\n${task.prompt}`),
+              memberTurn(
+                channel,
+                agent,
+                part,
+                `Your part: ${part.label}\n${task.prompt}`,
+                "text",
+                lead ?? null,
+              ),
             )
           } else if (channel.lead_agent_id === agent.id) {
             yield* startLead(channel, agent, task.prompt, task.id)
