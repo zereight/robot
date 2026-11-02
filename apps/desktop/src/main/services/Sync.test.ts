@@ -8,6 +8,7 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
+import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
 import { Places } from "./Places.ts"
@@ -1199,6 +1200,186 @@ describe("tasks, routines, workflows and files of two computers", () => {
     expect(offline.code).toBe("sync_file_offline")
     expect(offline.detail).toBe("MacBook 1")
   })
+  test("knowledge does not sync: a synced agent has no article, and sync reads and writes no knowledge row", async () => {
+    const { a, b, ada } = await pair()
+    const idA = await localId(a)
+    const idB = await localId(b)
+    const save = (rt: Rt, title: string) =>
+      run(
+        rt,
+        Knowledge.use((k) => k.save(ada.id, { file: null, title, summary: "s", body: "Body." })),
+      )
+    const articles = async (rt: Rt) =>
+      (
+        await run(
+          rt,
+          Knowledge.use((k) => k.list(ada.id)),
+        )
+      ).articles.map((x) => x.title)
+    const rows = (rt: Rt) =>
+      run(
+        rt,
+        Database.use((db) =>
+          Effect.sync(() => ({
+            files: db.get<{ n: number }>("SELECT COUNT(*) AS n FROM knowledge_file")?.n,
+            changes: db.get<{ n: number }>("SELECT COUNT(*) AS n FROM knowledge_change")?.n,
+          })),
+        ),
+      )
+    await save(a, "Alpha")
+    expect(await articles(a)).toEqual(["Alpha"])
+    // A change of the agent crosses; the article of the first computer does not.
+    await run(
+      a,
+      Agents.use((x) => x.update(ada.id, { role: "Writer" })),
+    )
+    const roleOn = (rt: Rt, serverId: string) =>
+      run(
+        rt,
+        Agents.use((x) => x.list(serverId, false)),
+      ).then((l) => l.find((x) => x.id === ada.id)?.role)
+    expect(
+      await waitFor(
+        () => roleOn(b, idB),
+        (role) => role === "Writer",
+      ),
+    ).toBe("Writer")
+    expect(await articles(b)).toEqual([])
+    expect(await rows(b)).toEqual({ files: 0, changes: 0 })
+    // The other way round: an article made on the second computer stays there.
+    await save(b, "Beta")
+    await run(
+      b,
+      Agents.use((x) => x.update(ada.id, { role: "Editor" })),
+    )
+    expect(
+      await waitFor(
+        () => roleOn(a, idA),
+        (role) => role === "Editor",
+      ),
+    ).toBe("Editor")
+    expect(await articles(a)).toEqual(["Alpha"])
+    expect(await articles(b)).toEqual(["Beta"])
+    expect(await rows(a)).toEqual({ files: 1, changes: 1 })
+    expect(await rows(b)).toEqual({ files: 1, changes: 1 })
+    // Deleting the agent here takes it away there. The article of each side goes with its own
+    // agent record only.
+    const agentRows = (rt: Rt) =>
+      run(
+        rt,
+        Database.use((db) =>
+          Effect.sync(() => db.get<{ n: number }>("SELECT COUNT(*) AS n FROM agent")?.n ?? -1),
+        ),
+      )
+    await run(
+      a,
+      Agents.use((x) => x.archive(ada.id)),
+    )
+    await run(
+      a,
+      Agents.use((x) => x.remove(ada.id)),
+    )
+    expect(
+      await waitFor(
+        () => agentRows(b),
+        (n) => n === 0,
+      ),
+    ).toBe(0)
+    expect(await rows(b)).toEqual({ files: 0, changes: 0 })
+    // The article of the first computer went with its record there, and the second one is
+    // untouched by a record that is gone: no row of knowledge is left on either side.
+    expect(await rows(a)).toEqual({ files: 0, changes: 0 })
+  })
+
+  test("a workflow crosses with its canvas notes, a notify step, a condition that asks a model and the effort of a step; a note that changes crosses too", async () => {
+    const { a, b, ada } = await pair()
+    const idA = await localId(a)
+    const idB = await localId(b)
+    const wf = await run(
+      a,
+      Workflows.use((w) =>
+        w.create({
+          serverId: idA,
+          name: "Notes flow",
+          trigger: { kind: "manual" },
+          steps: [
+            {
+              id: "s1",
+              kind: "agent",
+              name: "Write",
+              x: 0,
+              y: 0,
+              agentId: ada.id,
+              prompt: "Say hi",
+              continueOnFailure: false,
+              effort: "max",
+            },
+            {
+              id: "s2",
+              kind: "condition",
+              name: "Friendly?",
+              x: 1,
+              y: 0,
+              contains: "Is it friendly?",
+              mode: "ask",
+              provider: { accountId: "acc", model: "m" },
+            },
+            { id: "s3", kind: "notify", name: "Tell me", x: 2, y: 0, title: "Friendly" },
+          ],
+          edges: [
+            { id: "e1", from: "s1", to: "s2" },
+            { id: "e2", from: "s2", to: "s3", branch: "yes" },
+          ],
+          notes: [{ id: "n1", text: "Check the tone", tone: "green", x: 5, y: 6 }],
+        }),
+      ),
+    )
+    const onB = () =>
+      run(
+        b,
+        Workflows.use((w) => w.list(idB)),
+      ).then((list) => list.find((x) => x.id === wf.id))
+    const arrived = await waitFor(onB, (x) => x !== undefined)
+    expect(arrived?.notes).toEqual([
+      { id: "n1", text: "Check the tone", tone: "green", x: 5, y: 6 },
+    ])
+    expect(arrived?.steps.map((s) => s.kind)).toEqual(["agent", "condition", "notify"])
+    expect(arrived?.steps[0]).toMatchObject({ effort: "max" })
+    expect(arrived?.steps[1]).toMatchObject({ mode: "ask", provider: { accountId: "acc" } })
+
+    // A note that is moved and one that is added cross; the notes of both are the same.
+    await run(
+      a,
+      Workflows.use((w) =>
+        w.update(wf.id, {
+          notes: [
+            { id: "n1", text: "Check the tone", tone: "green", x: 50, y: 60 },
+            { id: "n2", text: "Second", tone: "pink", x: 0, y: 0 },
+          ],
+        }),
+      ),
+    )
+    const changed = await waitFor(onB, (x) => (x?.notes.length ?? 0) === 2)
+    expect(changed?.notes.map((n) => [n.id, n.x])).toEqual([
+      ["n1", 50],
+      ["n2", 0],
+    ])
+    // And back: a note that is removed on the second computer goes from the first.
+    await run(
+      b,
+      Workflows.use((w) => w.update(wf.id, { notes: [] })),
+    )
+    const gone = await waitFor(
+      () =>
+        run(
+          a,
+          Workflows.use((w) => w.list(idA)),
+        ).then((list) => list.find((x) => x.id === wf.id)),
+      (x) => (x?.notes.length ?? 1) === 0,
+    )
+    expect(gone?.notes).toEqual([])
+  })
+
   test("while the computers sync, the switch to create and change agents counts as on and is locked; Stop syncing gives the earlier value back", async () => {
     const a = side("MacBook 1")
     const b = side("MacBook 2")

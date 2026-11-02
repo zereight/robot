@@ -9,13 +9,16 @@ import {
   EdgeSchema,
   FACE_HUES,
   FACE_SHAPES,
+  KNOWLEDGE_TITLE_MAX,
   MEMORY_TEXT_MAX,
+  NoteSchema,
   nameKey,
   PERMISSION_LEVELS,
   ROUTINE_NAME_MAX,
   ROUTINE_PROMPT_MAX,
   RUN_STATES,
   ScheduleSchema,
+  STEP_KINDS,
   STEP_STATES,
   StepSchema,
   type SyncKind,
@@ -24,6 +27,7 @@ import {
   TriggerSchema,
   validSchedule,
   WORKFLOW_NAME_MAX,
+  WORKFLOW_NOTES_MAX,
   WORKFLOW_STEPS_MAX,
 } from "@robot/shared"
 import { Schema } from "effect"
@@ -133,11 +137,19 @@ const TEXT_MAX = 2_000_000
 const SAFE_NAME = /^[^/\\]{1,255}$/
 const ATTACHMENT_PATH = /^attachments\/[^/\\]{1,255}$/
 
+/** The text of an article in a card that asks: the body, with the lines of its header. */
+const ARTICLE_TEXT_MAX = 200_000
+
 const askCheck = (v: unknown): boolean => {
   if (!isObject(v)) return false
   const timeOk = v.askedAt === undefined || int(v.askedAt)
   if (v.kind === "approval") {
-    return shape(["kind", "summary"], ["askedAt"])(v) && str(5000)(v.summary) && timeOk
+    return (
+      shape(["kind", "summary"], ["askedAt", "once"])(v) &&
+      str(5000)(v.summary) &&
+      timeOk &&
+      (v.once === undefined || bool(v.once))
+    )
   }
   if (v.kind === "question") {
     return (
@@ -148,6 +160,41 @@ const askCheck = (v: unknown): boolean => {
       v.choices.length <= 50 &&
       v.choices.every(str(1000))
     )
+  }
+  // The agent wants to change an article that the user edited last (spec 017). The card holds the
+  // old and the new text, so that the user can answer it on either computer.
+  if (v.kind === "article") {
+    return (
+      timeOk &&
+      shape(["kind", "title", "before", "after"], ["askedAt"])(v) &&
+      str(KNOWLEDGE_TITLE_MAX * 4)(v.title) &&
+      str(ARTICLE_TEXT_MAX)(v.before) &&
+      nullable(str(ARTICLE_TEXT_MAX))(v.after)
+    )
+  }
+  return false
+}
+
+/**
+ * What a knowledge tool did, as it shows in the card of the message (spec 017). Only this line
+ * travels with the message. The articles, the sources and the change list do not sync (017), so
+ * the other computer shows the line without an undo.
+ */
+const knowledgeNoteCheck = (v: unknown): boolean => {
+  if (!isObject(v)) return false
+  const title = str(KNOWLEDGE_TITLE_MAX * 4)
+  if (v.kind === "read") return shape(["kind", "title"])(v) && title(v.title)
+  if (v.kind === "write") {
+    return (
+      shape(["kind", "title", "change", "changeId"])(v) &&
+      title(v.title) &&
+      oneOf(["add", "edit", "delete"])(v.change) &&
+      str(100, 1)(v.changeId)
+    )
+  }
+  if (v.kind === "source") return shape(["kind", "name"])(v) && str(500)(v.name)
+  if (v.kind === "failed") {
+    return shape(["kind", "title", "code"])(v) && title(v.title) && str(100, 1)(v.code)
   }
   return false
 }
@@ -175,7 +222,7 @@ const partCheck = (v: unknown): boolean => {
       return (
         shape(
           ["kind", "id", "name", "label", "state", "input", "output"],
-          ["ask", "memoryId", "decision"],
+          ["ask", "memoryId", "decision", "knowledge"],
         )(v) &&
         str(200, 1)(v.id) &&
         str(200)(v.name) &&
@@ -185,6 +232,7 @@ const partCheck = (v: unknown): boolean => {
         str(TEXT_MAX)(v.output) &&
         (v.ask === undefined || askCheck(v.ask)) &&
         (v.memoryId === undefined || str(100)(v.memoryId)) &&
+        (v.knowledge === undefined || knowledgeNoteCheck(v.knowledge)) &&
         (v.decision === undefined ||
           (isObject(v.decision) &&
             shape(["answer", "by"])(v.decision) &&
@@ -272,7 +320,7 @@ const insert = (db: DatabaseService, table: string, columns: Record<string, unkn
 const originColumn = (ctx: Ctx, wire: unknown) => (wire === ctx.self ? null : (wire as string))
 
 /**
- * Where a routine or workflow runs, from a new item of the other computer (spec 016). Only the
+ * Where a routine or workflow runs, from a new item of the other computer (spec 017). Only the
  * user of the computer that would run it can choose that, with "Run on this computer". So an
  * item that arrives for the first time and names this computer is stored as running on the other
  * computer.
@@ -1242,6 +1290,7 @@ interface WorkflowRow {
   trigger: string
   steps: string
   edges: string
+  notes: string
   enabled: number
   created_at: number
   updated_at: number
@@ -1256,6 +1305,13 @@ const isSteps = strictly(
   >,
 )
 const isEdges = strictly(Schema.Array(EdgeSchema) as unknown as Schema.Codec<unknown, unknown>)
+/** The notes on the canvas of a workflow (spec 010). They sync with the workflow (017). */
+const isNotes = strictly(
+  Schema.Array(NoteSchema).check(Schema.isMaxLength(WORKFLOW_NOTES_MAX)) as unknown as Schema.Codec<
+    unknown,
+    unknown
+  >,
+)
 
 const workflow: KindDef = {
   kind: "workflow",
@@ -1265,11 +1321,12 @@ const workflow: KindDef = {
     trigger: { check: isTrigger },
     steps: { check: isSteps },
     edges: { check: (v) => isEdges(v) && (v as unknown[]).length <= 500 },
+    notes: { check: isNotes },
     enabled: { check: bool },
     runsOn: { check: str(64, 1) },
     createdAt: { check: int },
   },
-  required: ["name", "trigger", "steps", "edges", "enabled", "runsOn", "createdAt"],
+  required: ["name", "trigger", "steps", "edges", "notes", "enabled", "runsOn", "createdAt"],
   fixed: ["createdAt"],
   count: (db) => q.count(db, "workflow"),
   ids: (db, after, limit) => q.ids(db, "workflow", after, limit),
@@ -1282,6 +1339,7 @@ const workflow: KindDef = {
         trigger: JSON.parse(r.trigger),
         steps: JSON.parse(r.steps),
         edges: JSON.parse(r.edges),
+        notes: JSON.parse(r.notes),
         enabled: r.enabled === 1,
         runsOn: r.runs_on ?? ctx.self,
         createdAt: r.created_at,
@@ -1299,6 +1357,7 @@ const workflow: KindDef = {
       trigger: JSON.stringify(f.trigger),
       steps: JSON.stringify(f.steps),
       edges: JSON.stringify(f.edges),
+      notes: JSON.stringify(f.notes),
       enabled: f.enabled ? 1 : 0,
       last_checked_at: now,
       created_at: f.createdAt,
@@ -1313,6 +1372,7 @@ const workflow: KindDef = {
     if (f.trigger !== undefined) columns.trigger = JSON.stringify(f.trigger)
     if (f.steps !== undefined) columns.steps = JSON.stringify(f.steps)
     if (f.edges !== undefined) columns.edges = JSON.stringify(f.edges)
+    if (f.notes !== undefined) columns.notes = JSON.stringify(f.notes)
     if (f.enabled !== undefined) columns.enabled = f.enabled ? 1 : 0
     // A change that makes it run on this computer is ignored: the user here decides that.
     if (f.runsOn !== undefined && f.runsOn !== ctx.self) {
@@ -1419,7 +1479,7 @@ const wstep: KindDef = {
     runId: { check: str(100, 1) },
     stepId: { check: str(64, 1) },
     name: { check: str(500) },
-    kind: { check: oneOf(["agent", "condition", "approval", "post"]) },
+    kind: { check: oneOf(STEP_KINDS) },
     state: { check: oneOf(STEP_STATES) },
     input: { check: str(TEXT_MAX) },
     result: { check: str(TEXT_MAX) },
