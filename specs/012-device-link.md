@@ -14,8 +14,8 @@ through, and is never stored on, a third-party server.
   (phone or computer), and an identity that the app makes on first start. A computer is a Mac with Apple
   silicon. A phone is an iPhone or a phone with Android. The link and its messages are the same for both
   phone systems.
-- **Server**: a computer and its agents (see 000). Every computer is a server for its own
-  agents. A phone is never a server.
+- **Server**: a profile on a computer, and its agents (see 000 and 022). Every profile is a
+  server for its own agents. A phone is never a server.
 - **Client**: a device that opens a server. A phone is always a client. A computer is a client
   when it opens another computer. It shows that computer as a server tile in its rail (see 001).
 - **Link**: the trust between two devices that were paired. A link is for one direction: the
@@ -167,6 +167,23 @@ A client opens the Workflows page of the server (010) in the same screens as on 
 - **Offline:** while the server is offline, the page shows "<server name> is offline." It shows
   no cached workflows.
 
+## Profiles
+
+A server is one profile on one computer (022). Where this spec says "computer" for a server, it
+means a profile on a computer.
+
+- The link, the pairing code, the device name, the switch "Let other devices connect", the list
+  of devices that can open it, and the switch "Can create and change agents" belong to one
+  profile. Settings → Devices shows those of the open profile.
+- A profile is reachable while the app runs, also when another profile is open.
+- A client that is linked to a profile sees that profile only. It cannot learn the name or the
+  number of the other profiles of the computer.
+- A profile cannot link to another profile of the same computer. The dialog says "This is the
+  same computer."
+- Deleting a profile ends its links like "Remove access" for each device. The cache of a client
+  is deleted as this spec says for a removed link.
+- The limit of 10 linked devices holds for each profile.
+
 ## Connection
 
 - A client connects straight to an address of the server. The app has no relay and no
@@ -290,6 +307,8 @@ accept connections, this is the same computer.
   MacBook 1, and Run is off.
 - Type a wrong code 5 times: the code ends. Wait 5 minutes: the code ends.
 - Pair a computer with itself: a plain error shows.
+- A Mac has two profiles. Pair one phone with each. Each phone lists one server and shows nothing
+  of the other profile. Removing access in one profile does not change the other.
 - With both devices in one VPN: pair on the same Wi-Fi, then switch the phone to mobile data.
   It reconnects and works. Turn the VPN off on the phone: the server shows Offline. Turn it on:
   the server comes back without a new pairing.

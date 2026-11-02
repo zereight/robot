@@ -9,8 +9,10 @@ The user follows and directs agents from an iPhone or Android phone while away f
 - The phone does not run agents. It shows the servers it is paired with and acts on them. So it
   works only with at least one Mac that runs ROBot (000, 012).
 - The app exists for iOS and for Android, with the same screens and the same features.
-- **Paired server**: a computer that accepted this phone (see 012). A phone can pair with
-  several computers, for example two laptops. Each one keeps its own agents and data.
+- **Paired server**: a profile on a computer that accepted this phone (see 012 and 022). A phone
+  can pair with several servers, for example two laptops. Each one keeps its own agents and
+  data. The phone sees only the profile it is paired with, and nothing of the other profiles of
+  that computer. It cannot add, switch, rename or delete a profile.
 
 ## Screens
 
@@ -47,12 +49,12 @@ camera.
 
 ## Pairing on the phone
 
-1. The camera reads the QR code of the pairing screen of a computer (012). The QR code holds the
-   addresses and the code, so the user types nothing.
+1. The camera reads the QR code of the pairing screen of a profile on a computer (012, 022). The
+   QR code holds the addresses and the code, so the user types nothing.
 2. "Type it instead" opens a form for an address and the 6-digit code. It is always there, also
    when the user did not allow the camera.
 3. The phone does not ask "Let <name> open this computer too?": a phone is never a server.
-4. The phone shows "Waiting for <computer name> to allow…" until the user answers on the
+4. The phone shows "Waiting for <server name> to allow…" until the user answers on the
    computer. On Allow the new server opens. The errors are the plain lines of 012.
 
 ## Versions

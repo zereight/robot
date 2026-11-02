@@ -12,6 +12,9 @@ tag, so the user reads their work as they read messages from colleagues.
 - **Server**: a computer that runs agents. The user's own computer is the first server. The user
   can link other computers and phones (see 012). A linked computer shows as a server in the rail.
   The phone connects to servers; it does not run agents.
+- **Profile**: a separate space on one computer, with its own agents, chats, accounts, settings
+  and linked devices (see 022). A server is one profile on one computer. A computer with one
+  profile works as this spec says everywhere.
 - **Agent**: a member that does work. One agent can be the main agent that splits work across the
   others. It has a face, a name, a short role line, a model, a
   workspace folder, and a memory. An agent keeps its identity and history when the user changes
@@ -86,6 +89,8 @@ tag, so the user reads their work as they read messages from colleagues.
 
 - A new user can go from first start to a streamed agent reply without reading documentation.
 - The same Mac pairs with an iPhone and with an Android phone, and both work the same way (011).
+- Two profiles on one Mac keep their agents, chats and accounts apart, and a phone that is paired
+  with one of them sees only that one (022).
 - A channel job with two parts shows two plan steps, and both reply chips open the right replies.
 - With the network off except for the model provider, all features in this spec still work. The
   connections of 018 that use a web address are the exception: they need their address.

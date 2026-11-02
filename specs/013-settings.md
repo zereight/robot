@@ -26,6 +26,7 @@ The user sets the app up the way they like in one place.
   computers this computer can open, see 012. Each linked computer has a sync row, see 019.
 - **Notifications**: see 015.
 - **Archive**: archived agents and channels with restore and delete.
+- **Profiles**: add, rename, change the face of and delete profiles, see 022.
 - **Data**: open data folder, open logs folder, export, see 014.
 - **About**: version, licenses of dependencies.
 
@@ -90,7 +91,8 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Every visible string comes from a translation catalogue with English and Korean. Korean uses
   polite informal speech.
 - Changes apply at once, without a restart.
-- Settings are local to the computer. A linked device never changes them.
+- Settings belong to the open profile (022) and are local to the computer. The section Profiles
+  and the setting "start at login" are for the computer. A linked device never changes them.
 
 ## Acceptance
 

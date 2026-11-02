@@ -22,6 +22,9 @@ The user knows when an agent needs them or finishes, without watching the window
   one computer has an answer, the other drops the notice.
 - The mute row in Settings → Notifications follows the server on screen: "This server" for this
   computer, or "Server <name>" for a linked one.
+- Only the open profile (022) makes system notices and shows the status island. A profile that is
+  not open makes none on this computer. Its entry in the profile menu shows a dot while
+  something waits for the user. Devices linked to it get its notices as above.
 
 ## Status island (optional)
 

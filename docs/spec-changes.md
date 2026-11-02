@@ -48,6 +48,7 @@ These are in the code today and the specs now say something else.
 | 002, 017 | Deleting an agent leaves a skill that was only for it. It is listed nowhere and counts in the limit of 100. | The delete removes the agent from the list of every skill. A skill that was only for it is deleted, and the confirm text says how many. |
 | 000, 001, 011, 012, 015 | The desktop app is built for macOS, Windows and Linux. Search opens with Cmd or Ctrl+K. | The desktop app is for Macs with Apple silicon only. Search opens with Cmd+K. The phone app is for iOS and Android. A phone with no such Mac cannot be used. |
 | 012, 010 | A computer client cannot open the workflows of a linked server. | It sees the workflows and their runs, runs and stops them, and answers approval steps. With the switch "Can create and change agents" it also edits them. The assistant and the workflow file stay on the server. |
+| 000, 001, 011, 012, 013, 014, 015, 019 | One computer holds one set of data, and it is one server. | A computer can hold up to 5 profiles. A profile has its own data, accounts, settings, linked devices and sync pair, and it is the server that a phone pairs with. The window shows one profile. The rail has a profile button when there are 2 or more. A profile that is not open keeps working, and makes no notice on the computer. The first profile is the data that exists today. |
 
 ## Slices
 
@@ -91,14 +92,23 @@ These are in the code today and the specs now say something else.
 | S54 | Skills go with their only agent: the confirm text of the delete names the count, the agent leaves the list of every skill, and a skill that was only for it is deleted. It covers skills of starters and of "Teach a task". Archive changes nothing. | 002, 017 |
 | S55 | Apple silicon only: packaging, the release workflow, CI, the README and `docs/release.md` list the macOS arm64 build only. The build for Intel Macs (x64) and its runner go. The code paths, tests and texts for Windows, Linux and Intel go (program search, path rules, key storage, the Ctrl key for search, the platform test for the island). The rows of `docs/spec-questions.md` for the delivery of the app (000) and for the default of the island (015) lose "x64", "Windows", "Linux" and "on macOS only". The end-to-end suite runs on an Apple silicon runner, so the CI jobs for it need one. The phone app (M5b) is for iOS and Android. It is not built yet, and this slice adds none of it. | 000, 001, 011, 012, 015 |
 | S56 | Workflows on a linked computer: the Workflows page of a linked server, the list, canvas, run history, run details and live run state, run and stop, approval steps, "Started by <device name>", changes with the switch only, read-only canvas and "Not allowed" without it, the muted line for the assistant and the workflow file, "Runs on <name>" through sync, the offline line, the new messages and pushes. | 012, 010, 019 |
+| S57 | Profiles on one computer: the first profile made from the data that exists today, with a phone that stays paired. The profile button and menu, the switch of the whole window, Settings → Profiles (add, rename, face, delete with the typed name, the limit of 5, the muted line), and data, keys, logs and the default folder for workspaces apart for each profile. Export and import for one profile. The delete moves the workspace folders to the system trash, so check where the default folder lies now before the delete removes data. | 022, 000, 001, 013, 014 |
+| S58 | Profiles with linked devices and sync: every profile runs while the app runs, with its own device identity, name, switch, pairing code and device list. A phone or computer sees one profile only. The refusal to link two profiles of one computer. A sync pair of two profiles. No notice, sound or island card on the computer for a profile that is not open, and the dot in the menu. Needs S56. A link that exists before this slice must still work. | 022, 011, 012, 015, 019 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
 S50 needs no code change in the app besides text, and can go first. S52 follows S51. S53 does not depend on S50 to S52. S54 follows S53.
+S57 does not depend on S55, but both change the same packaging and data code, so do S55 first when both are open. S58 needs S57.
 S55 does not depend on the other slices. It removes code, so it goes best when no other slice is open on the same files.
 
 ## Decided against
 
+- A password, a PIN or a lock for a profile. Not in the first version (022). A profile keeps work
+  apart and does not lock anyone out; a separate user account of the system is the wall. Open for
+  a later change.
+- A rule that computer use (007) never looks at a window of ROBot. Open: with profiles, an agent of
+  one profile with computer use can look at the window that shows another profile. 022 says this
+  in "What is shared". 007 may need a rule later.
 - The app writes an agent setup from a text that describes a job, and the user then reviews it and
   presses a "Hire" button. Decided against on 2026-11-02. A starter (S53) is the way to begin a
   job. The words "agent", "member" and "New agent" stay in the interface.
