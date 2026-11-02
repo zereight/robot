@@ -122,3 +122,33 @@ test("design: the choice thumb follows the checked option; the list edge resists
 
   await app.close()
 })
+
+test("design: the activity panel of a chat shows the running task, with its time and a stop", async () => {
+  test.setTimeout(90_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1200, 860)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await createAgent(page, "Ada")
+  const panel = page.getByTestId("agent-activity")
+  await expect(panel).toContainText("Nothing is running.")
+
+  // A running reply is a card with its label, state and a clock in figures of one width.
+  await send(page, "please go slow")
+  const card = page.getByTestId("activity-task")
+  await expect(card).toBeVisible()
+  await expect(card).toContainText("please go slow")
+  await expect(card).toContainText("Running")
+  await expect(card.locator("[class*=elapsed]")).toHaveText(/^\d+:\d{2}$/)
+  await expect(card.locator("[class*=elapsed]")).toHaveCSS("font-variant-numeric", "tabular-nums")
+  await shot(page, "s18-03-activity-running")
+
+  // Stop on the card stops the reply. The card leaves and the empty line comes back.
+  await page.getByTestId("activity-stop").click()
+  await expect(page.locator("[data-testid=message][data-status=stopped]")).toHaveCount(1)
+  await expect(card).toHaveCount(0)
+  await expect(panel).toContainText("Nothing is running.")
+
+  await app.close()
+  await mock.close()
+})
