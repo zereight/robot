@@ -136,6 +136,27 @@ const answer = (body: ChatBody): Plan => {
       ],
       delay: 0,
     }
+  // A lead gives one part to Bo, who does it, and one to Cy, who cannot do it (spec 005, Blocked).
+  if (text.includes("split review"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "Two parts, and one that cannot be done",
+          parts: [
+            {
+              member: "Bo",
+              label: "Write the introduction for the first release",
+              prompt: "Write the introduction for the first release",
+            },
+            { member: "Cy", label: "Check the facts", prompt: "BLOCKEDPART check the facts" },
+          ],
+        }),
+      ],
+      delay: 0,
+    }
+  // A member who cannot do the work ends the reply with a last line that starts with "Blocked:".
+  if (text.includes("BLOCKEDPART"))
+    return { chunks: ["I looked at it.\n", "Blocked: no access to the repository"], delay: 0 }
   // "Check knowledge": the agent reports what the app found, line by line.
   if (last.includes("The app found this:")) {
     // What the app found is the lines up to the request that follows them.

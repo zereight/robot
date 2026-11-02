@@ -271,7 +271,8 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
         // The routine may be gone, or live on the other computer only.
         if (!row(task.sourceId)) return
         if (task.state === "done") clearFailures(task.sourceId)
-        else if (task.state === "failed")
+        // A blocked run is a failed run for the pause, with the reason of the block (spec 009).
+        else if (task.state === "failed" || task.state === "blocked")
           addFailure(task.sourceId, task.error ?? { code: "unknown", detail: "" })
       })
 
@@ -580,9 +581,11 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                 id: string
                 state: RoutineEntryState
                 created_at: number
+                error_code: string | null
+                error_detail: string | null
               }>(
-                `SELECT id, state, created_at FROM task WHERE source = 'routine' AND source_id = ?
-                 AND created_at BETWEEN ? AND ?`,
+                `SELECT id, state, created_at, error_code, error_detail FROM task
+                 WHERE source = 'routine' AND source_id = ? AND created_at BETWEEN ? AND ?`,
                 r.id,
                 from,
                 to,
@@ -594,6 +597,10 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                   at: t.created_at,
                   state: t.state,
                   taskId: t.id,
+                  // A blocked run shows the reason of the block (spec 009).
+                  ...(t.state === "blocked" && t.error_code
+                    ? { reason: { code: t.error_code, detail: t.error_detail ?? "" } }
+                    : {}),
                 })
               for (const s of db.all<{
                 at: number

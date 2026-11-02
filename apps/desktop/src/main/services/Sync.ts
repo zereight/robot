@@ -301,9 +301,18 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
             case "wstep":
               once("workflows", () => bus.emit("workflows.changed", { serverId }))
               break
-            case "task":
+            case "task": {
               once("tasks", () => bus.emit("tasks.changed", { serverId }))
+              // The state of a part shows in its channel: in review, blocked (spec 004, 019).
+              const part = db.get<{ source: string; source_id: string | null }>(
+                "SELECT source, source_id FROM task WHERE id = ?",
+                t.id,
+              )
+              const channelId = part?.source === "channel" ? part.source_id : null
+              if (channelId)
+                once(`channel:${channelId}`, () => bus.emit("channels.changed", { channelId }))
               break
+            }
             case "message":
               // A first copy holds a long history: it makes one event, not one for each message.
               if (live && t.action === "deleted") {

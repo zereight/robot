@@ -3,13 +3,15 @@ import {
   type Channel,
   type ChannelMessage,
   type ChatMessage,
+  catalogues,
   type MessageKey,
   type PartChip,
+  type PartInfo,
   type PlaceRef,
   sameDay,
   startsGroup,
 } from "@robot/shared"
-import { Settings2, Square } from "lucide-solid"
+import { Eye, OctagonX, Settings2, Square } from "lucide-solid"
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import chat from "../chat/chat.module.css"
@@ -18,6 +20,8 @@ import { MessageRow } from "../chat/MessageRow.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
+import { useEndRequest, useReview } from "../review/Review.tsx"
+import review from "../review/review.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
@@ -107,6 +111,89 @@ const Chip = (props: { chip: PartChip; onJump: (id: string) => void }) => {
   )
 }
 
+/**
+ * Under the last message of a part (spec 004): the bar of a part in review, and the card of a
+ * blocked or failed part. A part that another computer owns, or that a linked server owns, shows
+ * the state and a muted line: the user decides there (spec 005, 012, 019).
+ */
+const PartCard = (props: {
+  part: PartInfo
+  onAccept: () => void
+  onChanges: () => void
+  onRetry: () => void
+  onEnd: () => void
+}) => {
+  const { t } = useApp()
+  const ui = useUi()
+  // The name of the computer where the user decides: the sync partner, or the linked server.
+  const elsewhere = () => (ui.linked() ? (ui.server()?.name ?? "") : props.part.ownerName)
+  const reason = () => {
+    const error = props.part.error
+    if (!error) return ""
+    const key = `error.${error.code}`
+    return key in catalogues.en
+      ? t(key as MessageKey, { detail: error.detail })
+      : t("error.unknown")
+  }
+  return (
+    <>
+      <Show when={props.part.state === "review"}>
+        <div class={review.bar} data-testid="part-review-bar">
+          <span class={review.barText}>
+            <Eye size={14} aria-hidden="true" />
+            <span>{t("review.waiting")}</span>
+          </span>
+          <Show
+            when={elsewhere() === null}
+            fallback={
+              <span class={review.reason} data-testid="part-decide-on">
+                {t("review.decideOn", { name: elsewhere() || t("sync.anotherComputer") })}
+              </span>
+            }
+          >
+            <Button onClick={props.onAccept} data-testid="part-accept">
+              {t("tasks.accept")}
+            </Button>
+            <Button onClick={props.onChanges} data-testid="part-changes">
+              {t("tasks.requestChanges")}
+            </Button>
+          </Show>
+        </div>
+      </Show>
+      <Show when={props.part.state === "blocked" || props.part.state === "failed"}>
+        <div class={review.bar} data-testid="part-card" data-state={props.part.state}>
+          <span class={review.barText}>
+            <OctagonX size={14} aria-hidden="true" />
+            <span>
+              {props.part.state === "blocked"
+                ? t("channels.part.blocked")
+                : t("channels.part.failed")}
+            </span>
+            <Show when={props.part.state === "blocked"}>
+              <span class={review.reason} data-testid="part-blocked-reason">
+                {reason()}
+              </span>
+            </Show>
+          </span>
+          {/* A failed part has its Retry on the row of the error. A client cannot do either. */}
+          <Show when={!ui.linked()}>
+            <Show when={props.part.state === "blocked"}>
+              <Button onClick={props.onRetry} data-testid="part-retry">
+                {t("chat.retry")}
+              </Button>
+            </Show>
+            <Show when={props.part.ownerName === null}>
+              <Button onClick={props.onEnd} data-testid="part-end-request">
+                {t("tasks.endRequest")}
+              </Button>
+            </Show>
+          </Show>
+        </div>
+      </Show>
+    </>
+  )
+}
+
 export const ChannelView = (props: { channel: Channel }) => {
   const app = useApp()
   const { t } = app
@@ -116,6 +203,8 @@ export const ChannelView = (props: { channel: Channel }) => {
   const retry = useRetry()
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
+  const reviewing = useReview(setError)
+  const ending = useEndRequest(setError)
   const [atBottom, setAtBottom] = createSignal(true)
   const [flashId, setFlashId] = createSignal<string>()
   const [backTo, setBackTo] = createSignal<number>()
@@ -220,6 +309,8 @@ export const ChannelView = (props: { channel: Channel }) => {
   return (
     <div class={chat.view} data-testid="channel-view">
       {retry.dialog()}
+      {reviewing.dialog()}
+      {ending.dialog()}
       <div
         class={chat.scroller}
         ref={scroller}
@@ -292,6 +383,26 @@ export const ChannelView = (props: { channel: Channel }) => {
                           .catch((e) => setError(describeError(e)))
                       }}
                     />
+                    <Show when={message.part}>
+                      {(part) => (
+                        <PartCard
+                          part={part()}
+                          onAccept={() => void reviewing.accept(part().taskId)}
+                          onChanges={() => reviewing.requestChanges(part().taskId)}
+                          onRetry={() =>
+                            void retry
+                              .start((confirmed) =>
+                                call("tasks.retry", {
+                                  id: part().taskId,
+                                  ...(confirmed ? { confirmed } : {}),
+                                }),
+                              )
+                              .catch((e) => setError(describeError(e)))
+                          }
+                          onEnd={() => ending.start(part().taskId)}
+                        />
+                      )}
+                    </Show>
                     <Show when={message.kind !== "text"}>
                       <div class={styles.kindTag}>
                         {message.kind === "plan" ? t("channels.plan") : t("channels.summary")}

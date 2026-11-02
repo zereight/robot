@@ -14,7 +14,7 @@ import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
-import { Button } from "../ui/controls.tsx"
+import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
 import styles from "./channels.module.css"
@@ -31,6 +31,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const [query, setQuery] = createSignal("")
   const [leadId, setLeadId] = createSignal<string | null>(props.channel?.leadId ?? null)
   const [sectionId, setSectionId] = createSignal<string | null>(props.channel?.sectionId ?? null)
+  const [reviewParts, setReviewParts] = createSignal(props.channel?.reviewParts ?? false)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
@@ -68,6 +69,8 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             topic: topic().trim(),
             memberIds: members(),
             leadId: leadId(),
+            // A client cannot set it (spec 012). Turning it off changes no part in review.
+            ...(ui.linked() ? {} : { reviewParts: reviewParts() }),
             ...sectionField(),
           },
         })
@@ -207,6 +210,18 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           </select>
           <span class={styles.hint}>{t("channels.lead.hint")}</span>
         </label>
+        <Show when={props.channel && !ui.linked()}>
+          <div class={styles.field}>
+            <span class={styles.label}>{t("channels.reviewParts")}</span>
+            <Switch
+              label={t("channels.reviewParts")}
+              checked={reviewParts()}
+              onChange={setReviewParts}
+              testId="channel-review-parts"
+            />
+            <span class={styles.hint}>{t("channels.reviewParts.hint")}</span>
+          </div>
+        </Show>
         <Show when={!ui.linked()}>
           <div class={styles.field}>
             <span class={styles.label}>{t("sections.field")}</span>
