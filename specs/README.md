@@ -43,6 +43,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M7 | Changes listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S18 to S25 |
 | M8 | 016 | Agent knowledge: articles, sources, check |
 | M9 | 017, 018, and the changes to 007 and 009 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S29 to S32: routine limits, permission rules and action log, skills, connections |
+| M10 | The changes to 003, 004, 005, 006, 007, 009, 010, 012, 013, 015 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S35 to S37: limits of a task and the retry note, runtime states and the level "Read only", review of parts and Blocked |
 
 ## Template
 
