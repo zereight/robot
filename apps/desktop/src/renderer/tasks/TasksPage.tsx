@@ -11,7 +11,15 @@ import {
   taskTimes,
   taskTree,
 } from "@robot/shared"
-import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+} from "solid-js"
 import { formatElapsed, formatTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -20,6 +28,7 @@ import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
+import { openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -212,6 +221,12 @@ export const TasksPage = () => {
   const devices = useDevices()
   const [filter, setFilter] = createSignal<TaskFilter>({})
   const [openId, setOpenId] = createSignal<string>()
+  // The Today page asks for a task: its detail opens at once.
+  createEffect(() => {
+    if (openTarget()?.kind !== "task") return
+    const target = takeTarget("task")
+    if (target) setOpenId(target.id)
+  })
   const [tasks, { refetch }] = createResource(
     () => ui.server()?.id,
     (serverId) => call("tasks.list", { serverId }).catch(() => []),

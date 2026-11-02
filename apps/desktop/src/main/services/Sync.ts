@@ -444,6 +444,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
                 target: row.channel_id
                   ? { kind: "channel", id: row.channel_id, messageId: id }
                   : { kind: "agent", id: row.agent_id, messageId: id },
+                ...(part.ask.askedAt !== undefined ? { askedAt: part.ask.askedAt } : {}),
               },
               name,
             )
