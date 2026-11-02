@@ -7,6 +7,11 @@
   height: 100%;
 }
 
+/* The edge of the place list springs back only after a drag past its limit. */
+.shell[data-snapping="true"] {
+  transition: grid-template-columns var(--motion-medium) var(--ease-out);
+}
+
 .shell[data-narrow="true"] {
   --rail-width: 56px;
   --tile: 38px;
