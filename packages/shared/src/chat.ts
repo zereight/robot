@@ -64,6 +64,12 @@ export const askSummary = (ask: ToolAsk) =>
 export const askKind = (ask: ToolAsk): "approval" | "question" =>
   ask.kind === "question" ? "question" : "approval"
 
+/**
+ * Whether the card has the choice "Always allow for this agent" (spec 007): an approval, not the
+ * card that asks again each time. An article card and a question have none.
+ */
+export const askAllowsAlways = (ask: ToolAsk): boolean => ask.kind === "approval" && !ask.once
+
 export type MessageStatus = "done" | "streaming" | "stopped" | "failed"
 
 export interface ChatMessage {

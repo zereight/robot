@@ -1,6 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import type { WireNotice } from "@robot/shared"
+import { existsSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import type { ChatMessage, WireNotice } from "@robot/shared"
 import { Effect } from "effect"
+import { runRequest } from "../rpc.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
@@ -405,5 +408,150 @@ describe("notices of a linked server", () => {
     // The same call id on another link is another request.
     await linked(s, notice(), { ...source, linkId: "link-2" })
     expect(s.t.shell.notices).toHaveLength(2)
+  })
+})
+
+describe("the island, other computers and Always allow", () => {
+  /** A step outside the workspace: at "Ask for risky steps" it waits for an approval. */
+  const removal = (path: string) =>
+    `TOOL run_command ${JSON.stringify({ command: `rm "${path}"` })}`
+  const file = (s: Awaited<ReturnType<typeof setup>>, name: string) => {
+    const path = join(s.t.dataDir, name)
+    writeFileSync(path, "x")
+    return path
+  }
+  const cardOf = async (s: Awaited<ReturnType<typeof setup>>) => {
+    const { messages } = await s.run(Chat.use((c) => c.history(s.agent.id)))
+    const reply = messages.filter((m: ChatMessage) => m.author === "agent").at(-1)
+    return reply?.parts.find((p) => p.kind === "tool")
+  }
+  const waitingIsland = async (s: Awaited<ReturnType<typeof setup>>) => {
+    await until(async () => (await s.island()).attention !== null)
+    const attention = (await s.island()).attention
+    if (!attention) throw new Error("no request")
+    return attention
+  }
+
+  test("an approval of this computer has Always allow on the island; the island's answer remembers the step", async () => {
+    const s = await setup()
+    const first = file(s, "own1.txt")
+    const second = file(s, "own2.txt")
+    await s.send(removal(first))
+    const attention = await waitingIsland(s)
+    expect(attention.always).toBe(true)
+    expect(
+      await s.run(Notifier.use((n) => Effect.succeed(n.canAlways(s.agent.id, "call_1")))),
+    ).toBe(true)
+    await runRequest(s.t.runtime, "island.respond", {
+      agentId: s.agent.id,
+      callId: "call_1",
+      answer: "always",
+    })
+    await s.idle()
+    expect(existsSync(first)).toBe(false)
+    // The rule holds: the next step of that kind asks nothing.
+    await s.send(removal(second))
+    await s.idle()
+    expect(existsSync(second)).toBe(false)
+  })
+
+  test("a request of the other computer has no Always allow on the island, and its answer is one Allow", async () => {
+    const s = await setup()
+    const first = file(s, "peer1.txt")
+    const second = file(s, "peer2.txt")
+    await s.send(removal(first))
+    const own = await waitingIsland(s)
+    // The same request shown as one of the other computer of a sync pair, as the sync service does.
+    const { agent: _agent, ...item } = own
+    await s.run(
+      Notifier.use((n) =>
+        Effect.sync(() =>
+          n.attention(
+            { ...item, always: true, serverId: s.local.id, channelId: null },
+            "MacBook 2",
+          ),
+        ),
+      ),
+    )
+    expect((await s.island()).attention).toMatchObject({ callId: "call_1", always: false })
+    expect(
+      await s.run(Notifier.use((n) => Effect.succeed(n.canAlways(s.agent.id, "call_1")))),
+    ).toBe(false)
+    // A window that still sends "always" gets one "Allow" and no rule.
+    await runRequest(s.t.runtime, "island.respond", {
+      agentId: s.agent.id,
+      callId: "call_1",
+      answer: "always",
+    })
+    await s.idle()
+    expect(existsSync(first)).toBe(false)
+    await s.send(removal(second))
+    const next = await waitingIsland(s)
+    expect(next.always).toBe(true)
+    expect(existsSync(second)).toBe(true)
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "call_1", "deny")))
+    await s.idle()
+  })
+
+  test("a request that is not known takes no Always allow", async () => {
+    const s = await setup()
+    expect(await s.run(Notifier.use((n) => Effect.succeed(n.canAlways(s.agent.id, "none"))))).toBe(
+      false,
+    )
+  })
+
+  test("the system notice of a request holds no answer, and the island shows no request of a linked server", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    await s.run(
+      Notifier.use((n) =>
+        Effect.sync(() =>
+          n.notifyLinked(
+            { linkId: "link-1", serverId: "server-b", serverName: "MacBook 2" },
+            {
+              kind: "approval",
+              channelId: null,
+              title: "Ada",
+              body: "Run: ls",
+              target: { kind: "agent", id: "agent-1", messageId: "m1" },
+              callId: "c1",
+              agentId: "agent-1",
+            },
+          ),
+        ),
+      ),
+    )
+    expect(s.t.shell.notices).toHaveLength(1)
+    // A notice has a title, a body and a click, and no button to answer.
+    expect(Object.keys(s.t.shell.notices[0] ?? {}).sort()).toEqual(["body", "click", "title"])
+    expect((await s.island()).attention).toBeNull()
+    expect(await s.run(Notifier.use((n) => Effect.succeed(n.waitingNotices())))).toEqual([])
+  })
+
+  test("a linked device or the sync peer that sends Always allow gives one Allow: the step runs, the card names the device, no rule is saved", async () => {
+    const s = await setup()
+    const first = file(s, "dev1.txt")
+    const second = file(s, "dev2.txt")
+    await s.send(removal(first))
+    await waitingIsland(s)
+    const answered = await runRequest(
+      s.t.runtime,
+      "tools.respond",
+      { agentId: s.agent.id, callId: "call_1", answer: "always" },
+      { id: "device-1", name: "MacBook 2" },
+    )
+    expect(answered.ok).toBe(true)
+    await s.idle()
+    expect(existsSync(first)).toBe(false)
+    expect(await cardOf(s)).toMatchObject({
+      kind: "tool",
+      decision: { answer: "allow", by: "MacBook 2" },
+    })
+    // No rule: the next step of that kind asks again.
+    await s.send(removal(second))
+    await waitingIsland(s)
+    expect(existsSync(second)).toBe(true)
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "call_1", "deny")))
+    await s.idle()
   })
 })

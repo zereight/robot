@@ -736,7 +736,12 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
       input,
     ).pipe(
-      Effect.flatMap(({ agentId, callId, answer }) => answerCard(agentId, callId, answer)),
+      // The island takes "Always allow" only for a request that offers it. Else it is one "Allow".
+      Effect.flatMap(({ agentId, callId, answer }) =>
+        Notifier.use((n) =>
+          Effect.succeed(answer === "always" && !n.canAlways(agentId, callId) ? "allow" : answer),
+        ).pipe(Effect.flatMap((safe) => answerCard(agentId, callId, safe))),
+      ),
       done,
     ),
   "island.openApp": (input) =>

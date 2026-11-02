@@ -82,19 +82,22 @@ const Island = () => {
                 >
                   {t("chat.tool.allow")}
                 </button>
-                <button
-                  type="button"
-                  data-testid="island-always"
-                  onClick={() =>
-                    call("island.respond", {
-                      agentId: a().agentId,
-                      callId: a().callId,
-                      answer: "always",
-                    })
-                  }
-                >
-                  {t("chat.tool.always")}
-                </button>
+                {/* A request of the other computer, and a card that asks each time, have none. */}
+                <Show when={a().always}>
+                  <button
+                    type="button"
+                    data-testid="island-always"
+                    onClick={() =>
+                      call("island.respond", {
+                        agentId: a().agentId,
+                        callId: a().callId,
+                        answer: "always",
+                      })
+                    }
+                  >
+                    {t("chat.tool.always")}
+                  </button>
+                </Show>
                 <button
                   type="button"
                   data-testid="island-deny"

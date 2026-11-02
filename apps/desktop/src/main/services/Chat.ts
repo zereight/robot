@@ -4,6 +4,7 @@ import { basename, extname, join } from "node:path"
 import {
   ATTACH_BYTES,
   ATTACH_MAX,
+  askAllowsAlways,
   askKind,
   askSummary,
   type ChatMessage,
@@ -481,6 +482,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   channelId: null,
                   callId,
                   kind: askKind(ask),
+                  always: askAllowsAlways(ask),
                   summary: islandSummary(askSummary(ask)),
                   target: { kind: "agent", id: agentId, messageId: reply.id },
                 })

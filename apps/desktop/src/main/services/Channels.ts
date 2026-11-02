@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import {
+  askAllowsAlways,
   askKind,
   askSummary,
   CHANNEL_NAME_MAX,
@@ -420,6 +421,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   channelId: o.channel.id,
                   callId,
                   kind: askKind(ask),
+                  always: askAllowsAlways(ask),
                   summary: islandSummary(askSummary(ask)),
                   target: { kind: "channel", id: o.channel.id, messageId: id },
                 })

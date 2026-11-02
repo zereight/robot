@@ -4,9 +4,11 @@ import { join } from "node:path"
 import { type ChatMessage, messageText, type PermissionLevel } from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes, sha256, tarGzOf } from "../../../e2e/fake-runtimes.ts"
+import { runRequest } from "../rpc.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Runtimes } from "./Runtimes.ts"
 import { Secrets } from "./Secrets.ts"
@@ -19,9 +21,11 @@ let fake: FakeRuntimes
 const saved: Record<string, string | undefined> = {}
 beforeAll(() => {
   fake = makeFakeRuntimes()
-  for (const key of ["ROBOT_CLAUDE_BIN", "ROBOT_CODEX_BIN"]) saved[key] = process.env[key]
+  for (const key of ["ROBOT_CLAUDE_BIN", "ROBOT_CODEX_BIN", "ROBOT_MUSE_BIN"])
+    saved[key] = process.env[key]
   process.env.ROBOT_CLAUDE_BIN = fake.claude
   process.env.ROBOT_CODEX_BIN = fake.codex
+  process.env.ROBOT_MUSE_BIN = fake.muse
 })
 afterAll(() => {
   for (const [key, value] of Object.entries(saved)) {
@@ -212,11 +216,12 @@ describe("runtime accounts", () => {
 })
 
 const chatSetup = async (
-  kind: "claude_code" | "codex",
+  kind: "claude_code" | "codex" | "muse",
   permission: PermissionLevel = "ask_risky",
 ) => {
   fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
   fake.setCodex({ loggedIn: true, method: "chatgpt" })
+  fake.setMuse({ loggedIn: true })
   const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(Providers.use((p) => p.connect({ kind, name: "Sub" })))
@@ -230,7 +235,7 @@ const chatSetup = async (
         instructions: "Be brief.",
         model: {
           accountId: account.id,
-          model: kind === "codex" ? "default" : "sonnet",
+          model: kind === "claude_code" ? "sonnet" : "default",
           effort: null,
         },
       }),
@@ -254,7 +259,7 @@ const chatSetup = async (
   }
   const respond = (answer: string) =>
     run(Tools.use((x) => x.respond(agent.id, "toolu_fake1", answer)))
-  return { run, agent, local, history, reply, send, settled, card, respond, account }
+  return { run, t, agent, local, history, reply, send, settled, card, respond, account }
 }
 
 describe("download", () => {
@@ -493,5 +498,57 @@ describe("approvals for a subscription", () => {
     await s.settled()
     const call = fake.codexCalls().at(-1) as { args: string[] }
     expect(call.args[call.args.indexOf("-s") + 1]).toBe("read-only")
+  })
+})
+
+describe("approvals of Muse Code answered from other devices", () => {
+  test("a linked device and the sync peer answer the card; their Always allow is one Allow and saves no rule", async () => {
+    const s = await chatSetup("muse")
+    const done = () =>
+      s
+        .history()
+        .then((h) => h.messages.filter((m) => m.author === "agent" && m.status === "done").length)
+    /** The answer of a linked device: the sync peer is a linked device too (spec 012, 019). */
+    const answer = (name: string, value: string) =>
+      runRequest(
+        s.t.runtime,
+        "tools.respond",
+        { agentId: s.agent.id, callId: "tool-1", answer: value },
+        { id: `device-${name}`, name },
+      )
+
+    await s.send("do it [ask]")
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await s.card())?.ask).toMatchObject({
+      kind: "approval",
+      summary: "rm /etc/robot-test",
+    })
+    // The island and the system notice show the same request.
+    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().attention)))
+    expect(waiting).toMatchObject({ callId: "tool-1", kind: "approval", always: true })
+
+    // A linked device says "Always allow": the step runs once, and the card names the device.
+    expect((await answer("Phone", "always")).ok).toBe(true)
+    await s.settled()
+    expect(messageText((await s.reply()) as ChatMessage)).toBe("Ran it.")
+    expect((await s.card())?.decision).toEqual({ answer: "allow", by: "Phone" })
+
+    // No rule was saved, so the same step asks again. The sync peer denies it.
+    await s.send("do it again [ask]")
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await answer("MacBook 2", "deny")).ok).toBe(true)
+    await s.settled()
+    expect(messageText((await s.reply()) as ChatMessage)).toBe("Not allowed.")
+    expect((await s.card())?.decision).toEqual({ answer: "deny", by: "MacBook 2" })
+
+    // The window of this computer can make the rule, and then the step asks nothing.
+    await s.send("third [ask]")
+    await until(async () => (await s.card())?.state === "waiting")
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "tool-1", "always")))
+    await until(async () => (await done()) === 3)
+    await s.send("fourth [ask]")
+    await until(async () => (await done()) === 4)
+    expect(messageText((await s.reply()) as ChatMessage)).toBe("Ran it.")
+    expect((await s.card())?.decision).toBeUndefined()
   })
 })

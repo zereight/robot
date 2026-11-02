@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { type ChatMessage, messageText, startsGroup } from "./chat.ts"
+import { askAllowsAlways, askKind, type ChatMessage, messageText, startsGroup } from "./chat.ts"
 
 const msg = (
   author: "user" | "agent",
@@ -45,5 +45,18 @@ describe("chat", () => {
         ],
       }),
     ).toBe("ab")
+  })
+})
+
+describe("the choices of a card that waits", () => {
+  test("only an approval that does not ask each time has Always allow", () => {
+    expect(askAllowsAlways({ kind: "approval", summary: "ls" })).toBe(true)
+    expect(askAllowsAlways({ kind: "approval", summary: "ls", once: false })).toBe(true)
+    expect(askAllowsAlways({ kind: "approval", summary: "/work", once: true })).toBe(false)
+    expect(askAllowsAlways({ kind: "question", question: "Which?", choices: ["a"] })).toBe(false)
+    const article = { kind: "article", title: "A", before: "x", after: null } as const
+    expect(askAllowsAlways(article)).toBe(false)
+    // The island counts an article card as an approval, but it still has no Always allow.
+    expect(askKind(article)).toBe("approval")
   })
 })

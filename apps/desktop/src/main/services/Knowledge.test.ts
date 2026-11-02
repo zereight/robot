@@ -22,6 +22,7 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { Notifier } from "./Notifier.ts"
 import { Providers, secretKey } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
@@ -1179,6 +1180,9 @@ describe("the first save in a workspace that the user chose", () => {
       once: true,
       askedAt: expect.any(Number),
     })
+    // The island offers no "Always allow" either: the answer would deny the step.
+    const island = await s.run(Notifier.use((n) => Effect.sync(() => n.island().attention)))
+    expect(island).toMatchObject({ kind: "approval", always: false })
     expect(existsSync(join(chosen, "Knowledge"))).toBe(false)
     await s.respond("deny")
     await s.finished()

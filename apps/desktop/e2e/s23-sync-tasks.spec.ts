@@ -126,13 +126,16 @@ test("sync tasks: an approval is answered on the other computer, one task per ag
     // A computer cannot make an "Always allow" rule for another computer.
     await expect(two.page.getByTestId("ask-always")).toHaveCount(0)
     await expect(one.page.getByTestId("ask-always")).toHaveCount(1)
-    // The second computer gets a notice, and the island shows the card.
-    const island = await rpc<{ attention: { agent: { name: string }; kind: string } | null }>(
-      two.page,
-      "island.get",
-    )
+    // The second computer gets a notice, and the island shows the card. The island there has no
+    // "Always allow" for it, and the island of the first computer has.
+    type Island = {
+      attention: { agent: { name: string }; kind: string; always: boolean } | null
+    }
+    const island = await rpc<Island>(two.page, "island.get")
     expect(island.attention?.agent.name).toBe("Ada")
     expect(island.attention?.kind).toBe("approval")
+    expect(island.attention?.always).toBe(false)
+    expect((await rpc<Island>(one.page, "island.get")).attention?.always).toBe(true)
     await shot(two.page, "s23-02-card-on-two")
 
     // One task per agent: a message on the second computer waits for the task on the first.

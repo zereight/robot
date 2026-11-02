@@ -181,6 +181,21 @@ const source = async () => {
       output: "",
       knowledge: { kind: "source", name: "data.bin" },
     },
+    // A step of Muse Code that waits for an approval: the card holds the whole command.
+    {
+      kind: "tool",
+      id: "tool-1",
+      name: "bash",
+      label: "bash: cat > notes.txt",
+      state: "waiting",
+      input: JSON.stringify({ command: "cat > notes.txt <<'EOF'\n".concat("x".repeat(12_000)) }),
+      output: "",
+      ask: {
+        kind: "approval",
+        summary: "cat > notes.txt <<'EOF'\n".concat("x".repeat(12_000)),
+        askedAt: NOW,
+      },
+    },
   ]
   const sql = (text: string, ...args: (string | number | null)[]) => db.run(text, ...args)
   sql(
@@ -362,7 +377,7 @@ describe("one item of every kind is made from its first copy", () => {
     ])
     // The tool cards arrived with their asks and their knowledge notes.
     const parts = (KINDS.message.read(b, "msg-1")?.fields.parts ?? []) as { kind: string }[]
-    expect(parts.length).toBe(8)
+    expect(parts.length).toBe(9)
 
     // The new agent and channel are in no user section here, and no section was made.
     expect(
@@ -568,6 +583,9 @@ describe("the cards that ask and the notes of knowledge tools in a message", () 
     ok({ ask: { kind: "question", question: "Which?", choices: ["a"], askedAt: NOW } })
     ok({ ask: { kind: "article", title: "Alpha", before: "old", after: "new", askedAt: NOW } })
     ok({ ask: { kind: "article", title: "Alpha", before: "old", after: null } })
+    // The command of a step can be long, as long as its input.
+    ok({ ask: { kind: "approval", summary: "x".repeat(12_000), askedAt: NOW } })
+    bad({ ask: { kind: "approval", summary: "x".repeat(2_000_001) } })
     bad({ ask: { kind: "approval", summary: "Run ls", once: "yes" } })
     bad({ ask: { kind: "approval", summary: "Run ls", extra: 1 } })
     bad({ ask: { kind: "article", title: "Alpha", before: "old" } })

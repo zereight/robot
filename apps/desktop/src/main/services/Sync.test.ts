@@ -1091,6 +1091,8 @@ describe("tasks, routines, workflows and files of two computers", () => {
     )
     expect(notice?.callId).toBe("call-1")
     expect(notice?.agentId).toBe(ada.id)
+    // The island shows it, and offers no "Always allow" for a task of the other computer.
+    expect(notice?.always).toBe(false)
     await SQL(b, `UPDATE message SET parts = ?, status = 'done' WHERE id = 'card-1'`, parts("done"))
     expect(
       await waitFor(

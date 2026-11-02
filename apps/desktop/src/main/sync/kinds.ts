@@ -146,7 +146,9 @@ const askCheck = (v: unknown): boolean => {
   if (v.kind === "approval") {
     return (
       shape(["kind", "summary"], ["askedAt", "once"])(v) &&
-      str(5000)(v.summary) &&
+      // The summary is the command text as the program or the model wrote it, so it may be as
+      // long as the input of the same card. A cut would show the user less than what runs.
+      str(TEXT_MAX)(v.summary) &&
       timeOk &&
       (v.once === undefined || bool(v.once))
     )

@@ -63,6 +63,11 @@ export interface NotifierService {
    * computer when the task runs there (spec 015, 019).
    */
   attention(item: Omit<WaitingItem, "agent">, from?: string): void
+  /**
+   * Whether the island may take "Always allow" for this request. False for a request that is not
+   * known, and for a request of the other computer: the answer is then one "Allow" (spec 015, 019).
+   */
+  canAlways(agentId: string, callId: string): boolean
   clearAttention(agentId: string, callId: string): void
   clearAgent(agentId: string): void
   island(): IslandState
@@ -199,7 +204,12 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         attention: (partial, from) => {
           const agent = agentInfo(partial.agentId)
           if (!agent) return
-          const item: WaitingItem = { ...partial, agent }
+          // A request of the other computer never has "Always allow" here, whatever the caller says.
+          const item: WaitingItem = {
+            ...partial,
+            agent,
+            always: partial.always && from === undefined,
+          }
           const at = waiting.findIndex(
             (w) => w.agentId === item.agentId && w.callId === item.callId,
           )
@@ -219,6 +229,8 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
           )
           refresh()
         },
+        canAlways: (agentId, callId) =>
+          waiting.some((w) => w.agentId === agentId && w.callId === callId && w.always),
         clearAttention: (agentId, callId) => {
           const at = waiting.findIndex((w) => w.agentId === agentId && w.callId === callId)
           if (at < 0) return

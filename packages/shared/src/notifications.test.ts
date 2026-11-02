@@ -32,6 +32,7 @@ test("island shape follows the mode and attention", () => {
     kind: "approval",
     summary: "rm x",
     target: { kind: "agent", id: "a" },
+    always: true,
   } as const
   expect(islandShape(base)).toBe("bar")
   expect(islandShape({ ...base, mode: "attention" })).toBe("hidden")

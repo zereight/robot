@@ -69,6 +69,12 @@ export interface IslandAttention {
   /** One line: the step to approve, or the question. */
   readonly summary: string
   readonly target: PlaceTarget
+  /**
+   * True when the island may offer "Always allow for this agent": an approval of a task that runs
+   * on this computer, with that choice on its card. A request of the other computer of a sync
+   * pair never has it (spec 015, 019).
+   */
+  readonly always: boolean
 }
 
 export interface IslandState {

@@ -437,6 +437,8 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
                 channelId: row.channel_id ?? null,
                 callId: part.id,
                 kind: askKind(part.ask),
+                // A computer cannot change what an agent may always do on the other one (019).
+                always: false,
                 summary: islandSummary(askSummary(part.ask)),
                 target: row.channel_id
                   ? { kind: "channel", id: row.channel_id, messageId: id }
