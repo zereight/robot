@@ -90,6 +90,16 @@ export const resizeWindow = (app: ElectronApplication, width: number, height: nu
     { width, height },
   )
 
+/**
+ * Ends the app at once, as when the power goes. The number of the process that Playwright starts is
+ * not always the number of the app: on Windows the app is a child of it, and a kill of the parent
+ * leaves the app running with its connections open. So the app tells its own number.
+ */
+export const killAtOnce = async (app: ElectronApplication) => {
+  const pid = await app.evaluate(() => process.pid)
+  process.kill(pid, "SIGKILL")
+}
+
 /** Connects a mock provider account in settings and closes settings. */
 export const connectMock = async (page: Page, baseUrl: string, apiKey: string, name = "Mock") => {
   await page.getByTestId("open-settings").click()

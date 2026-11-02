@@ -114,6 +114,22 @@ export const rpc = <T = unknown>(page: Page, method: string, input?: unknown) =>
     [method, input] as [string, unknown],
   ) as Promise<T>
 
+/**
+ * Runs `changes` while the sync is paused, then resumes it. The other computer gets everything in
+ * one batch, however long the changes take. A running sync collects changes for 150 ms and then
+ * sends what it has, so a slow machine would split a series of changes into several batches (a
+ * guard of "many deletions" counts one batch).
+ */
+export const whilePaused = async (page: Page, changes: () => Promise<void>) => {
+  const linkId = (await rpc<{ linkId: string }[]>(page, "sync.list"))[0]?.linkId
+  await rpc(page, "sync.pause", { linkId })
+  try {
+    await changes()
+  } finally {
+    await rpc(page, "sync.resume", { linkId })
+  }
+}
+
 export const rowOf = (page: Page, name: string) =>
   page.locator("[data-testid^=place-agent-]", { hasText: new RegExp(`^${name}`) })
 

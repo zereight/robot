@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { expect, type Page, test } from "@playwright/test"
-import { createAgent, shot } from "./harness.ts"
+import { createAgent, killAtOnce, shot } from "./harness.ts"
 import { GOOD_KEY } from "./mock-provider.ts"
 import {
   closeSettings,
@@ -234,7 +234,7 @@ test("sync tasks: a card of a computer that is off says so", async () => {
     await expect(two.page.getByTestId("ask-origin-offline")).toHaveCount(0)
     await expect(two.page.getByTestId("tool-origin")).toContainText("from MacBook 1")
     // The first computer is lost at once, as when its power goes: its task does not end by itself.
-    one.app.process().kill("SIGKILL")
+    await killAtOnce(one.app)
     await expect(two.page.getByTestId("ask-origin-offline")).toHaveText("MacBook 1 is offline.", {
       timeout: 30_000,
     })
