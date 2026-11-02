@@ -244,6 +244,7 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       ...(existing?.kind === "tool" && existing.knowledge ? { knowledge: existing.knowledge } : {}),
       ...(existing?.kind === "tool" && existing.answeredInChat ? { answeredInChat: true } : {}),
       ...(existing?.kind === "tool" && existing.secret ? { secret: existing.secret } : {}),
+      ...(existing?.kind === "tool" && existing.settings ? { settings: existing.settings } : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -756,6 +757,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
+            onSettings: (callId, note) => changePart(callId, (p) => ({ ...p, settings: note })),
             knowledgeChanges: { count: 0 },
             turn: mark,
             taskId: task.id,
@@ -783,6 +785,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               tools: tools.defs({
                 memory: agent.memory_enabled === 1,
                 knowledge: knowledge.enabled(agentId),
+                // Changes from the chat are for agents of an API provider (spec 002).
+                settings: !isRuntime,
               }),
               signal: controller.signal,
               workspace: agent.workspace,
