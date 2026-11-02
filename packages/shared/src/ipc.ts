@@ -195,7 +195,7 @@ export interface RpcMethods {
   /** Asks for a workflow file and reads it. `null` when cancelled. Nothing is made yet. */
   "workflowFile.open": { input: { serverId: string }; output: WorkflowFilePreview | null }
   /** Makes the workflows of the file that `workflowFile.open` read. All of them are off. */
-  "workflowFile.import": { input: { serverId: string }; output: WorkflowFileImported }
+  "workflowFile.apply": { input: { serverId: string }; output: WorkflowFileImported }
   "notifications.mutes": { input: undefined; output: readonly Mute[] }
   "notifications.setMute": {
     input: { kind: "server" | "channel"; id: string; choice: MuteChoice }

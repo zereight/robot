@@ -61,9 +61,9 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
               testId: "wf-menu-export",
             },
             {
-              label: t("workflowFile.menu.import"),
+              label: t("workflowFile.menu.importFile"),
               onSelect: () => void startImport(),
-              testId: "wf-menu-import",
+              testId: "wf-menu-import-file",
             },
           ]}
         />

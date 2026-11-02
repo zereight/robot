@@ -246,7 +246,7 @@ export class WorkflowFiles extends Context.Service<WorkflowFiles, WorkflowFilesS
         } satisfies WorkflowFilePreview
       })
 
-      const importWorkflows = Effect.fn("WorkflowFiles.import")(function* (input: {
+      const importWorkflows = Effect.fn("WorkflowFiles.apply")(function* (input: {
         serverId: string
       }) {
         if (!pending) return yield* new AppError({ code: "invalid_input" })
