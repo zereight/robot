@@ -13,11 +13,13 @@ import {
   messageSkill,
   messageText,
   type OutsideSource,
+  ROUTINES_MAX,
   type SecretAsk,
   type SecretAuth,
   type SettingChange,
   type SettingsNote,
   type SettingValue,
+  SKILLS_MAX,
   type SkillPart,
   type ToolAsk,
 } from "@robot/shared"
@@ -1007,16 +1009,25 @@ const FailedRow = (props: { message: ChatMessage; onRetry: () => void }) => {
 
 /**
  * One muted line with no task: the watch of a routine checked and saw no change (spec 009,
- * "Post when nothing changed").
+ * "Post when nothing changed"), or a part of a starter was not made (spec 002, "Starters").
  */
 const NoteLine = (props: { message: ChatMessage }) => {
   const app = useApp()
   const { t } = app
   const note = () =>
     props.message.parts.find((p): p is Extract<MessagePart, { kind: "note" }> => p.kind === "note")
+  const words = () => {
+    const part = note()
+    if (!part) return ""
+    if (part.note === "watch_unchanged") return t("routines.note.unchanged", { name: part.routine })
+    return t(`starters.note.${part.what}.${part.why}` as MessageKey, {
+      name: part.name,
+      n: part.what === "routine" ? ROUTINES_MAX : SKILLS_MAX,
+    })
+  }
   return (
     <div class={styles.noteLine} data-testid="note-line">
-      <span>{t("routines.note.unchanged", { name: note()?.routine ?? "" })}</span>
+      <span>{words()}</span>
       <span>{formatTime(app.locale(), props.message.createdAt)}</span>
     </div>
   )

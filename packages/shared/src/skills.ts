@@ -35,6 +35,22 @@ export const skillName = (name: string) => name.trim().replace(/^\/+/, "").trim(
 /** The key that makes names unique: case does not count. */
 export const skillNameKey = (name: string) => skillName(name).normalize("NFC").toLocaleLowerCase()
 
+/**
+ * A name that no skill uses yet. A name that is taken gets a number: "Name 2", "Name 3". The base
+ * is cut when the name with its number would pass the length limit. `taken` tells whether a name
+ * is in use. It must ignore case, as the check of the form does.
+ */
+export const numberedSkillName = (name: string, taken: (candidate: string) => boolean) => {
+  const base = skillName(name)
+  if (!taken(base)) return base
+  for (let n = 2; ; n++) {
+    const tail = ` ${n}`
+    const room = SKILL_NAME_MAX - [...tail].length
+    const candidate = [...base].slice(0, room).join("").trimEnd() + tail
+    if (!taken(candidate)) return candidate
+  }
+}
+
 /** The problems of a skill form, in the order of the fields. Empty when it can be saved. */
 export const skillProblems = (input: SkillInput): readonly SkillProblem[] => {
   const problems: SkillProblem[] = []

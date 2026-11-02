@@ -183,9 +183,6 @@ export const copyName = (name: string, suffix: string, taken: (candidate: string
   return candidate
 }
 
-export const AGENT_TEMPLATES = ["general", "reviewer", "researcher"] as const
-export type AgentTemplate = (typeof AGENT_TEMPLATES)[number]
-
 /**
  * First names for the name button. They are English in every interface language (002), so they
  * are data and not interface text.

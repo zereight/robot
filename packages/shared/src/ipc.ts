@@ -44,6 +44,7 @@ import type { SavedSecret } from "./secrets.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Skill, SkillInput } from "./skills.ts"
+import type { AgentStarterCreate } from "./starters.ts"
 import type { RetryResult } from "./steps.ts"
 import type {
   SyncChangeEntry,
@@ -203,6 +204,12 @@ export interface RpcMethods {
   "agents.list": { input: { serverId: string; archived: boolean }; output: readonly Agent[] }
   "agents.get": { input: { id: string }; output: Agent }
   "agents.create": { input: AgentCreate; output: Agent }
+  /**
+   * Makes an agent from the form with a starter picked. It also makes the paused routine and the
+   * skill of the starter, as far as the limits allow. A note in the chat says what it did not
+   * make (spec 002, "Starters"). A linked device cannot call it.
+   */
+  "agents.createFromStarter": { input: AgentStarterCreate; output: Agent }
   "agents.update": { input: { id: string; patch: AgentPatch }; output: Agent }
   "agents.duplicate": { input: { id: string; suffix: string }; output: Agent }
   "agents.archive": { input: { id: string }; output: Agent }

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import {
+  numberedSkillName,
   SKILLS_MAX,
   type Skill,
   type SkillInput,
@@ -36,8 +37,14 @@ export interface SkillsService {
   /**
    * Makes a skill on the server of the agent, for this agent only, turned on. The checks of the
    * skill form apply (spec 017): the reason of a failure is the code of the first problem.
+   * With `numbered`, a name that is taken gets a number ("Name 2") and is not refused. A starter
+   * uses it (spec 002).
    */
-  createForAgent(agentId: string, input: SkillInput): Effect.Effect<Skill, AppError>
+  createForAgent(
+    agentId: string,
+    input: SkillInput,
+    options?: { readonly numbered?: boolean },
+  ): Effect.Effect<Skill, AppError>
   /** A skill that the agent may use now: it exists, it is on, and it is for this agent. */
   usable(agentId: string, skillId: string): Effect.Effect<Skill, AppError>
 }
@@ -55,16 +62,25 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
         )?.server_id
 
       return Skills.of({
-        createForAgent: (agentId, input) =>
+        createForAgent: (agentId, input, options) =>
           Effect.gen(function* () {
             const serverId = serverOf(agentId)
             if (!serverId) return yield* new AppError({ code: "agent_not_found" })
             const problem = skillProblems(input)[0]
             if (problem) return yield* new AppError({ code: problem.code, detail: problem.field })
-            const name = skillName(input.name)
-            const key = skillNameKey(name)
-            if (db.get("SELECT 1 FROM skill WHERE server_id = ? AND name_key = ?", serverId, key))
+            const taken = (candidate: string) =>
+              Boolean(
+                db.get(
+                  "SELECT 1 FROM skill WHERE server_id = ? AND name_key = ?",
+                  serverId,
+                  skillNameKey(candidate),
+                ),
+              )
+            const wanted = skillName(input.name)
+            if (!options?.numbered && taken(wanted))
               return yield* new AppError({ code: "skill_name_taken", detail: "name" })
+            const name = options?.numbered ? numberedSkillName(wanted, taken) : wanted
+            const key = skillNameKey(name)
             const count =
               db.get<{ n: number }>("SELECT COUNT(*) AS n FROM skill WHERE server_id = ?", serverId)
                 ?.n ?? 0
