@@ -23,6 +23,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 013 | [Settings, themes, languages, decision model and roles](013-settings.md) | Draft |
 | 014 | [Local data, privacy, secrets and export](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
+| 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
 
 ## Milestones
 
@@ -35,6 +36,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M5 | 011, 012 | Phone app and link |
 | M6 | 015 | Notifications and status island |
 | M7 | Changes listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S18 to S25 |
+| M8 | 016 | Agent knowledge: articles, sources, check |
 
 ## Template
 

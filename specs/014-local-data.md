@@ -9,7 +9,9 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - One local database file holds servers, agents, conversations, tasks, routines, workflows,
   memory and settings. Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
-- The database is the source of truth. Nothing remote is a cache of it.
+- The database is the source of truth. Nothing remote is a cache of it. The one exception is the
+  articles and sources of agent knowledge (016): they are files in the agent workspace. An export
+  copies sources as they are, so the app refuses to add a source that holds a stored key (016).
 - The app never sends conversation content, files, or commands anywhere except the model provider
   an agent uses and the pages an agent visits. There is one more exception, and it is off by
   default: the decision model that the user sets up (see 013). When the user sets it up:
@@ -39,8 +41,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 
 ## Export and backup
 
-- Export: one archive with the database, attachments, and a readme of the format. Secrets are
-  not included.
+- Export: one archive with the database, attachments, agent knowledge, and a readme of the
+  format. Secrets are not included.
 - Import of a ROBot export into an empty app restores everything except secrets.
 
 ## Acceptance
