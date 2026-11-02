@@ -83,10 +83,19 @@
 .chip {
   border: 1px solid var(--c-border);
   background: var(--c-main);
-  border-radius: 999px;
+  border-radius: var(--radius-m);
   padding: 4px 12px;
   font-weight: 500;
   color: var(--c-text-muted);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
+}
+
+.chip:active {
+  transform: scale(var(--press-scale));
 }
 
 .chip:hover {
