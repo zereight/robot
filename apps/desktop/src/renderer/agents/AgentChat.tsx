@@ -10,6 +10,7 @@ import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { AgentActivity } from "./AgentActivity.tsx"
 import { AgentProfileDialog } from "./AgentDialogs.tsx"
 import styles from "./agents.module.css"
 import { Face } from "./Face.tsx"
@@ -147,6 +148,7 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
         {(a) => <Header agent={a()} picking={picking()} setPicking={setPicking} />}
       </Show>
     ),
+    panel: <Show when={agent()}>{(a) => <AgentActivity agent={a()} />}</Show>,
     body: (
       <Show when={agent()}>
         {(a) => (

@@ -172,6 +172,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  animation: card-in var(--motion-medium) var(--ease-out);
 }
 .cardHead {
   display: flex;
@@ -206,10 +207,19 @@
   align-items: center;
   gap: 6px;
   font-size: var(--text-xs);
+  /* The steps of a plan come in one after the other. */
+  animation: card-in var(--motion-medium) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--motion-stagger));
 }
 .stepIcon {
   display: inline-flex;
   color: var(--c-text-muted);
+  animation: icon-pop var(--motion-fast) var(--ease-out);
+}
+/* The check is drawn on. Its path is about 23 units long. */
+.step[data-state="done"] .stepIcon svg path {
+  stroke-dasharray: 24;
+  animation: draw-on var(--motion-medium) var(--ease-out);
 }
 .step[data-state="done"] .stepIcon {
   color: var(--c-success);
@@ -223,6 +233,23 @@
 }
 .spin {
   animation: spin 1s linear infinite;
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes icon-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+@keyframes draw-on {
+  from {
+    stroke-dashoffset: 24;
+  }
 }
 :root[data-reduce-motion="true"] .spin {
   animation: none;

@@ -23,6 +23,8 @@
   --motion-fast: 120ms;
   --motion-medium: 200ms;
   --motion-slow: 260ms;
+  /* Delay between the items of a group that enters together. At most six items are staggered. */
+  --motion-stagger: 40ms;
   /* One strong curve for things that enter and leave, one for things that move on screen. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -38,6 +40,7 @@
   --motion-fast: 0ms;
   --motion-medium: 0ms;
   --motion-slow: 0ms;
+  --motion-stagger: 0ms;
 }
 
 html,
