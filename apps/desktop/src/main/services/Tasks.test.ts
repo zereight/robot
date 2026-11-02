@@ -425,4 +425,114 @@ describe("Tasks", () => {
     expect(JSON.parse(message?.parts ?? "[]")[0].ask.askedAt).toBe(5)
     await second.dispose()
   })
+  test("a task starts at not sent, and its progress only goes up (spec 005)", async () => {
+    const { run, agent, make } = await setup()
+    const ada = await agent("Ada")
+    const task = await make(ada.id, "p")
+    const progress = async () => (await run(Tasks.use((t) => t.get(task.id)))).task.progress
+    expect(task.progress).toBe("not_sent")
+    const set = (value: "not_sent" | "sent" | "started") =>
+      run(Tasks.use((t) => Effect.sync(() => t.setProgress(task.id, value))))
+    await set("sent")
+    expect(await progress()).toBe("sent")
+    await set("started")
+    expect(await progress()).toBe("started")
+    // It never goes back.
+    await set("sent")
+    await set("not_sent")
+    expect(await progress()).toBe("started")
+  })
+
+  test("a new task from Retry starts at not sent, however far the first one went", async () => {
+    const { run, agent, make } = await setup()
+    const ada = await agent("Ada")
+    const first = await make(ada.id, "p")
+    await run(Tasks.use((t) => Effect.sync(() => t.setProgress(first.id, "started"))))
+    const again = await run(
+      Tasks.use((t) =>
+        t.create({
+          agentId: ada.id,
+          prompt: "p",
+          source: "chat",
+          sourceId: ada.id,
+          retryOf: first.id,
+        }),
+      ),
+    )
+    expect(again.progress).toBe("not_sent")
+    expect((await run(Tasks.use((t) => t.get(first.id)))).task.progress).toBe("started")
+  })
+
+  test("a task of the other computer keeps the progress that came with it", async () => {
+    const { run, agent, make } = await setup()
+    const ada = await agent("Ada")
+    const task = await make(ada.id, "p")
+    await run(
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.run("UPDATE task SET origin = 'other', progress = 'sent' WHERE id = ?", task.id),
+        ),
+      ),
+    )
+    await run(Tasks.use((t) => Effect.sync(() => t.setProgress(task.id, "started"))))
+    expect((await run(Tasks.use((t) => t.get(task.id)))).task.progress).toBe("sent")
+  })
+
+  test("after a restart, the failed task keeps how far its turn went (spec 005)", async () => {
+    const { platform, dataDir } = testPlatform()
+    const file = join(dataDir, "robot.db")
+    const open = () =>
+      ManagedRuntime.make(
+        appLayer({
+          platform,
+          databaseFile: file,
+          localServerName: "T",
+          emit: () => {},
+          secrets: Secrets.memory,
+        }),
+      )
+    const first = open()
+    const local = await first.runPromise(Servers.use((s) => s.local))
+    const ada = await first.runPromise(
+      Agents.use((a) =>
+        a.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const make = (prompt: string) =>
+      first.runPromise(
+        Tasks.use((t) => t.create({ agentId: ada.id, prompt, source: "chat", sourceId: ada.id })),
+      )
+    const queued = await make("queued")
+    const sent = await make("sent")
+    const started = await make("started")
+    await first.runPromise(
+      Tasks.use((t) =>
+        Effect.sync(() => {
+          t.setProgress(sent.id, "sent")
+          t.setProgress(started.id, "started")
+        }),
+      ),
+    )
+    await first.runPromise(
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.run("UPDATE task SET state = 'running' WHERE id IN (?, ?)", sent.id, started.id),
+        ),
+      ),
+    )
+    await first.dispose()
+    const second = open()
+    const after = async (id: string) => (await second.runPromise(Tasks.use((t) => t.get(id)))).task
+    for (const [id, progress] of [
+      [queued.id, "not_sent"],
+      [sent.id, "sent"],
+      [started.id, "started"],
+    ] as const) {
+      const task = await after(id)
+      expect(task.state).toBe("failed")
+      expect(task.error?.code).toBe("app_stopped")
+      expect(task.progress).toBe(progress)
+    }
+    await second.dispose()
+  })
 })

@@ -3,6 +3,8 @@ import {
   type LicenseEntry,
   type MessageKey,
   type MessageParams,
+  SILENT_LIMITS,
+  type SilentLimit,
   STEP_LIMIT_MAX,
   STEP_LIMIT_MIN,
 } from "@robot/shared"
@@ -144,6 +146,21 @@ const General = () => {
             { value: "join", label: t("settings.duringTurn.join") },
             { value: "queue", label: t("settings.duringTurn.queue") },
           ]}
+        />
+      </Row>
+      <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
+        <Segmented
+          label={t("settings.silentLimit")}
+          testId="setting-silent-limit"
+          value={String(app.settings.silentLimit)}
+          onChange={(value) => app.update({ silentLimit: Number(value) as SilentLimit })}
+          options={SILENT_LIMITS.map((minutes) => ({
+            value: String(minutes),
+            label:
+              minutes === 0
+                ? t("settings.silentLimit.never")
+                : t("settings.silentLimit.option", { count: minutes }),
+          }))}
         />
       </Row>
       <StepLimit />

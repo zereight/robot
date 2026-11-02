@@ -38,6 +38,11 @@ const COLUMNS = "id, kind, name, base_url, off, sign_in"
 
 export interface ProvidersService {
   readonly list: Effect.Effect<readonly ProviderAccount[]>
+  /**
+   * The accounts with the last state that is known of each program. It looks at no program and
+   * waits for no check, so a turn of one provider never waits for the check of another (spec 006).
+   */
+  readonly accounts: Effect.Effect<readonly ProviderAccount[]>
   /** Checks the key with one request, then stores the account and the key. */
   connect(input: ProviderConnect): Effect.Effect<ProviderAccount, AppError>
   check(accountId: string): Effect.Effect<void, AppError>
@@ -80,6 +85,14 @@ export interface ProvidersService {
 }
 
 export const secretKey = (accountId: string) => `provider:${accountId}`
+
+/**
+ * How long a caller waits for the check of an agent runtime. A check that has not ended by then
+ * goes on in the background, and the caller uses the last state that is known (spec 006).
+ */
+export const CHECK_WAIT_MS = 15_000
+/** A test makes the wait short. The app never changes it. */
+export const checkWait = { ms: CHECK_WAIT_MS }
 
 export const toAppError = (error: unknown) =>
   error instanceof ProviderFailure
@@ -322,6 +335,16 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           })()
         })
 
+      /**
+       * Waits for a check, but not for longer than `CHECK_WAIT_MS`. With `join` false, a check
+       * that is running is not joined: the state shows as "Checking" (spec 006).
+       */
+      const checked = (kind: RuntimeKind, signIn: string | null, join = true) =>
+        Effect.raceFirst(
+          Effect.asVoid(runtimes.statusIfStale(kind, signIn, join)),
+          Effect.sleep(checkWait.ms),
+        )
+
       /** Every sign-in that an account uses is looked at, once for each. */
       const refreshRuntimes = () =>
         Effect.forEach(
@@ -330,17 +353,22 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
               "SELECT DISTINCT kind, sign_in FROM provider_account",
             )
             .flatMap((r) => (isRuntimeKind(r.kind) ? [{ kind: r.kind, signIn: r.sign_in }] : [])),
-          ({ kind, signIn }) => runtimes.statusIfStale(kind, signIn, false),
+          ({ kind, signIn }) => checked(kind, signIn, false),
           { concurrency: "unbounded", discard: true },
         )
+
+      const accounts = Effect.sync(() =>
+        db
+          .all<AccountRow>(`SELECT ${COLUMNS} FROM provider_account ORDER BY created_at`)
+          .map(toAccount),
+      )
 
       return Providers.of({
         list: Effect.gen(function* () {
           yield* refreshRuntimes()
-          return db
-            .all<AccountRow>(`SELECT ${COLUMNS} FROM provider_account ORDER BY created_at`)
-            .map(toAccount)
+          return yield* accounts
         }),
+        accounts,
         connect,
         check: (id) =>
           findRow(id).pipe(
@@ -435,7 +463,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           Effect.gen(function* () {
             const row = lookup(id)
             if (!row) return false
-            if (isRuntimeKind(row.kind)) yield* runtimes.statusIfStale(row.kind, row.sign_in)
+            if (isRuntimeKind(row.kind)) yield* checked(row.kind, row.sign_in)
             return rowConnected(row)
           }),
         discardSignIn: (kind, signIn) =>

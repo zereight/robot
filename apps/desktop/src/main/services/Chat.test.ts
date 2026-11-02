@@ -1,19 +1,27 @@
-import { afterAll, describe, expect, test } from "bun:test"
-import { messageText, taskTimes } from "@robot/shared"
-import { Exit } from "effect"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
+import { join } from "node:path"
+import { messageText, type TaskProgress, taskTimes } from "@robot/shared"
+import { Effect, Exit, Layer, ManagedRuntime } from "effect"
+import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
+import { Database } from "./Database.ts"
 import { Places } from "./Places.ts"
-import { Providers } from "./Providers.ts"
+import { Providers, secretKey } from "./Providers.ts"
+import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
+import { fakeClock } from "./silence.testing.ts"
+import { useClockForTests } from "./silence.ts"
 import { Tasks } from "./Tasks.ts"
-import { testRuntime } from "./testing.ts"
+import { testPlatform, testRuntime } from "./testing.ts"
 
 const KEY = "sk-chat-test"
 let failNext = true
 /** The last message of each request that reached the model. */
 const asked: string[] = []
+/** What the server saw of the requests that it holds with no answer. */
+const held = { opened: 0, closed: 0 }
 
 const sse = (chunks: { delay: number; data: unknown }[]) =>
   new Response(
@@ -47,6 +55,22 @@ const server = Bun.serve({
     if (last.endsWith("fail") && failNext) {
       failNext = false
       return Response.json({ error: { message: "boom" } }, { status: 500 })
+    }
+    // A model that shows no sign of life: the answer opens and nothing follows. "partial" sends one
+    // part first. The request ends when the app closes the connection.
+    if (last.endsWith("hang") || last.endsWith("partial")) {
+      held.opened++
+      const enc = new TextEncoder()
+      req.signal.addEventListener("abort", () => held.closed++)
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            if (last.endsWith("partial"))
+              controller.enqueue(enc.encode(`data: ${JSON.stringify(delta("Starting "))}\n\n`))
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      )
     }
     if (last.endsWith("limit")) {
       return Response.json(
@@ -83,7 +107,8 @@ const server = Bun.serve({
     ])
   },
 })
-afterAll(() => server.stop())
+// Some requests are held with no answer on purpose, so the stop must close them.
+afterAll(() => server.stop(true))
 
 const until = async (check: () => Promise<boolean>, ms = 3000) => {
   const end = Date.now() + ms
@@ -93,6 +118,8 @@ const until = async (check: () => Promise<boolean>, ms = 3000) => {
   }
   throw new Error("timed out")
 }
+
+afterEach(() => useClockForTests(undefined))
 
 const setup = async () => {
   const t = testRuntime()
@@ -308,6 +335,299 @@ describe("Chat", () => {
       Chat.use((c) => c.send({ agentId: t.agent.id, text: "hi", replyTo: null })),
     )
     expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  test("a finished turn ends at started; a turn the server refuses ends at sent (spec 005)", async () => {
+    const t = await setup()
+    const progressOf = async (index: number) => {
+      const reply = (await t.history()).messages[index]
+      const task = await t.run(
+        Database.use((db) =>
+          Effect.sync(() =>
+            db.get<{ progress: string }>(
+              "SELECT progress FROM task WHERE message_id = ?",
+              reply?.id ?? "",
+            ),
+          ),
+        ),
+      )
+      return task?.progress
+    }
+    await t.send("hello")
+    await t.settled()
+    expect(await progressOf(1)).toBe("started")
+    await t.send("hit the limit")
+    await t.settled()
+    expect(await progressOf(3)).toBe("sent")
+    // The failed row of the chat gets the same value, for its line (spec 003).
+    const { messages } = await t.history()
+    expect(messages[1]?.progress).toBeUndefined()
+    expect(messages[3]?.status).toBe("failed")
+    expect(messages[3]?.progress).toBe("sent")
+  })
+
+  const tasksOf = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.run(Tasks.use((x) => x.list(t.local.id)))
+
+  const waitForHeld = async (count: number) => {
+    await until(async () => held.opened >= count)
+  }
+
+  test("a model that shows no sign of life is stopped at the silent limit, and the task fails (spec 005)", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const t = await setup()
+    t.shell.focused = false
+    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
+    const before = held.opened
+    const closedBefore = held.closed
+    await t.send("stay quiet and hang")
+    await waitForHeld(before + 1)
+    // The request was handed over, and nothing came back.
+    expect((await tasksOf(t))[0]?.progress).toBe("sent")
+    fake.advance(59_000)
+    expect((await tasksOf(t))[0]?.state).toBe("running")
+    expect((await t.history()).messages[1]?.status).toBe("streaming")
+    fake.advance(1_000)
+    await until(async () => (await tasksOf(t))[0]?.state === "failed")
+    const task = (await tasksOf(t))[0]
+    expect(task?.error).toEqual({ code: "silent_limit_1", detail: "1" })
+    expect(task?.progress).toBe("sent")
+    const reply = (await t.history()).messages[1]
+    expect(reply?.status).toBe("failed")
+    expect(reply?.error?.code).toBe("silent_limit_1")
+    expect(reply?.progress).toBe("sent")
+    // The turn stopped like after a Stop: the connection to the model closed.
+    await until(async () => held.closed > closedBefore)
+    // One notification of the kind "task failed".
+    expect(t.shell.notices).toHaveLength(1)
+    // The failed reply can be tried again, and the agent answers the same request.
+    const again = await t
+      .run(Chat.use((c) => c.retry(t.agent.id, (reply?.id as string) ?? "")))
+      .then(
+        () => true,
+        () => false,
+      )
+    expect(again).toBe(true)
+  })
+
+  test("the limit in minutes comes from the setting when the turn starts", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 30 })))
+    const before = held.opened
+    await t.send("quiet hang")
+    await waitForHeld(before + 1)
+    // A change of the setting does not reach the turn that runs.
+    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
+    fake.advance(29 * 60_000)
+    expect((await tasksOf(t))[0]?.state).toBe("running")
+    fake.advance(60_000)
+    await until(async () => (await tasksOf(t))[0]?.state === "failed")
+    expect((await tasksOf(t))[0]?.error).toEqual({ code: "silent_limit", detail: "30" })
+  })
+
+  test("with the choice Never a silent turn does not fail by itself; Stop ends it", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 0 })))
+    const before = held.opened
+    await t.send("quiet hang")
+    await waitForHeld(before + 1)
+    fake.advance(48 * 60 * 60_000)
+    expect((await tasksOf(t))[0]?.state).toBe("running")
+    await t.run(Chat.use((c) => c.stop(t.agent.id)))
+    await until(async () => (await tasksOf(t))[0]?.state === "cancelled")
+    // A Stop of the user shows no failure and no notice.
+    expect((await t.history()).messages[1]?.status).toBe("stopped")
+  })
+
+  test("a part of the reply is a sign of life, and the turn goes to started", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const t = await setup()
+    await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
+    const before = held.opened
+    await t.send("begin the partial")
+    await waitForHeld(before + 1)
+    await until(async () => (await tasksOf(t))[0]?.progress === "started")
+    // The limit counts from the last sign of life.
+    fake.advance(59_000)
+    expect((await tasksOf(t))[0]?.state).toBe("running")
+    fake.advance(1_000)
+    await until(async () => (await tasksOf(t))[0]?.state === "failed")
+    const task = (await tasksOf(t))[0]
+    expect(task?.error?.code).toBe("silent_limit_1")
+    expect(task?.progress).toBe("started")
+    expect(messageText((await t.history()).messages[1] as never)).toBe("Starting ")
+  })
+
+  describe("a request that a restart cut off", () => {
+    /** Two runs of the app on one data folder. The key of the account stays, as in a keychain. */
+    const restartable = async () => {
+      const { platform, dataDir } = testPlatform()
+      const file = join(dataDir, "robot.db")
+      const keys = new Map<string, string>()
+      const secrets = Layer.succeed(
+        Secrets,
+        Secrets.of({
+          get: (key) => keys.get(key) ?? null,
+          set: (key, value) => void keys.set(key, value),
+          remove: (key) => void keys.delete(key),
+        }),
+      )
+      const open = () =>
+        ManagedRuntime.make(
+          appLayer({ platform, databaseFile: file, localServerName: "T", emit: () => {}, secrets }),
+        )
+      const first = open()
+      const account = await first.runPromise(
+        Providers.use((p) =>
+          p.connect({
+            kind: "custom",
+            name: "M",
+            baseUrl: `http://127.0.0.1:${server.port}/v1`,
+            apiKey: KEY,
+          }),
+        ),
+      )
+      expect(keys.has(secretKey(account.id))).toBe(true)
+      const local = await first.runPromise(Servers.use((s) => s.local))
+      const agent = await first.runPromise(
+        Agents.use((a) =>
+          a.create({
+            serverId: local.id,
+            name: "Ada",
+            role: "",
+            instructions: "",
+            model: { accountId: account.id, model: "mock", effort: null },
+          }),
+        ),
+      )
+      const sql = (text: string, ...args: (string | number | null)[]) =>
+        first.runPromise(Database.use((db) => Effect.sync(() => db.run(text, ...args))))
+      /** A request of the user that the app was working on when it stopped. */
+      const cut = async (
+        id: string,
+        progress: TaskProgress,
+        state: "queued" | "running",
+        parts = "[]",
+      ) => {
+        await sql(
+          `INSERT INTO message (id, agent_id, author, parts, status, created_at)
+           VALUES (?, ?, 'user', ?, 'done', 1)`,
+          `u-${id}`,
+          agent.id,
+          JSON.stringify([{ kind: "text", text: `ask ${id}` }]),
+        )
+        await sql(
+          `INSERT INTO message (id, agent_id, author, parts, status, created_at)
+           VALUES (?, ?, 'agent', ?, 'streaming', 2)`,
+          `r-${id}`,
+          agent.id,
+          parts,
+        )
+        await sql(
+          `INSERT INTO task (id, agent_id, prompt, label, source, source_id, message_id, state,
+             created_at, progress)
+           VALUES (?, ?, ?, ?, 'chat', ?, ?, ?, 2, ?)`,
+          `t-${id}`,
+          agent.id,
+          `ask ${id}`,
+          `ask ${id}`,
+          agent.id,
+          `r-${id}`,
+          state,
+          progress,
+        )
+      }
+      return { first, open, agent, cut, sql }
+    }
+
+    test("the chat tells how far the request went, for each progress", async () => {
+      for (const progress of ["not_sent", "sent", "started"] as const) {
+        const r = await restartable()
+        await r.cut("x", progress, progress === "not_sent" ? "queued" : "running")
+        await r.first.dispose()
+        const second = r.open()
+        const history = await second.runPromise(Chat.use((c) => c.history(r.agent.id)))
+        expect(history.cut).toEqual({ taskId: "t-x", messageId: "r-x", progress })
+        // The reply that was cut counts as stopped, and the task as failed with the restart reason.
+        expect(history.messages.at(-1)?.status).toBe("stopped")
+        const task = (await second.runPromise(Tasks.use((x) => x.get("t-x")))).task
+        expect(task.error?.code).toBe("app_stopped")
+        expect(task.progress).toBe(progress)
+        await second.dispose()
+      }
+    })
+
+    test("a request the user wrote after the restart hides the notice", async () => {
+      const r = await restartable()
+      await r.cut("x", "started", "running", JSON.stringify([{ kind: "text", text: "Half" }]))
+      await r.first.dispose()
+      const second = r.open()
+      const id = r.agent.id
+      expect((await second.runPromise(Chat.use((c) => c.history(id)))).cut).not.toBeNull()
+      await second.runPromise(
+        Chat.use((c) => c.send({ agentId: id, text: "go on", replyTo: null })),
+      )
+      await until(async () => {
+        const h = await second.runPromise(Chat.use((c) => c.history(id)))
+        return h.messages.length === 4 && h.messages.every((m) => m.status !== "streaming")
+      })
+      expect((await second.runPromise(Chat.use((c) => c.history(id)))).cut).toBeNull()
+      await second.dispose()
+    })
+
+    test("a Stop of the user is no cut request", async () => {
+      const r = await restartable()
+      await r.cut("x", "started", "running")
+      await r.sql("UPDATE task SET state = 'cancelled' WHERE id = 't-x'")
+      await r.sql("UPDATE message SET status = 'stopped' WHERE id = 'r-x'")
+      await r.first.dispose()
+      const second = r.open()
+      expect((await second.runPromise(Chat.use((c) => c.history(r.agent.id)))).cut).toBeNull()
+      await second.dispose()
+    })
+
+    test("Send again asks the same request in place when it never reached the model", async () => {
+      const r = await restartable()
+      await r.cut("x", "not_sent", "queued")
+      await r.first.dispose()
+      const second = r.open()
+      const id = r.agent.id
+      await second.runPromise(Chat.use((c) => c.retry(id, "r-x")))
+      await until(async () => {
+        const h = await second.runPromise(Chat.use((c) => c.history(id)))
+        return h.messages.length === 2 && h.messages.every((m) => m.status !== "streaming")
+      })
+      const h = await second.runPromise(Chat.use((c) => c.history(id)))
+      // The request was not written twice: the empty reply is gone and a new one answers it.
+      expect(h.messages.map((m) => [m.author, m.status])).toEqual([
+        ["user", "done"],
+        ["agent", "done"],
+      ])
+      expect(messageText(h.messages[1] as never)).toContain("ask x")
+      expect(h.cut).toBeNull()
+      // The new task links to the one that the restart ended, and starts at not sent, then goes up.
+      const tasks = await second.runPromise(Tasks.use((x) => x.list(r.agent.serverId)))
+      const fresh = tasks.find((x) => x.id !== "t-x")
+      expect(fresh?.retryOf).toBe("t-x")
+      expect(fresh?.progress).toBe("started")
+      await second.dispose()
+    })
+
+    test("a request that reached the model is not sent again in place", async () => {
+      const r = await restartable()
+      await r.cut("x", "sent", "running")
+      await r.first.dispose()
+      const second = r.open()
+      const exit = await second.runPromiseExit(Chat.use((c) => c.retry(r.agent.id, "r-x")))
+      expect(Exit.isFailure(exit)).toBe(true)
+      await second.dispose()
+    })
   })
 })
 

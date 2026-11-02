@@ -5,6 +5,7 @@ import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
 import type { SecretAsk } from "./secrets.ts"
+import type { TaskProgress } from "./task.ts"
 import type { RefusalReason } from "./tools.ts"
 
 export type MessagePart =
@@ -141,6 +142,23 @@ export interface ChatMessage {
    * 003): "waiting" can still be deleted, "handed" went to the program already. Null otherwise.
    */
   readonly unread?: "waiting" | "handed"
+  /**
+   * How far the turn of a failed reply went (spec 005), for the line on its failed row. Set only
+   * for a failed reply whose task is known.
+   */
+  readonly progress?: TaskProgress | null
+}
+
+/**
+ * A request that a restart cut off, and that the user has not answered since (spec 003, "Rules").
+ * The notice shows above the message box while the reply `messageId` is the last message.
+ */
+export interface CutNotice {
+  /** The task that the restart ended. "Send again" retries it. */
+  readonly taskId: string
+  /** The reply of that task. The notice shows only while this is the last message of the chat. */
+  readonly messageId: string
+  readonly progress: TaskProgress
 }
 
 export type FilePart = Extract<MessagePart, { kind: "file" }>
@@ -168,6 +186,8 @@ export interface ChatHistory {
   readonly messages: readonly ChatMessage[]
   readonly queue: readonly QueuedMessage[]
   readonly hold: QueueHold | null
+  /** The request that a restart cut off, or null (spec 003). */
+  readonly cut?: CutNotice | null
 }
 
 export const MESSAGE_MAX = 100_000

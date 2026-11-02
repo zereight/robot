@@ -20,6 +20,7 @@ import { Composer } from "./Composer.tsx"
 import styles from "./chat.module.css"
 import { formatDay, formatElapsed } from "./format.ts"
 import { MessageRow } from "./MessageRow.tsx"
+import { RestartNotice } from "./RestartNotice.tsx"
 import { createChat } from "./state.ts"
 
 export interface ChatViewProps {
@@ -66,6 +67,11 @@ export const ChatView = (props: ChatViewProps) => {
   const streaming = () => chat.messages.find((m) => m.status === "streaming")
   const retry = useRetry()
   const working = () => props.agent.state === "working" || streaming() !== undefined
+  /** The notice of a request that a restart cut off. It leaves when the user writes. */
+  const cutNotice = () => {
+    const cut = chat.cut
+    return cut && chat.messages.at(-1)?.id === cut.messageId && !working() ? cut : undefined
+  }
   const lastUserId = createMemo(
     () => [...chat.messages].reverse().find((m) => m.author === "user")?.id,
   )
@@ -227,6 +233,9 @@ export const ChatView = (props: ChatViewProps) => {
             </button>
           </Show>
         </div>
+      </Show>
+      <Show when={cutNotice()}>
+        {(cut) => <RestartNotice agentId={props.agent.id} cut={cut()} />}
       </Show>
       <Composer
         agent={props.agent}

@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -11,6 +10,7 @@ import { bridgeToolName, museBridge } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
+import { spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { ApprovalRequest, Login, RuntimeRun } from "./types.ts"
 
@@ -292,7 +292,7 @@ async function* runMuseExec(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   const scratch = mkdtempSync(join(tmpdir(), "robot-muse-"))
   const promptFile = join(scratch, "prompt.txt")
   writeFileSync(promptFile, musePrompt(run), { mode: 0o600 })
-  const child = spawn(run.bin, museArgs(run, promptFile), {
+  const child = spawnProgram(run.bin, museArgs(run, promptFile), {
     cwd: run.workspace,
     env: { ...env(), ...(run.bridge ? museBridge(run.bridge).env : {}) },
     stdio: ["ignore", "pipe", "pipe"],
@@ -611,7 +611,7 @@ async function* runMuseHost(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
   // The host wants the real path of the folder.
   const root = realpathSync(run.workspace)
-  const child = spawn(run.bin, museHostArgs(run), {
+  const child = spawnProgram(run.bin, museHostArgs(run), {
     cwd: root,
     env: { ...hostEnv(), ...(run.bridge ? museBridge(run.bridge).env : {}) },
     stdio: ["pipe", "pipe", "pipe"],

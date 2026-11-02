@@ -179,6 +179,14 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
             <Show when={error()}>
               {(err) => <p class={styles.errorText}>{t(err().key, err().params)}</p>}
             </Show>
+            {/* How far the turn went (spec 005). It sits with Retry. A Stop of the user shows no line. */}
+            <Show when={d().task.state === "failed" && d().task.progress}>
+              {(progress) => (
+                <p class={styles.meta} data-testid="task-progress-line" data-progress={progress()}>
+                  {t(`progress.line.${progress()}` as MessageKey)}
+                </p>
+              )}
+            </Show>
             <div class={styles.actions}>
               <Show when={isActive(d().task.state)}>
                 <Button

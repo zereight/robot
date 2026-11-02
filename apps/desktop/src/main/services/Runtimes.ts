@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs"
+import { join } from "node:path"
 import {
   type ModelInfo,
   type ReadOnlySupport,
@@ -22,6 +23,7 @@ import {
   rememberPlace,
   signInDir,
 } from "../runtimes/locate.ts"
+import { startPrograms } from "../runtimes/programs.ts"
 import { type Readiness, readiness } from "../runtimes/readiness.ts"
 import { hasReadOnlyMode } from "../runtimes/readonly.ts"
 import type { Login, RuntimeRun } from "../runtimes/types.ts"
@@ -132,6 +134,9 @@ export class Runtimes extends Context.Service<Runtimes, RuntimesService>()("robo
     Effect.gen(function* () {
       const platform = yield* Platform
       const bus = yield* EventBus
+      // A vendor program that an earlier run started and left running, for example after a crash,
+      // is ended now (spec 006). From here on the programs of this run are written down.
+      void startPrograms(join(platform.dataDir, "running-programs.json")).catch(() => {})
       // Each map is keyed by the kind and the sign-in, so that two sign-ins of one program do not
       // share a state.
       const state = new Map<string, RuntimeStatus>()

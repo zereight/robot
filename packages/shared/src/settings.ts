@@ -12,6 +12,15 @@ export const Theme = Schema.Literals(["system", "dark", "light"])
 export const TextSize = Schema.Literals(["small", "default", "large"])
 export const ReduceMotion = Schema.Literals(["system", "on", "off"])
 
+/**
+ * How long a turn may show no sign of life before the app stops it, in minutes (spec 005 and
+ * 013). 0 means never.
+ */
+export const SILENT_LIMITS = [1, 5, 10, 30, 60, 0] as const
+export const SilentLimit = Schema.Literals(SILENT_LIMITS)
+export type SilentLimit = typeof SilentLimit.Type
+export const DEFAULT_SILENT_LIMIT: SilentLimit = 10
+
 /** User settings. Local to this computer. */
 export const Settings = Schema.Struct({
   language: Language,
@@ -28,6 +37,8 @@ export const Settings = Schema.Struct({
   ),
   /** True once the user finished or skipped the first start guide. */
   firstRunDone: Schema.Boolean,
+  /** The silent limit in minutes; 0 for never. Local to this computer (spec 019). */
+  silentLimit: SilentLimit,
   /** Which kinds of system notification are on. */
   notifyKinds: Schema.Struct({
     reply: Schema.Boolean,
@@ -73,6 +84,7 @@ export const defaultSettings: Settings = {
   workspaceRoot: "",
   stepLimit: STEP_LIMIT_DEFAULT,
   firstRunDone: false,
+  silentLimit: DEFAULT_SILENT_LIMIT,
   notifyKinds: {
     reply: true,
     mention: true,
