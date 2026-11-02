@@ -20,8 +20,16 @@ import {
 } from "solid-js"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
-import { Presence, useClosing } from "../ui/Presence.tsx"
+import { motionMs, Presence, useClosing } from "../ui/Presence.tsx"
 import styles from "./shell.module.css"
+
+/** Extra px while a drag is past a limit: it grows with the excess and tops out at 28. */
+const stretchPast = (raw: number) => {
+  const excess =
+    raw > PLACE_LIST_MAX ? raw - PLACE_LIST_MAX : raw < PLACE_LIST_MIN ? raw - PLACE_LIST_MIN : 0
+  const grown = (28 * Math.abs(excess)) / (Math.abs(excess) + 64)
+  return Math.sign(excess) * grown
+}
 
 export interface PlaceListProps {
   /** Draws the face of an agent place. Later features supply it. */
@@ -99,12 +107,21 @@ export const PlaceList = (props: PlaceListProps) => {
     const startWidth = ui.ui.placeListWidth
     const target = event.currentTarget as HTMLElement
     target.setPointerCapture(event.pointerId)
-    const move = (e: PointerEvent) =>
-      ui.previewWidth(clampPlaceListWidth(startWidth + e.clientX - startX))
+    ui.setSnapping(false)
+    const move = (e: PointerEvent) => {
+      const raw = startWidth + e.clientX - startX
+      ui.previewWidth(clampPlaceListWidth(raw))
+      ui.setStretch(stretchPast(raw))
+    }
     const end = () => {
       target.removeEventListener("pointermove", move)
       target.removeEventListener("pointerup", end)
       ui.saveWidth()
+      if (ui.stretch() !== 0) {
+        ui.setSnapping(true)
+        ui.setStretch(0)
+        setTimeout(() => ui.setSnapping(false), motionMs("medium") + 40)
+      }
     }
     target.addEventListener("pointermove", move)
     target.addEventListener("pointerup", end)
@@ -114,6 +131,9 @@ export const PlaceList = (props: PlaceListProps) => {
     const step = event.key === "ArrowLeft" ? -10 : event.key === "ArrowRight" ? 10 : 0
     if (!step) return
     event.preventDefault()
+    // A key press is not animated.
+    ui.setSnapping(false)
+    ui.setStretch(0)
     ui.previewWidth(clampPlaceListWidth(ui.ui.placeListWidth + step))
     ui.saveWidth()
   }
