@@ -99,7 +99,7 @@ export const setMainWindow = (win: BrowserWindow) => {
  * The bar is wider than the camera notch, so the app mark and the faces sit in the two wings at
  * each side of it. The card starts below the notch.
  */
-const ISLAND_SIZE = { bar: { width: 340, height: 34 }, attention: { width: 460, height: 168 } }
+const ISLAND_SIZE = { bar: { width: 340, height: 34 }, attention: { width: 460, height: 204 } }
 /** A menu bar this tall or taller means that the screen has a camera notch. */
 const NOTCH_MENU_BAR_MIN = 30
 let island: BrowserWindow | undefined

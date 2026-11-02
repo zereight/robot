@@ -1,6 +1,13 @@
-import type { RuntimeKind } from "@robot/shared"
+import type { RuntimeKind, RuntimeLimit } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
-import { claudeLogin, claudeSignIn, claudeVersion, parseVersion, runClaude } from "./claude.ts"
+import {
+  claudeLogin,
+  claudeSignIn,
+  claudeUsage,
+  claudeVersion,
+  parseVersion,
+  runClaude,
+} from "./claude.ts"
 import { codexLogin, codexSignIn, runCodex } from "./codex.ts"
 import { runtimeEnv } from "./env.ts"
 import { MUSE_SIGN_IN_HOSTS, museLogin, museSignIn, museVersion, runMuse } from "./muse.ts"
@@ -17,6 +24,11 @@ export interface SignInPrompt {
 export interface Driver {
   version(bin: string): Promise<string | null>
   login(bin: string): Promise<Login>
+  /**
+   * The usage windows of the plan, asked without a turn. Null when the program does not tell
+   * them. Absent when the program tells them in `login`, or not at all.
+   */
+  usage?(bin: string): Promise<readonly RuntimeLimit[] | null>
   /** Starts the sign-in of the program. Absent when the user signs in inside the program. */
   signIn?(
     bin: string,
@@ -37,6 +49,7 @@ export const drivers: Record<RuntimeKind, Driver> = {
   claude_code: {
     version: claudeVersion,
     login: claudeLogin,
+    usage: claudeUsage,
     signIn: (bin, signal) => claudeSignIn(bin, signal),
     run: runClaude,
   },

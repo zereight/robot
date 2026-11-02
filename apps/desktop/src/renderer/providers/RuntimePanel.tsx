@@ -26,9 +26,20 @@ const formatReset = (locale: Locale, at: number, now = Date.now()) =>
       : { weekday: "short", hour: "numeric", minute: "2-digit" },
   ).format(at)
 
-/** The lines about the plan: its name and how much of each window is used. */
+/** How often the panel looks again while it is open. */
+const REFRESH_MS = 2 * 60_000
+
+const formatClock = (locale: Locale, at: number) =>
+  new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(at)
+
+/** A window that has reset since it was read says nothing true: it is left out. */
+export const openLimits = (limits: readonly RuntimeLimit[], now = Date.now()) =>
+  limits.filter((limit) => limit.resetsAt === null || limit.resetsAt > now)
+
+/** The lines about the plan: its name, how much of each window is used, and when it was read. */
 export const RuntimeSummary = (props: { status: RuntimeStatus }) => {
   const { t, locale } = useApp()
+  const limits = () => openLimits(props.status.limits)
   const line = (limit: RuntimeLimit) => {
     const percent = Math.round(limit.used * 100)
     if (limit.resetsAt === null)
@@ -50,13 +61,20 @@ export const RuntimeSummary = (props: { status: RuntimeStatus }) => {
           </div>
         )}
       </Show>
-      <For each={props.status.limits}>
+      <For each={limits()}>
         {(limit) => (
           <div class={styles.itemMeta} data-testid="runtime-limit">
             {line(limit)}
           </div>
         )}
       </For>
+      <Show when={limits().length > 0 && props.status.limitsAt}>
+        {(at) => (
+          <div class={styles.itemMeta} data-testid="runtime-limits-at">
+            {t("runtime.limits.readAt", { time: formatClock(locale(), at()) })}
+          </div>
+        )}
+      </Show>
     </>
   )
 }
@@ -79,6 +97,11 @@ export const RuntimePanel = (props: { kind: RuntimeKind; onReady: (ready: boolea
     }
   }
   void look()
+  // The usage of the plan changes while the user works elsewhere, so the open panel looks again.
+  const timer = setInterval(() => {
+    if (status()?.busy === null && !document.hidden) void look()
+  }, REFRESH_MS)
+  onCleanup(() => clearInterval(timer))
   onCleanup(
     window.robot.on("runtimes.changed", (next) => {
       if (next.kind === props.kind) setStatus(next)

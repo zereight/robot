@@ -10,17 +10,23 @@ Each agent works in its own folder with real tools, and the user stays in contro
   (`~/ROBot Agents/<agent name>`). The user can point an agent at another folder, such as an
   existing project.
 - **Tools**: read and write files, run shell commands, search, fetch web pages, drive a browser
-  window, ask the user a question, message other agents, read and run workflows (see 010), and
-  use the computer (see "Computer use").
+  window, ask the user a question, message other agents, read and run workflows (see 010), use
+  the computer (see "Computer use"), and use the tools of the connections that the user added
+  (see 018).
 - **Permission level** per agent: "Ask for everything", "Ask for risky steps" (default), or
   "Full access". A linked device (012) can make the level stricter, never looser.
+- **Rule**: a saved decision that the user made. A rule can allow or deny a kind of step. See
+  "Permission rules".
+- **Action log**: the list of the tool steps that the rules and the permission levels decided.
+  See "Action log".
 
 ## Flows
 
 1. The user opens the workspace from the agent profile; the app shows it in the system file
    browser.
 2. When a step needs permission, the chat shows an approval card: what the agent wants to do, the
-   command or path, and Allow once, Always allow for this agent, Deny.
+   command or path, and Allow once, Always allow for this agent, Deny. "Always allow for this
+   agent" saves an allow rule (see "Permission rules").
 3. The agent asks a question: a question card shows with the choices or a text field. The task
    waits.
 4. Browser: the agent can open a browser window that the user can watch. The user can take
@@ -77,10 +83,75 @@ Each agent works in its own folder with real tools, and the user stays in contro
   - A claim of "done" from the model is a claim only. The agent checks it, because some apps keep
     their display out of the controls list and a click cannot be verified.
 
+## Permission rules
+
+A rule is a decision that the user keeps, so the app does not ask again, or does not run a step
+at all.
+
+- A rule has: the agent it is for (one agent, or all agents), a step kind, a match text, a
+  decision (Allow or Deny), the date, and where it came from (an approval card, or the rules
+  list).
+- The step kinds are: files (read or write), shell command, web page fetch, and a tool of a
+  connection (see 018). Browser steps and computer use have no rules. They follow the permission
+  level.
+- What the match text matches:
+  - Files: a path. A folder matches the folder and everything inside it. The app compares real
+    paths, so a link cannot reach a place that the rule does not name.
+  - Shell command: the full command text, or the start of a command. A rule text matches a
+    command when the two are equal, or when the command begins with the rule text and a space.
+  - Web page: a host name. It matches that host only. A rule for `example.com` does not match
+    `www.example.com`.
+  - Tool of a connection: the name of the connection and the name of a tool, or the name of the
+    connection and "any tool".
+- A step meets the rules in this order:
+  1. A matching Deny rule refuses the step. This holds at every permission level, also at
+     "Full access".
+  2. Otherwise, a matching Allow rule lets the step run with no question. A step that a rule
+     allows is still a step: its card shows in the chat, with the words "Allowed by a rule".
+  3. Otherwise, the permission level decides, as before.
+- A step that a Deny rule refuses does not run. Its card shows "Denied by a rule". The agent gets
+  the refusal as a failed step. The turn goes on.
+- A rule that the app cannot read does not allow or deny anything. A step that meets such a rule
+  asks the user, also at "Full access". The rules page marks the rule "Cannot be read" and lets
+  the user delete it.
+- "Always allow for this agent" saves an Allow rule for that agent. The rule is not wider than the
+  step on the card: the same command text, the same file path, the same host, or the same tool.
+- The rules page is a part of the Permissions section of settings (see 013). It lists the rules,
+  newest first. Each row shows the Allow or Deny tag, the face and name of the agent or "All
+  agents", the step kind, the match text and the date. The user can filter by agent and by
+  decision, add a rule, edit a rule, and delete a rule. The agent profile has a link that opens
+  the page filtered to that agent.
+- A new rule that is the same as one that exists (agent, kind, match text and decision) is refused
+  with a short message. The match text holds 1 to 500 characters. A server holds at most 500
+  rules.
+- Deleting an agent deletes its rules. A rule for all agents stays.
+
+## Action log
+
+The action log lets the user see what the agents did, and why a step ran or did not run.
+
+- One entry for each step of the four kinds in "Permission rules". An entry holds: the time, the
+  agent, the step kind, a short target, who decided, and the result.
+  - The target is a path, a command, a host, or the name of a connection and a tool. A target is
+    cut at 200 characters. For a tool of a connection the target holds no arguments.
+  - Who decided: the permission level, an Allow rule, a Deny rule, the user on a card, or "a rule
+    that cannot be read" followed by the user.
+  - The result: Ran, Failed, Refused, or Stopped.
+  - An entry that a rule decided names the rule. The row opens the rules page on that rule. A rule
+    that was deleted later shows its text, marked "Deleted".
+- The log page is a part of the Permissions section of settings (see 013). It lists entries,
+  newest first, and has filters for the agent, the result and the step kind, and a search of the
+  target. A row opens the task of the step.
+- The log is stored in the local database (see 014). The app keeps the entries of the last 90
+  days, and at most 100000 entries. The oldest entries go first.
+- Text in an entry that looks like a secret is hidden (see 014).
+- Deleting an agent keeps its entries. They show the name that the agent had.
+
 ## Rules
 
 - Risky steps: deleting files outside the workspace, commands that use the network to send data,
-  installing software, and anything that uses `sudo`.
+  installing software, anything that uses `sudo`, and every call of a tool of a connection (see
+  018).
 - An agent runtime from a vendor (see 006) uses the vendor's own permission prompts; the app shows
   them as approval cards.
 - Browser data (cookies, logins) is kept per agent, on the computer. Duplicating an agent copies
@@ -119,3 +190,14 @@ Each agent works in its own folder with real tools, and the user stays in contro
   window and ends. With 0.5, the call returns the current controls and does not press. A password
   field is sent with no value.
 - Focus the browser window after a tab was closed by hand: the tab list drops that tab.
+- Choose "Always allow for this agent" on the card of a command. The rules page shows one Allow
+  rule with that command. Run the same command again: no card shows a question, the card says
+  "Allowed by a rule", and the log has two entries. Delete the rule: the next run asks again.
+- Add a Deny rule for a folder, and set the agent to "Full access". A write inside the folder
+  does not run. The card says "Denied by a rule", and the file does not change. The agent goes on.
+- A Deny rule and an Allow rule both match a step: the step is refused.
+- An Allow rule for `example.com` does not let the agent fetch `www.example.com`: that fetch asks.
+- Add 500 rules: the 501st is refused.
+- Filter the log by result "Refused": it lists only the steps that a Deny rule stopped. A row
+  opens the rule that stopped the step.
+- A target in the log never holds the arguments of a tool of a connection.

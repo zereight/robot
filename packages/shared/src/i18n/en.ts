@@ -234,6 +234,7 @@ export const en = {
   "runtime.limit.weekly": "Weekly usage: {percent}% used, resets {time}",
   "runtime.limit.other": "{window} usage: {percent}% used, resets {time}",
   "runtime.limit.noReset": "{window} usage: {percent}% used",
+  "runtime.limits.readAt": "Usage read at {time}",
   "runtime.problem.install": "The download failed: {detail}",
   "runtime.problem.signIn": "The sign-in did not finish: {detail}",
 

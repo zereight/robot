@@ -2,8 +2,9 @@ import { beforeAll, describe, expect, test } from "bun:test"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
-import { claudeLogin, claudeVersion, runClaude } from "./claude.ts"
+import { claudeLogin, claudeUsage, claudeVersion, runClaude } from "./claude.ts"
 import { codexLogin, runCodex } from "./codex.ts"
+import { runMuse } from "./muse.ts"
 import { piLogin } from "./pi.ts"
 import type { RuntimeRun } from "./types.ts"
 
@@ -48,6 +49,51 @@ describe("claude program", () => {
     })
     fake.setClaude({ loggedIn: false })
     expect((await claudeLogin(fake.claude)).signedIn).toBe(false)
+  })
+
+  test("the usage windows are asked without a turn, in a folder of their own", async () => {
+    fake.setClaude({
+      loggedIn: true,
+      authMethod: "claude.ai",
+      plan: "max",
+      usage: {
+        five_hour: { utilization: 12, resets_at: "2030-01-01T00:00:00Z" },
+        seven_day: { utilization: 40, resets_at: "2030-01-02T00:00:00Z" },
+      },
+    })
+    expect(await claudeUsage(fake.claude)).toEqual([
+      { window: "five_hour", used: 0.12, resetsAt: Date.parse("2030-01-01T00:00:00Z") },
+      { window: "seven_day", used: 0.4, resetsAt: Date.parse("2030-01-02T00:00:00Z") },
+    ])
+    const call = fake.claudeUsageCalls().findLast((c) => c.kind === "usage") as {
+      args: string[]
+      cwd: string
+    }
+    // No saved session, no servers of the user, no hooks of the user, no tools.
+    expect(call.args).toEqual(
+      expect.arrayContaining(["--no-session-persistence", "--strict-mcp-config", "--settings"]),
+    )
+    expect(call.args[call.args.indexOf("--settings") + 1]).toContain('"disableAllHooks":true')
+    expect(call.args.at(-2)).toBe("--tools")
+    expect(call.args.at(-1)).toBe("")
+    expect(call.cwd).not.toBe(process.cwd())
+    expect(call.cwd).toContain("robot-claude-probe")
+  })
+
+  test("the text of /usage is the second try, and a program that tells nothing gives null", async () => {
+    fake.setClaude({
+      loggedIn: true,
+      authMethod: "claude.ai",
+      usageText: "Current session: 7% used\nCurrent week (all models): 21% used\n",
+    })
+    expect(await claudeUsage(fake.claude)).toEqual([
+      { window: "five_hour", used: 0.07, resetsAt: null },
+      { window: "seven_day", used: 0.21, resetsAt: null },
+    ])
+    fake.setClaude({ loggedIn: true, authMethod: "claude.ai" })
+    expect(await claudeUsage(fake.claude)).toBeNull()
+    // A program that is not there tells nothing, and does not throw.
+    expect(await claudeUsage("/no/such/claude")).toBeNull()
   })
 
   test("a turn streams text, reports usage and limits", async () => {
@@ -181,5 +227,112 @@ describe("pi program", () => {
     const large = login.models?.find((m) => m.id === "anthropic/fake-large")
     expect(large?.efforts).toEqual(["low", "medium", "high"])
     fake.setPi({ ready: true })
+  })
+})
+
+describe("muse program", () => {
+  const ask = (patch: Partial<RuntimeRun> = {}) => base(fake.muse, { model: "default", ...patch })
+
+  test("a turn goes through the session host and streams the reply", async () => {
+    const events = await collect(runMuse(ask({ effort: "high" })))
+    expect(text(events)).toBe("Echo: Hello there")
+    expect(events.at(-1)).toEqual({ type: "usage", input: 20, output: 5 })
+    const call = fake.museCalls().at(-1) as Record<string, unknown>
+    expect((call.args as string[])[0]).toBe("serve")
+    expect(call.effort).toBe("high")
+    // Files of other agent tools stay out, and the program does not update itself.
+    expect(call.foreignKill).toBe("1")
+    expect(call.autoUpdate).toBe("1")
+    expect(call.session).toMatchObject({ approvalMode: "onRequest" })
+  })
+
+  test("the reply is done when the host says so, not when its reminder agents end", async () => {
+    // The stand-in host keeps running after the reply, like the real one with a reminder agent.
+    const started = Date.now()
+    await collect(runMuse(ask()))
+    expect(Date.now() - started).toBeLessThan(5000)
+  })
+
+  test("a step that needs approval shows as a card, and Allow lets it run", async () => {
+    const asked: unknown[] = []
+    const events = await collect(
+      runMuse(
+        ask({
+          prompt: "do it [ask]",
+          approve: async (request) => {
+            asked.push(request)
+            return true
+          },
+        }),
+      ),
+    )
+    expect(asked).toEqual([
+      {
+        callId: "tool-1",
+        risky: true,
+        key: "run_command:rm /etc/robot-test",
+        summary: "rm /etc/robot-test",
+      },
+    ])
+    expect(text(events)).toBe("Ran it.")
+    const decision = fake.museCalls().findLast((c) => c.kind === "decide") as {
+      params: Record<string, unknown>
+    }
+    expect(decision.params).toMatchObject({
+      approvalId: "approval-1",
+      choiceId: "allow-once",
+      requirementId: { approvalId: "approval-1", sourceIndex: 0 },
+    })
+    expect(decision.params.feedback).toBeUndefined()
+  })
+
+  test("Deny tells the program, and the turn goes on", async () => {
+    const events = await collect(
+      runMuse(ask({ prompt: "do it [ask]", approve: async () => false })),
+    )
+    expect(text(events)).toBe("Not allowed.")
+    const decision = fake.museCalls().findLast((c) => c.kind === "decide") as {
+      params: Record<string, unknown>
+    }
+    expect(decision.params).toMatchObject({
+      choiceId: "deny",
+      feedback: "The user denied this step.",
+    })
+  })
+
+  test("Stop while the card waits ends the turn and the program", async () => {
+    const controller = new AbortController()
+    const events = collect(
+      runMuse(
+        ask({
+          prompt: "do it [ask]",
+          signal: controller.signal,
+          approve: () =>
+            new Promise<boolean>((_, reject) => {
+              controller.signal.addEventListener("abort", () => reject(new Error("stopped")))
+              setTimeout(() => controller.abort(), 100)
+            }),
+        }),
+      ),
+    )
+    // The call shows, but nothing of the reply does: the step never ran.
+    expect(text(await events)).toBe("")
+  })
+
+  test("a failed turn becomes a failure of the provider", async () => {
+    await expect(collect(runMuse(ask({ prompt: "[fail]" })))).rejects.toMatchObject({
+      code: "provider_error",
+      message: "boom",
+    })
+  })
+
+  test("a run that cannot ask stays headless", async () => {
+    const before = fake.museCalls().length
+    const events = await collect(runMuse(ask({ permission: "full" })))
+    expect(text(events)).toBe("Echo: Hello there")
+    const call = fake.museCalls().at(-1) as { args: string[] }
+    expect(fake.museCalls().length).toBe(before + 1)
+    expect(call.args[0]).toBe("exec")
+    expect(call.args).toContain("--disable-approval")
   })
 })

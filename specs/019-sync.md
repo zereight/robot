@@ -36,7 +36,9 @@ service holds it.
 | Item | Why |
 | --- | --- |
 | Keys, tokens and the sign-in of vendor programs | Secrets stay on their computer (014). |
-| Permission levels and "Always allow" rules | A change on one computer must not give another computer more power over its files. |
+| Permission levels, permission rules (allow and deny) and the action log (007) | A change on one computer must not give another computer more power over its files. The log tells what ran on one computer. |
+| Connections (018) | A connection can start a program on a computer. A computer must never put a program on the other one. The secret values stay in the keychain (014). |
+| Skills (017) | Not in this version. A skill is saved on one computer, and the user makes it again on the other one. A message that used a skill keeps its chip and its copy of the instructions, and syncs with the message. |
 | Workspace folders and the files in them | They are large and belong to a computer. Use git or a file service. |
 | Browser windows and their sessions | They belong to a computer. |
 | Settings, theme, language, notification choices, mutes | Settings are local (013). |
@@ -170,8 +172,17 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - Unread counts follow the read state: reading a place on one computer clears its count on the
   other. Data that arrives by sync makes no system notification. An approval or a question of a
   task on the other computer does (015).
-- A copy of data that arrives never changes the permission level, the "Always allow" rules, the
-  workspace folder or the secrets of this computer.
+- **New kinds of data**: data that a spec adds to the app does not sync unless this spec lists it
+  under "Syncs". The slice that adds a field to a synced item adds it to the sync in the same
+  slice.
+- **Limits**: a limit of another spec, for example 50 routines (009), holds when the user adds an
+  item. A sync can bring a computer above a limit. The user then cannot add an item of that kind
+  until the number is under the limit. Sync never deletes an item to keep a limit.
+- **Routines that pause**: a routine that paused itself after failed runs (009) arrives paused.
+  The count of failed runs stays on the computer that ran them. When a routine moves to this
+  computer, its count here starts at 0.
+- A copy of data that arrives never changes the permission level, the permission rules, the
+  connections, the workspace folder or the secrets of this computer.
 - Only a linked computer that the user set to sync can send changes. Turning "Let other devices
   connect" off, or removing the link, stops the flow at once.
 - The tasks page lists tasks of both computers, with the name of the origin and a filter.

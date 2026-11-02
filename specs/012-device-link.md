@@ -86,10 +86,10 @@ client shows it and sends commands.
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
 | See places in the sections of the server, unread counts, working dots | Delete or restore agents and channels |
-| Read messages, search places | Change model accounts and settings |
-| Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser |
+| Read messages, search places | Change model accounts, skills, connections and settings |
+| Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
-| Answer approval cards and questions | Routines, workflows, usage page, knowledge of an agent (016) |
+| Answer approval cards and questions | Routines, workflows, usage page, the action log, knowledge of an agent (016) |
 | See the task list and task details; stop a task | Browser "Take control" |
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory | Export and import of data |
 
@@ -98,7 +98,10 @@ them, or move a place into another section. The page buttons and pages that a cl
 show a muted line: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
 card on a client has no "Always allow" choice. If a client sends one, the server takes it as one
-"Allow" and keeps no rule.
+"Allow" and keeps no rule. The rules of the server hold for every client. A Deny rule refuses a
+step that a client asked for, and a card shows "Denied by a rule" or "Allowed by a rule" on the
+client as on the server. The action log of the server (007) names the linked device that
+answered a card, in the same entry.
 
 ### Create and change agents
 

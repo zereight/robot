@@ -18,6 +18,12 @@ These are in the code today and the specs now say something else.
 | 010, 015 | Step kinds are agent, condition, approval and post. | A notify step and canvas notes exist. Workflows can be written to a file and read from a file. |
 | 014 | Crash reports may be on. | The app sends no usage events and no failure reports. |
 | 000, 014 | No conversation content leaves the computer except to model providers and pages. | One more exception: the decision model, off by default. |
+| 000, 014 | The exceptions are the model providers, the pages and the decision model. | One more exception: connections that the user adds on purpose (018). They get data only when an agent calls one of their tools. |
+| 007 | "Always allow for this agent" keeps a step allowed. The spec names no place to see or undo it. | It saves a rule. The user sees the rules, adds Allow and Deny rules, and deletes them. A Deny rule wins at every permission level. |
+| 007 | No record of what the tools did. | An action log of file, shell, web and connection steps, kept for 90 days and at most 100000 entries. |
+| 009 | No limit on routines, and a routine that fails keeps running. | At most 50 routines. A note for a schedule under 15 minutes. A routine pauses after 3 failed runs in a row. |
+| 003 | The command list shows commands and runtime skills. | It also shows the skills that the user saved (017). A message can hold a skill chip. |
+| 015 | The island shows faces and a count while agents work, and the first waiting request. | A detail card with one row for each working agent (place, what it does, time). The attention card shows the place and the kind of step, and the user can go through all waiting requests ("1 of N"). In the mode "always", a result card shows when a reply ends or a task or routine fails. |
 
 ## Slices
 
@@ -33,5 +39,10 @@ These are in the code today and the specs now say something else.
 | S25 | Phone: same as the computer, "Needs you" list, workflows. | 011, 012 |
 | S27 | Workflow file: notify step, canvas notes, export and import of workflows. It takes from S22 only the parts that the file needs: the condition mode "Ask a model" with its retry rule, and the effort of an agent step. The rest of S22 stays open. | 010, 015 |
 | S28 | User sections: make, rename, order and delete sections inside Channels and Agents, move a place by menu or by drag, the "Section" choice in the forms, the unread badge and working dot on a collapsed header, the same sections on the phone (read only there). | 001, 002, 004, 011, 012 |
+| S29 | Routine limits: 50 routines, the runs-per-day note, pause after 3 failed runs in a row, the paused text, the one notification. | 009 |
+| S30 | Permission rules and action log: saved Allow and Deny rules, the decision order, the Permissions page with rules and log, 90-day clean-up. | 007, 013, 014 |
+| S31 | Skills: the Skills page, the chip in the message box, the copy stored with the message, the command list order. | 017, 003, 013, 014 |
+| S32 | Connections: the Connections page, test, tool cards, risky-step rule, rules for connection tools, time and size limits, import turns them off. Needs S30. | 018, 007, 013, 014, 000 |
+| S33 | Status island detail: the detail card of working agents, the richer attention card with "1 of N", the result card in the mode "always". | 015 |
 
-S18 first: it is the largest gain for channels. S20 needs threads before fork can work.
+S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30.

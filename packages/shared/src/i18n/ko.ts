@@ -235,6 +235,7 @@ export const ko: Record<MessageKey, string> = {
   "runtime.limit.weekly": "주간 사용량: {percent}% 사용, {time}에 초기화",
   "runtime.limit.other": "{window} 사용량: {percent}% 사용, {time}에 초기화",
   "runtime.limit.noReset": "{window} 사용량: {percent}% 사용",
+  "runtime.limits.readAt": "사용량을 {time}에 읽었어요",
   "runtime.problem.install": "내려받지 못했어요: {detail}",
   "runtime.problem.signIn": "로그인을 마치지 못했어요: {detail}",
 
