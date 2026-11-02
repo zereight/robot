@@ -48,8 +48,8 @@ client shows it and sends commands.
    that the device can direct the agents of this computer, including steps that change files and
    run commands. For a two-way link, the text also says that this computer can open the other
    one. The dialog has a switch, "Let <device name> create and change agents", on by default.
-   When it is on, the text also says that the device can make and change agents, channels and
-   memory on this computer (see "Create and change agents").
+   When it is on, the text also says that the device can make and change agents, channels,
+   memory and workflows on this computer (see "Create and change agents" and "Workflows").
 5. On Allow, both sides store each other's identity. Later connections need no code. The new
    server appears in the client; the client opens it at once.
 
@@ -62,6 +62,8 @@ client shows it and sends commands.
 3. Another device that uses the same server sees the same messages at once.
 4. If the server lets this device change agents, the user can also create and change agents and
    channels of that server (see "Create and change agents").
+5. The user opens the Workflows page of that server, runs and stops workflows, and sees their
+   runs (see "Workflows").
 
 ### Remove access
 
@@ -91,13 +93,14 @@ client shows it and sends commands.
 | Read messages, search places and messages | Change model accounts, skills, connections and settings |
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
-| Answer approval cards and questions | Routines, workflows, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |
+| Answer approval cards and questions | Routines, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |
 | See the task list and task details; stop a task | Browser "Take control"; accept or request changes on a part in review (004); the Today page (021); memory proposals and memory history (008) |
-| Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory | Export and import of data |
+| See the workflow list, open a canvas, see run history, run details and live run state; run and stop a workflow; answer an approval step of a run | The workflow assistant panel; export and import of workflow files; the workflows log (014) |
+| Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
 
 A client sees the user sections of the server (001) and cannot make, rename, order or delete
-them, or move a place into another section. The page buttons and pages that a client cannot use
-show a muted line: "Open this on <server name>."
+them, or move a place into another section. The Today and usage page buttons and pages, and the
+other parts in the right column, show a muted line on a client: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
 card on a client has no "Always allow" choice. If a client sends one, the server takes it as one
 "Allow" and keeps no rule. The rules of the server hold for every client. A Deny rule refuses a
@@ -138,6 +141,32 @@ button on a section, the agent profile, the channel settings, the memory list.
   "<server name> does not let this device change agents. Turn it on in Settings → Devices on
   that computer."
 
+### Workflows
+
+A client opens the Workflows page of the server (010) in the same screens as on the server.
+
+- **View:** the workflow list, each canvas with its steps, notes and node numbers, the run
+  history, the details of each run, and the live state of a run. The server pushes each change.
+- **Run and stop:** these need only the right to send messages. A client starts a manual run,
+  stops a run, and answers an approval step of a run. The run history shows "Started by <device
+  name>" for a run that a client started. An approval step that a client answered shows "Allowed
+  by <device name>" or "Denied by <device name>".
+- **Change:** create, edit, duplicate, turn on or off, delete, and restore a version need the
+  switch "Can create and change agents". Without it, the canvas is read only and shows no edit
+  controls. A try gets the "Not allowed" error of "No switch" above. The rule of 010 holds: a
+  workflow cannot be edited while it runs.
+- **Server things:** an agent step picks from the agents of the server that are not archived. A
+  model step and a condition in "Ask a model" mode pick from the model accounts of the server. A
+  post step picks a place of the server. A client never sees a key or a path.
+- **On the server only:** the assistant panel, because it can change many things at once, and
+  export and import of workflow files. The panel shows the muted line "Open this on <server
+  name>." on a client. The phone keeps its own assistant rule (011).
+- **Sync:** a workflow that runs on another computer through sync (019) shows the same "Runs on
+  <name>" line on the client. Run is off for it on the client, as on the server. A client does
+  not offer "Run on this computer"; the user chooses it on the server.
+- **Offline:** while the server is offline, the page shows "<server name> is offline." It shows
+  no cached workflows.
+
 ## Connection
 
 - A client connects straight to an address of the server. The app has no relay and no
@@ -159,16 +188,18 @@ button on a section, the agent profile, the channel settings, the memory list.
 - A client asks for: server summary, places (with the user sections and the section of each
   place), a page of messages, search of places and of messages (001), send message, stop, edit,
   retry, mark a place as read, approve, answer question, upload attachment, download attachment,
-  task list, task details, stop a task.
-- The phone app (011) may ask for more: end a request (see 004), start and fork a thread,
-  compact a conversation, and run or edit a workflow. The aim of 011 is that the phone can do
-  whatever the user can do in a conversation on the computer. A computer client does not offer
-  these in this version, and each of them needs its own slice. The rules of "Create and change
-  agents" apply to every client, the phone too: running a workflow needs only the right to send
-  messages, and editing a workflow needs the switch "Can create and change agents".
+  task list, task details, stop a task, workflow list, one workflow, run history, run details,
+  create, update, delete and turn on or off a workflow, run a workflow, stop a run.
+- The phone app (011) may ask for more: end a request (see 004), start and fork a thread, and
+  compact a conversation. The aim of 011 is that the phone can do whatever the user can do in a
+  conversation on the computer. A computer client does not offer these in this version, and each
+  of them needs its own slice.
+- The rules of "Create and change agents" and "Workflows" apply to every client, the phone too:
+  running and stopping a workflow need only the right to send messages, and a change to a
+  workflow needs the switch "Can create and change agents".
 - A server pushes: new and changed messages, task state changes, agent state changes, approval
-  requests and questions, unread counts, and changes to the sections or to the section of a
-  place.
+  requests and questions, unread counts, changes to the sections or to the section of a place,
+  changes to workflows, and changes to the state of a run.
 - Each message has a type, an id, and a version number. Both sides use one protocol version. A
   peer with another version gets a clear "Update the app" error.
 - A server answers each client by what that client may do (see above). A request for something
@@ -249,6 +280,14 @@ accept connections, this is the same computer.
 - A link that was made before the switch existed has it off.
 - MacBook 1 cannot delete an agent of MacBook 2, cannot change a model account, and a request
   for a folder path is refused.
+- On MacBook 1, open the Workflows page of MacBook 2 with the switch off. The list and the
+  canvas show with no edit controls. Run a workflow: the steps light up on both computers, and
+  the run history shows "Started by MacBook 1". Stop the run from MacBook 1: it stops. A request
+  to edit the workflow gets "Not allowed".
+- Turn the switch on and add a step from MacBook 1: the canvas on MacBook 2 shows it at once.
+  The assistant panel and workflow export and import show "Open this on MacBook 2."
+- A workflow of MacBook 2 that runs on a third computer through sync shows "Runs on <name>" on
+  MacBook 1, and Run is off.
 - Type a wrong code 5 times: the code ends. Wait 5 minutes: the code ends.
 - Pair a computer with itself: a plain error shows.
 - With both devices in one VPN: pair on the same Wi-Fi, then switch the phone to mobile data.
