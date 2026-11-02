@@ -112,6 +112,22 @@ const FileOfMessage = Schema.Struct({
 })
 const MessageText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MESSAGE_MAX))
 const done = Effect.as(undefined)
+
+/**
+ * The options of a retry. A request of a linked device asks about steps that are on this
+ * computer, so the retry note names this computer and shows no list (spec 005, 012).
+ */
+const retryOptions = (confirmed: boolean | undefined) =>
+  Effect.gen(function* () {
+    const actor = yield* CurrentActor
+    const awayFrom = actor
+      ? yield* Devices.use((d) => Effect.sync(() => d.deviceName()))
+      : undefined
+    return {
+      ...(confirmed ? { confirmed } : {}),
+      ...(awayFrom !== undefined ? { awayFrom } : {}),
+    }
+  })
 const ByLink = Schema.Struct({ linkId: Schema.String })
 
 /**
@@ -551,9 +567,12 @@ export const handlers: Handlers = {
       done,
     ),
   "tasks.retry": (input) =>
-    decode(ById)(input).pipe(
-      Effect.flatMap(({ id }) => Tasks.use((t) => t.retry(id))),
-      done,
+    decode(Schema.Struct({ id: Schema.String, confirmed: Schema.optionalKey(Schema.Boolean) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, confirmed }) =>
+        retryOptions(confirmed).pipe(Effect.flatMap((o) => Tasks.use((t) => t.retry(id, o)))),
+      ),
     ),
   "channels.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
@@ -1019,9 +1038,18 @@ export const handlers: Handlers = {
       done,
     ),
   "chat.retry": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, messageId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId, messageId }) => Chat.use((c) => c.retry(agentId, messageId))),
-      done,
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        messageId: Schema.String,
+        confirmed: Schema.optionalKey(Schema.Boolean),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, messageId, confirmed }) =>
+        retryOptions(confirmed).pipe(
+          Effect.flatMap((o) => Chat.use((c) => c.retry(agentId, messageId, o))),
+        ),
+      ),
     ),
   "chat.edit": (input) =>
     decode(Schema.Struct({ agentId: Schema.String, messageId: Schema.String, text: MessageText }))(

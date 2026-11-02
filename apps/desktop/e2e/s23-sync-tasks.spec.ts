@@ -210,6 +210,12 @@ test("sync tasks: an approval is answered on the other computer, one task per ag
       { timeout: 15_000 },
     )
     await two.page.getByTestId("task-retry").click()
+    // The steps of that task are on MacBook 1: the note has no list, and it names that computer.
+    const note = two.page.getByTestId("retry-note")
+    await expect(note).toBeVisible()
+    await expect(note.getByTestId("retry-note-computer")).toContainText("MacBook 1")
+    await expect(note.getByTestId("retry-note-step")).toHaveCount(0)
+    await note.getByTestId("retry-anyway").click()
     await expect
       .poll(
         async () =>

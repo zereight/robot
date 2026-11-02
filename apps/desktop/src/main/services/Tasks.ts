@@ -1,8 +1,15 @@
 import { randomUUID } from "node:crypto"
 import {
+  type ActionDecider,
   isActive,
   isRuntimeKind,
+  type LoggedStep,
   messageText,
+  type OutsideSource,
+  type RetryNote,
+  type RetryResult,
+  remoteRetryNote,
+  retryNote,
   type Task,
   type TaskDetail,
   type TaskSource,
@@ -11,6 +18,7 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Layer, Semaphore } from "effect"
 import { resumeOf } from "../providers/resume.ts"
+import { ActionLog } from "./ActionLog.ts"
 import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -37,6 +45,7 @@ interface TaskRow {
   asked_at: number | null
   first_reply_at: number | null
   origin: string | null
+  depth: number
 }
 
 export interface TaskInput {
@@ -54,6 +63,31 @@ export interface TaskInput {
    * count from the moment it is made.
    */
   readonly askedAt?: number | null
+  /**
+   * How deep the task is in a chain of messages between agents (spec 005). Without it, a part
+   * and a retry keep the depth of the task that made them, and any other task has depth 0.
+   */
+  readonly depth?: number
+}
+
+/** One step of a task for the action log (spec 007). */
+export interface StepRecord extends Omit<LoggedStep, "at"> {
+  readonly agentId: string
+  readonly taskId: string
+  /** Who decided that the step ran or did not run. */
+  readonly decidedBy: ActionDecider
+  /** The first source of outside content of the turn, or null. */
+  readonly outside: OutsideSource | null
+}
+
+export interface RetryOptions {
+  /** The user read the retry note and chose "Retry anyway". */
+  readonly confirmed?: boolean
+  /**
+   * The name of this computer, when the request comes from a linked device (spec 012). The
+   * steps are on this computer and not on the one that asks, so the note has no list.
+   */
+  readonly awayFrom?: string
 }
 
 /** Starts the work again for a failed or cancelled task of one source. */
@@ -109,7 +143,20 @@ export interface TasksService {
   setRemote(remote: RemoteTasks): void
   /** The name of the other computer with this id, for "Runs on <name>" (spec 019). */
   computerName(originId: string): string
-  retry(taskId: string): Effect.Effect<void, AppError>
+  /**
+   * Tries a task again. When the first try (and its parts) ran steps that may have changed
+   * things, and the request is not `confirmed`, nothing starts and the answer holds the note
+   * (spec 005, "Retry note").
+   */
+  retry(taskId: string, options?: RetryOptions): Effect.Effect<RetryResult, AppError>
+  /** The note for a retry of this task, or null when the retry starts at once. */
+  noteFor(taskId: string, options?: Pick<RetryOptions, "awayFrom">): RetryNote | null
+  /** The depth of a task in a chain of messages between agents. 0 for an unknown task. */
+  depthOf(taskId: string): number
+  /** Adds a step of a task to the action log (spec 007). */
+  recordStep(step: StepRecord): void
+  /** The logged steps of a task, oldest first. */
+  steps(taskId: string): readonly LoggedStep[]
   onRetry(source: TaskSource, handler: RetryHandler): void
   /** Calls `listener` when a task ends as done, failed or cancelled. */
   onEnd(listener: (task: Task) => void): void
@@ -156,6 +203,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
     Effect.gen(function* () {
       const db = yield* Database
       const bus = yield* EventBus
+      const actionLog = yield* ActionLog
       const notifier = yield* Notifier
       const activity = yield* Activity
       const slots = new Map<string, Semaphore.Semaphore>()
@@ -287,14 +335,20 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           bus.emit("channels.changed", { channelId: source.source_id })
       }
 
+      const depthOf = (taskId: string | null | undefined) =>
+        taskId
+          ? (db.get<{ depth: number }>("SELECT depth FROM task WHERE id = ?", taskId)?.depth ?? 0)
+          : 0
+
       const create = (input: TaskInput) =>
         Effect.sync(() => {
           const id = randomUUID()
           const now = Date.now()
+          const depth = input.depth ?? depthOf(input.parentId ?? input.retryOf)
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
-               message_id, state, created_at, asked_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
+               message_id, state, created_at, asked_at, depth)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)`,
             id,
             input.agentId,
             input.prompt,
@@ -306,6 +360,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             input.messageId ?? null,
             now,
             input.askedAt == null ? null : Math.min(input.askedAt, now),
+            depth,
           )
           stops.set(id, Deferred.makeUnsafe<void>())
           changed(input.agentId)
@@ -391,16 +446,64 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           return remote.stop(taskId, current.origin)
         })
 
-      const retry = (taskId: string) =>
-        Effect.suspend(() => {
+      /** The task and every task below it: the parts of a plan count for the retry of the lead. */
+      const withDescendants = (taskId: string): string[] => [
+        taskId,
+        ...childRows(taskId).flatMap((child) => withDescendants(child.id)),
+      ]
+
+      const steps = (taskId: string): readonly LoggedStep[] =>
+        actionLog
+          .ofTask(taskId)
+          .flatMap((e) =>
+            e.kind === "file" || e.kind === "shell" || e.kind === "web" || e.kind === "connection"
+              ? [{ at: e.at, kind: e.kind, access: e.access, target: e.target, result: e.result }]
+              : [],
+          )
+
+      const noteFor = (taskId: string, options?: Pick<RetryOptions, "awayFrom">) => {
+        const current = row(taskId)
+        if (!current) return null
+        // The steps of a task of the other computer are on that computer. The note shows with no
+        // list, because this computer cannot tell that the first try changed nothing.
+        if (current.origin !== null) return remoteRetryNote(remote?.nameOf(current.origin) ?? "")
+        const note = retryNote(
+          withDescendants(taskId)
+            .flatMap((id) => steps(id))
+            .sort((a, b) => a.at - b.at),
+        )
+        if (!note) return null
+        // A linked device asks, and the steps are here: the note names this computer, no list.
+        return options?.awayFrom ? remoteRetryNote(options.awayFrom) : note
+      }
+
+      const retry = (taskId: string, options?: RetryOptions) =>
+        Effect.suspend((): Effect.Effect<RetryResult, AppError> => {
           const current = row(taskId)
           if (!current) return Effect.fail(new AppError({ code: "task_not_found" }))
           if (current.state !== "failed" && current.state !== "cancelled")
             return Effect.fail(new AppError({ code: "cannot_retry_task" }))
           const handler = retryHandlers.get(current.source)
           if (!handler) return Effect.fail(new AppError({ code: "cannot_retry_task" }))
-          return handler(toTask(current, remote))
+          if (!options?.confirmed) {
+            const note = noteFor(taskId, options)
+            if (note) return Effect.succeed({ started: false, note })
+          }
+          return handler(toTask(current, remote)).pipe(Effect.as<RetryResult>({ started: true }))
         })
+
+      const recordStep = (step: StepRecord) => {
+        actionLog.add({
+          agentId: step.agentId,
+          kind: step.kind,
+          access: step.access,
+          target: step.target,
+          decidedBy: step.decidedBy,
+          result: step.result,
+          taskId: step.taskId,
+          outside: step.outside,
+        })
+      }
 
       const resultOf = (task: Task) => {
         if (!task.messageId) return ""
@@ -469,6 +572,10 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         },
         computerName: (originId) => remote?.nameOf(originId) ?? "",
         retry,
+        noteFor,
+        depthOf,
+        recordStep,
+        steps,
         onRetry: (source, handler) => void retryHandlers.set(source, handler),
         onEnd: (listener) => void endListeners.push(listener),
         list: (serverId) =>
