@@ -482,7 +482,7 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
     ),
-  "workflowFile.import": (input) =>
+  "workflowFile.apply": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data))),
     ),

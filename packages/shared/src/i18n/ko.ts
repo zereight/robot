@@ -758,7 +758,7 @@ export const ko: Record<MessageKey, string> = {
   "error.provider_busy": "모델이 바빠요. 잠시 뒤에 다시 시도해 주세요.",
   "workflowFile.menu": "워크플로우 파일",
   "workflowFile.menu.export": "워크플로우 내보내기…",
-  "workflowFile.menu.import": "워크플로우 가져오기…",
+  "workflowFile.menu.importFile": "워크플로우 가져오기…",
   "workflowFile.close": "닫기",
   "workflowFile.export.title": "워크플로우 내보내기",
   "workflowFile.export.hint":

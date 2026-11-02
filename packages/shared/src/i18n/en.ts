@@ -765,7 +765,7 @@ export const en = {
   "error.provider_busy": "The model is busy. Try again later.",
   "workflowFile.menu": "Workflow files",
   "workflowFile.menu.export": "Export workflows…",
-  "workflowFile.menu.import": "Import workflows…",
+  "workflowFile.menu.importFile": "Import workflows…",
   "workflowFile.close": "Close",
   "workflowFile.export.title": "Export workflows",
   "workflowFile.export.hint":

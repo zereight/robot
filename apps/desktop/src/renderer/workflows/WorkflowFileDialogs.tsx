@@ -188,7 +188,7 @@ export const ImportWorkflowsDialog = (props: {
     setBusy(true)
     setError(undefined)
     try {
-      await call("workflowFile.import", { serverId })
+      await call("workflowFile.apply", { serverId })
       props.onClose()
     } catch (e) {
       const failure = readFailure(e)
