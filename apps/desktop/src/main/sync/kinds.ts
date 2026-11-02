@@ -1343,14 +1343,6 @@ interface RoutineRow {
 
 const isSchedule = strictly(ScheduleSchema as unknown as Schema.Codec<unknown, unknown>)
 const isWatch = strictly(WatchSchema as unknown as Schema.Codec<unknown, unknown>)
-const modelCheck = nullable(
-  (v) =>
-    isObject(v) &&
-    shape(["accountId", "model", "effort"])(v) &&
-    str(100, 1)(v.accountId) &&
-    str(300, 1)(v.model) &&
-    nullable(str(40))(v.effort),
-)
 /**
  * The routine model as columns. The model stays also when its account is not here: a run then
  * fails as "not connected" and does not use another model (spec 009).
@@ -1380,7 +1372,7 @@ const routine: KindDef = {
     watch: {
       check: nullable((v) => isWatch(v) && validWatch(v as Parameters<typeof validWatch>[0])),
     },
-    model: { check: modelCheck },
+    model: { check: nullable(modelCheck) },
     channelId: { check: nullable(str(100, 1)) },
     enabled: { check: bool },
     runsOn: { check: str(64, 1) },
