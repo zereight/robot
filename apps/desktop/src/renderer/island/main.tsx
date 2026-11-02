@@ -13,20 +13,38 @@ import {
   translate,
 } from "@robot/shared"
 import { Bot, ChevronLeft, ChevronRight } from "lucide-solid"
-import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  For,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import { render } from "solid-js/web"
 import { Face } from "../agents/Face.tsx"
 import { call } from "../lib/rpc.ts"
 import "./island.css"
 
-const [settings, info] = await Promise.all([call("settings.get"), call("app.info")])
-const locale = resolveLocale(settings.language, info.systemLocale)
+const [initialSettings, info] = await Promise.all([call("settings.get"), call("app.info")])
+// The language and the motion setting can change while the island is open.
+const [settings, setSettings] = createSignal(initialSettings)
+window.robot.on("settings.changed", setSettings)
+const locale = () => resolveLocale(settings().language, info.systemLocale)
 const t = (key: MessageKey, params?: Record<string, string | number>) =>
-  translate(locale, key, params)
-const noMotion =
-  settings.reduceMotion === "on" ||
-  (settings.reduceMotion === "system" && matchMedia("(prefers-reduced-motion: reduce)").matches)
-document.documentElement.lang = locale
+  translate(locale(), key, params)
+const [systemReduced, setSystemReduced] = createSignal(
+  matchMedia("(prefers-reduced-motion: reduce)").matches,
+)
+matchMedia("(prefers-reduced-motion: reduce)").addEventListener("change", (e) =>
+  setSystemReduced(e.matches),
+)
+const noMotion = () =>
+  settings().reduceMotion === "on" || (settings().reduceMotion === "system" && systemReduced())
+createRoot(() => createEffect(() => (document.documentElement.lang = locale())))
 
 const placeText = (place: string | null) =>
   place === null ? t("island.place.direct") : t("island.place.channel", { name: place })
@@ -190,12 +208,13 @@ const Island = () => {
       class="island"
       aria-label={t("island.label")}
       data-view={view()}
-      data-motion={noMotion ? "off" : "on"}
+      data-motion={noMotion() ? "off" : "on"}
       data-testid="island"
       onPointerEnter={enter}
       onPointerLeave={leave}
     >
-      <Show when={view() === "bar" || view() === "detail"}>
+      {/* The bar stays above the detail card and the result card. The attention card replaces it. */}
+      <Show when={view() !== "attention"}>
         <button
           type="button"
           class="bar"
