@@ -11,7 +11,7 @@ import {
   taskTree,
 } from "@robot/shared"
 import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
-import { formatElapsed } from "../chat/format.ts"
+import { formatElapsed, formatTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import shell from "../shell/shell.module.css"
@@ -38,7 +38,8 @@ const duration = (task: Task) => {
 }
 
 const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
-  const { t } = useApp()
+  const app = useApp()
+  const { t } = app
   const ui = useUi()
   const [error, setError] = createSignal<ErrorText>()
   const [detail, { refetch }] = createResource(() => call("tasks.get", { id: props.id }))
@@ -87,6 +88,19 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
             </Show>
             <h3>{t("tasks.prompt")}</h3>
             <pre class={styles.text}>{d().task.prompt}</pre>
+            <Show when={d().joined.length > 0}>
+              <h3>{t("tasks.joined")}</h3>
+              <ul class={styles.joined} data-testid="task-joined">
+                <For each={d().joined}>
+                  {(message) => (
+                    <li data-testid="task-joined-item">
+                      <time class={styles.joinedTime}>{formatTime(app.locale(), message.at)}</time>
+                      <span class={styles.text}>{message.text}</span>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
             <Show when={d().result}>
               <h3>{t("tasks.result")}</h3>
               <pre class={styles.text} data-testid="task-result">

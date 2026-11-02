@@ -309,4 +309,85 @@ describe("a reply with thinking that calls a tool", () => {
       { type: "tool_use", id: "toolu_9", name: "read", input: {} },
     ])
   })
+
+  /** An inbox that hands out each message once. `waiting` takes new messages. */
+  const inboxOf = (messages: { id: string; text: string }[]) => {
+    const waiting = [...messages]
+    return { waiting, take: () => waiting.splice(0), watch: () => () => {} }
+  }
+
+  test("a message of the user joins the request after the tool step (spec 003)", async () => {
+    const bodies: { messages: { role: string; content: unknown }[] }[] = []
+    let calls = 0
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)))
+      return ++calls === 1 ? toolReply() : finalReply()
+    }) as unknown as typeof fetch
+    const inbox = inboxOf([])
+    const events: string[] = []
+    for await (const e of runAgent(
+      request(null),
+      async () => {
+        // The user writes while the tool step runs.
+        inbox.waiting.push({ id: "m1", text: "Use b.txt instead" })
+        return { output: "file text", failed: false }
+      },
+      undefined,
+      inbox,
+    )) {
+      events.push(e.type === "joined" ? `joined:${e.id}` : e.type)
+    }
+    expect(bodies).toHaveLength(2)
+    // The message goes in the same turn as the tool result: the roles still alternate.
+    expect(bodies[1]?.messages.at(-1)).toEqual({
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: "toolu_1", content: "file text" },
+        { type: "text", text: "Use b.txt instead" },
+      ],
+    })
+    expect(events).toContain("joined:m1")
+    expect(events.indexOf("joined:m1")).toBeLessThan(events.lastIndexOf("text"))
+  })
+
+  test("a message that comes while the reply streams gets one more request, not a new turn", async () => {
+    const bodies: { messages: { role: string; content: unknown }[] }[] = []
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)))
+      return finalReply()
+    }) as unknown as typeof fetch
+    const inbox = inboxOf([
+      { id: "a", text: "first" },
+      { id: "b", text: "second" },
+    ])
+    const joined: string[] = []
+    for await (const e of runAgent(
+      { ...request(null), tools: [] },
+      async () => ({ output: "", failed: false }),
+      undefined,
+      inbox,
+    ))
+      if (e.type === "joined") joined.push(e.id)
+    expect(bodies).toHaveLength(2)
+    expect(joined).toEqual(["a", "b"])
+    expect(bodies[1]?.messages.slice(-2)).toEqual([
+      { role: "assistant", content: "Done." },
+      { role: "user", content: "first\n\nsecond" },
+    ])
+  })
+
+  test("with no message in the inbox the turn ends after the reply", async () => {
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      return finalReply()
+    }) as unknown as typeof fetch
+    for await (const _ of runAgent(
+      { ...request(null), tools: [] },
+      async () => ({ output: "", failed: false }),
+      undefined,
+      inboxOf([]),
+    ));
+    expect(calls).toBe(1)
+  })
 })

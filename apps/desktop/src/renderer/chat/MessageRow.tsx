@@ -93,6 +93,11 @@ const ToolCard = (props: {
             </span>
           )}
         </Show>
+        <Show when={props.part.answeredInChat}>
+          <span class={styles.fromDevice} data-testid="tool-answered-in-chat">
+            {t("chat.tool.answeredInChat")}
+          </span>
+        </Show>
         <Show when={props.part.decision}>
           {(decision) => (
             <span
@@ -582,6 +587,41 @@ const ToolStep = (props: { agent: Agent; part: ToolPart; from: string | undefine
   )
 }
 
+/** "Read at the next step" under a message that joined the turn, with Delete while it may go. */
+const UnreadLine = (props: { message: ChatMessage; unread: "waiting" | "handed" }) => {
+  const { t } = useApp()
+  const [failure, setFailure] = createSignal<ErrorText>()
+  const remove = async () => {
+    setFailure(undefined)
+    try {
+      await call("chat.unread.delete", {
+        agentId: props.message.agentId,
+        messageId: props.message.id,
+      })
+    } catch (e) {
+      setFailure(describeError(e))
+    }
+  }
+  return (
+    <div class={styles.unread} data-testid="unread-line">
+      <span>{t("chat.unread")}</span>
+      <Show when={props.unread === "waiting"}>
+        <button
+          type="button"
+          class={styles.unreadDelete}
+          onClick={remove}
+          data-testid="unread-delete"
+        >
+          {t("chat.unread.delete")}
+        </button>
+      </Show>
+      <Show when={failure()}>
+        {(err) => <span role="alert">{t(err().key, err().params)}</span>}
+      </Show>
+    </div>
+  )
+}
+
 const FailedRow = (props: { message: ChatMessage; onRetry: () => void }) => {
   const app = useApp()
   const { t } = app
@@ -730,6 +770,9 @@ export const MessageRow = (props: MessageRowProps) => {
                       )}
                     </For>
                   </ul>
+                </Show>
+                <Show when={props.message.unread}>
+                  {(unread) => <UnreadLine message={props.message} unread={unread()} />}
                 </Show>
               </>
             }
