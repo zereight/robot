@@ -10,6 +10,7 @@ import {
   shot,
 } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { freePortPair } from "./ports.ts"
 import {
   closeSettings,
   envFor,
@@ -128,7 +129,7 @@ const start = async (ports: [number, number], extra: Record<string, string> = {}
 
 test("linked agents: a client with the switch makes and changes agents, channels and memory", async () => {
   test.setTimeout(240_000)
-  const s = await start([47901, 47902])
+  const s = await start(await freePortPair())
   const { one, two, mock } = s
   try {
     await pairOneWay(one, two, true)
@@ -331,7 +332,7 @@ test("linked agents: a client with the switch makes and changes agents, channels
 
 test("linked agents: the switch is read at each request and works at once", async () => {
   test.setTimeout(240_000)
-  const s = await start([47903, 47904])
+  const s = await start(await freePortPair())
   const { one, two, mock } = s
   try {
     await createAgent(two.page, "Ada")
@@ -418,8 +419,9 @@ test("linked agents: the switch is read at each request and works at once", asyn
 test("linked agents: while the computers sync the switch shows on and is locked; Stop syncing gives it back", async () => {
   test.setTimeout(240_000)
   const mock = await startMockProvider()
-  const one = await launch(freshUserData(), envFor(47905))
-  const two = await launch(freshUserData(), envFor(47906))
+  const [port1, port2] = await freePortPair()
+  const one = await launch(freshUserData(), envFor(port1))
+  const two = await launch(freshUserData(), envFor(port2))
   await resizeWindow(one.app, 1200, 860)
   await resizeWindow(two.app, 1200, 860)
   try {
@@ -467,7 +469,7 @@ const latinWords = async (page: Page, selector: string) => {
 
 test("linked agents: in Korean the new screens have no English left", async () => {
   test.setTimeout(240_000)
-  const { mock, one, two } = await start([47907, 47908], { ROBOT_SYSTEM_LOCALE: "ko-KR" })
+  const { mock, one, two } = await start(await freePortPair(), { ROBOT_SYSTEM_LOCALE: "ko-KR" })
   try {
     await createAgent(two.page, "Ada")
     await pairOneWay(one, two, true)

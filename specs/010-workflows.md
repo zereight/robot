@@ -38,8 +38,9 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 5. Versions: the editor lists the versions of a workflow. The user opens one and can restore it.
    A restore also keeps the current graph as a version.
 6. Export workflows: from the menu of the Workflows page, the user picks workflows and a file
-   name. The app writes one file. Import workflows: the user picks such a file. The app lists
-   what it will make and which agent names it cannot find, and asks to confirm.
+   name. The app writes one file. Import workflows: the user picks such a file. The app shows the
+   review screen (see 014, "Review before an import"), with the agent names that it cannot find,
+   and asks to confirm.
 
 ## Workflow file
 

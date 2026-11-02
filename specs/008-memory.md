@@ -24,6 +24,8 @@ An agent remembers useful facts across chats, and the user can see and change wh
 - Memory is stored locally with the agent.
 - Deleting an agent deletes its memory. Archiving keeps it.
 - The user can turn memory off per agent; existing items stay but are not used.
+- A save in a turn that holds outside content asks first (see 007, "Outside content"). So a web
+  page cannot put a lasting order into the memory of an agent.
 
 ## Acceptance
 
