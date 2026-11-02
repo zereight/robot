@@ -81,6 +81,8 @@ Agents do repeat work on a schedule without the user starting it.
 
 ## Rules
 
+- A starter (see 002) can make a routine for its new agent. The routine starts paused. It uses a
+  schedule, posts in the chat of the agent, and counts in the limit of 50.
 - Each run is a task (see 005) with the routine as its source. While a run works, the working
   line of the agent names the routine (see 003), because a run has no step text of its own.
 - A run whose tasks are all cancelled by the user shows as "Cancelled" in the calendar and the

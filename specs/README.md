@@ -9,10 +9,10 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | --- | --- | --- |
 | 000 | [Product](000-product.md) | Draft |
 | 001 | [Window layout: server rail, place list with user sections, conversation, activity panel](001-window-layout.md) | Draft |
-| 002 | [Agents: create, face, name, role, edit, archive, main agent, agent files](002-agents.md) | Draft |
+| 002 | [Agents: create, starters, face, name, role, edit, archive, main agent, agent files, recent work](002-agents.md) | Draft |
 | 003 | [Direct chat with one agent: send, stream, stop, attach, reply, threads, context](003-direct-chat.md) | Draft |
-| 004 | [Channels: several agents, one job, lead agent, split work, `@all`, fast pick](004-channels.md) | Draft |
-| 005 | [Tasks and plan steps: queue, run, wait, finish, fail, retry](005-tasks.md) | Draft |
+| 004 | [Channels: several agents, one job, lead agent, split work, check and verdicts, `@all`, fast pick](004-channels.md) | Draft |
+| 005 | [Tasks and plan steps: queue, run, wait, finish, fail, retry, moments](005-tasks.md) | Draft |
 | 006 | [Providers: connect a model account, choose a model per agent, switch](006-providers.md) | Draft |
 | 007 | [Agent workspace and tools: files, shell, browser, approvals, permission rules, action log, other agents, computer use](007-workspace-and-tools.md) | Draft |
 | 008 | [Memory: what an agent keeps between chats, and how the user edits it](008-memory.md) | Draft |
@@ -48,6 +48,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M10 | The changes to 003, 004, 005, 006, 007, 009, 010, 012, 013, 015 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S35 to S37: limits of a task and the retry note, runtime states and the level "Read only", review of parts and Blocked |
 | M11 | 020, and the changes to 002, 003, 005, 007, 008, 009, 013, 014 and 017 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S38 to S45: messages during a turn, outside content, changes from the chat, saved secrets, task times, watch routines, review before an import, teach a task |
 | M12 | 021, and the changes to 001, 003, 005, 006, 007, 008, 011, 012, 013, 014, 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S46 to S49: message search, silent and cut turns, the Today page, memory control |
+| M13 | The changes to 000, 002, 004, 005, 008, 009, 016, 017 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S50 to S54: honest wording, verdicts in the check, work record, starters, skills that go with their agent |
 
 ## Template
 

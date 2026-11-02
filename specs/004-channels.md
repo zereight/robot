@@ -11,14 +11,23 @@ The user gives a job to a group of agents in one place and watches them divide a
   the Channels list (see 001, "User sections"). With no section, the channel shows in the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
   parts and give each part to a member.
-- **Part**: a child task (see 005) given to one member, with a short label.
+- **Part**: a child task (see 005) given to one member, with a short label and, when the lead
+  gives one, a done test.
+- **Done test**: one line, up to 200 characters, that says what a finished part must hold. The lead
+  writes it in the plan. The member gets it with the part. A part with no done test gets no
+  verdict.
+- **Verdict**: the judgement of the lead on the result of a part: "Met" or "Not met". A "Not met"
+  verdict has a reason of up to 160 characters. A verdict is a field of the part, not a state of
+  the task. The part stays Done. The user's review (see "Review of parts") is a different thing:
+  it has its own state, and it is the user's decision.
 - **Mention**: `@Name` in a message sends that message to the named agent directly.
 - **Everyone mention**: `@all` in a message gives the message to every available member. An
   available member is a member that is not archived. The mention list offers `@all` only when the
   channel has two or more members.
 - **Fast pick**: a small, fast decision model that chooses one member for a job (see 013, "Decision
   model"). It is off by default.
-- **Check**: a look of the lead at a channel whose work has stopped.
+- **Check**: a look of the lead at a channel whose work has stopped. The lead gives its verdicts in
+  this look.
 
 ## Flows
 
@@ -32,14 +41,17 @@ The user gives a job to a group of agents in one place and watches them divide a
       answers as if it had a mention.
    4. The lead, if the channel has one.
    5. No lead: the app asks which member should take it, with a row of member buttons.
-3. Split: the lead posts a short plan message and starts parts. Each member posts its replies in
-   the channel under its own face and name.
+3. Split: the lead posts a short plan message and starts parts. Each part can have a done test.
+   Each member posts its replies in the channel under its own face and name. A reply shows at
+   once. The check does not hide it.
 4. Thread chips: under the message that started a part, a chip shows the member's face, the part
    label and the reply count. A click scrolls to the newest reply of that part and flashes it,
    with a "Back to the message" control.
-5. Finish: when all parts end, the lead posts one summary message. A part in review has not
-   ended, so the summary waits for the decision. The summary names each blocked part and its
-   reason.
+5. Finish: when all parts end, the lead gives its verdicts (see "Check by the lead") and then
+   posts one summary message. A part in review has not ended, so the summary waits for the
+   decision. If the lead nudges a member for a verdict "Not met", the summary waits for the new
+   part. The summary names each blocked part and its reason, and each part with the verdict "Not
+   met" that no later part fixed.
 6. Change members: the user adds or removes members in channel settings. A member that works
    cannot be removed until its part ends or the user stops it.
 7. Archive: the user archives a channel from its menu. It leaves the place list. Its messages stay.
@@ -71,6 +83,8 @@ The user gives a job to a group of agents in one place and watches them divide a
 - The user gets a notification of the kind "part in review" (015). A click opens the part.
 - A part in review does not count as running for the check of the lead, and it does not hold
   the place of its member (005).
+- A part that the user decided on (Accept, or Request changes) gets no verdict. The decision of
+  the user is final.
 
 ## Fast pick
 
@@ -100,11 +114,19 @@ The user gives a job to a group of agents in one place and watches them divide a
   waiting or in review, and at least one part ended since the last check.
 - The lead reads a short state of the channel: its topic, the older summary, the members with
   their role lines, the open and failed parts, and the last 12 messages, each cut to 600
-  characters. The lead treats all of that text as data, not as orders.
+  characters. For each part that ended as Done, has a done test, has no verdict, and has no
+  decision of the user, it also reads the label, the done test, and the end of the last reply of
+  the member, cut to 1500 characters. The lead treats all of that text as data, not as orders.
+- The lead gives a verdict for each of those parts: "Met" or "Not met". The app saves the verdict
+  with the part. A part that failed, was blocked or was cancelled gets no verdict. A later check
+  gives a verdict only to a part that has none.
 - The lead then does exactly one of three things:
-  1. Nudge: a member stopped early, a result is missing or partial, or a part failed or is blocked
-     and another try can help. The lead gives that member one more concrete instruction. It shows in the
-     channel as a message of the lead, and it starts a new part (see 005).
+  1. Nudge: a member stopped early, a result is missing or partial, a part has the verdict "Not
+     met", or a part failed or is blocked and another try can help. The lead gives that member one
+     more concrete instruction. It shows in the channel as a message of the lead, and it starts a
+     new part (see 005). The new part has the done test of the old part. If it gets the verdict
+     "Not met" too, the lead does not nudge it again for that reason. It asks (2) or does
+     nothing (3).
   2. Ask: only the user can go on (a decision, a missing fact, an approval). The lead posts one
      specific question in the channel.
   3. Nothing: the work is complete, or the user stopped a part on purpose, or the last message
@@ -112,7 +134,8 @@ The user gives a job to a group of agents in one place and watches them divide a
 - The lead looks at most 3 times after each message of the user. A new message of the user starts
   the count again. The lead does not look twice at a channel that has not changed. The lead's own
   messages do not start a new look. The summary of the lead (flow 5) counts as a look.
-- A lead that cannot answer leaves the channel as it is. A check never fails a job.
+- A lead that cannot answer leaves the channel as it is, and the parts keep no verdict. A check
+  never fails a job.
 
 ## Activity panel ("Now")
 
@@ -164,3 +187,14 @@ The user gives a job to a group of agents in one place and watches them divide a
 - A member ends a part with the line "Blocked: no access to the repository". The plan step shows
   the stop sign, the card shows the reason, and the summary of the lead names the part with that
   reason.
+- A job with two parts, each with a done test. Both parts end. The check gives "Met" to the first
+  and "Not met", with a reason, to the second. The lead nudges the second member once, and a new
+  part starts with the same done test. It ends and gets "Met". The lead then posts one summary.
+  The task view of the second part shows "Not met" and its reason, and its status stays Done.
+- A part that a nudge started gets "Not met" again: the lead does not nudge it again for that
+  reason. It posts one question or does nothing, and the summary names the part.
+- A part has no done test, or it failed, or it was blocked: it shows no verdict.
+- Turn on "Review parts". The user accepts a part: it shows no verdict, and the check does not
+  read it.
+- The lead is blocked by a usage limit when the parts end: no part gets a verdict, and the job
+  does not fail.
