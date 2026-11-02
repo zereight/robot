@@ -315,7 +315,7 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await expect(researchAgents).toHaveCount(0)
   // Search reads the names of places, not the names of sections.
   await searchBox.fill("research")
-  await expect(page.getByTestId("place-list")).toContainText("No places match.")
+  await expect(page.getByTestId("place-list")).toContainText("Nothing found.")
   await searchBox.press("Escape")
   await researchToggle.click()
   await expect(rowOf(page, "Ada")).toBeVisible()

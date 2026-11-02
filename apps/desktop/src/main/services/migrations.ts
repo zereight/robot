@@ -15,6 +15,34 @@ const dirtyTriggers = (table: string, kind: string, id: (row: "NEW" | "OLD") => 
 const plainId = (row: "NEW" | "OLD") => `${row}.id`
 
 /**
+ * Triggers that keep the text table of message search in step with one message table (spec 001).
+ * `place` is the column that names the chat or the channel of a row. A row with no text, or one
+ * that still streams, has no entry. The old entry goes first, so a write that replaces a row
+ * (which fires no delete trigger) leaves no second entry.
+ */
+const searchTriggers = (table: string, kind: string, place: string) => {
+  const rewrite = `DELETE FROM message_text WHERE kind = '${kind}' AND message_id = NEW.id;
+    INSERT INTO message_text (kind, message_id, place_id, created_at, body)
+      SELECT '${kind}', NEW.id, NEW.${place}, NEW.created_at, b FROM (
+        SELECT CASE WHEN NEW.status <> 'streaming' AND json_valid(NEW.parts) THEN
+          (SELECT group_concat(t, '') FROM (
+            SELECT json_extract(j.value, '$.text') AS t FROM json_each(NEW.parts) AS j
+            WHERE json_extract(j.value, '$.kind') = 'text' ORDER BY j.key))
+        END AS b
+      ) WHERE b IS NOT NULL AND b <> '';`
+  return `
+  CREATE TRIGGER ${table}_text_insert AFTER INSERT ON ${table} BEGIN
+    ${rewrite}
+  END;
+  CREATE TRIGGER ${table}_text_update AFTER UPDATE OF parts, status, ${place} ON ${table} BEGIN
+    ${rewrite}
+  END;
+  CREATE TRIGGER ${table}_text_delete AFTER DELETE ON ${table} BEGIN
+    DELETE FROM message_text WHERE kind = '${kind}' AND message_id = OLD.id;
+  END;`
+}
+
+/**
  * Schema migrations, in order. Never change a shipped entry; add a new one.
  * The index + 1 is stored as the database user version.
  */
@@ -422,5 +450,52 @@ export const migrations: readonly string[] = [
   -- The last change that a linked device made to an agent: its name then, and the time.
   ALTER TABLE agent ADD COLUMN changed_by TEXT;
   ALTER TABLE agent ADD COLUMN changed_at INTEGER;
+  `,
+  `
+  -- Message search (spec 001). The text of the sent messages of chats and channels, in a table of
+  -- its own, with an index that finds a part of a word without case (the trigram index). Triggers
+  -- keep it in step with every write to the two message tables, also a write by sync, by an
+  -- import, or by a delete that cascades from an agent or a channel. A reply that still streams
+  -- is not in it; it goes in when the reply ends. Tool cards, thinking and files are not text.
+  CREATE TABLE message_text (
+    n INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    place_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    body TEXT NOT NULL
+  );
+  CREATE UNIQUE INDEX message_text_message ON message_text (kind, message_id);
+  CREATE INDEX message_text_time ON message_text (created_at, n);
+  INSERT INTO message_text (kind, message_id, place_id, created_at, body)
+    SELECT kind, id, place_id, created_at, body FROM (
+      SELECT 'chat' AS kind, m.id AS id, m.agent_id AS place_id, m.created_at AS created_at,
+        m.status AS status,
+        (SELECT group_concat(t, '') FROM (
+          SELECT json_extract(j.value, '$.text') AS t FROM json_each(m.parts) AS j
+          WHERE json_extract(j.value, '$.kind') = 'text' ORDER BY j.key)) AS body
+      FROM message m WHERE json_valid(m.parts)
+    ) WHERE body IS NOT NULL AND body <> '' AND status <> 'streaming';
+  INSERT INTO message_text (kind, message_id, place_id, created_at, body)
+    SELECT kind, id, place_id, created_at, body FROM (
+      SELECT 'channel' AS kind, m.id AS id, m.channel_id AS place_id, m.created_at AS created_at,
+        m.status AS status,
+        (SELECT group_concat(t, '') FROM (
+          SELECT json_extract(j.value, '$.text') AS t FROM json_each(m.parts) AS j
+          WHERE json_extract(j.value, '$.kind') = 'text' ORDER BY j.key)) AS body
+      FROM channel_message m WHERE json_valid(m.parts)
+    ) WHERE body IS NOT NULL AND body <> '' AND status <> 'streaming';
+  CREATE VIRTUAL TABLE message_fts USING fts5(
+    body, content = 'message_text', content_rowid = 'n', tokenize = 'trigram'
+  );
+  INSERT INTO message_fts (message_fts) VALUES ('rebuild');
+  CREATE TRIGGER message_text_fts_insert AFTER INSERT ON message_text BEGIN
+    INSERT INTO message_fts (rowid, body) VALUES (NEW.n, NEW.body);
+  END;
+  CREATE TRIGGER message_text_fts_delete AFTER DELETE ON message_text BEGIN
+    INSERT INTO message_fts (message_fts, rowid, body) VALUES ('delete', OLD.n, OLD.body);
+  END;
+  ${searchTriggers("message", "chat", "agent_id")}
+  ${searchTriggers("channel_message", "channel", "channel_id")}
   `,
 ]
