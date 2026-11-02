@@ -559,6 +559,42 @@ export const migrations: readonly string[] = [
   ${searchTriggers("channel_message", "channel", "channel_id")}
   `,
   `
+  -- Memory control (spec 008). None of this syncs (spec 019): no dirty trigger is made here, and
+  -- the choice of an agent is not a field of the agent that sync carries.
+  -- "now" is "Save at once", "ask" is "Ask me first".
+  ALTER TABLE agent ADD COLUMN memory_mode TEXT NOT NULL DEFAULT 'now';
+  -- A fact that an agent suggests. It is not memory. Where it came from is the chat of the agent
+  -- ("agent") or a channel ("channel").
+  CREATE TABLE memory_proposal (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    place_kind TEXT,
+    place_id TEXT,
+    message_id TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX memory_proposal_agent ON memory_proposal (agent_id, created_at);
+  -- The changes to the memory of an agent. memory_id is the item at the time of the change.
+  -- actor: user, agent, proposal, undo. kind: added, edited, deleted. undo_of is the row that an
+  -- undo took back. undone_by is the undo row that took this one back, until that undo is undone.
+  CREATE TABLE memory_history (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    memory_id TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    actor TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    source TEXT NOT NULL,
+    old_text TEXT,
+    new_text TEXT,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    undo_of TEXT,
+    undone_by TEXT
+  );
+  CREATE INDEX memory_history_agent ON memory_history (agent_id, at);
+  `,
+  `
   -- How far the turn of a task went: not_sent, sent or started (spec 005). It only goes up. A task
   -- from before this step has none, and shows no line about it.
   ALTER TABLE task ADD COLUMN progress TEXT;

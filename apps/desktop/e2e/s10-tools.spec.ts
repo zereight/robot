@@ -63,7 +63,8 @@ test("tools: approval cards, deny, question, stop, permission level, memory", as
   // The agent saves a memory item; the panel lists it and the user can add, edit and delete.
   await send(page, `TOOL save_memory ${JSON.stringify({ text: "Likes green tea" })}`)
   await settled(page)
-  await page.getByTestId("tool-card").last().locator("summary").click()
+  // The save shows as a muted line with an undo control (spec 008), not as a card.
+  await expect(page.getByTestId("memory-saved-line")).toContainText("Saved to memory")
   await expect(page.getByTestId("memory-undo")).toBeVisible()
   await page.getByTestId("chat-header-agent").click()
   await expect(page.getByTestId("agent-profile")).toBeVisible()
