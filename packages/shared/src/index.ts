@@ -1,3 +1,4 @@
+export * from "./agentFile.ts"
 export * from "./agents.ts"
 export * from "./channels.ts"
 export * from "./chat.ts"

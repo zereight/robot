@@ -1,7 +1,13 @@
-import { Plus } from "lucide-solid"
+import type { AgentFilePreview } from "@robot/shared"
+import { Ellipsis, Plus } from "lucide-solid"
 import { createSignal, onCleanup, Show } from "solid-js"
 import { agentPlaceView } from "./agents/AgentChat.tsx"
 import { NewAgentDialog } from "./agents/AgentDialogs.tsx"
+import {
+  AgentFileProblemDialog,
+  ExportAgentsDialog,
+  ImportAgentsDialog,
+} from "./agents/AgentFileDialogs.tsx"
 import { ArchiveSection } from "./agents/ArchiveSection.tsx"
 import { Face } from "./agents/Face.tsx"
 import { watchReactions } from "./agents/reactions.ts"
@@ -9,6 +15,8 @@ import { ChannelDialog } from "./channels/ChannelDialog.tsx"
 import { ChannelPanel } from "./channels/ChannelPanel.tsx"
 import { ChannelHeader, ChannelView } from "./channels/ChannelView.tsx"
 import { FirstRunDialog } from "./firstrun/FirstRun.tsx"
+import { describeError, type ErrorText } from "./lib/errors.ts"
+import { call } from "./lib/rpc.ts"
 import { NotificationsSection } from "./notifications/NotificationsSection.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
@@ -19,6 +27,7 @@ import { setFocusMessage } from "./state/focus.ts"
 import { useUi } from "./state/ui.tsx"
 import { TasksPage } from "./tasks/TasksPage.tsx"
 import { IconButton } from "./ui/controls.tsx"
+import { Menu } from "./ui/Menu.tsx"
 import { Presence } from "./ui/Presence.tsx"
 import { UsagePage } from "./usage/UsagePage.tsx"
 import { WorkflowsPage } from "./workflows/WorkflowsPage.tsx"
@@ -39,6 +48,21 @@ export const App = () => {
   )
   const [newChannel, setNewChannel] = createSignal(false)
   const [newAgent, setNewAgent] = createSignal(false)
+  const [exportAgents, setExportAgents] = createSignal(false)
+  const [importPreview, setImportPreview] = createSignal<AgentFilePreview>()
+  const [fileProblem, setFileProblem] = createSignal<ErrorText>()
+
+  /** Asks for an agent file. A readable file opens the dialog that lists its agents. */
+  const startImport = async () => {
+    const serverId = ui.server()?.id
+    if (!serverId) return
+    try {
+      const found = await call("agentFile.open", { serverId })
+      if (found) setImportPreview(found)
+    } catch (e) {
+      setFileProblem(describeError(e))
+    }
+  }
 
   return (
     <>
@@ -65,13 +89,32 @@ export const App = () => {
         }}
         sectionAction={(section) =>
           section === "agents" ? (
-            <IconButton
-              label={t("agents.new")}
-              onClick={() => setNewAgent(true)}
-              data-testid="new-agent"
-            >
-              <Plus size={16} />
-            </IconButton>
+            <>
+              <Menu
+                label={t("agentFile.menu")}
+                icon={<Ellipsis size={16} />}
+                testId="agents-menu"
+                items={[
+                  {
+                    label: t("agentFile.menu.export"),
+                    onSelect: () => setExportAgents(true),
+                    testId: "agents-menu-export",
+                  },
+                  {
+                    label: t("agentFile.menu.importFile"),
+                    onSelect: () => void startImport(),
+                    testId: "agents-menu-import-file",
+                  },
+                ]}
+              />
+              <IconButton
+                label={t("agents.new")}
+                onClick={() => setNewAgent(true)}
+                data-testid="new-agent"
+              >
+                <Plus size={16} />
+              </IconButton>
+            </>
           ) : (
             <IconButton
               label={t("channels.new")}
@@ -95,6 +138,19 @@ export const App = () => {
       />
       <Presence when={newAgent()}>
         {() => <NewAgentDialog onClose={() => setNewAgent(false)} />}
+      </Presence>
+      <Presence when={exportAgents()}>
+        {() => <ExportAgentsDialog onClose={() => setExportAgents(false)} />}
+      </Presence>
+      <Presence when={importPreview()}>
+        {(preview) => (
+          <ImportAgentsDialog preview={preview} onClose={() => setImportPreview(undefined)} />
+        )}
+      </Presence>
+      <Presence when={fileProblem()}>
+        {(problem) => (
+          <AgentFileProblemDialog problem={problem} onClose={() => setFileProblem(undefined)} />
+        )}
       </Presence>
       <Presence when={newChannel()}>
         {() => <ChannelDialog onClose={() => setNewChannel(false)} />}

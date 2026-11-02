@@ -1,6 +1,7 @@
 import { join } from "node:path"
 import { Layer } from "effect"
 import { Activity } from "./services/Activity.ts"
+import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
@@ -60,7 +61,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))
   const places = Places.layer.pipe(Layer.provideMerge(workflows))
-  return Data.layer.pipe(Layer.provideMerge(places))
+  const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(places))
+  return Data.layer.pipe(Layer.provideMerge(agentFiles))
 }
 
 export type AppServices = Layer.Success<ReturnType<typeof appLayer>>

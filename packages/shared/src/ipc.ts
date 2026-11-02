@@ -1,4 +1,5 @@
-import type { Agent, AgentCreate, AgentPatch } from "./agents.ts"
+import type { AgentFileImported, AgentFilePreview } from "./agentFile.ts"
+import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
 import type {
   Channel,
   ChannelActivity,
@@ -79,6 +80,18 @@ export interface RpcMethods {
   "agents.restore": { input: { id: string }; output: Agent }
   "agents.delete": { input: { id: string }; output: undefined }
   "agents.setFaceImage": { input: { id: string; dataUrl: string | null }; output: Agent }
+  /** Asks where to save, then writes one agent file. `path` is null when cancelled. */
+  "agentFile.export": {
+    input: { serverId: string; agentIds: readonly string[] }
+    output: { path: string | null; count: number }
+  }
+  /** Asks for an agent file and reads it. `null` when cancelled. Nothing is made yet. */
+  "agentFile.open": { input: { serverId: string }; output: AgentFilePreview | null }
+  /** Makes the agents of the file that `agentFile.open` read, all with this model. */
+  "agentFile.apply": {
+    input: { serverId: string; model: AgentModel | null }
+    output: AgentFileImported
+  }
   "providers.list": { input: undefined; output: readonly ProviderAccount[] }
   "providers.connect": { input: ProviderConnect; output: ProviderAccount }
   "providers.check": { input: { accountId: string }; output: undefined }
