@@ -172,7 +172,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         } satisfies AgentFilePreview
       })
 
-      const importAgents = Effect.fn("AgentFiles.import")(function* (input: {
+      const importAgents = Effect.fn("AgentFiles.apply")(function* (input: {
         serverId: string
         model: AgentModel | null
       }) {

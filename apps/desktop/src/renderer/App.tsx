@@ -101,9 +101,9 @@ export const App = () => {
                     testId: "agents-menu-export",
                   },
                   {
-                    label: t("agentFile.menu.import"),
+                    label: t("agentFile.menu.importFile"),
                     onSelect: () => void startImport(),
-                    testId: "agents-menu-import",
+                    testId: "agents-menu-import-file",
                   },
                 ]}
               />

@@ -181,7 +181,7 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => AgentFiles.use((f) => f.open(serverId))),
     ),
-  "agentFile.import": (input) =>
+  "agentFile.apply": (input) =>
     decode(Schema.Struct({ serverId: Schema.String, model: Schema.NullOr(AgentModel) }))(
       input,
     ).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
