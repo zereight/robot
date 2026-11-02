@@ -93,6 +93,18 @@ const General = () => {
           </Button>
         </div>
       </Row>
+      <Row label={t("settings.duringTurn")} hint={t("settings.duringTurn.hint")}>
+        <Segmented
+          label={t("settings.duringTurn")}
+          testId="setting-during-turn"
+          value={app.settings.duringTurn}
+          onChange={(duringTurn) => app.update({ duringTurn })}
+          options={[
+            { value: "join", label: t("settings.duringTurn.join") },
+            { value: "queue", label: t("settings.duringTurn.queue") },
+          ]}
+        />
+      </Row>
       <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
         <Segmented
           label={t("settings.silentLimit")}

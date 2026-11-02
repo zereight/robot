@@ -1,4 +1,4 @@
-import type { ChatMessage, CutNotice, QueuedMessage } from "@robot/shared"
+import type { ChatMessage, CutNotice, QueuedMessage, QueueHold } from "@robot/shared"
 import { createEffect, on, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { call, RpcFailure } from "../lib/rpc.ts"
@@ -8,6 +8,8 @@ export interface ChatState {
   loaded: boolean
   messages: ChatMessage[]
   queue: QueuedMessage[]
+  /** Set when the program of the agent takes no input during a turn (spec 003). */
+  hold: QueueHold | null
   /** The request that a restart cut off, when the user has not written since (spec 003). */
   cut: CutNotice | null
 }
@@ -18,6 +20,7 @@ export const createChat = (agentId: string) => {
     loaded: false,
     messages: [],
     queue: [],
+    hold: null,
     cut: null,
   })
 
@@ -39,7 +42,9 @@ export const createChat = (agentId: string) => {
       setState("messages", (list) => list.filter((m) => m.id !== event.messageId))
   })
   const offQueue = window.robot.on("chat.queue", (event) => {
-    if (event.agentId === agentId) setState("queue", reconcile([...event.queue]))
+    if (event.agentId !== agentId) return
+    setState("queue", reconcile([...event.queue]))
+    setState("hold", event.hold ?? null)
   })
   onCleanup(() => {
     offMessage()
@@ -54,6 +59,7 @@ export const createChat = (agentId: string) => {
           loaded: true,
           messages: [...history.messages],
           queue: [...history.queue],
+          hold: history.hold ?? null,
           cut: history.cut ?? null,
         })
       })
@@ -62,7 +68,7 @@ export const createChat = (agentId: string) => {
       .catch((error) =>
         setState(
           error instanceof RpcFailure && error.error.code === "not_allowed"
-            ? { loaded: true, messages: [], queue: [], cut: null }
+            ? { loaded: true, messages: [], queue: [], hold: null, cut: null }
             : { loaded: true },
         ),
       )

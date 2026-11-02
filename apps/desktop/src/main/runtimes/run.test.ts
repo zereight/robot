@@ -139,6 +139,48 @@ describe("claude program", () => {
     expect(call.args[call.args.indexOf("--model") + 1]).toBe("opus")
   })
 
+  test("a message during the turn goes to the program, and the turn ends after it is read", async () => {
+    const waiting: { id: string; text: string }[] = []
+    const watchers = new Set<() => void>()
+    const inbox = {
+      take: () => waiting.splice(0),
+      watch: (ready: () => void) => {
+        watchers.add(ready)
+        return () => watchers.delete(ready)
+      },
+    }
+    const events: AgentEvent[] = []
+    for await (const event of runClaude(base(fake.claude, { prompt: "WAIT 300", inbox }))) {
+      events.push(event)
+      // The user writes while the program works.
+      if (event.type === "text" && event.text === "Working. ") {
+        waiting.push({ id: "8c0b1b8e-0000-4000-8000-000000000001", text: "Use b.txt instead" })
+        for (const ready of watchers) ready()
+      }
+    }
+    const call = fake.claudeCalls().find((c) => "prompt" in c && c.prompt === "WAIT 300") as {
+      args: string[]
+    }
+    expect(call.args).toContain("--replay-user-messages")
+    expect(fake.claudeCalls().at(-1)).toEqual({
+      joined: "Use b.txt instead",
+      uuid: "8c0b1b8e-0000-4000-8000-000000000001",
+    })
+    // The program read the message, and its answer belongs to the same turn.
+    const joined = events.findIndex((e) => e.type === "joined")
+    expect(events[joined]).toEqual({ type: "joined", id: "8c0b1b8e-0000-4000-8000-000000000001" })
+    expect(text(events.slice(joined))).toBe("Joined: Use b.txt instead")
+    // The usage of both results counts.
+    expect(events.at(-1)).toEqual({ type: "usage", input: 18, output: 9 })
+    expect(watchers.size).toBe(0)
+  })
+
+  test("without an inbox the program gets no flag for messages during a turn", async () => {
+    await collect(runClaude(base(fake.claude, { prompt: "plain" })))
+    const call = fake.claudeCalls().at(-1) as { args: string[] }
+    expect(call.args).not.toContain("--replay-user-messages")
+  })
+
   test("the chat goes to the program as one text block for each message", async () => {
     await collect(runClaude(base(fake.claude, { blocks: ["first block", "second block"] })))
     const call = fake.claudeCalls().at(-1) as { blocks: string[] }

@@ -442,6 +442,12 @@ export const migrations: readonly string[] = [
   CREATE INDEX action_log_at ON action_log (at);
   `,
   `
+  -- A message that the user sent into a running turn (spec 003): the reply of that turn, and the
+  -- time when the agent read the message. Both are empty for every other message.
+  ALTER TABLE message ADD COLUMN joined_to TEXT;
+  ALTER TABLE message ADD COLUMN read_at INTEGER;
+  `,
+  `
   -- How far the turn of a task went: not_sent, sent or started (spec 005). It only goes up. A task
   -- from before this step has none, and shows no line about it.
   ALTER TABLE task ADD COLUMN progress TEXT;

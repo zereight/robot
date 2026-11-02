@@ -15,6 +15,8 @@ const SIGN_IN = SECTIONS + 1
 const CONTEXT = SIGN_IN + 1
 /** Main has this many steps. The steps of the device link and of sync follow them. */
 const MAIN_STEPS = CONTEXT + 1
+/** The index of the step that keeps how far the turn of a task went (spec 005). */
+const PROGRESS = migrations.findIndex((sql) => sql.includes("ALTER TABLE task ADD COLUMN progress"))
 
 const upTo = (count: number) => {
   const db = new DatabaseSync(":memory:")
@@ -185,18 +187,18 @@ describe("the steps of the device link and of sync", () => {
     for (const sql of migrations.slice(MAIN_STEPS)) {
       expect(sql).not.toMatch(/ALTER TABLE provider_account/i)
     }
-    // The step for the progress of a task (spec 005) follows the action log.
-    expect(migrations[MAIN_STEPS + 3]).toContain("CREATE TABLE action_log")
-    expect(migrations[MAIN_STEPS + 4]?.trim()).toContain(
-      "ALTER TABLE task ADD COLUMN progress TEXT;",
-    )
+    // The step for the progress of a task (spec 005) comes after the steps above, and once.
+    expect(PROGRESS).toBeGreaterThan(MAIN_STEPS + 2)
+    expect(
+      migrations.filter((sql) => sql.includes("ALTER TABLE task ADD COLUMN progress")),
+    ).toHaveLength(1)
     // The number of steps is the data version that two computers compare before they sync.
-    // Later steps follow these five.
-    expect(migrations.length).toBeGreaterThan(MAIN_STEPS + 4)
+    // Later steps follow these.
+    expect(migrations.length).toBeGreaterThan(PROGRESS)
   })
 
   test("a task from before the progress step keeps its row and shows no progress", () => {
-    const db = upTo(MAIN_STEPS + 4)
+    const db = upTo(PROGRESS)
     db.exec(`
       INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
       INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
@@ -205,7 +207,7 @@ describe("the steps of the device link and of sync", () => {
       INSERT INTO task (id, agent_id, prompt, label, source, state, created_at)
         VALUES ('t', 'a', 'old', 'old', 'chat', 'failed', 1);
     `)
-    db.exec(migrations[MAIN_STEPS + 4] as string)
+    db.exec(migrations[PROGRESS] as string)
     expect(db.prepare("SELECT id, progress FROM task").all()).toEqual([{ id: "t", progress: null }])
   })
 
@@ -280,5 +282,19 @@ describe("the step of the action log", () => {
       .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'action_log'")
       .all()
     expect(triggers).toEqual([])
+  })
+})
+
+describe("the step of messages during a turn", () => {
+  test("it comes after the action log and adds the turn and the read time of a message", () => {
+    const step = migrations.findIndex((sql) => sql.includes("ADD COLUMN joined_to"))
+    expect(step).toBeGreaterThan(
+      migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log")),
+    )
+    const db = new DatabaseSync(":memory:")
+    db.exec("PRAGMA foreign_keys = ON")
+    migrate(db)
+    const columns = db.prepare("PRAGMA table_info(message)").all() as { name: string }[]
+    expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining(["joined_to", "read_at"]))
   })
 })
