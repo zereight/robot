@@ -53,7 +53,7 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                 {(a) => (
                   <div class={styles.card} data-testid="member-card" data-state={member.state}>
                     <div class={styles.cardHead}>
-                      <Face face={a().face} image={a().faceImage} size={24} />
+                      <Face face={a().face} image={a().faceImage} size={24} agentId={a().id} />
                       <span class={styles.cardName}>{a().name}</span>
                       <span class={styles.cardState} data-testid="member-state">
                         {t(stateLabel(member.state))}
