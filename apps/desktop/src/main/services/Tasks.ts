@@ -120,6 +120,8 @@ export interface TasksService {
   computerName(originId: string): string
   retry(taskId: string): Effect.Effect<void, AppError>
   onRetry(source: TaskSource, handler: RetryHandler): void
+  /** Calls `listener` when a task ends as done, failed or cancelled. */
+  onEnd(listener: (task: Task) => void): void
   list(serverId: string): Effect.Effect<readonly Task[]>
   get(taskId: string): Effect.Effect<TaskDetail, AppError>
   /** The tasks that have this parent. */
@@ -170,6 +172,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const stops = new Map<string, Deferred.Deferred<void>>()
       const live = new Set<string>()
       const retryHandlers = new Map<TaskSource, RetryHandler>()
+      const endListeners: ((task: Task) => void)[] = []
       let remote: RemoteTasks | undefined
 
       // A task that waits for an approval or a question can wait through a restart when it has no
@@ -242,6 +245,18 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           id,
         )
         changed(agentId)
+        if (state === "done" || state === "failed" || state === "cancelled") {
+          const ended = endListeners.length > 0 ? row(id) : undefined
+          // A listener never stops the end of a task.
+          if (ended)
+            for (const listener of endListeners) {
+              try {
+                listener(toTask(ended, remote))
+              } catch (e) {
+                console.error("task end listener failed", e)
+              }
+            }
+        }
         if (state === "failed" && error?.code !== "app_stopped") {
           const task = row(id)
           const agent = db.get<{ server_id: string; name: string }>(
@@ -477,6 +492,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         computerName: (originId) => remote?.nameOf(originId) ?? "",
         retry,
         onRetry: (source, handler) => void retryHandlers.set(source, handler),
+        onEnd: (listener) => void endListeners.push(listener),
         list: (serverId) =>
           Effect.sync(() =>
             db

@@ -237,11 +237,12 @@ test("today: went wrong, plan limit, retry, paused routine, done today, next 24 
   await rpc(page, "chat.send", { agentId: ada, text: "hello once more", replyTo: null })
   const bad = await routineOf(page, ada, "Weekly report", "hit the limit")
   for (const n of [1, 2, 3]) await runRoutine(page, bad.id, "failed", n)
-  // A failed run today gives the routine one row. The failed runs are not listed as tasks.
-  const failed = page.locator("[data-testid=today-row][data-kind=routine_failed]")
-  await expect(failed).toHaveCount(1, { timeout: 5000 })
+  // The third failed run pauses the routine by itself (spec 009, "Repeated failure"): its one row
+  // is the paused row. The failed runs are not listed as tasks.
+  await expect(page.locator("[data-testid=today-row][data-kind=routine_failed]")).toHaveCount(0, {
+    timeout: 5000,
+  })
   await expect(page.locator("[data-testid=today-row][data-kind=task_failed]")).toHaveCount(1)
-  await rpc(page, "routines.update", { id: bad.id, patch: { enabled: false } })
   const routineRow = page.locator("[data-testid=today-row][data-kind=routine_paused]")
   await expect(routineRow).toHaveCount(1, { timeout: 5000 })
   await expect(routineRow.getByTestId("today-line")).toContainText("Paused")

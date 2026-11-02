@@ -288,6 +288,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                   }
                 if (p.kind === "skill")
                   return { ...p, instructions: redactSecrets(p.instructions, known) }
+                if (p.kind === "note") return p
                 return { ...p, text: redactSecrets(p.text, known) }
               })
               update.run(

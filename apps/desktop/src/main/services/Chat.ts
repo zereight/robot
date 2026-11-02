@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs"
 import { basename, extname, join } from "node:path"
 import {
+  type AgentModel,
   ATTACH_BYTES,
   ATTACH_MAX,
   askAllowsAlways,
@@ -15,6 +16,7 @@ import {
   type FilePart,
   hasVisibleReply,
   holdOutside,
+  isNoteOnly,
   isTaskProgress,
   type MessagePart,
   type MessageStatus,
@@ -128,6 +130,12 @@ export interface TaskOrigin {
    * model offers it. The agent keeps its own effort for every other turn.
    */
   readonly effort?: StepEffort
+  /**
+   * The model and effort of a routine with a model of its own (spec 009). The turn uses it in
+   * place of the model of the agent. When its account is not connected, the send fails: the turn
+   * never uses another model.
+   */
+  readonly model?: AgentModel
 }
 
 export interface ChatService {
@@ -149,6 +157,8 @@ export interface ChatService {
   markRead(agentId: string): Effect.Effect<void>
   /** Tells the windows about a message that sync wrote, so an open chat shows it at once. */
   announce(messageId: string): void
+  /** Posts one muted line of the agent, with no task: a watch saw no change (spec 009). */
+  note(agentId: string, part: Extract<MessagePart, { kind: "note" }>): void
 }
 
 /** The turn that runs now for an agent, as far as messages of the user can join it (spec 003). */
@@ -553,7 +563,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
        */
       const buildTurns = (agentId: string, exceptId: string, notes: boolean): Turn[] => {
         const kept = rows(agentId).filter(
-          (r) => r.id !== exceptId && !(r.author === "agent" && r.status === "failed"),
+          (r) =>
+            r.id !== exceptId &&
+            !(r.author === "agent" && r.status === "failed") &&
+            !isNoteOnly(r.parts),
         )
         const replies = new Set(kept.filter((r) => r.author === "agent").map((r) => r.id))
         const joinedTo = (r: MessageRow) =>
@@ -576,13 +589,23 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       /** Answers the last message. `resumed` is a task that waited through a restart: it goes on. */
       const runTurn = Effect.fn("Chat.runTurn")(function* (agentId: string, resumed?: Task) {
-        const agent = agentRow(agentId)
-        if (!agent) return
+        const own = agentRow(agentId)
+        if (!own) return
         const kept = resumed?.messageId ? messageRow(resumed.messageId) : undefined
-        const reply = kept ?? insertMessage(agentId, "agent", "", null, agent.model_name)
         const lastUser = rows(agentId)
           .filter((r) => r.author === "user")
           .at(-1)
+        // A routine with a model of its own uses it for its turn (spec 009).
+        const ownModel = lastUser && !resumed ? origins.get(lastUser.id)?.model : undefined
+        const agent: AgentModelRow = ownModel
+          ? {
+              ...own,
+              model_account_id: ownModel.accountId,
+              model_name: ownModel.model,
+              model_effort: ownModel.effort,
+            }
+          : own
+        const reply = kept ?? insertMessage(agentId, "agent", "", null, agent.model_name)
         const asked = lastUser ? toMessage(lastUser) : undefined
         const turnEffort = lastUser ? origins.get(lastUser.id)?.effort : undefined
         const textOf = (m: ChatMessage) =>
@@ -992,17 +1015,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         FiberMap.run(workers, agentId, worker(agentId), { onlyIfMissing: true })
       const isRunning = (agentId: string) => FiberMap.has(workers, agentId)
 
-      const usableAgent = (agentId: string) =>
+      const usableAgent = (agentId: string, model?: AgentModel) =>
         Effect.gen(function* () {
           const agent = agentRow(agentId)
           if (!agent || agent.archived_at !== null)
             return yield* new AppError({ code: "agent_not_found" })
+          // A routine with a model of its own needs that account, not the one of the agent.
+          const accountId = model ? model.accountId : agent.model_account_id
+          const name = model ? model.model : agent.model_name
           // A vendor program may have been signed out since the last look; this looks again.
-          if (
-            !agent.model_account_id ||
-            !agent.model_name ||
-            !(yield* providers.verify(agent.model_account_id))
-          ) {
+          if (!accountId || !name || !(yield* providers.verify(accountId))) {
             return yield* new AppError({ code: "provider_not_connected" })
           }
           return agent
@@ -1054,7 +1076,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
         const sender = yield* CurrentActor
-        const agent = yield* usableAgent(input.agentId)
+        const agent = yield* usableAgent(input.agentId, origin?.model)
         const paths = input.files ?? []
         // A skill chip that is off, deleted, or not for this agent is refused (spec 017).
         const chosen = input.skillId
@@ -1236,6 +1258,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       }
 
       return Chat.of({
+        note: (agentId, part) => {
+          const id = randomUUID()
+          db.run(
+            `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name)
+             VALUES (?, ?, 'agent', ?, 'done', NULL, NULL, ?, NULL, NULL)`,
+            id,
+            agentId,
+            JSON.stringify([part]),
+            Date.now(),
+          )
+          const row = messageRow(id)
+          if (row) emitMessage(row)
+          placesChanged(agentId)
+        },
         announce: (messageId) => {
           const row = db.get<MessageRow>("SELECT * FROM message WHERE id = ?", messageId)
           if (row) emitMessage(row)
