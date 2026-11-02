@@ -40,7 +40,9 @@ camera.
 The phone follows the computer in these points: the `@all` mention in channels (004), the random
 name button and the role list for agents (002, 013), the word "archived" for channels (004), the
 context meter and the Compact control (003), threads and fork (003), the command list (003),
-the main agent switch (002), and the end of a request (004). The phone shows no marketplace.
+the main agent switch (002), the end of a request (004), the search of messages (001), and the
+line that tells how far a failed turn went, with the button "Send again" (003, 005). The phone
+shows no marketplace.
 
 ## Rules
 
