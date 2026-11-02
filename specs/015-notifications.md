@@ -7,7 +7,9 @@ The user knows when an agent needs them or finishes, without watching the window
 ## System notifications
 
 - Kinds: reply in a direct chat while the window is not focused, mention in a channel, approval
-  request, question, task failed, routine failed, and workflow notice (a notify step, see 010).
+  request, question, task failed, routine failed, part in review (see 004), and workflow notice (a
+  notify step, see 010). A task that ends as Blocked (see 005) is a failed task for this list,
+  and a routine run that ends as Blocked is a failed run.
 - Each kind can be turned off. A server or a channel can be muted for 1 hour, 8 hours, 1 day, or
   until turned back on.
 - Clicking a notification opens the place and scrolls to the message.
@@ -100,6 +102,9 @@ The user knows when an agent needs them or finishes, without watching the window
   line ends with "…". The first line of the reply is the first line that has text, as it is,
   with the spaces at both ends removed. The reason for a failure is the error text in the
   language of the interface, the same text as on the Tasks page.
+- A blocked task makes a result card like a failed task. Its line is the reason of the block.
+  A part in review makes no result card, and the island does not show it. Its notification opens
+  the part.
 - The bar stays above the result card, so the faces and the count stay in view.
 - The card stays for 6 seconds, and as long as the pointer is on it. A newer result replaces it.
   A request for attention replaces it at once. When the user has answered all requests, the

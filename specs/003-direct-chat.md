@@ -83,9 +83,10 @@ and its role line. Nothing moves.
   The Korean phrases read as spoken Korean, not as a translation. For a turn started by a routine,
   the line names the routine. The stop button shows whenever this line shows, in every place
   where the agent works (chat, channel, routine, workflow).
-- Failed: an error row with the reason in plain words and a Retry button. The row also tells how
-  far the turn went (see 005, "How far a turn went"). A turn that the app stopped because it was
-  silent (see 005) fails in this way too.
+- Failed: an error row with the reason in plain words and a Retry button. Retry shows the retry
+  note (see 005) when the first try ran steps that may have changed things. The row also tells
+  how far the turn went (see 005, "How far a turn went"). A turn that the app stopped because
+  it was silent (see 005) fails in this way too.
 - Provider not connected: the message box is disabled with a button to connect it.
 - Interrupted by a restart: see "Rules".
 

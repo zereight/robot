@@ -22,10 +22,12 @@ it is empty, it shows the muted line "Nothing waits for you."
 1. **Needs you**: the oldest row is first. A click opens the place at the card. It lists:
    - the items of "Needs you" on the phone (see 011): approval cards, question cards, and failed
      channel parts;
+   - parts of a channel job that wait for the review of the user (004, 005);
    - the approvals and questions of tasks that run on the computer that this one syncs with (019).
      These rows show the name of that computer and have no "Always allow" (015).
 2. **Went wrong**: newest first. It lists:
-   - A task that failed today. A click opens the task on the Tasks page. The row leaves the
+   - A task that failed today, or ended as Blocked (005). A click opens the task on the Tasks
+     page. The row leaves the
      group when the user retries the task (005). A failed part of a channel job and a failed run
      of a routine are not listed here as tasks.
    - A routine with a failed run today, or a routine that is paused after failed runs (009). The
@@ -82,6 +84,8 @@ no row.
 - A new app with no work: the page shows only "Needs you" with "Nothing waits for you."
 - An agent asks for an approval: within 1 second the row shows in "Needs you", and the badge on
   the page button shows 1. Allow the step on the card: the row and the badge leave.
+- A part of a channel job waits for review: a row shows in "Needs you". Accept the part: the row
+  leaves.
 - 21 approvals wait: "Needs you" shows 20 rows and "Show more", and the badge shows 21. "Show
   more" shows the 21st row.
 - A task of a chat fails today: a row shows in "Went wrong". Retry the task: the old row leaves.
