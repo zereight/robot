@@ -94,7 +94,8 @@ describe("client requests", () => {
       "providers.list",
       "settings.update",
       "routines.list",
-      "workflows.run",
+      // A client does not move a workflow of another computer here (spec 012, "Workflows").
+      "workflows.runHere",
       "usage.summary",
       "browser.control",
       "data.export",
@@ -126,6 +127,9 @@ describe("client requests", () => {
         "memory.list",
         "memory.update",
         "models.available",
+        "workflows.create",
+        "workflows.update",
+        "workflows.delete",
       ].sort(),
     )
     for (const method of CHANGE_METHODS) {
@@ -137,6 +141,21 @@ describe("client requests", () => {
       expect(isChangeMethod(method)).toBe(false)
     }
     expect(isChangeMethod("agents.delete")).toBe(false)
+    // Reading, running and stopping a workflow need only the link (spec 012, "Workflows").
+    for (const method of [
+      "workflows.list",
+      "workflows.runs",
+      "workflows.runDetail",
+      "workflows.run",
+      "workflows.stop",
+      "workflows.approve",
+    ]) {
+      expect(isClientMethod(method)).toBe(true)
+      expect(isChangeMethod(method)).toBe(false)
+    }
+    // A client hears about workflows and runs.
+    expect(PUSHED_EVENTS).toContain("workflows.changed")
+    expect(PUSHED_EVENTS).toContain("workflows.run")
     // The event that tells one device about its switch goes to that device only.
     expect((PUSHED_EVENTS as readonly string[]).includes(ACCESS_EVENT)).toBe(false)
   })

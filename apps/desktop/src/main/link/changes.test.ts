@@ -395,7 +395,7 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ["providers.list", undefined],
       ["settings.update", { patch: { workspaceRoot: "/tmp/x" } }],
       ["routines.list", undefined],
-      ["workflows.list", undefined],
+      ["workflows.runHere", { id: "x" }],
       ["usage.get", undefined],
       ["data.export", undefined],
       ["data.import", undefined],

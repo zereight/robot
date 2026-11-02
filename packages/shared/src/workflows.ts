@@ -175,6 +175,8 @@ export interface WorkflowRun {
   readonly triggerText: string
   readonly startedAt: number
   readonly finishedAt: number | null
+  /** The name of the linked device that started the run, or null (spec 012). */
+  readonly startedBy: string | null
 }
 
 export interface RunStep {
@@ -186,6 +188,8 @@ export interface RunStep {
   readonly result: string
   readonly error: string
   readonly taskId: string | null
+  /** The name of the linked device that answered an approval step, or null (spec 012). */
+  readonly decidedBy: string | null
 }
 
 export interface WorkflowRunDetail {

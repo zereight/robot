@@ -924,6 +924,7 @@ export const ko: Record<MessageKey, string> = {
   "workflows.saveFailed": "워크플로우를 저장하지 못했습니다. {reason}",
   "toast.dismiss": "메시지 닫기",
   "workflows.history": "실행 기록",
+  "workflows.startedBy": "{name}에서 시작함",
   "workflows.history.empty": "실행 기록이 없습니다.",
   "workflows.runState.running": "실행 중",
   "workflows.runState.done": "완료",

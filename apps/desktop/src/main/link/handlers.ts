@@ -15,6 +15,7 @@ import { Servers } from "../services/Servers.ts"
 import { Sync } from "../services/Sync.ts"
 import { changeHandlers, forClient } from "./changes.ts"
 import { UploadError } from "./uploads.ts"
+import { workflowHandlers } from "./workflows.ts"
 
 type LinkHandler = (input: unknown) => Effect.Effect<unknown, AppError, AppServices>
 
@@ -100,6 +101,7 @@ const syncHandlers: Record<string, LinkHandler> = Object.fromEntries(
 export const linkHandlers: Record<string, LinkHandler> = {
   ...syncHandlers,
   ...changeHandlers,
+  ...workflowHandlers,
   "server.summary": () =>
     E.gen(function* () {
       const actor = yield* actorOrFail

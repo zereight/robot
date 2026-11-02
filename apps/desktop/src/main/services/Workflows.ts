@@ -24,6 +24,7 @@ import {
   type WorkflowRunDetail,
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer } from "effect"
+import { CurrentActor } from "./actor.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
@@ -86,6 +87,7 @@ interface RunRow {
   trigger_text: string
   started_at: number
   finished_at: number | null
+  started_by: string | null
 }
 interface StepRow {
   run_id: string
@@ -98,6 +100,7 @@ interface StepRow {
   error: string
   branch: string
   task_id: string | null
+  decided_by: string | null
 }
 
 const TICK_MS = 15_000
@@ -114,6 +117,7 @@ const toRun = (r: RunRow): WorkflowRun => ({
   triggerText: r.trigger_text,
   startedAt: r.started_at,
   finishedAt: r.finished_at,
+  startedBy: r.started_by ?? null,
 })
 
 interface StepOutcome {
@@ -564,19 +568,25 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         if (wf) changed(wf.server_id)
       }
 
-      const start = (wf: Workflow, trigger: string, triggerText: string) =>
+      const start = (
+        wf: Workflow,
+        trigger: string,
+        triggerText: string,
+        startedBy: string | null = null,
+      ) =>
         Effect.gen(function* () {
           yield* checkGraph(wf.steps, wf.edges, { needSteps: true })
           if (isRunning(wf.id)) return yield* new AppError({ code: "workflow_running" })
           const runId = randomUUID()
           db.transaction(() => {
             db.run(
-              "INSERT INTO workflow_run (id, workflow_id, state, trigger, trigger_text, started_at) VALUES (?, ?, 'running', ?, ?, ?)",
+              "INSERT INTO workflow_run (id, workflow_id, state, trigger, trigger_text, started_at, started_by) VALUES (?, ?, 'running', ?, ?, ?, ?)",
               runId,
               wf.id,
               trigger,
               triggerText,
               Date.now(),
+              startedBy,
             )
             for (const s of wf.steps)
               db.run(
@@ -649,6 +659,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         result: r.result,
         error: r.error,
         taskId: r.task_id,
+        decidedBy: r.decided_by ?? null,
       })
 
       return Workflows.of({
@@ -728,7 +739,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             const current = row(id)
             if (!current) return yield* new AppError({ code: "workflow_not_found" })
             if (current.runs_on !== null) return yield* new AppError({ code: "workflow_elsewhere" })
-            return yield* start(toWorkflow(current), "manual", triggerText)
+            // A run that a linked device starts names the device (spec 012).
+            const actor = yield* CurrentActor
+            return yield* start(toWorkflow(current), "manual", triggerText, actor?.name ?? null)
           }),
         runHere: (id) =>
           Effect.gen(function* () {
@@ -752,9 +765,18 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             if (fiber._tag === "Some") yield* Fiber.interrupt(fiber.value)
           }),
         approve: (runId, stepId, approved) =>
-          Effect.sync(() => {
+          Effect.gen(function* () {
             const gate = approvals.get(`${runId}:${stepId}`)
-            if (gate) Deferred.doneUnsafe(gate, Effect.succeed(approved))
+            if (!gate) return
+            // "Allowed by <device>" or "Denied by <device>" for an answer of a linked device.
+            const actor = yield* CurrentActor
+            db.run(
+              "UPDATE workflow_run_step SET decided_by = ? WHERE run_id = ? AND step_id = ?",
+              actor?.name ?? null,
+              runId,
+              stepId,
+            )
+            Deferred.doneUnsafe(gate, Effect.succeed(approved))
           }),
         runs: (workflowId) =>
           Effect.sync(() =>
