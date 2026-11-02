@@ -1,7 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { Exit } from "effect"
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { Effect, Exit } from "effect"
 import { Agents } from "./Agents.ts"
-import { Providers } from "./Providers.ts"
+import { Database } from "./Database.ts"
+import { checkWait, Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
 
@@ -84,4 +88,62 @@ describe("Providers", () => {
     )
     expect(code(exit)).toBe("provider_unreachable")
   })
+
+  test.skipIf(process.platform === "win32")(
+    "the check of a program that never answers delays no other provider (spec 006)",
+    async () => {
+      // A stand-in for a vendor program that hangs when it is asked for its version.
+      const dir = mkdtempSync(join(tmpdir(), "robot-hung-"))
+      const bin = join(dir, "muse")
+      writeFileSync(bin, "#!/bin/sh\nsleep 5 & wait\n")
+      chmodSync(bin, 0o755)
+      const saved = process.env.ROBOT_MUSE_BIN
+      const savedWait = checkWait.ms
+      process.env.ROBOT_MUSE_BIN = bin
+      checkWait.ms = 400
+      try {
+        const { runtime } = testRuntime()
+        const api = await runtime.runPromise(
+          Providers.use((p) =>
+            p.connect({ kind: "openai", name: "Work", baseUrl, apiKey: GOOD_KEY }),
+          ),
+        )
+        await runtime.runPromise(
+          Database.use((db) =>
+            Effect.sync(() =>
+              db.run(
+                "INSERT INTO provider_account (id, kind, name, base_url, created_at) VALUES ('hung', 'muse', 'Muse', '', 2)",
+              ),
+            ),
+          ),
+        )
+        const timed = async <A>(work: Promise<A>) => {
+          const started = Date.now()
+          const value = await work
+          return { value, ms: Date.now() - started }
+        }
+        // The window asks for the list, and the check of the hung program starts.
+        const listing = timed(runtime.runPromise(Providers.use((p) => p.list)))
+        // The accounts and the verification of the API account do not wait for it.
+        const accounts = await timed(runtime.runPromise(Providers.use((p) => p.accounts)))
+        expect(accounts.value.map((a) => a.id)).toContain(api.id)
+        expect(accounts.ms).toBeLessThan(200)
+        const verified = await timed(runtime.runPromise(Providers.use((p) => p.verify(api.id))))
+        expect(verified.value).toBe(true)
+        expect(verified.ms).toBeLessThan(200)
+        // The list itself waits only a short time for the check, then goes on.
+        const list = await listing
+        expect(list.ms).toBeLessThan(3000)
+        expect(list.value.find((a) => a.id === "hung")?.connected).toBe(false)
+        // So does the verification of the account of the hung program.
+        const hung = await timed(runtime.runPromise(Providers.use((p) => p.verify("hung"))))
+        expect(hung.value).toBe(false)
+        expect(hung.ms).toBeLessThan(3000)
+      } finally {
+        checkWait.ms = savedWait
+        if (saved === undefined) delete process.env.ROBOT_MUSE_BIN
+        else process.env.ROBOT_MUSE_BIN = saved
+      }
+    },
+  )
 })

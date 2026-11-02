@@ -18,6 +18,7 @@ import {
   createReadGuard,
   hasVisibleReply,
   holdOutside,
+  isTaskProgress,
   MESSAGE_MAX,
   type MemberState,
   type MessagePart,
@@ -37,6 +38,7 @@ import {
   runningStepKind,
   stepLabel,
   type Task,
+  type TaskProgress,
   type TaskState,
   type TurnMark,
   type TurnStarter,
@@ -59,6 +61,7 @@ import { Notifier } from "./Notifier.ts"
 import { Providers, storedFailure } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
 import { SettingsStore } from "./Settings.ts"
+import { closing, turnWatch } from "./silence.ts"
 import { stepWatch } from "./stepWatch.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
@@ -252,6 +255,17 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         })
       }
 
+      /** How far the turn of a failed part went (spec 005), for the line on its failed row. */
+      const failedProgress = (row: MessageRow): { progress?: TaskProgress } => {
+        const shows =
+          row.status === "failed" || (row.status === "stopped" && row.error_code !== null)
+        if (!shows || !row.task_id) return {}
+        const found = db.get<{ progress: string | null }>(
+          "SELECT progress FROM task WHERE id = ?",
+          row.task_id,
+        )
+        return isTaskProgress(found?.progress) ? { progress: found.progress } : {}
+      }
       const toMessage = (row: MessageRow): ChannelMessage => ({
         id: row.id,
         channelId: row.channel_id,
@@ -271,6 +285,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         taskId: row.task_id,
         awaiting: row.awaiting === 1,
         chips: chipsFor(row),
+        ...failedProgress(row),
       })
       const messageRow = (id: string) =>
         db.get<MessageRow>("SELECT * FROM channel_message WHERE id = ?", id)
@@ -362,6 +377,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const parts: MessagePart[] = []
         const usage = { input: 0, output: 0 }
         const controller = new AbortController()
+        // The silent limit counts for every kind of turn (spec 005).
+        const silence = turnWatch({
+          limitMinutes: (yield* settings.get).silentLimit,
+          progress: (progress) => tasks.setProgress(o.taskId, progress),
+          userHoldsBrowser: () => tools.browserState(o.agent.id).control,
+        })
         let lastEmit = 0
         let lastSave = 0
         let hidden = false
@@ -422,6 +443,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         }
         const onEvent = (event: AgentEvent) =>
           Effect.sync(() => {
+            silence.sense(event)
             if (event.type === "usage") {
               usage.input = event.input ?? usage.input
               usage.output = event.output ?? usage.output
@@ -474,6 +496,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             signal: controller.signal,
             onWaiting: (callId, ask) => {
               tasks.setWaiting(o.taskId, ask !== null)
+              silence.waiting(ask !== null)
               if (ask)
                 notifier.attention({
                   agentId: o.agent.id,
@@ -554,24 +577,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 : {}),
             },
           )
-          // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
-          const closing: AsyncIterable<AgentEvent> = {
-            [Symbol.asyncIterator]: () => {
-              const it = events[Symbol.asyncIterator]()
-              return {
-                next: () => it.next(),
-                return: (value?: unknown) => {
-                  controller.abort()
-                  return it.return?.(value) ?? Promise.resolve({ done: true, value: undefined })
-                },
-              }
-            },
-          }
-          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(
+          yield* Stream.fromAsyncIterable(closing(events, controller, silence), (e) => e).pipe(
             // The program also reports its own calls of these tools. The app shows its own cards.
             Stream.runForEach((event) => {
-              if (isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null)
+              if (isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null) {
+                silence.sense(event)
                 return Effect.void
+              }
               // A web, browser or connection step of the program itself gives outside content.
               if (isRuntime && event.type === "tool" && event.state !== "running")
                 holdOutside(mark, outsideOfCall(event.call.name, event.call.input))
@@ -595,9 +607,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const writesFiles =
           !!o.agent.model_account_id && providers.isRuntime(o.agent.model_account_id)
         knowledge.begin(o.agent.id)
-        yield* stream.pipe(
+        // A turn that shows no sign of life for the silent limit stops like after a Stop, and its
+        // task fails with the reason (spec 005).
+        yield* Effect.raceFirst(stream, silence.silent).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
+              silence.stop()
               controller.abort()
               knowledge.end(o.agent.id, writesFiles ? "agent" : "user")
               notifier.clearAgent(o.agent.id)

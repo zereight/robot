@@ -13,6 +13,7 @@ import {
   type RunState,
   type RunStep,
   type Schedule,
+  SILENT_CODE,
   type Step,
   type StepState,
   type Trigger,
@@ -31,6 +32,8 @@ import { AppError } from "./errors.ts"
 import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, toAppError } from "./Providers.ts"
+import { SettingsStore } from "./Settings.ts"
+import { closing, turnWatch } from "./silence.ts"
 import { Tasks } from "./Tasks.ts"
 import {
   ASK_SYSTEM,
@@ -133,6 +136,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const channels = yield* Channels
       const notifier = yield* Notifier
       const providers = yield* Providers
+      const settings = yield* SettingsStore
       const platform = yield* Platform
       const fibers = yield* FiberMap.make<string>()
       const approvals = new Map<string, Deferred.Deferred<boolean>>()
@@ -229,6 +233,13 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           }
         })
 
+      /**
+       * The reason of a failed step. The silent limit keeps its number of minutes, since the words
+       * of the reason need it.
+       */
+      const stepReason = (code: string, detail: string | null) =>
+        code === SILENT_CODE && detail ? `${code}:${detail}` : code
+
       const execAgent = (run: RunRow, step: Extract<Step, { kind: "agent" }>, prompt: string) =>
         Effect.gen(function* () {
           const started = yield* Deferred.make<string>()
@@ -256,7 +267,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           }
           return {
             ok: false as const,
-            error: end.error_code ?? end.state,
+            error: stepReason(end.error_code ?? end.state, end.error_detail),
             result: "",
           }
         })
@@ -313,6 +324,11 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const askOnce = (target: { accountId: string; model: string }, content: string) =>
         Effect.gen(function* () {
           const controller = new AbortController()
+          // The silent limit holds for this call too (spec 005). It has no task to show the progress.
+          const watch = turnWatch({
+            limitMinutes: (yield* settings.get).silentLimit,
+            progress: () => {},
+          })
           const events = yield* providers.events(
             target.accountId,
             {
@@ -330,14 +346,27 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               approve: async () => false,
             },
           )
-          return yield* Effect.tryPromise({
-            try: async () => {
-              let text = ""
-              for await (const event of events) if (event.type === "text") text += event.text
-              return text
-            },
-            catch: toAppError,
-          }).pipe(Effect.onInterrupt(() => Effect.sync(() => controller.abort())))
+          return yield* Effect.raceFirst(
+            Effect.tryPromise({
+              try: async () => {
+                let text = ""
+                for await (const event of closing(events, controller, watch)) {
+                  watch.sense(event)
+                  if (event.type === "text") text += event.text
+                }
+                return text
+              },
+              catch: toAppError,
+            }),
+            watch.silent,
+          ).pipe(
+            Effect.onExit(() =>
+              Effect.sync(() => {
+                watch.stop()
+                controller.abort()
+              }),
+            ),
+          )
         })
 
       /** A condition in mode "ask": the model answers yes or no about the input. */
@@ -354,7 +383,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             return failed(error instanceof AppError ? error.code : "provider_not_connected")
           }
           const tried = yield* withTries(askOnce(target.value, askPrompt(step.contains, input)))
-          if (!tried.ok) return failed(tried.error.code)
+          if (!tried.ok) return failed(stepReason(tried.error.code, tried.error.detail ?? null))
           const verdict = readVerdict(tried.value)
           if ("error" in verdict) return failed(verdict.error)
           return { state: "done", result: input, error: "", branch: verdict.branch }

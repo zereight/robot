@@ -3,15 +3,18 @@ import {
   type ActionDecider,
   isActive,
   isRuntimeKind,
+  isTaskProgress,
   type LoggedStep,
   messageText,
   type OutsideSource,
   type RetryNote,
   type RetryResult,
+  raiseProgress,
   remoteRetryNote,
   retryNote,
   type Task,
   type TaskDetail,
+  type TaskProgress,
   type TaskSource,
   type TaskState,
   taskLabel,
@@ -45,6 +48,7 @@ interface TaskRow {
   asked_at: number | null
   first_reply_at: number | null
   origin: string | null
+  progress: string | null
   depth: number
 }
 
@@ -126,6 +130,11 @@ export interface TasksService {
   waitingAfterRestart(): readonly Task[]
   /** Marks a running task as waiting for the user, or running again. */
   setWaiting(taskId: string, waiting: boolean): void
+  /**
+   * Records how far the turn of a task went (spec 005). The progress only goes up: a lower value,
+   * or the same one, changes nothing.
+   */
+  setProgress(taskId: string, progress: TaskProgress): void
   /** Records which message holds the reply of a task. */
   setMessage(taskId: string, messageId: string): void
   /**
@@ -192,6 +201,7 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   originName: row.origin === null ? null : (remote?.nameOf(row.origin) ?? ""),
   waitsFor:
     row.state === "queued" && row.origin === null ? (remote?.busyOn(row.agent_id) ?? null) : null,
+  progress: isTaskProgress(row.progress) ? row.progress : null,
 })
 
 /** How often a task that waits for the other computer looks again. */
@@ -347,8 +357,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           const depth = input.depth ?? depthOf(input.parentId ?? input.retryOf)
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
-               message_id, state, created_at, asked_at, depth)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)`,
+               message_id, state, created_at, asked_at, depth, progress)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, 'not_sent')`,
             id,
             input.agentId,
             input.prompt,
@@ -542,6 +552,18 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           const current = row(taskId)
           if (current && (current.state === "running" || current.state === "waiting"))
             setState(taskId, current.agent_id, waiting ? "waiting" : "running")
+        },
+        setProgress: (taskId, progress) => {
+          const current = row(taskId)
+          // Only the computer that owns a task records its progress (spec 019).
+          if (!current || current.origin !== null) return
+          const next = raiseProgress(
+            isTaskProgress(current.progress) ? current.progress : null,
+            progress,
+          )
+          if (next === current.progress) return
+          db.run("UPDATE task SET progress = ? WHERE id = ?", next, taskId)
+          changed(current.agent_id)
         },
         setMessage: (taskId, messageId) =>
           db.run("UPDATE task SET message_id = ? WHERE id = ?", messageId, taskId),

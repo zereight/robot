@@ -275,6 +275,34 @@
   min-width: 200px;
 }
 
+.failedLine {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.restart {
+  margin: 0 16px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.restartText {
+  flex: 1;
+  min-width: 200px;
+  color: var(--c-text);
+}
+
+.restartError {
+  color: var(--c-danger);
+}
+
 .working {
   display: flex;
   align-items: center;

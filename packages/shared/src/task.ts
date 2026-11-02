@@ -11,6 +11,35 @@ export const isActive = (state: TaskState) => ACTIVE_STATES.includes(state)
 
 export const TASK_LABEL_MAX = 60
 
+/**
+ * How far the turn of a task went (spec 005). It only goes up. `not_sent`: the request has not
+ * been given to the model or to the program of the vendor. `sent`: it was given and nothing came
+ * back. `started`: something came back.
+ */
+export const TASK_PROGRESS = ["not_sent", "sent", "started"] as const
+export type TaskProgress = (typeof TASK_PROGRESS)[number]
+export const isTaskProgress = (value: unknown): value is TaskProgress =>
+  typeof value === "string" && (TASK_PROGRESS as readonly string[]).includes(value)
+
+/** The higher of two progress values. A value that is not known counts as the lowest. */
+export const raiseProgress = (
+  current: TaskProgress | null | undefined,
+  next: TaskProgress,
+): TaskProgress =>
+  TASK_PROGRESS.indexOf(next) > TASK_PROGRESS.indexOf(current ?? "not_sent")
+    ? next
+    : (current ?? next)
+
+/** The error code of a task that the app ended because the silent limit was reached (spec 005). */
+export const SILENT_CODE = "silent_limit"
+/** The same for a limit of one minute, which reads in the singular. */
+export const SILENT_CODE_ONE = "silent_limit_1"
+/** The code and the detail of the failure for a silent limit of this many minutes. */
+export const silentFailure = (minutes: number) =>
+  minutes === 1
+    ? { code: SILENT_CODE_ONE, detail: "1" }
+    : { code: SILENT_CODE, detail: String(minutes) }
+
 export interface Task {
   readonly id: string
   readonly agentId: string
@@ -42,6 +71,8 @@ export interface Task {
   readonly originName: string | null
   /** The name of the other computer whose task of this agent runs now, while this one waits. */
   readonly waitsFor: string | null
+  /** How far the turn went. Null for a task from before the app kept it (spec 005). */
+  readonly progress: TaskProgress | null
 }
 
 export interface TaskDetail {

@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import type { Edge, Step } from "@robot/shared"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
@@ -7,6 +7,9 @@ import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
+import { fakeClock } from "./silence.testing.ts"
+import { useClockForTests } from "./silence.ts"
+import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
@@ -54,6 +57,11 @@ const server = Bun.serve({
     const key = req.headers.get("authorization")?.replace("Bearer ", "") ?? ""
     seen.push({ key, body })
     const last = body.messages.at(-1)?.content ?? ""
+    // A model that opens the answer and then sends nothing.
+    if (last.includes("HANG"))
+      return new Response(new ReadableStream({ start() {} }), {
+        headers: { "content-type": "text/event-stream" },
+      })
     if (last.includes("Reply with yes or no only.")) {
       if (last.includes("BUSY"))
         return Response.json({ error: { message: "The engine is overloaded" } }, { status: 503 })
@@ -70,7 +78,8 @@ const server = Bun.serve({
     return sse(`Done(${last.split("\n")[0]})`)
   },
 })
-afterAll(() => server.stop())
+afterAll(() => server.stop(true))
+afterEach(() => useClockForTests(undefined))
 
 const until = async (check: () => Promise<boolean> | boolean, ms = 6000) => {
   const end = Date.now() + ms
@@ -671,5 +680,96 @@ describe("a step that still needs its agent or its place", () => {
       (e) => e,
     )
     expect(refused).toMatchObject({ code: "agent_not_found" })
+  })
+})
+
+describe("the silent limit in a workflow (spec 005)", () => {
+  const started = async (s: Awaited<ReturnType<typeof setup>>, wf: { id: string }) => {
+    const run = await s.run(Workflows.use((w) => w.run(wf.id)))
+    const detail = () => s.run(Workflows.use((w) => w.runDetail(run.id)))
+    return { run, detail }
+  }
+  const waitForRequest = async (count: number) => {
+    await until(() => seen.length >= count)
+    // The turn has handed the request over and waits for the model.
+    await Bun.sleep(50)
+  }
+
+  test("an agent step that gets no answer fails with the minutes; the step keeps them", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ silentLimit: 5 })))
+    const wf = await s.create(
+      [s.agentStep("a", s.ada.id, "HANG now"), s.post("p", "after")],
+      [s.edge("a", "p")],
+    )
+    const { detail } = await started(s, wf)
+    await waitForRequest(1)
+    fake.advance(4 * 60_000)
+    expect(s.states(await detail()).a).toBe("running")
+    fake.advance(60_000)
+    await until(async () => (await detail()).run.state === "failed")
+    const done = await detail()
+    expect(s.states(done)).toEqual({ a: "failed", p: "skipped" })
+    expect(done.steps.find((x) => x.stepId === "a")?.error).toBe("silent_limit:5")
+    // The task of the step shows how far it went.
+    const taskId = done.steps.find((x) => x.stepId === "a")?.taskId ?? ""
+    const { task } = await s.run(Tasks.use((x) => x.get(taskId)))
+    expect(task.error).toEqual({ code: "silent_limit", detail: "5" })
+    expect(task.progress).toBe("sent")
+  })
+
+  test("one minute has its own words", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ silentLimit: 1 })))
+    const wf = await s.create([s.agentStep("a", s.ada.id, "HANG now")], [])
+    const { detail } = await started(s, wf)
+    await waitForRequest(1)
+    fake.advance(60_000)
+    await until(async () => (await detail()).run.state === "failed")
+    expect((await detail()).steps[0]?.error).toBe("silent_limit_1")
+  })
+
+  test("a condition in mode Ask a model is stopped by the limit, with no new try", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ silentLimit: 10 })))
+    const wf = await s.create(
+      [
+        s.agentStep("a", s.ada.id, "Hello"),
+        s.ask("c", "Is it quiet? HANG"),
+        s.post("yes", "YES"),
+        s.post("no", "NO"),
+      ],
+      [s.edge("a", "c"), s.edge("c", "yes", "yes"), s.edge("c", "no", "no")],
+    )
+    const { detail } = await started(s, wf)
+    await until(() => s.asked().length >= 1)
+    await Bun.sleep(50)
+    fake.advance(10 * 60_000)
+    await until(async () => (await detail()).run.state === "failed")
+    const done = await detail()
+    expect(s.states(done)).toEqual({ a: "done", c: "failed", yes: "skipped", no: "skipped" })
+    expect(done.steps.find((x) => x.stepId === "c")?.error).toBe("silent_limit:10")
+    expect(s.asked()).toHaveLength(1)
+  })
+
+  test("with the limit set to Never, a quiet model is not stopped", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ silentLimit: 0 })))
+    const wf = await s.create([s.agentStep("a", s.ada.id, "HANG now")], [])
+    const { run, detail } = await started(s, wf)
+    await waitForRequest(1)
+    fake.advance(24 * 60 * 60_000)
+    await Bun.sleep(100)
+    expect(s.states(await detail()).a).toBe("running")
+    await s.run(Workflows.use((w) => w.stop(run.id)))
+    await until(async () => (await detail()).run.state === "cancelled")
   })
 })

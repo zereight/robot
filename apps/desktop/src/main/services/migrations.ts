@@ -663,4 +663,9 @@ export const migrations: readonly string[] = [
   ALTER TABLE action_log ADD COLUMN access TEXT;
   CREATE INDEX action_log_task ON action_log (task_id, at);
   `,
+  `
+  -- How far the turn of a task went: not_sent, sent or started (spec 005). It only goes up. A task
+  -- from before this step has none, and shows no line about it.
+  ALTER TABLE task ADD COLUMN progress TEXT;
+  `,
 ]
