@@ -442,6 +442,12 @@ export const migrations: readonly string[] = [
   CREATE INDEX action_log_at ON action_log (at);
   `,
   `
+  -- A message that the user sent into a running turn (spec 003): the reply of that turn, and the
+  -- time when the agent read the message. Both are empty for every other message.
+  ALTER TABLE message ADD COLUMN joined_to TEXT;
+  ALTER TABLE message ADD COLUMN read_at INTEGER;
+  `,
+  `
   -- Memory control (spec 008). None of this syncs (spec 019): no dirty trigger is made here, and
   -- the choice of an agent is not a field of the agent that sync carries.
   -- "now" is "Save at once", "ask" is "Ask me first".

@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import type { KnowledgeNote } from "./knowledge.ts"
 import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
+import type { RuntimeKind } from "./providers.ts"
 
 export type MessagePart =
   | { readonly kind: "text"; readonly text: string }
@@ -31,6 +32,8 @@ export type MessagePart =
       readonly decision?: { readonly answer: "allow" | "deny"; readonly by: string }
       /** Set for a knowledge tool: what it read or changed, so the card can show it. */
       readonly knowledge?: KnowledgeNote
+      /** Set when a message of the user in the chat answered this question card (spec 003). */
+      readonly answeredInChat?: boolean
     }
 
 /** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */
@@ -97,6 +100,11 @@ export interface ChatMessage {
   readonly editedAt: number | null
   /** The name of the linked device that sent this message. Null for this computer (spec 012). */
   readonly fromDevice: string | null
+  /**
+   * A message that the user sent into a running turn and that the agent did not read yet (spec
+   * 003): "waiting" can still be deleted, "handed" went to the program already. Null otherwise.
+   */
+  readonly unread?: "waiting" | "handed"
 }
 
 export type FilePart = Extract<MessagePart, { kind: "file" }>
@@ -106,6 +114,21 @@ export interface QueuedMessage {
   readonly text: string
   readonly files: readonly FilePart[]
   readonly replyTo: string | null
+}
+
+/**
+ * Why messages wait in the queue while the agent works, whatever the setting says: the program of
+ * the agent takes no input during a turn (spec 003). Null when the setting decides.
+ */
+export interface QueueHold {
+  readonly runtime: RuntimeKind
+}
+
+/** The chat of an agent: its messages, its queue, and what holds the queue. */
+export interface ChatHistory {
+  readonly messages: readonly ChatMessage[]
+  readonly queue: readonly QueuedMessage[]
+  readonly hold: QueueHold | null
 }
 
 export const MESSAGE_MAX = 100_000

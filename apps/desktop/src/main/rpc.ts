@@ -901,6 +901,18 @@ export const handlers: Handlers = {
       Effect.flatMap(({ agentId, itemId }) => Chat.use((c) => c.removeQueued(agentId, itemId))),
       done,
     ),
+  "chat.queue.sendNow": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, itemId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, itemId }) => Chat.use((c) => c.sendNow(agentId, itemId))),
+      done,
+    ),
+  "chat.unread.delete": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, messageId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, messageId }) =>
+        Chat.use((c) => c.deleteUnread(agentId, messageId)),
+      ),
+      done,
+    ),
   "chat.markRead": (input) =>
     decode(ByAgent)(input).pipe(
       Effect.flatMap(({ agentId }) => Chat.use((c) => c.markRead(agentId))),

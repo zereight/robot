@@ -2,6 +2,10 @@ import { Schema, Struct } from "effect"
 import { DEVICE_NAME_MAX } from "./link.ts"
 import { ISLAND_MODES } from "./notifications.ts"
 
+/** "While an agent works, new messages": join the current turn, or wait in a queue. */
+export const DURING_TURN = ["join", "queue"] as const
+export type DuringTurn = (typeof DURING_TURN)[number]
+
 export const Language = Schema.Literals(["system", "en", "ko"])
 export const Theme = Schema.Literals(["system", "dark", "light"])
 export const TextSize = Schema.Literals(["small", "default", "large"])
@@ -41,6 +45,8 @@ export const Settings = Schema.Struct({
   acceptLinks: Schema.Boolean,
   /** The port the app listened on last time, so a linked device finds it again. 0 for none. */
   linkPort: Schema.Number,
+  /** What a message does that the user sends while the agent works (spec 003). */
+  duringTurn: Schema.Literals(DURING_TURN),
 })
 export type Settings = typeof Settings.Type
 
@@ -69,6 +75,7 @@ export const defaultSettings: Settings = {
   deviceName: "",
   acceptLinks: false,
   linkPort: 0,
+  duringTurn: "join",
 }
 
 export type Locale = "en" | "ko"
