@@ -65,6 +65,7 @@ export const testPlatform = () => {
     pickSavePath: async () => shell.savePath,
     pickArchive: async () => undefined,
     openPath: async () => {},
+    openFile: async () => {},
     setStartAtLogin: () => {},
     setThemeSource: () => {},
     copyText: () => {},

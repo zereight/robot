@@ -1,79 +1,26 @@
 import { existsSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
-import {
-  connectMock,
-  createAgent,
-  freshUserData,
-  type Launched,
-  launch,
-  resizeWindow,
-  shot,
-} from "./harness.ts"
-import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { createAgent, launch, resizeWindow, shot } from "./harness.ts"
+import { GOOD_KEY } from "./mock-provider.ts"
 import {
   agentNames,
   closeSettings,
   envFor,
-  link,
   openDevices,
   report,
+  rowOf,
+  rpc,
   send,
   serverRow,
-  setName,
   settled,
-  startSync,
+  synced,
   syncState,
+  turnOnSync,
 } from "./sync-helpers.ts"
 
 // Live sync (spec 016, S22): changes cross within 5 s, streaming grows on both computers, the
 // newest change wins per field, nothing is lost, and a delete reaches the other computer.
-const rpc = <T = unknown>(page: Page, method: string, input?: unknown) =>
-  page.evaluate(
-    async ([m, i]) => {
-      // biome-ignore lint/suspicious/noExplicitAny: the bridge is typed in the app
-      const result = await (window as any).robot.invoke(m, i)
-      if (!result.ok) throw new Error(result.error.code)
-      return result.value
-    },
-    [method, input] as [string, unknown],
-  ) as Promise<T>
-
-const rowOf = (page: Page, name: string) =>
-  page.locator("[data-testid^=place-agent-]", { hasText: new RegExp(`^${name}`) })
-
-/** Both computers are linked both ways and synced by a merge. MacBook 1 holds the agents. */
-const synced = async (
-  ports: [number, number],
-  extra: [Record<string, string>, Record<string, string>] = [{}, {}],
-) => {
-  const mock = await startMockProvider()
-  const data1 = freshUserData()
-  const data2 = freshUserData()
-  const one = await launch(data1, envFor(ports[0], extra[0]))
-  const two = await launch(data2, envFor(ports[1], extra[1]))
-  await resizeWindow(one.app, 1200, 860)
-  await resizeWindow(two.app, 1200, 860)
-  await connectMock(one.page, mock.openaiUrl, GOOD_KEY)
-  return { mock, data1, data2, one, two, ports, extra }
-}
-
-const turnOnSync = async (one: Launched, two: Launched, wait = "live") => {
-  await openDevices(one.page)
-  await setName(one.page, "MacBook 1")
-  await openDevices(two.page)
-  await setName(two.page, "MacBook 2")
-  await link(one, two, true)
-  await startSync(two, "merge")
-  await one.page.getByTestId("sync-request-allow").click()
-  await expect(syncState(two.page, "MacBook 1")).toHaveAttribute("data-state", wait, {
-    timeout: 60_000,
-  })
-  await expect(syncState(one.page, "MacBook 2")).toHaveAttribute("data-state", wait, {
-    timeout: 60_000,
-  })
-}
-
 test("live sync: a rename, a streaming reply, the read state and the origin of a message", async () => {
   test.setTimeout(300_000)
   const s = await synced([47881, 47882])

@@ -2,14 +2,16 @@ import {
   type Agent,
   type ChatMessage,
   catalogues,
+  type FilePart,
   type MessageKey,
   type MessagePart,
   messageFiles,
   messageText,
 } from "@robot/shared"
-import { Copy, Download, Pencil, Reply, User, Wrench } from "lucide-solid"
-import { createSignal, For, Match, Show, Switch } from "solid-js"
+import { Copy, Download, ExternalLink, Pencil, Reply, User, Wrench } from "lucide-solid"
+import { createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
@@ -45,12 +47,29 @@ const Thinking = (props: { text: string; live: boolean }) => {
   )
 }
 
-const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "tool" }> }) => {
+const ToolCard = (props: {
+  agent: Agent
+  part: Extract<MessagePart, { kind: "tool" }>
+  /** The name of the other computer when the task runs there (spec 016). */
+  from: string | undefined
+}) => {
   const { t } = useApp()
   const ui = useUi()
+  const devices = useDevices()
   const [answer, setAnswer] = createSignal("")
-  const respond = (value: string) =>
-    call("tools.respond", { agentId: props.agent.id, callId: props.part.id, answer: value })
+  const [failure, setFailure] = createSignal<ErrorText>()
+  const respond = async (value: string) => {
+    setFailure(undefined)
+    try {
+      await call("tools.respond", { agentId: props.agent.id, callId: props.part.id, answer: value })
+    } catch (e) {
+      setFailure(describeError(e))
+    }
+  }
+  /** The card of a task on the other computer cannot be answered while that computer is away. */
+  const away = () => props.from !== undefined && !devices.sync.pairOnline()
+  /** A computer cannot change what an agent may always do on another computer (spec 016). */
+  const mayAlways = () => !ui.linked() && props.from === undefined
   return (
     <details class={styles.tool} data-testid="tool-card" open={props.part.state === "waiting"}>
       <summary>
@@ -59,6 +78,13 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
         <span class={styles.toolState} data-state={props.part.state}>
           {t(`chat.tool.${props.part.state}` as MessageKey)}
         </span>
+        <Show when={props.from}>
+          {(from) => (
+            <span class={styles.fromDevice} data-testid="tool-origin">
+              {t("link.fromDevice", { name: from() })}
+            </span>
+          )}
+        </Show>
         <Show when={props.part.decision}>
           {(decision) => (
             <span
@@ -77,6 +103,18 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
         <Show when={props.part.ask}>
           {(ask) => (
             <div class={styles.ask} data-testid="ask-card">
+              <Show when={away()}>
+                <div class={styles.fromDevice} role="status" data-testid="ask-origin-offline">
+                  {t("sync.originOffline", { name: props.from ?? "" })}
+                </div>
+              </Show>
+              <Show when={failure()}>
+                {(err) => (
+                  <div class={styles.fromDevice} role="alert" data-testid="ask-error">
+                    {t(err().key, err().params)}
+                  </div>
+                )}
+              </Show>
               <Show
                 when={ask().kind === "question" ? ask() : undefined}
                 fallback={
@@ -86,18 +124,23 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                     <div class={styles.askActions}>
                       <Button
                         variant="primary"
+                        disabled={away()}
                         onClick={() => respond("allow")}
                         data-testid="ask-allow"
                       >
                         {t("chat.tool.allow")}
                       </Button>
                       {/* A client cannot change what an agent may always do (spec 012). */}
-                      <Show when={!ui.linked()}>
+                      <Show when={mayAlways()}>
                         <Button onClick={() => respond("always")} data-testid="ask-always">
                           {t("chat.tool.always")}
                         </Button>
                       </Show>
-                      <Button onClick={() => respond("deny")} data-testid="ask-deny">
+                      <Button
+                        disabled={away()}
+                        onClick={() => respond("deny")}
+                        data-testid="ask-deny"
+                      >
                         {t("chat.tool.deny")}
                       </Button>
                     </div>
@@ -110,7 +153,11 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                     <div class={styles.askActions}>
                       <For each={(question() as { choices: readonly string[] }).choices}>
                         {(choice) => (
-                          <Button onClick={() => respond(choice)} data-testid="ask-choice">
+                          <Button
+                            disabled={away()}
+                            onClick={() => respond(choice)}
+                            data-testid="ask-choice"
+                          >
                             {choice}
                           </Button>
                         )}
@@ -131,7 +178,12 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                         onInput={(e) => setAnswer(e.currentTarget.value)}
                         data-testid="ask-input"
                       />
-                      <Button type="submit" variant="primary" data-testid="ask-send">
+                      <Button
+                        type="submit"
+                        variant="primary"
+                        disabled={away()}
+                        data-testid="ask-send"
+                      >
                         {t("chat.tool.send")}
                       </Button>
                     </form>
@@ -158,6 +210,93 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
         </Show>
       </div>
     </details>
+  )
+}
+
+const FileChip = (props: { message: ChatMessage; file: FilePart; from: string | undefined }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const [savedFile, setSavedFile] = createSignal<string>()
+  const [busy, setBusy] = createSignal(false)
+  const [failure, setFailure] = createSignal<ErrorText>()
+  const ask = () => ({
+    agentId: props.message.agentId,
+    path: props.file.path,
+    size: props.file.size,
+    messageId: props.message.id,
+  })
+  // A file of a message from the other computer may not be on this computer (spec 016).
+  const [here, { refetch }] = createResource(
+    () => props.from !== undefined && !ui.linked(),
+    (remote) => (remote ? call("sync.file.here", ask()).catch(() => true) : true),
+    { initialValue: true },
+  )
+  const open = async () => {
+    setFailure(undefined)
+    setBusy(true)
+    try {
+      await call("sync.file.open", ask())
+      await refetch()
+    } catch (e) {
+      setFailure(describeError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <li class={styles.chip} title={props.file.path} data-testid="message-file">
+      <span class={styles.chipName}>{props.file.name}</span>
+      <span class={styles.chipSize}>{fileSize(props.file.size)}</span>
+      <Show when={!here()}>
+        <span class={styles.chipSize} data-testid="message-file-missing">
+          {t("sync.file.notHere")}
+        </span>
+      </Show>
+      <Show when={busy()}>
+        <span class={styles.chipSize} data-testid="message-file-copying">
+          {t("sync.file.copying")}
+        </span>
+      </Show>
+      <Show when={failure()}>
+        {(err) => (
+          <span class={styles.chipSize} role="alert" data-testid="message-file-error">
+            {t(err().key, err().params)}
+          </span>
+        )}
+      </Show>
+      <Show when={!ui.linked()}>
+        <IconButton
+          label={t("sync.file.open", { name: props.file.name })}
+          disabled={busy()}
+          onClick={open}
+          data-testid="message-file-open"
+        >
+          <ExternalLink size={12} />
+        </IconButton>
+      </Show>
+      <Show when={ui.linked()}>
+        <IconButton
+          label={t("link.file.download", { name: props.file.name })}
+          disabled={ui.serverOffline()}
+          onClick={async () => {
+            const result = await call("attachments.save", {
+              agentId: props.message.agentId,
+              path: props.file.path,
+              name: props.file.name,
+            }).catch(() => undefined)
+            if (result?.saved) setSavedFile(props.file.path)
+          }}
+          data-testid="message-file-download"
+        >
+          <Download size={12} />
+        </IconButton>
+        <Show when={savedFile() === props.file.path}>
+          <span class={styles.chipSize} data-testid="message-file-saved">
+            {t("link.file.saved")}
+          </span>
+        </Show>
+      </Show>
+    </li>
   )
 }
 
@@ -190,11 +329,9 @@ const FailedRow = (props: { message: ChatMessage; onRetry: () => void }) => {
 export const MessageRow = (props: MessageRowProps) => {
   const app = useApp()
   const { t } = app
-  const ui = useUi()
   const devices = useDevices()
   const [editing, setEditing] = createSignal(false)
   const [draft, setDraft] = createSignal("")
-  const [savedFile, setSavedFile] = createSignal<string>()
   /** A message from another linked device shows its name. This device does not name itself. */
   const fromOther = () => {
     const from = props.message.fromDevice
@@ -307,32 +444,7 @@ export const MessageRow = (props: MessageRowProps) => {
                   <ul class={styles.chips} data-testid="message-files">
                     <For each={messageFiles(props.message)}>
                       {(file) => (
-                        <li class={styles.chip} title={file.path} data-testid="message-file">
-                          <span class={styles.chipName}>{file.name}</span>
-                          <span class={styles.chipSize}>{fileSize(file.size)}</span>
-                          <Show when={ui.linked()}>
-                            <IconButton
-                              label={t("link.file.download", { name: file.name })}
-                              disabled={ui.serverOffline()}
-                              onClick={async () => {
-                                const result = await call("attachments.save", {
-                                  agentId: props.message.agentId,
-                                  path: file.path,
-                                  name: file.name,
-                                }).catch(() => undefined)
-                                if (result?.saved) setSavedFile(file.path)
-                              }}
-                              data-testid="message-file-download"
-                            >
-                              <Download size={12} />
-                            </IconButton>
-                            <Show when={savedFile() === file.path}>
-                              <span class={styles.chipSize} data-testid="message-file-saved">
-                                {t("link.file.saved")}
-                              </span>
-                            </Show>
-                          </Show>
-                        </li>
+                        <FileChip message={props.message} file={file} from={fromOther()} />
                       )}
                     </For>
                   </ul>
@@ -359,6 +471,7 @@ export const MessageRow = (props: MessageRowProps) => {
                     <ToolCard
                       agent={props.agent}
                       part={part as Extract<MessagePart, { kind: "tool" }>}
+                      from={fromOther()}
                     />
                   </Match>
                 </Switch>

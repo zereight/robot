@@ -50,6 +50,8 @@ export interface ToolsService {
   approval(context: ToolContext, request: ApprovalRequest): Promise<boolean>
   /** Answers a card that waits. Unknown cards are ignored. */
   respond(agentId: string, callId: string, answer: string): Effect.Effect<void>
+  /** True while a task of this computer waits for the answer to this card. */
+  isWaiting(agentId: string, callId: string): boolean
   /** Whether the browser window of an agent is open, and whether the user holds the controls. */
   browserState(agentId: string): { open: boolean; control: boolean }
   /** The user takes the controls (`true`) or gives them back (`false`). */
@@ -481,6 +483,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           browserChanged(agentId)
         },
         closeBrowser: (agentId) => platform.browser(agentId).close(),
+        isWaiting: (agentId, callId) => waiting.has(`${agentId}:${callId}`),
         respond: (agentId, callId, answer) =>
           Effect.gen(function* () {
             // A linked device that answers is named on the card (spec 012).

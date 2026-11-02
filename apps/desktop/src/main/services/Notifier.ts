@@ -55,8 +55,11 @@ export interface NotifierService {
   answeredLinked(linkId: string, agentId: string, callId: string): void
   /** The approvals and questions that wait now, for a linked device that connects. */
   waitingNotices(): readonly WireNotice[]
-  /** An approval or a question waits: a notification and the island card. */
-  attention(item: Omit<WaitingItem, "agent">): void
+  /**
+   * An approval or a question waits: a notification and the island card. `from` names the other
+   * computer when the task runs there (spec 015, 016).
+   */
+  attention(item: Omit<WaitingItem, "agent">, from?: string): void
   clearAttention(agentId: string, callId: string): void
   clearAgent(agentId: string): void
   island(): IslandState
@@ -180,7 +183,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
             callId: w.callId,
             agentId: w.agentId,
           })),
-        attention: (partial) => {
+        attention: (partial, from) => {
           const agent = agentInfo(partial.agentId)
           if (!agent) return
           const item: WaitingItem = { ...partial, agent }
@@ -194,7 +197,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
               kind: item.kind,
               serverId: item.serverId,
               channelId: item.channelId,
-              title: item.agent.name,
+              title: from ? `${item.agent.name} · ${from}` : item.agent.name,
               body: item.summary,
               target: item.target,
             },

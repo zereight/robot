@@ -140,6 +140,16 @@ export interface RpcMethods {
   /** Deletions that wait for a decision (spec 016, Delete). */
   "sync.guard": { input: undefined; output: SyncGuard | null }
   "sync.guard.decide": { input: { remove: boolean }; output: undefined }
+  /** True when the file of a message is on this computer. */
+  "sync.file.here": {
+    input: { agentId: string; path: string; size: number; messageId: string }
+    output: boolean
+  }
+  /** Opens the file of a message. A file that is not here is copied from the origin first. */
+  "sync.file.open": {
+    input: { agentId: string; path: string; size: number; messageId: string }
+    output: undefined
+  }
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
   /** Saves a file of a message of a linked server to this computer. Asks where to save it. */
   "attachments.save": {
@@ -214,6 +224,8 @@ export interface RpcMethods {
   "routines.create": { input: RoutineInput; output: Routine }
   "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }
   "routines.delete": { input: { id: string }; output: undefined }
+  /** Moves a routine of the other computer here: it runs here from now on (spec 016). */
+  "routines.runHere": { input: { id: string }; output: Routine }
   "routines.runNow": { input: { id: string }; output: undefined }
   "routines.calendar": {
     input: { serverId: string; from: number; to: number }
@@ -224,6 +236,8 @@ export interface RpcMethods {
   "workflows.update": { input: { id: string; patch: WorkflowPatch }; output: Workflow }
   "workflows.delete": { input: { id: string }; output: undefined }
   "workflows.run": { input: { id: string; triggerText?: string }; output: WorkflowRun }
+  /** Moves a workflow of the other computer here: it runs here from now on (spec 016). */
+  "workflows.runHere": { input: { id: string }; output: Workflow }
   "workflows.stop": { input: { runId: string }; output: undefined }
   "workflows.approve": {
     input: { runId: string; stepId: string; approved: boolean }

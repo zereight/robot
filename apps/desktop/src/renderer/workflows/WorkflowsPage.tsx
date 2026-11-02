@@ -43,14 +43,31 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
                   {t("workflows.stepCount", { n: w.steps.length })}
                   {w.running ? ` · ${t("workflows.runState.running")}` : ""}
                 </span>
+                <Show when={w.runsOn !== null}>
+                  <span class={styles.hint} data-testid="wf-runs-on">
+                    {t("sync.runsOn", { name: w.runsOn || t("sync.anotherComputer") })}
+                  </span>
+                </Show>
               </div>
-              <Button
-                onClick={() => call("workflows.run", { id: w.id })}
-                disabled={w.running}
-                data-testid="wf-card-run"
+              <Show
+                when={w.runsOn === null}
+                fallback={
+                  <Button
+                    onClick={() => call("workflows.runHere", { id: w.id })}
+                    data-testid="wf-run-here"
+                  >
+                    {t("sync.runHere")}
+                  </Button>
+                }
               >
-                {t("workflows.run")}
-              </Button>
+                <Button
+                  onClick={() => call("workflows.run", { id: w.id })}
+                  disabled={w.running}
+                  data-testid="wf-card-run"
+                >
+                  {t("workflows.run")}
+                </Button>
+              </Show>
               <Button onClick={() => props.onOpen(w)} data-testid="wf-open">
                 {t("workflows.open")}
               </Button>

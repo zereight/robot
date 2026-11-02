@@ -1,7 +1,15 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { expect, type Page } from "@playwright/test"
-import { type Launched, shotsDir } from "./harness.ts"
+import {
+  connectMock,
+  freshUserData,
+  type Launched,
+  launch,
+  resizeWindow,
+  shotsDir,
+} from "./harness.ts"
+import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Two copies of the app run side by side, each with its own data folder, and sync with each other
 // over the device link on 127.0.0.1 (spec 016).
@@ -89,4 +97,50 @@ export const startSync = async (two: Launched, mode: "merge" | "take" | "send") 
   await expect(two.page.getByTestId("sync-there")).toBeVisible({ timeout: 20_000 })
   await two.page.getByTestId(`sync-mode-${mode}-input`).check()
   await two.page.getByTestId("sync-start-confirm").click()
+}
+
+export const rpc = <T = unknown>(page: Page, method: string, input?: unknown) =>
+  page.evaluate(
+    async ([m, i]) => {
+      // biome-ignore lint/suspicious/noExplicitAny: the bridge is typed in the app
+      const result = await (window as any).robot.invoke(m, i)
+      if (!result.ok) throw new Error(result.error.code)
+      return result.value
+    },
+    [method, input] as [string, unknown],
+  ) as Promise<T>
+
+export const rowOf = (page: Page, name: string) =>
+  page.locator("[data-testid^=place-agent-]", { hasText: new RegExp(`^${name}`) })
+
+/** Both computers are linked both ways and synced by a merge. MacBook 1 holds the agents. */
+export const synced = async (
+  ports: [number, number],
+  extra: [Record<string, string>, Record<string, string>] = [{}, {}],
+) => {
+  const mock = await startMockProvider()
+  const data1 = freshUserData()
+  const data2 = freshUserData()
+  const one = await launch(data1, envFor(ports[0], extra[0]))
+  const two = await launch(data2, envFor(ports[1], extra[1]))
+  await resizeWindow(one.app, 1200, 860)
+  await resizeWindow(two.app, 1200, 860)
+  await connectMock(one.page, mock.openaiUrl, GOOD_KEY)
+  return { mock, data1, data2, one, two, ports, extra }
+}
+
+export const turnOnSync = async (one: Launched, two: Launched, wait = "live") => {
+  await openDevices(one.page)
+  await setName(one.page, "MacBook 1")
+  await openDevices(two.page)
+  await setName(two.page, "MacBook 2")
+  await link(one, two, true)
+  await startSync(two, "merge")
+  await one.page.getByTestId("sync-request-allow").click()
+  await expect(syncState(two.page, "MacBook 1")).toHaveAttribute("data-state", wait, {
+    timeout: 60_000,
+  })
+  await expect(syncState(one.page, "MacBook 2")).toHaveAttribute("data-state", wait, {
+    timeout: 60_000,
+  })
 }

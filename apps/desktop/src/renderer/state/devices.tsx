@@ -73,6 +73,14 @@ const createDevicesState = () => {
         )
         return active ? state.latest?.servers.find((e) => e.id === active.linkId)?.name : undefined
       },
+      /** True while the computer that syncs with this one is online. */
+      pairOnline: (): boolean => {
+        if (syncList.error) return true
+        const state = (syncList.latest ?? []).find((s) => s.state !== "off")?.state
+        return (
+          state === "copying" || state === "live" || state === "paused" || state === "attention"
+        )
+      },
       requests: syncRequests,
       guard: guardNow,
       changes: (): readonly SyncChangeEntry[] => changes.latest ?? [],

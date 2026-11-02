@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { existsSync, readdirSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Effect } from "effect"
 import type { AppServices } from "../layers.ts"
@@ -9,12 +9,16 @@ import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
 import { Memory } from "./Memory.ts"
+import { Notifier } from "./Notifier.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Remote } from "./Remote.ts"
+import { Routines } from "./Routines.ts"
 import { Servers } from "./Servers.ts"
 import { Sync } from "./Sync.ts"
+import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
+import { Workflows } from "./Workflows.ts"
 
 type Rt = ReturnType<typeof testRuntime>
 
@@ -602,5 +606,430 @@ describe("two computers that were apart", () => {
       ),
     ).toBe(0)
     expect(await unread(a)).toBe(0)
+  })
+})
+
+describe("tasks, routines, workflows and files of two computers", () => {
+  const pair = async () => {
+    const a = side("MacBook 1")
+    const b = side("MacBook 2")
+    const ada = await makeAgent(a, "Ada")
+    const entry = await link(a, b, true)
+    await turnOn(a, b, entry.id, "merge")
+    await waitFor(
+      () => agentNames(b),
+      (n) => n.length === 1,
+    )
+    return { a, b, ada }
+  }
+  const tasksOf = async (rt: Rt) => {
+    const id = await localId(rt)
+    return run(
+      rt,
+      Tasks.use((t) => t.list(id)),
+    )
+  }
+  const SQL = (rt: Rt, sql: string, ...args: (string | number | null)[]) =>
+    run(
+      rt,
+      Database.use((db) => Effect.sync(() => db.run(sql, ...args))),
+    )
+  /** A task that goes on until it is stopped. Its promise ends when it stops. */
+  const longTask = async (rt: Rt, agentId: string) => {
+    const task = await run(
+      rt,
+      Tasks.use((t) =>
+        t.create({ agentId, prompt: "A long job", source: "chat", sourceId: agentId }),
+      ),
+    )
+    void run(
+      rt,
+      Tasks.use((t) => t.run(task.id, agentId, Effect.never)),
+    ).catch(() => {})
+    return task
+  }
+
+  test("a task of the other computer shows its origin, is stopped there, and is never changed here", async () => {
+    const { a, b, ada } = await pair()
+    const task = await longTask(b, ada.id)
+    const seen = await waitFor(
+      async () => (await tasksOf(a)).find((t) => t.id === task.id),
+      (t) => t?.state === "running",
+    )
+    expect(seen?.originName).toBe("MacBook 2")
+    expect((await tasksOf(b)).find((t) => t.id === task.id)?.originName).toBeNull()
+
+    // A stop on the first computer goes to the second one, where the task runs.
+    await run(
+      a,
+      Tasks.use((t) => t.stopAny(task.id)),
+    )
+    const onB = await waitFor(
+      async () => (await tasksOf(b)).find((t) => t.id === task.id),
+      (t) => t?.state === "cancelled",
+    )
+    expect(onB?.state).toBe("cancelled")
+    const onA = await waitFor(
+      async () => (await tasksOf(a)).find((t) => t.id === task.id),
+      (t) => t?.state === "cancelled",
+    )
+    expect(onA?.state).toBe("cancelled")
+  })
+
+  test("Stop for an agent stops its tasks on the other computer and leaves the tasks here", async () => {
+    const { a, b, ada } = await pair()
+    const there = await longTask(b, ada.id)
+    await waitFor(
+      async () => (await tasksOf(a)).find((t) => t.id === there.id),
+      (t) => t?.state === "running",
+    )
+    await run(
+      a,
+      Tasks.use((t) => t.stopRemoteFor(ada.id)),
+    )
+    const stopped = await waitFor(
+      async () => (await tasksOf(b)).find((t) => t.id === there.id),
+      (t) => t?.state === "cancelled",
+    )
+    expect(stopped?.state).toBe("cancelled")
+  })
+
+  test("one task per agent across both computers: the second one waits and then runs", async () => {
+    const { a, b, ada } = await pair()
+    const first = await longTask(b, ada.id)
+    await waitFor(
+      async () => (await tasksOf(a)).find((t) => t.id === first.id),
+      (t) => t?.state === "running",
+    )
+    const second = await run(
+      a,
+      Tasks.use((t) =>
+        t.create({ agentId: ada.id, prompt: "Next job", source: "chat", sourceId: ada.id }),
+      ),
+    )
+    const finished = run(
+      a,
+      Tasks.use((t) => t.run(second.id, ada.id, Effect.succeed("ok"))),
+    )
+    const waiting = await waitFor(
+      async () => (await tasksOf(a)).find((t) => t.id === second.id),
+      (t) => t?.waitsFor === "MacBook 2",
+    )
+    expect(waiting?.state).toBe("queued")
+    expect(waiting?.waitsFor).toBe("MacBook 2")
+    await new Promise((r) => setTimeout(r, 700))
+    expect((await tasksOf(a)).find((t) => t.id === second.id)?.state).toBe("queued")
+    await run(
+      b,
+      Tasks.use((t) => t.stop(first.id)),
+    )
+    await finished
+    const done = (await tasksOf(a)).find((t) => t.id === second.id)
+    expect(done?.state).toBe("done")
+    expect(done?.waitsFor).toBeNull()
+  })
+
+  test("a routine from the other computer does not run here; Run on this computer moves it", async () => {
+    const { a, b, ada } = await pair()
+    const idA = await localId(a)
+    const idB = await localId(b)
+    const routine = await run(
+      a,
+      Routines.use((r) =>
+        r.create({
+          serverId: idA,
+          agentId: ada.id,
+          name: "Check",
+          prompt: "hello",
+          schedule: { kind: "every", minutes: 2, from: Date.now() },
+          place: { kind: "agent" },
+        }),
+      ),
+    )
+    expect(routine.runsOn).toBeNull()
+    const onB = await waitFor(
+      async () =>
+        (
+          await run(
+            b,
+            Routines.use((r) => r.list(idB)),
+          )
+        ).find((x) => x.id === routine.id),
+      (x) => x !== undefined,
+    )
+    expect(onB?.runsOn).toBe("MacBook 1")
+    expect(onB?.nextRuns).toEqual([])
+    const entries = (rt: Rt, id: string) =>
+      run(
+        rt,
+        Routines.use((r) => r.calendar(id, Date.now() - 86_400_000, Date.now() + 86_400_000)),
+      ).then((list) => list.filter((e) => e.state !== "planned"))
+
+    // At its time it does not run on the second computer, and nothing counts as missed there.
+    const later = Date.now() + 10 * 60_000
+    await run(
+      b,
+      Routines.use((r) => r.tick(later)),
+    )
+    expect(await entries(b, idB)).toEqual([])
+    const refused = await run(b, Routines.use((r) => r.runNow(routine.id)).pipe(Effect.flip))
+    expect(refused.code).toBe("routine_elsewhere")
+
+    // Moved: the first computer shows where it runs, and no longer runs it.
+    await run(
+      b,
+      Routines.use((r) => r.runHere(routine.id)),
+    )
+    const moved = await waitFor(
+      async () =>
+        (
+          await run(
+            a,
+            Routines.use((r) => r.list(idA)),
+          )
+        ).find((x) => x.id === routine.id),
+      (x) => x?.runsOn === "MacBook 2",
+    )
+    expect(moved?.runsOn).toBe("MacBook 2")
+    await run(
+      a,
+      Routines.use((r) => r.tick(later + 10 * 60_000)),
+    )
+    expect(await entries(a, idA)).toEqual([])
+    await run(
+      b,
+      Routines.use((r) => r.tick(later + 10 * 60_000)),
+    )
+    expect((await entries(b, idB)).length).toBeGreaterThan(0)
+  })
+
+  test("a workflow with a channel trigger fires on its computer for a message of the other, unless the message is old", async () => {
+    const { a, b, ada } = await pair()
+    const idA = await localId(a)
+    const make = (name: string) =>
+      run(
+        a,
+        Channels.use((c) =>
+          c.create({ serverId: idA, name, topic: "", memberIds: [ada.id], leadId: null }),
+        ),
+      )
+    const watched = await make("Watched")
+    const quiet = await make("Quiet")
+    const wf = await run(
+      a,
+      Workflows.use((w) =>
+        w.create({
+          serverId: idA,
+          name: "Flow",
+          trigger: { kind: "channel", channelId: watched.id, contains: "deploy" },
+          steps: [
+            { id: "p", kind: "post", name: "p", x: 0, y: 0, channelId: quiet.id, text: "Ran" },
+          ],
+          edges: [],
+        }),
+      ),
+    )
+    const idB = await localId(b)
+    const onB = await waitFor(
+      async () =>
+        (
+          await run(
+            b,
+            Workflows.use((w) => w.list(idB)),
+          )
+        ).find((x) => x.id === wf.id),
+      (x) => x !== undefined,
+    )
+    expect(onB?.runsOn).toBe("MacBook 1")
+    await waitFor(
+      async () =>
+        (
+          await run(
+            b,
+            Channels.use((c) => c.list(idB)),
+          )
+        ).length,
+      (n) => n === 2,
+    )
+    const runsOnA = async () =>
+      (
+        await run(
+          a,
+          Workflows.use((w) => w.runs(wf.id)),
+        )
+      ).length
+
+    // A message that was sent now on the second computer fires it on the first one.
+    await run(
+      b,
+      Channels.use((c) => c.post(watched.id, "please deploy now")),
+    )
+    expect(await waitFor(runsOnA, (n) => n === 1)).toBe(1)
+
+    // A message that is 6 minutes old when it arrives fires nothing.
+    await SQL(
+      b,
+      `INSERT INTO channel_message (id, channel_id, author, parts, status, awaiting, created_at, finished_at)
+       VALUES ('old-message', ?, 'user', ?, 'done', 0, ?, ?)`,
+      watched.id,
+      JSON.stringify([{ kind: "text", text: "old deploy" }]),
+      Date.now() - 6 * 60_000,
+      Date.now() - 6 * 60_000,
+    )
+    await waitFor(
+      async () =>
+        (
+          await run(
+            a,
+            Channels.use((c) => c.history(watched.id)),
+          )
+        ).some((m) => JSON.stringify(m.parts).includes("old deploy")),
+      Boolean,
+    )
+    await new Promise((r) => setTimeout(r, 300))
+    expect(await runsOnA()).toBe(1)
+  })
+
+  test("a card that waits on the other computer notices here, and the notice drops when it is answered there", async () => {
+    const { a, b, ada } = await pair()
+    const parts = (state: "waiting" | "done") =>
+      JSON.stringify([
+        {
+          kind: "tool",
+          id: "call-1",
+          name: "run_command",
+          label: "ls",
+          state,
+          input: "",
+          output: "",
+          ...(state === "waiting" ? { ask: { kind: "approval", summary: "Run ls" } } : {}),
+        },
+      ])
+    await SQL(
+      b,
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('card-1', ?, 'agent', ?, 'streaming', ?)`,
+      ada.id,
+      parts("waiting"),
+      Date.now(),
+    )
+    const attention = (rt: Rt) =>
+      run(
+        rt,
+        Notifier.use((n) => Effect.sync(() => n.island().attention)),
+      )
+    const notice = await waitFor(
+      () => attention(a),
+      (x) => x !== null,
+    )
+    expect(notice?.callId).toBe("call-1")
+    expect(notice?.agentId).toBe(ada.id)
+    await SQL(b, `UPDATE message SET parts = ?, status = 'done' WHERE id = 'card-1'`, parts("done"))
+    expect(
+      await waitFor(
+        () => attention(a),
+        (x) => x === null,
+      ),
+    ).toBeNull()
+  })
+
+  test("a file of a message is copied from the computer where it was made, and an offline origin gives a plain error", async () => {
+    const { a, b, ada } = await pair()
+    mkdirSync(join(ada.workspace, "attachments"), { recursive: true })
+    writeFileSync(join(ada.workspace, "attachments", "note.txt"), "hello")
+    await SQL(
+      a,
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('file-1', ?, 'user', ?, 'done', ?)`,
+      ada.id,
+      JSON.stringify([
+        { kind: "text", text: "See" },
+        { kind: "file", name: "note.txt", path: "attachments/note.txt", size: 5 },
+      ]),
+      Date.now(),
+    )
+    await waitFor(
+      async () =>
+        (
+          await run(
+            b,
+            Chat.use((c) => c.history(ada.id)),
+          )
+        ).messages.length,
+      (n) => n === 1,
+    )
+    const here = (rt: Rt) =>
+      run(
+        rt,
+        Sync.use((s) => Effect.sync(() => s.fileHere(ada.id, "attachments/note.txt", 5, "file-1"))),
+      )
+    expect(await here(a)).toBe(true)
+    expect(await here(b)).toBe(false)
+    await run(
+      b,
+      Sync.use((s) =>
+        s.openFile({ agentId: ada.id, path: "attachments/note.txt", size: 5, messageId: "file-1" }),
+      ),
+    )
+    expect(await here(b)).toBe(true)
+    const copy = await run(
+      b,
+      Database.use((db) =>
+        Effect.sync(() =>
+          db.get<{ workspace: string }>("SELECT workspace FROM agent WHERE id = ?", ada.id),
+        ),
+      ),
+    )
+    expect(readFileSync(join(copy?.workspace ?? "", "attachments", "note.txt"), "utf8")).toBe(
+      "hello",
+    )
+    expect(copy?.workspace).not.toBe(ada.workspace)
+
+    // A path that leaves the attachments folder is refused.
+    const refused = await run(
+      b,
+      Sync.use((s) =>
+        s.openFile({ agentId: ada.id, path: "../secret.txt", size: 1, messageId: "file-1" }),
+      ).pipe(Effect.flip),
+    )
+    expect(refused.code).toBe("invalid_input")
+
+    // The origin is off: the file that is not here cannot be copied, and the error names it.
+    writeFileSync(join(ada.workspace, "attachments", "later.txt"), "later")
+    await SQL(
+      a,
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('file-2', ?, 'user', ?, 'done', ?)`,
+      ada.id,
+      JSON.stringify([{ kind: "file", name: "later.txt", path: "attachments/later.txt", size: 5 }]),
+      Date.now(),
+    )
+    await waitFor(
+      async () =>
+        (
+          await run(
+            b,
+            Chat.use((c) => c.history(ada.id)),
+          )
+        ).messages.length,
+      (n) => n === 2,
+    )
+    await a.runtime.dispose()
+    const offline = await waitFor(
+      () =>
+        run(
+          b,
+          Sync.use((s) =>
+            s
+              .openFile({
+                agentId: ada.id,
+                path: "attachments/later.txt",
+                size: 5,
+                messageId: "file-2",
+              })
+              .pipe(Effect.flip),
+          ),
+        ),
+      (e) => e.code === "sync_file_offline",
+    )
+    expect(offline.code).toBe("sync_file_offline")
+    expect(offline.detail).toBe("MacBook 1")
   })
 })

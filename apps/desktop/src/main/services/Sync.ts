@@ -1,11 +1,27 @@
 import { randomUUID } from "node:crypto"
-import { mkdirSync, readdirSync, rmSync } from "node:fs"
-import { join } from "node:path"
 import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeSync,
+} from "node:fs"
+import { join, sep } from "node:path"
+import {
+  ATTACH_BYTES,
   CLOCK_WARN_MS,
   COUNTED_KINDS,
+  type DownloadChunk,
   GUARD_DELETE_MIN,
+  islandSummary,
   isSyncKind,
+  type MessagePart,
+  messageText,
   parseAddress,
   SYNC_BACKUPS_KEEP,
   SYNC_DECISION_MS,
@@ -44,12 +60,15 @@ import { Devices } from "./Devices.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
+import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
 import { secretKey } from "./Providers.ts"
 import { Remote } from "./Remote.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
+import { Tasks } from "./Tasks.ts"
+import { Tools } from "./Tools.ts"
 
 export interface SyncService {
   /** The sync row of each computer that this computer can open. */
@@ -65,6 +84,20 @@ export interface SyncService {
   changes(): readonly SyncChangeEntry[]
   guard(): SyncGuard | null
   decideGuard(remove: boolean): Effect.Effect<void>
+  /**
+   * Answers an approval or a question of a task that runs on the other computer. The answer goes
+   * to that computer (spec 016). False when the card is not one of that kind.
+   */
+  respond(agentId: string, callId: string, answer: string): Effect.Effect<boolean, AppError>
+  /** True when a file of a message is on this computer. */
+  fileHere(agentId: string, path: string, size: number, messageId: string): boolean
+  /** Opens a file of a message. A file that is not here is copied from the computer of the message. */
+  openFile(input: {
+    agentId: string
+    path: string
+    size: number
+    messageId: string
+  }): Effect.Effect<void, AppError>
   /** The computer that is the sync pair, or undefined. */
   peerId(): string | undefined
   /** A request of the other computer. Rejects with an `AppError`. */
@@ -135,6 +168,8 @@ const SCHEMA = migrations.length
 const SNAPSHOT_BATCH = Math.max(1, Number(process.env.ROBOT_SYNC_BATCH) || 250)
 /** Tests turn the clock that this computer reports to the other one. */
 const wall = () => Date.now() + (Number(process.env.ROBOT_SYNC_CLOCK_SKEW_MS) || 0)
+/** A message of the other computer that is older than this when it arrives fires no workflow. */
+const HEARD_MAX_AGE_MS = 5 * 60_000
 const SNAPSHOT_DELAY_MS = Math.max(0, Number(process.env.ROBOT_SYNC_DELAY_MS) || 0)
 const yieldNow = () => new Promise<void>((resolve) => setImmediate(resolve))
 const invalid = () => new AppError({ code: "invalid_input" })
@@ -154,6 +189,9 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       const data = yield* Data
       const chat = yield* Chat
       const channels = yield* Channels
+      const tasks = yield* Tasks
+      const tools = yield* Tools
+      const notifier = yield* Notifier
 
       const current = () => Effect.runSync(settings.get)
       const localServerId = () => Effect.runSync(servers.local).id
@@ -255,12 +293,17 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
               if (live && t.action === "deleted") {
                 bus.emit("chat.removed", { agentId: t.parent?.id ?? "", messageId: t.id })
               } else if (live) once(`m:${t.id}`, () => chat.announce(t.id))
+              if (live) attend("message", t.id)
               once("places", () => bus.emit("places.changed", { serverId }))
               break
             case "cmessage":
               if (live && t.action === "deleted") {
                 bus.emit("channel.removed", { channelId: t.parent?.id ?? "", messageId: t.id })
               } else if (live) once(`c:${t.id}`, () => channels.announce(t.id))
+              if (live) {
+                attend("cmessage", t.id)
+                if (t.action === "added") hear(t.id)
+              }
               once("places", () => bus.emit("places.changed", { serverId }))
               break
             default:
@@ -282,6 +325,270 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         const link = devices.link(p.peer_id)
         return link !== undefined && link.kind === "computer" && link.inbound && link.outbound
       }
+
+      // ------------------------------------------------------------------ tasks of the other computer
+      /** The name of a computer by its id: the link has it, or this computer kept it. */
+      const computerName = (id: string) => devices.link(id)?.name ?? stateGet(`name:${id}`) ?? ""
+
+      /** The name of the computer that runs a task of this agent now, while both are online. */
+      const busyOn = (agentId: string): string | null => {
+        const p = pairRow()
+        if (p?.phase !== "live" || p.paused === 1 || !online(p)) return null
+        const row = db.get<{ x: number }>(
+          `SELECT 1 AS x FROM task WHERE agent_id = ? AND origin IS NOT NULL
+             AND state IN ('running', 'waiting') LIMIT 1`,
+          agentId,
+        )
+        return row ? peerName(p) || computerName(p.peer_id) || p.peer_id : null
+      }
+
+      const offlineError = (originId: string) =>
+        new AppError({ code: "sync_origin_offline", detail: computerName(originId) })
+
+      /** Asks the computer where a task runs to do something, as a linked device does (012). */
+      const askOrigin = (originId: string, method: string, input: unknown) =>
+        Effect.tryPromise({
+          try: async () => {
+            if (remote.stateOf(originId) !== "online") throw offlineError(originId)
+            return await remote.request(originId, method, input, 15_000)
+          },
+          catch: (error) => (error instanceof AppError ? error : toApp(error)),
+        })
+
+      tasks.setRemote({
+        nameOf: (id) => computerName(id),
+        busyOn,
+        stop: (taskId, originId) =>
+          Effect.asVoid(askOrigin(originId, "tasks.stop", { id: taskId })),
+      })
+
+      /** The computer where the card of a task that waits was made. */
+      const askOriginOf = (agentId: string, callId: string): string | undefined => {
+        for (const table of ["message", "channel_message"]) {
+          const rows = db.all<{ parts: string; origin: string }>(
+            `SELECT parts, origin FROM ${table}
+             WHERE agent_id = ? AND origin IS NOT NULL AND status = 'streaming'`,
+            agentId,
+          )
+          for (const r of rows) {
+            const parts = JSON.parse(r.parts) as MessagePart[]
+            if (parts.some((x) => x.kind === "tool" && x.id === callId && x.state === "waiting"))
+              return r.origin
+          }
+        }
+        return undefined
+      }
+
+      const respond = (agentId: string, callId: string, answer: string) =>
+        Effect.suspend(() => {
+          // A card of a task here is answered here.
+          if (tools.isWaiting(agentId, callId)) return Effect.succeed(false)
+          const origin = askOriginOf(agentId, callId)
+          if (origin === undefined) return Effect.succeed(false)
+          return askOrigin(origin, "tools.respond", { agentId, callId, answer }).pipe(
+            Effect.map(() => {
+              notifier.clearAttention(agentId, callId)
+              return true
+            }),
+          )
+        })
+
+      // ------------------------------------------------------------------ notices of cards
+      /** The cards of messages of the other computer that wait, so a notice can drop. */
+      const noticed = new Map<string, { agentId: string; calls: Set<string> }>()
+
+      const attend = (kind: "message" | "cmessage", id: string) => {
+        const table = kind === "message" ? "message" : "channel_message"
+        const row = db.get<{
+          agent_id: string | null
+          channel_id?: string
+          parts: string
+          status: string
+          origin: string | null
+        }>(
+          `SELECT agent_id, ${kind === "cmessage" ? "channel_id," : ""} parts, status, origin
+           FROM ${table} WHERE id = ?`,
+          id,
+        )
+        const known = noticed.get(id)
+        const calls = new Set<string>()
+        if (row?.agent_id && row.origin !== null && row.status === "streaming") {
+          const name = computerName(row.origin) || pairRow()?.peer_name || ""
+          for (const part of JSON.parse(row.parts) as MessagePart[]) {
+            if (part.kind !== "tool" || part.state !== "waiting" || !part.ask) continue
+            calls.add(part.id)
+            if (known?.calls.has(part.id)) continue
+            notifier.attention(
+              {
+                agentId: row.agent_id,
+                serverId: localServerId(),
+                channelId: row.channel_id ?? null,
+                callId: part.id,
+                kind: part.ask.kind,
+                summary: islandSummary(
+                  part.ask.kind === "approval" ? part.ask.summary : part.ask.question,
+                ),
+                target: row.channel_id
+                  ? { kind: "channel", id: row.channel_id, messageId: id }
+                  : { kind: "agent", id: row.agent_id, messageId: id },
+              },
+              name,
+            )
+          }
+        }
+        // A card that was answered, or a message that went, drops its notice.
+        const agentId = row?.agent_id ?? known?.agentId
+        if (known && agentId) {
+          for (const call of known.calls)
+            if (!calls.has(call)) notifier.clearAttention(agentId, call)
+        }
+        if (calls.size > 0 && agentId) noticed.set(id, { agentId, calls })
+        else noticed.delete(id)
+      }
+
+      /** Looks at every card that waits now: after a first copy and after the app starts. */
+      const attendAll = () => {
+        if (!pairRow()) return
+        for (const [table, kind] of [
+          ["message", "message"],
+          ["channel_message", "cmessage"],
+        ] as const) {
+          for (const r of db.all<{ id: string }>(
+            `SELECT id FROM ${table} WHERE origin IS NOT NULL AND status = 'streaming'`,
+          ))
+            attend(kind, r.id)
+        }
+      }
+
+      /** A message that was sent on the other computer can fire a workflow here (spec 016). */
+      const hear = (id: string) => {
+        const r = db.get<{
+          channel_id: string
+          author: string
+          origin: string | null
+          parts: string
+          created_at: number
+        }>(
+          "SELECT channel_id, author, origin, parts, created_at FROM channel_message WHERE id = ?",
+          id,
+        )
+        // A message that is older than 5 minutes when it arrives does not fire a workflow.
+        if (r?.author !== "user" || r.origin === null) return
+        if (Date.now() - r.created_at > HEARD_MAX_AGE_MS) return
+        channels.hearUserMessage(r.channel_id, messageText({ parts: JSON.parse(r.parts) }))
+      }
+
+      // ------------------------------------------------------------------ files of messages
+      const ATTACHMENT = /^attachments\/([^/\\]{1,255})$/
+
+      /** The places where a copy of the file of a message can be, in the order that is tried. */
+      const fileSpots = (agentId: string, path: string, messageId: string): string[] => {
+        const match = ATTACHMENT.exec(path)
+        const workspace = db.get<{ workspace: string }>(
+          "SELECT workspace FROM agent WHERE id = ?",
+          agentId,
+        )?.workspace
+        if (!match || !workspace || match[1] === "." || match[1] === "..") return []
+        const name = match[1] as string
+        return [
+          join(workspace, "attachments", name),
+          // A different file of that name is here: the copy of the other computer has a name of its own.
+          join(workspace, "attachments", `from-sync-${messageId.slice(0, 8)}-${name}`),
+        ]
+      }
+
+      const isFileOf = (spot: string, size: number) => {
+        try {
+          const real = realpathSync(spot)
+          const dir = realpathSync(join(spot, ".."))
+          return (
+            real.startsWith(dir + sep) && statSync(real).isFile() && statSync(real).size === size
+          )
+        } catch {
+          return false
+        }
+      }
+
+      const fileHere = (agentId: string, path: string, size: number, messageId: string) =>
+        fileSpots(agentId, path, messageId).some((spot) => isFileOf(spot, size))
+
+      const copyFile = async (
+        originId: string,
+        agentId: string,
+        path: string,
+        size: number,
+        target: string,
+      ) => {
+        if (!Number.isSafeInteger(size) || size < 0 || size > ATTACH_BYTES) {
+          throw new AppError({ code: "file_too_large" })
+        }
+        const theirs =
+          db.get<{ peer_id: string }>("SELECT peer_id FROM sync_alias WHERE local_id = ?", agentId)
+            ?.peer_id ?? agentId
+        mkdirSync(join(target, ".."), { recursive: true })
+        // The copy is written beside its place and moved when it is whole.
+        const part = `${target}.${randomUUID().slice(0, 8)}.part`
+        const fd = openSync(part, "w")
+        let offset = 0
+        try {
+          for (;;) {
+            const chunk = (await remote.request(
+              originId,
+              "attachment.download",
+              { agentId: theirs, path, offset },
+              30_000,
+            )) as DownloadChunk
+            if (!isObject(chunk) || typeof chunk.data !== "string") throw invalid()
+            const bytes = Buffer.from(chunk.data, "base64")
+            offset += bytes.length
+            if (offset > ATTACH_BYTES) throw new AppError({ code: "file_too_large" })
+            writeSync(fd, bytes)
+            if (chunk.done || bytes.length === 0) break
+          }
+        } catch (error) {
+          closeSync(fd)
+          rmSync(part, { force: true })
+          throw toApp(error)
+        }
+        closeSync(fd)
+        if (offset !== size) {
+          rmSync(part, { force: true })
+          throw new AppError({ code: "file_unreadable" })
+        }
+        renameSync(part, target)
+      }
+
+      const openFile = (input: {
+        agentId: string
+        path: string
+        size: number
+        messageId: string
+      }) =>
+        Effect.tryPromise({
+          try: async () => {
+            const spots = fileSpots(input.agentId, input.path, input.messageId)
+            if (spots.length === 0) throw new AppError({ code: "invalid_input" })
+            const here = spots.find((spot) => isFileOf(spot, input.size))
+            if (here) return await platform.openFile(here)
+            // Not here: copy it from the computer where the message was made.
+            const origin =
+              db.get<{ origin: string | null }>(
+                "SELECT origin FROM message WHERE id = ?",
+                input.messageId,
+              )?.origin ?? null
+            if (origin === null) throw new AppError({ code: "file_unreadable" })
+            if (remote.stateOf(origin) !== "online") {
+              throw new AppError({ code: "sync_file_offline", detail: computerName(origin) })
+            }
+            // The first place is used when it is free, else the second.
+            const target = existsSync(spots[0] as string)
+              ? (spots[1] as string)
+              : (spots[0] as string)
+            await copyFile(origin, input.agentId, input.path, input.size, target)
+            await platform.openFile(target)
+          },
+          catch: (error) => (error instanceof AppError ? error : toApp(error)),
+        })
 
       const statusOf = (linkId: string): SyncStatus => {
         const p = pairRow()
@@ -421,9 +728,39 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         )
         stateSet(`denied:${peerId}`, null)
         stateSet(`stopped:${peerId}`, null)
+        // The name stays known when the link is gone, for the tasks that this computer ran.
+        stateSet(`name:${peerId}`, name)
         active = true
         needHello.add(peerId)
         changed()
+      }
+
+      /** After a stop, what ran on the other computer will not end by itself: it ends here. */
+      const letGo = (peerId: string) => {
+        const now = Date.now()
+        db.run(
+          `UPDATE task SET state = 'failed', error_code = 'sync_stopped', error_detail = ?, finished_at = ?
+           WHERE origin IS NOT NULL AND state IN ('queued', 'running', 'waiting')`,
+          computerName(peerId),
+          now,
+        )
+        for (const [table, announce] of [
+          ["message", (id: string) => chat.announce(id)],
+          ["channel_message", (id: string) => channels.announce(id)],
+        ] as const) {
+          const ids = db.all<{ id: string }>(
+            `SELECT id FROM ${table} WHERE origin IS NOT NULL AND status = 'streaming'`,
+          )
+          db.run(
+            `UPDATE ${table} SET status = 'stopped' WHERE origin IS NOT NULL AND status = 'streaming'`,
+          )
+          for (const r of ids) announce(r.id)
+        }
+        for (const [id, known] of noticed) {
+          for (const call of known.calls) notifier.clearAttention(known.agentId, call)
+          noticed.delete(id)
+        }
+        bus.emit("tasks.changed", { serverId: localServerId() })
       }
 
       const stopLocal = (reason: "user" | "peer" | "link" | "none") => {
@@ -434,6 +771,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         setHeld([])
         db.run("DELETE FROM sync_pair")
         active = false
+        letGo(p.peer_id)
         versionIssue.delete(p.peer_id)
         clockIssue.delete(p.peer_id)
         needHello.delete(p.peer_id)
@@ -640,6 +978,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       const finishCopy = () => {
         engine.settleInitial()
         updatePair({ phase: "live", synced_at: Date.now() })
+        attendAll()
         changed()
       }
 
@@ -1101,6 +1440,9 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
 
       const asEffect = <A>(run: () => Promise<A>) => Effect.tryPromise({ try: run, catch: toApp })
 
+      // Cards of the other computer that wait when the app starts show their notice again.
+      attendAll()
+
       return Sync.of({
         statuses: () =>
           devices
@@ -1180,6 +1522,9 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
             changed()
           }),
         peerId: () => pairRow()?.peer_id,
+        respond,
+        fileHere,
+        openFile,
         handle,
         flush: async () => {
           await pump()

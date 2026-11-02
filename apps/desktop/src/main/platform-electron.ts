@@ -224,6 +224,15 @@ export const electronPlatform = (): PlatformService => {
       mkdirSync(path, { recursive: true })
       await shell.openPath(path)
     },
+    openFile: async (path) => {
+      // A test run writes the path to a log: no program starts.
+      if (isTestRun && process.env.ROBOT_TEST_OPEN_LOG) {
+        appendFileSync(process.env.ROBOT_TEST_OPEN_LOG, `${path}\n`)
+        return
+      }
+      const failure = await shell.openPath(path)
+      if (failure) throw new Error(failure)
+    },
     setStartAtLogin: (enabled) => {
       if (isTestRun || process.platform === "linux") return
       app.setLoginItemSettings({ openAtLogin: enabled })
