@@ -51,7 +51,7 @@ export interface WorkflowsService {
   remove(id: string): Effect.Effect<void, AppError>
   /** Starts a run. The text is what a `{{trigger}}` in a prompt becomes. */
   run(id: string, triggerText?: string): Effect.Effect<WorkflowRun, AppError>
-  /** Moves a workflow of the other computer here: it runs here from now on (spec 016). */
+  /** Moves a workflow of the other computer here: it runs here from now on (spec 017). */
   runHere(id: string): Effect.Effect<Workflow, AppError>
   stop(runId: string): Effect.Effect<void>
   /** Answers an approval step that waits. */
@@ -138,7 +138,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const approvals = new Map<string, Deferred.Deferred<boolean>>()
 
       // A run that was going when the app closed did not finish.
-      // A run of the other computer (spec 016) is not ours to end: its own computer does.
+      // A run of the other computer (spec 017) is not ours to end: its own computer does.
       const ours = "SELECT id FROM workflow_run WHERE origin IS NULL"
       db.run(
         `UPDATE workflow_run_step SET state = 'failed', error = 'app_stopped' WHERE state IN ('running', 'waiting') AND run_id IN (${ours})`,
@@ -568,7 +568,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
 
       const tick = (now: number) =>
         Effect.gen(function* () {
-          // A workflow runs on one computer only (spec 016).
+          // A workflow runs on one computer only (spec 017).
           for (const r of db.all<WorkflowRow>(
             "SELECT * FROM workflow WHERE enabled = 1 AND runs_on IS NULL",
           )) {

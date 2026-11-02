@@ -65,7 +65,7 @@ export interface Routine {
   readonly createdAt: number
   /** The next three run times. Empty when paused or finished. */
   readonly nextRuns: readonly number[]
-  /** The name of the other computer where it runs, when it syncs (016). Null: it runs here. */
+  /** The name of the other computer where it runs, when it syncs (017). Null: it runs here. */
   readonly runsOn: string | null
 }
 

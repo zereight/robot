@@ -12,7 +12,7 @@ import {
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // Two copies of the app run side by side, each with its own data folder, and sync with each other
-// over the device link on 127.0.0.1 (spec 016).
+// over the device link on 127.0.0.1 (spec 017).
 export const envFor = (port: number, extra: Record<string, string> = {}) => ({
   ROBOT_SYSTEM_LOCALE: "en-US",
   ROBOT_LINK_ADDRESSES: "127.0.0.1",

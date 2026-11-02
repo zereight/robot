@@ -1,5 +1,5 @@
 /**
- * Sync between two computers (spec 016): the shapes that the main process and the window share.
+ * Sync between two computers (spec 017): the shapes that the main process and the window share.
  * The wire format of the changes is private to the main process; the window only sees states.
  */
 
@@ -23,7 +23,7 @@ export type SyncKind = (typeof SYNC_KINDS)[number]
 export const isSyncKind = (value: unknown): value is SyncKind =>
   typeof value === "string" && (SYNC_KINDS as readonly string[]).includes(value)
 
-/** How the user starts a sync (spec 016, Turn sync on, step 2). */
+/** How the user starts a sync (spec 017, Turn sync on, step 2). */
 export const SYNC_MODES = ["merge", "take", "send"] as const
 export type SyncMode = (typeof SYNC_MODES)[number]
 
@@ -57,7 +57,7 @@ export interface SyncPreview {
   readonly oneWay: boolean
 }
 
-/** The state of the sync row of one linked computer (spec 016, States). */
+/** The state of the sync row of one linked computer (spec 017, States). */
 export type SyncRowState =
   | "off"
   | "offered"
@@ -113,7 +113,7 @@ export interface SyncChangeEntry {
   readonly detail: string
 }
 
-/** A group of deletions that wait for the user (spec 016, Delete). */
+/** A group of deletions that wait for the user (spec 017, Delete). */
 export interface SyncGuard {
   readonly peerName: string
   readonly count: number

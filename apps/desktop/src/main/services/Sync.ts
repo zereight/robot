@@ -89,7 +89,7 @@ export interface SyncService {
   decideGuard(remove: boolean): Effect.Effect<void>
   /**
    * Answers an approval or a question of a task that runs on the other computer. The answer goes
-   * to that computer (spec 016). False when the card is not one of that kind.
+   * to that computer (spec 017). False when the card is not one of that kind.
    */
   respond(agentId: string, callId: string, answer: string): Effect.Effect<boolean, AppError>
   /** True when a file of a message is on this computer. */
@@ -470,7 +470,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         }
       }
 
-      /** A message that was sent on the other computer can fire a workflow here (spec 016). */
+      /** A message that was sent on the other computer can fire a workflow here (spec 017). */
       const hear = (id: string) => {
         const r = db.get<{
           channel_id: string

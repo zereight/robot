@@ -62,7 +62,7 @@ export interface ChannelsService {
   /** Calls `handler` for each message that the user sends to a channel. */
   onUserMessage(handler: (channelId: string, text: string) => void): void
   /**
-   * A user message that came from the other computer by sync (spec 016). It starts no job here.
+   * A user message that came from the other computer by sync (spec 017). It starts no job here.
    * It tells the same handlers, so a workflow with a channel trigger can fire for it.
    */
   hearUserMessage(channelId: string, text: string): void
@@ -152,7 +152,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const sections = yield* Sections
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
-      // A part that streams from the other computer (spec 016) is not ours to end.
+      // A part that streams from the other computer (spec 017) is not ours to end.
       db.run(
         "UPDATE channel_message SET status = 'stopped' WHERE status = 'streaming' AND origin IS NULL",
       )

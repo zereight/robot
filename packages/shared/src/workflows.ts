@@ -157,7 +157,7 @@ export interface Workflow {
   /** True while a run goes: the editor is read-only. */
   readonly running: boolean
   readonly createdAt: number
-  /** The name of the other computer where it runs, when it syncs (016). Null: it runs here. */
+  /** The name of the other computer where it runs, when it syncs (017). Null: it runs here. */
   readonly runsOn: string | null
 }
 

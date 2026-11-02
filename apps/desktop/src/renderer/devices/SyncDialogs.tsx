@@ -8,7 +8,7 @@ import { Presence } from "../ui/Presence.tsx"
 import styles from "./devices.module.css"
 import { CountsLine } from "./SyncRow.tsx"
 
-/** "Sync with <name>?" for the oldest request that waits (spec 016, Turn sync on, step 3). */
+/** "Sync with <name>?" for the oldest request that waits (spec 017, Turn sync on, step 3). */
 export const SyncRequestDialog = () => {
   const { t } = useApp()
   const devices = useDevices()
@@ -69,7 +69,7 @@ export const SyncRequestDialog = () => {
   )
 }
 
-/** "<name> wants to delete 8 agents and channels here." (spec 016, Delete). */
+/** "<name> wants to delete 8 agents and channels here." (spec 017, Delete). */
 export const SyncGuardDialog = () => {
   const { t } = useApp()
   const devices = useDevices()

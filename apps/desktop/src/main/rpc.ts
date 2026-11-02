@@ -96,7 +96,7 @@ const ByLink = Schema.Struct({ linkId: Schema.String })
 
 /**
  * Answers an approval or a question card. A card of a task that runs on the other computer of a
- * sync pair (spec 016) goes to that computer, as the answer of a client does.
+ * sync pair (spec 017) goes to that computer, as the answer of a client does.
  */
 const answerCard = (agentId: string, callId: string, answer: string) =>
   Sync.use((s) => s.respond(agentId, callId, answer)).pipe(
@@ -778,7 +778,7 @@ export const handlers: Handlers = {
   "chat.stop": (input) =>
     decode(ByAgent)(input).pipe(
       Effect.flatMap(({ agentId }) =>
-        // A reply that runs on the other computer of a sync pair is stopped there (spec 016).
+        // A reply that runs on the other computer of a sync pair is stopped there (spec 017).
         Chat.use((c) => c.stop(agentId)).pipe(
           Effect.andThen(Tasks.use((t) => t.stopRemoteFor(agentId))),
         ),

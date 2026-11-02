@@ -134,7 +134,7 @@ export interface DevicesService {
   removeClient(id: string): Effect.Effect<void>
   /**
    * True when the device may create and change agents on this computer now: the user turned the
-   * switch on, or the two computers sync (spec 012, 016).
+   * switch on, or the two computers sync (spec 012, 017).
    */
   canChange(id: string): boolean
   /** True while the user cannot change the switch of this device, because the computers sync. */
@@ -301,7 +301,7 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
         }
 
         // ---------------------------------------------------------------- the switch of 012
-        // Sync (016) gives the other computer more than this switch does, so while the two
+        // Sync (017) gives the other computer more than this switch does, so while the two
         // computers sync, the switch counts as on and the user cannot change it. The value that
         // the user set stays in the table, so "Stop syncing" gives it back.
         let syncLock: (id: string) => boolean = () => false

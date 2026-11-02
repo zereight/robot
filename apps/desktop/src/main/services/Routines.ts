@@ -28,7 +28,7 @@ export interface RoutinesService {
   remove(id: string): Effect.Effect<void>
   /** Starts a run at once, outside the schedule. */
   runNow(id: string): Effect.Effect<void, AppError>
-  /** Moves a routine of the other computer here: it runs here from now on (spec 016). */
+  /** Moves a routine of the other computer here: it runs here from now on (spec 017). */
   runHere(id: string): Effect.Effect<Routine, AppError>
   /** Past, present and planned runs of all routines of a server between two times. */
   calendar(serverId: string, from: number, to: number): Effect.Effect<readonly RoutineEntry[]>
@@ -133,7 +133,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
 
       const tick = (now: number) =>
         Effect.gen(function* () {
-          // A routine runs on one computer only (spec 016): the others do not run it, and a run
+          // A routine runs on one computer only (spec 017): the others do not run it, and a run
           // that it misses there does not count as missed here.
           const rows = db.all<Row>(`${SELECT} WHERE r.enabled = 1 AND r.runs_on IS NULL`)
           for (const r of rows) {

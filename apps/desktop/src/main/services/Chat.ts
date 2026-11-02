@@ -262,7 +262,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       // streaming, and its turn starts again at the end of this set-up.
       const reviving = tasks.waitingAfterRestart()
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
-      // A reply that streams from the other computer (spec 016) is not ours to end.
+      // A reply that streams from the other computer (spec 017) is not ours to end.
       db.run(
         `UPDATE message SET status = 'stopped'
          WHERE status = 'streaming' AND origin IS NULL AND id NOT IN (SELECT value FROM json_each(?))`,
@@ -740,7 +740,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         Effect.suspend(() => {
           retryLinks.set(task.agentId, task.id)
           // A reply that failed is asked again. A stopped one has nothing to replace, so the
-          // question is sent again as a new message. A task of the other computer (spec 016)
+          // question is sent again as a new message. A task of the other computer (spec 017)
           // runs here as a new task, and its messages stay as they are.
           if (task.originName !== null)
             return Effect.asVoid(send({ agentId: task.agentId, text: task.prompt, replyTo: null }))

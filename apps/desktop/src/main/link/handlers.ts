@@ -78,7 +78,7 @@ const syncMethods = [
 ] as const
 
 /**
- * The requests of the other computer of a sync pair (spec 016). The service decides who may call
+ * The requests of the other computer of a sync pair (spec 017). The service decides who may call
  * each one: only a linked computer may ask to sync, and only the pair may send changes.
  */
 const syncHandlers: Record<string, LinkHandler> = Object.fromEntries(

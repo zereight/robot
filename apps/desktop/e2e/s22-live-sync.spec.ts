@@ -19,7 +19,7 @@ import {
   turnOnSync,
 } from "./sync-helpers.ts"
 
-// Live sync (spec 016, S22): changes cross within 5 s, streaming grows on both computers, the
+// Live sync (spec 017, S22): changes cross within 5 s, streaming grows on both computers, the
 // newest change wins per field, nothing is lost, and a delete reaches the other computer.
 test("live sync: a rename, a streaming reply, the read state and the origin of a message", async () => {
   test.setTimeout(300_000)
