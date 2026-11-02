@@ -26,6 +26,9 @@ and workflows.
   - A time that is not known is shown as "—", never as 0. A restart keeps the times that are
     known. Retry makes a new task with its own times.
 - **Progress**: how far the turn of a task went. See "How far a turn went".
+- **Done test** and **verdict**: a part of a channel (see 004) can have a done test. After the
+  check of the lead it can have a verdict, "Met" or "Not met" with a reason. Both are fields of
+  the task. The verdict is not a state: a part with a verdict is still Done.
 
 ## Tasks page
 
@@ -33,12 +36,30 @@ and workflows.
 - Filters: state, agent, source. Search by label.
 - A row opens the task: its prompt, its steps, its messages, its child tasks as a tree, and its
   three times. The messages that joined the task during its turn (see 003) are listed under the
-  prompt, with their times.
+  prompt, with their times. For a part it also shows the done test and the verdict. It shows a
+  list of moments too (see "Moments").
 - Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), accept or
   request changes (in review; see "Review"), open source place.
 - A task of a channel (see 004) also has "End the request", which cancels the whole request.
 - A queued task shows what it waits behind: the work that its agent runs now, with the place of
   that work. If the agent is busy in its own chat, the line says so.
+
+## Moments
+
+- The task view lists the moments of the task, each with its clock time. A moment that did not
+  happen does not show.
+  1. Given: the task was made, and by whom (the source, the lead, or another agent).
+  2. Started: the agent began the turn.
+  3. Ended: the turn ended. The line says how: done, failed, blocked, cancelled, or waiting for
+     review.
+  4. Decided: the user accepted a part, or asked for changes. The line shows the text of the
+     request for changes.
+  5. Judged: the lead gave the verdict. The line shows the verdict and its reason.
+  6. Closed: the task reached a final state.
+- The three times (see "Times") keep their own meaning. The moments only add the clock time of
+  each event.
+- A task of a chat, a routine or a workflow has no "Decided" and no "Judged".
+- The list is plain text. It never shows the thinking of the agent.
 
 ## Limits of a task
 
@@ -224,3 +245,10 @@ its Retry shows no retry note.
   task shows the line for "Started". A task that was only queued shows the line for "Not sent".
 - Retry a task whose line said "Started": the new task runs, and its progress starts at "Not
   sent".
+- A part with a done test ends, and the lead gives it "Not met". The task view shows the done test,
+  the verdict "Not met" with its reason, and the moments Given, Started, Ended, Judged and Closed
+  with times. The state of the part is still Done.
+- Turn on "Review parts". A part ends and the user accepts it: the moments show Decided and no
+  Judged, and the done test still shows.
+- A task of a direct chat ends: its view shows Given, Started, Ended and Closed. It shows no done
+  test, no verdict, no Decided and no Judged.

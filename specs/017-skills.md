@@ -101,6 +101,13 @@ agent, and the agent writes a draft skill from what the user did.
   keep them too.
 - A message needs text, a file, or a chip. A chip alone is valid.
 - A server holds at most 100 skills.
+- When the user deletes an agent, the app removes it from the list of agents of every skill. A
+  skill whose list held only this agent is deleted with it. A skill for "All agents" and a skill
+  for other agents stay. Archive changes no skill. Old messages that used a deleted skill keep
+  their chip and their copy.
+- A starter (see 002) can make skills for its new agent. They are for that agent only, they are
+  on, and they count in the limit of 100. They are shortcuts for the chat. They do not run in a
+  routine (see the next rule).
 - Skills work in direct chats and threads. They do not work in channels, routines or workflows in
   this version.
 - Skills are stored in the local database. An export holds them (see 014). An agent file (see
@@ -136,3 +143,7 @@ agent, and the agent writes a draft skill from what the user did.
   password. The card shows a draft. Save: the skill exists for this agent only and is on.
 - Cancel during a recording: no skill and no draft exist.
 - Pause, then click: the click is not recorded.
+- Make a skill only for agent A, a skill for agents A and B, and a skill for "All agents". Delete
+  agent A from the archive: the confirm text says that 1 skill is deleted too. After the delete,
+  the first skill is gone, the second is only for B, and the third is unchanged.
+- Archive agent A with a skill that is only for A: the skill stays.
