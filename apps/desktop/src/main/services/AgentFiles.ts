@@ -153,9 +153,13 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             instructions: hide(a.instructions),
             face: a.face,
             // The file has no place for a routine: on import it posts in the chat of its agent.
-            routines: all
-              .filter((r) => r.agentId === a.id)
-              .map((r) => ({ name: hide(r.name), prompt: hide(r.prompt), schedule: r.schedule })),
+            // The file has no field for a watch (docs/agent-file-format.md): a watch routine
+            // stays out of the file. Nor does it hold the model of a routine.
+            routines: all.flatMap((r) =>
+              r.agentId === a.id && r.schedule
+                ? [{ name: hide(r.name), prompt: hide(r.prompt), schedule: r.schedule }]
+                : [],
+            ),
           })),
         )
         if (Buffer.byteLength(text) > AGENT_FILE_MAX_BYTES)

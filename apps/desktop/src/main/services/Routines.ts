@@ -1,16 +1,25 @@
 import { randomUUID } from "node:crypto"
 import {
+  type AgentModel,
+  changeText,
   dueRuns,
   isActive,
+  type OutsideSource,
+  ROUTINE_FAILURES_MAX,
   type Routine,
   type RoutineEntry,
   type RoutineEntryState,
+  type RoutineFailure,
   type RoutineInput,
   type RoutinePatch,
   type RoutinePlace,
+  runText,
   runTimes,
   type Schedule,
   validSchedule,
+  validWatch,
+  type Watch,
+  watchRunText,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Channels } from "./Channels.ts"
@@ -18,7 +27,9 @@ import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Notifier } from "./Notifier.ts"
 import { Tasks } from "./Tasks.ts"
+import { type CheckOutcome, runCheck, type ToolCaller } from "./watchCheck.ts"
 
 export interface RoutinesService {
   list(serverId: string): Effect.Effect<readonly Routine[]>
@@ -32,7 +43,10 @@ export interface RoutinesService {
   runHere(id: string): Effect.Effect<Routine, AppError>
   /** Past, present and planned runs of all routines of a server between two times. */
   calendar(serverId: string, from: number, to: number): Effect.Effect<readonly RoutineEntry[]>
-  /** Checks every routine at `now`. The scheduler calls it by the clock; tests call it by hand. */
+  /**
+   * Checks every routine at `now`: the schedules, then the watches that are due. The scheduler
+   * calls it by the clock; tests call it by hand. It ends when the checks of the watches end.
+   */
   tick(now: number): Effect.Effect<void>
 }
 
@@ -41,9 +55,14 @@ interface Row {
   server_id: string
   agent_id: string
   agent_name: string
+  workspace: string
   name: string
   prompt: string
   schedule: string
+  watch: string | null
+  model_account_id: string | null
+  model_name: string | null
+  model_effort: string | null
   channel_id: string | null
   enabled: number
   last_checked_at: number
@@ -51,13 +70,61 @@ interface Row {
   runs_on: string | null
 }
 
-const SELECT = `SELECT r.*, a.name AS agent_name FROM routine r JOIN agent a ON a.id = r.agent_id`
+interface StateRow {
+  failed_runs: number
+  paused_failure: string | null
+  watch_result: string | null
+  watch_checked_at: number | null
+}
+
+const SELECT = `SELECT r.*, a.name AS agent_name, a.workspace AS workspace
+  FROM routine r JOIN agent a ON a.id = r.agent_id`
 const TICK_MS = 15_000
 const NEXT_COUNT = 3
 const CALENDAR_PLAN_MAX = 500
 
+/**
+ * A test run of the app can make the clock of the watches faster: a "minute" of an interval and
+ * the time between two ticks are shorter. The shipped app uses real minutes.
+ */
+const testRun = Boolean(process.env.ROBOT_USER_DATA)
+const MINUTE_MS = (testRun && Number(process.env.ROBOT_TEST_WATCH_MINUTE_MS)) || 60_000
+const LOOP_MS = (testRun && Number(process.env.ROBOT_TEST_ROUTINE_TICK_MS)) || TICK_MS
+
 const placeOf = (row: Row): RoutinePlace =>
   row.channel_id ? { kind: "channel", channelId: row.channel_id } : { kind: "agent" }
+
+const watchOf = (row: Row): Watch | null =>
+  row.watch === null ? null : (JSON.parse(row.watch) as Watch)
+
+const scheduleOf = (row: Row): Schedule | null =>
+  row.watch === null ? (JSON.parse(row.schedule) as Schedule) : null
+
+const modelOf = (row: Row): AgentModel | null =>
+  row.model_account_id && row.model_name
+    ? { accountId: row.model_account_id, model: row.model_name, effort: row.model_effort }
+    : null
+
+const parseFailure = (text: string | null): RoutineFailure | null => {
+  if (!text) return null
+  try {
+    return JSON.parse(text) as RoutineFailure
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Today no Deny rule exists (the rules of spec 007 come with S30), so no rule refuses a check.
+ * The rules pass their match here when they come.
+ */
+const denyRuleMatches = (_row: Row, _watch: Watch): boolean => false
+
+/**
+ * Today no connection exists (spec 018 comes with S32), so a watch on a tool of a connection
+ * fails its check with the reason that the connection is not there.
+ */
+const callConnectionTool: ToolCaller | undefined = undefined
 
 export class Routines extends Context.Service<Routines, RoutinesService>()("robot/main/Routines") {
   static readonly layer = Layer.effect(
@@ -68,9 +135,32 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       const tasks = yield* Tasks
       const chat = yield* Chat
       const channels = yield* Channels
+      const notifier = yield* Notifier
+
+      const stateOf = (id: string): StateRow =>
+        db.get<StateRow>("SELECT * FROM routine_state WHERE routine_id = ?", id) ?? {
+          failed_runs: 0,
+          paused_failure: null,
+          watch_result: null,
+          watch_checked_at: null,
+        }
+      const setState = (id: string, values: Partial<StateRow>) => {
+        db.run("INSERT OR IGNORE INTO routine_state (routine_id) VALUES (?)", id)
+        for (const [column, value] of Object.entries(values))
+          db.run(`UPDATE routine_state SET ${column} = ? WHERE routine_id = ?`, value, id)
+      }
+
+      const nextCheckOf = (r: Row, watch: Watch, state: StateRow) =>
+        r.enabled !== 1 || r.runs_on !== null
+          ? null
+          : state.watch_checked_at === null
+            ? Date.now()
+            : Math.max(Date.now(), state.watch_checked_at + watch.minutes * MINUTE_MS)
 
       const toRoutine = (r: Row): Routine => {
-        const schedule = JSON.parse(r.schedule) as Schedule
+        const schedule = scheduleOf(r)
+        const watch = watchOf(r)
+        const state = stateOf(r.id)
         return {
           id: r.id,
           serverId: r.server_id,
@@ -79,20 +169,36 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           name: r.name,
           prompt: r.prompt,
           schedule,
+          watch,
+          model: modelOf(r),
           place: placeOf(r),
           enabled: r.enabled === 1,
           createdAt: r.created_at,
           nextRuns:
-            r.enabled === 1 && r.runs_on === null ? runTimes(schedule, Date.now(), NEXT_COUNT) : [],
+            schedule && r.enabled === 1 && r.runs_on === null
+              ? runTimes(schedule, Date.now(), NEXT_COUNT)
+              : [],
+          nextCheck: watch ? nextCheckOf(r, watch, state) : null,
+          pausedAfterFailures: r.enabled === 1 ? null : parseFailure(state.paused_failure),
           runsOn: r.runs_on === null ? null : tasks.computerName(r.runs_on),
         }
       }
       const row = (id: string) => db.get<Row>(`${SELECT} WHERE r.id = ?`, id)
       const changed = (serverId: string) => bus.emit("routines.changed", { serverId })
 
-      const checkInput = (agentId: string, schedule: Schedule, place: RoutinePlace) =>
+      const checkInput = (
+        agentId: string,
+        trigger: { schedule: Schedule | null; watch: Watch | null },
+        place: RoutinePlace,
+      ) =>
         Effect.gen(function* () {
-          if (!validSchedule(schedule)) return yield* new AppError({ code: "invalid_schedule" })
+          // One trigger: a schedule or a watch, never both (spec 009).
+          if ((trigger.schedule === null) === (trigger.watch === null))
+            return yield* new AppError({ code: "invalid_schedule" })
+          if (trigger.schedule && !validSchedule(trigger.schedule))
+            return yield* new AppError({ code: "invalid_schedule" })
+          if (trigger.watch && !validWatch(trigger.watch))
+            return yield* new AppError({ code: "invalid_watch" })
           if (!db.get("SELECT 1 AS x FROM agent WHERE id = ? AND archived_at IS NULL", agentId))
             return yield* new AppError({ code: "agent_not_found" })
           if (
@@ -114,45 +220,193 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           )
           .some((t) => isActive(t.state))
 
-      const skip = (routineId: string, at: number, kind: "missed" | "skipped") =>
+      const skip = (
+        routineId: string,
+        at: number,
+        kind: "missed" | "skipped" | "failed",
+        reason: RoutineFailure | null = null,
+      ) =>
         db.run(
-          "INSERT INTO routine_skip (id, routine_id, at, kind) VALUES (?, ?, ?, ?)",
+          "INSERT INTO routine_skip (id, routine_id, at, kind, reason) VALUES (?, ?, ?, ?, ?)",
           randomUUID(),
           routineId,
           at,
           kind,
+          reason ? JSON.stringify(reason) : null,
         )
 
-      const start = (r: Row) =>
-        r.channel_id
-          ? channels.runRoutine(r.channel_id, r.agent_id, r.prompt, r.id)
-          : chat.send(
-              { agentId: r.agent_id, text: r.prompt, replyTo: null },
-              { source: "routine", sourceId: r.id },
-            )
+      /**
+       * A failed run or a failed check adds 1 to the count. At 3 in a row the routine pauses
+       * itself, keeps the reason, and sends one notification (spec 009, "Repeated failure").
+       */
+      const addFailure = (routineId: string, reason: RoutineFailure) => {
+        const r = row(routineId)
+        if (!r) return
+        const count = stateOf(routineId).failed_runs + 1
+        setState(routineId, { failed_runs: count })
+        if (count < ROUTINE_FAILURES_MAX || r.enabled !== 1) return
+        setState(routineId, { paused_failure: JSON.stringify(reason) })
+        db.run("UPDATE routine SET enabled = 0, updated_at = ? WHERE id = ?", Date.now(), r.id)
+        // The main process holds no interface text: the window and the island show the reason
+        // "routine_paused" in the language of the interface.
+        notifier.notify({
+          kind: "routine_failed",
+          agentId: r.agent_id,
+          serverId: r.server_id,
+          channelId: r.channel_id,
+          title: r.agent_name,
+          body: r.name,
+          reason: { code: "routine_paused", detail: r.name },
+          page: "workflows",
+        })
+        changed(r.server_id)
+      }
+      const clearFailures = (routineId: string) =>
+        setState(routineId, { failed_runs: 0, paused_failure: null })
 
-      const tick = (now: number) =>
+      // A run that ends as Done sets the count to 0; a run that fails adds 1. A run that the user
+      // stops (cancelled) does not change it.
+      tasks.onEnd((task) => {
+        if (task.source !== "routine" || !task.sourceId || task.parentId) return
+        // The routine may be gone, or live on the other computer only.
+        if (!row(task.sourceId)) return
+        if (task.state === "done") clearFailures(task.sourceId)
+        else if (task.state === "failed")
+          addFailure(task.sourceId, task.error ?? { code: "unknown", detail: "" })
+      })
+
+      /** Starts a run. `text` is the prompt with what the run gets with it. */
+      const start = (r: Row, text: string, outside?: OutsideSource) => {
+        const model = modelOf(r)
+        return r.channel_id
+          ? channels.runRoutine(r.channel_id, r.agent_id, text, r.id, {
+              ...(model ? { model } : {}),
+              ...(outside ? { outside } : {}),
+            })
+          : chat
+              .send(
+                { agentId: r.agent_id, text, replyTo: null },
+                {
+                  source: "routine",
+                  sourceId: r.id,
+                  ...(model ? { model } : {}),
+                  ...(outside ? { outside } : {}),
+                },
+              )
+              .pipe(Effect.asVoid)
+      }
+
+      /** A run that cannot start fails, with the reason (spec 009). It counts as a failed run. */
+      const startOrFail = (r: Row, at: number, text: string, outside?: OutsideSource) =>
+        start(r, text, outside).pipe(
+          Effect.catch((e: AppError) =>
+            Effect.sync(() => {
+              const reason = { code: e.code, detail: e.detail ?? "" }
+              skip(r.id, at, "failed", reason)
+              addFailure(r.id, reason)
+            }),
+          ),
+        )
+
+      const scheduleTick = (now: number) =>
         Effect.gen(function* () {
           // A routine runs on one computer only (spec 019): the others do not run it, and a run
           // that it misses there does not count as missed here.
-          const rows = db.all<Row>(`${SELECT} WHERE r.enabled = 1 AND r.runs_on IS NULL`)
+          const rows = db.all<Row>(
+            `${SELECT} WHERE r.enabled = 1 AND r.runs_on IS NULL AND r.watch IS NULL`,
+          )
           for (const r of rows) {
-            const { start: at, missed } = dueRuns(
-              JSON.parse(r.schedule) as Schedule,
-              r.last_checked_at,
-              now,
-            )
+            const schedule = scheduleOf(r)
+            if (!schedule) continue
+            const { start: at, missed } = dueRuns(schedule, r.last_checked_at, now)
             db.run("UPDATE routine SET last_checked_at = ? WHERE id = ?", now, r.id)
             for (const m of missed) skip(r.id, m, "missed")
             if (at !== null) {
               if (active(r.id)) skip(r.id, at, "skipped")
-              else
-                yield* start(r).pipe(
-                  Effect.catch(() => Effect.sync(() => skip(r.id, at, "skipped"))),
-                )
+              // A run that starts more than 15 minutes late gets both times.
+              else yield* startOrFail(r, at, runText(r.prompt, at, now))
             }
             if (at !== null || missed.length > 0) changed(r.server_id)
           }
+        })
+
+      /** The watches whose check runs now, so that a slow check does not start twice. */
+      const checking = new Set<string>()
+
+      /** One check of a watch, and what follows from it (spec 009, "Watch"). */
+      const check = (r: Row, watch: Watch, now: number) =>
+        Effect.gen(function* () {
+          const outcome: CheckOutcome = yield* Effect.promise(() =>
+            runCheck(watch.target, {
+              workspace: r.workspace,
+              denied: denyRuleMatches(r, watch),
+              ...(callConnectionTool ? { callTool: callConnectionTool } : {}),
+            }),
+          )
+          // The routine may have changed or gone while the check ran.
+          const current = row(r.id)
+          if (!current || current.watch !== r.watch || current.enabled !== 1) return
+          const before = stateOf(r.id).watch_result
+          setState(r.id, { watch_checked_at: now })
+          if (!outcome.ok) {
+            skip(r.id, now, "failed", outcome.reason)
+            addFailure(r.id, outcome.reason)
+            changed(r.server_id)
+            return
+          }
+          setState(r.id, { watch_result: outcome.result })
+          // The first check keeps the result and does not run the routine.
+          if (before === null) {
+            changed(r.server_id)
+            return
+          }
+          if (before !== outcome.result) {
+            const path = watch.target.kind === "path" ? watch.target.path : ""
+            const text = watchRunText(r.prompt, changeText(before, outcome.result, path))
+            yield* startOrFail(current, now, text, { kind: "routine", name: r.name })
+            changed(r.server_id)
+            return
+          }
+          // No change: no task. One muted line when the switch is on.
+          if (watch.postUnchanged) {
+            const part = { kind: "note", note: "watch_unchanged", routine: r.name } as const
+            if (r.channel_id) channels.note(r.channel_id, r.agent_id, part)
+            else chat.note(r.agent_id, part)
+          }
+          changed(r.server_id)
+        })
+
+      /** The watches that are due: on, here, not in a check, and with no run that still goes. */
+      const dueWatches = (now: number) =>
+        db
+          .all<Row>(`${SELECT} WHERE r.enabled = 1 AND r.runs_on IS NULL AND r.watch IS NOT NULL`)
+          .flatMap((r) => {
+            const watch = watchOf(r)
+            if (!watch || checking.has(r.id)) return []
+            // A check that is due while the last run goes waits until the run ends.
+            if (active(r.id)) return []
+            const last = stateOf(r.id).watch_checked_at
+            // After a sleep, one check runs at once; no check is "Missed".
+            if (last !== null && now - last < watch.minutes * MINUTE_MS) return []
+            return [{ r, watch }]
+          })
+
+      const watchTick = (now: number) =>
+        Effect.forEach(
+          dueWatches(now),
+          ({ r, watch }) => {
+            checking.add(r.id)
+            return check(r, watch, now).pipe(
+              Effect.ensuring(Effect.sync(() => checking.delete(r.id))),
+            )
+          },
+          { concurrency: "unbounded", discard: true },
+        )
+
+      const tick = (now: number) =>
+        Effect.gen(function* () {
+          yield* scheduleTick(now)
+          yield* watchTick(now)
         })
 
       // The routine tasks that fail or stop can be tried again, as a run now.
@@ -170,15 +424,35 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           if (r.runs_on !== null && !force)
             return yield* new AppError({ code: "routine_elsewhere" })
           if (active(id)) return yield* new AppError({ code: "routine_running" })
-          yield* start(r)
+          yield* start(r, r.prompt)
           changed(r.server_id)
         })
 
+      // The schedules run in the loop; a check of a watch runs beside it, so that a slow check
+      // does not hold back the schedules.
       yield* Effect.forkDetach(
         Effect.forever(
-          Effect.sleep(TICK_MS).pipe(Effect.andThen(Effect.suspend(() => tick(Date.now())))),
+          Effect.sleep(LOOP_MS).pipe(
+            Effect.andThen(
+              Effect.suspend(() => {
+                const now = Date.now()
+                return scheduleTick(now).pipe(
+                  Effect.andThen(Effect.forkDetach(watchTick(now))),
+                  Effect.catchCause(() => Effect.void),
+                )
+              }),
+            ),
+          ),
         ),
       )
+
+      const triggerOf = (input: {
+        schedule?: Schedule | undefined
+        watch?: Watch | undefined
+      }): { schedule: Schedule | null; watch: Watch | null } => ({
+        schedule: input.schedule ?? null,
+        watch: input.watch ?? null,
+      })
 
       return Routines.of({
         list: (serverId) =>
@@ -189,18 +463,24 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           ),
         create: (input, options) =>
           Effect.gen(function* () {
-            yield* checkInput(input.agentId, input.schedule as Schedule, input.place)
+            const trigger = triggerOf(input as { schedule?: Schedule; watch?: Watch })
+            yield* checkInput(input.agentId, trigger, input.place)
             const id = randomUUID()
             const now = Date.now()
+            const model = input.model ?? null
             db.run(
-              `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, channel_id, enabled, last_checked_at, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, watch, model_account_id, model_name, model_effort, channel_id, enabled, last_checked_at, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.serverId,
               input.agentId,
               input.name.trim(),
               input.prompt,
-              JSON.stringify(input.schedule),
+              JSON.stringify(trigger.schedule),
+              trigger.watch ? JSON.stringify(trigger.watch) : null,
+              model?.accountId ?? null,
+              model?.model ?? null,
+              model?.effort ?? null,
               input.place.kind === "channel" ? input.place.channelId : null,
               options?.paused ? 0 : 1,
               now,
@@ -214,25 +494,53 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           Effect.gen(function* () {
             const current = row(id)
             if (!current) return yield* new AppError({ code: "routine_not_found" })
-            const schedule = (patch.schedule ?? JSON.parse(current.schedule)) as Schedule
+            // A new schedule replaces a watch, and a new watch replaces a schedule.
+            const trigger =
+              patch.schedule !== undefined || patch.watch !== undefined
+                ? triggerOf(patch as { schedule?: Schedule; watch?: Watch })
+                : { schedule: scheduleOf(current), watch: watchOf(current) }
             const place = patch.place ?? placeOf(current)
             const agentId = patch.agentId ?? current.agent_id
-            yield* checkInput(agentId, schedule, place)
+            yield* checkInput(agentId, trigger, place)
+            const model = patch.model === undefined ? modelOf(current) : patch.model
+            const watchText = trigger.watch ? JSON.stringify(trigger.watch) : null
             const now = Date.now()
             db.run(
-              `UPDATE routine SET agent_id = ?, name = ?, prompt = ?, schedule = ?, channel_id = ?, enabled = ?,
-                 last_checked_at = ?, updated_at = ? WHERE id = ?`,
+              `UPDATE routine SET agent_id = ?, name = ?, prompt = ?, schedule = ?, watch = ?, channel_id = ?, enabled = ?,
+                 model_account_id = ?, model_name = ?, model_effort = ?, last_checked_at = ?, updated_at = ? WHERE id = ?`,
               agentId,
               patch.name?.trim() ?? current.name,
               patch.prompt ?? current.prompt,
-              JSON.stringify(schedule),
+              JSON.stringify(trigger.schedule),
+              watchText,
               place.kind === "channel" ? place.channelId : null,
               patch.enabled === undefined ? current.enabled : patch.enabled ? 1 : 0,
+              model?.accountId ?? null,
+              model?.model ?? null,
+              model?.effort ?? null,
               // Resuming or changing the schedule starts the check from now: nothing counts as missed.
               now,
               now,
               id,
             )
+            // Resume, and an edit of the prompt, the trigger, the agent or the place, set the
+            // count of failed runs to 0 (spec 009).
+            if (
+              patch.enabled === true ||
+              patch.prompt !== undefined ||
+              patch.schedule !== undefined ||
+              patch.watch !== undefined ||
+              patch.agentId !== undefined ||
+              patch.place !== undefined
+            )
+              clearFailures(id)
+            // A watch on another thing keeps its first result again at its next check.
+            const sameTarget =
+              current.watch !== null &&
+              trigger.watch !== null &&
+              JSON.stringify((JSON.parse(current.watch) as Watch).target) ===
+                JSON.stringify(trigger.watch.target)
+            if (!sameTarget) setState(id, { watch_result: null, watch_checked_at: null })
             changed(current.server_id)
             return toRoutine(row(id) as Row)
           }),
@@ -257,6 +565,8 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                 now,
                 id,
               )
+              // A watch keeps its first result again here.
+              setState(id, { watch_result: null, watch_checked_at: null })
               changed(current.server_id)
             }
             return toRoutine(row(id) as Row)
@@ -285,8 +595,12 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                   state: t.state,
                   taskId: t.id,
                 })
-              for (const s of db.all<{ at: number; kind: "missed" | "skipped" }>(
-                "SELECT at, kind FROM routine_skip WHERE routine_id = ? AND at BETWEEN ? AND ?",
+              for (const s of db.all<{
+                at: number
+                kind: "missed" | "skipped" | "failed"
+                reason: string | null
+              }>(
+                "SELECT at, kind, reason FROM routine_skip WHERE routine_id = ? AND at BETWEEN ? AND ?",
                 r.id,
                 from,
                 to,
@@ -297,10 +611,13 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                   at: s.at,
                   state: s.kind,
                   taskId: null,
+                  reason: parseFailure(s.reason),
                 })
-              if (r.enabled === 1 && r.runs_on === null)
+              // A watch has no future runs in the calendar (spec 009).
+              const schedule = scheduleOf(r)
+              if (schedule && r.enabled === 1 && r.runs_on === null)
                 for (const at of runTimes(
-                  JSON.parse(r.schedule) as Schedule,
+                  schedule,
                   Math.max(Date.now(), from - 1),
                   CALENDAR_PLAN_MAX,
                   to,
