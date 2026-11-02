@@ -13,6 +13,7 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   charLength,
+  hasVisibleReply,
   holdOutside,
   isTaskProgress,
   MESSAGE_MAX,
@@ -368,6 +369,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         let lastEmit = 0
         let lastSave = 0
         let hidden = false
+        // The first part that the user sees is saved and shown at once, and its time is kept.
+        let replied = false
+        const firstReply = () => !replied && !hidden && hasVisibleReply(parts)
+        const markReplied = () => {
+          replied = true
+          tasks.replied(o.taskId)
+        }
         db.run(
           `INSERT INTO channel_message (id, channel_id, author, agent_id, kind, parts, status, task_id, model, created_at)
            VALUES (?, ?, 'agent', ?, ?, '[]', 'streaming', ?, ?, ?)`,
@@ -414,11 +422,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             if (o.hideRaw && /^\s*[{`]/.test(messageText({ parts }))) hidden = true
             if (hidden) return
             const now = Date.now()
-            if (boundary || now - lastSave >= SAVE_EVERY_MS) {
+            const first = firstReply()
+            if (boundary || first || now - lastSave >= SAVE_EVERY_MS) {
               save("streaming")
               lastSave = now
             }
-            if (boundary || now - lastEmit >= EMIT_EVERY_MS) {
+            if (first) markReplied()
+            if (boundary || first || now - lastEmit >= EMIT_EVERY_MS) {
               // The streamed row is saved above; the event carries the live parts.
               const row = messageRow(id)
               if (row)
@@ -444,6 +454,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             parts[index] = change(part)
             save("streaming")
             emitMessage(id)
+            // A question card or an approval card is a reply that the user sees.
+            if (firstReply()) markReplied()
           }
           const context: ToolContext = {
             agentId: o.agent.id,
@@ -743,6 +755,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             if (!plan) {
               // An ordinary answer. A reply that only looked like JSON shows as written.
               emitMessage(reply.id)
+              tasks.replied(task.id)
               return
             }
             // The reply becomes the plan message, and each part becomes a task of a member.
@@ -768,6 +781,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               partTasks.push({ task: partTask, agent, prompt: part.prompt })
             }
             emitMessage(reply.id)
+            // The plan is the first reply of the lead that the user sees.
+            tasks.replied(task.id)
             yield* Effect.forEach(
               partTasks,
               ({ task: partTask, agent, prompt }) =>

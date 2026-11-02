@@ -15,7 +15,9 @@
     "test": "bun test --pass-with-no-tests packages apps/desktop/src apps/desktop/scripts",
     "e2e": "bun run --cwd apps/desktop e2e",
     "dist": "bun run --cwd apps/desktop dist",
-    "version": "bun apps/desktop/scripts/version.ts"
+    "version": "bun apps/desktop/scripts/version.ts",
+    "sizes": "bun apps/desktop/scripts/sizes.ts",
+    "perf": "bun apps/desktop/scripts/perf.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
