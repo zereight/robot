@@ -1,4 +1,5 @@
 import type { ModelInfo, PermissionLevel, RuntimeLimit } from "@robot/shared"
+import type { TurnInbox } from "../providers/turn.ts"
 import type { BridgeAccess } from "./bridge.ts"
 
 /** A step that the vendor program wants to take, and that may need the user's answer. */
@@ -44,6 +45,11 @@ export interface RuntimeRun {
   readonly approve: (request: ApprovalRequest) => Promise<boolean>
   /** Called when the vendor reports the usage windows of the plan. */
   readonly onLimits: (limits: readonly RuntimeLimit[]) => void
+  /**
+   * The messages that the user sends during the turn. Only a program that reads input during a
+   * turn gets it (see `runtimeTakesInput`).
+   */
+  readonly inbox?: TurnInbox
 }
 
 /** Who is signed in to a program, as the program tells it. */

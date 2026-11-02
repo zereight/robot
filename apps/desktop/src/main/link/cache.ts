@@ -135,6 +135,7 @@ export class LinkCache {
       this.#change(link, cacheKey("chat.history", { agentId: p.agentId }), (old) => ({
         ...(old as object),
         queue: p.queue,
+        hold: p.hold ?? null,
       }))
     } else if (event === "channel.message") {
       this.#change(link, cacheKey("channels.history", { channelId: p.channelId }), (old) =>
