@@ -120,6 +120,12 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
             // A page keeps the bytes of a value that was replaced, unless the file is rebuilt.
             // The copy is rebuilt after the keys are hidden (see below), so that no page holds one.
             out.exec("PRAGMA secure_delete = ON")
+            // The index of message search holds a second copy of the text of the messages. The app
+            // builds it again from the messages, so the archive does not carry it.
+            for (const table of ["message", "channel_message"])
+              for (const op of ["insert", "update", "delete"])
+                out.exec(`DROP TRIGGER IF EXISTS ${table}_text_${op}`)
+            out.exec("DROP TABLE IF EXISTS message_fts; DROP TABLE IF EXISTS message_text")
             // The links of this computer stay on it: an export holds no device keys or addresses.
             out.exec("DELETE FROM device_link")
             // Sync records belong to this pair of computers (spec 019). They are not exported.
