@@ -173,7 +173,7 @@ export const KnowledgePage = (props: { agent: Agent; onClose: () => void }) => {
         </Button>
         <Button
           onClick={() => act(() => call("knowledge.openFolder", { agentId: agentId() }))}
-          disabled={!view()?.folderExists}
+          disabled={!view()?.canOpenFolder}
           data-testid="knowledge-open-folder"
         >
           {t("knowledge.folder.open")}

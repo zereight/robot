@@ -209,7 +209,7 @@ describe("articles as files", () => {
   test("the folder is made at the first saved article; the file holds a header and the body", async () => {
     const s = await setup()
     expect(existsSync(s.folder)).toBe(false)
-    expect((await s.list()).folderExists).toBe(false)
+    expect((await s.list()).canOpenFolder).toBe(false)
     const article = await s.save("Vite config", "Uses [[Deploy]].", "How the build is set up.")
     expect(existsSync(s.folder)).toBe(true)
     expect(article).toMatchObject({ title: "Vite config", editor: "user", file: "Vite config.md" })
@@ -223,6 +223,24 @@ describe("articles as files", () => {
     expect((await s.k((x) => x.get(s.agent.id, "Vite config.md"))).links).toEqual([
       { title: "Deploy", file: "Deploy.md" },
     ])
+  })
+
+  test("Open folder stays off until the first article is saved, also when a source made the folder", async () => {
+    const s = await setup()
+    expect((await s.list()).canOpenFolder).toBe(false)
+    expect(await s.k((x) => x.folder(s.agent.id))).toMatchObject({ exists: false, saved: false })
+    // A source makes the folder, but no article is saved yet.
+    await s.k((x) => x.addSource(s.agent.id, { name: "a.txt", data: "data" }))
+    expect(existsSync(s.folder)).toBe(true)
+    expect((await s.list()).canOpenFolder).toBe(false)
+    expect(await s.k((x) => x.folder(s.agent.id))).toMatchObject({ exists: true, saved: false })
+    await s.save("Alpha")
+    expect((await s.list()).canOpenFolder).toBe(true)
+    expect(await s.k((x) => x.folder(s.agent.id))).toMatchObject({ exists: true, saved: true })
+    // The folder was opened once for an article: deleting every article does not shut it again.
+    await s.k((x) => x.remove(s.agent.id, "Alpha.md"))
+    expect((await s.list()).total).toBe(0)
+    expect((await s.list()).canOpenFolder).toBe(true)
   })
 
   test("title 1 to 80, summary up to 160, body up to 20,000, unique ignoring case", async () => {

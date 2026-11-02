@@ -341,7 +341,8 @@ export const handlers: Handlers = {
       Effect.flatMap(({ agentId }) =>
         Effect.gen(function* () {
           const folder = yield* Knowledge.use((k) => k.folder(agentId))
-          if (!folder.exists) return yield* new AppError({ code: "knowledge_not_found" })
+          // The folder can exist for a source before the first article is saved. It stays shut then.
+          if (!folder.saved) return yield* new AppError({ code: "knowledge_not_found" })
           yield* Platform.use((p) => Effect.promise(() => p.openPath(folder.path)))
         }),
       ),

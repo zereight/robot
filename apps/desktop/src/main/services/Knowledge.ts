@@ -130,10 +130,13 @@ export interface KnowledgeService {
   removeSource(agentId: string, name: string): Effect.Effect<void, AppError>
   /** The full path of a source file, for the system to open. */
   sourcePath(agentId: string, name: string): Effect.Effect<string, AppError>
-  /** The full path of the Knowledge folder, whether it exists, and whether the user chose the workspace. */
+  /**
+   * The full path of the Knowledge folder, whether it exists, whether the user chose the workspace,
+   * and whether an article was saved in it (the folder can hold a source before that).
+   */
   folder(
     agentId: string,
-  ): Effect.Effect<{ path: string; exists: boolean; chosen: boolean }, AppError>
+  ): Effect.Effect<{ path: string; exists: boolean; chosen: boolean; saved: boolean }, AppError>
   changes(agentId: string): Effect.Effect<readonly KnowledgeChange[]>
   change(agentId: string, changeId: string): Effect.Effect<KnowledgeChange | null>
   undo(agentId: string, changeId: string): Effect.Effect<void, AppError>
@@ -593,6 +596,13 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
        * A folder under a root that the user set in Settings is in the default workspace folder, and
        * so is a folder under the built-in root (an agent made before the user set a root).
        */
+      /** True once an article was saved: there is one now, or there was one (a change is kept). */
+      const articleSaved = (agentId: string, scanned: Scan) =>
+        scanned.entries.length > 0 ||
+        scanned.skipped > 0 ||
+        db.get("SELECT 1 AS x FROM knowledge_change WHERE agent_id = ? LIMIT 1", agentId) !==
+          undefined
+
       const isChosen = (info: AgentInfo) => {
         const roots = [Effect.runSync(settings.get).workspaceRoot, platform.defaultWorkspaceRoot]
         return !roots.some((root) => {
@@ -814,7 +824,7 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
         return {
           enabled: info.knowledge_enabled === 1,
           folder: scanned.folder,
-          folderExists: scanned.exists,
+          canOpenFolder: scanned.exists && articleSaved(agentId, scanned),
           articles: shown,
           total: scanned.entries.length,
           limit: KNOWLEDGE_ARTICLES_MAX,
@@ -915,8 +925,13 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
         folder: (agentId) =>
           attempt(() => {
             const info = needAgent(agentId)
-            const path = folderOf(info)
-            return { path, exists: existsSync(path), chosen: isChosen(info) }
+            const scanned = scan(agentId, "user")
+            return {
+              path: scanned.folder,
+              exists: scanned.exists,
+              chosen: isChosen(info),
+              saved: scanned.exists && articleSaved(agentId, scanned),
+            }
           }),
         changes: (agentId) =>
           Effect.sync(() =>

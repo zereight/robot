@@ -59,7 +59,8 @@ export interface KnowledgeView {
   readonly enabled: boolean
   /** Full path of the Knowledge folder. */
   readonly folder: string
-  readonly folderExists: boolean
+  /** False until the first article is saved: the folder may exist for a source before that. */
+  readonly canOpenFolder: boolean
   /** The articles that match the search, by title. */
   readonly articles: readonly KnowledgeSummary[]
   /** All articles of the agent, whatever the search. */
