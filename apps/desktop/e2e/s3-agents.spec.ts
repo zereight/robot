@@ -121,6 +121,37 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   await app.close()
 })
 
+test("agents: a long name stays on one line in the chat header", async () => {
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1000, 700)
+  const name = "Account Research Partner for Quarterly Reviews"
+  await page.getByTestId("new-agent").click()
+  await page.getByTestId("template-general").click()
+  await page.getByTestId("agent-name").fill(name.slice(0, 40))
+  await page.getByTestId("agent-submit").click()
+  await expect(page.getByTestId("chat-start")).toBeVisible()
+
+  const header = page.getByTestId("conversation-header")
+  const agent = page.getByTestId("chat-header-agent")
+  const box = async (locator: ReturnType<Page["getByTestId"]>) => {
+    const b = await locator.boundingBox()
+    if (!b) throw new Error("not visible")
+    return b
+  }
+  // The name button stays inside the header, which keeps its height. The model button is whole.
+  const headerBox = await box(header)
+  const agentBox = await box(agent)
+  const modelBox = await box(page.getByTestId("chat-header-model"))
+  expect(headerBox.height).toBeLessThanOrEqual(48)
+  expect(agentBox.height).toBeLessThanOrEqual(headerBox.height)
+  expect(agentBox.x + agentBox.width).toBeLessThanOrEqual(modelBox.x + 1)
+  expect(modelBox.x + modelBox.width).toBeLessThanOrEqual(headerBox.x + headerBox.width)
+  // The full name is on the button for the pointer.
+  await expect(agent).toHaveAttribute("title", name.slice(0, 40))
+  await shot(page, "s3-07-long-name-header")
+  await app.close()
+})
+
 test("agents: a new agent can get a random name suggestion", async () => {
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
   await resizeWindow(app, 1200, 800)
