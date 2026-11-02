@@ -16,6 +16,8 @@ import {
   KNOWLEDGE_SOURCES,
   KNOWLEDGE_TURN_CHANGES_MAX,
   type KnowledgeNote,
+  MEMORY_TEXT_MAX,
+  type MemoryNote,
   needsApproval,
   type PermissionLevel,
   riskyReason,
@@ -31,7 +33,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge, type KnowledgePlan } from "./Knowledge.ts"
-import { Memory } from "./Memory.ts"
+import { Memory, type MemoryOrigin } from "./Memory.ts"
 import { type PageBounds, Platform } from "./Platform.ts"
 
 export interface ToolContext {
@@ -41,8 +43,10 @@ export interface ToolContext {
   readonly signal: AbortSignal
   /** Shows a card that waits for the user (`ask`), or hides it again (`null`). */
   readonly onWaiting: (callId: string, ask: ToolAsk | null) => void
-  /** Records the memory item that a call saved, so its card can offer undo. */
-  readonly onMemory: (callId: string, memoryId: string) => void
+  /** Records what the memory tool did, so its line in the chat can offer undo or a link. */
+  readonly onMemory: (callId: string, note: MemoryNote) => void
+  /** Where the turn runs: the chat that a suggestion for memory names as its origin. */
+  readonly origin?: MemoryOrigin
   /** Records that a linked device answered an approval, so its card can say who. */
   readonly onDecision?: (callId: string, answer: "allow" | "deny", by: string) => void
   /** Records what a knowledge call read or changed, so its card can show it and offer undo. */
@@ -176,7 +180,7 @@ const DEFS: Record<string, ToolDef> = {
   save_memory: {
     name: "save_memory",
     description:
-      "Save one short, lasting fact (a preference, a name, a decision) to your memory. Do not save passwords or keys.",
+      "Save one short, lasting fact (a preference, a name, a decision) to your memory. Use at most 500 characters. Never save a password, a key or a token. The user may decide first whether the fact is kept.",
     schema: object({ text: str("The fact, in one sentence.") }, ["text"]),
   },
   read_article: {
@@ -695,6 +699,43 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      /** The memory tool: saves at once or suggests, by the choice of the agent (spec 008). */
+      const saveMemory = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        value: string,
+      ): Promise<ToolOutcome> => {
+        const result = await Effect.runPromise(memory.save(ctx.agentId, value, ctx.origin))
+        switch (result.kind) {
+          case "saved":
+            ctx.onMemory(call.id, { kind: "saved", historyId: result.historyId })
+            return { output: "Saved to memory.", failed: false }
+          case "suggested":
+            ctx.onMemory(call.id, { kind: "suggested", proposalId: result.proposal.id })
+            return {
+              output: "Suggested for memory. The user decides if it is kept.",
+              failed: false,
+            }
+          case "known":
+            return { output: "This fact is already known. Nothing was added.", failed: false }
+          case "too_long":
+            return {
+              output: `Not saved: the text is longer than ${MEMORY_TEXT_MAX} characters. Say it shorter.`,
+              failed: true,
+            }
+          case "secret":
+            return {
+              output:
+                "Not saved: the text looks like a secret (a key, a token or a password). Leave the secret out and tell the user that you did.",
+              failed: true,
+            }
+          case "empty":
+            return { output: "Not saved: the text is empty.", failed: true }
+          case "off":
+            return { output: "Not saved: memory is off for you.", failed: true }
+        }
+      }
+
       const run = async (ctx: ToolContext, call: ToolCall): Promise<ToolOutcome> => {
         const args = parseArgs(call)
         switch (call.name) {
@@ -759,13 +800,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           case "browser_type":
           case "browser_close":
             return await browserTool(ctx, call)
-          case "save_memory": {
-            const item = await Effect.runPromise(
-              memory.add(ctx.agentId, text(args, "text"), "agent"),
-            )
-            ctx.onMemory(call.id, item.id)
-            return { output: "Saved to memory.", failed: false }
-          }
+          case "save_memory":
+            return await saveMemory(ctx, call, text(args, "text"))
           case "read_article":
             return await readTool(ctx, call, args)
           case "write_article":
