@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { expect, type Page, test } from "@playwright/test"
-import { createAgent, shot } from "./harness.ts"
+import { createAgent, killAtOnce, shot } from "./harness.ts"
 import { GOOD_KEY } from "./mock-provider.ts"
 import { freePortPair } from "./ports.ts"
 import {
@@ -235,7 +235,7 @@ test("sync tasks: a card of a computer that is off says so", async () => {
     await expect(two.page.getByTestId("ask-origin-offline")).toHaveCount(0)
     await expect(two.page.getByTestId("tool-origin")).toContainText("from MacBook 1")
     // The first computer is lost at once, as when its power goes: its task does not end by itself.
-    one.app.process().kill("SIGKILL")
+    await killAtOnce(one.app)
     await expect(two.page.getByTestId("ask-origin-offline")).toHaveText("MacBook 1 is offline.", {
       timeout: 30_000,
     })
@@ -403,6 +403,10 @@ test("sync tasks: a file of a message that is not on this computer is copied fro
     await send(one.page, "and again")
     await settled(one.page)
     await expect(two.page.getByTestId("message-file")).toHaveCount(2, { timeout: 20_000 })
+    // The name of the origin comes with the message, but it can come a moment after the file. The
+    // chip says "not here" only for a message from the other computer, so wait for both names
+    // before the first computer goes. What it still holds when it goes would wait for its return.
+    await expect(two.page.getByTestId("from-device")).toHaveCount(2, { timeout: 20_000 })
     await one.app.close()
     const second = two.page.getByTestId("message-file").nth(1)
     await expect(second.getByTestId("message-file-missing")).toBeVisible()
