@@ -172,7 +172,8 @@ test("linked server: an agent of another computer works in this window, offline 
     expect(readFileSync(saved, "utf8")).toBe("notes for Ada\n")
     await shot(one.page, "s19-03-file")
 
-    // What a client cannot do shows a muted line: the page buttons of workflows and usage.
+    // What a client cannot do shows a muted line: the routines of the server and the usage page.
+    // The workflows of the server open on a client (see s56).
     await one.page.getByTestId("page-workflows").click()
     await expect(one.page.getByTestId("page-open-on-server")).toHaveText("Open this on MacBook 2.")
     await one.page.getByTestId("page-usage").click()

@@ -685,4 +685,11 @@ export const migrations: readonly string[] = [
   ALTER TABLE task ADD COLUMN judged_at INTEGER;
   ALTER TABLE task ADD COLUMN decided_at INTEGER;
   `,
+  `
+  -- The linked device that started a run, and the one that answered an approval step (spec 012,
+  -- "Workflows"). NULL for the window of this computer. They stay on this computer: sync (019)
+  -- does not carry them.
+  ALTER TABLE workflow_run ADD COLUMN started_by TEXT;
+  ALTER TABLE workflow_run_step ADD COLUMN decided_by TEXT;
+  `,
 ]

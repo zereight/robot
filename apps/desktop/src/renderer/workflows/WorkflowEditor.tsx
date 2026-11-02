@@ -27,6 +27,7 @@ import { createEffect, createResource, createSignal, For, onCleanup, onMount, Sh
 import { createStore, produce } from "solid-js/store"
 import { ChecklistCard, useChecklistRows } from "../imports/ImportChecklist.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { isForView } from "../lib/events.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { ScheduleFields } from "../routines/ScheduleFields.tsx"
@@ -75,6 +76,9 @@ const blank = (
 export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
+  /** The events of the server on screen only: runs that sync have the same id on both (012, 019). */
+  const forView = (from: string | undefined) =>
+    isForView(ui.linked() ? ui.server()?.id : undefined, from)
   const agents = useAgents()
   const channels = useChannels()
   const [saved, setSaved] = createSignal<Workflow | null>(props.workflow)
@@ -109,7 +113,8 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
   const live = () => detail.latest as WorkflowRunDetail | undefined
   const running = () => live()?.run.state === "running" || runs().some((r) => r.state === "running")
   onCleanup(
-    window.robot.on("workflows.run", ({ runId }) => {
+    window.robot.on("workflows.run", ({ runId }, from) => {
+      if (!forView(from)) return
       if (runId === watched()) void refetchDetail()
       void refetchRuns()
     }),
@@ -124,8 +129,9 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
   // The checklist that an import left for this workflow (spec 014). Its steps tick themselves as
   // the user picks on the canvas; "Turn on" ticks when the workflow is on.
   const checklistRows = useChecklistRows()
+  // A checklist belongs to the import of this computer. A linked server has none here.
   const [checklist] = createResource(
-    () => saved()?.id,
+    () => (ui.linked() ? undefined : saved()?.id),
     (workflowId) => call("checklists.forWorkflow", { workflowId }).catch(() => null),
   )
   const [enabled, { refetch: refetchEnabled }] = createResource(
@@ -137,9 +143,15 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
           )
         : false,
   )
-  onCleanup(window.robot.on("workflows.changed", () => void refetchEnabled()))
+  onCleanup(
+    window.robot.on("workflows.changed", (_payload, from) => {
+      if (forView(from)) void refetchEnabled()
+    }),
+  )
 
-  const readOnly = () => running()
+  /** A linked server that does not let this device change agents shows the canvas read only (012). */
+  const canEdit = () => ui.canChange()
+  const readOnly = () => running() || !canEdit()
   const step = (id: string) => graph.steps.find((s) => s.id === id)
   const selectedStep = () => {
     const s = selected()
@@ -364,7 +376,8 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
   }
 
   const run = async () => {
-    const next = await save()
+    // Without the switch the device runs the workflow as it is saved on the server (spec 012).
+    const next = canEdit() ? await save() : saved()
     if (!next) return
     try {
       const started = await call("workflows.run", { id: next.id })
@@ -421,20 +434,22 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
           onInput={(e) => setName(e.currentTarget.value)}
           data-testid="wf-name"
         />
-        <For each={STEP_KINDS}>
-          {(k) => (
-            <Button disabled={readOnly()} onClick={() => addStep(k)} data-testid={`wf-add-${k}`}>
-              + {t(`workflows.step.${k}` as MessageKey)}
-            </Button>
-          )}
-        </For>
-        <Button
-          disabled={readOnly() || graph.notes.length >= WORKFLOW_NOTES_MAX}
-          onClick={addNote}
-          data-testid="wf-add-note"
-        >
-          + {t("workflows.note.add")}
-        </Button>
+        <Show when={canEdit()}>
+          <For each={STEP_KINDS}>
+            {(k) => (
+              <Button disabled={readOnly()} onClick={() => addStep(k)} data-testid={`wf-add-${k}`}>
+                + {t(`workflows.step.${k}` as MessageKey)}
+              </Button>
+            )}
+          </For>
+          <Button
+            disabled={readOnly() || graph.notes.length >= WORKFLOW_NOTES_MAX}
+            onClick={addNote}
+            data-testid="wf-add-note"
+          >
+            + {t("workflows.note.add")}
+          </Button>
+        </Show>
         <span class={styles.spacer} />
         <Button
           onClick={() => setView({ ...view(), zoom: Math.max(ZOOM_MIN, view().zoom / 1.2) })}
@@ -451,17 +466,25 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
         >
           +
         </Button>
-        <Button
-          disabled={readOnly() || !scheduleOk()}
-          onClick={() => void save(true)}
-          data-testid="wf-save"
-        >
-          {t("agents.save")}
-        </Button>
+        <Show when={canEdit()}>
+          <Button
+            disabled={readOnly() || !scheduleOk()}
+            onClick={() => void save(true)}
+            data-testid="wf-save"
+          >
+            {t("agents.save")}
+          </Button>
+        </Show>
         <Show
           when={running()}
           fallback={
-            <Button variant="primary" onClick={run} data-testid="wf-run">
+            <Button
+              variant="primary"
+              // A workflow that runs on another computer through sync is not run here (019).
+              disabled={(saved()?.runsOn ?? null) !== null}
+              onClick={run}
+              data-testid="wf-run"
+            >
               {t("workflows.run")}
             </Button>
           }
@@ -478,7 +501,7 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
         </Show>
       </div>
 
-      <Show when={readOnly()}>
+      <Show when={running()}>
         <p class={styles.banner} data-testid="wf-readonly">
           {t("workflows.readOnly")}
         </p>
@@ -737,9 +760,11 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
                     when={selected()?.kind === "edge"}
                     fallback={<p class={styles.hint}>{t("workflows.panel.empty")}</p>}
                   >
-                    <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
-                      {t("workflows.deleteEdge")}
-                    </Button>
+                    <Show when={canEdit()}>
+                      <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
+                        {t("workflows.deleteEdge")}
+                      </Button>
+                    </Show>
                   </Show>
                 }
               >
@@ -779,9 +804,11 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
                       </select>
                     </label>
                     <span class={styles.hint}>{t("workflows.note.hint")}</span>
-                    <Button disabled={readOnly()} onClick={remove} data-testid="wf-note-delete">
-                      {t("workflows.note.delete")}
-                    </Button>
+                    <Show when={canEdit()}>
+                      <Button disabled={readOnly()} onClick={remove} data-testid="wf-note-delete">
+                        {t("workflows.note.delete")}
+                      </Button>
+                    </Show>
                   </div>
                 )}
               </Show>
@@ -1089,9 +1116,11 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
                     </Show>
                   )}
                 </Show>
-                <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
-                  {t("workflows.deleteStep")}
-                </Button>
+                <Show when={canEdit()}>
+                  <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
+                    {t("workflows.deleteStep")}
+                  </Button>
+                </Show>
               </div>
             )}
           </Show>
@@ -1119,6 +1148,13 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
                 <span class={styles.runState}>
                   {t(`workflows.runState.${r.state}` as MessageKey)}
                 </span>
+                <Show when={r.startedBy}>
+                  {(name) => (
+                    <span class={styles.hint} data-testid="wf-run-started-by">
+                      {t("workflows.startedBy", { name: name() })}
+                    </span>
+                  )}
+                </Show>
               </button>
             )}
           </For>
@@ -1142,6 +1178,18 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
                     <Show when={s.result}>
                       <div class={styles.hint}>{t("chat.tool.output")}</div>
                       <pre data-testid="wf-step-result">{s.result}</pre>
+                    </Show>
+                    <Show when={s.decidedBy}>
+                      {(name) => (
+                        <div class={styles.hint} data-testid="wf-step-decided-by">
+                          {t(
+                            s.error === "rejected"
+                              ? "chat.decision.denied"
+                              : "chat.decision.allowed",
+                            { name: name() },
+                          )}
+                        </div>
+                      )}
                     </Show>
                     <Show when={s.error}>
                       <pre class={styles.error} data-testid="wf-step-error">

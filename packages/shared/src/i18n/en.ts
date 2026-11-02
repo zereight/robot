@@ -931,6 +931,7 @@ export const en = {
   "workflows.saveFailed": "Could not save the workflow. {reason}",
   "toast.dismiss": "Close message",
   "workflows.history": "Runs",
+  "workflows.startedBy": "Started by {name}",
   "workflows.history.empty": "No runs yet.",
   "workflows.runState.running": "Running",
   "workflows.runState.done": "Done",

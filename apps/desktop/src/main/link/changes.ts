@@ -30,21 +30,21 @@ import { Servers } from "../services/Servers.ts"
 export type ChangeHandler = (input: unknown) => Effect.Effect<unknown, AppError, AppServices>
 
 /** Checks a request against a schema. A field that the schema does not list refuses the request. */
-const strict =
+export const strict =
   <S extends Schema.Top & { readonly DecodingServices: never }>(schema: S) =>
   (input: unknown) =>
     Schema.decodeUnknownEffect(schema, { onExcessProperty: "error" })(input).pipe(
       E.mapError((e) => new AppError({ code: "invalid_input", detail: e.message })),
     )
 
-const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100))
+export const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100))
 const ById = Schema.Struct({ id: Id })
 
 /**
  * The device that asks, once the switch is on for it. The switch is read at each request, so a
  * device that lost it a moment ago gets the error also on a connection that was open before.
  */
-const allowed = E.gen(function* () {
+export const allowed = E.gen(function* () {
   const actor = yield* CurrentActor
   if (!actor) return yield* new AppError({ code: "not_allowed" })
   const devices = yield* Devices
@@ -59,7 +59,7 @@ const allowed = E.gen(function* () {
 export const forClient = (agent: Agent): Agent => ({ ...agent, workspace: "" })
 
 /** The id of this server must be the one that the request names. */
-const ownServer = (serverId: string) =>
+export const ownServer = (serverId: string) =>
   Servers.use((s) => s.local).pipe(
     E.flatMap((local) =>
       local.id === serverId ? E.void : E.fail(new AppError({ code: "invalid_input" })),
@@ -70,7 +70,9 @@ const ownServer = (serverId: string) =>
  * A model that a client picks must be one that the server offers now: the account is connected
  * here and the model (and effort) is on the list of that account. A client sends no key.
  */
-const checkModel = (model: { accountId: string; model: string; effort: string | null } | null) =>
+export const checkModel = (
+  model: { accountId: string; model: string; effort: string | null } | null,
+) =>
   E.gen(function* () {
     if (model === null) return
     const providers = yield* Providers

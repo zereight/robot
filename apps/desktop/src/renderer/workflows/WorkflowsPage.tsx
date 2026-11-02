@@ -1,7 +1,8 @@
 import type { MessageKey, Workflow, WorkflowFilePreview } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
-import { createEffect, createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createResource, createSignal, For, on, onCleanup, Show } from "solid-js"
 import type { ErrorText } from "../lib/errors.ts"
+import { isForView } from "../lib/events.ts"
 import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
 import { RoutinesView } from "../routines/RoutinesPage.tsx"
@@ -24,12 +25,19 @@ import styles from "./workflows.module.css"
 const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) => {
   const { t } = useApp()
   const ui = useUi()
+  // A linked server that comes back online is asked again. Its workflows are not cached (012).
   const [workflows, { refetch }] = createResource(
-    () => ui.server()?.id,
-    (serverId) => call("workflows.list", { serverId }),
+    () => (ui.serverOffline() ? undefined : ui.server()?.id),
+    (serverId) => call("workflows.list", { serverId }).catch(() => [] as readonly Workflow[]),
     { initialValue: [] as readonly Workflow[] },
   )
-  onCleanup(window.robot.on("workflows.changed", () => void refetch()))
+  onCleanup(
+    window.robot.on("workflows.changed", ({ serverId }, from) => {
+      // A server that syncs with this computer can send the same ids (spec 012, 019).
+      const view = ui.linked() ? ui.server()?.id : undefined
+      if (serverId === ui.server()?.id && isForView(view, from)) void refetch()
+    }),
+  )
   // The Today page asks for a workflow: its card lights up. A workflow that is gone is dropped.
   createEffect(() => {
     const target = openTarget()
@@ -70,25 +78,39 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
   return (
     <div class={styles.list} data-testid="wf-list">
       <div class={styles.bar}>
-        <Button variant="primary" onClick={() => props.onOpen(null)} data-testid="wf-new">
-          {t("workflows.new")}
-        </Button>
+        <Show when={ui.canChange()}>
+          <Button variant="primary" onClick={() => props.onOpen(null)} data-testid="wf-new">
+            {t("workflows.new")}
+          </Button>
+        </Show>
         <Menu
           label={t("workflowFile.menu")}
           icon={<Ellipsis size={16} />}
           testId="wf-menu"
-          items={[
-            {
-              label: t("workflowFile.menu.export"),
-              onSelect: () => setExporting(true),
-              testId: "wf-menu-export",
-            },
-            {
-              label: t("workflowFile.menu.importFile"),
-              onSelect: () => void startImport(),
-              testId: "wf-menu-import-file",
-            },
-          ]}
+          items={
+            // The workflow file stays on the server (spec 012, "Workflows").
+            ui.linked()
+              ? [
+                  {
+                    label: t("link.openOnServer", { name: ui.server()?.name ?? "" }),
+                    onSelect: () => {},
+                    disabled: true,
+                    testId: "wf-menu-open-on-server",
+                  },
+                ]
+              : [
+                  {
+                    label: t("workflowFile.menu.export"),
+                    onSelect: () => setExporting(true),
+                    testId: "wf-menu-export",
+                  },
+                  {
+                    label: t("workflowFile.menu.importFile"),
+                    onSelect: () => void startImport(),
+                    testId: "wf-menu-import-file",
+                  },
+                ]
+          }
         />
       </div>
       <Presence when={exporting()}>
@@ -140,11 +162,13 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
               <Switch
                 label={t("workflows.enabled.label", { name: w.name })}
                 checked={w.enabled}
+                disabled={!ui.canChange()}
                 onChange={(enabled) => call("workflows.update", { id: w.id, patch: { enabled } })}
                 testId="wf-enabled"
               />
               <Show
-                when={w.runsOn === null}
+                // A client does not offer "Run on this computer": Run is off for it (spec 012).
+                when={w.runsOn === null || ui.linked()}
                 fallback={
                   <Button
                     onClick={() => call("workflows.runHere", { id: w.id })}
@@ -156,7 +180,7 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
               >
                 <Button
                   onClick={() => call("workflows.run", { id: w.id })}
-                  disabled={w.running}
+                  disabled={w.running || w.runsOn !== null}
                   data-testid="wf-card-run"
                 >
                   {t("workflows.run")}
@@ -165,13 +189,15 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
               <Button onClick={() => props.onOpen(w)} data-testid="wf-open">
                 {t("workflows.open")}
               </Button>
-              <Button
-                disabled={w.running}
-                onClick={() => call("workflows.delete", { id: w.id })}
-                data-testid="wf-delete-card"
-              >
-                {t("agents.memory.delete")}
-              </Button>
+              <Show when={ui.canChange()}>
+                <Button
+                  disabled={w.running}
+                  onClick={() => call("workflows.delete", { id: w.id })}
+                  data-testid="wf-delete-card"
+                >
+                  {t("agents.memory.delete")}
+                </Button>
+              </Show>
             </div>
           )}
         </For>
@@ -193,6 +219,14 @@ export const WorkflowsPage = () => {
     else if (target?.kind === "workflow") setTab("workflows")
     if (target?.kind === "routine" || target?.kind === "workflow") setOpen(undefined)
   })
+  // A workflow belongs to one server. Another server on screen closes the editor.
+  createEffect(
+    on(
+      () => ui.server()?.id,
+      () => setOpen(undefined),
+      { defer: true },
+    ),
+  )
   // A checklist item opens the list where the user does the step (spec 014).
   createEffect(() => {
     const target = ui.revealTarget()
@@ -218,9 +252,30 @@ export const WorkflowsPage = () => {
             />
             <Show
               when={tab() === "routines"}
-              fallback={<WorkflowList onOpen={(workflow) => setOpen({ workflow })} />}
+              fallback={
+                <Show
+                  when={!ui.serverOffline()}
+                  fallback={
+                    <p class={shell.pageNotice} data-testid="wf-offline">
+                      {t("link.state.offline", { name: ui.server()?.name ?? "" })}
+                    </p>
+                  }
+                >
+                  <WorkflowList onOpen={(workflow) => setOpen({ workflow })} />
+                </Show>
+              }
             >
-              <RoutinesView />
+              {/* Routines stay on the server (spec 012). */}
+              <Show
+                when={!ui.linked()}
+                fallback={
+                  <p class={shell.pageNotice} data-testid="page-open-on-server">
+                    {t("link.openOnServer", { name: ui.server()?.name ?? "" })}
+                  </p>
+                }
+              >
+                <RoutinesView />
+              </Show>
             </Show>
           </>
         }

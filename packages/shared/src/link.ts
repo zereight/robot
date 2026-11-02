@@ -136,6 +136,14 @@ export const CLIENT_METHODS = [
   "attachment.upload",
   "attachment.download",
   "attention.list",
+  // Workflows of the server (spec 012, "Workflows"). Reading, running and stopping need only the
+  // right to send messages.
+  "workflows.list",
+  "workflows.runs",
+  "workflows.runDetail",
+  "workflows.run",
+  "workflows.stop",
+  "workflows.approve",
   // Only with the switch "Can create and change agents" (spec 012). Each one checks it again.
   "agents.create",
   "agents.update",
@@ -148,6 +156,9 @@ export const CLIENT_METHODS = [
   "memory.update",
   "memory.delete",
   "models.available",
+  "workflows.create",
+  "workflows.update",
+  "workflows.delete",
   // Sync between two computers (spec 019). Only the computer that is the sync peer may use them.
   "sync.hello",
   "sync.counts",
@@ -196,7 +207,7 @@ export const isCachedMethod = (method: string) =>
   (CACHED_METHODS as readonly string[]).includes(method)
 
 /** Page buttons that a client cannot use on a linked server (spec 012, "What a client can do"). */
-export const CLIENT_BLOCKED_PAGES = ["today", "workflows", "usage"] as const
+export const CLIENT_BLOCKED_PAGES = ["today", "usage"] as const
 
 /**
  * The requests that a server answers only when the switch "Can create and change agents" is on
@@ -214,6 +225,9 @@ export const CHANGE_METHODS = [
   "memory.update",
   "memory.delete",
   "models.available",
+  "workflows.create",
+  "workflows.update",
+  "workflows.delete",
 ] as const
 export type ChangeMethod = (typeof CHANGE_METHODS)[number]
 export const isChangeMethod = (method: string): method is ChangeMethod =>
@@ -236,6 +250,8 @@ export const PUSHED_EVENTS = [
   "notice",
   "revoked",
   "memory.changed",
+  "workflows.changed",
+  "workflows.run",
 ] as const
 export type PushedEvent = (typeof PUSHED_EVENTS)[number]
 
