@@ -37,6 +37,9 @@
   outline: 2px solid var(--c-focus);
   outline-offset: 1px;
 }
+.memberSearch {
+  margin-top: 6px;
+}
 .memberList {
   display: flex;
   flex-direction: column;
@@ -49,6 +52,17 @@
   align-items: center;
   gap: 8px;
   padding: 2px 0;
+}
+.memberName {
+  flex: none;
+}
+.memberRole {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
 }
 .error {
   color: var(--c-danger);
