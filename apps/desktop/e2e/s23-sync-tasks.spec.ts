@@ -247,11 +247,21 @@ test("sync tasks: a card of a computer that is off says so", async () => {
         "ms servers on two",
         JSON.stringify(states.map((x) => `${x.name}:${x.state}`)),
       )
-      const run = (cmd: string, args: string[]) =>
-        spawnSync(cmd, args, { encoding: "utf8" }).stdout?.trim() ?? ""
+      const run = (cmd: string, args: string[]) => {
+        const r = spawnSync(cmd, args, { encoding: "utf8" })
+        return `${r.stdout ?? ""}${r.stderr ?? ""}${r.error ? `ERR ${r.error.message}` : ""}`.trim()
+      }
       if (process.platform === "win32") {
-        console.log("DIAG s23 netstat\n" + run("cmd.exe", ["/c", "netstat -ano | findstr 4789"]))
-        console.log("DIAG s23 tasklist\n" + run("tasklist", ["/FI", "IMAGENAME eq ROBot.exe"]))
+        const script = [
+          `Write-Output "killed pid ${pid} alive: $([bool](Get-Process -Id ${pid} -ErrorAction SilentlyContinue))"`,
+          "Get-CimInstance Win32_Process -Filter \"Name='ROBot.exe'\" | Select-Object ProcessId,ParentProcessId,@{n='Cmd';e={$_.CommandLine.Substring(0,[Math]::Min(110,$_.CommandLine.Length))}} | Format-Table -AutoSize | Out-String -Width 250",
+          "Get-NetTCPConnection -LocalPort 47895,47896 -ErrorAction SilentlyContinue | Select-Object LocalPort,RemotePort,State,OwningProcess | Format-Table -AutoSize | Out-String -Width 200",
+          "Get-NetTCPConnection -RemotePort 47895,47896 -ErrorAction SilentlyContinue | Select-Object LocalPort,RemotePort,State,OwningProcess | Format-Table -AutoSize | Out-String -Width 200",
+        ].join("; ")
+        console.log(
+          "DIAG s23 windows\n" +
+            run("powershell", ["-NoProfile", "-NonInteractive", "-Command", script]),
+        )
       } else {
         console.log(
           "DIAG s23 lsof\n" + run("/bin/sh", ["-c", "lsof -nP -iTCP:47895 -iTCP:47896 || true"]),

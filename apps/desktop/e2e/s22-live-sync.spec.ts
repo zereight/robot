@@ -280,13 +280,18 @@ test("live sync: a delete reaches the other computer and keeps its folder; many 
     await expect.poll(() => agentNames(two.page), { timeout: 20_000 }).toHaveLength(9)
     for (const id of ids) await rpc(one.page, "agents.archive", { id })
     await expect.poll(() => archivedCount(two.page, serverTwo), { timeout: 20_000 }).toBe(8)
-    const first0 = Date.now()
-    const firstMarks: number[] = []
-    for (const id of ids) {
-      await rpc(one.page, "agents.delete", { id })
-      firstMarks.push(Date.now() - first0)
-    }
-    console.log("DIAG s22 first delete marks ms", JSON.stringify(firstMarks))
+    const firstMarks = await one.page.evaluate(async (list) => {
+      const marks: number[] = []
+      const t0 = performance.now()
+      for (const id of list) {
+        // biome-ignore lint/suspicious/noExplicitAny: the bridge is typed in the app
+        const r = await (window as any).robot.invoke("agents.delete", { id })
+        if (!r.ok) throw new Error(r.error.code)
+        marks.push(Math.round(performance.now() - t0))
+      }
+      return marks
+    }, ids)
+    console.log("DIAG s22 first delete marks in the window ms", JSON.stringify(firstMarks))
     try {
       await expect(two.page.getByTestId("sync-guard-dialog")).toBeVisible({ timeout: 20_000 })
     } catch (error) {
