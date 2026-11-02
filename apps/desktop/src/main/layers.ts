@@ -17,6 +17,7 @@ import { Providers } from "./services/Providers.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import type { Secrets } from "./services/Secrets.ts"
+import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Tasks } from "./services/Tasks.ts"
@@ -46,6 +47,7 @@ export const appLayer = (options: AppLayerOptions) => {
     SettingsStore.layer,
     UiStore.layer,
     Servers.layer(options.localServerName),
+    Sections.layer,
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
   const runtimes = Runtimes.layer.pipe(Layer.provideMerge(stores))

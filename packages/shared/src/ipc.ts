@@ -24,10 +24,11 @@ import type {
   RuntimeStatus,
 } from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
+import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Task, TaskDetail } from "./task.ts"
 import type { ApprovalAnswer } from "./tools.ts"
-import type { PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
+import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
 import type { WorkflowFileImported, WorkflowFilePreview } from "./workflowFile.ts"
 import type {
@@ -70,6 +71,17 @@ export interface RpcMethods {
   "data.openFolder": { input: undefined; output: undefined }
   "servers.list": { input: undefined; output: readonly Server[] }
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
+  /** Moves a place into a user section of its kind, or out of any (`sectionId` null). */
+  "places.move": {
+    input: { kind: PlaceKind; id: string; sectionId: string | null }
+    output: undefined
+  }
+  "sections.create": { input: SectionCreate; output: UserSection }
+  "sections.rename": { input: { id: string; name: string }; output: UserSection }
+  /** One step in the order of the sections of its kind. At an end it changes nothing. */
+  "sections.move": { input: { id: string; direction: MoveDirection }; output: undefined }
+  /** Deletes the section. Its places move to "No section"; none is deleted. */
+  "sections.delete": { input: { id: string }; output: undefined }
   "ui.get": { input: undefined; output: UiState }
   "ui.update": { input: UiStatePatch; output: UiState }
   "agents.list": { input: { serverId: string; archived: boolean }; output: readonly Agent[] }

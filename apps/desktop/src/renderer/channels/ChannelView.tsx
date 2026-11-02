@@ -39,6 +39,7 @@ const removedAgent = (name: string): Agent => ({
   model: null,
   workspace: "",
   section: "agents",
+  sectionId: null,
   archived: true,
   state: "offline",
   permission: "ask_risky",

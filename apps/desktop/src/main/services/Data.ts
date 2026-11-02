@@ -281,6 +281,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                   local.id,
                 )
               }
+              // The sections come first: agents and channels point to them.
+              copyToServer("place_section")
               copyToServer("agent")
               copyToServer("channel")
               copyToServer("routine")
