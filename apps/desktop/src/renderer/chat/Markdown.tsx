@@ -1,10 +1,11 @@
 import { Check, Copy } from "lucide-solid"
-import { lexer, type Token, type Tokens } from "marked"
+import type { Token, Tokens } from "marked"
 import { createMemo, createSignal, For, type JSX, Match, Show, Switch } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import styles from "./chat.module.css"
+import { type Lexed, lexMarkdown } from "./lex.ts"
 
 const safeLink = (href: string) => /^(https?:|mailto:)/i.test(href)
 const safeImage = (href: string) => /^(https:|data:image\/)/i.test(href)
@@ -209,10 +210,12 @@ const Blocks = (props: { tokens: readonly Token[] }): JSX.Element => (
  * Links open in the system browser.
  */
 export const Markdown = (props: { text: string }) => {
-  const tokens = createMemo(() => lexer(props.text, { gfm: true, breaks: true }))
+  // A reply grows part by part. Each reading reuses the tokens of the blocks that are done, so
+  // their elements stay and only the end of the reply is read and drawn again.
+  const lexed = createMemo<Lexed>((previous) => lexMarkdown(props.text, previous))
   return (
     <div class={styles.markdown}>
-      <Blocks tokens={tokens()} />
+      <Blocks tokens={lexed().tokens} />
     </div>
   )
 }

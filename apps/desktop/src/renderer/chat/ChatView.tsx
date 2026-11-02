@@ -21,6 +21,7 @@ import styles from "./chat.module.css"
 import { formatDay, formatElapsed } from "./format.ts"
 import { MessageRow } from "./MessageRow.tsx"
 import { RestartNotice } from "./RestartNotice.tsx"
+import { shapeOf } from "./shape.ts"
 import { createChat } from "./state.ts"
 
 export interface ChatViewProps {
@@ -87,7 +88,7 @@ export const ChatView = (props: ChatViewProps) => {
   // Follow new content while the user is at the bottom. Scrolling up stops it.
   createEffect(
     on(
-      () => [chat.messages.length, chat.messages.at(-1)?.parts, working()] as const,
+      () => [chat.messages.length, shapeOf(chat.messages.at(-1)), working()] as const,
       () => {
         if (atBottom()) queueMicrotask(scrollToBottom)
       },
