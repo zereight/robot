@@ -382,6 +382,9 @@ export const MemoryPanel = (props: { agentId: string }) => {
   return (
     <div class={styles.field} data-testid="memory-panel" ref={root}>
       <span class={styles.label}>{t("agents.memory.title")}</span>
+      <span class={styles.hint} data-testid="memory-honest">
+        {t("honest.line")}
+      </span>
       <span class={styles.hint}>{t("agents.memory.hint")}</span>
       <Show when={own() && mode()}>
         {(current) => (

@@ -720,6 +720,8 @@ export const en = {
   "agents.history.restore": "Restore",
   "agents.history.current": "Now",
   "agents.memory.title": "Memory",
+  "honest.line":
+    "An agent gets better through its instructions, memory and knowledge, and through skills that you save. ROBot does not train the model.",
   "agents.memory.hint":
     "Short facts this agent keeps. It reads the ones that relate to your message.",
   "agents.memory.empty": "Nothing saved yet.",
@@ -789,8 +791,8 @@ export const en = {
   "teach.result.hint":
     "The recording stays on this computer. Only the list of steps goes to the model of the agent, once, to write the draft.",
   "teach.start": "Start",
-  "teach.busy.self": "This agent is learning a task now.",
-  "teach.busy.other": "{name} is learning a task now. Finish or cancel that first.",
+  "teach.busy.self": "A task is being recorded for this agent now.",
+  "teach.busy.other": "A task is being recorded for {name} now. Finish or cancel that first.",
   "teach.teaching": "Teaching",
   "teach.paused": "Paused",
   "teach.steps": "Steps: {count}",
@@ -819,7 +821,8 @@ export const en = {
   "teach.draft.try": "Try it",
   "skills.chip.show": "Show the instructions as they were sent",
   "skills.chip.remove": "Remove the skill {name}",
-  "error.teach_busy": "{detail} is learning a task now. Only one recording runs at a time.",
+  "error.teach_busy":
+    "A task is being recorded for {detail} now. Only one recording runs at a time.",
   "error.teach_result_invalid": "Write the result in 1 to 500 characters.",
   "error.teach_not_recording": "No task is being taught now.",
   "error.teach_bad_address":
@@ -1260,7 +1263,7 @@ export const en = {
   "knowledge.enabled": "Use knowledge",
   "knowledge.off": "Knowledge is off for this agent.",
   "knowledge.empty": "No articles yet.",
-  "knowledge.empty.hint": "The agent adds articles as it learns. You can add one too.",
+  "knowledge.empty.hint": "The agent adds articles as it works. You can add one too.",
   "knowledge.count": "{count} of {max} articles",
   "knowledge.full": "The limit of {max} articles is reached. The agent cannot add more.",
   "knowledge.search": "Search articles",

@@ -157,6 +157,9 @@ export const KnowledgePage = (props: { agent: Agent; onClose: () => void }) => {
           {t("knowledge.folder.open")}
         </Button>
       </div>
+      <span class={styles.muted} data-testid="knowledge-honest">
+        {t("honest.line")}
+      </span>
       <span class={styles.muted}>{t("knowledge.hint")}</span>
       <Show when={view() && !view()?.enabled}>
         <span class={styles.muted} data-testid="knowledge-off">
