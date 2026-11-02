@@ -7,19 +7,33 @@ export interface MenuItem {
   readonly label: string
   readonly onSelect: () => void
   readonly testId?: string
+  /** A line of text with no action, above a group of items. */
+  readonly heading?: boolean
+  /** Set on items of a group where one is current. The current one shows a check mark. */
+  readonly checked?: boolean
+  readonly disabled?: boolean
 }
 
 const MENU_WIDTH = 220
+/** About the height of one item. It keeps a menu that opens low inside the window. */
+const ITEM_HEIGHT = 32
 
 /** The list of a menu. It closes on Escape, on a click outside, and when an item is chosen. */
-const MenuList = (props: {
+export const PopupMenu = (props: {
   items: readonly MenuItem[]
   top: number
   left: number
   onClose: (refocus: boolean) => void
+  label?: string
+  testId?: string
 }) => {
   let list: HTMLDivElement | undefined
-  const entries = () => [...(list?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])]
+  const entries = () => [
+    ...(list?.querySelectorAll<HTMLElement>("[role^=menuitem]:not(:disabled)") ?? []),
+  ]
+  const top = () =>
+    Math.max(8, Math.min(props.top, window.innerHeight - props.items.length * ITEM_HEIGHT - 16))
+  const left = () => Math.max(8, Math.min(props.left, window.innerWidth - MENU_WIDTH - 8))
 
   onMount(() => {
     entries()[0]?.focus()
@@ -59,23 +73,37 @@ const MenuList = (props: {
         ref={list}
         class={styles.menu}
         role="menu"
-        style={{ top: `${props.top}px`, left: `${props.left}px`, width: `${MENU_WIDTH}px` }}
+        aria-label={props.label}
+        data-testid={props.testId}
+        style={{ top: `${top()}px`, left: `${left()}px`, width: `${MENU_WIDTH}px` }}
         onKeyDown={onKey}
       >
         <For each={props.items}>
           {(item) => (
-            <button
-              type="button"
-              class={styles.menuItem}
-              role="menuitem"
-              data-testid={item.testId}
-              onClick={() => {
-                props.onClose(false)
-                item.onSelect()
-              }}
+            <Show
+              when={!item.heading}
+              fallback={
+                <div class={styles.menuHeading} role="presentation" data-testid={item.testId}>
+                  {item.label}
+                </div>
+              }
             >
-              {item.label}
-            </button>
+              {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the role is menuitemradio exactly when `checked` is set */}
+              <button
+                type="button"
+                class={styles.menuItem}
+                role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+                aria-checked={item.checked}
+                disabled={item.disabled}
+                data-testid={item.testId}
+                onClick={() => {
+                  props.onClose(false)
+                  item.onSelect()
+                }}
+              >
+                {item.label}
+              </button>
+            </Show>
           )}
         </For>
       </div>
@@ -117,7 +145,7 @@ export const Menu = (props: {
       </IconButton>
       <Show when={position()}>
         {(at) => (
-          <MenuList
+          <PopupMenu
             items={props.items}
             top={at().top}
             left={at().left}

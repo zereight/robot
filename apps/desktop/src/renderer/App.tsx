@@ -93,7 +93,7 @@ export const App = () => {
           section === "agents" ? (
             <>
               <Menu
-                label={t("agentFile.menu")}
+                label={t("places.menu.agents")}
                 icon={<Ellipsis size={16} />}
                 testId="agents-menu"
                 items={[
@@ -107,6 +107,11 @@ export const App = () => {
                     onSelect: () => void startImport(),
                     testId: "agents-menu-import-file",
                   },
+                  {
+                    label: t("sections.new"),
+                    onSelect: () => ui.startNewSection("agent"),
+                    testId: "agents-menu-new-section",
+                  },
                 ]}
               />
               <IconButton
@@ -118,13 +123,27 @@ export const App = () => {
               </IconButton>
             </>
           ) : (
-            <IconButton
-              label={t("channels.new")}
-              onClick={() => setNewChannel(true)}
-              data-testid="new-channel"
-            >
-              <Plus size={16} />
-            </IconButton>
+            <>
+              <Menu
+                label={t("places.menu.channels")}
+                icon={<Ellipsis size={16} />}
+                testId="channels-menu"
+                items={[
+                  {
+                    label: t("sections.new"),
+                    onSelect: () => ui.startNewSection("channel"),
+                    testId: "channels-menu-new-section",
+                  },
+                ]}
+              />
+              <IconButton
+                label={t("channels.new")}
+                onClick={() => setNewChannel(true)}
+                data-testid="new-channel"
+              >
+                <Plus size={16} />
+              </IconButton>
+            </>
           )
         }
         pages={{

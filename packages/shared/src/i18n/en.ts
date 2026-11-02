@@ -73,6 +73,24 @@ export const en = {
   "places.unread": "{count} unread",
   "places.working": "Working",
   "places.lastMessage": "Last message: {message}",
+  "places.menu.channels": "Channels menu",
+  "places.menu.agents": "Agents menu",
+
+  "sections.new": "New section",
+  "sections.name": "Section name",
+  "sections.empty": "Drag a place here, or use its menu: Move to section.",
+  "sections.menu": "Menu of section {name}",
+  "sections.rename": "Rename",
+  "sections.moveUp": "Move up",
+  "sections.moveDown": "Move down",
+  "sections.delete": "Delete section",
+  "sections.delete.title": "Delete this section?",
+  "sections.delete.body":
+    "The places in “{name}” move out of the section. Nothing else is deleted.",
+  "sections.delete.back": "Back",
+  "sections.moveTo": "Move to section",
+  "sections.none": "No section",
+  "sections.field": "Section",
 
   "panel.show": "Show activity panel",
   "panel.hide": "Hide activity panel",
@@ -682,7 +700,6 @@ export const en = {
   "error.knowledge_undone": "This change was undone already.",
   "error.knowledge_fetch_failed": "The page could not be fetched.",
   "error.knowledge_io": "The Knowledge folder cannot be read or written.",
-  "agentFile.menu": "Agent files",
   "agentFile.menu.export": "Export agents…",
   "agentFile.menu.importFile": "Import agents…",
   "agentFile.routines": "Routines: {count}",
@@ -811,6 +828,11 @@ export const en = {
   "error.workflow_file_schedule": "The schedule at {detail} is not valid.",
   "error.workflow_file_write": "ROBot could not write the file: {detail}",
   "error.workflow_file_failed": "The import stopped. {detail}",
+  "error.section_name_invalid": "A section name has 1 to 40 characters.",
+  "error.section_name_taken": "Another section in this list has this name.",
+  "error.section_limit": "A list holds at most 20 sections.",
+  "error.section_not_found": "This section does not exist any more.",
+  "error.section_kind_mismatch": "A section holds only places of its own kind.",
 } as const
 
 export type MessageKey = keyof typeof en

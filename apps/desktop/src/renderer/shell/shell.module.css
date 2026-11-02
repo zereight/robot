@@ -198,6 +198,86 @@
   transform: rotate(-90deg);
 }
 
+.headerName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The working dot on a collapsed header sits beside the unread sum. */
+.headerDot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--c-success);
+  animation: pop-in var(--motion-medium) var(--ease-out);
+}
+
+/* A section of the user: 12 px further in, for the header and for its places. */
+.userSection {
+  padding-left: 12px;
+}
+
+.userSection > .sectionTop .sectionHeader {
+  padding-top: 8px;
+}
+
+/* The menu button of a user section shows when the pointer or the focus is on the header. */
+.sectionAction {
+  align-self: flex-end;
+  margin-bottom: 1px;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+
+.sectionTop:hover .sectionAction,
+.sectionTop:focus-within .sectionAction,
+.sectionAction[aria-expanded="true"] {
+  opacity: 1;
+}
+
+/* A header under a dragged row shows as selected. */
+.sectionTop {
+  border-radius: var(--radius-m);
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.sectionTop[data-drop="true"] {
+  background: var(--c-selected);
+}
+
+.sectionTop[data-drop="true"] .sectionHeader {
+  color: var(--c-text);
+}
+
+.row[data-dragging="true"] {
+  opacity: 0.5;
+}
+
+.nameBox {
+  width: 100%;
+  padding: 8px 4px 2px;
+}
+
+.nameInput {
+  width: 100%;
+  border: 1px solid var(--c-focus);
+  background: var(--c-main);
+  border-radius: var(--radius-m);
+  padding: 4px 8px;
+  outline: none;
+}
+
+.nameError {
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+  padding: 4px 2px 0;
+}
+
 .sectionEmpty {
   color: var(--c-text-muted);
   font-size: var(--text-xs);
