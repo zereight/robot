@@ -91,7 +91,7 @@ The row of each agent runtime shows one state, as a tag with text. Colour alone 
   meter works (see 003).
 - When a provider says a usage limit is reached, the turn fails with that reason and the time it
   resets, if known. When a provider says the sign-in or key is not valid, the turn fails with that
-  reason. The page Today (020) uses these two reasons.
+  reason. The page Today (021) uses these two reasons.
 - **Leftover programs**: when the app starts, it ends the vendor programs that it started in an
   earlier run and that still run, for example after a crash. It ends only programs that it
   started itself. It never ends a program that the user started.

@@ -27,7 +27,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 017 | [Skills: saved instructions that the user calls with a slash](017-skills.md) | Draft |
 | 018 | [Connections: outside tools for agents, with approvals](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
-| 020 | [Today: what waits for the user, what went wrong, what ran today, what runs next](020-today.md) | Draft |
+| 021 | [Today: what waits for the user, what went wrong, what ran today, what runs next](021-today.md) | Draft |
 
 ## Milestones
 
@@ -45,7 +45,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M8 | 016 | Agent knowledge: articles, sources, check |
 | M9 | 017, 018, and the changes to 007 and 009 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S29 to S32: routine limits, permission rules and action log, skills, connections |
 | M10 | The changes to 003, 004, 005, 006, 007, 009, 010, 012, 013, 015 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S35 to S37: limits of a task and the retry note, runtime states and the level "Read only", review of parts and Blocked |
-| M11 | 020, and the changes to 001, 003, 005, 006, 007, 008, 011, 012, 013, 014, 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S38 to S41: message search, silent and cut turns, the Today page, memory control |
+| M11 | 021, and the changes to 001, 003, 005, 006, 007, 008, 011, 012, 013, 014, 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S46 to S49: message search, silent and cut turns, the Today page, memory control |
 
 ## Template
 

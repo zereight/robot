@@ -12,8 +12,8 @@ new user knows where to look.
   this computer. Tiles of linked computers (012) follow in the order of pairing. A linked tile
   shows the first letter of the computer's name and the connection state (012).
 - **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
-  (see 020), workflows, tasks, usage. At the bottom: help and settings. The Today button shows a
-  badge with the number of items in "Needs you" (020). The badge hides at 0, and it reads "99+"
+  (see 021), workflows, tasks, usage. At the bottom: help and settings. The Today button shows a
+  badge with the number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
   above 99. It hides when a linked server is on the screen.
 - **Place list**: a column beside the rail. A search field at the top, then sections. A section has
   a name and its places. A place is an agent (direct chat) or a channel. The search field also
