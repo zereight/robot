@@ -12,6 +12,10 @@ export const testPlatform = () => {
   const trashed: string[] = []
   /** What the fake browsers did, in order, as "agent:action". */
   const browserLog: string[] = []
+  /** Where the fake browsers were told to show, as "agent:x,y WxH" or "agent:hidden". */
+  const browserPlaced: string[] = []
+  /** Whether the input of the user was let in or kept out, as "agent:on" or "agent:off". */
+  const browserInput: string[] = []
   const pages = new Map<string, BrowserPage>()
   const shell = {
     focused: true,
@@ -38,6 +42,14 @@ export const testPlatform = () => {
       },
       type: async (selector, text) => {
         browserLog.push(`${agentId}:type ${selector} ${text}`)
+      },
+      place: (bounds) => {
+        browserPlaced.push(
+          `${agentId}:${bounds ? `${bounds.x},${bounds.y} ${bounds.width}x${bounds.height}` : "hidden"}`,
+        )
+      },
+      allowUserInput: (allowed) => {
+        browserInput.push(`${agentId}:${allowed ? "on" : "off"}`)
       },
       close: () => {
         if (!open) return
@@ -94,12 +106,13 @@ export const testPlatform = () => {
       return page
     },
   }
-  return { platform, dataDir, trashed, browserLog, shell }
+  return { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, shell }
 }
 
 /** The full app layer on an in-memory database, with recorded events. */
 export const testRuntime = () => {
-  const { platform, dataDir, trashed, browserLog, shell } = testPlatform()
+  const { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, shell } =
+    testPlatform()
   const events: { event: string; payload: unknown }[] = []
   const runtime = ManagedRuntime.make(
     appLayer({
@@ -110,7 +123,7 @@ export const testRuntime = () => {
       secrets: Secrets.memory,
     }),
   )
-  return { runtime, dataDir, trashed, events, browserLog, shell }
+  return { runtime, dataDir, trashed, events, browserLog, browserPlaced, browserInput, shell }
 }
 
 export type TestRuntime = ReturnType<typeof testRuntime>["runtime"]

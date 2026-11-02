@@ -1,17 +1,38 @@
 import type { IslandShape } from "@robot/shared"
 import { Context } from "effect"
 
-/** One browser window of one agent. Cookies and logins stay with the agent, on this computer. */
+/** A place in the app window, in px from the top left corner of the window content. */
+export interface PageBounds {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+/**
+ * The browser page of one agent. It shows inside the app window, in the place that the chat
+ * screen gives it. Cookies and logins stay with the agent, on this computer.
+ */
 export interface BrowserPage {
   isOpen(): boolean
-  /** Opens the window if needed and loads the address. */
+  /** Opens the page if needed and loads the address. */
   open(url: string): Promise<{ url: string; title: string }>
   read(): Promise<{ url: string; title: string; text: string }>
   click(selector: string): Promise<void>
   type(selector: string, text: string): Promise<void>
-  /** Closes the window at once. */
+  /**
+   * Shows the page in a place of the app window, or hides it when the place is `undefined`.
+   * A hidden page keeps running, so the agent can go on with it.
+   */
+  place(bounds: PageBounds | undefined): void
+  /**
+   * Lets the input of the user (clicks, keys) reach the page, or keeps it out. The steps of the
+   * agent are not input of the user and do not depend on this.
+   */
+  allowUserInput(allowed: boolean): void
+  /** Closes the page at once. */
   close(): void
-  /** Calls back when the window is closed, by the agent, by Stop or by the user. */
+  /** Calls back when the page is closed, by the agent, by Stop or by the user. */
   onClosed(listener: () => void): void
 }
 
@@ -55,7 +76,7 @@ export interface PlatformService {
   setIslandShape(shape: IslandShape): void
   /** The island window takes the size of its content, in px. It stays at the top centre. */
   fitIsland(size: { width: number; height: number }): void
-  /** The browser window of an agent. The same agent always gets the same page object. */
+  /** The browser page of an agent. The same agent always gets the same page object. */
   browser(agentId: string): BrowserPage
 }
 

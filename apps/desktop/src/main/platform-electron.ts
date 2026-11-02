@@ -10,62 +10,137 @@ import {
   nativeTheme,
   screen,
   shell,
+  WebContentsView,
 } from "electron"
-import type { BrowserPage, PlatformService } from "./services/Platform.ts"
+import type { BrowserPage, PageBounds, PlatformService } from "./services/Platform.ts"
 
 /** True when an end-to-end test runs the app. The app then leaves system settings alone. */
 export const isTestRun = Boolean(process.env.ROBOT_USER_DATA)
 
 const PAGE_TEXT_MAX = 20_000
 
-/** One window per agent. Its session is kept on disk, so logins stay between runs. */
+const browsers = new Map<string, BrowserPage>()
+
+let mainWindow: BrowserWindow | undefined
+/**
+ * The window that holds the app. Notifications and the island bring it to the front, and the
+ * pages of the agent browsers show inside it.
+ */
+export const setMainWindow = (win: BrowserWindow) => {
+  mainWindow = win
+  // A page has no place to show once the window is gone. A new load of the app screen starts with
+  // no place for any page: the screen gives the places again when it draws.
+  win.once("closed", () => {
+    for (const page of browsers.values()) page.close()
+  })
+  win.webContents.on("did-start-loading", () => {
+    for (const page of browsers.values()) page.place(undefined)
+  })
+}
+
+/**
+ * One page per agent, inside the main window. Its session is kept on disk, so logins stay between
+ * runs. The screen of the chat says where the page shows. Until it does, the page is hidden.
+ */
 const electronBrowser = (agentId: string): BrowserPage => {
-  let win: BrowserWindow | undefined
+  let view: WebContentsView | undefined
+  let host: BrowserWindow | undefined
+  let bounds: PageBounds | undefined
+  let userInput = false
   const listeners: (() => void)[] = []
-  const live = () => (win && !win.isDestroyed() ? win : undefined)
+  const live = () => (view && !view.webContents.isDestroyed() ? view : undefined)
   const need = () => {
-    const w = live()
-    if (!w) throw new Error("The browser is not open. Open a page first.")
-    return w
+    const v = live()
+    if (!v) throw new Error("The browser is not open. Open a page first.")
+    return v.webContents
   }
-  const run = async <T>(code: string): Promise<T> =>
-    need().webContents.executeJavaScript(code, true)
+  const run = async <T>(code: string): Promise<T> => need().executeJavaScript(code, true)
+  const apply = () => {
+    const v = live()
+    if (!v) return
+    if (!bounds || !host || host.isDestroyed()) {
+      v.setVisible(false)
+      return
+    }
+    // The screen measures in CSS px. The window measures in px after the page zoom.
+    const zoom = host.webContents.getZoomFactor()
+    v.setBounds({
+      x: Math.round(bounds.x * zoom),
+      y: Math.round(bounds.y * zoom),
+      width: Math.max(0, Math.round(bounds.width * zoom)),
+      height: Math.max(0, Math.round(bounds.height * zoom)),
+    })
+    v.setVisible(true)
+  }
+  /** Removes the page from the window and tells the listeners. Does nothing when it is gone. */
+  const release = () => {
+    const v = view
+    if (!v) return
+    view = undefined
+    bounds = undefined
+    userInput = false
+    const h = host
+    host = undefined
+    if (h && !h.isDestroyed()) h.contentView.removeChildView(v)
+    if (!v.webContents.isDestroyed()) v.webContents.close()
+    for (const l of listeners) l()
+  }
   return {
     isOpen: () => live() !== undefined,
     open: async (url) => {
-      let w = live()
-      if (!w) {
-        w = new BrowserWindow({
-          width: 1100,
-          height: 800,
-          title: "ROBot browser",
+      let v = live()
+      if (!v) {
+        const h = mainWindow
+        if (!h || h.isDestroyed())
+          throw new Error("The app window is not open, so the browser has no place to show.")
+        const created = new WebContentsView({
           webPreferences: {
             partition: `persist:agent-${agentId}`,
             sandbox: true,
             contextIsolation: true,
             nodeIntegration: false,
+            // The agent goes on with the page while the user looks at another chat.
+            backgroundThrottling: false,
           },
         })
-        const created = w
-        created.webContents.setWindowOpenHandler(({ url: next }) => {
-          void created.loadURL(next)
+        const wc = created.webContents
+        wc.setWindowOpenHandler(({ url: next }) => {
+          if (/^https?:\/\//i.test(next)) wc.loadURL(next).catch(() => {})
           return { action: "deny" }
         })
-        created.on("closed", () => {
-          win = undefined
-          for (const l of listeners) l()
+        // The user's input reaches the page only while the user holds the controls. Keys with
+        // Control, Command or Alt stay, so shortcuts of the app work. Wheel and move stay, so
+        // the user can scroll and look.
+        wc.on("before-input-event", (event, input) => {
+          if (!userInput && !input.control && !input.meta && !input.alt) event.preventDefault()
         })
-        win = created
+        wc.on("before-mouse-event", (event, mouse) => {
+          if (
+            !userInput &&
+            (mouse.type === "mouseDown" || mouse.type === "mouseUp" || mouse.type === "contextMenu")
+          )
+            event.preventDefault()
+        })
+        // The page can close itself.
+        wc.once("destroyed", () => {
+          if (view === created) release()
+        })
+        created.setVisible(false)
+        h.contentView.addChildView(created)
+        view = created
+        host = h
+        v = created
+        apply()
       }
-      await w.loadURL(url)
-      return { url: w.webContents.getURL(), title: w.webContents.getTitle() }
+      await v.webContents.loadURL(url)
+      return { url: v.webContents.getURL(), title: v.webContents.getTitle() }
     },
     read: async () => {
-      const w = need()
+      const wc = need()
       const text = await run<string>("document.body ? document.body.innerText : ''")
       return {
-        url: w.webContents.getURL(),
-        title: w.webContents.getTitle(),
+        url: wc.getURL(),
+        title: wc.getTitle(),
         text: text.slice(0, PAGE_TEXT_MAX),
       }
     },
@@ -81,19 +156,22 @@ const electronBrowser = (agentId: string): BrowserPage => {
       )
       if (!found) throw new Error(`No element matches ${selector}`)
     },
-    close: () => live()?.destroy(),
+    place: (next) => {
+      bounds = next
+      apply()
+    },
+    allowUserInput: (allowed) => {
+      userInput = allowed
+      // The keys go where the control is: into the page, or back to the chat.
+      const v = live()
+      if (allowed) v?.webContents.focus()
+      else if (host && !host.isDestroyed()) host.webContents.focus()
+    },
+    close: release,
     onClosed: (l) => {
       listeners.push(l)
     },
   }
-}
-
-const browsers = new Map<string, BrowserPage>()
-
-let mainWindow: BrowserWindow | undefined
-/** The window that holds the app. Notifications and the island bring it to the front. */
-export const setMainWindow = (win: BrowserWindow) => {
-  mainWindow = win
 }
 
 /**

@@ -452,6 +452,25 @@ export const handlers: Handlers = {
       Effect.flatMap(({ agentId }) => Tools.use((t) => Effect.sync(() => t.closeBrowser(agentId)))),
       done,
     ),
+  "browser.place": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        bounds: Schema.NullOr(
+          Schema.Struct({
+            x: Schema.Number,
+            y: Schema.Number,
+            width: Schema.Number,
+            height: Schema.Number,
+          }),
+        ),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, bounds }) =>
+        Tools.use((t) => Effect.sync(() => t.placeBrowser(agentId, bounds ?? undefined))),
+      ),
+      done,
+    ),
   "routines.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Routines.use((r) => r.list(serverId))),
