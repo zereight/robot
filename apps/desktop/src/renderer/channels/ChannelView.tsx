@@ -5,11 +5,12 @@ import {
   type ChatMessage,
   type MessageKey,
   type PartChip,
+  type PlaceRef,
   sameDay,
   startsGroup,
 } from "@robot/shared"
 import { Settings2, Square } from "lucide-solid"
-import { createEffect, createSignal, For, on, onMount, Show } from "solid-js"
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import chat from "../chat/chat.module.css"
 import { formatDay } from "../chat/format.ts"
@@ -18,7 +19,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { focusMessage, setFocusMessage } from "../state/focus.ts"
+import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -153,10 +154,12 @@ export const ChannelView = (props: { channel: Channel }) => {
   )
   window.addEventListener("focus", markRead)
 
-  const jump = (id: string) => {
+  /** Scrolls to a message and flashes it. False when the message is not in the list (yet). */
+  const jump = (id: string, fromSearch = false): boolean => {
     const row = scroller?.querySelector<HTMLElement>(`[data-message-id="${id}"]`)
-    if (!row || !scroller) return
-    setBackTo(scroller.scrollTop)
+    if (!row || !scroller) return false
+    // A hit of message search from another place goes back to that place, not to a scroll spot.
+    if (!fromSearch) setBackTo(scroller.scrollTop)
     row.scrollIntoView({
       block: "center",
       behavior: document.documentElement.dataset.reduceMotion === "true" ? "auto" : "smooth",
@@ -164,17 +167,32 @@ export const ChannelView = (props: { channel: Channel }) => {
     setFlashId(undefined)
     queueMicrotask(() => setFlashId(id))
     setTimeout(() => setFlashId((cur) => (cur === id ? undefined : cur)), 1300)
+    return true
   }
 
-  // A notification asked for a message: scroll to it when it is in the list.
-  createEffect(() => {
-    const id = focusMessage()
-    if (!id) return
-    setTimeout(() => {
-      jump(id)
-      setFocusMessage(undefined)
-    }, 120)
+  // A notification or a hit of message search asked for a message: scroll to it when it is in the list.
+  const place: PlaceRef = { kind: "channel", id: props.channel.id }
+  useFocusMessage(place, jump)
+
+  /** The place that a hit of message search came from, while "Back" can return to it. */
+  const origin = () => originFor(place)
+  // The way back from a hit ends when the user leaves this place.
+  onCleanup(() => {
+    if (origin()) setSearchOrigin(undefined)
   })
+  const goBack = () => {
+    const top = backTo()
+    if (top !== undefined) {
+      if (scroller) scroller.scrollTop = top
+      setBackTo(undefined)
+      return
+    }
+    const from = origin()
+    if (from) {
+      setSearchOrigin(undefined)
+      ui.selectPlace(from.from, from.serverId)
+    }
+  }
 
   const act = async (run: () => Promise<unknown>) => {
     setError(undefined)
@@ -304,18 +322,9 @@ export const ChannelView = (props: { channel: Channel }) => {
           </For>
         </div>
       </div>
-      <Show when={backTo() !== undefined}>
+      <Show when={backTo() !== undefined || origin() !== undefined}>
         <div class={chat.floating} style={{ bottom: "auto", top: "12px" }}>
-          <button
-            type="button"
-            class={chat.floatButton}
-            onClick={() => {
-              const top = backTo()
-              if (scroller && top !== undefined) scroller.scrollTop = top
-              setBackTo(undefined)
-            }}
-            data-testid="jump-back"
-          >
+          <button type="button" class={chat.floatButton} onClick={goBack} data-testid="jump-back">
             {t("channels.back")}
           </button>
         </div>

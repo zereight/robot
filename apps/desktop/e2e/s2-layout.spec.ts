@@ -22,7 +22,7 @@ test("layout: rail, place list, panel, width and sections survive a restart", as
   await page.keyboard.press(`${modKey}+k`)
   await expect(page.getByTestId("place-search")).toBeFocused()
   await page.keyboard.type("zzz")
-  await expect(page.getByTestId("place-list")).toContainText("No places match.")
+  await expect(page.getByTestId("place-list")).toContainText("Nothing found.")
   await page.keyboard.press("Escape")
   await expect(page.getByTestId("place-search")).toHaveValue("")
 

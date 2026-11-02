@@ -37,6 +37,7 @@ import type {
   RuntimeTarget,
 } from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
+import type { SearchPage } from "./search.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Skill, SkillInput } from "./skills.ts"
@@ -396,6 +397,15 @@ export interface RpcMethods {
   }
   /** The Today page of this computer (spec 021). It reads local data only and sends nothing out. */
   "today.get": { input: undefined; output: TodaySnapshot }
+  /**
+   * Message search (spec 001): one page of the messages of a server that hold every word of the
+   * text, newest first. A linked server answers it; while the link is offline the answer comes
+   * from the saved messages and says so.
+   */
+  "messages.search": {
+    input: { serverId: string; query: string; offset?: number }
+    output: SearchPage
+  }
   "chat.history": { input: { agentId: string }; output: ChatHistory }
   "chat.send": { input: ChatSend; output: { queued: boolean } }
   "chat.stop": { input: { agentId: string }; output: undefined }
