@@ -39,7 +39,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M3 | 007, 008 | Workspace tools, approvals, browser, memory |
 | M4 | 009, 010 | Routines and workflows |
 | M5a | 012, 001, 013, 014, 015 | Link between computers, on one network or through a VPN |
-| M5b | 011, 012 | Phone app that pairs with one or more computers |
+| M5b | 011, 012 | Phone app that pairs with one or more computers (version Phone 1 of 011) |
 | M5c | 019, 012 | Sync between two computers (after M5a) |
 | M6 | 015 | Notifications and status island |
 | M7 | Changes listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S18 to S25 |
