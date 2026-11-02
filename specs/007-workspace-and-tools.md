@@ -14,7 +14,7 @@ Each agent works in its own folder with real tools, and the user stays in contro
   the computer (see "Computer use"), and use the tools of the connections that the user added
   (see 018).
 - **Permission level** per agent: "Ask for everything", "Ask for risky steps" (default), or
-  "Full access".
+  "Full access". A linked device (012) can make the level stricter, never looser.
 - **Rule**: a saved decision that the user made. A rule can allow or deny a kind of step. See
   "Permission rules".
 - **Action log**: the list of the tool steps that the rules and the permission levels decided.

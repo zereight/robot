@@ -60,6 +60,8 @@ export interface PlatformService {
   /** A workflow file to open, or undefined when cancelled. */
   pickWorkflowFile(): Promise<string | undefined>
   openPath(path: string): Promise<void>
+  /** Opens a file with the program of the system for it. */
+  openFile(path: string): Promise<void>
   setStartAtLogin(enabled: boolean): void
   setThemeSource(theme: "system" | "dark" | "light"): void
   copyText(text: string): void

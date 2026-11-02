@@ -11,6 +11,15 @@ The user knows when an agent needs them or finishes, without watching the window
 - Each kind can be turned off. A server or a channel can be muted for 1 hour, 8 hours, 1 day, or
   until turned back on.
 - Clicking a notification opens the place and scrolls to the message.
+- A computer that has a linked server open (012) shows the same kinds for that server while the
+  link is online. The notification names the server. Mutes work per server, so the user can mute
+  one computer and not the other. A request that a client already answered does not notify again
+  on other devices.
+- When two computers sync (019), an approval or a question of a task on the other computer also
+  shows here, with the name of that computer. Data that arrives by sync makes no notice. Once
+  one computer has an answer, the other drops the notice.
+- The mute row in Settings → Notifications follows the server on screen: "This server" for this
+  computer, or "Server <name>" for a linked one.
 
 ## Status island (macOS, optional)
 
@@ -20,6 +29,10 @@ The user knows when an agent needs them or finishes, without watching the window
 - Attention: an approval or question expands the island with the agent face, a short summary
   and buttons to answer or open the app (see "Attention card").
 - The user can turn it off, or show it only for attention.
+- The island shows work and requests of this computer, and of tasks of the computer that this one
+  syncs with (019). It never shows those of a linked server. An approval of a task that runs on
+  the other computer has no "Always allow" button on the island: only the computer that runs the
+  task can save a rule (007).
 
 ### Detail card
 

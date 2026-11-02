@@ -1,7 +1,8 @@
 import type { ChatMessage, QueuedMessage } from "@robot/shared"
-import { onCleanup } from "solid-js"
+import { createEffect, on, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
-import { call } from "../lib/rpc.ts"
+import { call, RpcFailure } from "../lib/rpc.ts"
+import { linkEpoch } from "../state/link.ts"
 
 export interface ChatState {
   loaded: boolean
@@ -39,9 +40,23 @@ export const createChat = (agentId: string) => {
     offQueue()
   })
 
-  void call("chat.history", { agentId }).then((history) => {
-    setState({ loaded: true, messages: [...history.messages], queue: [...history.queue] })
-  })
+  const load = () =>
+    call("chat.history", { agentId })
+      .then((history) => {
+        setState({ loaded: true, messages: [...history.messages], queue: [...history.queue] })
+      })
+      // A linked server that is offline and has nothing saved: the view stays empty. One that
+      // removed this device takes its messages from the view too (spec 012).
+      .catch((error) =>
+        setState(
+          error instanceof RpcFailure && error.error.code === "not_allowed"
+            ? { loaded: true, messages: [], queue: [] }
+            : { loaded: true },
+        ),
+      )
+  void load()
+  // A linked server that came back: read what happened while it was away.
+  createEffect(on(linkEpoch.value, () => void load(), { defer: true }))
 
   return state
 }

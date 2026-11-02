@@ -3,6 +3,7 @@ import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -14,8 +15,9 @@ import { Face } from "./Face.tsx"
 export const ArchiveSection = () => {
   const { t } = useApp()
   const ui = useUi()
+  const devices = useDevices()
   const [archived, { refetch }] = createResource(
-    () => ui.server()?.id,
+    () => ui.localServer()?.id,
     (serverId) => call("agents.list", { serverId, archived: true }),
     { initialValue: [] as readonly Agent[] },
   )
@@ -71,6 +73,11 @@ export const ArchiveSection = () => {
           >
             <h2 class={styles.title}>{t("agents.delete.title", { name: agent.name })}</h2>
             <p>{t("agents.delete.body")}</p>
+            <Show when={devices.sync.pairName()}>
+              {(name) => (
+                <p data-testid="delete-sync-line">{t("agents.delete.sync", { name: name() })}</p>
+              )}
+            </Show>
             <Show when={error()}>
               {(err) => (
                 <div class={styles.error} role="alert">

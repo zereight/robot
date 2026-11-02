@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   askStep,
+  attentionAnswers,
   attentionIndex,
   attentionText,
   firstLine,
@@ -50,6 +51,7 @@ const waiting = (callId: string, agentId = "a"): IslandAttention => ({
   summary: "rm x",
   place: null,
   step: "command",
+  always: true,
   target: { kind: "agent", id: agentId },
 })
 const result: IslandResult = {
@@ -158,6 +160,23 @@ describe("text of the cards", () => {
     ).toBe(true)
     for (const k of ["mention", "approval", "question", "workflow_notice"] as const)
       expect(isResultKind(k)).toBe(false)
+  })
+})
+
+describe("answers of the attention card", () => {
+  test("an approval of this computer offers Allow, Always allow and Deny", () => {
+    expect(attentionAnswers({ kind: "approval", always: true })).toEqual([
+      "allow",
+      "always",
+      "deny",
+    ])
+  })
+  test("an approval with no choice to always allow, or of the sync peer, offers Allow and Deny", () => {
+    expect(attentionAnswers({ kind: "approval", always: false })).toEqual(["allow", "deny"])
+  })
+  test("a question offers no button to answer", () => {
+    expect(attentionAnswers({ kind: "question", always: false })).toEqual([])
+    expect(attentionAnswers({ kind: "question", always: true })).toEqual([])
   })
 })
 

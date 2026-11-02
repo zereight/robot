@@ -9,6 +9,9 @@ import {
 } from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { type FakeRuntimes, makeFakeRuntimes, sha256, tarGzOf } from "../../../e2e/fake-runtimes.ts"
+import { runRequest } from "../rpc.ts"
+import { type Ctx, KINDS } from "../sync/kinds.ts"
+import { parseOp } from "../sync/wire.ts"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
@@ -29,9 +32,11 @@ let fake: FakeRuntimes
 const saved: Record<string, string | undefined> = {}
 beforeAll(() => {
   fake = makeFakeRuntimes()
-  for (const key of ["ROBOT_CLAUDE_BIN", "ROBOT_CODEX_BIN"]) saved[key] = process.env[key]
+  for (const key of ["ROBOT_CLAUDE_BIN", "ROBOT_CODEX_BIN", "ROBOT_MUSE_BIN"])
+    saved[key] = process.env[key]
   process.env.ROBOT_CLAUDE_BIN = fake.claude
   process.env.ROBOT_CODEX_BIN = fake.codex
+  process.env.ROBOT_MUSE_BIN = fake.muse
 })
 afterAll(() => {
   for (const [key, value] of Object.entries(saved)) {
@@ -422,11 +427,12 @@ describe("separate sign-ins", () => {
 })
 
 const chatSetup = async (
-  kind: "claude_code" | "codex",
+  kind: "claude_code" | "codex" | "muse",
   permission: PermissionLevel = "ask_risky",
 ) => {
   fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
   fake.setCodex({ loggedIn: true, method: "chatgpt" })
+  fake.setMuse({ loggedIn: true })
   const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(Providers.use((p) => p.connect({ kind, name: "Sub" })))
@@ -440,7 +446,7 @@ const chatSetup = async (
         instructions: "Be brief.",
         model: {
           accountId: account.id,
-          model: kind === "codex" ? "default" : "sonnet",
+          model: kind === "claude_code" ? "sonnet" : "default",
           effort: null,
         },
       }),
@@ -464,7 +470,7 @@ const chatSetup = async (
   }
   const respond = (answer: string) =>
     run(Tools.use((x) => x.respond(agent.id, "toolu_fake1", answer)))
-  return { run, agent, local, history, reply, send, settled, card, respond, account, t }
+  return { run, t, agent, local, history, reply, send, settled, card, respond, account }
 }
 
 describe("download", () => {
@@ -724,7 +730,11 @@ describe("approvals for a subscription", () => {
     const s = await chatSetup("claude_code", "ask_all")
     await s.send("RUN: touch a.txt")
     await until(async () => (await s.card())?.state === "waiting")
-    expect((await s.card())?.ask).toEqual({ kind: "approval", summary: "touch a.txt" })
+    expect((await s.card())?.ask).toEqual({
+      kind: "approval",
+      summary: "touch a.txt",
+      askedAt: expect.any(Number),
+    })
     await s.respond("allow")
     await s.settled()
     const r = await s.reply()
@@ -789,6 +799,59 @@ describe("approvals for a subscription", () => {
   })
 })
 
+describe("approvals of Muse Code answered from other devices", () => {
+  test("a linked device and the sync peer answer the card; their Always allow is one Allow and saves no rule", async () => {
+    const s = await chatSetup("muse")
+    const done = () =>
+      s
+        .history()
+        .then((h) => h.messages.filter((m) => m.author === "agent" && m.status === "done").length)
+    /** The answer of a linked device: the sync peer is a linked device too (spec 012, 019). */
+    const answer = (name: string, value: string) =>
+      runRequest(
+        s.t.runtime,
+        "tools.respond",
+        { agentId: s.agent.id, callId: "tool-1", answer: value },
+        { id: `device-${name}`, name },
+      )
+
+    await s.send("do it [ask]")
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await s.card())?.ask).toMatchObject({
+      kind: "approval",
+      summary: "rm /etc/robot-test",
+    })
+    // The island and the system notice show the same request.
+    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().waiting)))
+    expect(waiting).toHaveLength(1)
+    expect(waiting[0]).toMatchObject({ callId: "tool-1", kind: "approval", always: true })
+
+    // A linked device says "Always allow": the step runs once, and the card names the device.
+    expect((await answer("Phone", "always")).ok).toBe(true)
+    await s.settled()
+    expect(messageText((await s.reply()) as ChatMessage)).toBe("Ran it.")
+    expect((await s.card())?.decision).toEqual({ answer: "allow", by: "Phone" })
+
+    // No rule was saved, so the same step asks again. The sync peer denies it.
+    await s.send("do it again [ask]")
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await answer("MacBook 2", "deny")).ok).toBe(true)
+    await s.settled()
+    expect(messageText((await s.reply()) as ChatMessage)).toBe("Not allowed.")
+    expect((await s.card())?.decision).toEqual({ answer: "deny", by: "MacBook 2" })
+
+    // The window of this computer can make the rule, and then the step asks nothing.
+    await s.send("third [ask]")
+    await until(async () => (await s.card())?.state === "waiting")
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "tool-1", "always")))
+    await until(async () => (await done()) === 3)
+    await s.send("fourth [ask]")
+    await until(async () => (await done()) === 4)
+    expect(messageText((await s.reply()) as ChatMessage)).toBe("Ran it.")
+    expect((await s.card())?.decision).toBeUndefined()
+  })
+})
+
 describe("the browser for a subscription", () => {
   const toolParts = async (s: Awaited<ReturnType<typeof chatSetup>>) =>
     ((await s.reply())?.parts ?? []).filter((p) => p.kind === "tool")
@@ -844,6 +907,103 @@ describe("the browser for a subscription", () => {
     await s.settled()
     expect((await s.reply())?.status).toBe("stopped")
     expect(s.t.browserLog).toEqual([])
+  })
+})
+
+describe("the browser step of a subscription agent, seen and answered from other devices", () => {
+  const open = 'BROWSER:browser_open {"url":"https://example.com/a"}'
+  const opened = (s: Awaited<ReturnType<typeof chatSetup>>) =>
+    s.t.browserLog.filter((x) => x === `${s.agent.id}:open https://example.com/a`).length
+
+  /** What the other computer does with a message: every field is read again and checked strictly. */
+  const syncAccepts = async (s: Awaited<ReturnType<typeof chatSetup>>) => {
+    const db = await s.run(Database.use((d) => Effect.succeed(d)))
+    const id = ((await s.reply()) as ChatMessage).id
+    const read = KINDS.message.read({ db, self: "dev-a" } as Ctx, id)
+    if (!read) return false
+    const stamp = [Date.now(), 0, "dev-a"]
+    const fields = JSON.parse(JSON.stringify(read.fields)) as Record<string, unknown>
+    return (
+      parseOp(
+        {
+          k: "message",
+          i: id,
+          o: "dev-a",
+          f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+        },
+        Date.now(),
+      ) !== undefined
+    )
+  }
+
+  test("a linked device and the sync peer answer the card; their Always allow is one Allow and saves no rule; the card passes the sync check", async () => {
+    const s = await chatSetup("claude_code", "ask_all")
+    /** The answer of a linked device: the sync peer is a linked device too (spec 012, 019). */
+    const answer = (name: string, value: string) =>
+      runRequest(
+        s.t.runtime,
+        "tools.respond",
+        { agentId: s.agent.id, callId: "app-1", answer: value },
+        { id: `device-${name}`, name },
+      )
+    const done = () =>
+      s
+        .history()
+        .then((h) => h.messages.filter((m) => m.author === "agent" && m.status === "done").length)
+
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await s.card())?.ask).toMatchObject({
+      kind: "approval",
+      summary: "https://example.com/a",
+    })
+    // The card that waits, with its ask, is a card that the other computer takes.
+    expect(await syncAccepts(s)).toBe(true)
+    // The island and the system notice show the request, with the choice to always allow.
+    const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().waiting)))
+    expect(waiting).toHaveLength(1)
+    expect(waiting[0]).toMatchObject({
+      callId: "app-1",
+      kind: "approval",
+      step: "browser",
+      always: true,
+    })
+
+    // A linked device says "Always allow": the page opens once, and the card names the device.
+    expect((await answer("Phone", "always")).ok).toBe(true)
+    await s.settled()
+    expect(opened(s)).toBe(1)
+    expect((await s.card())?.decision).toEqual({ answer: "allow", by: "Phone" })
+    expect(await syncAccepts(s)).toBe(true)
+
+    // No rule was saved, so the same step asks again. The sync peer denies it.
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await answer("MacBook 2", "deny")).ok).toBe(true)
+    await s.settled()
+    expect(opened(s)).toBe(1)
+    expect(messageText((await s.reply()) as ChatMessage)).toContain("The user denied this step.")
+    expect((await s.card())?.decision).toEqual({ answer: "deny", by: "MacBook 2" })
+    expect(await syncAccepts(s)).toBe(true)
+
+    // The sync peer says "Always allow" too: one Allow, and the step asks again afterwards.
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await answer("MacBook 2", "always")).ok).toBe(true)
+    await s.settled()
+    expect(opened(s)).toBe(2)
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+
+    // The window of this computer can make the rule, and then the step asks nothing.
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "always")))
+    await until(async () => (await done()) === 4)
+    expect(opened(s)).toBe(3)
+    await s.send(open)
+    await until(async () => (await done()) === 5)
+    expect(opened(s)).toBe(4)
+    expect((await s.card())?.decision).toBeUndefined()
+    expect(await syncAccepts(s)).toBe(true)
   })
 })
 

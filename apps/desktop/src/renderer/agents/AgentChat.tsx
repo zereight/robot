@@ -19,6 +19,7 @@ import { Face } from "./Face.tsx"
 
 const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
   const { t } = useApp()
+  const ui = useUi()
   const providers = useProviders()
   const [open, setOpen] = createSignal(false)
   // A runtime model shows with its version. An API model shows its id, which has the version.
@@ -30,12 +31,14 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
   }
   return (
     <>
+      {/* A client without the switch opens the profile too, as read-only text (spec 012). */}
       <button
         type="button"
         class={styles.headerName}
         aria-label={t("agents.openProfile", { name: props.agent.name })}
         title={props.agent.name}
         onClick={() => setOpen(true)}
+        data-readonly={ui.canChange() ? undefined : "true"}
         data-testid="chat-header-agent"
       >
         <Face
@@ -46,15 +49,24 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         />
         <span>{props.agent.name}</span>
       </button>
-      <button
-        type="button"
-        class={styles.headerModel}
-        aria-label={t("model.choose")}
-        onClick={() => props.setPicking(true)}
-        data-testid="chat-header-model"
+      <Show
+        when={ui.canChange()}
+        fallback={
+          <span class={styles.headerModel} data-testid="chat-header-model" data-readonly="true">
+            {modelName()}
+          </span>
+        }
       >
-        {modelName()}
-      </button>
+        <button
+          type="button"
+          class={styles.headerModel}
+          aria-label={t("model.choose")}
+          onClick={() => props.setPicking(true)}
+          data-testid="chat-header-model"
+        >
+          {modelName()}
+        </button>
+      </Show>
       <Presence when={open()}>
         {() => <AgentProfileDialog agent={props.agent} onClose={() => setOpen(false)} />}
       </Presence>
@@ -128,7 +140,10 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
       <Show when={agent()}>
         {(a) => (
           <div class={styles.split}>
-            <BrowserPane agentId={a().id} />
+            {/* A linked server has no browser view in a client: the client has no control of it. */}
+            <Show when={!ui.linked()}>
+              <BrowserPane agentId={a().id} />
+            </Show>
             <div class={styles.chatColumn}>
               <ChatView
                 agent={a()}

@@ -2,6 +2,7 @@ import {
   type Agent,
   type ChatMessage,
   catalogues,
+  type FilePart,
   type KnowledgeNote,
   type MessageKey,
   type MessagePart,
@@ -9,12 +10,14 @@ import {
   messageText,
   type ToolAsk,
 } from "@robot/shared"
-import { BookOpen, Copy, Pencil, Reply, User, Wrench } from "lucide-solid"
+import { BookOpen, Copy, Download, ExternalLink, Pencil, Reply, User, Wrench } from "lucide-solid"
 import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { useDevices } from "../state/devices.tsx"
+import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
 import { fileSize, formatTime } from "./format.ts"
@@ -46,11 +49,30 @@ const Thinking = (props: { text: string; live: boolean }) => {
   )
 }
 
-const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "tool" }> }) => {
-  const { t } = useApp()
+const ToolCard = (props: {
+  agent: Agent
+  part: Extract<MessagePart, { kind: "tool" }>
+  /** The name of the other computer when the task runs there (spec 019). */
+  from: string | undefined
+}) => {
+  const app = useApp()
+  const { t } = app
+  const ui = useUi()
+  const devices = useDevices()
   const [answer, setAnswer] = createSignal("")
-  const respond = (value: string) =>
-    call("tools.respond", { agentId: props.agent.id, callId: props.part.id, answer: value })
+  const [failure, setFailure] = createSignal<ErrorText>()
+  const respond = async (value: string) => {
+    setFailure(undefined)
+    try {
+      await call("tools.respond", { agentId: props.agent.id, callId: props.part.id, answer: value })
+    } catch (e) {
+      setFailure(describeError(e))
+    }
+  }
+  /** The card of a task on the other computer cannot be answered while that computer is away. */
+  const away = () => props.from !== undefined && !devices.sync.pairOnline()
+  /** A computer cannot change what an agent may always do on another computer (spec 019). */
+  const mayAlways = () => !ui.linked() && props.from === undefined
   return (
     <details class={styles.tool} data-testid="tool-card" open={props.part.state === "waiting"}>
       <summary>
@@ -59,11 +81,50 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
         <span class={styles.toolState} data-state={props.part.state}>
           {t(`chat.tool.${props.part.state}` as MessageKey)}
         </span>
+        <Show when={props.from}>
+          {(from) => (
+            <span class={styles.fromDevice} data-testid="tool-origin">
+              {t("link.fromDevice", { name: from() })}
+            </span>
+          )}
+        </Show>
+        <Show when={props.part.decision}>
+          {(decision) => (
+            <span
+              class={styles.fromDevice}
+              data-testid="tool-decision"
+              data-answer={decision().answer}
+            >
+              {decision().answer === "allow"
+                ? t("chat.decision.allowed", { name: decision().by })
+                : t("chat.decision.denied", { name: decision().by })}
+            </span>
+          )}
+        </Show>
       </summary>
       <div class={styles.toolBody}>
         <Show when={props.part.ask}>
           {(ask) => (
             <div class={styles.ask} data-testid="ask-card">
+              <Show when={ask().askedAt}>
+                {(at) => (
+                  <div class={styles.time} data-testid="ask-time">
+                    {t("chat.tool.askedAt", { time: formatTime(app.locale(), at()) })}
+                  </div>
+                )}
+              </Show>
+              <Show when={away()}>
+                <div class={styles.fromDevice} role="status" data-testid="ask-origin-offline">
+                  {t("sync.originOffline", { name: props.from ?? "" })}
+                </div>
+              </Show>
+              <Show when={failure()}>
+                {(err) => (
+                  <div class={styles.fromDevice} role="alert" data-testid="ask-error">
+                    {t(err().key, err().params)}
+                  </div>
+                )}
+              </Show>
               <Switch>
                 <Match when={ask().kind === "article" ? ask() : undefined}>
                   {(article) => {
@@ -86,12 +147,17 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                         <div class={styles.askActions}>
                           <Button
                             variant="primary"
+                            disabled={away()}
                             onClick={() => respond("allow")}
                             data-testid="ask-allow"
                           >
                             {t("chat.tool.allow")}
                           </Button>
-                          <Button onClick={() => respond("deny")} data-testid="ask-deny">
+                          <Button
+                            disabled={away()}
+                            onClick={() => respond("deny")}
+                            data-testid="ask-deny"
+                          >
                             {t("chat.tool.deny")}
                           </Button>
                         </div>
@@ -106,7 +172,11 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                       <div class={styles.askActions}>
                         <For each={(question() as { choices: readonly string[] }).choices}>
                           {(choice) => (
-                            <Button onClick={() => respond(choice)} data-testid="ask-choice">
+                            <Button
+                              disabled={away()}
+                              onClick={() => respond(choice)}
+                              data-testid="ask-choice"
+                            >
                               {choice}
                             </Button>
                           )}
@@ -127,7 +197,12 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                           onInput={(e) => setAnswer(e.currentTarget.value)}
                           data-testid="ask-input"
                         />
-                        <Button type="submit" variant="primary" data-testid="ask-send">
+                        <Button
+                          type="submit"
+                          variant="primary"
+                          disabled={away()}
+                          data-testid="ask-send"
+                        >
                           {t("chat.tool.send")}
                         </Button>
                       </form>
@@ -140,17 +215,23 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
                   <div class={styles.askActions}>
                     <Button
                       variant="primary"
+                      disabled={away()}
                       onClick={() => respond("allow")}
                       data-testid="ask-allow"
                     >
                       {t("chat.tool.allow")}
                     </Button>
-                    <Show when={!(ask() as { once?: boolean }).once}>
+                    {/* A client cannot change what an agent may always do (spec 012). */}
+                    <Show when={mayAlways() && !(ask() as { once?: boolean }).once}>
                       <Button onClick={() => respond("always")} data-testid="ask-always">
                         {t("chat.tool.always")}
                       </Button>
                     </Show>
-                    <Button onClick={() => respond("deny")} data-testid="ask-deny">
+                    <Button
+                      disabled={away()}
+                      onClick={() => respond("deny")}
+                      data-testid="ask-deny"
+                    >
                       {t("chat.tool.deny")}
                     </Button>
                   </div>
@@ -179,6 +260,93 @@ const ToolCard = (props: { agent: Agent; part: Extract<MessagePart, { kind: "too
   )
 }
 
+const FileChip = (props: { message: ChatMessage; file: FilePart; from: string | undefined }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const [savedFile, setSavedFile] = createSignal<string>()
+  const [busy, setBusy] = createSignal(false)
+  const [failure, setFailure] = createSignal<ErrorText>()
+  const ask = () => ({
+    agentId: props.message.agentId,
+    path: props.file.path,
+    size: props.file.size,
+    messageId: props.message.id,
+  })
+  // A file of a message from the other computer may not be on this computer (spec 019).
+  const [here, { refetch }] = createResource(
+    () => props.from !== undefined && !ui.linked(),
+    (remote) => (remote ? call("sync.file.here", ask()).catch(() => true) : true),
+    { initialValue: true },
+  )
+  const open = async () => {
+    setFailure(undefined)
+    setBusy(true)
+    try {
+      await call("sync.file.open", ask())
+      await refetch()
+    } catch (e) {
+      setFailure(describeError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <li class={styles.chip} title={props.file.path} data-testid="message-file">
+      <span class={styles.chipName}>{props.file.name}</span>
+      <span class={styles.chipSize}>{fileSize(props.file.size)}</span>
+      <Show when={!here()}>
+        <span class={styles.chipSize} data-testid="message-file-missing">
+          {t("sync.file.notHere")}
+        </span>
+      </Show>
+      <Show when={busy()}>
+        <span class={styles.chipSize} data-testid="message-file-copying">
+          {t("sync.file.copying")}
+        </span>
+      </Show>
+      <Show when={failure()}>
+        {(err) => (
+          <span class={styles.chipSize} role="alert" data-testid="message-file-error">
+            {t(err().key, err().params)}
+          </span>
+        )}
+      </Show>
+      <Show when={!ui.linked()}>
+        <IconButton
+          label={t("sync.file.open", { name: props.file.name })}
+          disabled={busy()}
+          onClick={open}
+          data-testid="message-file-open"
+        >
+          <ExternalLink size={12} />
+        </IconButton>
+      </Show>
+      <Show when={ui.linked()}>
+        <IconButton
+          label={t("link.file.download", { name: props.file.name })}
+          disabled={ui.serverOffline()}
+          onClick={async () => {
+            const result = await call("attachments.save", {
+              agentId: props.message.agentId,
+              path: props.file.path,
+              name: props.file.name,
+            }).catch(() => undefined)
+            if (result?.saved) setSavedFile(props.file.path)
+          }}
+          data-testid="message-file-download"
+        >
+          <Download size={12} />
+        </IconButton>
+        <Show when={savedFile() === props.file.path}>
+          <span class={styles.chipSize} data-testid="message-file-saved">
+            {t("link.file.saved")}
+          </span>
+        </Show>
+      </Show>
+    </li>
+  )
+}
+
 type ToolPart = Extract<MessagePart, { kind: "tool" }>
 
 const FAILED_KEY: Record<string, MessageKey> = {
@@ -188,9 +356,20 @@ const FAILED_KEY: Record<string, MessageKey> = {
   add_source: "chat.knowledge.failed.source",
 }
 
-/** What a knowledge tool did: a compact card for a read, a muted line with undo for a change. */
-const KnowledgeLine = (props: { agent: Agent; part: ToolPart; note: KnowledgeNote }) => {
+/**
+ * What a knowledge tool did: a compact card for a read, a muted line with undo for a change.
+ * Knowledge stays on the computer that runs the agent (012, 019): a client, and a message that
+ * came from the other computer of a sync pair, show the line without undo.
+ */
+const KnowledgeLine = (props: {
+  agent: Agent
+  part: ToolPart
+  note: KnowledgeNote
+  from: string | undefined
+}) => {
   const { t } = useApp()
+  const ui = useUi()
+  const here = () => !ui.linked() && props.from === undefined
   const [tick, setTick] = createSignal(0)
   const [error, setError] = createSignal<ErrorText>()
   onCleanup(
@@ -203,9 +382,10 @@ const KnowledgeLine = (props: { agent: Agent; part: ToolPart; note: KnowledgeNot
   const [change] = createResource(
     () => {
       const id = changeId()
-      return id ? { id, tick: tick() } : undefined
+      return id && here() ? { id, tick: tick() } : undefined
     },
-    ({ id }) => call("knowledge.change", { agentId: props.agent.id, changeId: id }),
+    ({ id }) =>
+      call("knowledge.change", { agentId: props.agent.id, changeId: id }).catch(() => undefined),
   )
   const undo = async () => {
     const id = changeId()
@@ -290,12 +470,15 @@ const KnowledgeLine = (props: { agent: Agent; part: ToolPart; note: KnowledgeNot
 }
 
 /** A tool step: a knowledge line when the tool is done, otherwise the plain card. */
-const ToolStep = (props: { agent: Agent; part: ToolPart }) => {
+const ToolStep = (props: { agent: Agent; part: ToolPart; from: string | undefined }) => {
   const note = () =>
     props.part.state === "done" || props.part.state === "failed" ? props.part.knowledge : undefined
   return (
-    <Show when={note()} fallback={<ToolCard agent={props.agent} part={props.part} />}>
-      {(n) => <KnowledgeLine agent={props.agent} part={props.part} note={n()} />}
+    <Show
+      when={note()}
+      fallback={<ToolCard agent={props.agent} part={props.part} from={props.from} />}
+    >
+      {(n) => <KnowledgeLine agent={props.agent} part={props.part} note={n()} from={props.from} />}
     </Show>
   )
 }
@@ -329,8 +512,14 @@ const FailedRow = (props: { message: ChatMessage; onRetry: () => void }) => {
 export const MessageRow = (props: MessageRowProps) => {
   const app = useApp()
   const { t } = app
+  const devices = useDevices()
   const [editing, setEditing] = createSignal(false)
   const [draft, setDraft] = createSignal("")
+  /** A message from another linked device shows its name. This device does not name itself. */
+  const fromOther = () => {
+    const from = props.message.fromDevice
+    return from && from !== devices.state()?.self.name ? from : undefined
+  }
   const isAgent = () => props.message.author === "agent"
   const name = () => (isAgent() ? props.agent.name : t("chat.you"))
   const time = () => formatTime(app.locale(), props.message.createdAt)
@@ -427,14 +616,18 @@ export const MessageRow = (props: MessageRowProps) => {
                 <Show when={messageText(props.message)}>
                   <p class={styles.userText}>{messageText(props.message)}</p>
                 </Show>
+                <Show when={fromOther()}>
+                  {(from) => (
+                    <p class={styles.fromDevice} data-testid="from-device">
+                      {t("link.fromDevice", { name: from() })}
+                    </p>
+                  )}
+                </Show>
                 <Show when={messageFiles(props.message).length > 0}>
                   <ul class={styles.chips} data-testid="message-files">
                     <For each={messageFiles(props.message)}>
                       {(file) => (
-                        <li class={styles.chip} title={file.path} data-testid="message-file">
-                          <span class={styles.chipName}>{file.name}</span>
-                          <span class={styles.chipSize}>{fileSize(file.size)}</span>
-                        </li>
+                        <FileChip message={props.message} file={file} from={fromOther()} />
                       )}
                     </For>
                   </ul>
@@ -461,6 +654,7 @@ export const MessageRow = (props: MessageRowProps) => {
                     <ToolStep
                       agent={props.agent}
                       part={part as Extract<MessagePart, { kind: "tool" }>}
+                      from={fromOther()}
                     />
                   </Match>
                 </Switch>

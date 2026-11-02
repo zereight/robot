@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import {
+  askAllowsAlways,
   askKind,
   askStep,
   askSummary,
@@ -38,6 +39,7 @@ import { ProviderFailure } from "../providers/client.ts"
 import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
+import { type Actor, CurrentActor } from "./actor.ts"
 import { applyEvent } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
@@ -64,6 +66,11 @@ export interface ChannelsService {
   post(channelId: string, text: string): Effect.Effect<void, AppError>
   /** Calls `handler` for each message that the user sends to a channel. */
   onUserMessage(handler: (channelId: string, text: string) => void): void
+  /**
+   * A user message that came from the other computer by sync (spec 019). It starts no job here.
+   * It tells the same handlers, so a workflow with a channel trigger can fire for it.
+   */
+  hearUserMessage(channelId: string, text: string): void
   /** A routine run: the agent answers the prompt in the channel. The task belongs to the routine. */
   runRoutine(
     channelId: string,
@@ -73,6 +80,8 @@ export interface ChannelsService {
   ): Effect.Effect<void, AppError>
   activity(channelId: string): Effect.Effect<ChannelActivity>
   markRead(channelId: string): Effect.Effect<void>
+  /** Tells the windows about a message that sync wrote, so an open channel shows it at once. */
+  announce(messageId: string): void
   /** The text of the newest message of a channel, for the place list. */
   lastMessage(channelId: string): string | null
 }
@@ -101,6 +110,7 @@ interface MessageRow {
   awaiting: number
   model: string | null
   created_at: number
+  from_name: string | null
 }
 
 interface AgentRow {
@@ -148,7 +158,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const sections = yield* Sections
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
-      db.run("UPDATE channel_message SET status = 'stopped' WHERE status = 'streaming'")
+      // A part that streams from the other computer (spec 019) is not ours to end.
+      db.run(
+        "UPDATE channel_message SET status = 'stopped' WHERE status = 'streaming' AND origin IS NULL",
+      )
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
@@ -230,6 +243,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         model: row.model,
         createdAt: row.created_at,
         editedAt: null,
+        fromDevice: row.from_name,
         taskId: row.task_id,
         awaiting: row.awaiting === 1,
         chips: chipsFor(row),
@@ -242,17 +256,24 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       }
       const placesChanged = (serverId: string) => bus.emit("places.changed", { serverId })
 
-      const insertUserMessage = (channelId: string, text: string, awaiting: boolean) => {
+      const insertUserMessage = (
+        channelId: string,
+        text: string,
+        awaiting: boolean,
+        from: Actor | null = null,
+      ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO channel_message (id, channel_id, author, parts, status, awaiting, created_at, finished_at)
-           VALUES (?, ?, 'user', ?, 'done', ?, ?, ?)`,
+          `INSERT INTO channel_message (id, channel_id, author, parts, status, awaiting, created_at, finished_at, from_device, from_name)
+           VALUES (?, ?, 'user', ?, 'done', ?, ?, ?, ?, ?)`,
           id,
           channelId,
           JSON.stringify([{ kind: "text", text }]),
           awaiting ? 1 : 0,
           Date.now(),
           Date.now(),
+          from?.id ?? null,
+          from?.name ?? null,
         )
         emitMessage(id)
         return id
@@ -407,6 +428,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   channelId: o.channel.id,
                   callId,
                   kind: askKind(ask),
+                  always: askAllowsAlways(ask),
                   summary: askSummary(ask),
                   step: askStep(ask, toolNameOf(parts, callId)),
                   target: { kind: "channel", id: o.channel.id, messageId: id },
@@ -936,6 +958,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         })
 
       const send = Effect.fn("Channels.send")(function* (channelId: string, text: string) {
+        const sender = yield* CurrentActor
         const channel = channelRow(channelId)
         if (!channel) return yield* new AppError({ code: "channel_not_found" })
         const value = text.trim()
@@ -949,7 +972,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         )
         const lead = toChannel(channel).leadId
         const awaiting = mentioned.length === 0 && lead === null
-        insertUserMessage(channelId, value, awaiting)
+        insertUserMessage(channelId, value, awaiting, sender)
         placesChanged(channel.server_id)
         for (const handler of messageHandlers) handler(channelId, value)
         if (awaiting) return { awaiting: true }
@@ -1021,6 +1044,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         })
 
       return Channels.of({
+        announce: (messageId) => emitMessage(messageId),
         list: (serverId) =>
           Effect.sync(() =>
             db
@@ -1050,6 +1074,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         post,
         onUserMessage: (handler) => {
           messageHandlers.push(handler)
+        },
+        hearUserMessage: (channelId, text) => {
+          for (const handler of messageHandlers) handler(channelId, text)
         },
         runRoutine,
         activity,

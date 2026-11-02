@@ -33,31 +33,42 @@ export const MAX_ROUNDS = 12
 export async function* runAgent(
   req: ChatRequest,
   execute: (call: ToolCall) => Promise<ToolOutcome>,
+  /**
+   * A call that waited for the user when the app closed (spec 005). `req.turns` already holds the
+   * turn that made the call. The turn goes on with this call and asks the model after it.
+   */
+  resume?: ToolCall,
 ): AsyncGenerator<AgentEvent> {
   const turns: Turn[] = [...req.turns]
+  let pending = resume
   for (let round = 0; round < MAX_ROUNDS; round++) {
     let text = ""
     let blocks: readonly ReplyBlock[] | undefined
     const calls: ToolCall[] = []
-    for await (const event of streamChat({ ...req, turns })) {
-      if (event.type === "toolcall")
-        calls.push({ id: event.id, name: event.name, input: event.input })
-      else if (event.type === "reply") blocks = event.blocks
-      else {
-        if (event.type === "text") text += event.text
-        yield event
+    if (pending) {
+      calls.push(pending)
+    } else {
+      for await (const event of streamChat({ ...req, turns })) {
+        if (event.type === "toolcall")
+          calls.push({ id: event.id, name: event.name, input: event.input })
+        else if (event.type === "reply") blocks = event.blocks
+        else {
+          if (event.type === "text") text += event.text
+          yield event
+        }
       }
+      if (calls.length === 0) return
+      // A reply with thinking goes back as the model made it, so that it goes on thinking.
+      turns.push({
+        role: "assistant",
+        content: text,
+        toolCalls: calls,
+        ...(blocks ? { blocks } : {}),
+      })
     }
-    if (calls.length === 0) return
-    // A reply with thinking goes back as the model made it, so that it goes on thinking.
-    turns.push({
-      role: "assistant",
-      content: text,
-      toolCalls: calls,
-      ...(blocks ? { blocks } : {}),
-    })
     for (const call of calls) {
-      yield { type: "tool", state: "running", call }
+      // The card of a resumed call shows already, so it is not announced again.
+      if (call !== pending) yield { type: "tool", state: "running", call }
       let outcome: ToolOutcome
       try {
         outcome = await execute(call)
@@ -73,6 +84,7 @@ export async function* runAgent(
       }
       turns.push({ role: "tool", callId: call.id, name: call.name, content: outcome.output })
     }
+    pending = undefined
   }
   yield { type: "text", text: "\n\n(Stopped: too many tool rounds.)" }
 }

@@ -12,6 +12,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -22,6 +23,7 @@ import styles from "./channels.module.css"
 export const ChannelDialog = (props: { channel?: Channel; onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
+  const devices = useDevices()
   const agents = useAgents()
   const [name, setName] = createSignal(props.channel?.name ?? "")
   const [topic, setTopic] = createSignal(props.channel?.topic ?? "")
@@ -45,6 +47,13 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
     if (on && leadId() === agent.id) setLeadId(null)
   }
 
+  /**
+   * The section is a layout of this computer. A client has no sections to set (spec 012), and a
+   * section that was deleted while the form was open shows as "No section".
+   */
+  const sectionField = () =>
+    ui.linked() ? {} : { sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null }
+
   const submit = async (event: SubmitEvent) => {
     event.preventDefault()
     if (!valid() || busy()) return
@@ -59,7 +68,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             topic: topic().trim(),
             memberIds: members(),
             leadId: leadId(),
-            sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null,
+            ...sectionField(),
           },
         })
       } else {
@@ -71,7 +80,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           topic: topic().trim(),
           memberIds: members(),
           leadId: leadId(),
-          sectionId: ui.hasSection("channel", sectionId()) ? sectionId() : null,
+          ...sectionField(),
         })
         ui.selectPlace({ kind: "channel", id: channel.id })
       }
@@ -198,16 +207,18 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           </select>
           <span class={styles.hint}>{t("channels.lead.hint")}</span>
         </label>
-        <div class={styles.field}>
-          <span class={styles.label}>{t("sections.field")}</span>
-          <SectionSelect
-            kind="channel"
-            value={sectionId()}
-            onChange={setSectionId}
-            class={styles.input}
-            testId="channel-section"
-          />
-        </div>
+        <Show when={!ui.linked()}>
+          <div class={styles.field}>
+            <span class={styles.label}>{t("sections.field")}</span>
+            <SectionSelect
+              kind="channel"
+              value={sectionId()}
+              onChange={setSectionId}
+              class={styles.input}
+              testId="channel-section"
+            />
+          </div>
+        </Show>
         <Show when={error()}>
           {(err) => (
             <div class={styles.error} role="alert" data-testid="channel-error">
@@ -216,7 +227,8 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           )}
         </Show>
         <div class={styles.actions}>
-          <Show when={props.channel}>
+          {/* A client cannot delete a channel of a server (spec 012). */}
+          <Show when={props.channel && !ui.linked()}>
             <Show
               when={confirmDelete()}
               fallback={
@@ -226,6 +238,13 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
               }
             >
               <span class={styles.hint}>{t("channels.delete.confirm")}</span>
+              <Show when={devices.sync.pairName()}>
+                {(name) => (
+                  <span class={styles.hint} data-testid="delete-sync-line">
+                    {t("channels.delete.sync", { name: name() })}
+                  </span>
+                )}
+              </Show>
               <Button onClick={remove} data-testid="channel-delete-confirm">
                 {t("channels.delete")}
               </Button>

@@ -1,12 +1,32 @@
 [
   {
+    "name": "@leichtgewicht/ip-codec",
+    "version": "2.0.5",
+    "license": "MIT"
+  },
+  {
     "name": "@napi-rs/keyring",
     "version": "2.1.2",
     "license": "MIT"
   },
   {
+    "name": "@noble/curves",
+    "version": "2.4.0",
+    "license": "MIT"
+  },
+  {
+    "name": "@noble/hashes",
+    "version": "2.4.0",
+    "license": "MIT"
+  },
+  {
     "name": "csstype",
     "version": "3.2.3",
+    "license": "MIT"
+  },
+  {
+    "name": "dns-packet",
+    "version": "5.6.1",
     "license": "MIT"
   },
   {
@@ -35,6 +55,11 @@
     "license": "MIT"
   },
   {
+    "name": "multicast-dns",
+    "version": "7.2.5",
+    "license": "MIT"
+  },
+  {
     "name": "seroval",
     "version": "1.6.12",
     "license": "MIT"
@@ -47,6 +72,21 @@
   {
     "name": "solid-js",
     "version": "1.9.18",
+    "license": "MIT"
+  },
+  {
+    "name": "thunky",
+    "version": "1.1.0",
+    "license": "MIT"
+  },
+  {
+    "name": "uqr",
+    "version": "0.1.3",
+    "license": "MIT"
+  },
+  {
+    "name": "ws",
+    "version": "8.22.1",
     "license": "MIT"
   }
 ]

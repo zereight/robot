@@ -14,6 +14,16 @@ import type {
   KnowledgeFindings,
   KnowledgeView,
 } from "./knowledge.ts"
+import type {
+  ConnectProbe,
+  DevicesState,
+  JoinRequest,
+  ModelChoice,
+  NearbyComputer,
+  PairingState,
+  ServerEntry,
+  WireNotice,
+} from "./link.ts"
 import type { MemoryItem } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type {
@@ -27,6 +37,14 @@ import type {
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type {
+  SyncChangeEntry,
+  SyncGuard,
+  SyncMode,
+  SyncPreview,
+  SyncRequest,
+  SyncStatus,
+} from "./sync.ts"
 import type { Task, TaskDetail } from "./task.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
@@ -70,8 +88,94 @@ export interface RpcMethods {
   "settings.update": { input: SettingsPatch; output: Settings }
   "settings.pickWorkspaceRoot": { input: undefined; output: Settings }
   "data.openFolder": { input: undefined; output: undefined }
+  /** This computer, then the linked computers it can open, with their connection states. */
   "servers.list": { input: undefined; output: readonly Server[] }
+  /** Tries a linked server at once, when it is not online. */
+  "servers.retry": { input: { serverId: string }; output: undefined }
+  "devices.get": { input: undefined; output: DevicesState }
+  /** Changes the name of this device, or "Let other devices connect". */
+  "devices.update": {
+    input: { name?: string; accept?: boolean }
+    output: DevicesState
+  }
+  /** Shows a new pairing code. Turns on "Let other devices connect". */
+  "devices.pair.start": { input: undefined; output: PairingState }
+  "devices.pair.get": { input: undefined; output: PairingState }
+  "devices.pair.stop": { input: undefined; output: PairingState }
+  /** Devices that wait for Allow or Deny. */
+  "devices.join.list": { input: undefined; output: readonly JoinRequest[] }
+  /**
+   * Answers a device that asks to join. `canChange` is the switch of the Allow dialog, "Let
+   * <device name> create and change agents" (spec 012); without it the device gets no access.
+   */
+  "devices.join.decide": {
+    input: { id: string; allow: boolean; canChange?: boolean }
+    output: undefined
+  }
+  /** Ends the access of a device that can open this computer. */
+  "devices.client.remove": { input: { id: string }; output: undefined }
+  /** The switch "Can create and change agents" of one device. Fails while the computers sync. */
+  "devices.client.setChange": { input: { id: string; canChange: boolean }; output: undefined }
+  /** Ends the link to a computer that this computer can open. Deletes its cache. */
+  "devices.server.remove": { input: { id: string }; output: undefined }
+  "devices.server.setAddresses": {
+    input: { id: string; addresses: readonly string[] }
+    output: ServerEntry
+  }
+  /**
+   * First step of "Connect to a computer": proves the code to the computer. Give a link text, or
+   * an address and a code.
+   */
+  "devices.connect.probe": {
+    input: { link?: string | undefined; address?: string | undefined; code?: string | undefined }
+    output: ConnectProbe
+  }
+  /** Second step: asks the computer to allow this device. Ends when the user there decided. */
+  "devices.connect.finish": {
+    input: { session: string; twoWay: boolean }
+    output: ServerEntry
+  }
+  "devices.connect.cancel": { input: { session: string }; output: undefined }
+  /** Computers on this network that show a pairing code now. */
+  "devices.nearby": { input: undefined; output: readonly NearbyComputer[] }
+  /** The sync row of each computer this computer can open (spec 019). */
+  "sync.list": { input: undefined; output: readonly SyncStatus[] }
+  /** What both computers hold, for the start dialog. The other computer must be online. */
+  "sync.preview": { input: { linkId: string }; output: SyncPreview }
+  /** Asks the other computer to sync. Ends when the other user decided, or the user cancelled. */
+  "sync.start": { input: { linkId: string; mode: SyncMode }; output: SyncStatus }
+  /** Cancels a request that waits for Allow. */
+  "sync.cancelOffer": { input: { linkId: string }; output: undefined }
+  "sync.pause": { input: { linkId: string }; output: undefined }
+  "sync.resume": { input: { linkId: string }; output: undefined }
+  /** Stops syncing. Both computers keep all their data. */
+  "sync.stop": { input: { linkId: string }; output: undefined }
+  /** Closes the "<name> stopped syncing" or "did not allow" line. */
+  "sync.dismiss": { input: { linkId: string }; output: undefined }
+  /** Requests from other computers that wait for Allow or Deny. */
+  "sync.requests": { input: undefined; output: readonly SyncRequest[] }
+  "sync.decide": { input: { id: string; allow: boolean }; output: undefined }
+  /** The newest 100 changes that came from the other computer. */
+  "sync.changes": { input: undefined; output: readonly SyncChangeEntry[] }
+  /** Deletions that wait for a decision (spec 019, Delete). */
+  "sync.guard": { input: undefined; output: SyncGuard | null }
+  "sync.guard.decide": { input: { remove: boolean }; output: undefined }
+  /** True when the file of a message is on this computer. */
+  "sync.file.here": {
+    input: { agentId: string; path: string; size: number; messageId: string }
+    output: boolean
+  }
+  /** Opens the file of a message. A file that is not here is copied from the origin first. */
+  "sync.file.open": {
+    input: { agentId: string; path: string; size: number; messageId: string }
+    output: undefined
+  }
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
+  /** Saves a file of a message of a linked server to this computer. Asks where to save it. */
+  "attachments.save": {
+    input: { agentId: string; path: string; name: string }
+    output: { saved: boolean }
+  }
   /** Moves a place into a user section of its kind, or out of any (`sectionId` null). */
   "places.move": {
     input: { kind: PlaceKind; id: string; sectionId: string | null }
@@ -111,6 +215,11 @@ export interface RpcMethods {
   "providers.check": { input: { accountId: string }; output: undefined }
   "providers.disconnect": { input: { accountId: string }; output: undefined }
   "providers.remove": { input: { accountId: string }; output: undefined }
+  /**
+   * The connected model accounts with their models, for a device that picks a model on this
+   * server. It holds no key. Needs the switch "Can create and change agents" on a linked server.
+   */
+  "models.available": { input: undefined; output: readonly ModelChoice[] }
   "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
   /** Looks at the vendor program on this computer again, and returns what it finds. */
   "runtimes.status": { input: RuntimeTarget; output: RuntimeStatus }
@@ -199,6 +308,8 @@ export interface RpcMethods {
   "routines.create": { input: RoutineInput; output: Routine }
   "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }
   "routines.delete": { input: { id: string }; output: undefined }
+  /** Moves a routine of the other computer here: it runs here from now on (spec 019). */
+  "routines.runHere": { input: { id: string }; output: Routine }
   "routines.runNow": { input: { id: string }; output: undefined }
   "routines.calendar": {
     input: { serverId: string; from: number; to: number }
@@ -209,6 +320,8 @@ export interface RpcMethods {
   "workflows.update": { input: { id: string; patch: WorkflowPatch }; output: Workflow }
   "workflows.delete": { input: { id: string }; output: undefined }
   "workflows.run": { input: { id: string; triggerText?: string }; output: WorkflowRun }
+  /** Moves a workflow of the other computer here: it runs here from now on (spec 019). */
+  "workflows.runHere": { input: { id: string }; output: Workflow }
   "workflows.stop": { input: { runId: string }; output: undefined }
   "workflows.approve": {
     input: { runId: string; stepId: string; approved: boolean }
@@ -265,6 +378,19 @@ export interface RpcMethods {
 /** Events that the main process pushes to the renderer. */
 export interface RpcEvents {
   "settings.changed": Settings
+  /** The device name, the switch, the linked devices or a connection state changed. */
+  "devices.changed": Record<string, never>
+  "devices.pairing": PairingState
+  /** A device asks to join (`request`), or an earlier request was decided (`closed`). */
+  "devices.join": { request?: JoinRequest; closed?: string }
+  /** The list of servers, or the state of one, changed. */
+  "servers.changed": Record<string, never>
+  /** The sync row of a computer, a request to sync, or the change list changed. */
+  "sync.changed": Record<string, never>
+  /** A request to sync waits (`request`), or an earlier one ended (`closed`). */
+  "sync.request": { request?: SyncRequest; closed?: string }
+  /** A notice for a linked device. Windows ignore it; the link pushes it. */
+  notice: WireNotice
   "places.changed": { serverId: string }
   /** `serverId` is "*" when agents of every server may have changed. */
   "agents.changed": { serverId: string }
@@ -281,7 +407,8 @@ export interface RpcEvents {
   "workflows.run": { runId: string }
   "island.state": IslandState
   "app.openPlace": PlaceTarget
-  "app.openPage": { page: "workflows" }
+  /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
+  "app.openPage": { page: "workflows"; serverId?: string }
   "notifications.changed": Record<string, never>
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }
@@ -310,7 +437,12 @@ export interface RpcError {
 
 /** The bridge that the preload script exposes on `window.robot`. */
 export interface RobotBridge {
-  invoke<M extends RpcMethod>(method: M, input: RpcInput<M>): Promise<RpcResult<RpcOutput<M>>>
+  /** `server` is the linked server that the call is for. Absent: this computer. */
+  invoke<M extends RpcMethod>(
+    method: M,
+    input: RpcInput<M>,
+    server?: string,
+  ): Promise<RpcResult<RpcOutput<M>>>
   /** The full path of a file that the user dropped on the window. Empty when unknown. */
   pathForFile(file: File): string
   on<E extends RpcEvent>(event: E, listener: (payload: RpcEvents[E]) => void): () => void

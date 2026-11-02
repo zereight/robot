@@ -10,11 +10,17 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   memory, settings, permission rules, the action log (007), skills (017) and connections (018).
   Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
-- The database is the source of truth. Nothing remote is a cache of it. The one exception is the
-  articles and sources of agent knowledge (016): they are files in the agent workspace. An export
-  copies sources as they are, so the app refuses to add a source that holds a stored key (016).
+- The database is the source of truth. Nothing remote is a cache of it. Two computers that sync
+  (019) each hold a full copy of the shared data. Both are sources of truth, and the rules of
+  019 make them equal. A device that opens a linked server (012) keeps a local cache of recent
+  messages for offline reading. The cache is deleted when the link ends and is never exported.
+  The state of a sync (019) is not exported either. Backups that sync makes are in a "backups"
+  folder in the data folder. The one exception is the articles and sources of agent knowledge
+  (016): they are files in the agent workspace. An export copies sources as they are, so the app
+  refuses to add a source that holds a stored key (016).
 - The app never sends conversation content, files, or commands anywhere except the model provider
-  an agent uses and the pages an agent visits. There is one more exception, and it is off by
+  an agent uses, the pages an agent visits, and the devices that the user linked (012). Traffic
+  to a linked device is end-to-end encrypted. There is one more exception, and it is off by
   default: the decision model that the user sets up (see 013). When the user sets it up:
   - For a channel pick (see 004), the app sends to it the channel name and topic, the last few
     messages of the channel, the job, and the name and role line of each member.
@@ -32,7 +38,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up or to a page that an agent visits.
 - Secrets (keys, tokens, secret values of environment variables, secret values of a connection)
-  are in the system keychain. Logs and exports redact anything that looks like a secret.
+  are in the system keychain. Logs and exports redact anything that looks like a secret. The keys
+  of device links are secrets. A linked device never receives provider keys.
 
 ## Logs
 

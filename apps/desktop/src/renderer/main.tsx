@@ -4,6 +4,7 @@ import { App } from "./App.tsx"
 import { AgentsProvider } from "./state/agents.tsx"
 import { AppProvider, loadInitial, useApp } from "./state/app.tsx"
 import { ChannelsProvider } from "./state/channels.tsx"
+import { DevicesProvider } from "./state/devices.tsx"
 import { ProvidersProvider } from "./state/providers.tsx"
 import { loadUi, UiProvider } from "./state/ui.tsx"
 import { applyAppearance } from "./theme/apply.ts"
@@ -23,11 +24,13 @@ if (root) {
         <UiProvider ui={layout.ui} servers={layout.servers}>
           <Appearance />
           <ProvidersProvider>
-            <AgentsProvider>
-              <ChannelsProvider>
-                <App />
-              </ChannelsProvider>
-            </AgentsProvider>
+            <DevicesProvider>
+              <AgentsProvider>
+                <ChannelsProvider>
+                  <App />
+                </ChannelsProvider>
+              </AgentsProvider>
+            </DevicesProvider>
           </ProvidersProvider>
         </UiProvider>
       </AppProvider>

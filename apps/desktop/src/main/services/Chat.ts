@@ -4,6 +4,7 @@ import { basename, extname, join } from "node:path"
 import {
   ATTACH_BYTES,
   ATTACH_MAX,
+  askAllowsAlways,
   askKind,
   askStep,
   askSummary,
@@ -21,15 +22,19 @@ import {
   runningStepKind,
   type StepEffort,
   stepTurnEffort,
+  type Task,
   type TaskSource,
+  type ToolAsk,
   toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
+import { resumeOf } from "../providers/resume.ts"
 import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
+import { type Actor, CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -54,6 +59,8 @@ interface MessageRow {
   model: string | null
   created_at: number
   edited_at: number | null
+  from_device: string | null
+  from_name: string | null
   /**
    * The notes that went to Claude Code with this message of the user: the memory items that
    * related to it then. They are kept so that the next turn sends the same text again.
@@ -100,6 +107,8 @@ export interface ChatService {
   updateQueued(agentId: string, itemId: string, text: string): Effect.Effect<void, AppError>
   removeQueued(agentId: string, itemId: string): Effect.Effect<void>
   markRead(agentId: string): Effect.Effect<void>
+  /** Tells the windows about a message that sync wrote, so an open chat shows it at once. */
+  announce(messageId: string): void
 }
 
 /** How often a streaming reply is sent to the window and written to disk. */
@@ -150,6 +159,7 @@ const toMessage = (row: MessageRow): ChatMessage => ({
   model: row.model,
   createdAt: row.created_at,
   editedAt: row.edited_at,
+  fromDevice: row.from_name,
 })
 
 /** Adds a stream event to the parts. Returns true when a new part starts (a part boundary). */
@@ -171,6 +181,8 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       state: event.state,
       output: event.state === "running" ? "" : event.output,
       ...(existing?.kind === "tool" && existing.memoryId ? { memoryId: existing.memoryId } : {}),
+      // Who answered the approval stays on the card when the call ends (spec 012).
+      ...(existing?.kind === "tool" && existing.decision ? { decision: existing.decision } : {}),
       ...(existing?.kind === "tool" && existing.knowledge ? { knowledge: existing.knowledge } : {}),
     }
     if (index >= 0) {
@@ -187,6 +199,21 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
   }
   parts.push({ kind: event.type, text: event.text })
   return true
+}
+
+/** True when two cards ask the same thing. The time of the ask does not count. */
+const sameAsk = (a: ToolAsk, b: ToolAsk): boolean => {
+  if (a.kind === "approval") return b.kind === "approval" && a.summary === b.summary
+  if (a.kind === "article")
+    return (
+      b.kind === "article" && a.title === b.title && a.before === b.before && a.after === b.after
+    )
+  return (
+    b.kind === "question" &&
+    a.question === b.question &&
+    a.choices.length === b.choices.length &&
+    a.choices.every((c, i) => c === b.choices[i])
+  )
 }
 
 /** A short line for a tool card, from the tool name and its arguments. */
@@ -220,9 +247,21 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const queues = new Map<string, QueuedMessage[]>()
       /** Origins of user messages and queued items, by their ids. */
       const origins = new Map<string, TaskOrigin>()
+      /** The linked device that sent a queued item, by the id of the item (spec 012). */
+      const senders = new Map<string, Actor>()
       /** Writes a queued item as a message, and moves its origin to the message. */
       const insertQueued = (agentId: string, next: QueuedMessage) => {
-        const row = insertMessage(agentId, "user", next.text, next.replyTo, null, next.files)
+        const sender = senders.get(next.id)
+        senders.delete(next.id)
+        const row = insertMessage(
+          agentId,
+          "user",
+          next.text,
+          next.replyTo,
+          null,
+          next.files,
+          sender ?? null,
+        )
         const origin = origins.get(next.id)
         if (origin) {
           origins.delete(next.id)
@@ -230,8 +269,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
       }
 
+      // A task that waited for the user when the app closed waits on (spec 005). Its reply keeps
+      // streaming, and its turn starts again at the end of this set-up.
+      const reviving = tasks.waitingAfterRestart()
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
-      db.run("UPDATE message SET status = 'stopped' WHERE status = 'streaming'")
+      // A reply that streams from the other computer (spec 019) is not ours to end.
+      db.run(
+        `UPDATE message SET status = 'stopped'
+         WHERE status = 'streaming' AND origin IS NULL AND id NOT IN (SELECT value FROM json_each(?))`,
+        JSON.stringify(reviving.flatMap((t) => (t.messageId ? [t.messageId] : []))),
+      )
 
       const agentRow = (agentId: string) =>
         db.get<AgentModelRow>(
@@ -261,11 +308,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         replyTo: string | null,
         model: string | null,
         files: readonly FilePart[] = [],
+        from: Actor | null = null,
       ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           agentId,
           author,
@@ -276,6 +324,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           replyTo,
           model,
           Date.now(),
+          from?.id ?? null,
+          from?.name ?? null,
         )
         const row = messageRow(id) as MessageRow
         emitMessage(row)
@@ -311,10 +361,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             }
           })
 
-      const runTurn = Effect.fn("Chat.runTurn")(function* (agentId: string) {
+      /** Answers the last message. `resumed` is a task that waited through a restart: it goes on. */
+      const runTurn = Effect.fn("Chat.runTurn")(function* (agentId: string, resumed?: Task) {
         const agent = agentRow(agentId)
         if (!agent) return
-        const reply = insertMessage(agentId, "agent", "", null, agent.model_name)
+        const kept = resumed?.messageId ? messageRow(resumed.messageId) : undefined
+        const reply = kept ?? insertMessage(agentId, "agent", "", null, agent.model_name)
         const lastUser = rows(agentId)
           .filter((r) => r.author === "user")
           .at(-1)
@@ -327,18 +379,29 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 .map((f) => f.name)
                 .join(", ")
             : "") || "(no text)"
-        const task = yield* tasks.create({
-          agentId,
-          prompt,
-          source: (lastUser ? origins.get(lastUser.id)?.source : undefined) ?? "chat",
-          sourceId: (lastUser ? origins.get(lastUser.id)?.sourceId : undefined) ?? agentId,
-          messageId: reply.id,
-          retryOf: retryLinks.get(agentId) ?? null,
-        })
-        retryLinks.delete(agentId)
-        if (lastUser) origins.get(lastUser.id)?.onStart?.(task.id)
-        const parts: MessagePart[] = []
-        const usage = { input: 0, output: 0 }
+        const task =
+          resumed ??
+          (yield* tasks.create({
+            agentId,
+            prompt,
+            source: (lastUser ? origins.get(lastUser.id)?.source : undefined) ?? "chat",
+            sourceId: (lastUser ? origins.get(lastUser.id)?.sourceId : undefined) ?? agentId,
+            messageId: reply.id,
+            retryOf: retryLinks.get(agentId) ?? null,
+          }))
+        if (!resumed) {
+          retryLinks.delete(agentId)
+          if (lastUser) origins.get(lastUser.id)?.onStart?.(task.id)
+        }
+        const parts: MessagePart[] = kept ? (JSON.parse(kept.parts) as MessagePart[]) : []
+        const resume = kept ? resumeOf(parts) : undefined
+        const counted = kept
+          ? db.get<{ input_tokens: number | null; output_tokens: number | null }>(
+              "SELECT input_tokens, output_tokens FROM message WHERE id = ?",
+              kept.id,
+            )
+          : undefined
+        const usage = { input: counted?.input_tokens ?? 0, output: counted?.output_tokens ?? 0 }
         const controller = new AbortController()
         let lastEmit = 0
         let lastSave = 0
@@ -390,6 +453,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (!agent.model_account_id || !agent.model_name) {
             return yield* new AppError({ code: "provider_not_connected" })
           }
+          // The data changed since the restart, so the card cannot go on.
+          if (resumed && !resume) return yield* new AppError({ code: "app_stopped" })
           const isRuntime = providers.isRuntime(agent.model_account_id)
           const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
           // Claude Code reads the start of a request from the cache of the model, but only when
@@ -443,6 +508,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   channelId: null,
                   callId,
                   kind: askKind(ask),
+                  always: askAllowsAlways(ask),
                   summary: askSummary(ask),
                   step: askStep(ask, toolNameOf(parts, callId)),
                   target: { kind: "agent", id: agentId, messageId: reply.id },
@@ -450,10 +516,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               else notifier.clearAttention(agentId, callId)
               changePart(callId, (p) => {
                 const { ask: _drop, ...rest } = p
-                return ask ? { ...rest, state: "waiting", ask } : { ...rest, state: "running" }
+                if (!ask) return { ...rest, state: "running" }
+                // A card that waited through a restart keeps the time of its first ask.
+                return {
+                  ...rest,
+                  state: "waiting",
+                  ask: p.ask && sameAsk(p.ask, ask) ? p.ask : ask,
+                }
               })
             },
             onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
+            onDecision: (callId, answer, by) =>
+              changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             knowledgeChanges: { count: 0 },
           }
@@ -485,6 +559,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               workspace: agent.workspace,
               permission: agent.permission,
               useTools: true,
+              ...(resume ? { resume } : {}),
             },
             {
               execute: (call) => tools.execute(context, call),
@@ -527,7 +602,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // A vendor program writes the Knowledge folder itself. The folder is read again after it.
         const writesFiles = !!agent.model_account_id && providers.isRuntime(agent.model_account_id)
         knowledge.begin(agentId)
-        yield* tasks.run(task.id, agentId, stream).pipe(
+        yield* tasks.run(task.id, agentId, stream, resumed ? { resumed: true } : undefined).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
@@ -581,10 +656,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       })
 
       /** Answers the last message, then each queued message in order. */
-      const worker = (agentId: string) =>
+      const worker = (agentId: string, resumed?: Task) =>
         Effect.gen(function* () {
+          let first = resumed
           for (;;) {
-            yield* runTurn(agentId)
+            yield* runTurn(agentId, first)
+            first = undefined
             const next = queues.get(agentId)?.shift()
             if (!next) return
             emitQueue(agentId)
@@ -613,6 +690,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
 
       const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
+        const sender = yield* CurrentActor
         const agent = yield* usableAgent(input.agentId)
         const paths = input.files ?? []
         if (!input.text.trim() && paths.length === 0)
@@ -629,12 +707,21 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (queue.length >= QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
           const item = { id: randomUUID(), text: input.text, replyTo: input.replyTo, files }
           if (origin) origins.set(item.id, origin)
+          if (sender) senders.set(item.id, sender)
           queue.push(item)
           queues.set(input.agentId, queue)
           emitQueue(input.agentId)
           return { queued: true }
         }
-        const row = insertMessage(input.agentId, "user", input.text, input.replyTo, null, files)
+        const row = insertMessage(
+          input.agentId,
+          "user",
+          input.text,
+          input.replyTo,
+          null,
+          files,
+          sender,
+        )
         if (origin) origins.set(row.id, origin)
         yield* kick(input.agentId)
         return { queued: false }
@@ -699,7 +786,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         Effect.suspend(() => {
           retryLinks.set(task.agentId, task.id)
           // A reply that failed is asked again. A stopped one has nothing to replace, so the
-          // question is sent again as a new message.
+          // question is sent again as a new message. A task of the other computer (spec 019)
+          // runs here as a new task, and its messages stay as they are.
+          if (task.originName !== null)
+            return Effect.asVoid(send({ agentId: task.agentId, text: task.prompt, replyTo: null }))
           return retry(task.agentId, task.messageId ?? "").pipe(
             Effect.catch(() => {
               // Set before the send, because the turn can start at once.
@@ -712,7 +802,19 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }),
       )
 
+      // The turns of tasks that waited through a restart start again. Each keeps the place of its
+      // agent, so a message that comes now waits in the queue behind it.
+      for (const task of reviving) {
+        yield* FiberMap.run(workers, task.agentId, worker(task.agentId, task), {
+          onlyIfMissing: true,
+        })
+      }
+
       return Chat.of({
+        announce: (messageId) => {
+          const row = db.get<MessageRow>("SELECT * FROM message WHERE id = ?", messageId)
+          if (row) emitMessage(row)
+        },
         history: (agentId) =>
           Effect.sync(() => ({
             messages: rows(agentId).map(toMessage),

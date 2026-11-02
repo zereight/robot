@@ -1,4 +1,11 @@
-import type { MessageKey, Page, Place, PlaceRef, SectionId } from "@robot/shared"
+import {
+  CLIENT_BLOCKED_PAGES,
+  type MessageKey,
+  type Page,
+  type Place,
+  type PlaceRef,
+  type SectionId,
+} from "@robot/shared"
 import { PanelRight, PanelRightClose } from "lucide-solid"
 import { createMemo, type JSX, Match, type ParentProps, Show, Switch, untrack } from "solid-js"
 import { HelpPage } from "../pages/HelpPage.tsx"
@@ -8,6 +15,7 @@ import { useUi } from "../state/ui.tsx"
 import { IconButton } from "../ui/controls.tsx"
 import { Presence, useClosing } from "../ui/Presence.tsx"
 import { PlaceList } from "./PlaceList.tsx"
+import { ServerNotice } from "./ServerNotice.tsx"
 import { ServerRail } from "./ServerRail.tsx"
 import styles from "./shell.module.css"
 
@@ -112,6 +120,7 @@ export const Shell = (props: ShellProps) => {
           {...(props.sectionAction ? { sectionAction: props.sectionAction } : {})}
         />
         <main class={styles.main} data-testid="conversation">
+          <ServerNotice />
           <Switch>
             <Match when={ui.ui.page === "chats"}>
               <header class={styles.header} data-testid="conversation-header">
@@ -140,6 +149,16 @@ export const Shell = (props: ShellProps) => {
                 <span class={styles.headerTitle}>{pageTitle("help")}</span>
               </header>
               <HelpPage />
+            </Match>
+            <Match
+              when={ui.linked() && (CLIENT_BLOCKED_PAGES as readonly Page[]).includes(ui.ui.page)}
+            >
+              <header class={styles.header}>
+                <span class={styles.headerTitle}>{pageTitle(ui.ui.page)}</span>
+              </header>
+              <p class={styles.pageNotice} data-testid="page-open-on-server">
+                {t("link.openOnServer", { name: ui.server()?.name ?? "" })}
+              </p>
             </Match>
             <Match when={true}>
               <header class={styles.header}>
