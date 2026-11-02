@@ -4,7 +4,7 @@
  * protocol. Nothing in this file assumes that the client is a computer.
  */
 
-import type { ModelInfo } from "./providers.ts"
+import type { ModelInfo, ProviderKind } from "./providers.ts"
 
 /** The version of the wire protocol. Both sides must use the same number. */
 export const LINK_PROTOCOL = 1
@@ -371,6 +371,13 @@ export interface AccessPayload {
 export interface ModelChoice {
   readonly accountId: string
   readonly accountName: string
+  /** The kind of the account: an API provider or a vendor program (spec 006). */
+  readonly kind?: ProviderKind
+  /**
+   * Whether an agent on this account can be at "Read only" (spec 007). False for a program that has
+   * no read-only mode of its own. The server refuses the level for such an agent in any case.
+   */
+  readonly readOnly?: boolean
   readonly models: readonly ModelInfo[]
 }
 

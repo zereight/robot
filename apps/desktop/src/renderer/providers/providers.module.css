@@ -146,3 +146,45 @@
 .item[data-flash="true"] {
   background: var(--c-selected);
 }
+
+/* The reason and the time of a check are sentences: they wrap between words. */
+.stateText {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+/* The state of an agent runtime: a tag with text. Colour helps, but the words carry the meaning. */
+.stateLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.stateTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--c-text-muted);
+}
+
+.stateTag::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.stateTag[data-state="ready"] {
+  color: var(--c-success);
+}
+
+.stateTag[data-state="needs_repair"] {
+  color: var(--c-danger);
+}

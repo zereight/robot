@@ -33,6 +33,7 @@ import type {
   ModelInfo,
   ProviderAccount,
   ProviderConnect,
+  ReadOnlySupport,
   RuntimeKind,
   RuntimeStatus,
   RuntimeTarget,
@@ -256,6 +257,13 @@ export interface RpcMethods {
   "runtimes.install": { input: RuntimeTarget; output: RuntimeStatus }
   /** Opens the vendor sign-in in the browser. Ends when the user is signed in, or gave up. */
   "runtimes.signIn": { input: RuntimeTarget; output: RuntimeStatus }
+  /**
+   * Looks for the program again, downloads it again when the app downloaded it, and checks it.
+   * It never touches the sign-in (spec 006).
+   */
+  "runtimes.repair": { input: RuntimeTarget; output: RuntimeStatus }
+  /** Whether the program has a read-only mode of its own (spec 007). It is not part of the check. */
+  "runtimes.readOnly": { input: RuntimeTarget; output: ReadOnlySupport }
   /** Ends a running download or sign-in. */
   "runtimes.cancel": { input: RuntimeTarget; output: undefined }
   /**

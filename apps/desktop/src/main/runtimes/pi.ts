@@ -10,13 +10,19 @@ import { stage } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
+import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
 const env = () => runtimeEnv(process.env, undefined, "pi")
 
-export const piVersion = async (bin: string): Promise<string | null> => {
+export const piProbe = async (bin: string): Promise<VersionProbe> => {
   const done = await execute(bin, ["--version"], { env: env(), timeoutMs: 30_000 })
-  return done.code === 0 ? parseVersion(`${done.stdout}\n${done.stderr}`) : null
+  return versionProbe(done, parseVersion(`${done.stdout}\n${done.stderr}`))
+}
+
+export const piVersion = async (bin: string): Promise<string | null> => {
+  const probe = await piProbe(bin)
+  return "version" in probe ? probe.version : null
 }
 
 /**
@@ -53,6 +59,8 @@ export const parsePiModels = (stdout: string): ModelInfo[] => {
  */
 export const piLogin = async (bin: string): Promise<Login> => {
   const done = await execute(bin, ["--list-models"], { env: env(), timeoutMs: 60_000 })
+  const fail = loginFailure(done)
+  if (fail) return { signedIn: false, method: null, user: null, plan: null, fail }
   const listed = done.code === 0 ? parsePiModels(done.stdout) : []
   const levels = await piEfforts(
     bin,
@@ -174,7 +182,8 @@ export const piTools = (
   extra: readonly string[] = [],
 ): string[] => {
   if (!useTools) return ["--no-tools"]
-  if (level === "ask_all") return ["--tools", ["read", "grep", "find", "ls", ...extra].join(",")]
+  if (level === "read_only" || level === "ask_all")
+    return ["--tools", ["read", "grep", "find", "ls", ...extra].join(",")]
   if (level === "ask_risky")
     return ["--tools", ["read", "grep", "find", "ls", "edit", "write", ...extra].join(",")]
   return []
@@ -348,9 +357,9 @@ export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
     if (state.error !== null) throw piFailure(state.error)
     if (!state.done) {
       const code = await exited
-      throw piFailure(
-        startError?.message ?? (stderr.trim() || `The program ended with code ${code}.`),
-      )
+      const started = startFailure(startError, code)
+      if (started) throw started
+      throw piFailure(stderr.trim() || `The program ended with code ${code}.`)
     }
     yield { type: "usage", input: state.input, output: state.output }
   } finally {

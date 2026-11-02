@@ -6,6 +6,7 @@ import {
   type AgentCreate,
   type AgentPatch,
   copyName,
+  DEFAULT_PERMISSION,
   faceFromName,
   type InstructionSource,
   nameKey,
@@ -120,6 +121,10 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
             : row.model_account_id && providers.isConnected(row.model_account_id)
               ? "idle"
               : "offline",
+          // Why the agent is offline, when its program needs repair or is not installed (006).
+          runtimeProblem: row.model_account_id
+            ? providers.runtimeProblem(row.model_account_id)
+            : null,
           createdAt: row.created_at,
           permission: row.permission,
           memoryEnabled: row.memory_enabled === 1,
@@ -177,6 +182,14 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         if (nameTaken(input.serverId, name))
           return yield* new AppError({ code: "agent_name_taken" })
         const sectionId = yield* sections.check(input.serverId, "agent", input.sectionId ?? null)
+        const level = input.permission ?? DEFAULT_PERMISSION
+        // "Read only" needs a mode that the program has itself (spec 007).
+        if (
+          level === "read_only" &&
+          input.model &&
+          !(yield* providers.readOnlySupported(input.model.accountId))
+        )
+          return yield* new AppError({ code: "read_only_unsupported" })
         const id = randomUUID()
         const workspace = yield* makeWorkspace(name, id)
         const face = input.face ?? faceFromName(name)
@@ -185,8 +198,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         db.run(
           `INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
             model_account_id, model_name, model_effort, workspace, section, place_section_id,
-            created_at, updated_at, changed_by, changed_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?, ?)`,
+            created_at, updated_at, changed_by, changed_at, permission)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?, ?, ?)`,
           id,
           input.serverId,
           name,
@@ -204,6 +217,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           now,
           by.by,
           by.at,
+          level,
         )
         changed(input.serverId)
         return toAgent(yield* findRow(id))
@@ -219,6 +233,18 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         if (name !== undefined && nameTaken(row.server_id, name, id)) {
           return yield* new AppError({ code: "agent_name_taken" })
         }
+        // The level "Read only" needs a mode that the program has itself (spec 007). It is checked
+        // when the level is set and when the model changes, whoever asks: this computer or a client.
+        const level = patch.permission ?? row.permission
+        const accountId =
+          patch.model !== undefined ? (patch.model?.accountId ?? null) : row.model_account_id
+        if (
+          level === "read_only" &&
+          (patch.permission !== undefined || patch.model !== undefined) &&
+          accountId &&
+          !(yield* providers.readOnlySupported(accountId))
+        )
+          return yield* new AppError({ code: "read_only_unsupported" })
         const sets: string[] = []
         const values: (string | number | null)[] = []
         const set = (column: string, value: string | number | null) => {

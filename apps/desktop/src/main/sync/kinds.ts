@@ -15,7 +15,6 @@ import {
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
-  PERMISSION_LEVELS,
   ROUTINE_NAME_MAX,
   ROUTINE_PROMPT_MAX,
   RUN_STATES,
@@ -643,10 +642,11 @@ const agent: KindDef = {
       face_hue: face.hue,
       face_image: file,
       ...modelOf(ctx, f.model),
-      // A new agent has no folder of its own on this computer and asks for every step.
+      // A new agent has no folder of its own on this computer and asks for every step ("Ask for
+      // everything", spec 019). The level is named here: it must not follow the order of the list.
       workspace: ctx.newWorkspace(f.name as string, id),
       section: "agents",
-      permission: PERMISSION_LEVELS[0],
+      permission: "ask_all",
       memory_enabled: 1,
       archived_at: f.archived === true ? now : null,
       created_at: f.createdAt,

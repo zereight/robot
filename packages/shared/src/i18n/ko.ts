@@ -246,6 +246,24 @@ export const ko: Record<MessageKey, string> = {
   "runtime.signingIn": "브라우저에서 로그인하기를 기다리는 중…",
   "runtime.cancel": "취소",
   "runtime.recheck": "다시 확인",
+  "runtime.state.checking": "확인 중",
+  "runtime.state.ready": "사용 가능",
+  "runtime.state.needs_sign_in": "로그인 필요",
+  "runtime.state.needs_repair": "복구 필요",
+  "runtime.state.not_installed": "설치되지 않음",
+  "runtime.reason.gone": "프로그램 파일이 없어졌거나 다른 곳으로 옮겨졌어요.",
+  "runtime.reason.start": "프로그램이 시작되지 않아요.",
+  "runtime.reason.answer": "프로그램이 응답하지 않아요.",
+  "runtime.reason.unreadable": "프로그램의 응답을 읽을 수 없어요.",
+  "runtime.checkedAt": "{time}에 확인했어요",
+  "runtime.repair": "복구",
+  "runtime.repairing": "복구하는 중…",
+  "runtime.repair.note":
+    "복구는 프로그램을 다시 찾아요. ROBot이 내려받은 프로그램이면 다시 내려받아 확인해요. 로그인은 바뀌지 않아요.",
+  "runtime.repair.help.system":
+    "프로그램을 다시 설치하거나 원래 있던 자리에 되돌려 놓은 뒤 '복구'를 누르세요.",
+  "runtime.repair.help.download": "네트워크를 확인한 뒤 '복구'를 다시 누르세요.",
+  "runtime.problem.repair": "복구하지 못했어요. {detail}",
   "runtime.limit.five_hour": "5시간 사용량: {percent}% 사용, {time}에 초기화",
   "runtime.limit.seven_day": "주간 사용량: {percent}% 사용, {time}에 초기화",
   "runtime.limit.window": "현재 구간: {percent}% 사용, {time}에 초기화",
@@ -280,7 +298,18 @@ export const ko: Record<MessageKey, string> = {
   "error.provider_limit": "이 계정의 사용 한도에 도달했어요.",
   "error.provider_not_found": "이 계정은 더 이상 없어요.",
   "error.provider_not_connected": "이 계정은 연결되어 있지 않아요.",
-  "error.runtime_missing": "이 컴퓨터에 프로그램이 없어요. 설정에서 내려받으세요.",
+  "error.runtime_missing":
+    "설치되지 않음: 이 컴퓨터에 프로그램이 없어요. 모델 제공자를 열어 설치하세요.",
+  "error.runtime_repair_gone":
+    "프로그램을 복구해야 해요. 파일이 없어졌거나 옮겨졌어요. 모델 제공자를 열어 '복구'를 누르세요.",
+  "error.runtime_repair_start":
+    "프로그램을 복구해야 해요. 프로그램이 시작되지 않아요. 모델 제공자를 열어 '복구'를 누르세요.",
+  "error.runtime_repair_answer":
+    "프로그램을 복구해야 해요. 프로그램이 응답하지 않아요. 모델 제공자를 열어 '복구'를 누르세요.",
+  "error.runtime_repair_unreadable":
+    "프로그램을 복구해야 해요. 프로그램의 응답을 읽을 수 없어요. 모델 제공자를 열어 '복구'를 누르세요.",
+  "error.read_only_unsupported":
+    "이 에이전트는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
   "error.runtime_not_signed_in": "프로그램에 로그인되어 있지 않아요. 먼저 로그인하세요.",
   "error.runtime_api_key_login":
     "프로그램이 구독이 아니라 API 키로 로그인되어 있어요. 구독으로 로그인하세요.",
@@ -339,6 +368,12 @@ export const ko: Record<MessageKey, string> = {
   "chat.connect": "계정 연결",
   "chat.noModel": "이 에이전트에는 아직 모델이 없어요.",
   "chat.chooseModel": "모델 선택",
+  "chat.runtime.needs_repair": "이 에이전트의 프로그램을 복구해야 해요.",
+  "chat.runtime.not_installed": "이 에이전트의 프로그램이 설치되어 있지 않아요.",
+  "chat.runtime.repair": "복구",
+  "chat.runtime.repairing": "복구하는 중…",
+  "chat.runtime.providers": "모델 제공자",
+  "chat.tool.refusedReadOnly": "거부됨: 읽기 전용",
   "chat.today": "오늘",
   "chat.yesterday": "어제",
   "chat.messages": "메시지",
@@ -593,8 +628,45 @@ export const ko: Record<MessageKey, string> = {
   "agents.permission.ask_all": "모두 확인",
   "agents.permission.ask_risky": "위험한 작업만 확인",
   "agents.permission.full": "모든 권한",
-  "agents.permission.hint":
-    "위험한 작업: 작업 폴더 밖 삭제, sudo, 소프트웨어 설치, 네트워크로 데이터 전송.",
+  "agents.permission.read_only": "읽기 전용",
+  "agents.permission.readOnlyOff": "{program}에는 읽기 전용 모드가 없어요.",
+  "agents.permission.line.app.read_only":
+    "앱이 모든 작업을 판단해요. 파일 쓰기, 셸 명령, 브라우저, 연결 도구, 컴퓨터 사용, 에이전트에게 메시지 보내기, 워크플로 실행은 거부해요.",
+  "agents.permission.line.app.ask_all": "앱이 모든 작업을 판단해요. 모든 작업 전에 물어봐요.",
+  "agents.permission.line.app.ask_risky":
+    "앱이 모든 작업을 판단해요. 위험한 작업 전에 물어봐요. 작업 폴더 밖 삭제, sudo, 소프트웨어 설치, 네트워크로 데이터 보내기가 위험한 작업이에요.",
+  "agents.permission.line.app.full": "앱이 모든 작업을 판단해요. 아무것도 묻지 않아요.",
+  "agents.permission.line.claude_code.read_only":
+    "Claude Code를 읽기 도구와 웹 도구만 가지고 시작해요. 파일을 바꾸거나 명령을 실행할 수 없어요.",
+  "agents.permission.line.claude_code.ask_all":
+    "Claude Code를 평소처럼 시작해요. 앱이 모든 작업 전에 물어봐요.",
+  "agents.permission.line.claude_code.ask_risky":
+    "Claude Code를 평소처럼 시작해요. 앱이 위험한 작업 전에 물어봐요.",
+  "agents.permission.line.claude_code.full":
+    "Claude Code를 평소처럼 시작해요. 앱은 아무것도 묻지 않아요.",
+  "agents.permission.line.codex.read_only":
+    "Codex를 읽기 전용 샌드박스로 시작해요. 파일을 바꾸거나 무언가를 바꾸는 명령을 실행할 수 없어요.",
+  "agents.permission.line.codex.ask_all":
+    "Codex를 읽기 전용 샌드박스로 시작해요. 파일을 바꿀 수 없어요.",
+  "agents.permission.line.codex.ask_risky":
+    "Codex를 작업 폴더 쓰기 샌드박스로 시작해요. 작업 폴더의 파일은 바꿀 수 있고, 네트워크에는 접근할 수 없어요.",
+  "agents.permission.line.codex.full": "Codex를 샌드박스 없이 시작해요.",
+  "agents.permission.line.muse.read_only": "Muse Code를 쓰기 도구와 셸 도구를 끈 채로 시작해요.",
+  "agents.permission.line.muse.ask_all":
+    "Muse Code를 쓰기 도구와 셸 도구를 끈 채로 시작해요. 다른 작업은 앱이 먼저 물어봐요.",
+  "agents.permission.line.muse.ask_risky":
+    "Muse Code를 샌드박스를 켠 채로 시작해요. 샌드박스가 허용하지 않는 작업은 앱이 물어봐요.",
+  "agents.permission.line.muse.full": "Muse Code를 승인과 샌드박스를 끈 채로 시작해요.",
+  "agents.permission.line.pi.read_only": "pi를 읽기 도구와 검색 도구만 가지고 시작해요.",
+  "agents.permission.line.pi.ask_all": "pi를 읽기 도구와 검색 도구만 가지고 시작해요.",
+  "agents.permission.line.pi.ask_risky":
+    "pi를 읽기, 검색, 편집, 쓰기 도구만 가지고 시작해요. 셸은 없어요.",
+  "agents.permission.line.pi.full": "pi를 모든 도구와 함께 시작해요.",
+  "agents.permission.confirm.title": "모든 권한을 사용할까요?",
+  "agents.permission.confirm.body":
+    "에이전트가 묻지 않고 파일을 바꾸고 명령을 실행해요. 거부 규칙은 그대로 적용돼요.",
+  "agents.permission.confirm.use": "모든 권한 사용",
+  "agents.permission.confirm.back": "뒤로",
   "agents.field.memory": "메모리 사용",
   "agents.history.title": "지시문 기록 ({count})",
   "agents.history.hint": "지시문을 바꿀 때마다 여기에 남아요. 최대 50개까지 남아요.",

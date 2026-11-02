@@ -20,6 +20,7 @@ import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
@@ -222,6 +223,27 @@ export const Composer = (props: ComposerProps) => {
 
   const blocked = () => ui.serverOffline() || props.agent.state === "offline"
 
+  // The program of the agent needs repair or is not installed (spec 006). The box is off, and the
+  // button is "Repair" or "Providers". A client sees the words and has no button.
+  const providers = useProviders()
+  const problem = () => props.agent.runtimeProblem ?? null
+  const [repairing, setRepairing] = createSignal(false)
+  const [repairError, setRepairError] = createSignal<ErrorText>()
+  const repair = async () => {
+    const p = problem()
+    if (!p || repairing()) return
+    setRepairing(true)
+    setRepairError(undefined)
+    try {
+      const account = props.agent.model ? providers.byId(props.agent.model.accountId) : undefined
+      await call("runtimes.repair", { kind: p.kind, signIn: account?.signIn ?? null })
+    } catch (e) {
+      setRepairError(describeError(e))
+    } finally {
+      setRepairing(false)
+    }
+  }
+
   return (
     <div class={styles.composer}>
       <Show when={props.queue.length > 0}>
@@ -253,31 +275,78 @@ export const Composer = (props: ComposerProps) => {
             <Show
               when={ui.serverOffline()}
               fallback={
-                <>
-                  <span>{props.agent.model ? t("chat.notConnected") : t("chat.noModel")}</span>
-                  <Show when={!ui.linked()}>
-                    <Show
-                      when={props.agent.model}
-                      fallback={
-                        <Button
-                          variant="primary"
-                          onClick={props.onChooseModel}
-                          data-testid="composer-choose-model"
+                <Show
+                  when={problem()}
+                  fallback={
+                    <>
+                      <span>{props.agent.model ? t("chat.notConnected") : t("chat.noModel")}</span>
+                      <Show when={!ui.linked()}>
+                        <Show
+                          when={props.agent.model}
+                          fallback={
+                            <Button
+                              variant="primary"
+                              onClick={props.onChooseModel}
+                              data-testid="composer-choose-model"
+                            >
+                              {t("chat.chooseModel")}
+                            </Button>
+                          }
                         >
-                          {t("chat.chooseModel")}
-                        </Button>
-                      }
-                    >
-                      <Button
-                        variant="primary"
-                        onClick={props.onConnect}
-                        data-testid="composer-connect"
-                      >
-                        {t("chat.connect")}
-                      </Button>
-                    </Show>
-                  </Show>
-                </>
+                          <Button
+                            variant="primary"
+                            onClick={props.onConnect}
+                            data-testid="composer-connect"
+                          >
+                            {t("chat.connect")}
+                          </Button>
+                        </Show>
+                      </Show>
+                    </>
+                  }
+                >
+                  {(p) => (
+                    <>
+                      <span data-testid="composer-runtime" data-state={p().state}>
+                        {t(`chat.runtime.${p().state}`)}
+                        <Show when={p().reason}>
+                          {(reason) => <> {t(`runtime.reason.${reason()}`)}</>}
+                        </Show>
+                      </span>
+                      <Show when={repairError()}>
+                        {(err) => (
+                          <span role="alert" data-testid="composer-repair-error">
+                            {t(err().key, err().params)}
+                          </span>
+                        )}
+                      </Show>
+                      {/* A client sees the state and has no button (spec 012). */}
+                      <Show when={!ui.linked()}>
+                        <Show
+                          when={p().state === "needs_repair"}
+                          fallback={
+                            <Button
+                              variant="primary"
+                              onClick={props.onConnect}
+                              data-testid="composer-providers"
+                            >
+                              {t("chat.runtime.providers")}
+                            </Button>
+                          }
+                        >
+                          <Button
+                            variant="primary"
+                            onClick={() => void repair()}
+                            disabled={repairing()}
+                            data-testid="composer-repair"
+                          >
+                            {repairing() ? t("chat.runtime.repairing") : t("chat.runtime.repair")}
+                          </Button>
+                        </Show>
+                      </Show>
+                    </>
+                  )}
+                </Show>
               }
             >
               <span data-testid="composer-offline">
