@@ -376,6 +376,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO knowledge_change SELECT * FROM imp.knowledge_change")
               db.run("INSERT INTO agent_allow SELECT * FROM imp.agent_allow")
               db.run("INSERT INTO task SELECT * FROM imp.task")
+              db.run("INSERT INTO import_checklist SELECT * FROM imp.import_checklist")
               db.run(
                 "INSERT OR REPLACE INTO setting (key, value) SELECT key, value FROM imp.setting",
               )
