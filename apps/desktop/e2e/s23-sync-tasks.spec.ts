@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite"
 import { expect, type Page, test } from "@playwright/test"
 import { createAgent, shot } from "./harness.ts"
 import { GOOD_KEY } from "./mock-provider.ts"
+import { freePortPair } from "./ports.ts"
 import {
   closeSettings,
   report,
@@ -73,7 +74,7 @@ const waiting = (path: string) => `TOOL run_command ${JSON.stringify({ command: 
 
 test("sync tasks: a message sent on computer 2 runs only there, and the tasks page lists both", async () => {
   test.setTimeout(300_000)
-  const s = await ready([47891, 47892])
+  const s = await ready(await freePortPair())
   const { one, two } = s
   try {
     await rowOf(one.page, "Ada").click()
@@ -110,7 +111,7 @@ test("sync tasks: a message sent on computer 2 runs only there, and the tasks pa
 
 test("sync tasks: an approval is answered on the other computer, one task per agent, notices and Retry", async () => {
   test.setTimeout(300_000)
-  const s = await ready([47893, 47894])
+  const s = await ready(await freePortPair())
   const { one, two } = s
   try {
     const keep = join(s.data1, "keep.txt")
@@ -224,7 +225,7 @@ test("sync tasks: an approval is answered on the other computer, one task per ag
 
 test("sync tasks: a card of a computer that is off says so", async () => {
   test.setTimeout(240_000)
-  const s = await ready([47895, 47896])
+  const s = await ready(await freePortPair())
   const { one, two } = s
   try {
     await rowOf(one.page, "Ada").click()
@@ -248,7 +249,7 @@ test("sync tasks: a card of a computer that is off says so", async () => {
 
 test("sync tasks: a routine and a workflow run on one computer only, and Run on this computer moves them", async () => {
   test.setTimeout(300_000)
-  const s = await ready([47897, 47898])
+  const s = await ready(await freePortPair())
   const { one, two } = s
   try {
     const server = await localServer(one.page)
@@ -369,10 +370,10 @@ test("sync tasks: a file of a message that is not on this computer is copied fro
   const note = join(folder, "note.txt")
   writeFileSync(note, "hello from the first computer")
   const opened = join(folder, "opened.log")
-  const s = await ready(
-    [47899, 47900],
-    [{ ROBOT_TEST_PICK_FILES: JSON.stringify([note]) }, { ROBOT_TEST_OPEN_LOG: opened }],
-  )
+  const s = await ready(await freePortPair(), [
+    { ROBOT_TEST_PICK_FILES: JSON.stringify([note]) },
+    { ROBOT_TEST_OPEN_LOG: opened },
+  ])
   const { one, two } = s
   try {
     await rowOf(one.page, "Ada").click()

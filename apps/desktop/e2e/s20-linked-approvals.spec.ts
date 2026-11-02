@@ -3,20 +3,17 @@ import { join } from "node:path"
 import { expect, type Page, test } from "@playwright/test"
 import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { freeNearbyPort, freePortPair, multicastWorks } from "./ports.ts"
 
 // MacBook 1 answers the approvals of MacBook 2. Two copies of the app run side by side, each with
 // its own data folder. They find each other with the network name service on a port of their own,
 // so a test run does not disturb the real one.
-const PORT_1 = 47863
-const PORT_2 = 47864
-const NEARBY_PORT = "15353"
-
-const envFor = (port: number, extra: Record<string, string> = {}) => ({
+const envFor = (port: number, nearby: number, extra: Record<string, string> = {}) => ({
   ROBOT_SYSTEM_LOCALE: "en-US",
   ROBOT_LINK_ADDRESSES: "127.0.0.1",
   ROBOT_LINK_PORT: String(port),
   ROBOT_LINK_RETRY_MAX_MS: "1000",
-  ROBOT_LINK_NEARBY_PORT: NEARBY_PORT,
+  ROBOT_LINK_NEARBY_PORT: String(nearby),
   ...extra,
 })
 
@@ -50,6 +47,11 @@ const files = (dir: string): string[] =>
 
 test("linked server: approvals, questions and tasks are answered from another computer, and access can be removed", async () => {
   test.setTimeout(300_000)
+  const [PORT_1, PORT_2] = await freePortPair()
+  const NEARBY = await freeNearbyPort()
+  // Some hosted test machines block multicast, and then no computer can find another by name. The
+  // list of nearby computers is checked where it works; the rest of the flow does not need it.
+  const multicast = await multicastWorks(NEARBY)
   const mock = await startMockProvider()
   const data1 = freshUserData()
   const data2 = freshUserData()
@@ -64,10 +66,10 @@ test("linked server: approvals, questions and tasks are answered from another co
           .map((l) => JSON.parse(l) as { title: string; body: string })
       : []
 
-  const two = await launch(data2, envFor(PORT_2))
+  const two = await launch(data2, envFor(PORT_2, NEARBY))
   const one = await launch(
     data1,
-    envFor(PORT_1, { ROBOT_TEST_NOTIFY_LOG: notices, ROBOT_TEST_UNFOCUSED: "1" }),
+    envFor(PORT_1, NEARBY, { ROBOT_TEST_NOTIFY_LOG: notices, ROBOT_TEST_UNFOCUSED: "1" }),
   )
   try {
     await resizeWindow(two.app, 1200, 860)
@@ -81,11 +83,13 @@ test("linked server: approvals, questions and tasks are answered from another co
 
     // No computer shows a code yet, so the connect dialog of MacBook 1 lists none.
     await one.page.getByTestId("server-add").click()
-    await expect(one.page.getByTestId("connect-nearby")).toContainText(
-      "No computer shows a pairing code now.",
-      { timeout: 15_000 },
-    )
-    await expect(one.page.getByTestId("connect-nearby-item")).toHaveCount(0)
+    if (multicast) {
+      await expect(one.page.getByTestId("connect-nearby")).toContainText(
+        "No computer shows a pairing code now.",
+        { timeout: 15_000 },
+      )
+      await expect(one.page.getByTestId("connect-nearby-item")).toHaveCount(0)
+    }
 
     // MacBook 2 shows a code: it appears in the list by name, and a click fills the address.
     await two.page.getByTestId("open-settings").click()
@@ -94,10 +98,19 @@ test("linked server: approvals, questions and tasks are answered from another co
     await two.page.getByTestId("pair-turn-on").click()
     await expect(two.page.getByTestId("pair-code")).toHaveAttribute("data-code", /^\d{6}$/)
     const code = (await two.page.getByTestId("pair-code").getAttribute("data-code")) ?? ""
-    await expect(one.page.getByTestId("connect-nearby-item")).toHaveCount(1, { timeout: 20_000 })
-    await expect(one.page.getByTestId("connect-nearby-item")).toContainText("MacBook 2")
-    await shot(one.page, "s20-01-nearby")
-    await one.page.getByTestId("connect-nearby-item").click()
+    if (multicast) {
+      await expect(one.page.getByTestId("connect-nearby-item")).toHaveCount(1, { timeout: 20_000 })
+      await expect(one.page.getByTestId("connect-nearby-item")).toContainText("MacBook 2")
+      await shot(one.page, "s20-01-nearby")
+      await one.page.getByTestId("connect-nearby-item").click()
+    } else {
+      test.info().annotations.push({
+        type: "multicast blocked",
+        description:
+          "This computer blocks multicast: the list of nearby computers was not checked.",
+      })
+      await one.page.getByTestId("connect-address").fill(`127.0.0.1:${PORT_2}`)
+    }
     await expect(one.page.getByTestId("connect-address")).toHaveValue(`127.0.0.1:${PORT_2}`)
     await one.page.getByTestId("connect-code").fill(code)
     await one.page.getByTestId("connect-next").click()

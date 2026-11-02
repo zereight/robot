@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite"
 import { expect, test } from "@playwright/test"
 import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { freePortPair } from "./ports.ts"
 
 import {
   agentNames,
@@ -26,8 +27,9 @@ test("sync: a new computer takes the data of the other; no secret crosses and ag
   const mock = await startMockProvider()
   const data1 = freshUserData()
   const data2 = freshUserData()
-  const one = await launch(data1, envFor(47871))
-  const two = await launch(data2, envFor(47872))
+  const [port1, port2] = await freePortPair()
+  const one = await launch(data1, envFor(port1))
+  const two = await launch(data2, envFor(port2))
   try {
     await resizeWindow(one.app, 1200, 860)
     await resizeWindow(two.app, 1200, 860)
@@ -139,8 +141,9 @@ test("sync: a new computer takes the data of the other; no secret crosses and ag
 test("sync: a merge matches names and accounts, a deny and a stop are plain, a new sync makes no copies", async () => {
   test.setTimeout(300_000)
   const mock = await startMockProvider()
-  const one = await launch(freshUserData(), envFor(47873))
-  const two = await launch(freshUserData(), envFor(47874))
+  const [port1, port2] = await freePortPair()
+  const one = await launch(freshUserData(), envFor(port1))
+  const two = await launch(freshUserData(), envFor(port2))
   try {
     await resizeWindow(one.app, 1200, 860)
     await resizeWindow(two.app, 1200, 860)
@@ -247,8 +250,9 @@ test("sync: a copy that stops in the middle goes on where it stopped", async () 
   const data1 = freshUserData()
   const data2 = freshUserData()
   const slow = { ROBOT_SYNC_BATCH: "10", ROBOT_SYNC_DELAY_MS: "250" }
-  let one = await launch(data1, envFor(47875))
-  const two = await launch(data2, envFor(47876))
+  const [port1, port2] = await freePortPair()
+  let one = await launch(data1, envFor(port1))
+  const two = await launch(data2, envFor(port2))
   try {
     await resizeWindow(one.app, 1200, 860)
     await resizeWindow(two.app, 1200, 860)
@@ -282,7 +286,7 @@ test("sync: a copy that stops in the middle goes on where it stopped", async () 
     db.exec("COMMIT")
     db.close()
 
-    one = await launch(data1, envFor(47875, slow))
+    one = await launch(data1, envFor(port1, slow))
     await resizeWindow(one.app, 1200, 860)
     await openDevices(one.page)
     await expect(serverRow(two.page, "MacBook 1").getByTestId("server-row-state")).toHaveAttribute(
@@ -317,7 +321,7 @@ test("sync: a copy that stops in the middle goes on where it stopped", async () 
     const total = Number(await state.getAttribute("data-total"))
     expect(before).toBeLessThan(total)
     await one.app.close()
-    one = await launch(data1, envFor(47875, slow))
+    one = await launch(data1, envFor(port1, slow))
     await resizeWindow(one.app, 1200, 860)
 
     // The copy goes on. It does not start over: the count never falls back near zero.

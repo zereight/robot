@@ -3,6 +3,7 @@ import { createServer } from "node:net"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 import { createAgent, launch, shot } from "./harness.ts"
+import { freePortPair } from "./ports.ts"
 import {
   closeSettings,
   envFor,
@@ -65,7 +66,7 @@ const quit = async (app: Awaited<ReturnType<typeof launch>>["app"]) => {
 
 test("quit: a card waits and two computers sync live; the app ends, and the card is there after the start", async () => {
   test.setTimeout(300_000)
-  const ports: [number, number] = [47921, 47922]
+  const ports = await freePortPair()
   const s = await synced(ports)
   const { one, two } = s
   let restarted: Awaited<ReturnType<typeof launch>> | undefined
@@ -158,7 +159,7 @@ test("quit: a card waits and two computers sync live; the app ends, and the card
 
 test("quit: a question that waits stays after the start, with its choices", async () => {
   test.setTimeout(240_000)
-  const s = await synced([47923, 47924])
+  const s = await synced(await freePortPair())
   const { one } = s
   let restarted: Awaited<ReturnType<typeof launch>> | undefined
   try {
@@ -173,7 +174,7 @@ test("quit: a question that waits stays after the start, with its choices", asyn
     expect(quitted.ok).toBe(true)
     expect(quitted.signal).toBeNull()
 
-    restarted = await launch(s.data1, envFor(47923, {}))
+    restarted = await launch(s.data1, envFor(s.ports[0], {}))
     await rowOf(restarted.page, "Ada").click()
     await expect(restarted.page.getByTestId("ask-card")).toContainText("Which colour?", {
       timeout: 20_000,
@@ -194,7 +195,7 @@ test("quit: a question that waits stays after the start, with its choices", asyn
 
 test("quit: Stop on a card that waited through a restart ends it as before", async () => {
   test.setTimeout(240_000)
-  const s = await synced([47925, 47926])
+  const s = await synced(await freePortPair())
   const { one } = s
   let restarted: Awaited<ReturnType<typeof launch>> | undefined
   try {
@@ -206,7 +207,7 @@ test("quit: Stop on a card that waited through a restart ends it as before", asy
     await expect(one.page.getByTestId("ask-card")).toBeVisible({ timeout: 15_000 })
     expect((await quit(one.app)).ok).toBe(true)
 
-    restarted = await launch(s.data1, envFor(47925, {}))
+    restarted = await launch(s.data1, envFor(s.ports[0], {}))
     await rowOf(restarted.page, "Ada").click()
     await expect(restarted.page.getByTestId("ask-card")).toBeVisible({ timeout: 20_000 })
     await restarted.page.getByTestId("composer-stop").click()
