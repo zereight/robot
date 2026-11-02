@@ -1418,6 +1418,35 @@ describe("archive and delete", () => {
   })
 })
 
+describe("duplicate", () => {
+  test("a copy of an agent has a new, empty workspace, so its knowledge is empty; the original keeps its own", async () => {
+    const s = await setup()
+    await s.save("Alpha", "Original text.", "first")
+    await s.k((x) => x.addSource(s.agent.id, { name: "a.txt", data: "data" }))
+    await s.turn(call("write_article", { title: "Beta", body: "By the agent." }))
+    const copy = await s.run(Agents.use((a) => a.duplicate(s.agent.id, " copy")))
+    expect(copy.workspace).not.toBe(s.agent.workspace)
+    expect(copy.knowledgeEnabled).toBe(true)
+    const view = await s.k((x) => x.list(copy.id))
+    expect(view).toMatchObject({ total: 0, articles: [], sources: [], canOpenFolder: false })
+    expect(existsSync(join(copy.workspace, "Knowledge"))).toBe(false)
+    expect(await s.run(Knowledge.use((x) => x.changes(copy.id)))).toEqual([])
+    // The copy does not read the knowledge of the original.
+    const prompt = (id: string) =>
+      s.run(
+        Knowledge.use((x) => Effect.succeed(x.prompt(id, "Original text", "tools"))),
+      ) as Promise<string>
+    expect(await prompt(copy.id)).not.toContain("Alpha")
+    expect(await prompt(s.agent.id)).toContain("Alpha")
+    // The original is as it was, and it stays when the copy goes.
+    expect((await s.list()).articles.map((a) => a.title)).toEqual(["Alpha", "Beta"])
+    await s.run(Agents.use((a) => a.archive(copy.id)))
+    await s.run(Agents.use((a) => a.remove(copy.id)))
+    expect((await s.list()).articles.map((a) => a.title)).toEqual(["Alpha", "Beta"])
+    expect(existsSync(join(s.folder, "Alpha.md"))).toBe(true)
+  })
+})
+
 describe("channels", () => {
   test("a member in a channel uses its own knowledge only", async () => {
     const s = await setup()
