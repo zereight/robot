@@ -198,7 +198,7 @@ const Island = () => {
   })
   onCleanup(() => resultTimer && clearTimeout(resultTimer))
 
-  const respond = (a: IslandAttention, answer: "allow" | "deny") =>
+  const respond = (a: IslandAttention, answer: "allow" | "always" | "deny") =>
     call("island.respond", { agentId: a.agentId, callId: a.callId, answer })
   const open = (target: IslandAttention["target"]) => call("island.openApp", { target })
 
@@ -355,13 +355,7 @@ const Island = () => {
                 <button
                   type="button"
                   data-testid="island-always"
-                  onClick={() =>
-                    call("island.respond", {
-                      agentId: a().agentId,
-                      callId: a().callId,
-                      answer: "always",
-                    })
-                  }
+                  onClick={() => respond(a(), "always")}
                 >
                   {t("chat.tool.always")}
                 </button>
