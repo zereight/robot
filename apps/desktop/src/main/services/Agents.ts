@@ -12,6 +12,7 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Activity } from "./Activity.ts"
+import { CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -36,6 +37,8 @@ interface AgentRow {
   memory_enabled: number
   archived_at: number | null
   created_at: number
+  changed_by: string | null
+  changed_at: number | null
 }
 
 export interface AgentsService {
@@ -105,8 +108,23 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           createdAt: row.created_at,
           permission: row.permission,
           memoryEnabled: row.memory_enabled === 1,
+          changedBy:
+            row.changed_by !== null && row.changed_at !== null
+              ? { by: row.changed_by, at: row.changed_at }
+              : null,
         }
       }
+
+      /**
+       * The record of the last change: the linked device that asks now, or nothing when the user
+       * of this computer changes the agent (spec 012, "Create and change agents").
+       */
+      const stamp = Effect.gen(function* () {
+        const actor = yield* CurrentActor
+        return actor
+          ? { by: actor.name as string | null, at: Date.now() as number | null }
+          : { by: null as string | null, at: null as number | null }
+      })
 
       const findRow = (id: string) =>
         Effect.suspend(() => {
@@ -146,10 +164,12 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         const workspace = yield* makeWorkspace(name, id)
         const face = input.face ?? faceFromName(name)
         const now = Date.now()
+        const by = yield* stamp
         db.run(
           `INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
-            model_account_id, model_name, model_effort, workspace, section, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?)`,
+            model_account_id, model_name, model_effort, workspace, section, created_at, updated_at,
+            changed_by, changed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?)`,
           id,
           input.serverId,
           name,
@@ -164,6 +184,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           workspace,
           now,
           now,
+          by.by,
+          by.at,
         )
         changed(input.serverId)
         return toAgent(yield* findRow(id))
@@ -198,6 +220,9 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         }
         if (patch.permission !== undefined) set("permission", patch.permission)
         if (patch.memoryEnabled !== undefined) set("memory_enabled", patch.memoryEnabled ? 1 : 0)
+        const by = yield* stamp
+        set("changed_by", by.by)
+        set("changed_at", by.at)
         set("updated_at", Date.now())
         db.run(`UPDATE agent SET ${sets.join(", ")} WHERE id = ?`, ...values, id)
         changed(row.server_id)
@@ -207,10 +232,13 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
       const setArchived = (archived: boolean) =>
         Effect.fn("Agents.setArchived")(function* (id: string) {
           const row = yield* findRow(id)
+          const by = yield* stamp
           db.run(
-            "UPDATE agent SET archived_at = ?, updated_at = ? WHERE id = ?",
+            "UPDATE agent SET archived_at = ?, updated_at = ?, changed_by = ?, changed_at = ? WHERE id = ?",
             archived ? Date.now() : null,
             Date.now(),
+            by.by,
+            by.at,
             id,
           )
           changed(row.server_id)
@@ -249,7 +277,15 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           file = `${id}-${Date.now()}.png`
           writeFileSync(join(facesDir, file), bytes)
         }
-        db.run("UPDATE agent SET face_image = ?, updated_at = ? WHERE id = ?", file, Date.now(), id)
+        const by = yield* stamp
+        db.run(
+          "UPDATE agent SET face_image = ?, updated_at = ?, changed_by = ?, changed_at = ? WHERE id = ?",
+          file,
+          Date.now(),
+          by.by,
+          by.at,
+          id,
+        )
         changed(row.server_id)
         return toAgent(yield* findRow(id))
       })

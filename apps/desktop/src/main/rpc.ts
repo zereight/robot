@@ -5,6 +5,7 @@ import {
   ChannelPatch,
   ChatSend,
   DEVICE_NAME_MAX,
+  isClientMethod,
   MESSAGE_MAX,
   MUTE_CHOICES,
   ProviderConnect,
@@ -27,6 +28,7 @@ import {
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
+import { modelChoices } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { Agents } from "./services/Agents.ts"
 import type { Actor } from "./services/actor.ts"
@@ -198,13 +200,26 @@ export const handlers: Handlers = {
   "devices.pair.stop": () => Devices.use((d) => Effect.sync(() => d.pairStop())),
   "devices.join.list": () => Devices.use((d) => Effect.sync(() => d.joins())),
   "devices.join.decide": (input) =>
-    decode(Schema.Struct({ id: Schema.String, allow: Schema.Boolean }))(input).pipe(
-      Effect.flatMap(({ id, allow }) => Devices.use((d) => d.decide(id, allow))),
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        allow: Schema.Boolean,
+        canChange: Schema.optionalKey(Schema.Boolean),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ id, allow, canChange }) =>
+        Devices.use((d) => d.decide(id, allow, canChange === true)),
+      ),
       done,
     ),
   "devices.client.remove": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Devices.use((d) => d.removeClient(id))),
+      done,
+    ),
+  "devices.client.setChange": (input) =>
+    decode(Schema.Struct({ id: Schema.String, canChange: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, canChange }) => Devices.use((d) => d.setCanChange(id, canChange))),
       done,
     ),
   "devices.server.remove": (input) =>
@@ -348,6 +363,7 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
       Effect.flatMap(({ id, dataUrl }) => Agents.use((a) => a.setFaceImage(id, dataUrl))),
     ),
+  "models.available": () => modelChoices,
   "providers.list": () => Providers.use((p) => p.list),
   "providers.connect": (input) =>
     decode(ProviderConnect)(input).pipe(
@@ -677,6 +693,11 @@ export const runRequest = async (
   input: unknown,
   actor: Actor | null = null,
 ): Promise<RpcResult<unknown>> => {
+  // A linked device reaches only what the link lists (spec 012). This holds also when a caller of
+  // this function forgets to check, so a method that is not listed never gets to a window handler.
+  if (actor && !isClientMethod(method)) {
+    return { ok: false, error: { code: "not_allowed", message: "Not allowed" } }
+  }
   const handler =
     (actor ? linkHandlers[method] : undefined) ??
     (handlers as Record<string, Handler<RpcMethod> | undefined>)[method]

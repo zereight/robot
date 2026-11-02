@@ -3,7 +3,7 @@ import { join, sep } from "node:path"
 import type { DownloadChunk, DownloadRequest, ServerSummary, UploadChunk } from "@robot/shared"
 import { FILE_CHUNK, LINK_PROTOCOL, UPLOAD_PREFIX } from "@robot/shared"
 import type { Effect } from "effect"
-import { Effect as E } from "effect"
+import { Effect as E, Schema } from "effect"
 import type { AppServices } from "../layers.ts"
 import { Agents } from "../services/Agents.ts"
 import { CurrentActor } from "../services/actor.ts"
@@ -13,6 +13,7 @@ import { Notifier } from "../services/Notifier.ts"
 import { Platform } from "../services/Platform.ts"
 import { Servers } from "../services/Servers.ts"
 import { Sync } from "../services/Sync.ts"
+import { changeHandlers, forClient } from "./changes.ts"
 import { UploadError } from "./uploads.ts"
 
 type LinkHandler = (input: unknown) => Effect.Effect<unknown, AppError, AppServices>
@@ -98,8 +99,10 @@ const syncHandlers: Record<string, LinkHandler> = Object.fromEntries(
 
 export const linkHandlers: Record<string, LinkHandler> = {
   ...syncHandlers,
+  ...changeHandlers,
   "server.summary": () =>
     E.gen(function* () {
+      const actor = yield* actorOrFail
       const devices = yield* Devices
       const platform = yield* Platform
       const server = yield* Servers.use((s) => s.local)
@@ -109,7 +112,29 @@ export const linkHandlers: Record<string, LinkHandler> = {
         name: devices.deviceName(),
         app: platform.appVersion,
         protocol: LINK_PROTOCOL,
+        canChange: devices.canChange(actor.id),
       } satisfies ServerSummary
+    }),
+
+  // A client reads agents like the window does, but the path of the folder stays on the server.
+  "agents.list": (input) =>
+    E.gen(function* () {
+      const { serverId, archived } = yield* E.mapError(
+        Schema.decodeUnknownEffect(
+          Schema.Struct({ serverId: Schema.String, archived: Schema.Boolean }),
+        )(input),
+        () => new AppError({ code: "invalid_input" }),
+      )
+      const list = yield* Agents.use((a) => a.list(serverId, archived))
+      return list.map(forClient)
+    }),
+  "agents.get": (input) =>
+    E.gen(function* () {
+      const { id } = yield* E.mapError(
+        Schema.decodeUnknownEffect(Schema.Struct({ id: Schema.String }))(input),
+        () => new AppError({ code: "invalid_input" }),
+      )
+      return forClient(yield* Agents.use((a) => a.get(id)))
     }),
 
   /** The approvals and questions that wait now, for a device that connects (spec 015). */

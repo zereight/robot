@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import {
+  ACCESS_EVENT,
+  CHANGE_METHODS,
   CLIENT_METHODS,
   formatAddress,
   formatLink,
   groupCode,
+  isChangeMethod,
   isClientMethod,
   isPairCode,
   numberedNames,
+  PUSHED_EVENTS,
   parseAddress,
   parseLink,
 } from "./link.ts"
@@ -81,17 +85,13 @@ describe("link text", () => {
 describe("client requests", () => {
   test("a client cannot reach the settings of a server", () => {
     for (const method of [
-      "agents.create",
-      "agents.update",
       "agents.delete",
-      "channels.create",
-      "channels.update",
+      "agents.restore",
+      "agents.setFaceImage",
       "channels.delete",
       "providers.connect",
       "providers.list",
       "settings.update",
-      "memory.list",
-      "memory.add",
       "routines.list",
       "workflows.run",
       "usage.summary",
@@ -105,6 +105,35 @@ describe("client requests", () => {
     }
     expect(CLIENT_METHODS).toContain("chat.send")
     expect(CLIENT_METHODS).toContain("tools.respond")
+  })
+
+  test("the requests that make and change agents are listed, and each needs the switch", () => {
+    expect([...CHANGE_METHODS].sort() as string[]).toEqual(
+      [
+        "agents.archive",
+        "agents.create",
+        "agents.duplicate",
+        "agents.update",
+        "channels.create",
+        "channels.update",
+        "memory.add",
+        "memory.delete",
+        "memory.list",
+        "memory.update",
+        "models.available",
+      ].sort(),
+    )
+    for (const method of CHANGE_METHODS) {
+      expect(isClientMethod(method)).toBe(true)
+      expect(isChangeMethod(method)).toBe(true)
+    }
+    // Reading and sending do not need the switch. Deleting is not offered at all.
+    for (const method of ["chat.send", "agents.list", "agents.get", "tools.respond"]) {
+      expect(isChangeMethod(method)).toBe(false)
+    }
+    expect(isChangeMethod("agents.delete")).toBe(false)
+    // The event that tells one device about its switch goes to that device only.
+    expect((PUSHED_EVENTS as readonly string[]).includes(ACCESS_EVENT)).toBe(false)
   })
 })
 

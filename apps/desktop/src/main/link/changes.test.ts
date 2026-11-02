@@ -1,0 +1,665 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { existsSync, readdirSync } from "node:fs"
+import type { Agent, DevicesState, RpcResult } from "@robot/shared"
+import { Effect } from "effect"
+import { runRequest } from "../rpc.ts"
+import { Activity } from "../services/Activity.ts"
+import { Database } from "../services/Database.ts"
+import { Devices } from "../services/Devices.ts"
+import { Providers } from "../services/Providers.ts"
+import { Remote } from "../services/Remote.ts"
+import { Servers } from "../services/Servers.ts"
+import { testRuntime } from "../services/testing.ts"
+
+type Rt = ReturnType<typeof testRuntime>
+
+// A model account with two models; one takes an effort level.
+const model = Bun.serve({
+  port: 0,
+  fetch(req) {
+    if (new URL(req.url).pathname === "/v1/models") {
+      return Response.json({ data: [{ id: "model-b" }, { id: "o3", display_name: "O3" }] })
+    }
+    return new Response("not found", { status: 404 })
+  },
+})
+
+const sides: Rt[] = []
+const side = (name: string) => {
+  const s = testRuntime({ name })
+  sides.push(s)
+  return s
+}
+
+const waitFor = async <T>(read: () => Promise<T> | T, ok: (v: T) => boolean, ms = 8000) => {
+  const end = Date.now() + ms
+  let last = await read()
+  while (!ok(last) && Date.now() < end) {
+    await new Promise((r) => setTimeout(r, 40))
+    last = await read()
+  }
+  return last
+}
+
+beforeAll(() => {
+  process.env.ROBOT_LINK_ADDRESSES = "127.0.0.1"
+  process.env.ROBOT_LINK_RETRY_MAX_MS = "300"
+  process.env.ROBOT_LINK_NEARBY_WAIT_MS = "80"
+})
+afterAll(async () => {
+  model.stop()
+  for (const s of sides) await s.runtime.dispose()
+  delete process.env.ROBOT_LINK_ADDRESSES
+  delete process.env.ROBOT_LINK_RETRY_MAX_MS
+  delete process.env.ROBOT_LINK_NEARBY_WAIT_MS
+})
+
+/** A server and a client that is paired with it. `canChange` is the switch of the Allow dialog. */
+const pair = async (canChange: boolean | undefined) => {
+  const server = side("MacBook 2")
+  const client = side("MacBook 1")
+  const pairing = await server.runtime.runPromise(Devices.use((d) => d.pairStart()))
+  const found = await client.runtime.runPromise(Remote.use((r) => r.probe({ link: pairing.link })))
+  const done = client.runtime.runPromise(Remote.use((r) => r.finish(found.session, false)))
+  const request = await waitFor(
+    () => server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.joins()[0]))),
+    (j) => j !== undefined,
+  )
+  await server.runtime.runPromise(
+    Devices.use((d) =>
+      d.decide(request?.id ?? "", true, ...(canChange === undefined ? [] : [canChange])),
+    ),
+  )
+  const entry = await done
+  await waitFor(
+    () => client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.stateOf(entry.id)))),
+    (state) => state === "online",
+  )
+  const serverId = entry.serverId
+  const clientName = (
+    await client.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.self())))
+  ).name
+  const clientLink = server.runtime.runPromise(
+    Devices.use((d) => Effect.sync(() => d.state().clients[0]?.id ?? "")),
+  )
+  /** A request of the client over the link, as the window of the client makes it. */
+  const ask = (method: string, input: unknown): Promise<RpcResult<unknown>> =>
+    client.runtime.runPromise(
+      Remote.use((r) => Effect.promise(() => r.invoke(serverId, method, input))),
+    )
+  /** A request that goes to the server as it is, also for a method that the client refuses. */
+  const raw = async (method: string, input: unknown): Promise<string> => {
+    try {
+      await client.runtime.runPromise(
+        Remote.use((r) => Effect.promise(() => r.request(entry.id, method, input, 5000))),
+      )
+      return "ok"
+    } catch (error) {
+      return (error as { code?: string }).code ?? "error"
+    }
+  }
+  /** A request of the window of the server. */
+  const onServer = (method: string, input: unknown) => runRequest(server.runtime, method, input)
+  const account = await server.runtime.runPromise(
+    Providers.use((p) =>
+      p.connect({
+        kind: "openai",
+        name: "Work",
+        baseUrl: `http://127.0.0.1:${model.port}/v1`,
+        apiKey: "SECRET-KEY-OF-SERVER",
+      }),
+    ),
+  )
+  return { server, client, entry, serverId, clientName, clientLink, ask, raw, onServer, account }
+}
+
+const value = <T>(result: RpcResult<unknown>) => {
+  if (!result.ok) throw new Error(`request failed: ${result.error.code}`)
+  return result.value as T
+}
+const codeOf = (result: RpcResult<unknown>) => (result.ok ? "ok" : result.error.code)
+
+const make = (serverId: string, name: string, extra: object = {}) => ({
+  serverId,
+  name,
+  role: "",
+  instructions: "Be brief.",
+  ...extra,
+})
+
+describe("a linked device that may create and change agents (spec 012)", () => {
+  test("it makes an agent: a new empty folder, the default level, the record, no path for it", async () => {
+    const p = await pair(true)
+    const created = value<Agent>(
+      await p.ask(
+        "agents.create",
+        make(p.serverId, "Writer", {
+          model: { accountId: p.account.id, model: "o3", effort: "low" },
+        }),
+      ),
+    )
+    expect(created.name).toBe("Writer")
+    expect(created.permission).toBe("ask_risky")
+    expect(created.model?.model).toBe("o3")
+    expect(created.workspace).toBe("")
+    expect(created.changedBy?.by).toBe(p.clientName)
+    expect(JSON.stringify(created)).not.toContain("SECRET-KEY-OF-SERVER")
+
+    // On the server: the folder exists, is empty, and sits in the default workspace folder.
+    const here = value<Agent>(await p.onServer("agents.get", { id: created.id }))
+    expect(here.workspace).toContain("workspaces")
+    expect(existsSync(here.workspace)).toBe(true)
+    expect(readdirSync(here.workspace)).toEqual([])
+    expect(here.changedBy?.by).toBe(p.clientName)
+    expect(typeof here.changedBy?.at).toBe("number")
+    expect(p.server.events.some((e) => e.event === "agents.changed")).toBe(true)
+
+    // The client reads the agent without the path, also in a list.
+    const list = value<Agent[]>(
+      await p.ask("agents.list", { serverId: p.serverId, archived: false }),
+    )
+    expect(list.map((a) => a.workspace)).toEqual([""])
+    const one = value<Agent>(await p.ask("agents.get", { id: created.id }))
+    expect(one.workspace).toBe("")
+  })
+
+  test("the user of the server who changes the agent clears the record", async () => {
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    expect(created.changedBy).not.toBeNull()
+    const after = value<Agent>(
+      await p.onServer("agents.update", { id: created.id, patch: { role: "Editor" } }),
+    )
+    expect(after.changedBy).toBeNull()
+    const again = value<Agent>(
+      await p.ask("agents.update", { id: created.id, patch: { role: "Writer" } }),
+    )
+    expect(again.changedBy?.by).toBe(p.clientName)
+  })
+
+  test("it edits instructions, face, role and model, duplicates and archives", async () => {
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    const edited = value<Agent>(
+      await p.ask("agents.update", {
+        id: created.id,
+        patch: {
+          instructions: "Write short.",
+          role: "Writes",
+          face: { shape: 2, hue: 3 },
+          model: { accountId: p.account.id, model: "model-b", effort: null },
+        },
+      }),
+    )
+    expect(edited.instructions).toBe("Write short.")
+    expect(edited.face).toEqual({ shape: 2, hue: 3 })
+    expect(edited.model?.model).toBe("model-b")
+    const copy = value<Agent>(await p.ask("agents.duplicate", { id: created.id, suffix: " copy" }))
+    expect(copy.name).toBe("Writer copy")
+    expect(copy.workspace).toBe("")
+    const there = value<Agent>(await p.onServer("agents.get", { id: copy.id }))
+    expect(there.workspace).not.toBe(
+      value<Agent>(await p.onServer("agents.get", { id: created.id })).workspace,
+    )
+    expect(readdirSync(there.workspace)).toEqual([])
+    const archived = value<Agent>(await p.ask("agents.archive", { id: created.id }))
+    expect(archived.archived).toBe(true)
+  })
+
+  test("a request cannot name a folder or a path: the field is refused and nothing is made", async () => {
+    const p = await pair(true)
+    for (const field of ["workspace", "path", "folder", "dir", "workspacePath"]) {
+      const result = await p.ask("agents.create", make(p.serverId, "Sneaky", { [field]: "/tmp/x" }))
+      expect(codeOf(result)).toBe("invalid_input")
+    }
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    const update = await p.ask("agents.update", {
+      id: created.id,
+      patch: { workspace: "/tmp/x" },
+    })
+    expect(codeOf(update)).toBe("invalid_input")
+    // A field next to the patch is refused too, and a field of a nested object.
+    expect(
+      codeOf(await p.ask("agents.update", { id: created.id, patch: {}, workspace: "/tmp/x" })),
+    ).toBe("invalid_input")
+    expect(
+      codeOf(
+        await p.ask("agents.update", {
+          id: created.id,
+          patch: { face: { shape: 1, hue: 1, path: "/tmp/x" } },
+        }),
+      ),
+    ).toBe("invalid_input")
+    const names = value<Agent[]>(
+      await p.onServer("agents.list", { serverId: p.serverId, archived: false }),
+    )
+    expect(names.map((a) => a.name)).toEqual(["Writer"])
+    expect(
+      value<Agent>(await p.onServer("agents.get", { id: created.id })).workspace,
+    ).not.toContain("tmp/x")
+  })
+
+  test("the level starts at the default; stricter works, looser is refused against the level now", async () => {
+    const p = await pair(true)
+    // A level in the create request is refused: the server decides it.
+    expect(
+      codeOf(await p.ask("agents.create", make(p.serverId, "Loose", { permission: "full" }))),
+    ).toBe("invalid_input")
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    expect(created.permission).toBe("ask_risky")
+
+    const stricter = value<Agent>(
+      await p.ask("agents.update", { id: created.id, patch: { permission: "ask_all" } }),
+    )
+    expect(stricter.permission).toBe("ask_all")
+    for (const level of ["ask_risky", "full"]) {
+      const result = await p.ask("agents.update", { id: created.id, patch: { permission: level } })
+      expect(codeOf(result)).toBe("not_allowed")
+    }
+    // The same level is not looser.
+    expect(
+      codeOf(await p.ask("agents.update", { id: created.id, patch: { permission: "ask_all" } })),
+    ).toBe("ok")
+
+    // The user of the server makes the agent less careful; then a stricter level from the client
+    // works, and the level that counts is the one on the server now.
+    await p.onServer("agents.update", { id: created.id, patch: { permission: "full" } })
+    expect(
+      codeOf(await p.ask("agents.update", { id: created.id, patch: { permission: "ask_risky" } })),
+    ).toBe("ok")
+    expect(
+      codeOf(await p.ask("agents.update", { id: created.id, patch: { permission: "full" } })),
+    ).toBe("not_allowed")
+    const now = value<Agent>(await p.onServer("agents.get", { id: created.id }))
+    expect(now.permission).toBe("ask_risky")
+  })
+
+  test("a copy starts at the default level, also when the original is at Full access", async () => {
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    await p.onServer("agents.update", { id: created.id, patch: { permission: "full" } })
+    const copy = value<Agent>(await p.ask("agents.duplicate", { id: created.id, suffix: " copy" }))
+    expect(copy.permission).toBe("ask_risky")
+  })
+
+  test("no request can add an Always allow rule or switch the memory of an agent", async () => {
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    for (const patch of [
+      { allow: ["shell"] },
+      { rules: [{ kind: "shell" }] },
+      { alwaysAllow: true },
+      { memoryEnabled: false },
+    ]) {
+      expect(codeOf(await p.ask("agents.update", { id: created.id, patch }))).toBe("invalid_input")
+    }
+    const db = await p.server.runtime.runPromise(Database.use((d) => Effect.succeed(d)))
+    expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM agent_allow")?.n).toBe(0)
+  })
+
+  test("a model that the server does not offer is refused; an offered one works", async () => {
+    const p = await pair(true)
+    const unknown = [
+      { accountId: "no-such-account", model: "o3", effort: null },
+      { accountId: p.account.id, model: "no-such-model", effort: null },
+      { accountId: p.account.id, model: "model-b", effort: "high" },
+      { accountId: p.account.id, model: "o3", effort: "extreme" },
+    ]
+    for (const wanted of unknown) {
+      const result = await p.ask("agents.create", make(p.serverId, "Writer", { model: wanted }))
+      expect(codeOf(result)).toBe("model_not_found")
+    }
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    expect(
+      codeOf(
+        await p.ask("agents.update", {
+          id: created.id,
+          patch: { model: { accountId: "no-such-account", model: "x", effort: null } },
+        }),
+      ),
+    ).toBe("model_not_found")
+    // An account that the user disconnected on the server is not offered.
+    await p.server.runtime.runPromise(Providers.use((x) => x.disconnect(p.account.id)))
+    expect(
+      codeOf(
+        await p.ask("agents.update", {
+          id: created.id,
+          patch: { model: { accountId: p.account.id, model: "o3", effort: "low" } },
+        }),
+      ),
+    ).toBe("model_not_found")
+    expect(value<unknown[]>(await p.ask("models.available", undefined))).toEqual([])
+  })
+
+  test("the models that a client may pick hold no key", async () => {
+    const p = await pair(true)
+    const choices = value<{ accountId: string; accountName: string; models: { id: string }[] }[]>(
+      await p.ask("models.available", undefined),
+    )
+    expect(choices.map((c) => c.accountName)).toEqual(["Work"])
+    expect(choices[0]?.models.map((m) => m.id)).toEqual(["model-b", "o3"])
+    expect(JSON.stringify(choices)).not.toContain("SECRET-KEY-OF-SERVER")
+    expect(JSON.stringify(choices)).not.toContain("127.0.0.1")
+  })
+
+  test("a name that is taken gives a plain error, also ignoring case and for a copy", async () => {
+    const p = await pair(true)
+    await p.onServer("agents.create", make(p.serverId, "Planner"))
+    const first = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    expect(codeOf(await p.ask("agents.create", make(p.serverId, "writer")))).toBe(
+      "agent_name_taken",
+    )
+    expect(codeOf(await p.ask("agents.create", make(p.serverId, "PLANNER")))).toBe(
+      "agent_name_taken",
+    )
+    expect(codeOf(await p.ask("agents.update", { id: first.id, patch: { name: "planner" } }))).toBe(
+      "agent_name_taken",
+    )
+    // Its own name, with another case, is not taken by itself.
+    expect(codeOf(await p.ask("agents.update", { id: first.id, patch: { name: "WRITER" } }))).toBe(
+      "ok",
+    )
+    const copy = value<Agent>(await p.ask("agents.duplicate", { id: first.id, suffix: " copy" }))
+    const second = value<Agent>(await p.ask("agents.duplicate", { id: first.id, suffix: " copy" }))
+    expect(copy.name).not.toBe(second.name)
+  })
+
+  test("a working agent cannot be archived by a client; after a stop it can", async () => {
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    await p.server.runtime.runPromise(
+      Activity.use((a) => Effect.sync(() => a.setWorking(created.id, p.serverId, true))),
+    )
+    expect(codeOf(await p.ask("agents.archive", { id: created.id }))).toBe("agent_working_archive")
+    const still = value<Agent>(await p.onServer("agents.get", { id: created.id }))
+    expect(still.archived).toBe(false)
+    await p.server.runtime.runPromise(
+      Activity.use((a) => Effect.sync(() => a.setWorking(created.id, p.serverId, false))),
+    )
+    expect(codeOf(await p.ask("agents.archive", { id: created.id }))).toBe("ok")
+  })
+
+  test("it cannot delete or restore, change an account or a setting, or reach the rest", async () => {
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    value<Agent>(await p.ask("agents.archive", { id: created.id }))
+    for (const [method, input] of [
+      ["agents.delete", { id: created.id }],
+      ["agents.restore", { id: created.id }],
+      ["agents.setFaceImage", { id: created.id, dataUrl: null }],
+      ["channels.delete", { id: "x" }],
+      ["providers.connect", { kind: "custom", name: "X", baseUrl: "http://x", apiKey: "k" }],
+      ["providers.remove", { accountId: p.account.id }],
+      ["providers.disconnect", { accountId: p.account.id }],
+      ["providers.list", undefined],
+      ["settings.update", { patch: { workspaceRoot: "/tmp/x" } }],
+      ["routines.list", undefined],
+      ["workflows.list", undefined],
+      ["usage.get", undefined],
+      ["data.export", undefined],
+      ["data.import", undefined],
+      ["browser.takeControl", { agentId: created.id }],
+      ["devices.client.setChange", { id: "x", canChange: true }],
+    ] as const) {
+      expect(await p.raw(method, input)).toBe("not_allowed")
+    }
+    // Nothing changed: the agent is still there, archived, with its folder.
+    const here = value<Agent>(await p.onServer("agents.get", { id: created.id }))
+    expect(here.archived).toBe(true)
+    expect(existsSync(here.workspace)).toBe(true)
+    const accounts = await p.server.runtime.runPromise(Providers.use((x) => x.list))
+    expect(accounts).toHaveLength(1)
+  })
+
+  test("it makes and changes channels, and edits memory", async () => {
+    const p = await pair(true)
+    const a = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    const b = value<Agent>(await p.ask("agents.create", make(p.serverId, "Planner")))
+    const channel = value<{ id: string; name: string; leadId: string | null; memberIds: string[] }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Docs",
+        topic: "Write the docs",
+        memberIds: [a.id, b.id],
+        leadId: a.id,
+      }),
+    )
+    expect(channel.name).toBe("Docs")
+    expect(channel.memberIds).toEqual([a.id, b.id])
+    const changed = value<{ topic: string; leadId: string | null }>(
+      await p.ask("channels.update", { id: channel.id, patch: { topic: "New", leadId: b.id } }),
+    )
+    expect(changed.topic).toBe("New")
+    expect(changed.leadId).toBe(b.id)
+    // A name that is taken, a member that is not on the server, and a field that is not known.
+    expect(
+      codeOf(
+        await p.ask("channels.create", {
+          serverId: p.serverId,
+          name: "docs",
+          topic: "",
+          memberIds: [a.id],
+          leadId: null,
+        }),
+      ),
+    ).toBe("channel_name_taken")
+    expect(
+      codeOf(await p.ask("channels.update", { id: channel.id, patch: { memberIds: ["nope"] } })),
+    ).toBe("agent_not_found")
+    expect(
+      codeOf(await p.ask("channels.update", { id: channel.id, patch: { archived: true } })),
+    ).toBe("invalid_input")
+
+    const item = value<{ id: string; text: string }>(
+      await p.ask("memory.add", { agentId: a.id, text: "Likes tea" }),
+    )
+    expect(
+      value<{ text: string }>(await p.ask("memory.update", { id: item.id, text: "Likes coffee" }))
+        .text,
+    ).toBe("Likes coffee")
+    expect(
+      value<{ text: string }[]>(await p.ask("memory.list", { agentId: a.id })).map((m) => m.text),
+    ).toEqual(["Likes coffee"])
+    expect(codeOf(await p.ask("memory.add", { agentId: a.id, text: "x".repeat(2000) }))).toBe(
+      "invalid_input",
+    )
+    expect(codeOf(await p.ask("memory.add", { agentId: a.id, text: "ok", extra: 1 }))).toBe(
+      "invalid_input",
+    )
+    expect(codeOf(await p.ask("memory.delete", { id: item.id }))).toBe("ok")
+    expect(value<unknown[]>(await p.ask("memory.list", { agentId: a.id }))).toEqual([])
+  })
+
+  test("a request that is too large or has the wrong type is refused", async () => {
+    const p = await pair(true)
+    expect(codeOf(await p.ask("agents.create", make(p.serverId, "A".repeat(41))))).toBe(
+      "invalid_input",
+    )
+    expect(
+      codeOf(
+        await p.ask(
+          "agents.create",
+          make(p.serverId, "Big", { instructions: "x".repeat(200_001) }),
+        ),
+      ),
+    ).toBe("invalid_input")
+    expect(
+      codeOf(
+        await p.ask("agents.create", make(p.serverId, "Face", { face: { shape: 99, hue: 0 } })),
+      ),
+    ).toBe("invalid_input")
+    expect(codeOf(await p.ask("agents.create", { name: 5 }))).toBe("invalid_input")
+    expect(codeOf(await p.ask("agents.create", "not an object"))).toBe("invalid_input")
+    expect(codeOf(await p.ask("agents.update", { id: 5, patch: {} }))).toBe("invalid_input")
+    // The id of another server is not this server.
+    expect(codeOf(await p.ask("agents.create", make("another-server", "Writer")))).toBe(
+      "invalid_input",
+    )
+  })
+
+  test("with the switch off every change gets the error that names the server", async () => {
+    const p = await pair(false)
+    const attempts: [string, unknown][] = [
+      ["agents.create", make(p.serverId, "Writer")],
+      ["agents.update", { id: "x", patch: { role: "r" } }],
+      ["agents.duplicate", { id: "x", suffix: " copy" }],
+      ["agents.archive", { id: "x" }],
+      [
+        "channels.create",
+        { serverId: p.serverId, name: "Docs", topic: "", memberIds: [], leadId: null },
+      ],
+      ["channels.update", { id: "x", patch: { topic: "t" } }],
+      ["memory.list", { agentId: "x" }],
+      ["memory.add", { agentId: "x", text: "t" }],
+      ["memory.update", { id: "x", text: "t" }],
+      ["memory.delete", { id: "x" }],
+      ["models.available", undefined],
+    ]
+    for (const [method, input] of attempts) {
+      const result = await p.ask(method, input)
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.code).toBe("change_off")
+        // The client names the server by the name that it shows for it.
+        expect(result.error.message).toBe(p.entry.name)
+      }
+    }
+    expect(
+      value<Agent[]>(await p.onServer("agents.list", { serverId: p.serverId, archived: false })),
+    ).toEqual([])
+    // It can still read, as before.
+    expect(codeOf(await p.ask("agents.list", { serverId: p.serverId, archived: false }))).toBe("ok")
+  })
+
+  test("a link that was paired with no answer to the switch has it off", async () => {
+    const p = await pair(undefined)
+    expect(codeOf(await p.ask("agents.create", make(p.serverId, "Writer")))).toBe("change_off")
+    const state = await p.server.runtime.runPromise(
+      Devices.use((d) => Effect.sync(() => d.state())),
+    )
+    expect(state.clients[0]?.canChange).toBe(false)
+    // The column of the table starts at off for a link that exists before the switch does.
+    const db = await p.server.runtime.runPromise(Database.use((d) => Effect.succeed(d)))
+    const column = db
+      .all<{ name: string; dflt_value: string | null; notnull: number }>(
+        "PRAGMA table_info(device_link)",
+      )
+      .find((c) => c.name === "can_change")
+    expect(column?.dflt_value).toBe("0")
+    expect(column?.notnull).toBe(1)
+  })
+
+  test("the switch takes effect at once on a connection that is open", async () => {
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    const id = await p.clientLink
+    const state = (): Promise<DevicesState> =>
+      p.server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.state())))
+    expect((await state()).clients[0]?.canChange).toBe(true)
+
+    await p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, false)))
+    // The client is still online; its next change fails, and it still reads.
+    expect(
+      await p.client.runtime.runPromise(
+        Remote.use((r) => Effect.sync(() => r.stateOf(p.entry.id))),
+      ),
+    ).toBe("online")
+    const refused = await p.ask("agents.update", { id: created.id, patch: { role: "Late" } })
+    expect(codeOf(refused)).toBe("change_off")
+    expect(value<Agent>(await p.onServer("agents.get", { id: created.id })).role).toBe("")
+    expect(codeOf(await p.ask("agents.get", { id: created.id }))).toBe("ok")
+
+    await p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, true)))
+    expect(codeOf(await p.ask("agents.update", { id: created.id, patch: { role: "Back" } }))).toBe(
+      "ok",
+    )
+  })
+
+  test("the server tells a device when its switch changes; the summary holds the value", async () => {
+    const p = await pair(true)
+    const id = await p.clientLink
+    const heard: boolean[] = []
+    await p.client.runtime.runPromise(
+      Remote.use((r) =>
+        Effect.sync(() =>
+          r.onEvent((_link, event, payload) => {
+            if (event === "access") heard.push((payload as { canChange: boolean }).canChange)
+          }),
+        ),
+      ),
+    )
+    const summary = async () =>
+      (await p.client.runtime.runPromise(
+        Remote.use((r) =>
+          Effect.promise(() => r.request(p.entry.id, "server.summary", undefined, 5000)),
+        ),
+      )) as { canChange: boolean }
+    const set = (on: boolean) =>
+      p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, on)))
+
+    expect((await summary()).canChange).toBe(true)
+    await set(false)
+    await waitFor(
+      () => heard.length,
+      (n) => n >= 1,
+    )
+    expect(heard).toEqual([false])
+    expect((await summary()).canChange).toBe(false)
+    // The same value again is not a change: the device hears nothing.
+    await set(false)
+    await set(true)
+    await waitFor(
+      () => heard.length,
+      (n) => n >= 2,
+    )
+    expect(heard).toEqual([false, true])
+    expect((await summary()).canChange).toBe(true)
+  })
+
+  test("the user cannot change the switch of a device that does not exist or is not a client", async () => {
+    const p = await pair(true)
+    const result = await p.server.runtime.runPromiseExit(
+      Devices.use((d) => d.setCanChange("no-such-device", true)),
+    )
+    expect(result._tag).toBe("Failure")
+    expect(JSON.stringify(result)).toContain("device_not_found")
+  })
+
+  test("while the computers sync, the switch counts as on and cannot be turned off", async () => {
+    const p = await pair(false)
+    const id = await p.clientLink
+    let locked = false
+    await p.server.runtime.runPromise(
+      Devices.use((d) => Effect.sync(() => d.bindSyncLock(() => locked))),
+    )
+    const entry = () =>
+      p.server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.state().clients[0])))
+    expect(await entry()).toMatchObject({ canChange: false, canChangeLocked: false })
+
+    locked = true
+    expect(await entry()).toMatchObject({ canChange: true, canChangeLocked: true })
+    // The client may change agents now, and the user of the server cannot turn the switch off.
+    expect(codeOf(await p.ask("agents.create", make(p.serverId, "Writer")))).toBe("ok")
+    const exit = await p.server.runtime.runPromiseExit(
+      Devices.use((d) => d.setCanChange(id, false)),
+    )
+    expect(JSON.stringify(exit)).toContain("sync_locks_switch")
+
+    // After "Stop syncing" the value from before comes back.
+    locked = false
+    expect(await entry()).toMatchObject({ canChange: false, canChangeLocked: false })
+    expect(codeOf(await p.ask("agents.create", make(p.serverId, "Planner")))).toBe("change_off")
+    // A value that the user set before the sync stays, too.
+    await p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, true)))
+    locked = true
+    expect(await entry()).toMatchObject({ canChange: true, canChangeLocked: true })
+    locked = false
+    expect(await entry()).toMatchObject({ canChange: true, canChangeLocked: false })
+  })
+
+  test("the server of this test knows its own id", async () => {
+    const p = await pair(true)
+    const local = await p.server.runtime.runPromise(Servers.use((s) => s.local))
+    expect(local.id).toBe(p.serverId)
+  })
+})

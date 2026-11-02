@@ -11,6 +11,7 @@ import type {
   ConnectProbe,
   DevicesState,
   JoinRequest,
+  ModelChoice,
   NearbyComputer,
   PairingState,
   ServerEntry,
@@ -93,9 +94,18 @@ export interface RpcMethods {
   "devices.pair.stop": { input: undefined; output: PairingState }
   /** Devices that wait for Allow or Deny. */
   "devices.join.list": { input: undefined; output: readonly JoinRequest[] }
-  "devices.join.decide": { input: { id: string; allow: boolean }; output: undefined }
+  /**
+   * Answers a device that asks to join. `canChange` is the switch of the Allow dialog, "Let
+   * <device name> create and change agents" (spec 012); without it the device gets no access.
+   */
+  "devices.join.decide": {
+    input: { id: string; allow: boolean; canChange?: boolean }
+    output: undefined
+  }
   /** Ends the access of a device that can open this computer. */
   "devices.client.remove": { input: { id: string }; output: undefined }
+  /** The switch "Can create and change agents" of one device. Fails while the computers sync. */
+  "devices.client.setChange": { input: { id: string; canChange: boolean }; output: undefined }
   /** Ends the link to a computer that this computer can open. Deletes its cache. */
   "devices.server.remove": { input: { id: string }; output: undefined }
   "devices.server.setAddresses": {
@@ -172,6 +182,11 @@ export interface RpcMethods {
   "providers.check": { input: { accountId: string }; output: undefined }
   "providers.disconnect": { input: { accountId: string }; output: undefined }
   "providers.remove": { input: { accountId: string }; output: undefined }
+  /**
+   * The connected model accounts with their models, for a device that picks a model on this
+   * server. It holds no key. Needs the switch "Can create and change agents" on a linked server.
+   */
+  "models.available": { input: undefined; output: readonly ModelChoice[] }
   "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
   /** Looks at the vendor program on this computer again, and returns what it finds. */
   "runtimes.status": { input: { kind: RuntimeKind }; output: RuntimeStatus }

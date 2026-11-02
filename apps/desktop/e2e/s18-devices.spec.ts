@@ -112,6 +112,14 @@ test("devices: two copies pair, a wrong code and the switch are refused, access 
       "steps that change files and run commands",
     )
     await expect(a.page.getByTestId("join-two-way")).toBeVisible()
+    // The switch "Let <device name> create and change agents" is on at first, with its text.
+    await expect(a.page.getByTestId("join-can-change")).toHaveAttribute("aria-checked", "true")
+    await expect(a.page.getByTestId("join-dialog")).toContainText(
+      "Let Laptop create and change agents",
+    )
+    await expect(a.page.getByTestId("join-can-change-body")).toContainText(
+      "agents, channels and memory on this computer",
+    )
     await shot(a.page, "s18-06-allow-dialog")
     await a.page.getByTestId("join-allow").click()
     await expect(b.page.getByTestId("connect-dialog")).toBeHidden()
@@ -137,6 +145,19 @@ test("devices: two copies pair, a wrong code and the switch are refused, access 
     await expect(b.page.getByTestId("device-accept")).toHaveAttribute("aria-checked", "true")
     await shot(a.page, "s18-07-linked")
     await shot(b.page, "s18-08-linked-other-side")
+
+    // The row of the device has the switch "Can create and change agents": on, as the dialog was
+    // left. It turns off and on again. The other side was not asked, so it starts off there.
+    const change = (page: Page, name: string) =>
+      clientRow(page, name).getByTestId("client-can-change")
+    await expect(change(a.page, "Laptop")).toHaveAttribute("aria-checked", "true")
+    await expect(clientRow(a.page, "Laptop")).toContainText("Can create and change agents")
+    await expect(change(a.page, "Laptop")).toBeEnabled()
+    await change(a.page, "Laptop").click()
+    await expect(change(a.page, "Laptop")).toHaveAttribute("aria-checked", "false")
+    await change(a.page, "Laptop").click()
+    await expect(change(a.page, "Laptop")).toHaveAttribute("aria-checked", "true")
+    await expect(change(b.page, "Studio Mac")).toHaveAttribute("aria-checked", "false")
 
     // A code works once: the same code does not let a third try in.
     await b.page.getByTestId("connect-open").click()

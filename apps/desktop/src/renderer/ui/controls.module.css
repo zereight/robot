@@ -78,6 +78,11 @@
   background: var(--c-accent-text);
 }
 
+.switch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .button {
   transition:
     background var(--motion-fast) var(--ease-out),

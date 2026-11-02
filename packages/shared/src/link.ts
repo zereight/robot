@@ -4,6 +4,8 @@
  * protocol. Nothing in this file assumes that the client is a computer.
  */
 
+import type { ModelInfo } from "./providers.ts"
+
 /** The version of the wire protocol. Both sides must use the same number. */
 export const LINK_PROTOCOL = 1
 
@@ -131,6 +133,18 @@ export const CLIENT_METHODS = [
   "attachment.upload",
   "attachment.download",
   "attention.list",
+  // Only with the switch "Can create and change agents" (spec 012). Each one checks it again.
+  "agents.create",
+  "agents.update",
+  "agents.duplicate",
+  "agents.archive",
+  "channels.create",
+  "channels.update",
+  "memory.list",
+  "memory.add",
+  "memory.update",
+  "memory.delete",
+  "models.available",
   // Sync between two computers (spec 016). Only the computer that is the sync peer may use them.
   "sync.hello",
   "sync.counts",
@@ -181,6 +195,27 @@ export const isCachedMethod = (method: string) =>
 /** Page buttons that a client cannot use on a linked server (spec 012, "What a client can do"). */
 export const CLIENT_BLOCKED_PAGES = ["workflows", "usage"] as const
 
+/**
+ * The requests that a server answers only when the switch "Can create and change agents" is on
+ * for the device that asks. Anything that is not here and not in `CLIENT_METHODS` is refused.
+ */
+export const CHANGE_METHODS = [
+  "agents.create",
+  "agents.update",
+  "agents.duplicate",
+  "agents.archive",
+  "channels.create",
+  "channels.update",
+  "memory.list",
+  "memory.add",
+  "memory.update",
+  "memory.delete",
+  "models.available",
+] as const
+export type ChangeMethod = (typeof CHANGE_METHODS)[number]
+export const isChangeMethod = (method: string): method is ChangeMethod =>
+  (CHANGE_METHODS as readonly string[]).includes(method)
+
 export const isClientMethod = (method: string): method is ClientMethod =>
   (CLIENT_METHODS as readonly string[]).includes(method)
 
@@ -197,6 +232,7 @@ export const PUSHED_EVENTS = [
   "tasks.changed",
   "notice",
   "revoked",
+  "memory.changed",
 ] as const
 export type PushedEvent = (typeof PUSHED_EVENTS)[number]
 
@@ -306,6 +342,24 @@ export interface ServerSummary {
   readonly name: string
   readonly app: string
   readonly protocol: number
+  /** True when the server lets the device that asks create and change agents (spec 012). */
+  readonly canChange: boolean
+}
+
+/**
+ * Sent to one device when its switch "Can create and change agents" changes, so that its screens
+ * turn editable or read-only at once. It is not in `PUSHED_EVENTS`: it goes to that device only.
+ */
+export const ACCESS_EVENT = "access"
+export interface AccessPayload {
+  readonly canChange: boolean
+}
+
+/** A model that a device with the switch may pick (spec 012). It holds no key. */
+export interface ModelChoice {
+  readonly accountId: string
+  readonly accountName: string
+  readonly models: readonly ModelInfo[]
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -337,6 +391,10 @@ export interface ClientEntry {
   readonly kind: DeviceKind
   readonly online: boolean
   readonly since: number
+  /** The switch "Can create and change agents". On while the two computers sync. */
+  readonly canChange: boolean
+  /** True while the user cannot change the switch, because the computers sync (spec 016). */
+  readonly canChangeLocked: boolean
 }
 
 /** A computer that this computer can open. */

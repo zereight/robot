@@ -34,6 +34,33 @@ export const ChannelPatch = Schema.Struct(
 ).mapFields(Struct.omit(["serverId"]))
 export type ChannelPatch = typeof ChannelPatch.Type
 
+/** Most members that a linked device may name in one request. */
+export const CLIENT_CHANNEL_MEMBERS_MAX = 50
+
+const ClientMemberIds = Schema.Array(Schema.String.check(Schema.isMaxLength(100))).check(
+  Schema.isMaxLength(CLIENT_CHANNEL_MEMBERS_MAX),
+)
+
+/** What a linked device may send to make a channel (spec 012). Any other field is refused. */
+export const ClientChannelCreate = Schema.Struct({
+  serverId: Schema.String.check(Schema.isMaxLength(100)),
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(CHANNEL_NAME_MAX * 2)),
+  topic: Schema.String.check(Schema.isMaxLength(CHANNEL_TOPIC_MAX * 2)),
+  memberIds: ClientMemberIds,
+  leadId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(100))),
+})
+export type ClientChannelCreate = typeof ClientChannelCreate.Type
+
+export const ClientChannelPatch = Schema.Struct({
+  name: Schema.optionalKey(
+    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(CHANNEL_NAME_MAX * 2)),
+  ),
+  topic: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(CHANNEL_TOPIC_MAX * 2))),
+  memberIds: Schema.optionalKey(ClientMemberIds),
+  leadId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
+})
+export type ClientChannelPatch = typeof ClientChannelPatch.Type
+
 export type ChannelMessageKind = "text" | "plan" | "summary"
 
 /** A part that a plan message started. It shows as a chip under the message. */

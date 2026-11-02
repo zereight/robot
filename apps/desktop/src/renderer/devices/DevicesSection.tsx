@@ -28,6 +28,23 @@ const ClientRow = (props: { client: ClientEntry }) => {
           {t(`devices.kind.${props.client.kind}` as MessageKey)} ·{" "}
           {props.client.online ? t("devices.client.online") : t("devices.client.offline")}
         </span>
+        <div class={styles.switchRow} data-testid="client-change-row">
+          <span class={styles.fieldLabel}>{t("devices.client.canChange")}</span>
+          <Switch
+            label={t("devices.client.canChange")}
+            checked={props.client.canChange}
+            disabled={props.client.canChangeLocked}
+            onChange={(on) =>
+              void call("devices.client.setChange", { id: props.client.id, canChange: on })
+            }
+            testId="client-can-change"
+          />
+        </div>
+        <Show when={props.client.canChangeLocked}>
+          <span class={styles.hint} data-testid="client-can-change-locked">
+            {t("devices.client.canChange.locked")}
+          </span>
+        </Show>
       </div>
       <div class={styles.actions}>
         <Button

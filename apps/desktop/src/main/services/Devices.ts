@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { networkInterfaces, tmpdir } from "node:os"
 import { join as joinPath } from "node:path"
 import {
+  ACCESS_EVENT,
+  type AccessPayload,
   type ClientEntry,
   DEFAULT_LINK_PORT,
   DEVICE_KINDS,
@@ -59,6 +61,11 @@ export interface LinkRow {
   readonly serverId: string | null
   readonly position: number
   readonly createdAt: number
+  /**
+   * The switch "Can create and change agents" as the user set it (spec 012). It does not change
+   * while the computers sync: `canChange(id)` says what counts now.
+   */
+  readonly allowChange: boolean
 }
 
 interface LinkDbRow {
@@ -72,6 +79,7 @@ interface LinkDbRow {
   server_id: string | null
   position: number
   created_at: number
+  can_change: number
 }
 
 const toRow = (r: LinkDbRow): LinkRow => ({
@@ -85,6 +93,7 @@ const toRow = (r: LinkDbRow): LinkRow => ({
   serverId: r.server_id,
   position: r.position,
   createdAt: r.created_at,
+  allowChange: r.can_change === 1,
 })
 
 /** Runs a request of a linked device and returns plain data. The app sets it at start. */
@@ -119,9 +128,25 @@ export interface DevicesService {
   pairing(): PairingState
   pairStop(): PairingState
   joins(): readonly JoinRequest[]
-  decide(id: string, allow: boolean): Effect.Effect<void, AppError>
+  /** `canChange` is the switch of the Allow dialog. Without it the device gets no access. */
+  decide(id: string, allow: boolean, canChange?: boolean): Effect.Effect<void, AppError>
   /** Ends the access of a device that can open this computer. */
   removeClient(id: string): Effect.Effect<void>
+  /**
+   * True when the device may create and change agents on this computer now: the user turned the
+   * switch on, or the two computers sync (spec 012, 016).
+   */
+  canChange(id: string): boolean
+  /** True while the user cannot change the switch of this device, because the computers sync. */
+  changeLocked(id: string): boolean
+  /** Turns the switch "Can create and change agents" on or off. It works at once. */
+  setCanChange(id: string, on: boolean): Effect.Effect<void, AppError>
+  /** Tells every connected device that its switch changed, when the value that counts changed. */
+  announceAccess(): void
+  /** Sync says which device is the sync pair now. The switch of that device is on and locked. */
+  bindSyncLock(isLocked: (id: string) => boolean): void
+  /** Sends an event to one connected device. */
+  pushTo(id: string, event: string, payload: unknown): void
   /** True while the listener is open. */
   listening(): boolean
   /** Turns the switch on or off, and opens or closes the listener. */
@@ -259,12 +284,50 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
         const closeSession = (id: string, code = 4403) => {
           const s = sessions.get(id)
           sessions.delete(id)
+          told.delete(id)
           s?.channel.close(code)
         }
 
         function push(event: string, payload: unknown) {
           for (const session of sessions.values()) {
             session.channel.send({ v: LINK_PROTOCOL, type: "event", id: ++eventId, event, payload })
+          }
+        }
+
+        function pushTo(id: string, event: string, payload: unknown) {
+          sessions
+            .get(id)
+            ?.channel.send({ v: LINK_PROTOCOL, type: "event", id: ++eventId, event, payload })
+        }
+
+        // ---------------------------------------------------------------- the switch of 012
+        // Sync (016) gives the other computer more than this switch does, so while the two
+        // computers sync, the switch counts as on and the user cannot change it. The value that
+        // the user set stays in the table, so "Stop syncing" gives it back.
+        let syncLock: (id: string) => boolean = () => false
+        const changeLocked = (id: string) => rowOf(id)?.inbound === true && syncLock(id)
+        const canChange = (id: string) => {
+          const row = rowOf(id)
+          return row?.inbound === true && (row.allowChange || syncLock(id))
+        }
+        /** What each connected device was told last, so a device hears only a real change. */
+        const told = new Map<string, boolean>()
+        let shown = ""
+        const announceAccess = () => {
+          for (const id of sessions.keys()) {
+            const now = canChange(id)
+            if (told.get(id) === now) continue
+            told.set(id, now)
+            pushTo(id, ACCESS_EVENT, { canChange: now } satisfies AccessPayload)
+          }
+          // The Devices page shows the switch; it reads again only when what it shows changed.
+          const now = rows()
+            .filter((r) => r.inbound)
+            .map((r) => `${r.id}:${canChange(r.id)}:${changeLocked(r.id)}`)
+            .join("|")
+          if (now !== shown) {
+            shown = now
+            changed()
           }
         }
 
@@ -367,7 +430,7 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
           string,
           {
             request: JoinRequest
-            resolve: (allow: boolean) => void
+            resolve: (allow: boolean, canChange: boolean) => void
             timer: ReturnType<typeof setTimeout>
           }
         >()
@@ -406,12 +469,17 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
           }
           const id = randomUUID()
           const asked: JoinRequest = { id, name: clean(device.name), kind: device.kind, twoWay }
-          const allow = await new Promise<boolean>((resolve) => {
-            const timer = setTimeout(() => resolve(false), DECISION_MS)
-            pending.set(id, { request: asked, resolve, timer })
+          const answer = await new Promise<{ allow: boolean; canChange: boolean }>((resolve) => {
+            const timer = setTimeout(() => resolve({ allow: false, canChange: false }), DECISION_MS)
+            pending.set(id, {
+              request: asked,
+              resolve: (allow, canChange) => resolve({ allow, canChange }),
+              timer,
+            })
             bus.emit("devices.join", { request: asked })
             platform.showWindow()
           })
+          const allow = answer.allow
           const entry = pending.get(id)
           if (entry) clearTimeout(entry.timer)
           pending.delete(id)
@@ -421,8 +489,8 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
           const old = rowOf(device.id)
           db.run("DELETE FROM device_link WHERE id = ?", device.id)
           db.run(
-            `INSERT INTO device_link (id, name, kind, public_key, inbound, outbound, addresses, server_id, position, created_at)
-             VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+            `INSERT INTO device_link (id, name, kind, public_key, inbound, outbound, addresses, server_id, position, created_at, can_change)
+             VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)`,
             device.id,
             clean(device.name),
             device.kind,
@@ -432,6 +500,7 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
             twoWay ? device.serverId : null,
             old?.position ?? nextPosition(),
             old?.createdAt ?? Date.now(),
+            answer.canChange ? 1 : 0,
           )
           closeSession(device.id)
           linksChanged()
@@ -471,10 +540,13 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
             if (name && name !== rowOf(session.device.id)?.name) {
               mutate(session.device.id, "name", name)
             }
+            // The device learns the value in the server summary, so it is told only a change.
+            told.set(session.device.id, canChange(session.device.id))
             session.channel.onMessage((m) => void handleMessage(session, m))
             session.channel.onClose(() => {
               if (sessions.get(session.device.id) === session) {
                 sessions.delete(session.device.id)
+                told.delete(session.device.id)
                 // Files that were not used by a message go with the connection.
                 uploads.discardDevice(session.device.id)
                 changed()
@@ -567,6 +639,8 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
               kind: r.kind,
               online: sessions.has(r.id),
               since: r.createdAt,
+              canChange: r.allowChange || syncLock(r.id),
+              canChangeLocked: syncLock(r.id),
             }))
           return {
             self: {
@@ -627,13 +701,31 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
             return pairing()
           },
           joins: () => [...pending.values()].map((p) => p.request),
-          decide: (id, allow) =>
+          decide: (id, allow, canChange = false) =>
             Effect.suspend(() => {
               const entry = pending.get(id)
               if (!entry) return Effect.fail(new AppError({ code: "join_gone" }))
-              entry.resolve(allow)
+              entry.resolve(allow, allow && canChange)
               return Effect.void
             }),
+          canChange,
+          changeLocked,
+          setCanChange: (id, on) =>
+            Effect.suspend(() => {
+              const row = rowOf(id)
+              if (!row?.inbound) return Effect.fail(new AppError({ code: "device_not_found" }))
+              if (syncLock(id)) return Effect.fail(new AppError({ code: "sync_locks_switch" }))
+              db.run("UPDATE device_link SET can_change = ? WHERE id = ?", on ? 1 : 0, id)
+              // It counts at once: the next request of this device reads the table.
+              announceAccess()
+              changed()
+              return Effect.void
+            }),
+          announceAccess,
+          bindSyncLock: (isLocked) => {
+            syncLock = isLocked
+          },
+          pushTo,
           removeClient: (id) =>
             Effect.sync(() => {
               const row = rowOf(id)
@@ -662,8 +754,8 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
             const old = rowOf(device.id)
             db.run("DELETE FROM device_link WHERE id = ?", device.id)
             db.run(
-              `INSERT INTO device_link (id, name, kind, public_key, inbound, outbound, addresses, server_id, position, created_at)
-               VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+              `INSERT INTO device_link (id, name, kind, public_key, inbound, outbound, addresses, server_id, position, created_at, can_change)
+               VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)`,
               device.id,
               clean(device.name),
               device.kind,
@@ -673,6 +765,9 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
               device.serverId,
               old?.position ?? nextPosition(),
               old?.createdAt ?? Date.now(),
+              // The user of this computer was not asked about the other computer here: it starts
+              // with the switch off, and keeps the value of an earlier link.
+              reverse && old?.inbound && old.allowChange ? 1 : 0,
             )
             if (!reverse) closeSession(device.id)
             linksChanged()

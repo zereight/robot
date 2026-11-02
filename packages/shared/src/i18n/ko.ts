@@ -600,6 +600,8 @@ export const ko: Record<MessageKey, string> = {
   "devices.client.online": "지금 연결됨",
   "devices.client.offline": "지금 연결 안 됨",
   "devices.client.remove": "접근 해제",
+  "devices.client.canChange": "에이전트 만들기와 바꾸기 허용",
+  "devices.client.canChange.locked": "두 컴퓨터가 동기화하는 동안은 켜져 있어요.",
   "devices.server.remove": "삭제",
   "devices.server.edit": "주소 수정",
   "devices.server.addresses": "주소",
@@ -660,6 +662,9 @@ export const ko: Record<MessageKey, string> = {
   "join.body":
     "{name}({kind})이(가) 이 컴퓨터를 열려고 해요. 이 컴퓨터의 에이전트를 지시할 수 있고, 파일을 바꾸고 명령을 실행하는 단계도 포함돼요.",
   "join.body.twoWay": "이 컴퓨터도 {name}을(를) 열 수 있게 돼요.",
+  "join.canChange": "{name}이(가) 에이전트를 만들고 바꿀 수 있게 하기",
+  "join.canChange.body":
+    "그러면 {name}이(가) 이 컴퓨터의 에이전트, 채널, 메모리를 만들고 바꿀 수 있어요.",
   "join.allow": "허용",
   "join.deny": "거부",
   "error.wrong_code": "코드가 맞지 않아요. 다른 컴퓨터에 표시된 코드를 확인해 주세요.",
@@ -680,6 +685,12 @@ export const ko: Record<MessageKey, string> = {
   "error.offline": "이 서버는 오프라인이에요.",
   "error.timeout": "서버가 제때 응답하지 않았어요.",
   "error.not_allowed": "허용되지 않아요. 에이전트를 실행하는 컴퓨터에서 열어 주세요.",
+  "error.change_off":
+    "허용되지 않아요. {detail}이(가) 이 기기에서 에이전트를 바꾸는 것을 허용하지 않았어요. 그 컴퓨터의 설정 → 기기에서 켜 주세요.",
+  "error.model_not_found": "이 서버에서는 이 모델을 쓸 수 없어요.",
+  "error.agent_working_archive": "보관하기 전에 에이전트를 멈춰 주세요.",
+  "error.device_not_found": "이 기기는 더 이상 연결되어 있지 않아요.",
+  "error.sync_locks_switch": "두 컴퓨터가 동기화하는 중이라 이 스위치는 켜진 채로 있어요.",
 
   "link.state.connecting": "{name}에 연결하는 중…",
   "link.state.reconnecting": "{name}에 다시 연결하는 중…",

@@ -605,6 +605,8 @@ export const en = {
   "devices.client.online": "Connected now",
   "devices.client.offline": "Not connected now",
   "devices.client.remove": "Remove access",
+  "devices.client.canChange": "Can create and change agents",
+  "devices.client.canChange.locked": "On while the two computers sync.",
   "devices.server.remove": "Remove",
   "devices.server.edit": "Edit address",
   "devices.server.addresses": "Addresses",
@@ -665,6 +667,9 @@ export const en = {
   "join.body":
     "{name} ({kind}) wants to open this computer. It can direct the agents of this computer, including steps that change files and run commands.",
   "join.body.twoWay": "This computer will also be able to open {name}.",
+  "join.canChange": "Let {name} create and change agents",
+  "join.canChange.body":
+    "{name} can then make and change agents, channels and memory on this computer.",
   "join.allow": "Allow",
   "join.deny": "Deny",
   "error.wrong_code": "The code is not right. Check the code on the other computer.",
@@ -687,6 +692,12 @@ export const en = {
   "error.offline": "This server is offline.",
   "error.timeout": "The server did not answer in time.",
   "error.not_allowed": "Not allowed. Open this on the computer that runs the agents.",
+  "error.change_off":
+    "Not allowed. {detail} does not let this device change agents. Turn it on in Settings → Devices on that computer.",
+  "error.model_not_found": "This server does not offer this model.",
+  "error.agent_working_archive": "Stop the agent before you archive it.",
+  "error.device_not_found": "This device is not linked any more.",
+  "error.sync_locks_switch": "The two computers sync, so this switch stays on.",
 
   "link.state.connecting": "Connecting to {name}…",
   "link.state.reconnecting": "Reconnecting to {name}…",

@@ -369,4 +369,12 @@ export const migrations: readonly string[] = [
   ${dirtyTriggers("workflow_run", "wrun", plainId)}
   ${dirtyTriggers("workflow_run_step", "wstep", (row) => `${row}.run_id || '|' || ${row}.step_id`)}
   `,
+  `
+  -- The switch "Can create and change agents" of each linked device (spec 012). A link made before
+  -- this switch existed has it off.
+  ALTER TABLE device_link ADD COLUMN can_change INTEGER NOT NULL DEFAULT 0;
+  -- The last change that a linked device made to an agent: its name then, and the time.
+  ALTER TABLE agent ADD COLUMN changed_by TEXT;
+  ALTER TABLE agent ADD COLUMN changed_at INTEGER;
+  `,
 ]

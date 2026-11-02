@@ -1199,4 +1199,96 @@ describe("tasks, routines, workflows and files of two computers", () => {
     expect(offline.code).toBe("sync_file_offline")
     expect(offline.detail).toBe("MacBook 1")
   })
+  test("while the computers sync, the switch to create and change agents counts as on and is locked; Stop syncing gives the earlier value back", async () => {
+    const a = side("MacBook 1")
+    const b = side("MacBook 2")
+    // B opens A. A allowed B without the switch, as a link that was made before the switch.
+    const entry = await link(a, b, false)
+    const clientOn = (rt: Rt) =>
+      run(
+        rt,
+        Devices.use((d) => Effect.sync(() => d.state().clients[0])),
+      )
+    expect(await clientOn(a)).toMatchObject({ canChange: false, canChangeLocked: false })
+
+    await turnOn(a, b, entry.id, "merge")
+    // A holds B as a client: the switch shows on and the user cannot turn it off.
+    expect(
+      await waitFor(
+        () => clientOn(a),
+        (c) => c?.canChangeLocked === true,
+      ),
+    ).toMatchObject({
+      canChange: true,
+      canChangeLocked: true,
+    })
+    // B holds A as a client too, because sync needs both ways. The same holds there.
+    expect(
+      await waitFor(
+        () => clientOn(b),
+        (c) => c?.canChangeLocked === true,
+      ),
+    ).toMatchObject({
+      canChange: true,
+      canChangeLocked: true,
+    })
+    const idOnA = (await clientOn(a))?.id ?? ""
+    const off = await run(
+      a,
+      Devices.use((d) => d.setCanChange(idOnA, false).pipe(Effect.flip)),
+    )
+    expect(off.code).toBe("sync_locks_switch")
+    // B really can make an agent on A now: the lock is what the server checks.
+    const idA = await localId(a)
+    const made = await run(
+      b,
+      Remote.use((r) =>
+        Effect.promise(() =>
+          r.invoke(idA, "agents.create", {
+            serverId: idA,
+            name: "FromB",
+            role: "",
+            instructions: "",
+          }),
+        ),
+      ),
+    )
+    expect(made.ok).toBe(true)
+    // The change goes to the other computer like any change of the server.
+    expect(
+      await waitFor(
+        () => agentNames(b),
+        (n) => n.includes("FromB"),
+      ),
+    ).toContain("FromB")
+
+    await run(
+      b,
+      Sync.use((s) => s.stop(entry.id)),
+    )
+    expect(
+      await waitFor(
+        () => clientOn(a),
+        (c) => c?.canChangeLocked === false,
+      ),
+    ).toMatchObject({
+      canChange: false,
+      canChangeLocked: false,
+    })
+    const refused = await run(
+      b,
+      Remote.use((r) =>
+        Effect.promise(() =>
+          r.invoke(idA, "agents.create", {
+            serverId: idA,
+            name: "AfterStop",
+            role: "",
+            instructions: "",
+          }),
+        ),
+      ),
+    )
+    expect(refused.ok).toBe(false)
+    expect(refused.ok ? "" : refused.error.code).toBe("change_off")
+  })
 })

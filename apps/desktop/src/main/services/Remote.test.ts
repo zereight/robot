@@ -176,8 +176,8 @@ describe("a computer that opens a linked server", () => {
   test("a request outside the list is not allowed, and so is a method that does not exist", async () => {
     const { b, local, agent } = await setup()
     for (const method of [
-      "agents.update",
       "agents.delete",
+      "agents.restore",
       "settings.update",
       "routines.list",
       "tasks.retry",

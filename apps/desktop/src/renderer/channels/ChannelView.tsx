@@ -45,6 +45,7 @@ const removedAgent = (name: string): Agent => ({
   permission: "ask_risky",
   memoryEnabled: false,
   createdAt: 0,
+  changedBy: null,
 })
 
 export const ChannelHeader = (props: { channel: Channel }) => {

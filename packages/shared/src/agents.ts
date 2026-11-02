@@ -34,6 +34,13 @@ export type AgentModel = typeof AgentModel.Type
 
 export type AgentState = "idle" | "working" | "waiting" | "offline"
 
+/** The last change of an agent that a linked device made (spec 012, "Create and change agents"). */
+export interface AgentChange {
+  /** The name of the device, as it was when it made the change. */
+  readonly by: string
+  readonly at: number
+}
+
 export interface Agent {
   readonly id: string
   readonly serverId: string
@@ -52,6 +59,8 @@ export interface Agent {
   /** When off, the agent does not read its memory. Items stay. */
   readonly memoryEnabled: boolean
   readonly createdAt: number
+  /** Set when a linked device made the last change. The user of this computer clears it. */
+  readonly changedBy: AgentChange | null
 }
 
 export const AgentCreate = Schema.Struct({
@@ -74,6 +83,45 @@ export const AgentPatch = Schema.Struct({
   memoryEnabled: Schema.optionalKey(Schema.Boolean),
 })
 export type AgentPatch = typeof AgentPatch.Type
+
+/**
+ * The most text that a linked device may send as the instructions of an agent. The window has no
+ * limit, but a request from the link must stay small (spec 012).
+ */
+export const CLIENT_INSTRUCTIONS_MAX = 200_000
+
+const ClientModel = Schema.Struct({
+  accountId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+  model: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
+  effort: Schema.NullOr(Schema.String.check(Schema.isMaxLength(40))),
+})
+const ClientInstructions = Schema.String.check(Schema.isMaxLength(CLIENT_INSTRUCTIONS_MAX))
+
+/**
+ * What a linked device may send to make an agent (spec 012). There is no field for a workspace
+ * folder, a permission level or a picture: the server decides the folder and the level, and a
+ * request that has any other field is refused.
+ */
+export const ClientAgentCreate = Schema.Struct({
+  serverId: Schema.String.check(Schema.isMaxLength(100)),
+  name: AgentName,
+  role: AgentRole,
+  instructions: ClientInstructions,
+  face: Schema.optionalKey(Face),
+  model: Schema.optionalKey(Schema.NullOr(ClientModel)),
+})
+export type ClientAgentCreate = typeof ClientAgentCreate.Type
+
+/** What a linked device may change on an agent. The level may only get stricter (007). */
+export const ClientAgentPatch = Schema.Struct({
+  name: Schema.optionalKey(AgentName),
+  role: Schema.optionalKey(AgentRole),
+  instructions: Schema.optionalKey(ClientInstructions),
+  face: Schema.optionalKey(Face),
+  model: Schema.optionalKey(Schema.NullOr(ClientModel)),
+  permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
+})
+export type ClientAgentPatch = typeof ClientAgentPatch.Type
 
 /** Picks a starting face from the name, so the same name gives the same face. */
 export const faceFromName = (name: string): Face => {

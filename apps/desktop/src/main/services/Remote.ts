@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { closeSync, openSync, readSync, statSync, writeFileSync } from "node:fs"
 import { basename, join } from "node:path"
 import {
+  ACCESS_EVENT,
   ATTACH_BYTES,
   ATTACH_MAX,
   type ConnectProbe,
@@ -155,7 +156,9 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               if (event === "notice") showNotice(row.id, payload as WireNotice)
               cache.applyEvent(row.id, event, payload)
               // The window shows these. They do not go to the devices of this computer.
-              if (event !== "notice" && event !== "revoked") bus.window(event as never, payload)
+              if (event !== "notice" && event !== "revoked" && event !== ACCESS_EVENT) {
+                bus.window(event as never, payload)
+              }
               for (const h of eventHandlers) h(row.id, event, payload)
             },
             onOnline: (info) => {
@@ -341,6 +344,11 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               error.code !== "offline" &&
               error.code !== "timeout"
             ) {
+              // "<server name> does not let this device change agents": the name is the one that
+              // this device shows for the server (the server sent its own name).
+              if (error.code === "change_off") {
+                return failure(error.code, entryOf(link.id)?.name ?? error.detail ?? error.code)
+              }
               return failure(error.code, error.detail ?? error.code)
             }
             // The connection broke during the call: a read can still come from the cache.

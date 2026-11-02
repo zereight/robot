@@ -109,9 +109,9 @@ const createDevicesState = () => {
     state: () => state.latest,
     refetch,
     requests,
-    decide: async (id: string, allow: boolean) => {
+    decide: async (id: string, allow: boolean, canChange = false) => {
       setRequests((list) => list.filter((r) => r.id !== id))
-      await call("devices.join.decide", { id, allow }).catch(() => {})
+      await call("devices.join.decide", { id, allow, canChange }).catch(() => {})
     },
   }
 }

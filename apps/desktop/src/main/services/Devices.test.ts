@@ -282,10 +282,14 @@ describe("device link between two computers", () => {
     const ask = (method: string) =>
       b.runtime.runPromise(Remote.use((r) => Effect.promise(() => r.request(entry.id, method))))
     await expect(ask("settings.update")).rejects.toMatchObject({ code: "not_allowed" })
-    await expect(ask("agents.create")).rejects.toMatchObject({ code: "not_allowed" })
+    await expect(ask("agents.delete")).rejects.toMatchObject({ code: "not_allowed" })
     await expect(ask("providers.list")).rejects.toMatchObject({ code: "not_allowed" })
-    await expect(ask("memory.list")).rejects.toMatchObject({ code: "not_allowed" })
+    await expect(ask("channels.delete")).rejects.toMatchObject({ code: "not_allowed" })
     await expect(ask("data.export")).rejects.toMatchObject({ code: "not_allowed" })
+    // The requests that make and change agents are on the list, but this link was allowed
+    // without the switch "Can create and change agents" (spec 012).
+    await expect(ask("agents.create")).rejects.toMatchObject({ code: "change_off" })
+    await expect(ask("memory.list")).rejects.toMatchObject({ code: "change_off" })
     // No dispatcher is bound in this test, so a request that is on the list fails inside.
     await expect(ask("places.list")).rejects.not.toMatchObject({ code: "not_allowed" })
   }, 20_000)

@@ -207,7 +207,16 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
           ...keys.map((k) => patch[k as keyof PairRow] as number | string | null),
         )
       }
-      const changed = () => bus.emit("sync.changed", {})
+      const changed = () => {
+        bus.emit("sync.changed", {})
+        // The switch "Can create and change agents" of the other computer counts as on while the
+        // two computers sync (spec 012), so a change of the pair can change what that device may do.
+        devices.announceAccess()
+      }
+      devices.bindSyncLock((id) => {
+        const p = pairRow()
+        return p !== undefined && p.peer_id === id && p.phase !== "offering"
+      })
 
       const engine = new SyncEngine({
         db,
