@@ -118,17 +118,43 @@ describe("buildBlocks", () => {
   })
 
   test("the cut moves in steps, so the start of the text stays the same for several turns", () => {
-    const limit = 400
+    const limit = 2000
     let moved = 0
-    let steps = 0
-    for (let n = 2; n <= 60; n++) {
-      steps++
-      if (!startsWith(buildBlocks(chat(n), limit), buildBlocks(chat(n - 1), limit))) moved++
+    let turnsOver = 0
+    for (let n = 2; n <= 120; n++) {
+      const blocks = buildBlocks(chat(n), limit)
+      if (blocks[1]?.startsWith("(The oldest")) turnsOver++
+      if (!startsWith(blocks, buildBlocks(chat(n - 1), limit))) moved++
     }
-    // Without steps the cut would move at each of the turns after the history is full. One move
-    // in four turns or fewer is the most that a step of eight blocks allows.
+    // A cut at each turn would move about as often as there are turns over the limit. A step of
+    // a quarter of the limit, about five turns of this size, moves a fifth as often.
     expect(moved).toBeGreaterThan(0)
-    expect(moved).toBeLessThanOrEqual(Math.ceil(steps / 4) + 1)
+    expect(moved).toBeLessThanOrEqual(Math.ceil(turnsOver / 4))
+  })
+
+  test("a cut leaves at least three quarters of the limit, less one message", () => {
+    const limit = 2000
+    for (let n = 30; n <= 120; n++) {
+      const kept = buildBlocks(chat(n), limit).slice(2)
+      const size = kept.reduce((sum, b) => sum + b.length + 2, 0)
+      expect(size).toBeLessThanOrEqual(limit + 2)
+      expect(size).toBeGreaterThanOrEqual(limit * 0.75 - 50)
+    }
+  })
+
+  test("with small messages, the cut moves rarely, because a step is a part of the limit and not a count of blocks", () => {
+    // Messages of 150 characters and the limit of the app. A step of eight blocks would move
+    // the cut every four turns here, and write the whole history again each time.
+    let moved = 0
+    let over = 0
+    for (let n = 2; n <= 600; n++) {
+      const blocks = buildBlocks(chat(n, 150))
+      if (blocks[1]?.startsWith("(The oldest")) over++
+      if (!startsWith(blocks, buildBlocks(chat(n - 1, 150)))) moved++
+    }
+    expect(over).toBeGreaterThan(300)
+    expect(moved).toBeGreaterThan(0)
+    expect(moved).toBeLessThanOrEqual(12)
   })
 
   test("the same turns always give the same blocks", () => {
