@@ -141,6 +141,7 @@ export const ko: Record<MessageKey, string> = {
   "agents.changedBy": "{name}이(가) {time}에 마지막으로 바꿨어요",
   "agents.readonly.hint":
     "{name}이(가) 이 기기에서 에이전트를 바꾸는 것을 허용하지 않았어요. 그 컴퓨터의 설정 → 기기에서 켜 주세요.",
+  "agents.close": "닫기",
   "agents.permission.stricter":
     "이 기기에서는 에이전트를 더 신중하게만 바꿀 수 있고, 덜 신중하게는 바꿀 수 없어요.",
   "chat.start": "대화의 시작이에요.",

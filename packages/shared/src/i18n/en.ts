@@ -141,6 +141,7 @@ export const en = {
   "agents.changedBy": "Last changed by {name}, {time}",
   "agents.readonly.hint":
     "{name} does not let this device change agents. Turn it on in Settings → Devices on that computer.",
+  "agents.close": "Close",
   "agents.permission.stricter": "This device can make an agent more careful, but not less.",
   "chat.start": "This is the start of your chat.",
 

@@ -51,7 +51,7 @@ const changesOf = (agent: Agent, values: AgentFormValues): AgentPatch => ({
 })
 
 /** The profile of an agent as text only. A device without the switch sees this (012). */
-const AgentProfileView = (props: { agent: Agent }) => {
+const AgentProfileView = (props: { agent: Agent; onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
   const line = (label: MessageKey, text: string, testId: string) => (
@@ -84,6 +84,11 @@ const AgentProfileView = (props: { agent: Agent }) => {
       <span class={styles.hint} data-testid="agent-readonly-hint">
         {t("agents.readonly.hint", { name: ui.server()?.name ?? "" })}
       </span>
+      <div class={styles.actions}>
+        <Button onClick={props.onClose} data-testid="agent-view-close">
+          {t("agents.close")}
+        </Button>
+      </div>
     </div>
   )
 }
@@ -124,7 +129,10 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
 
   return (
     <Dialog label={t("agents.profile")} onClose={props.onClose} testId="agent-profile">
-      <Show when={ui.canChange()} fallback={<AgentProfileView agent={props.agent} />}>
+      <Show
+        when={ui.canChange()}
+        fallback={<AgentProfileView agent={props.agent} onClose={props.onClose} />}
+      >
         <AgentForm
           agent={props.agent}
           onCancel={props.onClose}

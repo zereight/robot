@@ -129,7 +129,7 @@ test("linked server: an agent of another computer works in this window, offline 
     )
     await expect(one.page.getByTestId("agent-workspace-on")).toHaveText("Workspace: on MacBook 2")
     await shot(one.page, "s19-01b-read-only-profile")
-    await one.page.keyboard.press("Escape")
+    await one.page.getByTestId("agent-view-close").click()
     await expect(one.page.getByTestId("agent-profile")).toBeHidden()
 
     // Send from MacBook 1: the reply streams in both windows.
