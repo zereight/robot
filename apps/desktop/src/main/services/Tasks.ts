@@ -34,6 +34,8 @@ interface TaskRow {
   created_at: number
   started_at: number | null
   finished_at: number | null
+  asked_at: number | null
+  first_reply_at: number | null
   origin: string | null
 }
 
@@ -47,6 +49,11 @@ export interface TaskInput {
   readonly messageId?: string | null
   /** A label of its own. Without it the label comes from the prompt. */
   readonly label?: string
+  /**
+   * When the message that started the task was sent (spec 005). Without it the times of the task
+   * count from the moment it is made.
+   */
+  readonly askedAt?: number | null
 }
 
 /** Starts the work again for a failed or cancelled task of one source. */
@@ -87,6 +94,11 @@ export interface TasksService {
   setWaiting(taskId: string, waiting: boolean): void
   /** Records which message holds the reply of a task. */
   setMessage(taskId: string, messageId: string): void
+  /**
+   * Records that the first part of the reply that the user sees is stored now (spec 005). Only the
+   * first call counts.
+   */
+  replied(taskId: string): void
   /** Stops a task and its children. Stopping a finished task does nothing. */
   stop(taskId: string): Effect.Effect<void>
   /** Like `stop`, and a task of the other computer is stopped there (spec 019). */
@@ -126,6 +138,8 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   createdAt: row.created_at,
   startedAt: row.started_at,
   finishedAt: row.finished_at,
+  askedAt: row.asked_at,
+  firstReplyAt: row.first_reply_at,
   originName: row.origin === null ? null : (remote?.nameOf(row.origin) ?? ""),
   waitsFor:
     row.state === "queued" && row.origin === null ? (remote?.busyOn(row.agent_id) ?? null) : null,
@@ -261,9 +275,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const create = (input: TaskInput) =>
         Effect.sync(() => {
           const id = randomUUID()
+          const now = Date.now()
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
-               message_id, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
+               message_id, state, created_at, asked_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)`,
             id,
             input.agentId,
             input.prompt,
@@ -273,7 +289,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             input.parentId ?? null,
             input.retryOf ?? null,
             input.messageId ?? null,
-            Date.now(),
+            now,
+            input.askedAt == null ? null : Math.min(input.askedAt, now),
           )
           stops.set(id, Deferred.makeUnsafe<void>())
           changed(input.agentId)
@@ -410,6 +427,16 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         },
         setMessage: (taskId, messageId) =>
           db.run("UPDATE task SET message_id = ? WHERE id = ?", messageId, taskId),
+        replied: (taskId) => {
+          const current = row(taskId)
+          if (!current || current.first_reply_at !== null || current.origin !== null) return
+          db.run(
+            "UPDATE task SET first_reply_at = ? WHERE id = ? AND first_reply_at IS NULL",
+            Date.now(),
+            taskId,
+          )
+          changed(current.agent_id)
+        },
         stop,
         stopAny,
         stopRemoteFor: (agentId) =>
