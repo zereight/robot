@@ -360,6 +360,7 @@ export const en = {
   "usage.col.replies": "Replies",
   "usage.col.input": "Input tokens",
   "usage.col.output": "Output tokens",
+  "usage.col.firstReply": "First reply (median)",
   "usage.note":
     "Tokens are the counts that providers report. Providers do not report cost, so none is shown.",
 
@@ -419,6 +420,12 @@ export const en = {
   "tasks.openSource": "Open place",
   "tasks.close": "Close",
   "tasks.retryOf": "Tries again an earlier task.",
+  "tasks.times": "Times",
+  "tasks.times.wait": "Wait",
+  "tasks.times.firstReply": "First reply",
+  "tasks.times.total": "Total",
+  "time.seconds": "{value} s",
+  "time.unknown": "—",
   "error.app_stopped": "The app stopped.",
   "error.cannot_retry_task": "Only a failed or cancelled task can be tried again.",
   "error.task_not_found": "This task no longer exists.",

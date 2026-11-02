@@ -40,8 +40,33 @@ const setup = async () => {
       finishedAt,
       finishedAt,
     )
+  const task = (
+    agentId: string,
+    o: {
+      readonly finishedAt: number
+      readonly firstReply: number | null
+      readonly asked?: boolean
+      readonly source?: string
+      readonly state?: string
+    },
+  ) => {
+    const createdAt = o.finishedAt - 10_000
+    db.run(
+      `INSERT INTO task (id, agent_id, prompt, label, source, state, created_at, started_at,
+         finished_at, asked_at, first_reply_at) VALUES (?, ?, 'q', 'q', ?, ?, ?, ?, ?, ?, ?)`,
+      crypto.randomUUID(),
+      agentId,
+      o.source ?? "chat",
+      o.state ?? "done",
+      createdAt,
+      createdAt,
+      o.finishedAt,
+      o.asked ? createdAt - 1000 : null,
+      o.firstReply === null ? null : createdAt + o.firstReply,
+    )
+  }
   const summary = (days: 7 | 30) => run(Usage.use((u) => u.summary(local.id, days, NOW)))
-  return { make, insert, summary }
+  return { make, insert, task, summary }
 }
 
 describe("Usage", () => {
@@ -63,6 +88,7 @@ describe("Usage", () => {
         replies: 2,
         inputTokens: 30,
         outputTokens: 10,
+        firstReplyMs: null,
       },
       {
         day: "2026-10-31",
@@ -71,6 +97,7 @@ describe("Usage", () => {
         replies: 1,
         inputTokens: 7,
         outputTokens: 3,
+        firstReplyMs: null,
       },
       {
         day: "2026-10-29",
@@ -79,6 +106,7 @@ describe("Usage", () => {
         replies: 1,
         inputTokens: 5,
         outputTokens: 5,
+        firstReplyMs: null,
       },
     ])
   })
@@ -95,6 +123,29 @@ describe("Usage", () => {
     expect(await summary(7)).toHaveLength(1)
     expect((await summary(7))[0]).toMatchObject({ day: "2026-10-25", inputTokens: 2 })
     expect(await summary(30)).toHaveLength(2)
+  })
+
+  test("the median first reply of done chat tasks, per agent and day", async () => {
+    const { make, insert, task, summary } = await setup()
+    const ada = await make("Ada")
+    const bo = await make("Bo")
+    insert(ada.id, daysAgo(0), 1, 1)
+    task(ada.id, { finishedAt: daysAgo(0, 9), firstReply: 1000 })
+    task(ada.id, { finishedAt: daysAgo(0, 10), firstReply: 3000 })
+    // Counted from the message that started the task: one second more.
+    task(ada.id, { finishedAt: daysAgo(0, 11), firstReply: 1000, asked: true })
+    // Not counted: not done, not from a chat, no known time.
+    task(ada.id, { finishedAt: daysAgo(0), firstReply: 50, state: "failed" })
+    task(ada.id, { finishedAt: daysAgo(0), firstReply: 50, source: "routine" })
+    task(ada.id, { finishedAt: daysAgo(0), firstReply: null })
+    // A day with a time and no counted reply.
+    task(bo.id, { finishedAt: daysAgo(1), firstReply: 4000 })
+
+    const rows = await summary(7)
+    expect(rows.map((r) => [r.day, r.agentName, r.replies, r.firstReplyMs])).toEqual([
+      ["2026-10-31", "Ada", 1, 2000],
+      ["2026-10-30", "Bo", 0, 4000],
+    ])
   })
 
   test("is empty without replies", async () => {
