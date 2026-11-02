@@ -25,6 +25,8 @@ import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
 
 export interface DataService {
+  /** Writes an archive to `target` without asking where. Sync uses it for its backups. */
+  backup(target: string): Effect.Effect<{ path: string; files: number }, AppError>
   /** Writes one archive: the database, the attachments and a readme. Secrets are left out. */
   export(): Effect.Effect<{ path: string | null; files: number }, AppError>
   /** Restores an archive into an app that has no agents and no accounts yet. */
@@ -70,12 +72,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
       const settings = yield* SettingsStore
       const bus = yield* EventBus
 
-      const exportData = Effect.fn("Data.export")(function* () {
-        const stamp = new Date().toISOString().slice(0, 10)
-        const target = yield* Effect.promise(() =>
-          platform.pickSavePath(`ROBot-export-${stamp}.zip`),
-        )
-        if (!target) return { path: null, files: 0 }
+      const writeArchive = Effect.fn("Data.writeArchive")(function* (target: string) {
         const known = (yield* providers.list)
           .map((a) => secrets.get(secretKey(a.id)))
           .filter((k): k is string => k !== null)
@@ -88,6 +85,24 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           try {
             // The links of this computer stay on it: an export holds no device keys or addresses.
             out.exec("DELETE FROM device_link")
+            // Sync records belong to this pair of computers (spec 016). They are not exported.
+            for (const table of [
+              "sync_pair",
+              "sync_item",
+              "sync_field",
+              "sync_tomb",
+              "sync_out",
+              "sync_dirty",
+              "sync_seen",
+              "sync_alias",
+              "sync_change",
+              "sync_state",
+            ]) {
+              out.exec(`DELETE FROM ${table}`)
+            }
+            out.exec(
+              "UPDATE message SET origin = NULL; UPDATE channel_message SET origin = NULL; UPDATE task SET origin = NULL; UPDATE workflow_run SET origin = NULL; UPDATE routine SET runs_on = NULL; UPDATE workflow SET runs_on = NULL",
+            )
             const rows = out.prepare("SELECT id, parts, error_detail FROM message").all() as {
               id: string
               parts: string
@@ -169,6 +184,15 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
         } finally {
           rmSync(work, { recursive: true, force: true })
         }
+      })
+
+      const exportData = Effect.fn("Data.export")(function* () {
+        const stamp = new Date().toISOString().slice(0, 10)
+        const target = yield* Effect.promise(() =>
+          platform.pickSavePath(`ROBot-export-${stamp}.zip`),
+        )
+        if (!target) return { path: null, files: 0 }
+        return yield* writeArchive(target)
       })
 
       const importData = Effect.fn("Data.restore")(function* () {
@@ -293,7 +317,11 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
         return counts
       })
 
-      return Data.of({ export: exportData, import: importData })
+      return Data.of({
+        export: exportData,
+        import: importData,
+        backup: (target) => writeArchive(target),
+      })
     }),
   )
 }

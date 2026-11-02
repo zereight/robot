@@ -1,4 +1,11 @@
-import type { DevicesState, JoinRequest } from "@robot/shared"
+import type {
+  DevicesState,
+  JoinRequest,
+  SyncChangeEntry,
+  SyncMode,
+  SyncRequest,
+  SyncStatus,
+} from "@robot/shared"
 import {
   createContext,
   createResource,
@@ -24,7 +31,60 @@ const createDevicesState = () => {
     }),
   )
 
+  // Sync between two computers (spec 016).
+  const [syncList, { refetch: refetchSync }] = createResource(() => call("sync.list"))
+  const [guard, { refetch: refetchGuard }] = createResource(() => call("sync.guard"))
+  const [changes, { refetch: refetchChanges }] = createResource(() => call("sync.changes"))
+  const refreshSync = () => {
+    void refetchSync()
+    void refetchGuard()
+    void refetchChanges()
+  }
+  onCleanup(window.robot.on("sync.changed", refreshSync))
+  onCleanup(window.robot.on("devices.changed", () => void refetchSync()))
+  onCleanup(window.robot.on("servers.changed", () => void refetchSync()))
+  const [syncRequests, setSyncRequests] = createSignal<readonly SyncRequest[]>([])
+  void call("sync.requests").then(setSyncRequests)
+  onCleanup(
+    window.robot.on("sync.request", ({ request, closed }) => {
+      if (request) setSyncRequests((list) => [...list.filter((r) => r.id !== request.id), request])
+      if (closed) setSyncRequests((list) => list.filter((r) => r.id !== closed))
+    }),
+  )
+  // A start that failed shows its error in the row of the computer.
+  const [syncErrors, setSyncErrors] = createSignal<Readonly<Record<string, unknown>>>({})
+
   return {
+    sync: {
+      statuses: () => syncList.latest ?? ([] as readonly SyncStatus[]),
+      of: (linkId: string): SyncStatus | undefined =>
+        (syncList.latest ?? []).find((s) => s.linkId === linkId),
+      /** The computer that is the sync pair, if any. */
+      active: (): SyncStatus | undefined => (syncList.latest ?? []).find((s) => s.state !== "off"),
+      requests: syncRequests,
+      guard: () => guard.latest ?? null,
+      changes: (): readonly SyncChangeEntry[] => changes.latest ?? [],
+      errors: syncErrors,
+      clearError: (linkId: string) =>
+        setSyncErrors((all) =>
+          Object.fromEntries(Object.entries(all).filter(([k]) => k !== linkId)),
+        ),
+      start: async (linkId: string, mode: SyncMode) => {
+        setSyncErrors((all) =>
+          Object.fromEntries(Object.entries(all).filter(([k]) => k !== linkId)),
+        )
+        try {
+          await call("sync.start", { linkId, mode })
+        } catch (error) {
+          setSyncErrors((all) => ({ ...all, [linkId]: error }))
+        }
+        refreshSync()
+      },
+      decide: async (id: string, allow: boolean) => {
+        setSyncRequests((list) => list.filter((r) => r.id !== id))
+        await call("sync.decide", { id, allow }).catch(() => {})
+      },
+    },
     /** The newest answer; it stays while a new one loads, so the page does not flicker. */
     state: () => state.latest,
     refetch,

@@ -9,6 +9,7 @@ import { ChannelPanel } from "./channels/ChannelPanel.tsx"
 import { ChannelHeader, ChannelView } from "./channels/ChannelView.tsx"
 import { DevicesSection } from "./devices/DevicesSection.tsx"
 import { JoinDialog } from "./devices/JoinDialog.tsx"
+import { SyncGuardDialog, SyncRequestDialog } from "./devices/SyncDialogs.tsx"
 import { FirstRunDialog } from "./firstrun/FirstRun.tsx"
 import { NotificationsSection } from "./notifications/NotificationsSection.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
@@ -101,6 +102,8 @@ export const App = () => {
       </Presence>
       <Presence when={!app.settings.firstRunDone}>{() => <FirstRunDialog />}</Presence>
       <JoinDialog />
+      <SyncRequestDialog />
+      <SyncGuardDialog />
     </>
   )
 }

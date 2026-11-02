@@ -131,6 +131,16 @@ export const CLIENT_METHODS = [
   "attachment.upload",
   "attachment.download",
   "attention.list",
+  // Sync between two computers (spec 016). Only the computer that is the sync peer may use them.
+  "sync.hello",
+  "sync.counts",
+  "sync.ids",
+  "sync.names",
+  "sync.offer",
+  "sync.cancel",
+  "sync.push",
+  "sync.control",
+  "sync.stop",
 ] as const
 export type ClientMethod = (typeof CLIENT_METHODS)[number]
 
@@ -141,7 +151,11 @@ export type ClientMethod = (typeof CLIENT_METHODS)[number]
  */
 export const ROUTED_METHODS = [
   ...CLIENT_METHODS.filter(
-    (m) => m !== "server.summary" && m !== "attachment.upload" && m !== "attachment.download",
+    (m) =>
+      m !== "server.summary" &&
+      m !== "attachment.upload" &&
+      m !== "attachment.download" &&
+      !m.startsWith("sync."),
   ),
   "attachments.save",
 ] as const

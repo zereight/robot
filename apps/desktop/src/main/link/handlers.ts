@@ -12,6 +12,7 @@ import { AppError } from "../services/errors.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Platform } from "../services/Platform.ts"
 import { Servers } from "../services/Servers.ts"
+import { Sync } from "../services/Sync.ts"
 import { UploadError } from "./uploads.ts"
 
 type LinkHandler = (input: unknown) => Effect.Effect<unknown, AppError, AppServices>
@@ -64,7 +65,39 @@ const readAttachment = (workspace: string, path: string, offset: number): Downlo
  * Requests that exist only on the link between devices. A request that the window also makes is
  * in `rpc.ts`; the server runs those with the device as the actor.
  */
+const syncMethods = [
+  "sync.hello",
+  "sync.counts",
+  "sync.ids",
+  "sync.offer",
+  "sync.cancel",
+  "sync.push",
+  "sync.control",
+  "sync.stop",
+] as const
+
+/**
+ * The requests of the other computer of a sync pair (spec 016). The service decides who may call
+ * each one: only a linked computer may ask to sync, and only the pair may send changes.
+ */
+const syncHandlers: Record<string, LinkHandler> = Object.fromEntries(
+  syncMethods.map((method) => [
+    method,
+    (input: unknown) =>
+      E.gen(function* () {
+        const actor = yield* actorOrFail
+        const sync = yield* Sync
+        return yield* E.tryPromise({
+          try: () => sync.handle(method, input, actor.id),
+          catch: (error) =>
+            error instanceof AppError ? error : new AppError({ code: "internal" }),
+        })
+      }),
+  ]),
+)
+
 export const linkHandlers: Record<string, LinkHandler> = {
+  ...syncHandlers,
   "server.summary": () =>
     E.gen(function* () {
       const devices = yield* Devices

@@ -54,7 +54,7 @@ const MAX_FACE_IMAGE_BYTES = 1024 * 1024
 const faceImagePattern = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/
 
 /** A folder name made from the agent name, with a short unique tail. */
-const workspaceFolderName = (name: string, id: string) => {
+export const workspaceFolderName = (name: string, id: string) => {
   const slug = name
     .normalize("NFKD")
     .toLowerCase()

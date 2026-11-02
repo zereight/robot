@@ -18,6 +18,7 @@ import {
   RUNTIME_KINDS,
   redactSecrets,
   SettingsPatch,
+  SYNC_MODES,
   UiStatePatch,
   USAGE_RANGES,
   WorkflowInput,
@@ -46,6 +47,7 @@ import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -74,6 +76,7 @@ const ByRuntime = Schema.Struct({ kind: Schema.Literals(RUNTIME_KINDS) })
 const ByAgent = Schema.Struct({ agentId: Schema.String })
 const MessageText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(MESSAGE_MAX))
 const done = Effect.as(undefined)
+const ByLink = Schema.Struct({ linkId: Schema.String })
 
 const applySystemSettings = Effect.fn("applySystemSettings")(function* (
   patch: typeof SettingsPatch.Type,
@@ -232,6 +235,51 @@ export const handlers: Handlers = {
       done,
     ),
   "devices.nearby": () => Devices.use((d) => d.nearby()),
+  "sync.list": () => Sync.use((s) => Effect.sync(() => s.statuses())),
+  "sync.preview": (input) =>
+    decode(ByLink)(input).pipe(Effect.flatMap(({ linkId }) => Sync.use((s) => s.preview(linkId)))),
+  "sync.start": (input) =>
+    decode(Schema.Struct({ linkId: Schema.String, mode: Schema.Literals(SYNC_MODES) }))(input).pipe(
+      Effect.flatMap(({ linkId, mode }) => Sync.use((s) => s.start(linkId, mode))),
+    ),
+  "sync.cancelOffer": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.cancelOffer(linkId))),
+      done,
+    ),
+  "sync.pause": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.setPaused(linkId, true))),
+      done,
+    ),
+  "sync.resume": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.setPaused(linkId, false))),
+      done,
+    ),
+  "sync.stop": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.stop(linkId))),
+      done,
+    ),
+  "sync.dismiss": (input) =>
+    decode(ByLink)(input).pipe(
+      Effect.flatMap(({ linkId }) => Sync.use((s) => s.dismiss(linkId))),
+      done,
+    ),
+  "sync.requests": () => Sync.use((s) => Effect.sync(() => s.requests())),
+  "sync.decide": (input) =>
+    decode(Schema.Struct({ id: Schema.String, allow: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, allow }) => Sync.use((s) => s.decide(id, allow))),
+      done,
+    ),
+  "sync.changes": () => Sync.use((s) => Effect.sync(() => s.changes())),
+  "sync.guard": () => Sync.use((s) => Effect.sync(() => s.guard())),
+  "sync.guard.decide": (input) =>
+    decode(Schema.Struct({ remove: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ remove }) => Sync.use((s) => s.decideGuard(remove))),
+      done,
+    ),
   // Saving a file of a linked server is carried out over the link, see `Remote.invoke`.
   "attachments.save": () => Effect.fail(new AppError({ code: "not_allowed" })),
   "places.list": (input) =>

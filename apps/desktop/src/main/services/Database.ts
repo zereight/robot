@@ -12,6 +12,8 @@ export interface DatabaseService {
   get<T = Row>(sql: string, ...params: Params): T | undefined
   /** Runs `body` in one transaction. A thrown error rolls it back. */
   transaction<T>(body: () => T): T
+  /** Calls `listener` after every statement that wrote. Sync uses it to look for changes. */
+  onWrite(listener: () => void): void
 }
 
 /**
@@ -52,11 +54,19 @@ export const migrate = (db: DatabaseSync) => {
   }
 }
 
+/** Opens a database and runs the migrations. Tests use it to make a database of their own. */
+export const openDatabase = (file: string): DatabaseService => wrap(open(file))
+
 const wrap = (db: DatabaseSync): DatabaseService => {
   let depth = 0
+  const writeListeners: (() => void)[] = []
   return {
     run: (sql, ...params) => {
       db.prepare(sql).run(...params)
+      for (const listener of writeListeners) listener()
+    },
+    onWrite: (listener) => {
+      writeListeners.push(listener)
     },
     all: <T>(sql: string, ...params: Params) => db.prepare(sql).all(...params) as T[],
     get: <T>(sql: string, ...params: Params) => db.prepare(sql).get(...params) as T | undefined,

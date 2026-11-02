@@ -214,3 +214,61 @@
 .nearbyItem[data-selected="true"] {
   border-color: var(--c-accent);
 }
+
+.syncRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--c-border);
+}
+
+.syncLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.syncState {
+  font-weight: 500;
+}
+
+.inlineButton {
+  margin-inline-start: 8px;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.changeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+
+.change {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}

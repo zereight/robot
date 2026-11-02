@@ -59,7 +59,7 @@ export interface RemoteService {
   linkOfServer(serverId: string): LinkRow | undefined
   stateOf(linkId: string): LinkState
   /** Asks a linked server. Rejects with a `LinkError`. */
-  request(linkId: string, method: string, input?: unknown): Promise<unknown>
+  request(linkId: string, method: string, input?: unknown, ms?: number): Promise<unknown>
   /**
    * A call of the window for a linked server. It goes over the link when the server is online,
    * and reads come from the cache when it is not. Never rejects.
@@ -519,10 +519,10 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
         linkOfServer: (serverId) => devices.outbound().find((r) => r.serverId === serverId),
         stateOf,
         invoke,
-        request: (linkId, method, input) => {
+        request: (linkId, method, input, ms) => {
           const connection = connections.get(linkId)
           if (!connection) return Promise.reject(new LinkError("offline"))
-          return connection.request(method, input)
+          return connection.request(method, input, ms)
         },
         onEvent: (handler) => {
           eventHandlers.push(handler)

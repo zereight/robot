@@ -137,6 +137,13 @@ export interface DevicesService {
     reverse: boolean
   }): LinkRow
   setAddresses(id: string, addresses: readonly string[]): Effect.Effect<LinkRow, AppError>
+  /** Lets a computer that this computer can open also open this one (sync needs both ways). */
+  setInbound(id: string, on: boolean): void
+  /** Lets this computer open a computer that already opens this one. */
+  setOutboundFor(
+    id: string,
+    input: { addresses: readonly string[]; serverId: string },
+  ): LinkRow | undefined
   /** Remembers the name, the server id and the address that worked when a server connected. */
   touchServer(id: string, info: { name: string; serverId: string; address?: string }): void
   removeOutbound(id: string): void
@@ -679,6 +686,29 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
               linksChanged()
               return Effect.succeed(rowOf(id) as LinkRow)
             }),
+          setInbound: (id, on) => {
+            const row = rowOf(id)
+            if (row?.kind !== "computer") return
+            if (on === row.inbound) return
+            if (on) db.run("UPDATE device_link SET inbound = 1 WHERE id = ?", id)
+            else if (row.outbound) db.run("UPDATE device_link SET inbound = 0 WHERE id = ?", id)
+            else db.run("DELETE FROM device_link WHERE id = ?", id)
+            if (!on) closeSession(id)
+            linksChanged()
+          },
+          setOutboundFor: (id, { addresses: list, serverId }) => {
+            const row = rowOf(id)
+            if (row?.kind !== "computer" || !row.inbound) return undefined
+            if (list.length === 0 || list.length > 8) return undefined
+            db.run(
+              "UPDATE device_link SET outbound = 1, addresses = ?, server_id = ? WHERE id = ?",
+              JSON.stringify(list),
+              serverId,
+              id,
+            )
+            linksChanged()
+            return rowOf(id)
+          },
           touchServer: (id, info) => {
             const row = rowOf(id)
             if (!row) return

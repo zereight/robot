@@ -1,4 +1,20 @@
 /**
+ * Triggers that mark a row as changed, so sync can find it (spec 016). They only write while the
+ * computer is in a sync pair. `id` is the SQL text of the sync id of the row.
+ */
+const dirtyTriggers = (table: string, kind: string, id: (row: "NEW" | "OLD") => string) =>
+  (["INSERT", "UPDATE", "DELETE"] as const)
+    .map((op) => {
+      const row = op === "DELETE" ? "OLD" : "NEW"
+      return `CREATE TRIGGER sync_dirty_${table}_${op.toLowerCase()} AFTER ${op} ON ${table}
+        WHEN EXISTS (SELECT 1 FROM sync_pair)
+        BEGIN INSERT OR REPLACE INTO sync_dirty (kind, id) VALUES ('${kind}', ${id(row)}); END;`
+    })
+    .join("\n")
+
+const plainId = (row: "NEW" | "OLD") => `${row}.id`
+
+/**
  * Schema migrations, in order. Never change a shipped entry; add a new one.
  * The index + 1 is stored as the database user version.
  */
@@ -241,5 +257,116 @@ export const migrations: readonly string[] = [
   ALTER TABLE message ADD COLUMN from_name TEXT;
   ALTER TABLE channel_message ADD COLUMN from_device TEXT;
   ALTER TABLE channel_message ADD COLUMN from_name TEXT;
+  `,
+  `
+  ALTER TABLE message ADD COLUMN origin TEXT;
+  ALTER TABLE channel_message ADD COLUMN origin TEXT;
+  ALTER TABLE task ADD COLUMN origin TEXT;
+  ALTER TABLE workflow_run ADD COLUMN origin TEXT;
+  ALTER TABLE routine ADD COLUMN runs_on TEXT;
+  ALTER TABLE workflow ADD COLUMN runs_on TEXT;
+  CREATE TABLE sync_pair (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    peer_id TEXT NOT NULL,
+    peer_name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    paused INTEGER NOT NULL DEFAULT 0,
+    ctl INTEGER NOT NULL DEFAULT 0,
+    backed_up INTEGER NOT NULL DEFAULT 0,
+    stamped INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER NOT NULL,
+    synced_at INTEGER,
+    out_total INTEGER NOT NULL DEFAULT 0,
+    out_done INTEGER NOT NULL DEFAULT 0,
+    out_cursor TEXT NOT NULL DEFAULT '',
+    out_complete INTEGER NOT NULL DEFAULT 0,
+    in_total INTEGER NOT NULL DEFAULT 0,
+    in_done INTEGER NOT NULL DEFAULT 0,
+    in_cursor TEXT NOT NULL DEFAULT '',
+    in_complete INTEGER NOT NULL DEFAULT 0,
+    in_force INTEGER NOT NULL DEFAULT 0,
+    applied_seq INTEGER NOT NULL DEFAULT 0,
+    clock_offset INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE sync_item (
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    parent_kind TEXT,
+    parent_id TEXT,
+    initial INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (kind, id)
+  ) WITHOUT ROWID;
+  CREATE INDEX sync_item_parent ON sync_item (parent_kind, parent_id);
+  CREATE TABLE sync_field (
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    field TEXT NOT NULL,
+    l INTEGER NOT NULL,
+    c INTEGER NOT NULL,
+    n TEXT NOT NULL,
+    h TEXT NOT NULL,
+    aseq INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (kind, id, field)
+  ) WITHOUT ROWID;
+  CREATE TABLE sync_tomb (
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    l INTEGER NOT NULL,
+    c INTEGER NOT NULL,
+    n TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY (kind, id)
+  ) WITHOUT ROWID;
+  CREATE TABLE sync_out (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    op TEXT NOT NULL,
+    ver INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (kind, id)
+  );
+  CREATE TABLE sync_dirty (
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    PRIMARY KEY (kind, id)
+  ) WITHOUT ROWID;
+  CREATE TABLE sync_seen (
+    kind TEXT NOT NULL,
+    id TEXT NOT NULL,
+    PRIMARY KEY (kind, id)
+  ) WITHOUT ROWID;
+  CREATE TABLE sync_alias (
+    peer_id TEXT PRIMARY KEY,
+    local_id TEXT NOT NULL
+  );
+  CREATE TABLE sync_change (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE sync_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  ${dirtyTriggers("provider_account", "account", plainId)}
+  ${dirtyTriggers("agent", "agent", plainId)}
+  ${dirtyTriggers("channel", "channel", plainId)}
+  ${dirtyTriggers("channel_member", "channel", (row) => `${row}.channel_id`)}
+  ${dirtyTriggers("memory", "memory", plainId)}
+  ${dirtyTriggers("message", "message", plainId)}
+  ${dirtyTriggers("channel_message", "cmessage", plainId)}
+  ${dirtyTriggers("routine", "routine", plainId)}
+  ${dirtyTriggers("workflow", "workflow", plainId)}
+  ${dirtyTriggers("task", "task", plainId)}
+  ${dirtyTriggers("routine_skip", "rskip", plainId)}
+  ${dirtyTriggers("workflow_run", "wrun", plainId)}
+  ${dirtyTriggers("workflow_run_step", "wstep", (row) => `${row}.run_id || '|' || ${row}.step_id`)}
   `,
 ]
