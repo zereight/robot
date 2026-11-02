@@ -506,6 +506,12 @@ export const migrations: readonly string[] = [
   CREATE INDEX import_checklist_workflow ON import_checklist (workflow_id);
   `,
   `
+  -- The times of a task (spec 005): when the message that started it was sent, and when the first
+  -- part of the reply that the user can see was stored. Both stay empty when they are not known.
+  ALTER TABLE task ADD COLUMN asked_at INTEGER;
+  ALTER TABLE task ADD COLUMN first_reply_at INTEGER;
+  `,
+  `
   -- Message search (spec 001). The text of the sent messages of chats and channels, in a table of
   -- its own, with an index that finds a part of a word without case (the trigram index). Triggers
   -- keep it in step with every write to the two message tables, also a write by sync, by an
