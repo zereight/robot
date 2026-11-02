@@ -269,18 +269,20 @@ describe("muse session host", () => {
     expect(commandId()).not.toBe(commandId())
   })
 
-  test("every step of the host shows its card, and the rules of the app pick the rule key", () => {
+  test("every step of the host shows its card, and its rule key is the command itself", () => {
     const shell = (command: string) =>
-      describeMuseApproval({ toolCallId: "c1", subject: { kind: "shell", command } }, "/work/bo")
+      describeMuseApproval({ toolCallId: "c1", subject: { kind: "shell", command } })
     // The host asked, so the user decides, also for a plain command.
     expect(shell("touch /Users/me/a.txt")).toEqual({
       callId: "c1",
       risky: true,
-      key: "run_command:touch",
+      key: "run_command:touch /Users/me/a.txt",
       summary: "touch /Users/me/a.txt",
     })
-    expect(shell("rm /etc/hosts")).toMatchObject({ risky: true, key: "run_command:delete_outside" })
-    expect(shell("sudo ls").risky).toBe(true)
+    // A yes for one command is not a yes for the next command of the same program.
+    expect(shell("touch /Users/me/a.txt").key).not.toBe(shell("touch /etc/hosts").key)
+    expect(shell("rm /etc/hosts").key).not.toBe(shell("rm /etc/other").key)
+    expect(shell("  ls -la \n").key).toBe("run_command:ls -la")
   })
   test("the card sits on the item that waits, which the tool call of the reply shares", () => {
     const both = {
@@ -288,39 +290,36 @@ describe("muse session host", () => {
       toolCallId: "call_1",
       subject: { kind: "shell", command: "ls" },
     }
-    expect(describeMuseApproval(both, "/work/bo").callId).toBe("item-1")
+    expect(describeMuseApproval(both).callId).toBe("item-1")
   })
-  test("a file step keeps the outside part in its rule key", () => {
+  test("a file step keeps its path in the rule key", () => {
     const file = (path: string, access: string) =>
-      describeMuseApproval(
-        { itemId: "i1", toolName: "write_file", subject: { kind: "fileAccess", path, access } },
-        "/work/bo",
-      )
+      describeMuseApproval({
+        itemId: "i1",
+        toolName: "write_file",
+        subject: { kind: "fileAccess", path, access },
+      })
     expect(file("notes.md", "write")).toEqual({
       callId: "i1",
       risky: true,
-      key: "write_file",
+      key: "write_file:notes.md",
       summary: "write_file: notes.md",
     })
-    expect(file("/etc/hosts", "write")).toMatchObject({ key: "write_file:outside" })
-    expect(file("/etc/hosts", "read")).toMatchObject({ key: "read_file:outside" })
+    expect(file("/etc/hosts", "write").key).toBe("write_file:/etc/hosts")
+    expect(file("/etc/hosts", "read").key).toBe("read_file:/etc/hosts")
+    expect(file("/etc/hosts", "write").key).not.toBe(file("/etc/other", "write").key)
   })
-  test("a network step and a step of an unknown kind have a card with what is known", () => {
+  test("a network step keeps its host, and an unknown step keeps its arguments", () => {
     expect(
-      describeMuseApproval(
-        {
-          toolName: "bash",
-          subject: { kind: "network", host: "example.com", port: 443, protocol: "https" },
-        },
-        "/work/bo",
-      ),
+      describeMuseApproval({
+        toolName: "bash",
+        subject: { kind: "network", host: "example.com", port: 443, protocol: "https" },
+      }),
     ).toMatchObject({ risky: true, key: "network:example.com", summary: "https://example.com:443" })
-    expect(
-      describeMuseApproval(
-        { toolName: "x", rawArgs: "{}", subject: { kind: "future" } },
-        "/work/bo",
-      ),
-    ).toMatchObject({ risky: true, key: "future:x", summary: "x: {}" })
+    const unknown = (rawArgs: string) =>
+      describeMuseApproval({ toolName: "x", rawArgs, subject: { kind: "future" } })
+    expect(unknown("{}")).toMatchObject({ risky: true, key: "future:x:{}", summary: "x: {}" })
+    expect(unknown('{"a":1}').key).not.toBe(unknown("{}").key)
   })
 
   test("the answer of the user picks a choice of the host", () => {

@@ -288,6 +288,22 @@ test("subscription: Muse Code signs in from the app, shows the code, and answers
   await page.getByTestId("ask-deny").click()
   await settled(page)
   await expect(page.getByTestId("message").last()).toContainText("Not allowed.")
+
+  // Always allow keeps this command allowed, and only this command.
+  await send(page, "third [ask]")
+  await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId("ask-always").click()
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Ran it.")
+  await send(page, "fourth [ask]")
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Ran it.")
+  await expect(page.getByTestId("ask-card")).toHaveCount(0)
+  await send(page, "other [ask-other]")
+  await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("ask-card")).toContainText("rm /etc/other-test")
+  await page.getByTestId("ask-deny").click()
+  await settled(page)
   await app.close()
 })
 
