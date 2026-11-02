@@ -201,3 +201,18 @@
 .logRow .actions {
   margin-top: 6px;
 }
+
+.number {
+  width: 96px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 6px 8px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.number[aria-invalid="true"] {
+  border-color: var(--c-danger);
+}

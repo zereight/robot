@@ -5,6 +5,7 @@ import {
   askKind,
   askStep,
   askSummary,
+  CHAIN_LIMIT_RULE,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
   type Channel,
@@ -14,6 +15,7 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   charLength,
+  createReadGuard,
   hasVisibleReply,
   holdOutside,
   MESSAGE_MAX,
@@ -56,6 +58,8 @@ import { Knowledge } from "./Knowledge.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers, storedFailure } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
+import { SettingsStore } from "./Settings.ts"
+import { stepWatch } from "./stepWatch.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
 
@@ -175,6 +179,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const agentActivity = yield* Activity
       const agents = yield* Agents
       const sections = yield* Sections
+      const settings = yield* SettingsStore
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
       // A part that streams from the other computer (spec 019) is not ours to end.
@@ -367,6 +372,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           replied = true
           tasks.replied(o.taskId)
         }
+        const stepLimit = (yield* settings.get).stepLimit
+        const mark = o.turn ?? newTurnMark("user")
+        const watch = stepWatch({
+          limit: stepLimit,
+          before: 0,
+          stop: () => controller.abort(),
+          record: ({ callId, ...step }) =>
+            tasks.recordStep({
+              ...step,
+              agentId: o.agent.id,
+              taskId: o.taskId,
+              decidedBy: tools.decidedBy(o.agent.id, callId),
+              outside: mark.source,
+            }),
+        })
         db.run(
           `INSERT INTO channel_message (id, channel_id, author, agent_id, kind, parts, status, task_id, model, created_at)
            VALUES (?, ?, 'agent', ?, ?, '[]', 'streaming', ?, ?, ?)`,
@@ -425,13 +445,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 bus.emit("channel.message", toMessage({ ...row, parts: JSON.stringify(parts) }))
               lastEmit = now
             }
+            watch.see(event, parts)
           })
 
         const stream = Effect.gen(function* () {
           if (!o.agent.model_account_id || !o.agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
           const useTools = o.tools === true
-          const mark = o.turn ?? newTurnMark("user")
           const isRuntime = providers.isRuntime(o.agent.model_account_id)
           const changePart = (
             callId: string,
@@ -481,6 +501,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             knowledgeChanges: { count: 0 },
             turn: mark,
             taskId: o.taskId,
+            depth: tasks.depthOf(o.taskId),
+            guard: createReadGuard(),
+            onReason: (callId, reason) => changePart(callId, (p) => ({ ...p, reason })),
           }
           const events = yield* providers.events(
             o.agent.model_account_id,
@@ -490,6 +513,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               system: useTools
                 ? [
                     `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`,
+                    CHAIN_LIMIT_RULE,
                     // An agent in a channel uses its own knowledge only.
                     knowledge.prompt(
                       o.agent.id,
@@ -553,6 +577,17 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 holdOutside(mark, outsideOfCall(event.call.name, event.call.input))
               return onEvent(event)
             }),
+            // A turn that reached the step limit was stopped by the app (spec 005).
+            Effect.catchCause((cause) =>
+              watch.hit
+                ? Effect.fail(new AppError({ code: "step_limit", detail: String(stepLimit) }))
+                : Effect.failCause(cause),
+            ),
+            Effect.tap(() =>
+              watch.hit
+                ? Effect.fail(new AppError({ code: "step_limit", detail: String(stepLimit) }))
+                : Effect.void,
+            ),
           )
         })
 
@@ -566,6 +601,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               controller.abort()
               knowledge.end(o.agent.id, writesFiles ? "agent" : "user")
               notifier.clearAgent(o.agent.id)
+              // A step that was running when the turn ended may have run in part.
+              watch.end(parts)
               // A step that did not finish cannot keep a running mark or a question card.
               for (const [i, part] of parts.entries()) {
                 if (part.kind !== "tool" || (part.state !== "running" && part.state !== "waiting"))
@@ -590,7 +627,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 const failure = Cause.squash(exit.cause)
                 if (failure instanceof ProviderFailure) save("failed", storedFailure(failure))
                 else if (failure instanceof AppError)
-                  save("failed", {
+                  // The reply that streamed stays and counts as stopped; the task has failed.
+                  save(failure.code === "step_limit" ? "stopped" : "failed", {
                     code: failure.code,
                     detail: failure.detail ?? "",
                     resetsAt: null,
