@@ -1,4 +1,4 @@
-import type { ChatMessage, QueuedMessage } from "@robot/shared"
+import type { ChatMessage, QueuedMessage, QueueHold } from "@robot/shared"
 import { createEffect, on, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { call, RpcFailure } from "../lib/rpc.ts"
@@ -8,11 +8,18 @@ export interface ChatState {
   loaded: boolean
   messages: ChatMessage[]
   queue: QueuedMessage[]
+  /** Set when the program of the agent takes no input during a turn (spec 003). */
+  hold: QueueHold | null
 }
 
 /** The messages and queue of one direct chat, kept in step with the main process. */
 export const createChat = (agentId: string) => {
-  const [state, setState] = createStore<ChatState>({ loaded: false, messages: [], queue: [] })
+  const [state, setState] = createStore<ChatState>({
+    loaded: false,
+    messages: [],
+    queue: [],
+    hold: null,
+  })
 
   const upsert = (message: ChatMessage) =>
     setState(
@@ -32,7 +39,9 @@ export const createChat = (agentId: string) => {
       setState("messages", (list) => list.filter((m) => m.id !== event.messageId))
   })
   const offQueue = window.robot.on("chat.queue", (event) => {
-    if (event.agentId === agentId) setState("queue", reconcile([...event.queue]))
+    if (event.agentId !== agentId) return
+    setState("queue", reconcile([...event.queue]))
+    setState("hold", event.hold ?? null)
   })
   onCleanup(() => {
     offMessage()
@@ -43,14 +52,19 @@ export const createChat = (agentId: string) => {
   const load = () =>
     call("chat.history", { agentId })
       .then((history) => {
-        setState({ loaded: true, messages: [...history.messages], queue: [...history.queue] })
+        setState({
+          loaded: true,
+          messages: [...history.messages],
+          queue: [...history.queue],
+          hold: history.hold ?? null,
+        })
       })
       // A linked server that is offline and has nothing saved: the view stays empty. One that
       // removed this device takes its messages from the view too (spec 012).
       .catch((error) =>
         setState(
           error instanceof RpcFailure && error.error.code === "not_allowed"
-            ? { loaded: true, messages: [], queue: [] }
+            ? { loaded: true, messages: [], queue: [], hold: null }
             : { loaded: true },
         ),
       )

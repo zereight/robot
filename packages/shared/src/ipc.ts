@@ -7,7 +7,7 @@ import type {
   ChannelMessage,
   ChannelPatch,
 } from "./channels.ts"
-import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
+import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type {
   KnowledgeArticle,
   KnowledgeChange,
@@ -368,10 +368,7 @@ export interface RpcMethods {
   }
   /** The Today page of this computer (spec 021). It reads local data only and sends nothing out. */
   "today.get": { input: undefined; output: TodaySnapshot }
-  "chat.history": {
-    input: { agentId: string }
-    output: { messages: readonly ChatMessage[]; queue: readonly QueuedMessage[] }
-  }
+  "chat.history": { input: { agentId: string }; output: ChatHistory }
   "chat.send": { input: ChatSend; output: { queued: boolean } }
   "chat.stop": { input: { agentId: string }; output: undefined }
   "chat.retry": { input: { agentId: string; messageId: string }; output: undefined }
@@ -381,6 +378,10 @@ export interface RpcMethods {
     output: undefined
   }
   "chat.queue.remove": { input: { agentId: string; itemId: string }; output: undefined }
+  /** Sends a queued message into the turn that runs now (spec 003). */
+  "chat.queue.sendNow": { input: { agentId: string; itemId: string }; output: undefined }
+  /** Deletes a message of the running turn that the agent did not read yet (spec 003). */
+  "chat.unread.delete": { input: { agentId: string; messageId: string }; output: undefined }
   "chat.markRead": { input: { agentId: string }; output: undefined }
 }
 
@@ -429,7 +430,7 @@ export interface RpcEvents {
   /** A new or changed message. While a reply streams, this comes many times. */
   "chat.message": ChatMessage
   "chat.removed": { agentId: string; messageId: string }
-  "chat.queue": { agentId: string; queue: readonly QueuedMessage[] }
+  "chat.queue": { agentId: string; queue: readonly QueuedMessage[]; hold: QueueHold | null }
 }
 
 export type RpcMethod = keyof RpcMethods

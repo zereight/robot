@@ -106,6 +106,33 @@ const lines = createInterface({ input: process.stdin })
 const waiting = new Map()
 let first = true
 const received = []
+/**
+ * Messages of the user that came during the turn, as the real program keeps them: it tells
+ * "queued" at once, and "started" when it reads one, after its reply (spec 003).
+ */
+const later = []
+let answered = false
+const drain = () => {
+  while (later.length > 0) {
+    const msg = later.shift()
+    if (msg.uuid) lifecycle(msg.uuid, "started")
+    const text = (msg.message.content ?? []).map((b) => b.text ?? "").join("")
+    appendFileSync(callsFile, `${JSON.stringify({ joined: text, uuid: msg.uuid ?? null })}\n`)
+    delta(`Joined: ${text}`)
+    out({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      result: "ok",
+      usage: { input_tokens: 3, output_tokens: 2 },
+    })
+    if (msg.uuid) lifecycle(msg.uuid, "completed")
+  }
+}
+const lifecycle = (id, state) => {
+  if (args.includes("--replay-user-messages"))
+    out({ type: "command_lifecycle", command_uuid: id, state })
+}
 lines.on("line", (line) => {
   if (!line.trim()) return
   const msg = JSON.parse(line)
@@ -138,6 +165,11 @@ lines.on("line", (line) => {
   if (msg.type === "user" && first) {
     first = false
     void turn(msg.message.content)
+  } else if (msg.type === "user") {
+    later.push(msg)
+    if (msg.uuid) lifecycle(msg.uuid, "queued")
+    // After its reply the program reads a new message at once.
+    if (answered) drain()
   }
   received.push(msg)
 })
@@ -194,6 +226,11 @@ async function turn(content) {
   if (/SLOW/.test(prompt)) {
     delta("Thinking slowly")
     await sleep(60_000)
+  }
+  // A turn that works for a while, so that a message can come during it.
+  if (/WAIT/.test(prompt)) {
+    delta("Working. ")
+    await sleep(Number(/WAIT (\d+)/.exec(prompt)?.[1] ?? 800))
   }
   const browser = /BROWSER:(\w+)(?: (\{.*\}))?/.exec(prompt)
   if (browser) {
@@ -287,7 +324,11 @@ async function turn(content) {
     result: "ok",
     usage: { input_tokens: 5, cache_read_input_tokens: 10, output_tokens: 7 },
   })
-  process.stdin.pause()
+  // The messages that came during the turn are read now, one after another, each with a result.
+  answered = true
+  drain()
+  // A program that takes messages during a turn goes on reading them; the app ends the input.
+  if (!args.includes("--replay-user-messages")) process.stdin.pause()
 }
 
 lines.on("close", () => process.exit(0))

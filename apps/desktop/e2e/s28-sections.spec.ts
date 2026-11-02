@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
+import { rpc } from "./sync-helpers.ts"
 
 const send = async (page: Page, text: string) => {
   await page.getByTestId("composer-input").fill(text)
@@ -150,6 +151,8 @@ test("sections: make, refuse, move, keep, count, drag, delete, search, copy", as
   await shot(page, "s28-04-after-restart")
 
   // Two unread messages in a section: its collapsed header shows 2, and the dot while it works.
+  // The second message waits in the queue, so that it gets a reply of its own (spec 003).
+  await rpc(page, "settings.update", { duringTurn: "queue" })
   const researchAgents = userSection(page, "agents", "Research")
   await rowOf(page, "Ada").click()
   await send(page, "slow for unread one")
