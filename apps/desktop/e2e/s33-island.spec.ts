@@ -456,8 +456,8 @@ test("island result card: reply and failure, 6 seconds, pointer, replace, mute, 
     timeout: 5000,
   })
 
-  // A failure shows its reason.
-  await send("fail once please")
+  // A failure shows its reason. The mock fails a text only once, so this text is its own.
+  await send("fail once for the island")
   await expect(result).toHaveAttribute("data-kind", "task_failed", { timeout: 15_000 })
   await expect(line).not.toHaveText("")
   await snap(island, "s33-06-failed.png")
