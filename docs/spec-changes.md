@@ -34,6 +34,12 @@ These are in the code today and the specs now say something else.
 | 007 | Three permission levels. Full access needs no confirm. | A fourth level, "Read only", the strictest. Full access asks for a confirm. The action log says whether a file step read or wrote. |
 | 004, 005 | A part ends as done, failed or cancelled. | A channel can ask for review. A part is then in review until the user accepts it or asks for changes. |
 | 005, 009 | A turn that ends with no error is done. | A task from a part, a message of another agent, a routine or a workflow ends as Blocked when the agent says it could not do the work. A blocked run counts as failed for the pause of a routine. |
+| 001, 003, 007, 008 | Search looks at place names only. An agent cannot search its past chats. | The search field also lists matching messages, and a click opens the message. An agent has the tool "search chats" while its memory is on. |
+| 003, 005 | A failed row tells the reason, and the retry note. After a restart the notice has "Continue" only. | A failed row also tells how far the turn went (not sent, sent, started). If the request never reached the model, the notice has "Send again" in place of "Continue". |
+| 005, 013 | A turn that shows nothing runs without end. | A turn with no sign of life for 10 minutes (the user can change this) is stopped and fails. A wait for the user and a running tool step do not count. The failed row also tells how far the turn went, next to the retry note. |
+| 006 | A vendor program from a crashed run can stay. | The app ends its own leftover programs at start. A runtime with a hung check never delays a turn of another provider. |
+| 008 | The agent saves memory at once. The only undo is the chat line. The agent can save any text. | A choice for each agent: save at once, or ask first with a tab for proposals. A history tab with undo. The memory tool refuses a text that looks like a secret. |
+| 001, 021 | Pages: agents and chats, workflows, tasks, usage. | Also the Today page, with a badge on its button for the items that wait in "Needs you". |
 
 ## Slices
 
@@ -66,5 +72,10 @@ These are in the code today and the specs now say something else.
 | S43 | Watch routines: the trigger form with the confirm, the three kinds of watch, checks and the change text, "Post when nothing changed", failed checks, the model and effort of a routine, the times of a late run. Needs S39. | 009, 007, 014 |
 | S44 | Review before an import: the review screen for agent files and workflow files, ticks at the start, "Not imported", the checklist after the import. | 014, 002, 010 |
 | S45 | Teach a task: the form, the recording bar, the steps and the hidden secrets, the limits, the draft skill card, Save and "Try it". | 017, 007, 014 |
+| S46 | Message search: the group "Messages" under the search field, the hit row, the jump to the message, search on a linked server and in the cache, the tool "search chats" for agents with memory on. | 001, 007, 012, 011, 014 |
+| S47 | Silent and cut turns: the progress of a turn, the lines on a failed row, "Send again" in the restart notice, the silent limit and its setting, leftover programs ended at start. Follows S35: the line for the progress sits next to its retry note. | 005, 003, 006, 013, 019, 011 |
+| S48 | Today page: the page button and badge, the four groups, live update, the line for a group that cannot be read, the line on a linked server. | 021, 001, 012, 015 |
+| S49 | Memory control: the choice "save at once" or "ask me first", the tabs Items, Proposals and History, undo, the refusal of secrets, the limits, what syncs and what exports. | 008, 012, 014, 019 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
+S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
