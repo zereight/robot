@@ -21,7 +21,7 @@ and workflows.
 ## Rules
 
 - One agent runs one task at a time. Other tasks for it wait in its queue in order. When two
-  computers sync (016) and both are online, this holds across both computers.
+  computers sync (017) and both are online, this holds across both computers.
 - A task waiting for the user (an approval or a question) does not block other agents.
 - Stopping a parent stops its children.
 - Retry makes a new task with the same prompt and links it to the old one.

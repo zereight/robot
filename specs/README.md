@@ -23,7 +23,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 013 | [Settings, themes and languages (English, Korean)](013-settings.md) | Draft |
 | 014 | [Local data, privacy, secrets and export](014-local-data.md) | Draft |
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
-| 016 | [Sync between two computers: what syncs, conflicts, where tasks run](016-sync.md) | Draft |
+| 017 | [Sync between two computers: what syncs, conflicts, where tasks run](017-sync.md) | Draft |
 
 ## Milestones
 
@@ -36,7 +36,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M5a | 012, 001, 013, 014, 015 | Link between computers, on one network or through a VPN |
 | M5b | 011, 012 | Phone app that pairs with one or more computers |
 | M6 | 015 | Notifications and status island |
-| M5c | 016, 012 | Sync between two computers (after M5a) |
+| M5c | 017, 012 | Sync between two computers (after M5a) |
 
 ## Template
 

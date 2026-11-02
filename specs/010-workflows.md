@@ -25,7 +25,7 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 - A step starts when all its inputs are done.
 - A failed step stops the run unless the step is marked "Continue on failure".
 - A workflow cannot be edited while it runs; the editor shows it read-only until the run ends.
-- When two computers sync (016), a workflow runs on one computer only. The other computer shows
+- When two computers sync (017), a workflow runs on one computer only. The other computer shows
   "Runs on <name>".
 - After an app restart, a run that was going is marked failed with the reason "The app
   stopped". This includes a run that waits at an approval step. Its tasks fail the same way,

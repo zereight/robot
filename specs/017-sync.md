@@ -1,4 +1,4 @@
-# 016 Sync between two computers
+# 017 Sync between two computers
 
 ## Purpose
 
@@ -28,7 +28,7 @@ service holds it.
 | Messages | Direct chats and channels, with tool cards, plan steps and reply chips. |
 | Tasks | State and result. They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent. |
-| Routines and workflows | The definition, the run history, and the "Runs on" computer. |
+| Routines and workflows | The definition (for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
 | Read state | The last place that the user read in each chat. |
 
 ### Does not sync
@@ -41,6 +41,9 @@ service holds it.
 | Browser windows and their sessions | They belong to a computer. |
 | Settings, theme, language, notification choices, mutes | Settings are local (013). |
 | Usage numbers | They count what ran on this computer. |
+| Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
+| User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives in the default section. |
+| The decision model and the other settings of 013 | Settings are local. |
 | Linked devices and their keys | They are not data of the agents. |
 
 ## Flows

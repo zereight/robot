@@ -15,7 +15,7 @@ The user knows when an agent needs them or finishes, without watching the window
   link is online. The notification names the server. Mutes work per server, so the user can mute
   one computer and not the other. A request that a client already answered does not notify again
   on other devices.
-- When two computers sync (016), an approval or a question of a task on the other computer also
+- When two computers sync (017), an approval or a question of a task on the other computer also
   shows here, with the name of that computer. Data that arrives by sync makes no notice. Once
   one computer has an answer, the other drops the notice.
 - The mute row in Settings → Notifications follows the server on screen: "This server" for this

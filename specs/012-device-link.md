@@ -68,7 +68,7 @@ client shows it and sends commands.
   paired again.
 - On the server, each linked device in that list has the switch "Can create and change agents".
   It takes effect at once, also for a connection that is open. While the two computers sync
-  (016), the switch for that device shows as on and cannot be changed. A link made before this switch
+  (017), the switch for that device shows as on and cannot be changed. A link made before this switch
   existed has it off until the user turns it on.
 - On the client: Settings → Devices lists the servers this device can open. The user picks one
   and chooses "Remove". The link ends on both sides. The cache of that server is deleted.
@@ -85,15 +85,17 @@ client shows it and sends commands.
 
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
-| See places, unread counts, working dots | Delete or restore agents and channels |
+| See places in the sections of the server, unread counts, working dots | Delete or restore agents and channels |
 | Read messages, search places | Change model accounts and settings |
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser |
 | Attach files and download files from messages | Choose a workspace folder |
-| Answer approval cards and questions | Routines, workflows, usage page |
+| Answer approval cards and questions | Routines, workflows, usage page, knowledge of an agent (016) |
 | See the task list and task details; stop a task | Browser "Take control" |
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory | Export and import of data |
 
-The page buttons that a client cannot use show a muted line: "Open this on <server name>."
+A client sees the user sections of the server (001) and cannot make, rename, order or delete
+them, or move a place into another section. The page buttons and pages that a client cannot use
+show a muted line: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
 card on a client has no "Always allow" choice. If a client sends one, the server takes it as one
 "Allow" and keeps no rule.
@@ -122,7 +124,7 @@ button on a section, the agent profile, the channel settings, the memory list.
 - **Working agents:** a client cannot archive an agent while it works. It stops the agent first.
 - **Record:** the profile of an agent, on the server and on clients, shows "Last changed by
   <device name>" with the time, when a client made the last change. A later change in the window
-  of the server removes the line. A change that arrives by sync (016) leaves it as it is. A
+  of the server removes the line. A change that arrives by sync (017) leaves it as it is. A
   change shows on the server and on all clients at once.
 - **No switch:** a client without the switch sees the profiles as read-only text, and the plus
   buttons are not shown. A try to change anything gets the error "Not allowed", with the line
@@ -147,11 +149,19 @@ button on a section, the agent profile, the channel settings, the memory list.
 
 ## Messages
 
-- A client asks for: server summary, places, a page of messages, search, send message, stop,
-  edit, retry, mark a place as read, approve, answer question, upload attachment, download
-  attachment, task list, task details, stop a task.
+- A client asks for: server summary, places (with the user sections and the section of each
+  place), a page of messages, search, send message, stop, edit, retry, mark a place as read,
+  approve, answer question, upload attachment, download attachment, task list, task details,
+  stop a task.
+- The phone app (011) may ask for more: end a request (see 004), start and fork a thread,
+  compact a conversation, and run or edit a workflow. The aim of 011 is that the phone can do
+  whatever the user can do in a conversation on the computer. A computer client does not offer
+  these in this version, and each of them needs its own slice. The rules of "Create and change
+  agents" apply to every client, the phone too: running a workflow needs only the right to send
+  messages, and editing a workflow needs the switch "Can create and change agents".
 - A server pushes: new and changed messages, task state changes, agent state changes, approval
-  requests and questions, unread counts.
+  requests and questions, unread counts, and changes to the sections or to the section of a
+  place.
 - Each message has a type, an id, and a version number. Both sides use one protocol version. A
   peer with another version gets a clear "Update the app" error.
 - A server answers each client by what that client may do (see above). A request for something
@@ -193,7 +203,7 @@ accept connections, this is the same computer.
 
 ## Out of scope
 
-- Sync of agents and data between computers. See 016. A link alone copies nothing.
+- Sync of agents and data between computers. See 017. A link alone copies nothing.
 - An agent on one computer that joins a channel of another computer.
 - A relay or a connection service that links devices which share no network. The user uses a
   VPN for this.

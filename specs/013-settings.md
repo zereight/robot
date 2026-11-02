@@ -14,7 +14,7 @@ The user sets the app up the way they like in one place.
 - **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
   that can open this computer, with the switch "Can create and change agents" for each, and the
   computers this computer can open, see 012. Each linked
-  computer has a sync row, see 016.
+  computer has a sync row, see 017.
 - **Notifications**: see 015.
 - **Archive**: archived agents and channels with restore and delete.
 - **Data**: open data folder, export, see 014.
