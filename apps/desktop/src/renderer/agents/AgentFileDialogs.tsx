@@ -165,7 +165,7 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
     setBusy(true)
     setError(undefined)
     try {
-      await call("agentFile.import", { serverId, model: model() })
+      await call("agentFile.apply", { serverId, model: model() })
       props.onClose()
     } catch (e) {
       const failure = readFailure(e)

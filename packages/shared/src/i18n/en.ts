@@ -684,7 +684,7 @@ export const en = {
   "error.knowledge_io": "The Knowledge folder cannot be read or written.",
   "agentFile.menu": "Agent files",
   "agentFile.menu.export": "Export agents…",
-  "agentFile.menu.import": "Import agents…",
+  "agentFile.menu.importFile": "Import agents…",
   "agentFile.routines": "Routines: {count}",
   "agentFile.close": "Close",
   "agentFile.export.title": "Export agents",

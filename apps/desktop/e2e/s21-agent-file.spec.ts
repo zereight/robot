@@ -82,7 +82,7 @@ test("agent file: export two agents, import the file in an empty app", async () 
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await expect(placeRows(page)).toHaveCount(0)
   await page.getByTestId("agents-menu").click()
-  await page.getByTestId("agents-menu-import").click()
+  await page.getByTestId("agents-menu-import-file").click()
   const dialog = page.getByTestId("agent-import-dialog")
   await expect(dialog.getByTestId("agent-import-item")).toHaveCount(2)
   await expect(dialog).toContainText("Every routine starts paused.")
@@ -112,7 +112,7 @@ test("agent file: export two agents, import the file in an empty app", async () 
 
   // A second import makes new agents only: the taken names get a number.
   await page.getByTestId("agents-menu").click()
-  await page.getByTestId("agents-menu-import").click()
+  await page.getByTestId("agents-menu-import-file").click()
   await expect(dialog.getByTestId("agent-import-item")).toHaveCount(2)
   await expect(dialog.getByTestId("agent-import-item").first()).toContainText("Ada 2")
   await expect(dialog.getByTestId("agent-import-item").first()).toContainText(

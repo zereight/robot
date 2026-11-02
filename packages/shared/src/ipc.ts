@@ -88,7 +88,7 @@ export interface RpcMethods {
   /** Asks for an agent file and reads it. `null` when cancelled. Nothing is made yet. */
   "agentFile.open": { input: { serverId: string }; output: AgentFilePreview | null }
   /** Makes the agents of the file that `agentFile.open` read, all with this model. */
-  "agentFile.import": {
+  "agentFile.apply": {
     input: { serverId: string; model: AgentModel | null }
     output: AgentFileImported
   }

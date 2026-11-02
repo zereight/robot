@@ -678,7 +678,7 @@ export const ko: Record<MessageKey, string> = {
   "error.knowledge_io": "Knowledge 폴더를 읽거나 쓸 수 없습니다.",
   "agentFile.menu": "에이전트 파일",
   "agentFile.menu.export": "에이전트 내보내기…",
-  "agentFile.menu.import": "에이전트 가져오기…",
+  "agentFile.menu.importFile": "에이전트 가져오기…",
   "agentFile.routines": "루틴 {count}개",
   "agentFile.close": "닫기",
   "agentFile.export.title": "에이전트 내보내기",
