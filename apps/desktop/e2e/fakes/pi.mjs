@@ -2,6 +2,7 @@
 // A stand-in for the `pi` program, for tests. Its state is a JSON file next to it.
 import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
+import { createInterface } from "node:readline"
 
 const dir = dirname(new URL(import.meta.url).pathname)
 const stateFile = join(dir, "pi-state.json")
@@ -24,6 +25,28 @@ if (args[0] === "--list-models") {
   console.log("provider       model        context  max-out  thinking  images")
   console.log("claude-bridge  fake-small   200K     64K      no        yes")
   console.log("anthropic      fake-large   200K     64K      yes       yes")
+  process.exit(0)
+}
+
+if (args[0] === "--mode" && args[1] === "rpc") {
+  // The levels of each model. "fake-large" takes a level that the old fixed list did not have.
+  const levels = { "fake-small": ["off"], "fake-large": ["off", "low", "medium", "high", "xhigh"] }
+  if (state().noRpc) process.exit(2)
+  let model = null
+  const lines = createInterface({ input: process.stdin })
+  for await (const line of lines) {
+    const command = JSON.parse(line)
+    const reply = (success, data) =>
+      out({ id: command.id, type: "response", command: command.type, success, data })
+    if (command.type === "set_model") {
+      if (command.modelId in levels) {
+        model = command.modelId
+        reply(true, { id: model })
+      } else reply(false)
+    } else if (command.type === "get_available_thinking_levels") {
+      reply(true, { levels: levels[model] ?? ["off"] })
+    } else reply(false)
+  }
   process.exit(0)
 }
 

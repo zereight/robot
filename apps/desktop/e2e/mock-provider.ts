@@ -31,7 +31,7 @@ const json = (res: ServerResponse, status: number, body: unknown) => {
 
 interface ChatBody {
   messages: { role: string; content: string }[]
-  tools?: unknown[]
+  tools?: { function?: { name?: string } }[]
 }
 
 export const MARKDOWN_REPLY = [
@@ -57,6 +57,9 @@ const failedOnce = new Set<string>()
 const plan = (body: ChatBody) => {
   const last = body.messages.at(-1)?.content ?? ""
   const text = last.split("\n").at(-1) ?? ""
+  // A condition in the mode "Ask a model": the model answers yes when the text holds "Hello".
+  if (text === "Reply with yes or no only.")
+    return { chunks: [last.includes("Hello") ? "Yes" : "No"], delay: 0 }
   // A lead that splits a job answers with a plan. The members are Bo and Cy.
   if (text.includes("split two"))
     return {
@@ -81,6 +84,12 @@ const plan = (body: ChatBody) => {
       ],
       delay: 0,
     }
+  // "Check knowledge": the agent reports what the app found, line by line.
+  if (last.includes("The app found this:")) {
+    // What the app found is the lines up to the request that follows them.
+    const found = last.split("The app found this:")[1]?.split("\n\n")[0]?.trim() ?? ""
+    return { chunks: [`Report of the check:\n${found}`], delay: 0 }
+  }
   if (text.includes("slow"))
     return { chunks: Array.from({ length: 60 }, (_, i) => `word${i} `), delay: 50 }
   if (text.includes("markdown")) return { chunks: [MARKDOWN_REPLY], delay: 0 }
@@ -96,29 +105,76 @@ const plan = (body: ChatBody) => {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** "TOOL name {json}" in the last user message makes the model call that tool once. */
-const toolCall = (body: ChatBody) => {
+/**
+ * "TOOL name {json}" in the last user message makes the model call that tool once.
+ * "TOOLS [{"name": "...", "args": {...}}, ...]" makes it call several tools in one reply.
+ */
+const toolCalls = (body: ChatBody) => {
   const last = body.messages.at(-1)
-  if (!body.tools || last?.role !== "user") return null
+  if (!body.tools || last?.role !== "user") return []
+  const many = [...last.content.matchAll(/TOOLS (\[.*\])/g)].at(-1)
+  if (many) {
+    return (JSON.parse(many[1] as string) as { name: string; args: unknown }[]).map((c) => ({
+      name: c.name,
+      args: JSON.stringify(c.args),
+    }))
+  }
   // Turns without an answer are merged, so the last request in the text counts.
   const match = [...last.content.matchAll(/TOOL (\w+) (\{.*\})/g)].at(-1)
-  return match ? { name: match[1] as string, args: match[2] as string } : null
+  if (match) return [{ name: match[1] as string, args: match[2] as string }]
+  return knowledgeRead(body)
+}
+
+const wordsOf = (text: string) =>
+  new Set(
+    text
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w.length >= 5),
+  )
+
+/**
+ * A model that reads the contents list in its instructions: when the question shares a word
+ * with a line of the list, it opens that article.
+ */
+const knowledgeRead = (body: ChatBody) => {
+  if (!body.tools?.some((t) => t.function?.name === "read_article")) return []
+  const system = String(body.messages[0]?.content ?? "")
+  const list = system.split("Contents (title: summary):\n")[1]
+  const last = body.messages.at(-1)?.content ?? ""
+  if (!list || last.includes("Check knowledge.")) return []
+  const asked = wordsOf(last.split("\n").at(-1) ?? "")
+  for (const line of list.split("\n")) {
+    const match = /^- (.+?): (.*)$/.exec(line)
+    if (!match) continue
+    const known = wordsOf(`${match[1]} ${match[2]}`)
+    if ([...asked].some((w) => known.has(w)))
+      return [{ name: "read_article", args: JSON.stringify({ title: match[1] }) }]
+  }
+  return []
 }
 
 const openAiReply = async (res: ServerResponse, body: ChatBody) => {
-  const call = toolCall(body)
-  if (call) {
+  const calls = toolCalls(body)
+  if (calls.length > 0) {
     res.writeHead(200, { "content-type": "text/event-stream" })
-    const first = { index: 0, id: "call_1", function: { name: call.name, arguments: "" } }
-    res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [first] } }] })}\n\n`)
-    const rest = { index: 0, function: { arguments: call.args } }
-    res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
+    for (const [index, call] of calls.entries()) {
+      const first = { index, id: `call_${index + 1}`, function: { name: call.name, arguments: "" } }
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [first] } }] })}\n\n`)
+      const rest = { index, function: { arguments: call.args } }
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
+    }
     return res.end("data: [DONE]\n\n")
   }
   const finished = body.messages.at(-1)
   if (finished?.role === "tool") {
     res.writeHead(200, { "content-type": "text/event-stream" })
-    const text = `Tool said: ${String(finished.content).slice(0, 80)}`
+    const output = String(finished.content)
+    // An article that was read: the reply uses its text.
+    const article = output.startsWith("Title: ") ? output.split("\n\n").slice(1).join("\n\n") : ""
+    const text = article
+      ? `According to my article: ${article.slice(0, 300)}`
+      : `Tool said: ${output.slice(0, 80)}`
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`)
     return res.end("data: [DONE]\n\n")
   }
@@ -162,6 +218,12 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
       index: 0,
       delta: { type: "thinking_delta", thinking: p.thinking },
     })
+    // The real stream closes a thinking block with its signature.
+    send("content_block_delta", {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "signature_delta", signature: "mock-signature" },
+    })
     send("content_block_stop", { type: "content_block_stop", index: 0 })
   }
   for (const chunk of p.chunks ?? []) {
@@ -198,8 +260,37 @@ export const startMockProvider = async () => {
       return json(res, 200, { data: [{ id: "mock-fast" }, { id: "o3-mini" }] })
     }
     if (url.pathname === "/anthropic/v1/models") {
+      // As the real list does: a model says which effort levels it takes.
+      const level = { supported: true }
       return json(res, 200, {
-        data: [{ id: "claude-sonnet-4-5", display_name: "Claude Sonnet 4.5" }],
+        data: [
+          {
+            id: "claude-haiku-5-5",
+            display_name: "Claude Haiku 5.5",
+            capabilities: {
+              effort: {
+                supported: true,
+                low: level,
+                medium: level,
+                high: level,
+                xhigh: level,
+                max: level,
+              },
+            },
+          },
+          // An older model: no effort setting, but it thinks with a budget.
+          {
+            id: "claude-sonnet-4-5",
+            display_name: "Claude Sonnet 4.5",
+            capabilities: { effort: { supported: false } },
+          },
+          // An old model that does not think at all.
+          {
+            id: "claude-3-5-haiku-latest",
+            display_name: "Claude Haiku 3.5",
+            capabilities: { effort: { supported: false } },
+          },
+        ],
       })
     }
     if (url.pathname === "/v1/chat/completions") return openAiReply(res, body as ChatBody)

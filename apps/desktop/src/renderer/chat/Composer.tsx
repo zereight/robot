@@ -105,6 +105,8 @@ export const Composer = (props: ComposerProps) => {
     if (!input) return
     input.style.height = "auto"
     input.style.height = `${input.scrollHeight}px`
+    // A scrollbar only when the box hit its cap; otherwise it shows as a stray bar.
+    input.style.overflowY = input.scrollHeight > input.clientHeight + 1 ? "auto" : "hidden"
   }
 
   const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path

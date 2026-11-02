@@ -52,12 +52,17 @@ export interface Agent {
   readonly faceImage: string | null
   readonly model: AgentModel | null
   readonly workspace: string
+  /** The built-in section. The user section is `sectionId`. */
   readonly section: "agents"
+  /** The user section of the Agents list that holds the agent, or null for "No section". */
+  readonly sectionId: string | null
   readonly archived: boolean
   readonly state: AgentState
   readonly permission: PermissionLevel
   /** When off, the agent does not read its memory. Items stay. */
   readonly memoryEnabled: boolean
+  /** When off, the agent does not read its knowledge and has no knowledge tools. Articles stay. */
+  readonly knowledgeEnabled: boolean
   readonly createdAt: number
   /** Set when a linked device made the last change. The user of this computer clears it. */
   readonly changedBy: AgentChange | null
@@ -70,6 +75,7 @@ export const AgentCreate = Schema.Struct({
   instructions: Schema.String,
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
+  sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type AgentCreate = typeof AgentCreate.Type
 
@@ -81,6 +87,8 @@ export const AgentPatch = Schema.Struct({
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
   permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
   memoryEnabled: Schema.optionalKey(Schema.Boolean),
+  knowledgeEnabled: Schema.optionalKey(Schema.Boolean),
+  sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type AgentPatch = typeof AgentPatch.Type
 
@@ -137,6 +145,22 @@ export const faceFromName = (name: string): Face => {
 export const nameKey = (name: string) => name.trim().normalize("NFC").toLocaleLowerCase()
 
 /**
+ * Keeps agents whose name or role line contains every word of the query, ignoring case.
+ * An empty query keeps all agents. The order does not change.
+ */
+export const filterAgents = <A extends { readonly name: string; readonly role: string }>(
+  agents: readonly A[],
+  query: string,
+): readonly A[] => {
+  const words = query.normalize("NFC").toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return agents
+  return agents.filter((a) => {
+    const text = `${a.name} ${a.role}`.normalize("NFC").toLocaleLowerCase()
+    return words.every((w) => text.includes(w))
+  })
+}
+
+/**
  * The name of a copy: "Name copy", then "Name copy 2", "Name copy 3" and so on.
  * The base is shortened when the result would be longer than the name limit.
  */
@@ -152,3 +176,135 @@ export const copyName = (name: string, suffix: string, taken: (candidate: string
 
 export const AGENT_TEMPLATES = ["general", "reviewer", "researcher"] as const
 export type AgentTemplate = (typeof AGENT_TEMPLATES)[number]
+
+/**
+ * First names for the name button. They are English in every interface language (002), so they
+ * are data and not interface text.
+ */
+export const AGENT_NAMES: readonly string[] = [
+  "Ada",
+  "Alice",
+  "Amelia",
+  "Andrew",
+  "Anna",
+  "Arthur",
+  "Barbara",
+  "Benjamin",
+  "Caleb",
+  "Carmen",
+  "Charlie",
+  "Chloe",
+  "Claire",
+  "Clara",
+  "Daniel",
+  "David",
+  "Diana",
+  "Dylan",
+  "Edward",
+  "Eleanor",
+  "Elena",
+  "Elliot",
+  "Emily",
+  "Emma",
+  "Ethan",
+  "Evelyn",
+  "Felix",
+  "Fiona",
+  "Frank",
+  "George",
+  "Grace",
+  "Hannah",
+  "Harper",
+  "Henry",
+  "Hugo",
+  "Ian",
+  "Irene",
+  "Isaac",
+  "Isabel",
+  "Ivy",
+  "Jack",
+  "James",
+  "Jasper",
+  "Julia",
+  "Julian",
+  "June",
+  "Kate",
+  "Kevin",
+  "Laura",
+  "Leo",
+  "Lillian",
+  "Logan",
+  "Lucas",
+  "Lucy",
+  "Marcus",
+  "Marina",
+  "Martin",
+  "Mason",
+  "Maya",
+  "Mia",
+  "Michael",
+  "Miles",
+  "Nathan",
+  "Nina",
+  "Noah",
+  "Nora",
+  "Oliver",
+  "Olivia",
+  "Oscar",
+  "Owen",
+  "Paul",
+  "Penelope",
+  "Peter",
+  "Quinn",
+  "Rachel",
+  "Rebecca",
+  "Robert",
+  "Rose",
+  "Ruby",
+  "Ryan",
+  "Samuel",
+  "Sarah",
+  "Sebastian",
+  "Simon",
+  "Sophia",
+  "Stella",
+  "Tessa",
+  "Theo",
+  "Thomas",
+  "Victor",
+  "Violet",
+  "Vivian",
+  "Walter",
+  "Wesley",
+  "William",
+  "Zachary",
+  "Zoe",
+]
+
+/**
+ * Picks a random name for a new agent from a list of names.
+ * It skips names that are taken (see `nameKey`) and the name that is in the field now, so each
+ * press gives a new name. When every name is taken, it adds a number: "Nova 2", "Nova 3".
+ * `random` returns a number from 0 up to, but not including, 1.
+ */
+export const suggestName = (
+  names: readonly string[],
+  taken: (candidate: string) => boolean,
+  current: string,
+  random: () => number = Math.random,
+): string => {
+  const pick = <T>(items: readonly T[]) =>
+    items[Math.min(items.length - 1, Math.floor(random() * items.length))] as T
+  if (names.length === 0) return ""
+  const shown = nameKey(current)
+  const usable = (candidate: string) => nameKey(candidate) !== shown && !taken(candidate)
+  const free = names.filter(usable)
+  if (free.length > 0) return pick(free)
+  const base = pick(names)
+  for (let n = 2; ; n++) {
+    const tail = ` ${n}`
+    const room = AGENT_NAME_MAX - charLength(tail)
+    const candidate = [...base].slice(0, room).join("").trimEnd() + tail
+    if (usable(candidate)) return candidate
+  }
+}

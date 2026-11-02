@@ -21,7 +21,10 @@ Agents do repeat work on a schedule without the user starting it.
 
 ## Rules
 
-- Each run is a task (see 005) with the routine as its source.
+- Each run is a task (see 005) with the routine as its source. While a run works, the working
+  line of the agent names the routine (see 003), because a run has no step text of its own.
+- A run whose tasks are all cancelled by the user shows as "Cancelled" in the calendar and the
+  run list, not as done.
 - Missed runs while the computer was off or asleep: on wake, the app runs at most one missed run
   per routine, and only if it is less than 12 hours late. The others show as "Missed".
 - A run does not start while the previous run of the same routine is still going; it is marked
@@ -33,3 +36,4 @@ Agents do repeat work on a schedule without the user starting it.
 
 - A routine every 2 minutes runs twice in 5 minutes and posts both results.
 - Sleep through 3 runs, wake: one run starts and two show "Missed".
+- Cancel the only task of a run: the run shows as "Cancelled".

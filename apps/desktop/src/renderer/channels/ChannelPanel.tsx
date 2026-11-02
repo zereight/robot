@@ -24,6 +24,9 @@ const stepIcon = (state: TaskState): { icon: JSX.Element; key: string } => {
   return { icon: <Circle size={14} />, key: "channels.step.todo" }
 }
 
+/** Steps after the sixth enter together with it, so a long plan does not take long to show. */
+const MAX_STAGGER = 5
+
 /** The "Now" panel: one card per member, and the plan steps under the lead. */
 export const ChannelPanel = (props: { channel: Channel }) => {
   const { t } = useApp()
@@ -53,7 +56,7 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                 {(a) => (
                   <div class={styles.card} data-testid="member-card" data-state={member.state}>
                     <div class={styles.cardHead}>
-                      <Face face={a().face} image={a().faceImage} size={24} />
+                      <Face face={a().face} image={a().faceImage} size={24} agentId={a().id} />
                       <span class={styles.cardName}>{a().name}</span>
                       <span class={styles.cardState} data-testid="member-state">
                         {t(stateLabel(member.state))}
@@ -62,21 +65,29 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                     <Show when={member.steps.length > 0}>
                       <ol class={styles.steps} data-testid="plan-steps">
                         <For each={member.steps}>
-                          {(step) => {
-                            const view = () => stepIcon(step.state)
+                          {(step, index) => {
                             return (
                               <li
                                 class={styles.step}
                                 data-state={step.state}
                                 data-testid="plan-step"
+                                style={{ "--i": Math.min(index(), MAX_STAGGER) }}
                               >
-                                <span
-                                  class={styles.stepIcon}
-                                  role="img"
-                                  aria-label={t(view().key as never)}
-                                >
-                                  {view().icon}
-                                </span>
+                                {/* Keyed, so each new state puts a new icon in and the motion plays. */}
+                                <Show when={step.state} keyed>
+                                  {(state) => {
+                                    const view = stepIcon(state)
+                                    return (
+                                      <span
+                                        class={styles.stepIcon}
+                                        role="img"
+                                        aria-label={t(view.key as never)}
+                                      >
+                                        {view.icon}
+                                      </span>
+                                    )
+                                  }}
+                                </Show>
                                 <span class={styles.stepLabel}>{step.label}</span>
                                 <Show when={step.state === "running" || step.state === "queued"}>
                                   <IconButton

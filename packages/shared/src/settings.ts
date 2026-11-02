@@ -27,6 +27,11 @@ export const Settings = Schema.Struct({
     question: Schema.Boolean,
     task_failed: Schema.Boolean,
     routine_failed: Schema.Boolean,
+    /**
+     * A notify step of a workflow. A setting that was saved before this kind existed has no
+     * value for it, and the kind counts as on.
+     */
+    workflow_notice: Schema.optionalKey(Schema.Boolean),
   }),
   /** The status island of macOS. */
   island: Schema.Literals(ISLAND_MODES),
@@ -58,6 +63,7 @@ export const defaultSettings: Settings = {
     question: true,
     task_failed: true,
     routine_failed: true,
+    workflow_notice: true,
   },
   island: "always",
   deviceName: "",

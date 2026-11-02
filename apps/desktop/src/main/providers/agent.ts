@@ -1,4 +1,11 @@
-import { type ChatRequest, type StreamEvent, streamChat, type ToolCall, type Turn } from "./chat.ts"
+import {
+  type ChatRequest,
+  type ReplyBlock,
+  type StreamEvent,
+  streamChat,
+  type ToolCall,
+  type Turn,
+} from "./chat.ts"
 
 export interface ToolOutcome {
   readonly output: string
@@ -36,6 +43,7 @@ export async function* runAgent(
   let pending = resume
   for (let round = 0; round < MAX_ROUNDS; round++) {
     let text = ""
+    let blocks: readonly ReplyBlock[] | undefined
     const calls: ToolCall[] = []
     if (pending) {
       calls.push(pending)
@@ -43,13 +51,20 @@ export async function* runAgent(
       for await (const event of streamChat({ ...req, turns })) {
         if (event.type === "toolcall")
           calls.push({ id: event.id, name: event.name, input: event.input })
+        else if (event.type === "reply") blocks = event.blocks
         else {
           if (event.type === "text") text += event.text
           yield event
         }
       }
       if (calls.length === 0) return
-      turns.push({ role: "assistant", content: text, toolCalls: calls })
+      // A reply with thinking goes back as the model made it, so that it goes on thinking.
+      turns.push({
+        role: "assistant",
+        content: text,
+        toolCalls: calls,
+        ...(blocks ? { blocks } : {}),
+      })
     }
     for (const call of calls) {
       // The card of a resumed call shows already, so it is not announced again.

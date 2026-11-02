@@ -1,5 +1,6 @@
 import {
   AgentCreate,
+  AgentModel,
   AgentPatch,
   ChannelCreate,
   ChannelPatch,
@@ -7,7 +8,9 @@ import {
   DEVICE_NAME_MAX,
   isClientMethod,
   MESSAGE_MAX,
+  MOVE_DIRECTIONS,
   MUTE_CHOICES,
+  PlaceKind,
   ProviderConnect,
   parseAddress,
   RoutineInput,
@@ -18,6 +21,7 @@ import {
   type RpcResult,
   RUNTIME_KINDS,
   redactSecrets,
+  SectionCreate,
   SettingsPatch,
   SYNC_MODES,
   UiStatePatch,
@@ -28,6 +32,7 @@ import {
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
+import { AgentFiles } from "./services/AgentFiles.ts"
 import { modelChoices } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { Agents } from "./services/Agents.ts"
@@ -39,6 +44,7 @@ import { Data } from "./services/Data.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
+import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
@@ -47,6 +53,7 @@ import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Sync } from "./services/Sync.ts"
@@ -54,6 +61,7 @@ import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
+import { WorkflowFiles } from "./services/WorkflowFiles.ts"
 import { Workflows } from "./services/Workflows.ts"
 
 export type Services = AppServices
@@ -329,6 +337,39 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Places.use((p) => p.list(serverId))),
     ),
+  "places.move": (input) =>
+    decode(
+      Schema.Struct({
+        kind: PlaceKind,
+        id: Schema.String,
+        sectionId: Schema.NullOr(Schema.String),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ kind, id, sectionId }) =>
+        Sections.use((s) => s.assign({ kind, id }, sectionId)),
+      ),
+      done,
+    ),
+  "sections.create": (input) =>
+    decode(SectionCreate)(input).pipe(
+      Effect.flatMap((data) => Sections.use((s) => s.create(data))),
+    ),
+  "sections.rename": (input) =>
+    decode(Schema.Struct({ id: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, name }) => Sections.use((s) => s.rename(id, name))),
+    ),
+  "sections.move": (input) =>
+    decode(Schema.Struct({ id: Schema.String, direction: Schema.Literals(MOVE_DIRECTIONS) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, direction }) => Sections.use((s) => s.move(id, direction))),
+      done,
+    ),
+  "sections.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Sections.use((s) => s.remove(id))),
+      done,
+    ),
   "ui.get": () => UiStore.use((s) => s.get),
   "ui.update": (input) =>
     decode(UiStatePatch)(input).pipe(
@@ -364,6 +405,18 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id, dataUrl }) => Agents.use((a) => a.setFaceImage(id, dataUrl))),
     ),
   "models.available": () => modelChoices,
+  "agentFile.export": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, agentIds: Schema.Array(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.export(data)))),
+  "agentFile.open": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => AgentFiles.use((f) => f.open(serverId))),
+    ),
+  "agentFile.apply": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, model: Schema.NullOr(AgentModel) }))(
+      input,
+    ).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
   "providers.list": () => Providers.use((p) => p.list),
   "providers.connect": (input) =>
     decode(ProviderConnect)(input).pipe(
@@ -489,6 +542,75 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => Memory.use((m) => m.remove(id))),
       done,
     ),
+  "knowledge.list": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, query: Schema.optionalKey(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap(({ agentId, query }) => Knowledge.use((k) => k.list(agentId, query)))),
+  "knowledge.get": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, file: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, file }) => Knowledge.use((k) => k.get(agentId, file))),
+    ),
+  "knowledge.save": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        file: Schema.NullOr(Schema.String),
+        title: Schema.String,
+        summary: Schema.String,
+        body: Schema.String,
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, ...article }) => Knowledge.use((k) => k.save(agentId, article))),
+    ),
+  "knowledge.delete": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, file: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, file }) => Knowledge.use((k) => k.remove(agentId, file))),
+      done,
+    ),
+  "knowledge.deleteSource": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, name }) => Knowledge.use((k) => k.removeSource(agentId, name))),
+      done,
+    ),
+  "knowledge.openSource": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, name }) =>
+        Effect.gen(function* () {
+          const path = yield* Knowledge.use((k) => k.sourcePath(agentId, name))
+          yield* Platform.use((p) => Effect.promise(() => p.openPath(path)))
+        }),
+      ),
+      done,
+    ),
+  "knowledge.openFolder": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) =>
+        Effect.gen(function* () {
+          const folder = yield* Knowledge.use((k) => k.folder(agentId))
+          // The folder can exist for a source before the first article is saved. It stays shut then.
+          if (!folder.saved) return yield* new AppError({ code: "knowledge_not_found" })
+          yield* Platform.use((p) => Effect.promise(() => p.openPath(folder.path)))
+        }),
+      ),
+      done,
+    ),
+  "knowledge.changes": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) => Knowledge.use((k) => k.changes(agentId))),
+    ),
+  "knowledge.change": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, changeId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, changeId }) => Knowledge.use((k) => k.change(agentId, changeId))),
+    ),
+  "knowledge.undo": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, changeId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, changeId }) => Knowledge.use((k) => k.undo(agentId, changeId))),
+      done,
+    ),
+  "knowledge.findings": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) => Knowledge.use((k) => k.findings(agentId))),
+    ),
   "tools.respond": (input) =>
     decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
       input,
@@ -584,6 +706,18 @@ export const handlers: Handlers = {
   "workflows.runDetail": (input) =>
     decode(Schema.Struct({ runId: Schema.String }))(input).pipe(
       Effect.flatMap(({ runId }) => Workflows.use((w) => w.runDetail(runId))),
+    ),
+  "workflowFile.export": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, workflowIds: Schema.Array(Schema.String) }))(
+      input,
+    ).pipe(Effect.flatMap((data) => WorkflowFiles.use((f) => f.export(data)))),
+  "workflowFile.open": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
+    ),
+  "workflowFile.apply": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data))),
     ),
   "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),
   "notifications.setMute": (input) =>

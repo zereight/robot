@@ -4,6 +4,12 @@ import type { MessageKey } from "./i18n/index.ts"
 export const EFFORTS = ["low", "medium", "high"] as const
 
 /**
+ * The effort levels of the current Claude models, as the Claude Code program takes them with its
+ * effort flag. Opus, Sonnet and Haiku all take the five levels.
+ */
+export const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const
+
+/**
  * Agent runtimes: the coding agent programs of the model vendors. The user signs in to them
  * with a subscription, so there is no key and no address.
  */
@@ -106,9 +112,11 @@ export interface RuntimeStatus {
 export const runtimeModels = (kind: RuntimeKind): readonly ModelInfo[] =>
   kind === "claude_code"
     ? [
-        { id: "opus", label: "Opus", efforts: EFFORTS },
-        { id: "sonnet", label: "Sonnet", efforts: EFFORTS },
-        { id: "haiku", label: "Haiku", efforts: [] },
+        // The ids are the names that the program takes: each one means the newest model of its
+        // kind. The labels give the version that Anthropic lists for each name today.
+        { id: "opus", label: "Opus 5.5", efforts: CLAUDE_EFFORTS },
+        { id: "sonnet", label: "Sonnet 5.5", efforts: CLAUDE_EFFORTS },
+        { id: "haiku", label: "Haiku 5.5", efforts: CLAUDE_EFFORTS },
       ]
     : kind === "pi"
       ? []
@@ -120,6 +128,15 @@ export const runtimeModels = (kind: RuntimeKind): readonly ModelInfo[] =>
             efforts: EFFORTS,
           },
         ]
+
+/**
+ * A model that the app lists itself for a runtime, by its id. Models that the app has no list for
+ * are not found; the caller then shows the id as it is.
+ */
+export const runtimeModel = (kind: ProviderKind | undefined, id: string): ModelInfo | undefined =>
+  kind !== undefined && isRuntimeKind(kind)
+    ? runtimeModels(kind).find((m) => m.id === id)
+    : undefined
 
 const HttpUrl = Schema.String.check(
   Schema.makeFilter((s: string) => {
@@ -143,15 +160,46 @@ export const ProviderConnect = Schema.Struct({
 })
 export type ProviderConnect = typeof ProviderConnect.Type
 
+/** Claude generation 5 and later, for example `claude-opus-5-5` or `claude-fable-5-1`. */
+const CLAUDE_5_AND_LATER = /^claude-[a-z]+-(?:[5-9]|[1-9]\d)(?:-|$)/
+
+/**
+ * Claude models that think with a token budget and take no effort setting: Sonnet 4.5, Haiku 4.5,
+ * Opus 4 and 4.1, Sonnet 4, and Claude 3.7. For these, the level of the picker sets the budget.
+ */
+export const takesThinkingBudget = (modelId: string): boolean => {
+  const id = modelId.toLowerCase()
+  return (
+    /^claude-(?:sonnet-4-5|haiku-4-5|3-7-)/.test(id) ||
+    /^claude-(?:opus|sonnet)-4(?:-[01])?(?:-\d{8}|-latest)?$/.test(id)
+  )
+}
+
+/**
+ * The effort levels that Anthropic documents for a Claude model id. The model list of the vendor
+ * tells this too, and the app prefers it; this is for a list that does not.
+ */
+const claudeEfforts = (id: string): readonly string[] => {
+  if (CLAUDE_5_AND_LATER.test(id) || /^claude-opus-4-[78](?:-|$)/.test(id)) return CLAUDE_EFFORTS
+  if (/^claude-(?:opus|sonnet)-4-6(?:-|$)/.test(id)) return ["low", "medium", "high", "max"]
+  if (/^claude-opus-4-5(?:-|$)/.test(id)) return EFFORTS
+  if (takesThinkingBudget(id)) return EFFORTS
+  return []
+}
+
 /** Effort levels for a model id, from what each vendor documents for its model families. */
 export const effortsFor = (kind: ProviderKind, modelId: string): readonly string[] => {
   const id = modelId.toLowerCase()
   if (kind === "openai" && /^(o\d|gpt-5)/.test(id)) return EFFORTS
-  if (
-    kind === "anthropic" &&
-    /^claude-(3-7|[a-z]+-[4-9]|[4-9]|opus-[4-9]|sonnet-[4-9]|haiku-[4-9])/.test(id)
-  ) {
-    return EFFORTS
-  }
+  if (kind === "anthropic") return claudeEfforts(id)
   return []
+}
+
+/**
+ * Whether a Claude model id takes adaptive thinking. Then the effort level steers how much the
+ * model thinks. Other models, and ids that the app does not know, get no thinking setting.
+ */
+export const takesAdaptiveThinking = (modelId: string): boolean => {
+  const id = modelId.toLowerCase()
+  return CLAUDE_5_AND_LATER.test(id) || /^claude-(?:opus|sonnet)-4-[678](?:-|$)/.test(id)
 }

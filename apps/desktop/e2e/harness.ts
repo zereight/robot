@@ -65,13 +65,27 @@ export const shot = async (page: Page, name: string, options: { moving?: boolean
   })
 }
 
-/** Resizes the app window to an outer size in px. */
+/**
+ * Resizes the app window to a content size in px. The window starts hidden and shows when its page
+ * is ready. A window that is resized before it shows is fitted to the screen at the moment it
+ * shows, and it can end up smaller than asked. So this waits for the window to show first.
+ */
 export const resizeWindow = (app: ElectronApplication, width: number, height: number) =>
   app.evaluate(
-    ({ BrowserWindow }, size) => {
+    async ({ BrowserWindow }, size) => {
       // The island and browser windows are not the app window; it is the one that has the app title.
       const win = BrowserWindow.getAllWindows().find((w) => w.getTitle() === "ROBot")
-      win?.setContentSize(size.width, size.height)
+      if (!win) return
+      if (!win.isVisible()) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 10_000)
+          win.once("show", () => {
+            clearTimeout(timer)
+            resolve()
+          })
+        })
+      }
+      win.setContentSize(size.width, size.height)
     },
     { width, height },
   )

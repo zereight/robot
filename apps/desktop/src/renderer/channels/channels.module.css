@@ -5,7 +5,7 @@
   min-width: min(460px, 80vw);
 }
 .title {
-  font-size: 1.1rem;
+  font-size: var(--text-l);
   font-weight: 600;
   margin: 0;
 }
@@ -18,11 +18,11 @@
   margin: 0;
 }
 .label {
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
   font-weight: 500;
 }
 .hint {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--c-text-muted);
   margin: 0;
 }
@@ -37,6 +37,9 @@
   outline: 2px solid var(--c-focus);
   outline-offset: 1px;
 }
+.memberSearch {
+  margin-top: 6px;
+}
 .memberList {
   display: flex;
   flex-direction: column;
@@ -50,9 +53,20 @@
   gap: 8px;
   padding: 2px 0;
 }
+.memberName {
+  flex: none;
+}
+.memberRole {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
 .error {
   color: var(--c-danger);
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
 }
 .actions {
   display: flex;
@@ -84,9 +98,25 @@
   min-width: 0;
 }
 
+.start {
+  padding: 32px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  user-select: text;
+}
+.start h2 {
+  font-size: var(--text-2xl);
+  margin: 0;
+}
+.start p {
+  margin: 0;
+  color: var(--c-text-muted);
+}
+
 .kindTag {
   margin: -2px 0 4px 72px;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--c-text-muted);
 }
 .chips {
@@ -104,7 +134,7 @@
   background: var(--c-elevated);
   color: var(--c-text);
   padding: 2px 10px 2px 6px;
-  font-size: 0.82rem;
+  font-size: var(--text-xs);
   transition: background var(--motion-fast) var(--ease-out);
   animation: chip-in var(--motion-medium) var(--ease-out);
 }
@@ -147,7 +177,7 @@
 }
 .panelTitle {
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
 }
 .card {
   border: 1px solid var(--c-border);
@@ -156,6 +186,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  animation: card-in var(--motion-medium) var(--ease-out);
 }
 .cardHead {
   display: flex;
@@ -171,7 +202,7 @@
   white-space: nowrap;
 }
 .cardState {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--c-text-muted);
 }
 .card[data-state="working"] .cardState {
@@ -189,11 +220,20 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
+  /* The steps of a plan come in one after the other. */
+  animation: card-in var(--motion-medium) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--motion-stagger));
 }
 .stepIcon {
   display: inline-flex;
   color: var(--c-text-muted);
+  animation: icon-pop var(--motion-fast) var(--ease-out);
+}
+/* The check is drawn on. Its path is about 23 units long. */
+.step[data-state="done"] .stepIcon svg path {
+  stroke-dasharray: 24;
+  animation: draw-on var(--motion-medium) var(--ease-out);
 }
 .step[data-state="done"] .stepIcon {
   color: var(--c-success);
@@ -207,6 +247,23 @@
 }
 .spin {
   animation: spin 1s linear infinite;
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes icon-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+@keyframes draw-on {
+  from {
+    stroke-dashoffset: 24;
+  }
 }
 :root[data-reduce-motion="true"] .spin {
   animation: none;

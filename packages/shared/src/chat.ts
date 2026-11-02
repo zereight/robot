@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { KnowledgeNote } from "./knowledge.ts"
 
 export type MessagePart =
   | { readonly kind: "text"; readonly text: string }
@@ -26,17 +27,42 @@ export type MessagePart =
       readonly memoryId?: string
       /** Set when a linked device answered the approval: its answer and its name (spec 012). */
       readonly decision?: { readonly answer: "allow" | "deny"; readonly by: string }
+      /** Set for a knowledge tool: what it read or changed, so the card can show it. */
+      readonly knowledge?: KnowledgeNote
     }
 
 /** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */
 export type ToolAsk =
-  | { readonly kind: "approval"; readonly summary: string; readonly askedAt?: number }
+  | {
+      readonly kind: "approval"
+      readonly summary: string
+      readonly askedAt?: number
+      /** True when the card has no "Always allow": it asks again the next time. */
+      readonly once?: boolean
+    }
   | {
       readonly kind: "question"
       readonly question: string
       readonly choices: readonly string[]
       readonly askedAt?: number
     }
+  /** The agent wants to change an article that the user edited last. Old and new text show side by side. */
+  | {
+      readonly kind: "article"
+      readonly title: string
+      readonly before: string
+      /** Null when the article would be deleted. */
+      readonly after: string | null
+      readonly askedAt?: number
+    }
+
+/** The text that the status island shows for a card that waits. */
+export const askSummary = (ask: ToolAsk) =>
+  ask.kind === "approval" ? ask.summary : ask.kind === "question" ? ask.question : ask.title
+
+/** The kind of a card for the status island: an article card is an approval. */
+export const askKind = (ask: ToolAsk): "approval" | "question" =>
+  ask.kind === "question" ? "question" : "approval"
 
 export type MessageStatus = "done" | "streaming" | "stopped" | "failed"
 

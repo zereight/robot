@@ -9,7 +9,7 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
-import { type Connection, listModels, ProviderFailure } from "../providers/client.ts"
+import { type Connection, keepEffort, listModels, ProviderFailure } from "../providers/client.ts"
 import type { TurnHooks, TurnInput } from "../providers/turn.ts"
 import { buildPrompt } from "../runtimes/prompt.ts"
 import { Database } from "./Database.ts"
@@ -38,6 +38,8 @@ export interface ProvidersService {
   /** The connection of an API account, with its key. Fails when no key is stored. */
   connection(accountId: string): Effect.Effect<Connection, AppError>
   isConnected(accountId: string): boolean
+  /** True when the account is a vendor program (an agent runtime), not an API account. */
+  isRuntime(accountId: string): boolean
   /** Like `isConnected`, but looks at an agent runtime again when the last look is old. */
   verify(accountId: string): Effect.Effect<boolean>
   /**
@@ -90,6 +92,10 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
       const isConnected = (id: string) => {
         const row = lookup(id)
         return row ? rowConnected(row) : false
+      }
+      const isRuntime = (id: string) => {
+        const row = lookup(id)
+        return row ? isRuntimeKind(row.kind) : false
       }
       const findRow = (id: string) =>
         Effect.suspend(() => {
@@ -177,7 +183,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
               {
                 connection: conn,
                 model: input.model,
-                effort: input.effort,
+                effort: keepEffort(row.kind, input.model, input.effort, modelCache.get(id)),
                 system: input.system,
                 turns: input.resume ? [...input.turns, ...input.resume.turns] : input.turns,
                 ...(input.tools ? { tools: input.tools } : {}),
@@ -303,6 +309,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           ),
         connection,
         isConnected,
+        isRuntime,
         verify: (id) =>
           Effect.gen(function* () {
             const row = lookup(id)

@@ -1,4 +1,4 @@
-import { Schema, Struct } from "effect"
+import { Schema } from "effect"
 import type { ChatMessage, MessagePart } from "./chat.ts"
 import type { TaskState } from "./task.ts"
 
@@ -16,6 +16,8 @@ export interface Channel {
   /** The agent that reads each job first. Always one of the members. */
   readonly leadId: string | null
   readonly memberIds: readonly string[]
+  /** The user section of the Channels list that holds the channel, or null for "No section". */
+  readonly sectionId: string | null
   readonly unread: number
   readonly working: boolean
 }
@@ -26,12 +28,17 @@ export const ChannelCreate = Schema.Struct({
   topic: Schema.String.check(Schema.isMaxLength(CHANNEL_TOPIC_MAX * 2)),
   memberIds: Schema.Array(Schema.String),
   leadId: Schema.NullOr(Schema.String),
+  sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type ChannelCreate = typeof ChannelCreate.Type
 
-export const ChannelPatch = Schema.Struct(
-  Struct.map(ChannelCreate.fields, Schema.optionalKey),
-).mapFields(Struct.omit(["serverId"]))
+export const ChannelPatch = Schema.Struct({
+  name: Schema.optionalKey(ChannelCreate.fields.name),
+  topic: Schema.optionalKey(ChannelCreate.fields.topic),
+  memberIds: Schema.optionalKey(ChannelCreate.fields.memberIds),
+  leadId: Schema.optionalKey(ChannelCreate.fields.leadId),
+  sectionId: ChannelCreate.fields.sectionId,
+})
 export type ChannelPatch = typeof ChannelPatch.Type
 
 /** Most members that a linked device may name in one request. */

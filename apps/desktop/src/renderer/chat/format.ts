@@ -36,3 +36,7 @@ export const fileSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+/** A date and a time, for example "Nov 2, 2026, 3:04 PM". */
+export const formatDateTime = (locale: Locale, at: number) =>
+  new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(at)

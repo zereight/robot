@@ -3,13 +3,24 @@ import {
   type ChatMessage,
   catalogues,
   type FilePart,
+  type KnowledgeNote,
   type MessageKey,
   type MessagePart,
   messageFiles,
   messageText,
+  type ToolAsk,
 } from "@robot/shared"
-import { Copy, Download, ExternalLink, Pencil, Reply, User, Wrench } from "lucide-solid"
-import { createResource, createSignal, For, Match, Show, Switch } from "solid-js"
+import {
+  BookOpen,
+  Copy,
+  Download,
+  ExternalLink,
+  Pencil,
+  Reply,
+  User,
+  Wrench,
+} from "lucide-solid"
+import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -50,7 +61,7 @@ const Thinking = (props: { text: string; live: boolean }) => {
 const ToolCard = (props: {
   agent: Agent
   part: Extract<MessagePart, { kind: "tool" }>
-  /** The name of the other computer when the task runs there (spec 016). */
+  /** The name of the other computer when the task runs there (spec 017). */
   from: string | undefined
 }) => {
   const app = useApp()
@@ -69,7 +80,7 @@ const ToolCard = (props: {
   }
   /** The card of a task on the other computer cannot be answered while that computer is away. */
   const away = () => props.from !== undefined && !devices.sync.pairOnline()
-  /** A computer cannot change what an agent may always do on another computer (spec 016). */
+  /** A computer cannot change what an agent may always do on another computer (spec 017). */
   const mayAlways = () => !ui.linked() && props.from === undefined
   return (
     <details class={styles.tool} data-testid="tool-card" open={props.part.state === "waiting"}>
@@ -123,81 +134,118 @@ const ToolCard = (props: {
                   </div>
                 )}
               </Show>
-              <Show
-                when={ask().kind === "question" ? ask() : undefined}
-                fallback={
-                  <>
-                    <div>{t("chat.tool.approval")}</div>
-                    <pre>{(ask() as { summary: string }).summary}</pre>
-                    <div class={styles.askActions}>
-                      <Button
-                        variant="primary"
-                        disabled={away()}
-                        onClick={() => respond("allow")}
-                        data-testid="ask-allow"
-                      >
-                        {t("chat.tool.allow")}
-                      </Button>
-                      {/* A client cannot change what an agent may always do (spec 012). */}
-                      <Show when={mayAlways()}>
-                        <Button onClick={() => respond("always")} data-testid="ask-always">
-                          {t("chat.tool.always")}
-                        </Button>
-                      </Show>
-                      <Button
-                        disabled={away()}
-                        onClick={() => respond("deny")}
-                        data-testid="ask-deny"
-                      >
-                        {t("chat.tool.deny")}
-                      </Button>
-                    </div>
-                  </>
-                }
-              >
-                {(question) => (
-                  <>
-                    <div>{(question() as { question: string }).question}</div>
-                    <div class={styles.askActions}>
-                      <For each={(question() as { choices: readonly string[] }).choices}>
-                        {(choice) => (
+              <Switch>
+                <Match when={ask().kind === "article" ? ask() : undefined}>
+                  {(article) => {
+                    const a = () => article() as Extract<ToolAsk, { kind: "article" }>
+                    return (
+                      <div data-testid="ask-article">
+                        <div>{t("chat.knowledge.protect", { title: a().title })}</div>
+                        <div class={styles.compare}>
+                          <section>
+                            <div class={styles.time}>{t("chat.knowledge.protect.now")}</div>
+                            <pre data-testid="ask-before">{a().before}</pre>
+                          </section>
+                          <section>
+                            <div class={styles.time}>{t("chat.knowledge.protect.new")}</div>
+                            <pre data-testid="ask-after">
+                              {a().after ?? t("chat.knowledge.protect.deleted")}
+                            </pre>
+                          </section>
+                        </div>
+                        <div class={styles.askActions}>
+                          <Button
+                            variant="primary"
+                            disabled={away()}
+                            onClick={() => respond("allow")}
+                            data-testid="ask-allow"
+                          >
+                            {t("chat.tool.allow")}
+                          </Button>
                           <Button
                             disabled={away()}
-                            onClick={() => respond(choice)}
-                            data-testid="ask-choice"
+                            onClick={() => respond("deny")}
+                            data-testid="ask-deny"
                           >
-                            {choice}
+                            {t("chat.tool.deny")}
                           </Button>
-                        )}
-                      </For>
-                    </div>
-                    <form
-                      class={styles.askActions}
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        if (answer().trim()) respond(answer().trim())
-                      }}
-                    >
-                      <input
-                        class={styles.askInput}
-                        value={answer()}
-                        placeholder={t("chat.tool.answer")}
-                        aria-label={t("chat.tool.answer")}
-                        onInput={(e) => setAnswer(e.currentTarget.value)}
-                        data-testid="ask-input"
-                      />
-                      <Button
-                        type="submit"
-                        variant="primary"
-                        disabled={away()}
-                        data-testid="ask-send"
+                        </div>
+                      </div>
+                    )
+                  }}
+                </Match>
+                <Match when={ask().kind === "question" ? ask() : undefined}>
+                  {(question) => (
+                    <>
+                      <div>{(question() as { question: string }).question}</div>
+                      <div class={styles.askActions}>
+                        <For each={(question() as { choices: readonly string[] }).choices}>
+                          {(choice) => (
+                            <Button
+                              disabled={away()}
+                              onClick={() => respond(choice)}
+                              data-testid="ask-choice"
+                            >
+                              {choice}
+                            </Button>
+                          )}
+                        </For>
+                      </div>
+                      <form
+                        class={styles.askActions}
+                        onSubmit={(e) => {
+                          e.preventDefault()
+                          if (answer().trim()) respond(answer().trim())
+                        }}
                       >
-                        {t("chat.tool.send")}
+                        <input
+                          class={styles.askInput}
+                          value={answer()}
+                          placeholder={t("chat.tool.answer")}
+                          aria-label={t("chat.tool.answer")}
+                          onInput={(e) => setAnswer(e.currentTarget.value)}
+                          data-testid="ask-input"
+                        />
+                        <Button
+                          type="submit"
+                          variant="primary"
+                          disabled={away()}
+                          data-testid="ask-send"
+                        >
+                          {t("chat.tool.send")}
+                        </Button>
+                      </form>
+                    </>
+                  )}
+                </Match>
+                <Match when={ask().kind === "approval"}>
+                  <div>{t("chat.tool.approval")}</div>
+                  <pre>{(ask() as { summary: string }).summary}</pre>
+                  <div class={styles.askActions}>
+                    <Button
+                      variant="primary"
+                      disabled={away()}
+                      onClick={() => respond("allow")}
+                      data-testid="ask-allow"
+                    >
+                      {t("chat.tool.allow")}
+                    </Button>
+                    {/* A client cannot change what an agent may always do (spec 012). */}
+                    <Show when={mayAlways() && !(ask() as { once?: boolean }).once}>
+                      <Button onClick={() => respond("always")} data-testid="ask-always">
+                        {t("chat.tool.always")}
                       </Button>
-                    </form>
-                  </>
-                )}
-              </Show>
+                    </Show>
+                    <Button
+                      disabled={away()}
+                      onClick={() => respond("deny")}
+                      data-testid="ask-deny"
+                    >
+                      {t("chat.tool.deny")}
+                    </Button>
+                  </div>
+                </Match>
+              </Switch>
             </div>
           )}
         </Show>
@@ -233,7 +281,7 @@ const FileChip = (props: { message: ChatMessage; file: FilePart; from: string | 
     size: props.file.size,
     messageId: props.message.id,
   })
-  // A file of a message from the other computer may not be on this computer (spec 016).
+  // A file of a message from the other computer may not be on this computer (spec 017).
   const [here, { refetch }] = createResource(
     () => props.from !== undefined && !ui.linked(),
     (remote) => (remote ? call("sync.file.here", ask()).catch(() => true) : true),
@@ -305,6 +353,142 @@ const FileChip = (props: { message: ChatMessage; file: FilePart; from: string | 
         </Show>
       </Show>
     </li>
+  )
+}
+
+type ToolPart = Extract<MessagePart, { kind: "tool" }>
+
+const FAILED_KEY: Record<string, MessageKey> = {
+  read_article: "chat.knowledge.failed.read",
+  write_article: "chat.knowledge.failed.write",
+  delete_article: "chat.knowledge.failed.delete",
+  add_source: "chat.knowledge.failed.source",
+}
+
+/**
+ * What a knowledge tool did: a compact card for a read, a muted line with undo for a change.
+ * Knowledge stays on the computer that runs the agent (012, 017): a client, and a message that
+ * came from the other computer of a sync pair, show the line without undo.
+ */
+const KnowledgeLine = (props: {
+  agent: Agent
+  part: ToolPart
+  note: KnowledgeNote
+  from: string | undefined
+}) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const here = () => !ui.linked() && props.from === undefined
+  const [tick, setTick] = createSignal(0)
+  const [error, setError] = createSignal<ErrorText>()
+  onCleanup(
+    window.robot.on("knowledge.changed", (e) => {
+      if (e.agentId === props.agent.id) setTick((n) => n + 1)
+    }),
+  )
+  const changeId = () => (props.note.kind === "write" ? props.note.changeId : undefined)
+  // The change list keeps 50 changes. An older change has no undo.
+  const [change] = createResource(
+    () => {
+      const id = changeId()
+      return id && here() ? { id, tick: tick() } : undefined
+    },
+    ({ id }) =>
+      call("knowledge.change", { agentId: props.agent.id, changeId: id }).catch(() => undefined),
+  )
+  const undo = async () => {
+    const id = changeId()
+    if (!id) return
+    setError(undefined)
+    try {
+      await call("knowledge.undo", { agentId: props.agent.id, changeId: id })
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+  const reason = (code: string) => {
+    const key = `error.${code}` as MessageKey
+    return key in catalogues.en ? t(key) : t("error.unknown")
+  }
+  return (
+    <Switch>
+      <Match when={props.note.kind === "read" ? props.note : undefined}>
+        {(note) => (
+          <div class={styles.knowledgeRead} data-testid="knowledge-read-card">
+            <BookOpen size={14} />
+            <span>{t("chat.knowledge.read", { title: (note() as { title: string }).title })}</span>
+          </div>
+        )}
+      </Match>
+      <Match when={props.note.kind === "write" ? props.note : undefined}>
+        {(note) => (
+          <div class={styles.knowledgeLine} data-testid="knowledge-line">
+            <span>
+              {t(
+                (note() as { change: string }).change === "delete"
+                  ? "chat.knowledge.deleted"
+                  : "chat.knowledge.updated",
+                { title: (note() as { title: string }).title },
+              )}
+            </span>
+            <Show when={change()}>
+              {(c) => (
+                <Show
+                  when={!c().undone}
+                  fallback={
+                    <span data-testid="knowledge-undone">{t("chat.knowledge.undone")}</span>
+                  }
+                >
+                  <Button onClick={undo} data-testid="knowledge-undo">
+                    {t("chat.knowledge.undo")}
+                  </Button>
+                </Show>
+              )}
+            </Show>
+            <Show when={error()}>
+              {(err) => (
+                <span class={styles.knowledgeError} role="alert">
+                  {t(err().key, err().params)}
+                </span>
+              )}
+            </Show>
+          </div>
+        )}
+      </Match>
+      <Match when={props.note.kind === "source" ? props.note : undefined}>
+        {(note) => (
+          <div class={styles.knowledgeLine} data-testid="knowledge-source-line">
+            <span>{t("chat.knowledge.source", { name: (note() as { name: string }).name })}</span>
+          </div>
+        )}
+      </Match>
+      <Match when={props.note.kind === "failed" ? props.note : undefined}>
+        {(note) => (
+          <div class={styles.knowledgeFailed} role="alert" data-testid="knowledge-failed">
+            <span>
+              {t(FAILED_KEY[props.part.name] ?? "chat.knowledge.failed.write", {
+                title: (note() as { title: string }).title,
+              })}
+            </span>
+            <span>{reason((note() as { code: string }).code)}</span>
+          </div>
+        )}
+      </Match>
+    </Switch>
+  )
+}
+
+/** A tool step: a knowledge line when the tool is done, otherwise the plain card. */
+const ToolStep = (props: { agent: Agent; part: ToolPart; from: string | undefined }) => {
+  const note = () =>
+    props.part.state === "done" || props.part.state === "failed" ? props.part.knowledge : undefined
+  return (
+    <Show
+      when={note()}
+      fallback={<ToolCard agent={props.agent} part={props.part} from={props.from} />}
+    >
+      {(n) => <KnowledgeLine agent={props.agent} part={props.part} note={n()} from={props.from} />}
+    </Show>
   )
 }
 
@@ -476,7 +660,7 @@ export const MessageRow = (props: MessageRowProps) => {
                     />
                   </Match>
                   <Match when={part.kind === "tool"}>
-                    <ToolCard
+                    <ToolStep
                       agent={props.agent}
                       part={part as Extract<MessagePart, { kind: "tool" }>}
                       from={fromOther()}

@@ -7,18 +7,31 @@ The user gives a job to a group of agents in one place and watches them divide a
 ## Concepts
 
 - **Channel**: name (1 to 60 characters), topic (up to 200), members (agents), one optional lead
-  agent, and a section in the place list.
+  agent, and an optional section: a user section of the Channels list (see 001, "User
+  sections"). With no section, the channel shows in the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
   parts and give each part to a member.
 - **Part**: a child task (see 005) given to one member, with a short label.
 - **Mention**: `@Name` in a message sends that message to the named agent directly.
+- **Everyone mention**: `@all` in a message gives the message to every available member. An
+  available member is a member that is not archived. The mention list offers `@all` only when the
+  channel has two or more members.
+- **Fast pick**: a small, fast decision model that chooses one member for a job (see 013, "Decision
+  model"). It is off by default.
+- **Check**: a look of the lead at a channel whose work has stopped.
 
 ## Flows
 
 1. Create: the user picks "New channel", types a name and topic, adds members, and optionally picks
-   a lead.
-2. Post a job: the user writes in the channel. Without a mention, the lead gets it. With no lead,
-   the app asks which member should take it.
+   a lead and a section. The "Section" choice lists the channel sections and "No section". It
+   starts at "No section". Channel settings show the same choice.
+2. Post a job: the user writes in the channel. The app chooses who gets the job, in this order:
+   1. `@all`: every available member gets its own task for the message. Nobody else reads it.
+   2. One or more `@Name` mentions: each named member answers. The lead does not read the job.
+   3. Fast pick, if the user set it up and its rules hold (see "Fast pick"): the chosen member
+      answers as if it had a mention.
+   4. The lead, if the channel has one.
+   5. No lead: the app asks which member should take it, with a row of member buttons.
 3. Split: the lead posts a short plan message and starts parts. Each member posts its replies in
    the channel under its own face and name.
 4. Thread chips: under the message that started a part, a chip shows the member's face, the part
@@ -27,6 +40,58 @@ The user gives a job to a group of agents in one place and watches them divide a
 5. Finish: when all parts end, the lead posts one summary message.
 6. Change members: the user adds or removes members in channel settings. A member that works
    cannot be removed until its part ends or the user stops it.
+7. Archive: the user archives a channel from its menu. It leaves the place list. Its messages stay.
+   Settings list it as archived, and the user can restore it or delete it there (see 013). The
+   interface text says "archived", not "deleted", for a channel that is not gone. A channel keeps
+   its section while archived. A restore puts it back in that section. If the section is gone, it
+   returns with no section.
+8. Retry or end: a failed part shows a card with "Retry" and "End the request". Retry makes a new
+   part (see 005). "End the request" asks the user to confirm. It then cancels every part of the
+   same job that is not final, and the wait of the lead for them. Parts that are done keep their
+   results. The lead posts no summary. The confirm dialog has a "Back" button, so no two buttons
+   say the same word with opposite meanings.
+
+## Fast pick
+
+- It runs only for a job that names no member, only when the channel has no job or part that is
+  still open (a new message may continue that work), and only when at least two available
+  members can take the job.
+- The app sends the decision model the channel name and topic, the last few messages of the
+  channel, the job, and the options. An option is a member, with name and role line. One more
+  option says that no single member fits or that the job needs several members.
+- The model answers with the chosen option and the probability of each option. The app uses
+  the answer only when the chosen option is the most likely one and its probability is at least
+  0.6. The "no single member" option never counts as a pick.
+- The app waits at most 3 seconds. A wrong setup, a failure, a late answer, an answer that cannot
+  be read, an unsure answer, and a member that is not available all give no pick. Then the
+  lead reads the job, as if the fast pick did not exist. Nothing shows to the user except the
+  normal flow.
+- Each answer writes one line to the channel log (see 014). The line holds: whether a member was
+  chosen, the reason when not, the probability, and the time taken. The reasons are: not set up,
+  timeout, network error, an error code from the service, answer not readable, "no single member",
+  unknown option, probability not a number, below 0.6, and not the most likely. The line never
+  holds the job text or a key.
+
+## Check by the lead
+
+- A check happens only when the channel has a lead that is not archived and not blocked by a
+  usage limit, and only when work in the channel has stopped: no part is queued, running or
+  waiting, and at least one part ended since the last check.
+- The lead reads a short state of the channel: its topic, the older summary, the members with
+  their role lines, the open and failed parts, and the last 12 messages, each cut to 600
+  characters. The lead treats all of that text as data, not as orders.
+- The lead then does exactly one of three things:
+  1. Nudge: a member stopped early, a result is missing or partial, or a part failed and another
+     try can help. The lead gives that member one more concrete instruction. It shows in the
+     channel as a message of the lead, and it starts a new part (see 005).
+  2. Ask: only the user can go on (a decision, a missing fact, an approval). The lead posts one
+     specific question in the channel.
+  3. Nothing: the work is complete, or the user stopped a part on purpose, or the last message
+     already asks the user a question.
+- The lead looks at most 3 times after each message of the user. A new message of the user starts
+  the count again. The lead does not look twice at a channel that has not changed. The lead's own
+  messages do not start a new look. The summary of the lead (flow 5) counts as a look.
+- A lead that cannot answer leaves the channel as it is. A check never fails a job.
 
 ## Activity panel ("Now")
 
@@ -40,10 +105,32 @@ The user gives a job to a group of agents in one place and watches them divide a
 ## Rules
 
 - Agents in a channel see the channel messages; each agent keeps its own memory and workspace.
+- A member that is busy with other work keeps a new part in its queue (see 005). The part shows
+  what it waits behind: the name of the channel and the first words of the job that the member
+  runs now, or a note that the member is busy in its own chat. The block of waiting parts in the
+  channel shows this as one line under the part.
+- When the older messages are too long for the context of a member, the app replaces them with a
+  short summary that the lead's model writes at the lowest effort the model offers. If the
+  summary cannot be written, the part starts with the newest messages instead of failing. If even
+  those do not fit, the part fails with a clear reason.
+- A part never stays in "working" after its turn has ended. This holds also when the link between
+  the conversation of the member and the channel is lost. The chat of the member then stops
+  saying that it works in the channel.
 - The user can stop one part or all work in the channel.
-- A failed part shows its error in the channel; the lead decides whether to retry or report.
+- A failed part shows its error in the channel; the lead decides whether to retry or report, or
+  the user retries or ends the request (flow 8).
 
 ## Acceptance
 
 - A job split into two parts shows two plan steps, two chips, and one summary at the end.
 - Stopping the channel cancels all running parts; their steps leave the panel.
+- A message with `@all` in a channel of three members makes three tasks, one for each member, and
+  the lead does nothing.
+- With the fast pick set up and a fake service that answers "member 2" at 0.9, a job without a
+  mention goes to member 2 and the lead does not read it. With a probability of 0.5, the lead reads
+  it. With a late answer (over 3 seconds), the lead reads it.
+- A member stops with half a result. The lead nudges it once. The member finishes. The lead
+  then does nothing. After three looks without a new user message, the lead looks no more.
+- A part fails. "End the request" cancels its sibling parts, and the done parts keep their results.
+- A member runs a job in channel A. A job for the same member in channel B shows that it waits
+  behind channel A.

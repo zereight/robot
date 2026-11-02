@@ -98,7 +98,8 @@ export const Shell = (props: ShellProps) => {
     <div
       class={styles.shell}
       data-narrow={ui.narrow()}
-      style={{ "--list-width": `${ui.ui.placeListWidth}px` }}
+      data-snapping={ui.snapping()}
+      style={{ "--list-width": `${ui.ui.placeListWidth + ui.stretch()}px` }}
       data-testid="app-root"
     >
       <ServerRail onOpenSettings={() => ui.openSettings()} />

@@ -10,6 +10,7 @@ import {
   type MuteChoice,
   muteUntil,
   type NotifyKind,
+  notifyBody,
   type PlaceTarget,
   type WireNotice,
 } from "@robot/shared"
@@ -26,7 +27,9 @@ export interface Notice {
   readonly channelId?: string | null
   readonly title: string
   readonly body: string
-  readonly target: PlaceTarget
+  /** The place to open on a click. A notice with a page opens that page instead. */
+  readonly target?: PlaceTarget
+  readonly page?: "workflows"
 }
 
 export interface WaitingItem extends IslandAttention {
@@ -57,7 +60,7 @@ export interface NotifierService {
   waitingNotices(): readonly WireNotice[]
   /**
    * An approval or a question waits: a notification and the island card. `from` names the other
-   * computer when the task runs there (spec 015, 016).
+   * computer when the task runs there (spec 015, 017).
    */
   attention(item: Omit<WaitingItem, "agent">, from?: string): void
   clearAttention(agentId: string, callId: string): void
@@ -117,13 +120,16 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
 
       const BODY = (text: string) => cut(text)
 
+      /** The body of a notice from a workflow is the first characters of the input as they are. */
+      const bodyOf = (n: Notice) => (n.kind === "workflow_notice" ? notifyBody(n.body) : cut(n.body))
+
       /** Linked devices get every notice and decide by their own settings. */
       const push = (n: Notice, ids?: { callId: string; agentId: string }) =>
         bus.emit("notice", {
           kind: n.kind,
           channelId: n.channelId ?? null,
           title: n.title,
-          body: BODY(n.body),
+          body: bodyOf(n),
           target: n.target,
           ...(ids ? { callId: ids.callId, agentId: ids.agentId } : {}),
         })
@@ -134,12 +140,14 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
       }
 
       const show = (n: Notice) => {
-        if (!current().notifyKinds[n.kind]) return
+        // A kind that was added after the setting was saved has no value and counts as on.
+        if (current().notifyKinds[n.kind] === false) return
         if (platform.isFocused()) return
         if (isMuted(mutes(), n.serverId, n.channelId ?? null, Date.now())) return
-        platform.notify({ title: n.title, body: cut(n.body) }, () => {
+        platform.notify({ title: n.title, body: bodyOf(n) }, () => {
           platform.showWindow()
-          bus.emit("app.openPlace", n.target)
+          if (n.page) bus.emit("app.openPage", { page: n.page })
+          else if (n.target) bus.emit("app.openPlace", n.target)
         })
       }
 
@@ -156,7 +164,7 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
             if (linkedSeen.has(key)) return
             linkedSeen.add(key)
           }
-          if (!current().notifyKinds[notice.kind]) return
+          if (current().notifyKinds[notice.kind] === false) return
           if (platform.isFocused()) return
           if (isMuted(mutes(), source.serverId, notice.channelId, Date.now())) return
           platform.notify(

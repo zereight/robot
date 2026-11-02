@@ -1,5 +1,6 @@
 import {
   AGENT_NAME_MAX,
+  AGENT_NAMES,
   AGENT_ROLE_MAX,
   AGENT_TEMPLATES,
   type Agent,
@@ -12,16 +13,21 @@ import {
   faceFromName,
   isLooser,
   type MessageKey,
+  nameKey,
   PERMISSION_LEVELS,
   type PermissionLevel,
+  suggestName,
 } from "@robot/shared"
-import { createSignal, For, Index, Show } from "solid-js"
+import { Dices } from "lucide-solid"
+import { createSignal, createUniqueId, For, Index, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
+import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
-import { Button, Segmented, Switch } from "../ui/controls.tsx"
+import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
+import { SectionSelect } from "../ui/SectionSelect.tsx"
 import styles from "./agents.module.css"
 import { Face, faceColour } from "./Face.tsx"
 import { MemoryPanel } from "./MemoryPanel.tsx"
@@ -32,6 +38,8 @@ export interface AgentFormValues {
   instructions: string
   face: FaceValue
   model: AgentModel | null
+  /** The user section of the Agents list, or null for "No section". A client sends none. */
+  sectionId?: string | null
   /** Only when an existing agent is edited. */
   permission?: PermissionLevel
   memoryEnabled?: boolean
@@ -59,12 +67,13 @@ export const AgentForm = (props: AgentFormProps) => {
   const { t } = useApp()
   const ui = useUi()
   // On a linked server the same screen works with fewer fields (spec 012): no picture, no memory
-  // switch, and a level that can only get stricter.
+  // switch, no section, and a level that can only get stricter.
   const remote = () => ui.linked()
   const levels = () =>
     remote() && props.agent
       ? PERMISSION_LEVELS.filter((level) => !isLooser(level, (props.agent as Agent).permission))
       : PERMISSION_LEVELS
+  const nameId = createUniqueId()
   const [template, setTemplate] = createSignal<AgentTemplate | "blank">("blank")
   const [name, setName] = createSignal(props.agent?.name ?? "")
   const [role, setRole] = createSignal(props.agent?.role ?? "")
@@ -72,6 +81,7 @@ export const AgentForm = (props: AgentFormProps) => {
   /** The face the user picked. Until then a new agent's face follows its name. */
   const [pickedFace, setPickedFace] = createSignal<FaceValue | undefined>(props.agent?.face)
   const [model, setModel] = createSignal<AgentModel | null>(props.agent?.model ?? null)
+  const [sectionId, setSectionId] = createSignal<string | null>(props.agent?.sectionId ?? null)
   const [permission, setPermission] = createSignal<PermissionLevel>(
     props.agent?.permission ?? "ask_risky",
   )
@@ -98,6 +108,27 @@ export const AgentForm = (props: AgentFormProps) => {
     }
   }
 
+  /**
+   * Puts a random name in the field. Names of active and archived agents on the server are
+   * skipped, because both count for the rule that names are unique (002).
+   */
+  const suggest = async () => {
+    const serverId = ui.server()?.id
+    const used = new Set<string>()
+    if (serverId) {
+      try {
+        const lists = await Promise.all([
+          call("agents.list", { serverId, archived: false }),
+          call("agents.list", { serverId, archived: true }),
+        ])
+        for (const agent of lists.flat()) used.add(nameKey(agent.name))
+      } catch {
+        // The server still checks the name when the agent is made.
+      }
+    }
+    setName(suggestName(AGENT_NAMES, (candidate) => used.has(nameKey(candidate)), name()))
+  }
+
   const submit = async (event: SubmitEvent) => {
     event.preventDefault()
     if (!valid() || busy()) return
@@ -110,6 +141,9 @@ export const AgentForm = (props: AgentFormProps) => {
         instructions: instructions(),
         face: face(),
         model: model(),
+        // A client has no sections (012). A section that was deleted while the form was open
+        // shows as "No section".
+        ...(remote() ? {} : { sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null }),
         ...(props.agent && !remote()
           ? { permission: permission(), memoryEnabled: memoryEnabled() }
           : props.agent
@@ -161,19 +195,33 @@ export const AgentForm = (props: AgentFormProps) => {
         </div>
       </Show>
 
-      <label class={styles.field}>
+      <div class={styles.field}>
         <span class={styles.fieldTop}>
-          <span class={styles.label}>{t("agents.field.name")}</span>
+          <label class={styles.label} for={nameId}>
+            {t("agents.field.name")}
+          </label>
           <Counter used={nameLength()} max={AGENT_NAME_MAX} />
         </span>
-        <input
-          class={styles.input}
-          value={name()}
-          onInput={(e) => setName(e.currentTarget.value)}
-          data-testid="agent-name"
-          autofocus
-        />
-      </label>
+        <div class={styles.nameRow}>
+          <input
+            id={nameId}
+            class={`${styles.input} ${styles.grow}`}
+            value={name()}
+            onInput={(e) => setName(e.currentTarget.value)}
+            data-testid="agent-name"
+            autofocus
+          />
+          <Show when={!props.agent}>
+            <IconButton
+              label={t("agents.suggestName")}
+              onClick={suggest}
+              data-testid="agent-name-suggest"
+            >
+              <Dices size={18} aria-hidden="true" />
+            </IconButton>
+          </Show>
+        </div>
+      </div>
 
       <label class={styles.field}>
         <span class={styles.fieldTop}>
@@ -203,7 +251,7 @@ export const AgentForm = (props: AgentFormProps) => {
       <div class={styles.field}>
         <span class={styles.label}>{t("agents.field.face")}</span>
         <div class={styles.faceRow}>
-          <Face face={face()} image={props.agent?.faceImage ?? null} size={64} />
+          <Face face={face()} image={props.agent?.faceImage ?? null} size={64} swap />
           <div class={styles.facePicker}>
             <div class={styles.options}>
               <Index each={Array.from({ length: FACE_SHAPES })}>
@@ -263,6 +311,19 @@ export const AgentForm = (props: AgentFormProps) => {
         <span class={styles.label}>{t("agents.field.model")}</span>
         <ModelPicker value={model()} onChange={setModel} />
       </div>
+
+      <Show when={!remote()}>
+        <div class={styles.field}>
+          <span class={styles.label}>{t("sections.field")}</span>
+          <SectionSelect
+            kind="agent"
+            value={sectionId()}
+            onChange={setSectionId}
+            class={styles.input}
+            testId="agent-section"
+          />
+        </div>
+      </Show>
 
       <Show when={props.agent}>
         {(agent) => (

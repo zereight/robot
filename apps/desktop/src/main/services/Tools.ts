@@ -11,18 +11,25 @@ import { basename, dirname, join, relative, resolve } from "node:path"
 import {
   type ApprovalAnswer,
   insideWorkspace,
+  KNOWLEDGE_FOLDER,
+  KNOWLEDGE_SOURCE_BYTES,
+  KNOWLEDGE_SOURCES,
+  KNOWLEDGE_TURN_CHANGES_MAX,
+  type KnowledgeNote,
   needsApproval,
   type PermissionLevel,
   riskyReason,
   type ToolAsk,
 } from "@robot/shared"
-import { Context, Effect, Layer } from "effect"
+import { Cause, Context, Effect, Exit, Layer } from "effect"
 import type { ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall, ToolDef } from "../providers/chat.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import { CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
+import { AppError } from "./errors.ts"
+import { Knowledge, type KnowledgePlan } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Platform } from "./Platform.ts"
 
@@ -37,11 +44,15 @@ export interface ToolContext {
   readonly onMemory: (callId: string, memoryId: string) => void
   /** Records that a linked device answered an approval, so its card can say who. */
   readonly onDecision?: (callId: string, answer: "allow" | "deny", by: string) => void
+  /** Records what a knowledge call read or changed, so its card can show it and offer undo. */
+  readonly onKnowledge: (callId: string, note: KnowledgeNote) => void
+  /** The article changes that this turn made so far. A turn makes at most 5. */
+  readonly knowledgeChanges: { count: number }
 }
 
 export interface ToolsService {
-  /** The tools that an agent may call. Memory tools are left out when memory is off. */
-  defs(memoryEnabled: boolean): readonly ToolDef[]
+  /** The tools that an agent may call. Memory and knowledge tools are left out when they are off. */
+  defs(options: { memory: boolean; knowledge: boolean }): readonly ToolDef[]
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
   /**
    * Asks about a step that a vendor program wants to take, by the permission level and the risk.
@@ -156,6 +167,77 @@ const DEFS: Record<string, ToolDef> = {
       "Save one short, lasting fact (a preference, a name, a decision) to your memory. Do not save passwords or keys.",
     schema: object({ text: str("The fact, in one sentence.") }, ["text"]),
   },
+  read_article: {
+    name: "read_article",
+    description: "Read one article of your knowledge by its title.",
+    schema: object({ title: str("The title of the article.") }, ["title"]),
+  },
+  write_article: {
+    name: "write_article",
+    description:
+      "Add an article to your knowledge, or replace the article that has this title. Send the whole body. Link to other articles with [[Title]].",
+    schema: {
+      type: "object",
+      properties: {
+        title: str("The title, 1 to 80 characters. It is unique, ignoring case."),
+        summary: str("One line, up to 160 characters."),
+        body: str("The article in Markdown, up to 20000 characters."),
+        links: {
+          type: "array",
+          items: { type: "string" },
+          description: "Titles of other articles to link. They are added to the end of the body.",
+        },
+        sources: {
+          type: "array",
+          items: { type: "string" },
+          description: "Names of sources (from add_source) that the article uses.",
+        },
+      },
+      required: ["title", "body"],
+    },
+  },
+  delete_article: {
+    name: "delete_article",
+    description: "Delete an article of your knowledge. The user can undo this.",
+    schema: object({ title: str("The title of the article.") }, ["title"]),
+  },
+  add_source: {
+    name: "add_source",
+    description:
+      "Keep a copy of a file or web page as a source for articles. Give a path or an address. A source cannot be changed after.",
+    schema: object(
+      {
+        path: str("A file in your workspace, relative to it."),
+        url: str("An http or https address to fetch."),
+        name: str("A name for the copy. Optional."),
+      },
+      [],
+    ),
+  },
+}
+
+const KNOWLEDGE_TOOLS = new Set(["read_article", "write_article", "delete_article", "add_source"])
+
+/** What the model reads when a knowledge call fails. The card shows its own translated text. */
+const KNOWLEDGE_MESSAGES: Record<string, string> = {
+  knowledge_title_invalid: "The title must have 1 to 80 characters.",
+  knowledge_summary_long: "The summary can have 160 characters at most.",
+  knowledge_body_long: "The body can have 20000 characters at most.",
+  knowledge_title_taken: "Another article has this title.",
+  knowledge_full: "The knowledge holds 500 articles. It cannot take more. Tell the user.",
+  knowledge_secret:
+    "The text equals or looks like a key or a token. It was not saved. Do not put keys in articles or sources.",
+  knowledge_not_found: "There is no article with this title.",
+  knowledge_turn_limit: "You made 5 article changes in this turn. Wait for the next turn.",
+  knowledge_source_missing: "A named source does not exist. Add it with add_source first.",
+  knowledge_source_invalid: "Give the path of a file in your workspace, or an http address.",
+  knowledge_source_big: "The source is larger than 20 MB.",
+  knowledge_changed: "The article changed while you worked. Read it again.",
+  knowledge_off: "Knowledge is off for this agent.",
+  knowledge_denied: "The user denied this change.",
+  knowledge_undone: "This change was undone already.",
+  knowledge_fetch_failed: "The page could not be fetched.",
+  knowledge_io: "The Knowledge folder could not be read or written.",
 }
 
 const parseArgs = (call: ToolCall): Record<string, unknown> => {
@@ -182,6 +264,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
     Effect.gen(function* () {
       const db = yield* Database
       const memory = yield* Memory
+      const knowledge = yield* Knowledge
       const platform = yield* Platform
       const bus = yield* EventBus
       const control = new Set<string>()
@@ -262,6 +345,21 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         return { full, inside }
       }
 
+      /**
+       * The file tools do not work on a source, and do not work in the Knowledge folder while
+       * knowledge is on. The agent gets a plain error and uses the article tools. A path is
+       * compared in lower case, because a disk can ignore case.
+       */
+      const knowledgeBlock = (ctx: ToolContext, full: string): string | null => {
+        const root = realOf(join(ctx.workspace, KNOWLEDGE_FOLDER)).toLowerCase()
+        const target = realOf(full).toLowerCase()
+        if (insideWorkspace(target, join(root, KNOWLEDGE_SOURCES.toLowerCase())))
+          return "A source cannot be read or changed with the file tools."
+        if (insideWorkspace(target, root) && knowledge.enabled(ctx.agentId))
+          return "Use read_article, write_article and delete_article for the Knowledge folder."
+        return null
+      }
+
       const runCommand = (ctx: ToolContext, command: string) =>
         new Promise<ToolOutcome>((done) => {
           const child = spawn(command, {
@@ -299,7 +397,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           })
         })
 
-      const searchFiles = (root: string, query: string) => {
+      const searchFiles = (root: string, query: string, skip: (dir: string) => boolean) => {
         const hits: string[] = []
         const q = query.toLocaleLowerCase()
         const walk = (dir: string) => {
@@ -307,7 +405,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             if (hits.length >= SEARCH_MAX) return
             const path = join(dir, entry.name)
             if (entry.isDirectory()) {
-              if (!SKIP_DIRS.has(entry.name)) walk(path)
+              if (!SKIP_DIRS.has(entry.name) && !skip(path)) walk(path)
             } else if (entry.isFile() && statSync(path).size < 1_000_000) {
               const lines = readFileSync(path, "utf8").split("\n")
               for (const [i, line] of lines.entries()) {
@@ -322,9 +420,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         return hits
       }
 
-      const fetchUrl = async (ctx: ToolContext, url: string): Promise<ToolOutcome> => {
-        if (!/^https?:\/\//i.test(url))
-          return { output: "Only http and https addresses work.", failed: true }
+      /** Fetches a page with GET. A page of HTML becomes plain text. */
+      const fetchPage = async (ctx: ToolContext, url: string) => {
         const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)])
         const response = await fetch(url, { signal, redirect: "follow" })
         let body = await response.text()
@@ -335,10 +432,14 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             .replace(/&nbsp;/g, " ")
             .replace(/\s+/g, " ")
             .trim()
-        return {
-          output: cut(`[status ${response.status}]\n${body}`, FETCH_MAX),
-          failed: !response.ok,
-        }
+        return { status: response.status, ok: response.ok, body }
+      }
+
+      const fetchUrl = async (ctx: ToolContext, url: string): Promise<ToolOutcome> => {
+        if (!/^https?:\/\//i.test(url))
+          return { output: "Only http and https addresses work.", failed: true }
+        const page = await fetchPage(ctx, url)
+        return { output: cut(`[status ${page.status}]\n${page.body}`, FETCH_MAX), failed: !page.ok }
       }
 
       /** Waits while the user holds the controls of the browser. Stop ends the wait. */
@@ -383,11 +484,211 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      /** Runs an effect of the knowledge service. A failure comes back as the error itself. */
+      const settle = async <A>(effect: Effect.Effect<A, AppError>): Promise<A> => {
+        const exit = await Effect.runPromiseExit(effect)
+        if (Exit.isSuccess(exit)) return exit.value
+        throw Cause.squash(exit.cause)
+      }
+
+      /** A knowledge call failed: the card says why, and the model reads the reason. */
+      const knowledgeFailure = (
+        ctx: ToolContext,
+        call: ToolCall,
+        title: string,
+        error: unknown,
+      ): ToolOutcome => {
+        // A stop ends the turn. It is not a failure of the call.
+        if (ctx.signal.aborted) throw error
+        const code =
+          error instanceof Denied
+            ? "knowledge_denied"
+            : error instanceof AppError
+              ? error.code
+              : "knowledge_io"
+        ctx.onKnowledge(call.id, { kind: "failed", title, code })
+        const reason = KNOWLEDGE_MESSAGES[code] ?? KNOWLEDGE_MESSAGES.knowledge_io
+        const detail = error instanceof AppError && error.detail ? ` (${error.detail})` : ""
+        return { output: `Not done: ${reason}${detail}`, failed: true }
+      }
+
+      /**
+       * The first save by the agent into a missing Knowledge folder of a chosen workspace asks
+       * first, and the card names the folder. At "Full access" nothing asks.
+       */
+      const approveFirstSave = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        folder: { path: string; exists: boolean; chosen: boolean },
+      ) => {
+        if (folder.exists || !folder.chosen || ctx.permission === "full") return
+        const reply = await wait(ctx, call.id, {
+          kind: "approval",
+          summary: folder.path,
+          once: true,
+        })
+        if (reply.answer !== "allow") throw new Denied()
+      }
+
+      /** Asks the user before the change that the rules call for: a first save in a chosen workspace, an article the user edited last. */
+      const approveKnowledge = async (ctx: ToolContext, call: ToolCall, plan: KnowledgePlan) => {
+        await approveFirstSave(ctx, call, {
+          path: plan.folder,
+          exists: !plan.creates,
+          chosen: plan.chosenWorkspace,
+        })
+        if (!plan.protected || ctx.permission === "full") return
+        const reply = await wait(ctx, call.id, {
+          kind: "article",
+          title: plan.title,
+          before: plan.compare.before,
+          after: plan.compare.after,
+        })
+        if (reply.answer !== "allow" && reply.answer !== "always") throw new Denied()
+      }
+
+      const changeTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const title = text(args, "title")
+        try {
+          if (ctx.knowledgeChanges.count >= KNOWLEDGE_TURN_CHANGES_MAX)
+            throw new AppError({ code: "knowledge_turn_limit" })
+          if (!knowledge.enabled(ctx.agentId)) throw new AppError({ code: "knowledge_off" })
+          const strings = (key: string) =>
+            Array.isArray(args[key])
+              ? (args[key] as unknown[]).filter((x): x is string => typeof x === "string")
+              : undefined
+          const plan = await settle(
+            call.name === "delete_article"
+              ? knowledge.plan(ctx.agentId, { type: "delete", title })
+              : knowledge.plan(ctx.agentId, {
+                  type: "write",
+                  title,
+                  ...(typeof args.summary === "string" ? { summary: args.summary } : {}),
+                  ...(typeof args.body === "string" ? { body: args.body } : {}),
+                  ...(strings("links") ? { links: strings("links") as string[] } : {}),
+                  ...(strings("sources") ? { sources: strings("sources") as string[] } : {}),
+                }),
+          )
+          await approveKnowledge(ctx, call, plan)
+          const change = await settle(knowledge.apply(plan, "agent"))
+          ctx.knowledgeChanges.count++
+          ctx.onKnowledge(call.id, {
+            kind: "write",
+            title: plan.title,
+            change: change.kind,
+            changeId: change.id,
+          })
+          const done = change.kind === "delete" ? "Deleted" : "Saved"
+          return { output: `${done} the article "${plan.title}".`, failed: false }
+        } catch (error) {
+          return knowledgeFailure(ctx, call, title, error)
+        }
+      }
+
+      const readTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const title = text(args, "title")
+        try {
+          if (!knowledge.enabled(ctx.agentId)) throw new AppError({ code: "knowledge_off" })
+          const article = await settle(knowledge.find(ctx.agentId, title))
+          ctx.onKnowledge(call.id, { kind: "read", title: article.title })
+          const missing = article.links.filter((l) => l.file === null).map((l) => l.title)
+          const lines = [
+            `Title: ${article.title}`,
+            `Summary: ${article.summary}`,
+            `Last changed: ${new Date(article.updatedAt).toISOString()}`,
+            `Sources: ${
+              article.sources.map((s) => (s.exists ? s.name : `${s.name} (deleted)`)).join(", ") ||
+              "none"
+            }`,
+            ...(missing.length > 0
+              ? [`Links to articles that do not exist: ${missing.join(", ")}`]
+              : []),
+            "",
+            article.body,
+          ]
+          return { output: lines.join("\n"), failed: false }
+        } catch (error) {
+          return knowledgeFailure(ctx, call, title, error)
+        }
+      }
+
+      const sourceName = (url: string) => {
+        try {
+          const parsed = new URL(url)
+          const path = parsed.pathname.replace(/\/+$/, "").split("/").filter(Boolean).join("-")
+          return `${parsed.hostname}${path ? `-${path}` : ""}.txt`
+        } catch {
+          return "page.txt"
+        }
+      }
+
+      const sourceTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const path = text(args, "path")
+        const url = text(args, "url")
+        const label = path || url
+        try {
+          if (!knowledge.enabled(ctx.agentId)) throw new AppError({ code: "knowledge_off" })
+          if (Boolean(path) === Boolean(url))
+            throw new AppError({ code: "knowledge_source_invalid" })
+          let data: Uint8Array | string
+          let name = text(args, "name")
+          if (path) {
+            const p = place(ctx, path)
+            const knowledgeRoot = realOf(join(ctx.workspace, KNOWLEDGE_FOLDER))
+            if (
+              !p.inside ||
+              insideWorkspace(realOf(p.full), join(knowledgeRoot, KNOWLEDGE_SOURCES))
+            )
+              throw new AppError({ code: "knowledge_source_invalid" })
+            const info = statSync(p.full)
+            if (!info.isFile()) throw new AppError({ code: "knowledge_source_invalid" })
+            if (info.size > KNOWLEDGE_SOURCE_BYTES)
+              throw new AppError({ code: "knowledge_source_big" })
+            data = readFileSync(p.full)
+            name = name || basename(p.full)
+          } else {
+            if (!/^https?:\/\//i.test(url)) throw new AppError({ code: "knowledge_source_invalid" })
+            await approve(ctx, call, false, "fetch_url", url)
+            const page = await fetchPage(ctx, url)
+            if (!page.ok)
+              throw new AppError({ code: "knowledge_fetch_failed", detail: `${page.status}` })
+            data = `Fetched from ${url}\n\n${page.body}\n`
+            name = name || sourceName(url)
+          }
+          // A source with a key is refused before anything is asked or written.
+          await settle(knowledge.checkSource(data))
+          // Keeping the first source makes the folder, which is a save.
+          await approveFirstSave(ctx, call, await settle(knowledge.folder(ctx.agentId)))
+          const saved = await settle(knowledge.addSource(ctx.agentId, { name, data }))
+          ctx.onKnowledge(call.id, { kind: "source", name: saved.name })
+          return {
+            output: `Kept the source as "${saved.name}". Name it in the sources of the articles that use it.`,
+            failed: false,
+          }
+        } catch (error) {
+          return knowledgeFailure(ctx, call, label, error)
+        }
+      }
+
       const run = async (ctx: ToolContext, call: ToolCall): Promise<ToolOutcome> => {
         const args = parseArgs(call)
         switch (call.name) {
           case "list_files": {
             const p = place(ctx, text(args, "path"))
+            const blocked = knowledgeBlock(ctx, p.full)
+            if (blocked) return { output: blocked, failed: true }
             await approve(ctx, call, !p.inside, `list_files${p.inside ? "" : ":outside"}`, p.full)
             const entries = readdirSync(p.full, { withFileTypes: true })
               .slice(0, LIST_MAX)
@@ -396,11 +697,15 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
           case "read_file": {
             const p = place(ctx, text(args, "path"))
+            const blocked = knowledgeBlock(ctx, p.full)
+            if (blocked) return { output: blocked, failed: true }
             await approve(ctx, call, !p.inside, `read_file${p.inside ? "" : ":outside"}`, p.full)
             return { output: cut(readFileSync(p.full, "utf8"), READ_MAX), failed: false }
           }
           case "write_file": {
             const p = place(ctx, text(args, "path"))
+            const blocked = knowledgeBlock(ctx, p.full)
+            if (blocked) return { output: blocked, failed: true }
             await approve(ctx, call, !p.inside, `write_file${p.inside ? "" : ":outside"}`, p.full)
             mkdirSync(dirname(p.full), { recursive: true })
             const content = text(args, "content")
@@ -408,7 +713,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return { output: `Wrote ${content.length} characters to ${p.full}`, failed: false }
           }
           case "search_files": {
-            const hits = searchFiles(ctx.workspace, text(args, "query"))
+            // The search leaves out the sources, and the articles while knowledge is on.
+            const hits = searchFiles(ctx.workspace, text(args, "query"), (dir) => {
+              return knowledgeBlock(ctx, dir) !== null
+            })
             return { output: hits.join("\n") || "No matches.", failed: false }
           }
           case "run_command": {
@@ -445,14 +753,25 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             ctx.onMemory(call.id, item.id)
             return { output: "Saved to memory.", failed: false }
           }
+          case "read_article":
+            return await readTool(ctx, call, args)
+          case "write_article":
+          case "delete_article":
+            return await changeTool(ctx, call, args)
+          case "add_source":
+            return await sourceTool(ctx, call, args)
           default:
             return { output: `Unknown tool: ${call.name}`, failed: true }
         }
       }
 
       return Tools.of({
-        defs: (memoryEnabled) =>
-          Object.values(DEFS).filter((d) => memoryEnabled || d.name !== "save_memory"),
+        defs: (options) =>
+          Object.values(DEFS).filter(
+            (d) =>
+              (options.memory || d.name !== "save_memory") &&
+              (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)),
+          ),
         execute: async (ctx, call) => {
           try {
             return await run(ctx, call)

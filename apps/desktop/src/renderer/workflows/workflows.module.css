@@ -39,7 +39,7 @@
 
 .hint {
   color: var(--c-text-muted);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
 }
 
 .input,
@@ -177,7 +177,7 @@
 
 .nodeKind {
   color: var(--c-text-muted);
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
 }
 
 .nodeName {
@@ -254,7 +254,7 @@
 
 .historyTitle {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--text-m);
 }
 
 .runList {
@@ -311,7 +311,73 @@
   margin: 4px 0;
   white-space: pre-wrap;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   max-height: 200px;
   overflow: auto;
+}
+
+.nodeNumber {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  border: 1px solid var(--c-border);
+  background: var(--c-main);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  line-height: 18px;
+  text-align: center;
+}
+
+.note {
+  position: absolute;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  cursor: grab;
+  user-select: none;
+  box-sizing: border-box;
+  color: var(--c-text);
+  background: color-mix(in srgb, var(--note-tone, var(--c-border)) 22%, var(--c-elevated));
+  border-color: color-mix(in srgb, var(--note-tone, var(--c-border)) 55%, var(--c-border));
+}
+
+.note[data-tone="yellow"] {
+  --note-tone: #e0b400;
+}
+
+.note[data-tone="blue"] {
+  --note-tone: #3b82f6;
+}
+
+.note[data-tone="green"] {
+  --note-tone: #22a55b;
+}
+
+.note[data-tone="pink"] {
+  --note-tone: #e0558f;
+}
+
+.note[data-selected="true"] {
+  outline: 2px solid var(--c-accent);
+}
+
+.noteText {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: hidden;
+}
+
+.noteText[data-empty="true"] {
+  color: var(--c-text-muted);
+}
+
+.fields .hint {
+  display: block;
 }

@@ -2,6 +2,7 @@ import { join } from "node:path"
 import { Layer } from "effect"
 import type { OpenSocket } from "./link/nearby.ts"
 import { Activity } from "./services/Activity.ts"
+import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
@@ -9,6 +10,7 @@ import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Places } from "./services/Places.ts"
@@ -18,6 +20,7 @@ import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import type { Secrets } from "./services/Secrets.ts"
+import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Sync } from "./services/Sync.ts"
@@ -25,6 +28,7 @@ import { Tasks } from "./services/Tasks.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
+import { WorkflowFiles } from "./services/WorkflowFiles.ts"
 import { Workflows } from "./services/Workflows.ts"
 
 export interface AppLayerOptions {
@@ -51,6 +55,7 @@ export const appLayer = (options: AppLayerOptions) => {
     SettingsStore.layer,
     UiStore.layer,
     Servers.layer(options.localServerName),
+    Sections.layer,
     Activity.layer,
   ).pipe(Layer.provideMerge(base))
   const devices = Devices.layer({
@@ -62,7 +67,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const providers = Providers.layer.pipe(Layer.provideMerge(runtimes))
   const notifier = Notifier.layer.pipe(Layer.provideMerge(providers))
   const memory = Memory.layer.pipe(Layer.provideMerge(notifier))
-  const tools = Tools.layer.pipe(Layer.provideMerge(memory))
+  const knowledge = Knowledge.layer.pipe(Layer.provideMerge(memory))
+  const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
   const agents = Layer.mergeAll(Agents.layer, Chat.layer, Usage.layer).pipe(
     Layer.provideMerge(tasks),
@@ -71,7 +77,9 @@ export const appLayer = (options: AppLayerOptions) => {
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(routines))
   const places = Places.layer.pipe(Layer.provideMerge(workflows))
-  const remote = Remote.layer.pipe(Layer.provideMerge(places))
+  const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(places))
+  const workflowFiles = WorkflowFiles.layer.pipe(Layer.provideMerge(agentFiles))
+  const remote = Remote.layer.pipe(Layer.provideMerge(workflowFiles))
   const data = Data.layer.pipe(Layer.provideMerge(remote))
   return Sync.layer.pipe(Layer.provideMerge(data))
 }

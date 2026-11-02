@@ -1,5 +1,5 @@
 /**
- * Triggers that mark a row as changed, so sync can find it (spec 016). They only write while the
+ * Triggers that mark a row as changed, so sync can find it (spec 017). They only write while the
  * computer is in a sync pair. `id` is the SQL text of the sync id of the row.
  */
 const dirtyTriggers = (table: string, kind: string, id: (row: "NEW" | "OLD") => string) =>
@@ -238,6 +238,46 @@ export const migrations: readonly string[] = [
   `,
   `
   ALTER TABLE provider_account ADD COLUMN off INTEGER NOT NULL DEFAULT 0;
+  `,
+  `
+  ALTER TABLE agent ADD COLUMN knowledge_enabled INTEGER NOT NULL DEFAULT 1;
+  CREATE TABLE knowledge_file (
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    file TEXT NOT NULL,
+    hash TEXT NOT NULL,
+    editor TEXT NOT NULL,
+    content TEXT NOT NULL,
+    PRIMARY KEY (agent_id, file)
+  );
+  CREATE TABLE knowledge_change (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    file TEXT NOT NULL,
+    earlier TEXT,
+    actor TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    undone_at INTEGER
+  );
+  CREATE INDEX knowledge_change_agent ON knowledge_change (agent_id, at);
+  `,
+  `
+  ALTER TABLE workflow ADD COLUMN notes TEXT NOT NULL DEFAULT '[]';
+  `,
+  `
+  CREATE TABLE place_section (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES server (id),
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX place_section_name ON place_section (server_id, kind, name_key);
+  ALTER TABLE agent ADD COLUMN place_section_id TEXT REFERENCES place_section (id) ON DELETE SET NULL;
+  ALTER TABLE channel ADD COLUMN place_section_id TEXT REFERENCES place_section (id) ON DELETE SET NULL;
   `,
   `
   CREATE TABLE device_link (

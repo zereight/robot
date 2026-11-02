@@ -29,6 +29,14 @@ export interface PlatformService {
   pickSavePath(defaultName: string): Promise<string | undefined>
   /** An archive to open, or undefined when cancelled. */
   pickArchive(): Promise<string | undefined>
+  /** Where to save an agent file, or undefined when cancelled. */
+  pickAgentFileSave(defaultName: string): Promise<string | undefined>
+  /** An agent file to open, or undefined when cancelled. */
+  pickAgentFile(): Promise<string | undefined>
+  /** Where to save a workflow file, or undefined when cancelled. */
+  pickWorkflowFileSave(defaultName: string): Promise<string | undefined>
+  /** A workflow file to open, or undefined when cancelled. */
+  pickWorkflowFile(): Promise<string | undefined>
   openPath(path: string): Promise<void>
   /** Opens a file with the program of the system for it. */
   openFile(path: string): Promise<void>

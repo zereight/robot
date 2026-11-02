@@ -1,4 +1,4 @@
-import type { Agent, AgentModel } from "@robot/shared"
+import { type Agent, type AgentModel, runtimeModel } from "@robot/shared"
 import { createResource, createSignal, onCleanup, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -6,10 +6,12 @@ import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import type { PlaceView } from "../shell/Shell.tsx"
 import { useApp } from "../state/app.tsx"
+import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { AgentActivity } from "./AgentActivity.tsx"
 import { AgentProfileDialog } from "./AgentDialogs.tsx"
 import styles from "./agents.module.css"
 import { Face } from "./Face.tsx"
@@ -52,7 +54,15 @@ const BrowserControls = (props: { agentId: string }) => {
 const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
   const { t } = useApp()
   const ui = useUi()
+  const providers = useProviders()
   const [open, setOpen] = createSignal(false)
+  // A runtime model shows with its version. An API model shows its id, which has the version.
+  const modelName = () => {
+    const model = props.agent.model
+    if (!model) return t("agents.noModel")
+    const known = runtimeModel(providers.byId(model.accountId)?.kind, model.model)
+    return known?.labelKey ? t(known.labelKey) : (known?.label ?? model.model)
+  }
   return (
     <>
       {/* A client without the switch opens the profile too, as read-only text (spec 012). */}
@@ -64,14 +74,19 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         data-readonly={ui.canChange() ? undefined : "true"}
         data-testid="chat-header-agent"
       >
-        <Face face={props.agent.face} image={props.agent.faceImage} size={24} />
+        <Face
+          face={props.agent.face}
+          image={props.agent.faceImage}
+          size={24}
+          agentId={props.agent.id}
+        />
         <span>{props.agent.name}</span>
       </button>
       <Show
         when={ui.canChange()}
         fallback={
           <span class={styles.headerModel} data-testid="chat-header-model" data-readonly="true">
-            {props.agent.model?.model ?? t("agents.noModel")}
+            {modelName()}
           </span>
         }
       >
@@ -82,7 +97,7 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
           onClick={() => props.setPicking(true)}
           data-testid="chat-header-model"
         >
-          {props.agent.model?.model ?? t("agents.noModel")}
+          {modelName()}
         </button>
       </Show>
       <Show when={!ui.linked()}>
@@ -156,6 +171,7 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
         {(a) => <Header agent={a()} picking={picking()} setPicking={setPicking} />}
       </Show>
     ),
+    panel: <Show when={agent()}>{(a) => <AgentActivity agent={a()} />}</Show>,
     body: (
       <Show when={agent()}>
         {(a) => (

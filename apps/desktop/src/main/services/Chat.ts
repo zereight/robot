@@ -4,17 +4,22 @@ import { basename, extname, join } from "node:path"
 import {
   ATTACH_BYTES,
   ATTACH_MAX,
+  askKind,
+  askSummary,
   type ChatMessage,
   type ChatSend,
   type FilePart,
   islandSummary,
   type MessagePart,
   type MessageStatus,
+  type ModelInfo,
   messageFiles,
   messageText,
   type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
+  type StepEffort,
+  stepTurnEffort,
   type Task,
   type TaskSource,
   type ToolAsk,
@@ -22,13 +27,14 @@ import {
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { resumeOf } from "../providers/resume.ts"
 import { Activity } from "./Activity.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
@@ -73,6 +79,11 @@ export interface TaskOrigin {
   readonly sourceId: string
   /** Called when the task of the message starts, with its id. */
   readonly onStart?: (taskId: string) => void
+  /**
+   * The effort that this one turn asks for (a step of a workflow). It counts only when the
+   * model offers it. The agent keeps its own effort for every other turn.
+   */
+  readonly effort?: StepEffort
 }
 
 export interface ChatService {
@@ -161,6 +172,7 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       ...(existing?.kind === "tool" && existing.memoryId ? { memoryId: existing.memoryId } : {}),
       // Who answered the approval stays on the card when the call ends (spec 012).
       ...(existing?.kind === "tool" && existing.decision ? { decision: existing.decision } : {}),
+      ...(existing?.kind === "tool" && existing.knowledge ? { knowledge: existing.knowledge } : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -210,6 +222,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const tasks = yield* Tasks
       const tools = yield* Tools
       const memory = yield* Memory
+      const knowledge = yield* Knowledge
       const notifier = yield* Notifier
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
@@ -336,6 +349,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           .filter((r) => r.author === "user")
           .at(-1)
         const asked = lastUser ? toMessage(lastUser) : undefined
+        const turnEffort = lastUser ? origins.get(lastUser.id)?.effort : undefined
         const prompt =
           (asked
             ? messageText(asked) ||
@@ -419,12 +433,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           // The data changed since the restart, so the card cannot go on.
           if (resumed && !resume) return yield* new AppError({ code: "app_stopped" })
           const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
+          const known = knowledge.prompt(
+            agentId,
+            asked ? messageText(asked) : "",
+            providers.isRuntime(agent.model_account_id) ? "files" : "tools",
+          )
           const system = [
             agent.instructions,
             `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
             remembered.length > 0
               ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
               : "",
+            known ?? "",
           ]
             .filter(Boolean)
             .join("\n\n")
@@ -454,8 +474,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   serverId: agent.server_id,
                   channelId: null,
                   callId,
-                  kind: ask.kind,
-                  summary: islandSummary(ask.kind === "approval" ? ask.summary : ask.question),
+                  kind: askKind(ask),
+                  summary: islandSummary(askSummary(ask)),
                   target: { kind: "agent", id: agentId, messageId: reply.id },
                 })
               else notifier.clearAttention(agentId, callId)
@@ -473,15 +493,33 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
             onDecision: (callId, answer, by) =>
               changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
+            onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
+            knowledgeChanges: { count: 0 },
+          }
+          // A step of a workflow can ask for its own effort for this one turn. It is read for each
+          // turn, so a retry decides again from the step and the model, not from the first try.
+          // The levels come from the model list of the account, as for the effort of an agent. A
+          // list that cannot be read leaves the levels that the vendor documents for the model.
+          let offered: readonly string[] = []
+          if (turnEffort) {
+            const accounts = yield* providers.list
+            const listed = yield* providers
+              .models(agent.model_account_id)
+              .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+            const kind = accounts.find((a) => a.id === agent.model_account_id)?.kind ?? "custom"
+            offered = offeredEfforts(kind, agent.model_name, listed)
           }
           const events = yield* providers.events(
             agent.model_account_id,
             {
               model: agent.model_name,
-              effort: agent.model_effort,
+              effort: stepTurnEffort(turnEffort, agent.model_effort, offered),
               system,
               turns: buildTurns(agentId, reply.id),
-              tools: tools.defs(agent.memory_enabled === 1),
+              tools: tools.defs({
+                memory: agent.memory_enabled === 1,
+                knowledge: knowledge.enabled(agentId),
+              }),
               signal: controller.signal,
               workspace: agent.workspace,
               permission: agent.permission,
@@ -510,10 +548,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
 
         activity.setWorking(agentId, agent.server_id, true)
+        // A vendor program writes the Knowledge folder itself. The folder is read again after it.
+        const writesFiles = !!agent.model_account_id && providers.isRuntime(agent.model_account_id)
+        knowledge.begin(agentId)
         yield* tasks.run(task.id, agentId, stream, resumed ? { resumed: true } : undefined).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
+              knowledge.end(agentId, writesFiles ? "agent" : "user")
               notifier.clearAgent(agentId)
               // A step that did not finish cannot keep a running mark or a question card.
               for (const [i, part] of parts.entries()) {
