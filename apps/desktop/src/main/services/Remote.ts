@@ -32,6 +32,7 @@ import { LinkError, openAny, pairWithCode } from "../link/client.ts"
 import { Connection } from "../link/connection.ts"
 import { deviceIdOf, fromB64 } from "../link/identity.ts"
 import { DECISION_MS, type PairMessage, toPairDevice } from "../link/protocol.ts"
+import { searchSaved } from "../link/saved.ts"
 import { Devices, type LinkRow } from "./Devices.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -386,6 +387,19 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
         if (key) {
           const hit = cache.get(link.id, key)
           if (hit !== undefined) return ok(hit)
+        }
+        if (method === "messages.search" && stateOf(link.id) !== "not_allowed") {
+          // The server does not answer: the search looks at the saved messages only (spec 001).
+          const { query, offset } = input as { query?: unknown; offset?: unknown }
+          return ok(
+            searchSaved(
+              cache,
+              link.id,
+              serverId,
+              typeof query === "string" ? query : "",
+              typeof offset === "number" ? offset : 0,
+            ),
+          )
         }
         return failure(stateOf(link.id) === "not_allowed" ? "not_allowed" : "offline")
       }

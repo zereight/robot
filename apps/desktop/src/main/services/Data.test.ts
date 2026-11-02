@@ -13,6 +13,7 @@ import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
+import { Search } from "./Search.ts"
 import { Secrets } from "./Secrets.ts"
 import { Sections } from "./Sections.ts"
 import { Servers } from "./Servers.ts"
@@ -95,12 +96,27 @@ describe("export and import", () => {
       "robot.db",
     ])
     for (const data of Object.values(entries)) expect(Buffer.from(data).includes(KEY)).toBe(false)
+    // The index of message search is a second copy of the text. The archive does not carry it.
+    const archived = join(testPlatform().dataDir, "archived.db")
+    writeFileSync(archived, entries["robot.db"] as Uint8Array)
+    const inArchive = new DatabaseSync(archived)
+    expect(
+      inArchive
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE name LIKE '%message_fts%' OR name LIKE '%message_text%'",
+        )
+        .all(),
+    ).toEqual([])
+    inArchive.close()
 
     const b = app({ open: out })
     const imported = await b.run(Data.use((d) => d.import()))
     expect(imported?.agents).toBe(1)
     expect(imported?.messages).toBe(1)
     const bLocal = await b.run(Servers.use((s) => s.local))
+    // The restored messages are in the search of the new app.
+    const found = await b.run(Search.use((x) => x.page(bLocal.id, "redacted", 0)))
+    expect(found.hits.map((h) => h.placeName)).toEqual(["Ada"])
     const list = await b.run(Agents.use((x) => x.list(bLocal.id, false)))
     expect(list.map((x) => x.name)).toEqual(["Ada"])
     expect(existsSync(join(list[0]?.workspace ?? "", "attachments", "note.txt"))).toBe(true)

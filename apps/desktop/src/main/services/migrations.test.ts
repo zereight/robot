@@ -15,6 +15,8 @@ const SIGN_IN = SECTIONS + 1
 const CONTEXT = SIGN_IN + 1
 /** Main has this many steps. The steps of the device link and of sync follow them. */
 const MAIN_STEPS = CONTEXT + 1
+/** The index of the step that S46 added: message search (spec 001). It follows the sync steps. */
+const SEARCH = migrations.findIndex((sql) => sql.includes("CREATE VIRTUAL TABLE message_fts"))
 
 const upTo = (count: number) => {
   const db = new DatabaseSync(":memory:")
@@ -181,14 +183,12 @@ describe("the steps of the device link and of sync", () => {
     expect(migrations[MAIN_STEPS]).toContain("CREATE TABLE device_link")
     expect(migrations[MAIN_STEPS + 1]).toContain("CREATE TABLE sync_pair")
     expect(migrations[MAIN_STEPS + 2]).toContain("ALTER TABLE device_link ADD COLUMN can_change")
-    // The step of memory control (spec 008) follows, wherever other steps put it.
-    expect(migrations.some((sql) => sql.includes("ALTER TABLE agent ADD COLUMN memory_mode"))).toBe(
-      true,
-    )
     // No step of this branch changes the table that the step of main changed.
     for (const sql of migrations.slice(MAIN_STEPS)) {
       expect(sql).not.toMatch(/ALTER TABLE provider_account/i)
     }
+    // The step for message search (spec 001) follows them.
+    expect(SEARCH).toBeGreaterThan(MAIN_STEPS + 2)
     // The number of steps is the data version that two computers compare before they sync.
     // Later steps follow these three.
     expect(migrations.length).toBeGreaterThan(MAIN_STEPS + 2)
@@ -260,58 +260,102 @@ describe("the steps of the device link and of sync", () => {
   })
 })
 
-describe("the step for memory control", () => {
-  /** The step that spec 008 added: the choice of an agent, proposals and history. */
-  const MEMORY = migrations.findIndex((sql) => sql.includes("ADD COLUMN memory_mode"))
-
-  test("it adds the choice with a default, and two tables that sync does not carry", () => {
-    const sql = migrations[MEMORY] ?? ""
-    expect(sql).toContain("ADD COLUMN memory_mode TEXT NOT NULL DEFAULT 'now'")
-    expect(sql).toContain("CREATE TABLE memory_proposal")
-    expect(sql).toContain("CREATE TABLE memory_history")
-    // Spec 019: no trigger marks a row of these tables as changed.
-    expect(sql).not.toMatch(/CREATE TRIGGER/i)
-    expect(sql).not.toMatch(/sync_dirty/)
-  })
-
-  test("a database from before keeps its agents and memory, and every agent saves at once", () => {
-    const db = upTo(MEMORY)
-    db.exec(`PRAGMA user_version = ${MEMORY}`)
+describe("the step for message search", () => {
+  const insertAgent = (db: DatabaseSync) =>
     db.exec(`
       INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
       INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
         workspace, section, created_at, updated_at)
         VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1);
-      INSERT INTO memory (id, agent_id, text, source, created_at, updated_at)
-        VALUES ('m', 'a', 'Likes tea', 'user', 1, 1);
+      INSERT INTO channel (id, server_id, name, name_key, topic, created_at, updated_at)
+        VALUES ('c', 's', 'Room', 'room', '', 1, 1);
     `)
-    migrate(db)
-    expect(db.prepare("SELECT memory_mode FROM agent").get()).toEqual({ memory_mode: "now" })
-    expect(db.prepare("SELECT text FROM memory").get()).toEqual({ text: "Likes tea" })
-    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_history").get()).toEqual({ n: 0 })
-    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_proposal").get()).toEqual({ n: 0 })
+  const text = (value: string) => JSON.stringify([{ kind: "text", text: value }])
+
+  test("it only adds tables, an index and triggers; it changes no table that exists", () => {
+    const sql = migrations[SEARCH] ?? ""
+    expect(sql).toContain("CREATE TABLE message_text")
+    expect(sql).not.toMatch(/ALTER TABLE|DROP TABLE|UPDATE message|DELETE FROM message\b/i)
   })
 
-  test("a change to the memory tables marks no row for sync, also in a sync pair", () => {
+  test("a database from before it gets an index of the messages it holds", () => {
+    const db = upTo(SEARCH)
+    insertAgent(db)
+    const add = db.prepare(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES (?, 'a', 'user', ?, ?, ?)",
+    )
+    add.run("m1", text("The budget is 4200 euros"), "done", 1)
+    add.run("m2", text("still being written"), "streaming", 2)
+    add.run("m3", JSON.stringify([{ kind: "thinking", text: "private" }]), "done", 3)
+    add.run("m4", "not json", "done", 4)
+    db.prepare(
+      "INSERT INTO channel_message (id, channel_id, author, parts, status, created_at) VALUES ('c1', 'c', 'user', ?, 'done', 5)",
+    ).run(text("budget talk in a channel"))
+
+    db.exec(migrations[SEARCH] ?? "")
+
+    expect(
+      db.prepare("SELECT kind, message_id FROM message_text ORDER BY created_at").all(),
+    ).toEqual([
+      { kind: "chat", message_id: "m1" },
+      { kind: "channel", message_id: "c1" },
+    ])
+    expect(
+      db.prepare("SELECT rowid FROM message_fts WHERE message_fts MATCH '\"bud\"'").all(),
+    ).toHaveLength(2)
+    // The step changed no message.
+    expect(db.prepare("SELECT COUNT(*) AS n FROM message").get()).toEqual({ n: 4 })
+  })
+
+  test("a message that is not JSON does not stop a write", () => {
+    const db = upTo(SEARCH + 1)
+    insertAgent(db)
+    db.exec(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('m', 'a', 'user', 'oops', 'done', 1)",
+    )
+    db.exec("UPDATE message SET status = 'stopped'")
+    expect(db.prepare("SELECT COUNT(*) AS n FROM message_text").get()).toEqual({ n: 0 })
+  })
+
+  test("a write to a message keeps the text table and the index in step", () => {
+    const db = upTo(SEARCH + 1)
+    insertAgent(db)
+    const find = (word: string) =>
+      db
+        .prepare(
+          "SELECT t.message_id AS id FROM message_fts JOIN message_text t ON t.n = message_fts.rowid WHERE message_fts MATCH ?",
+        )
+        .all(`"${word}"`)
+        .map((r) => (r as { id: string }).id)
+    db.prepare(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('m', 'a', 'agent', ?, 'streaming', 1)",
+    ).run(text("partial words"))
+    expect(find("partial")).toEqual([])
+    db.exec("UPDATE message SET status = 'done'")
+    expect(find("partial")).toEqual(["m"])
+    db.prepare("UPDATE message SET parts = ?").run(text("final words"))
+    expect(find("partial")).toEqual([])
+    expect(find("final")).toEqual(["m"])
+    // A change that is not text does not touch the entry.
+    db.exec("UPDATE message SET context = 'notes'")
+    expect(find("final")).toEqual(["m"])
+    db.exec("DELETE FROM agent WHERE id = 'a'")
+    expect(find("final")).toEqual([])
+    expect(db.prepare("SELECT COUNT(*) AS n FROM message_text").get()).toEqual({ n: 0 })
+  })
+
+  test("an old database opens, migrates, and then searches", () => {
     const db = new DatabaseSync(":memory:")
     db.exec("PRAGMA foreign_keys = ON")
+    for (const sql of migrations.slice(0, SEARCH)) db.exec(sql)
+    db.exec(`PRAGMA user_version = ${SEARCH}`)
+    insertAgent(db)
+    db.prepare(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('m', 'a', 'user', ?, 'done', 1)",
+    ).run(text("hello there"))
     migrate(db)
-    db.exec(`
-      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
-      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
-        workspace, section, created_at, updated_at)
-        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1);
-      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
-        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
-    `)
-    db.exec("DELETE FROM sync_dirty")
-    db.exec(`
-      INSERT INTO memory_proposal (id, agent_id, text, created_at) VALUES ('p1', 'a', 'x', 1);
-      INSERT INTO memory_history (id, agent_id, memory_id, at, actor, kind, source, new_text)
-        VALUES ('h1', 'a', 'm', 1, 'user', 'added', 'user', 'x');
-      DELETE FROM memory_proposal;
-    `)
-    expect(db.prepare("SELECT COUNT(*) AS n FROM sync_dirty").get()).toEqual({ n: 0 })
+    expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })
+    expect(db.prepare("SELECT COUNT(*) AS n FROM message_text").get()).toEqual({ n: 1 })
   })
 })
 
@@ -376,5 +420,60 @@ describe("the step for the times of a task", () => {
     expect(db.prepare("SELECT id, asked_at, first_reply_at FROM task").all()).toEqual([
       { id: "t", asked_at: null, first_reply_at: null },
     ])
+  })
+})
+
+describe("the step for memory control", () => {
+  /** The step that spec 008 added: the choice of an agent, proposals and history. */
+  const MEMORY = migrations.findIndex((sql) => sql.includes("ADD COLUMN memory_mode"))
+
+  test("it adds the choice with a default, and two tables that sync does not carry", () => {
+    const sql = migrations[MEMORY] ?? ""
+    expect(sql).toContain("ADD COLUMN memory_mode TEXT NOT NULL DEFAULT 'now'")
+    expect(sql).toContain("CREATE TABLE memory_proposal")
+    expect(sql).toContain("CREATE TABLE memory_history")
+    // Spec 019: no trigger marks a row of these tables as changed.
+    expect(sql).not.toMatch(/CREATE TRIGGER/i)
+    expect(sql).not.toMatch(/sync_dirty/)
+  })
+
+  test("a database from before keeps its agents and memory, and every agent saves at once", () => {
+    const db = upTo(MEMORY)
+    db.exec(`PRAGMA user_version = ${MEMORY}`)
+    db.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, created_at, updated_at)
+        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1);
+      INSERT INTO memory (id, agent_id, text, source, created_at, updated_at)
+        VALUES ('m', 'a', 'Likes tea', 'user', 1, 1);
+    `)
+    migrate(db)
+    expect(db.prepare("SELECT memory_mode FROM agent").get()).toEqual({ memory_mode: "now" })
+    expect(db.prepare("SELECT text FROM memory").get()).toEqual({ text: "Likes tea" })
+    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_history").get()).toEqual({ n: 0 })
+    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_proposal").get()).toEqual({ n: 0 })
+  })
+
+  test("a change to the memory tables marks no row for sync, also in a sync pair", () => {
+    const db = new DatabaseSync(":memory:")
+    db.exec("PRAGMA foreign_keys = ON")
+    migrate(db)
+    db.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, created_at, updated_at)
+        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1);
+      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+    `)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec(`
+      INSERT INTO memory_proposal (id, agent_id, text, created_at) VALUES ('p1', 'a', 'x', 1);
+      INSERT INTO memory_history (id, agent_id, memory_id, at, actor, kind, source, new_text)
+        VALUES ('h1', 'a', 'm', 1, 'user', 'added', 'user', 'x');
+      DELETE FROM memory_proposal;
+    `)
+    expect(db.prepare("SELECT COUNT(*) AS n FROM sync_dirty").get()).toEqual({ n: 0 })
   })
 })
