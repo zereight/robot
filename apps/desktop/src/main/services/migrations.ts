@@ -493,6 +493,19 @@ export const migrations: readonly string[] = [
   CREATE UNIQUE INDEX skill_name ON skill (server_id, name_key);
   `,
   `
+  -- The checklist that an import leaves for a new agent or a new workflow (spec 014). It belongs
+  -- to this computer and does not sync.
+  CREATE TABLE import_checklist (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT REFERENCES agent (id) ON DELETE CASCADE,
+    workflow_id TEXT REFERENCES workflow (id) ON DELETE CASCADE,
+    items TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX import_checklist_agent ON import_checklist (agent_id);
+  CREATE INDEX import_checklist_workflow ON import_checklist (workflow_id);
+  `,
+  `
   -- Message search (spec 001). The text of the sent messages of chats and channels, in a table of
   -- its own, with an index that finds a part of a word without case (the trigram index). Triggers
   -- keep it in step with every write to the two message tables, also a write by sync, by an
