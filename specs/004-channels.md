@@ -7,7 +7,8 @@ The user gives a job to a group of agents in one place and watches them divide a
 ## Concepts
 
 - **Channel**: name (1 to 60 characters), topic (up to 200), members (agents), one optional lead
-  agent, and a section in the place list.
+  agent, and an optional section: a user section of the Channels list (see 001, "User
+  sections"). With no section, the channel shows in the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
   parts and give each part to a member.
 - **Part**: a child task (see 005) given to one member, with a short label.
@@ -22,7 +23,8 @@ The user gives a job to a group of agents in one place and watches them divide a
 ## Flows
 
 1. Create: the user picks "New channel", types a name and topic, adds members, and optionally picks
-   a lead.
+   a lead and a section. The "Section" choice lists the channel sections and "No section". It
+   starts at "No section". Channel settings show the same choice.
 2. Post a job: the user writes in the channel. The app chooses who gets the job, in this order:
    1. `@all`: every available member gets its own task for the message. Nobody else reads it.
    2. One or more `@Name` mentions: each named member answers. The lead does not read the job.
@@ -40,7 +42,9 @@ The user gives a job to a group of agents in one place and watches them divide a
    cannot be removed until its part ends or the user stops it.
 7. Archive: the user archives a channel from its menu. It leaves the place list. Its messages stay.
    Settings list it as archived, and the user can restore it or delete it there (see 013). The
-   interface text says "archived", not "deleted", for a channel that is not gone.
+   interface text says "archived", not "deleted", for a channel that is not gone. A channel keeps
+   its section while archived. A restore puts it back in that section. If the section is gone, it
+   returns with no section.
 8. Retry or end: a failed part shows a card with "Retry" and "End the request". Retry makes a new
    part (see 005). "End the request" asks the user to confirm. It then cancels every part of the
    same job that is not final, and the wait of the lead for them. Parts that are done keep their
