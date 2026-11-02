@@ -17,6 +17,8 @@ import {
   type PermissionLevel,
   QUEUE_MAX,
   type QueuedMessage,
+  type StepEffort,
+  stepTurnEffort,
   type TaskSource,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
@@ -70,6 +72,11 @@ export interface TaskOrigin {
   readonly sourceId: string
   /** Called when the task of the message starts, with its id. */
   readonly onStart?: (taskId: string) => void
+  /**
+   * The effort that this one turn asks for (a step of a workflow). It counts only when the
+   * model offers it. The agent keeps its own effort for every other turn.
+   */
+  readonly effort?: StepEffort
 }
 
 export interface ChatService {
@@ -296,6 +303,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           .filter((r) => r.author === "user")
           .at(-1)
         const asked = lastUser ? toMessage(lastUser) : undefined
+        const turnEffort = lastUser ? origins.get(lastUser.id)?.effort : undefined
         const prompt =
           (asked
             ? messageText(asked) ||
@@ -421,11 +429,21 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             knowledgeChanges: { count: 0 },
           }
+          // A step of a workflow can ask for its own effort for this one turn. It is read for each
+          // turn, so a retry decides again from the step and the model, not from the first try.
+          const offered = turnEffort
+            ? yield* providers.models(agent.model_account_id).pipe(
+                Effect.map(
+                  (models) => models.find((m) => m.id === agent.model_name)?.efforts ?? [],
+                ),
+                Effect.orElseSucceed((): readonly string[] => []),
+              )
+            : []
           const events = yield* providers.events(
             agent.model_account_id,
             {
               model: agent.model_name,
-              effort: agent.model_effort,
+              effort: stepTurnEffort(turnEffort, agent.model_effort, offered),
               system,
               turns: buildTurns(agentId, reply.id),
               tools: tools.defs({

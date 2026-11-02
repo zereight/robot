@@ -10,6 +10,7 @@ import {
   type MuteChoice,
   muteUntil,
   type NotifyKind,
+  notifyBody,
   type PlaceTarget,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
@@ -25,7 +26,9 @@ export interface Notice {
   readonly channelId?: string | null
   readonly title: string
   readonly body: string
-  readonly target: PlaceTarget
+  /** The place to open on a click. A notice with a page opens that page instead. */
+  readonly target?: PlaceTarget
+  readonly page?: "workflows"
 }
 
 export interface WaitingItem extends IslandAttention {
@@ -94,12 +97,16 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
       activity.onChange(refresh)
 
       const notify = (n: Notice) => {
-        if (!current().notifyKinds[n.kind]) return
+        // A kind that was added after the setting was saved has no value and counts as on.
+        if (current().notifyKinds[n.kind] === false) return
         if (platform.isFocused()) return
         if (isMuted(mutes(), n.serverId, n.channelId ?? null, Date.now())) return
-        platform.notify({ title: n.title, body: cut(n.body) }, () => {
+        // The body of a notice from a workflow is the first characters of the input as they are.
+        const body = n.kind === "workflow_notice" ? notifyBody(n.body) : cut(n.body)
+        platform.notify({ title: n.title, body }, () => {
           platform.showWindow()
-          bus.emit("app.openPlace", n.target)
+          if (n.page) bus.emit("app.openPage", { page: n.page })
+          else if (n.target) bus.emit("app.openPlace", n.target)
         })
       }
 

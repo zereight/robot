@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto"
+import { mkdirSync } from "node:fs"
+import { join } from "node:path"
 import {
+  conditionMode,
   dueRuns,
   type Edge,
   fillTemplate,
   graphProblem,
+  type ModelInfo,
+  type Note,
+  nearestAgentStep,
   type RunState,
   type RunStep,
   type Schedule,
@@ -16,17 +22,31 @@ import {
   type WorkflowRun,
   type WorkflowRunDetail,
 } from "@robot/shared"
-import { Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer } from "effect"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Notifier } from "./Notifier.ts"
+import { Platform } from "./Platform.ts"
+import { Providers, toAppError } from "./Providers.ts"
 import { Tasks } from "./Tasks.ts"
+import {
+  ASK_SYSTEM,
+  askPrompt,
+  canAnswerPlainPrompt,
+  readVerdict,
+  withTries,
+} from "./workflowAsk.ts"
 
 export interface WorkflowsService {
   list(serverId: string): Effect.Effect<readonly Workflow[]>
-  create(input: WorkflowInput): Effect.Effect<Workflow, AppError>
+  /** `enabled` is on unless it says otherwise. A workflow from a file is made off. */
+  create(
+    input: WorkflowInput,
+    options?: { readonly enabled?: boolean },
+  ): Effect.Effect<Workflow, AppError>
   update(id: string, patch: WorkflowPatch): Effect.Effect<Workflow, AppError>
   remove(id: string): Effect.Effect<void, AppError>
   /** Starts a run. The text is what a `{{trigger}}` in a prompt becomes. */
@@ -47,6 +67,7 @@ interface WorkflowRow {
   trigger: string
   steps: string
   edges: string
+  notes: string
   enabled: number
   last_checked_at: number
   created_at: number
@@ -107,6 +128,9 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
       const tasks = yield* Tasks
       const chat = yield* Chat
       const channels = yield* Channels
+      const notifier = yield* Notifier
+      const providers = yield* Providers
+      const platform = yield* Platform
       const fibers = yield* FiberMap.make<string>()
       const approvals = new Map<string, Deferred.Deferred<boolean>>()
 
@@ -129,6 +153,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         trigger: JSON.parse(r.trigger) as Trigger,
         steps: JSON.parse(r.steps) as Step[],
         edges: JSON.parse(r.edges) as Edge[],
+        notes: JSON.parse(r.notes ?? "[]") as Note[],
         enabled: r.enabled === 1,
         running: isRunning(r.id),
         createdAt: r.created_at,
@@ -155,13 +180,17 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           if (problem && (problem !== "no_steps" || needSteps))
             return Effect.fail(new AppError({ code: `graph_${problem}` }))
           for (const step of steps) {
+            // An empty id is a step that still needs its agent or its place: it saves, and a run
+            // fails at the step.
             if (
               step.kind === "agent" &&
+              step.agentId !== "" &&
               !db.get("SELECT 1 AS x FROM agent WHERE id = ? AND archived_at IS NULL", step.agentId)
             )
               return Effect.fail(new AppError({ code: "agent_not_found", detail: step.name }))
             if (
               step.kind === "post" &&
+              step.channelId !== "" &&
               !db.get("SELECT 1 AS x FROM channel WHERE id = ?", step.channelId)
             )
               return Effect.fail(new AppError({ code: "channel_not_found", detail: step.name }))
@@ -203,6 +232,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               {
                 source: "workflow",
                 sourceId: run.id,
+                ...(step.effort ? { effort: step.effort } : {}),
                 onStart: (taskId) => {
                   setStep(run.id, step.id, { task_id: taskId })
                   Deferred.doneUnsafe(started, Effect.succeed(taskId))
@@ -225,11 +255,116 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
           }
         })
 
-      const execStep = (run: RunRow, step: Step, input: string): Effect.Effect<StepOutcome> =>
+      const failed = (error: string): StepOutcome => ({
+        state: "failed",
+        result: "",
+        error,
+        branch: "",
+      })
+
+      /** Where the scratch files of a model call with no tools go. */
+      const scratch = () => {
+        const dir = join(platform.dataDir, "scratch")
+        mkdirSync(dir, { recursive: true })
+        return dir
+      }
+
+      /**
+       * The model that answers a condition. A step that names a model gets it as it is, so a wrong
+       * choice fails where the user made it. Otherwise the preferred provider is the one of the
+       * agent in the nearest agent step before the condition. Then the default is the first account
+       * that is connected, in the order they were added. Both skip an account that cannot answer a
+       * prompt with no tools and no chat (Muse Code).
+       */
+      const pickModel = (wf: Workflow, step: Extract<Step, { kind: "condition" }>) =>
+        Effect.gen(function* () {
+          if (step.provider) return step.provider
+          const usable = new Map(
+            (yield* providers.list)
+              .filter((a) => a.connected && canAnswerPlainPrompt(a.kind))
+              .map((a) => [a.id, a]),
+          )
+          const near = nearestAgentStep(wf.steps, wf.edges, step.id)
+          const agent = near?.agentId
+            ? db.get<{ model_account_id: string | null; model_name: string | null }>(
+                "SELECT model_account_id, model_name FROM agent WHERE id = ? AND archived_at IS NULL",
+                near.agentId,
+              )
+            : undefined
+          if (agent?.model_account_id && agent.model_name && usable.has(agent.model_account_id))
+            return { accountId: agent.model_account_id, model: agent.model_name }
+          for (const account of usable.values()) {
+            const models = yield* providers
+              .models(account.id)
+              .pipe(Effect.orElseSucceed((): readonly ModelInfo[] => []))
+            const first = models[0]
+            if (first) return { accountId: account.id, model: first.id }
+          }
+          return yield* new AppError({ code: "provider_not_connected" })
+        })
+
+      /** One call of a model with no tools and no chat. It gives the text of the answer. */
+      const askOnce = (target: { accountId: string; model: string }, content: string) =>
+        Effect.gen(function* () {
+          const controller = new AbortController()
+          const events = yield* providers.events(
+            target.accountId,
+            {
+              model: target.model,
+              effort: null,
+              system: ASK_SYSTEM,
+              turns: [{ role: "user", content }],
+              signal: controller.signal,
+              workspace: scratch(),
+              permission: "ask_all",
+              useTools: false,
+            },
+            {
+              execute: async () => ({ output: "", failed: true }),
+              approve: async () => false,
+            },
+          )
+          return yield* Effect.tryPromise({
+            try: async () => {
+              let text = ""
+              for await (const event of events) if (event.type === "text") text += event.text
+              return text
+            },
+            catch: toAppError,
+          }).pipe(Effect.onInterrupt(() => Effect.sync(() => controller.abort())))
+        })
+
+      /** A condition in mode "ask": the model answers yes or no about the input. */
+      const execAsk = (
+        wf: Workflow,
+        step: Extract<Step, { kind: "condition" }>,
+        input: string,
+      ): Effect.Effect<StepOutcome> =>
+        Effect.gen(function* () {
+          if (!step.contains.trim()) return failed("no_question")
+          const target = yield* pickModel(wf, step).pipe(Effect.exit)
+          if (target._tag === "Failure") {
+            const error = Cause.squash(target.cause)
+            return failed(error instanceof AppError ? error.code : "provider_not_connected")
+          }
+          const tried = yield* withTries(askOnce(target.value, askPrompt(step.contains, input)))
+          if (!tried.ok) return failed(tried.error.code)
+          const verdict = readVerdict(tried.value)
+          if ("error" in verdict) return failed(verdict.error)
+          return { state: "done", result: input, error: "", branch: verdict.branch }
+        })
+
+      const execStep = (
+        run: RunRow,
+        wf: Workflow,
+        step: Step,
+        input: string,
+      ): Effect.Effect<StepOutcome> =>
         Effect.gen(function* () {
           const trigger = run.trigger_text
           switch (step.kind) {
             case "agent": {
+              if (step.agentId === "") return failed("no_agent")
               let prompt = fillTemplate(step.prompt, input, trigger)
               if (input && !step.prompt.includes("{{input}}")) prompt += `\n\nInput:\n${input}`
               else if (!input && trigger && !step.prompt.includes("{{trigger}}"))
@@ -245,6 +380,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                 : { state: "failed" as const, result: "", error: r.error, branch: "" }
             }
             case "condition": {
+              if (conditionMode(step) === "ask") return yield* execAsk(wf, step, input)
               const yes = input.toLowerCase().includes(step.contains.toLowerCase())
               return {
                 state: "done" as const,
@@ -266,7 +402,18 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
                 ? { state: "done" as const, result: input, error: "", branch: "" }
                 : { state: "failed" as const, result: "", error: "rejected", branch: "" }
             }
+            case "notify": {
+              notifier.notify({
+                kind: "workflow_notice",
+                serverId: wf.serverId,
+                title: step.title.trim() || step.name,
+                body: input,
+                page: "workflows",
+              })
+              return { state: "done" as const, result: input, error: "", branch: "" }
+            }
             case "post": {
+              if (step.channelId === "") return failed("no_place")
               const text = fillTemplate(step.text, input, trigger)
               const posted = yield* channels.post(step.channelId, text).pipe(Effect.exit)
               return posted._tag === "Success"
@@ -331,7 +478,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               ({ step, input }) =>
                 Effect.gen(function* () {
                   setStep(runId, step.id, { state: "running", input })
-                  const out = yield* execStep(run, step, input)
+                  const out = yield* execStep(run, wf, step, input)
                   setStep(runId, step.id, {
                     state: out.state,
                     result: out.result,
@@ -466,20 +613,22 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               )
               .map(toWorkflow),
           ),
-        create: (input) =>
+        create: (input, options) =>
           Effect.gen(function* () {
             yield* checkGraph(input.steps as Step[], input.edges as Edge[], { needSteps: false })
             const id = randomUUID()
             const now = Date.now()
             db.run(
-              `INSERT INTO workflow (id, server_id, name, trigger, steps, edges, enabled, last_checked_at, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+              `INSERT INTO workflow (id, server_id, name, trigger, steps, edges, notes, enabled, last_checked_at, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.serverId,
               input.name.trim(),
               JSON.stringify(input.trigger),
               JSON.stringify(input.steps),
               JSON.stringify(input.edges),
+              JSON.stringify(input.notes ?? []),
+              options?.enabled === false ? 0 : 1,
               now,
               now,
               now,
@@ -494,6 +643,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             const touchesGraph =
               patch.steps !== undefined ||
               patch.edges !== undefined ||
+              patch.notes !== undefined ||
               patch.trigger !== undefined ||
               patch.name !== undefined
             // A workflow cannot be edited while it runs.
@@ -503,11 +653,12 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             const edges = (patch.edges ?? JSON.parse(current.edges)) as Edge[]
             yield* checkGraph(steps, edges, { needSteps: false })
             db.run(
-              `UPDATE workflow SET name = ?, trigger = ?, steps = ?, edges = ?, enabled = ?, last_checked_at = ?, updated_at = ? WHERE id = ?`,
+              `UPDATE workflow SET name = ?, trigger = ?, steps = ?, edges = ?, notes = ?, enabled = ?, last_checked_at = ?, updated_at = ? WHERE id = ?`,
               patch.name?.trim() ?? current.name,
               patch.trigger ? JSON.stringify(patch.trigger) : current.trigger,
               JSON.stringify(steps),
               JSON.stringify(edges),
+              patch.notes ? JSON.stringify(patch.notes) : current.notes,
               patch.enabled === undefined ? current.enabled : patch.enabled ? 1 : 0,
               Date.now(),
               Date.now(),
