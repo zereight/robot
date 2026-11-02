@@ -1,6 +1,6 @@
 import { type ServerView, serverUnread } from "@robot/phone"
 import { Redirect, router, Stack } from "expo-router"
-import { Platform, StyleSheet, Text, View } from "react-native"
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { useApp, useHubState } from "../src/state/context.tsx"
 import { radius, space, text } from "../src/theme/palette.ts"
 import { Body, Button, HeaderButton, Notice, Screen, Title } from "../src/ui/kit.tsx"
@@ -59,11 +59,18 @@ const ServerRow = ({ view }: { readonly view: ServerView }) => {
           : palette.textMuted
   const line = stateText(t, view)
   return (
-    <View
+    <Pressable
       testID={`server.${view.link.name}`}
-      style={[styles.row, { backgroundColor: palette.surface, borderColor: palette.border }]}
-      accessible
+      accessibilityRole="button"
       accessibilityLabel={t("servers.row", { name: view.link.name, state: line })}
+      onPress={() => router.push({ pathname: "/server/[link]", params: { link: view.link.id } })}
+      style={({ pressed }) => [
+        styles.row,
+        {
+          backgroundColor: pressed ? palette.pressed : palette.surface,
+          borderColor: palette.border,
+        },
+      ]}
     >
       <View style={styles.rowTop}>
         <View style={[styles.dot, { backgroundColor: dot }]} />
@@ -92,7 +99,7 @@ const ServerRow = ({ view }: { readonly view: ServerView }) => {
           onPress={() => router.push("/pair")}
         />
       ) : null}
-    </View>
+    </Pressable>
   )
 }
 

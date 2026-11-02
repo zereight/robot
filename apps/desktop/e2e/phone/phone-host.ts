@@ -57,17 +57,19 @@ test("a computer for the phone app", async () => {
     await expect(page.getByTestId("join-dialog")).toBeVisible({ timeout: 10 * 60_000 })
     await shot(page, "desktop-02-allow-phone")
     await page.getByTestId("join-allow").click()
+    await expect(page.getByTestId("pair-ended")).toBeVisible()
+    await page.getByTestId("pair-close").click()
+    // The list of devices that can open this computer shows the phone.
+    await expect(page.locator('[data-testid=client-row][data-name="iPhone of Kim"]')).toBeVisible()
+    await shot(page, "desktop-03-devices")
 
     await waitForFile(doneFile, 25 * 60_000)
     const steps = JSON.parse(readFileSync(doneFile, "utf8") || "{}") as { chat?: boolean }
     if (steps.chat) {
-      await page
-        .getByTestId("settings-close")
-        .click()
-        .catch(() => undefined)
-      await page.keyboard.press("Escape").catch(() => undefined)
-      await page.getByText("Ada").first().click()
-      await shot(page, "desktop-03-chat-from-phone")
+      await page.getByTestId("settings-close").click()
+      await expect(page.getByTestId("settings")).toBeHidden()
+      await page.locator('[data-testid^="place-agent-"]').first().click()
+      await shot(page, "desktop-04-chat-from-phone")
     }
   } finally {
     await app.close()

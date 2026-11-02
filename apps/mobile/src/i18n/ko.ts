@@ -144,6 +144,11 @@ export const ko: Record<MessageKey, string> = {
   "chat.menu": "메시지 메뉴",
   "chat.edited": "수정됨",
   "chat.note.watch": "{routine}: 바뀐 게 없어요.",
+  "chat.note.starter.routine.limit":
+    "만들지 못한 루틴: “{name}”. 서버에 루틴을 더 둘 자리가 없어요.",
+  "chat.note.starter.routine.error": "만들지 못한 루틴: “{name}”. 오류로 멈췄어요.",
+  "chat.note.starter.skill.limit": "만들지 못한 스킬: “{name}”. 서버에 스킬을 더 둘 자리가 없어요.",
+  "chat.note.starter.skill.error": "만들지 못한 스킬: “{name}”. 오류로 멈췄어요.",
 
   "tool.running": "실행 중",
   "tool.waiting": "확인을 기다려요",

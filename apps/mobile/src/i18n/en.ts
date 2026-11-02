@@ -144,6 +144,12 @@ export const en = {
   "chat.menu": "Message actions",
   "chat.edited": "edited",
   "chat.note.watch": "{routine}: no change.",
+  "chat.note.starter.routine.limit":
+    "Not made: the routine “{name}”. The server has no room for more routines.",
+  "chat.note.starter.routine.error": "Not made: the routine “{name}”. An error stopped it.",
+  "chat.note.starter.skill.limit":
+    "Not made: the skill “{name}”. The server has no room for more skills.",
+  "chat.note.starter.skill.error": "Not made: the skill “{name}”. An error stopped it.",
 
   "tool.running": "Running",
   "tool.waiting": "Waits for you",
