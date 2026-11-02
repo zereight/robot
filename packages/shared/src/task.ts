@@ -30,6 +30,13 @@ export interface Task {
   readonly createdAt: number
   readonly startedAt: number | null
   readonly finishedAt: number | null
+  /**
+   * When the message that started the task was sent. Null when no message started it (a routine,
+   * a workflow, a part of a plan, a retry): its times count from `createdAt` (spec 005).
+   */
+  readonly askedAt: number | null
+  /** When the first part of the reply that the user can see was stored. Null until then. */
+  readonly firstReplyAt: number | null
   /** The name of the other computer where the task ran, when it came by sync (019). Null here. */
   readonly originName: string | null
   /** The name of the other computer whose task of this agent runs now, while this one waits. */
@@ -86,6 +93,57 @@ export const filterTasks = (tasks: readonly Task[], filter: TaskFilter) => {
 /** How long a task ran, in ms. Null while it has not started. */
 export const taskDuration = (task: Pick<Task, "startedAt" | "finishedAt">, now = Date.now()) =>
   task.startedAt === null ? null : Math.max(0, (task.finishedAt ?? now) - task.startedAt)
+
+/** The three times of a task in ms (spec 005). Null when a time is not known. */
+export interface TaskTimes {
+  readonly wait: number | null
+  readonly firstReply: number | null
+  readonly total: number | null
+}
+
+/** An end that the app did not see: the real end time is not known. */
+const UNSEEN_ENDS = new Set(["app_stopped"])
+
+/** The three times of a task. A time is never made up: what was not seen stays null. */
+export const taskTimes = (
+  task: Pick<
+    Task,
+    "state" | "error" | "createdAt" | "startedAt" | "finishedAt" | "askedAt" | "firstReplyAt"
+  >,
+): TaskTimes => {
+  const from = task.askedAt ?? task.createdAt
+  const span = (end: number | null, start: number) =>
+    end === null ? null : Math.max(0, end - start)
+  const ended = !isActive(task.state) && !(task.error && UNSEEN_ENDS.has(task.error.code))
+  return {
+    wait: span(task.startedAt, task.createdAt),
+    firstReply: span(task.firstReplyAt, from),
+    total: ended ? span(task.finishedAt, from) : null,
+  }
+}
+
+/**
+ * True when the parts hold something the user sees as a reply: text, or a card that asks the user.
+ * Thinking, the working line and tool cards do not count (spec 005).
+ */
+export const hasVisibleReply = (
+  parts: readonly { readonly kind: string; readonly text?: unknown; readonly ask?: unknown }[],
+) =>
+  parts.some(
+    (p) =>
+      (p.kind === "text" && typeof p.text === "string" && p.text.trim() !== "") ||
+      (p.kind === "tool" && p.ask !== undefined),
+  )
+
+/** The median of a list of numbers. Null for an empty list. */
+export const median = (values: readonly number[]) => {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1
+    ? (sorted[mid] as number)
+    : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2
+}
 
 /** Orders tasks as a tree: each task comes right after its parent. */
 export const taskTree = (tasks: readonly Task[], rootId: string) => {

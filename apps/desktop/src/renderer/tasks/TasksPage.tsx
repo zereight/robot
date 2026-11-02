@@ -8,12 +8,14 @@ import {
   type Task,
   type TaskFilter,
   taskDuration,
+  taskTimes,
   taskTree,
 } from "@robot/shared"
 import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { formatElapsed, formatTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { formatSeconds } from "../lib/seconds.ts"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
@@ -35,6 +37,34 @@ const reasonKey = (task: Task): MessageKey =>
 const duration = (task: Task) => {
   const ms = taskDuration(task)
   return ms === null ? "–" : formatElapsed(ms)
+}
+
+/** The three times of a task (spec 005). A time that is not known shows as a dash, never as 0. */
+const TaskTimesList = (props: { task: Task }) => {
+  const { t, locale } = useApp()
+  const times = () => taskTimes(props.task)
+  const rows = () =>
+    [
+      ["wait", "tasks.times.wait", times().wait],
+      ["first-reply", "tasks.times.firstReply", times().firstReply],
+      ["total", "tasks.times.total", times().total],
+    ] as const
+  return (
+    <dl class={styles.times} data-testid="task-times">
+      <For each={rows()}>
+        {([id, label, ms]) => (
+          <div>
+            <dt>{t(label)}</dt>
+            <dd data-testid={`task-time-${id}`} data-ms={ms ?? ""}>
+              {ms === null
+                ? t("time.unknown")
+                : t("time.seconds", { value: formatSeconds(ms, locale()) })}
+            </dd>
+          </div>
+        )}
+      </For>
+    </dl>
+  )
 }
 
 const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
@@ -86,6 +116,8 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
             <Show when={d().task.retryOf}>
               <p class={styles.meta}>{t("tasks.retryOf")}</p>
             </Show>
+            <h3>{t("tasks.times")}</h3>
+            <TaskTimesList task={d().task} />
             <h3>{t("tasks.prompt")}</h3>
             <pre class={styles.text}>{d().task.prompt}</pre>
             <Show when={d().joined.length > 0}>
