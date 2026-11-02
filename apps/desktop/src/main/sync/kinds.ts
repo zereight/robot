@@ -17,6 +17,7 @@ import {
   ROUTINE_NAME_MAX,
   ROUTINE_PROMPT_MAX,
   RUN_STATES,
+  RUNTIME_KINDS,
   ScheduleSchema,
   STEP_KINDS,
   STEP_STATES,
@@ -332,7 +333,10 @@ const arrivingRunsOn = (ctx: Ctx, wire: unknown) =>
 
 // ------------------------------------------------------------------------------ account
 
-const RUNTIME_PROVIDERS = ["claude_code", "codex", "muse", "pi"]
+// The kinds of account are those of the app: the three API kinds and every vendor program. The
+// separate sign-in of an account (spec 006) belongs to this computer, so it is not a field here:
+// an account that arrives has none, and one that leaves does not carry it.
+const RUNTIME_PROVIDERS: readonly string[] = RUNTIME_KINDS
 const providerKinds = [
   "openai",
   "anthropic",

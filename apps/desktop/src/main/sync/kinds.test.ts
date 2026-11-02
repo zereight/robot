@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
-import { WORKFLOW_NOTES_MAX } from "@robot/shared"
+import { RUNTIME_KINDS, WORKFLOW_NOTES_MAX } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "../services/Agents.ts"
 import { Channels } from "../services/Channels.ts"
@@ -608,5 +608,80 @@ describe("the cards that ask and the notes of knowledge tools in a message", () 
     bad({ knowledge: { kind: "read", title: 5 } })
     bad({ knowledge: { kind: "other" } })
     bad({ knowledge: "read" })
+  })
+})
+
+describe("the accounts that sync carries (spec 006, 019)", () => {
+  const field = (v: unknown) => ({ v, s: stamp })
+  const accountOp = (vendor: unknown, extra: Record<string, unknown> = {}) => ({
+    k: "account",
+    i: "acc-1",
+    o: "dev-b",
+    f: {
+      name: field("Work"),
+      vendor: field(vendor),
+      baseUrl: field(""),
+      createdAt: field(NOW),
+      ...Object.fromEntries(Object.entries(extra).map(([n, v]) => [n, field(v)])),
+    },
+  })
+  const KINDS_OF_ACCOUNT = ["openai", "anthropic", "custom", ...RUNTIME_KINDS]
+
+  test("one account of each kind passes the strict check; an unknown kind does not", () => {
+    for (const vendor of KINDS_OF_ACCOUNT) {
+      expect(parseOp(accountOp(vendor), NOW)).toBeDefined()
+    }
+    expect(parseOp(accountOp("gemini"), NOW)).toBeUndefined()
+    expect(parseOp(accountOp(""), NOW)).toBeUndefined()
+    expect(parseOp(accountOp(5), NOW)).toBeUndefined()
+  })
+
+  test("a separate sign-in, a key or a token is not a field of an account", () => {
+    for (const name of ["signIn", "sign_in", "apiKey", "key", "token", "secret", "off"]) {
+      expect(parseOp(accountOp("claude_code", { [name]: "abcdef123456" }), NOW)).toBeUndefined()
+    }
+  })
+
+  test("an account with a separate sign-in leaves without it, and one that arrives has none", () => {
+    const dir = join(testRuntime().dataDir, "accounts")
+    const from = openDatabase(":memory:")
+    const ctxFrom = target(from, dir)
+    from.run(
+      "INSERT INTO provider_account (id, kind, name, base_url, sign_in, created_at) VALUES ('acc-1', 'claude_code', 'Work', '', 'abcdefgh-1234', ?)",
+      NOW,
+    )
+    const read = KINDS.account.read(ctxFrom, "acc-1")
+    expect(Object.keys(read?.fields ?? {}).sort()).toEqual([
+      "baseUrl",
+      "createdAt",
+      "name",
+      "vendor",
+    ])
+    expect(JSON.stringify(read)).not.toContain("abcdefgh-1234")
+
+    const to = openDatabase(":memory:")
+    const ctxTo = target(to, dir)
+    for (const vendor of KINDS_OF_ACCOUNT) {
+      expect(
+        KINDS.account.create(ctxTo, `acc-${vendor}`, {
+          name: "Work",
+          vendor,
+          baseUrl: "",
+          createdAt: NOW,
+        }),
+      ).toBe(true)
+    }
+    const rows = to.all<{ kind: string; sign_in: string | null; off: number }>(
+      "SELECT kind, sign_in, off FROM provider_account ORDER BY kind",
+    )
+    expect(rows.length).toBe(KINDS_OF_ACCOUNT.length)
+    // Nobody is signed in on this computer: no separate sign-in, and a vendor program is off.
+    expect(rows.every((r) => r.sign_in === null)).toBe(true)
+    expect(
+      rows
+        .filter((r) => r.off === 1)
+        .map((r) => r.kind)
+        .sort(),
+    ).toEqual([...RUNTIME_KINDS].sort())
   })
 })

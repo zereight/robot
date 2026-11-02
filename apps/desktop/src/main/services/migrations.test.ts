@@ -172,10 +172,16 @@ describe("the steps of the device link and of sync", () => {
     expect(migrations[KNOWLEDGE]).toContain("knowledge_enabled")
     expect(migrations[NOTES]).toContain("ADD COLUMN notes")
     expect(migrations[SECTIONS]).toContain("CREATE TABLE place_section")
-    expect(migrations[SIGN_IN]?.trim()).toBe("ALTER TABLE provider_account ADD COLUMN sign_in TEXT;")
+    expect(migrations[SIGN_IN]?.trim()).toBe(
+      "ALTER TABLE provider_account ADD COLUMN sign_in TEXT;",
+    )
     expect(migrations[MAIN_STEPS]).toContain("CREATE TABLE device_link")
     expect(migrations[MAIN_STEPS + 1]).toContain("CREATE TABLE sync_pair")
     expect(migrations[MAIN_STEPS + 2]).toContain("ALTER TABLE device_link ADD COLUMN can_change")
+    // No step of this branch changes the table that the step of main changed.
+    for (const sql of migrations.slice(MAIN_STEPS)) {
+      expect(sql).not.toMatch(/ALTER TABLE provider_account/i)
+    }
     // The number of steps is the data version that two computers compare before they sync.
     expect(migrations.length).toBe(MAIN_STEPS + 3)
   })
