@@ -13,7 +13,10 @@ The user follows and directs agents from an iPhone or Android phone while away f
 
 1. **Servers**: list of paired servers with online state. Add server opens the pairing camera.
 2. **Places**: the server's sections, agents and channels, with unread counts and working dots,
-   as on desktop.
+   as on desktop. This includes the user sections, with the same order and the same badge on a
+   collapsed header. The user can open and close a section on the phone. The phone remembers
+   this for itself. In this version the phone cannot make, rename, order or delete a section, and
+   it cannot move a place to a section. The user does this on the computer.
 3. **Conversation**: message rows as on desktop, Markdown, tool cards (tap for details), the
    message box with attach (photos, files), stop, and reply.
 4. **Approvals**: approval and question cards can be answered in the conversation or from a

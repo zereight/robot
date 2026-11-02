@@ -50,3 +50,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-02 | Spec 010 and 015: workflow file (export and import), notify step, canvas notes; slice S27 in `docs/spec-changes.md` | Spec author | 010, 015 |
 | 2026-11-02 | S21 (agent file): export and import of agents in one file with a format version number; the format is in `docs/agent-file-format.md` | Implementer | 002 |
 | 2026-11-02 | S27: workflow file (export and import of workflows in one file, the format is in `docs/workflow-file-format.md`), notify step with the kind "workflow notice", canvas notes, condition mode "Ask a model", effort of an agent step. Written from the specs only | Implementer | 010, 015 |
+| 2026-11-02 | Spec 001, 002, 004, 011 and 012: user sections inside Channels and Agents, move a place into a section, badge on a collapsed header, phone shows the sections; slice S28 in `docs/spec-changes.md` | Spec author | 001, 002, 004, 011, 012 |
