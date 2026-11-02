@@ -1,4 +1,4 @@
-import { type Agent, type ChatMessage, sameDay, startsGroup } from "@robot/shared"
+import { type Agent, type ChatMessage, type PlaceRef, sameDay, startsGroup } from "@robot/shared"
 import {
   createEffect,
   createMemo,
@@ -13,7 +13,8 @@ import {
 import { AgentChecklist } from "../imports/ImportChecklist.tsx"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
-import { focusMessage, setFocusMessage } from "../state/focus.ts"
+import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
+import { useUi } from "../state/ui.tsx"
 import { Composer } from "./Composer.tsx"
 import styles from "./chat.module.css"
 import { formatDay, formatElapsed } from "./format.ts"
@@ -49,7 +50,9 @@ const WorkingLine = (props: { since: number }) => {
 export const ChatView = (props: ChatViewProps) => {
   const app = useApp()
   const { t } = app
+  const ui = useUi()
   const chat = createChat(props.agent.id)
+  const place: PlaceRef = { kind: "agent", id: props.agent.id }
   const [replyTo, setReplyTo] = createSignal<ChatMessage>()
   const [atBottom, setAtBottom] = createSignal(true)
   const [flashId, setFlashId] = createSignal<string>()
@@ -97,10 +100,12 @@ export const ChatView = (props: ChatViewProps) => {
   window.addEventListener("focus", markRead)
   onCleanup(() => window.removeEventListener("focus", markRead))
 
-  const jumpTo = (messageId: string) => {
+  /** Scrolls to a message and flashes it. False when the message is not in the list (yet). */
+  const jumpTo = (messageId: string, fromSearch = false): boolean => {
     const row = scroller?.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
-    if (!row || !scroller) return
-    setBackTo(scroller.scrollTop)
+    if (!row || !scroller) return false
+    // A hit of message search from another place goes back to that place, not to a scroll spot.
+    if (!fromSearch) setBackTo(scroller.scrollTop)
     row.scrollIntoView({
       block: "center",
       behavior: document.documentElement.dataset.reduceMotion === "true" ? "auto" : "smooth",
@@ -108,21 +113,30 @@ export const ChatView = (props: ChatViewProps) => {
     setFlashId(undefined)
     queueMicrotask(() => setFlashId(messageId))
     setTimeout(() => setFlashId((id) => (id === messageId ? undefined : id)), 1300)
+    return true
   }
-  // A notification asked for a message: scroll to it when it is in the list.
-  createEffect(() => {
-    const id = focusMessage()
-    if (!id) return
-    setTimeout(() => {
-      jumpTo(id)
-      setFocusMessage(undefined)
-    }, 120)
+  // A notification or a hit of message search asked for a message: scroll to it when it is in the list.
+  useFocusMessage(place, jumpTo)
+
+  /** The place that a hit of message search came from, while "Back" can return to it. */
+  const origin = () => originFor(place)
+  // The way back from a hit ends when the user leaves this place.
+  onCleanup(() => {
+    if (origin()) setSearchOrigin(undefined)
   })
 
   const goBack = () => {
     const top = backTo()
-    if (scroller && top !== undefined) scroller.scrollTop = top
-    setBackTo(undefined)
+    if (top !== undefined) {
+      if (scroller) scroller.scrollTop = top
+      setBackTo(undefined)
+      return
+    }
+    const from = origin()
+    if (from) {
+      setSearchOrigin(undefined)
+      ui.selectPlace(from.from, from.serverId)
+    }
   }
 
   return (
@@ -178,9 +192,9 @@ export const ChatView = (props: ChatViewProps) => {
           {props.end}
         </div>
       </div>
-      <Show when={!atBottom() || backTo() !== undefined}>
+      <Show when={!atBottom() || backTo() !== undefined || origin() !== undefined}>
         <div class={styles.floating} style={{ bottom: "auto", top: "12px" }}>
-          <Show when={backTo() !== undefined}>
+          <Show when={backTo() !== undefined || origin() !== undefined}>
             <button
               type="button"
               class={styles.floatButton}

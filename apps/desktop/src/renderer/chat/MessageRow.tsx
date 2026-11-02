@@ -91,7 +91,11 @@ const ToolCard = (props: {
     <details class={styles.tool} data-testid="tool-card" open={props.part.state === "waiting"}>
       <summary>
         <Wrench size={14} />
-        <span class={styles.toolLabel}>{props.part.label || props.part.name}</span>
+        <span class={styles.toolLabel}>
+          {props.part.name === "search_chats"
+            ? t("chat.tool.searchChats")
+            : props.part.label || props.part.name}
+        </span>
         <span class={styles.toolState} data-state={props.part.state}>
           {t(`chat.tool.${props.part.state}` as MessageKey)}
         </span>
