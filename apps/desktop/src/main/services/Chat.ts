@@ -9,12 +9,14 @@ import {
   askKind,
   askStep,
   askSummary,
+  BLOCKED_RULE,
   CHAIN_LIMIT_RULE,
   type ChatHistory,
   type ChatMessage,
   type ChatSend,
   type CutNotice,
   createReadGuard,
+  endOfTurn,
   type FilePart,
   hasVisibleReply,
   holdOutside,
@@ -46,8 +48,10 @@ import {
   type TaskProgress,
   type TaskSource,
   type ToolAsk,
+  type TurnEnd,
   type TurnStarter,
   taskDepth,
+  toldAboutBlocked,
   toolNameOf,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
@@ -889,6 +893,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             agent.instructions,
             `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
             CHAIN_LIMIT_RULE,
+            // A task of a routine, a workflow or another agent can say that it was blocked.
+            toldAboutBlocked(task) ? BLOCKED_RULE : "",
             withNotes ? "" : notes,
             known ?? "",
           ]
@@ -1038,7 +1044,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // A turn that shows no sign of life for the silent limit stops like after a Stop, and its
         // task fails with the reason (spec 005).
         const watched = Effect.raceFirst(stream, silence.silent)
-        yield* tasks.run(task.id, agentId, watched, resumed ? { resumed: true } : undefined).pipe(
+        // How the turn ended, for the task: a last line "Blocked: ..." ends it as Blocked (spec 005).
+        let ending: TurnEnd = { state: "done" }
+        const runOptions = {
+          ...(resumed ? { resumed: true } : {}),
+          finish: () => {
+            ending = endOfTurn(messageText({ parts }), { review: false })
+            return ending
+          },
+        }
+        yield* tasks.run(task.id, agentId, watched, runOptions).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
               silence.stop()
@@ -1071,8 +1086,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               }
               if (Exit.isSuccess(exit)) {
                 save("done")
-                // A reply to another agent is no news for the user.
-                if (origin?.source !== "agent")
+                // A reply to another agent is no news for the user. A blocked task has its own
+                // notice, as a failed task has.
+                if (origin?.source !== "agent" && ending.state !== "blocked")
                   notifier.notify({
                     kind: "reply",
                     agentId,

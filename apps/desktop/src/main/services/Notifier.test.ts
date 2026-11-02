@@ -390,6 +390,54 @@ describe("notices of a linked server", () => {
     expect(s.t.shell.notices).toHaveLength(1)
   })
 
+  test("a part in review shows from a linked server, with the same off switch and mutes, and opens the part", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    const review = plain({
+      kind: "part_review",
+      channelId: "channel-1",
+      title: "Ada · Launch",
+      body: "Write the intro",
+      target: { kind: "channel", id: "channel-1", messageId: "m9" },
+    })
+    await linked(s, review)
+    expect(s.t.shell.notices).toHaveLength(1)
+    expect(s.t.shell.notices[0]).toMatchObject({
+      title: "Ada · Launch · MacBook 2",
+      body: "Write the intro",
+    })
+    s.t.shell.notices[0]?.click()
+    expect(s.t.events.find((e) => e.event === "app.openPlace")?.payload).toEqual({
+      kind: "channel",
+      id: "channel-1",
+      messageId: "m9",
+      serverId: "server-b",
+    })
+    // The channel is muted: nothing more shows.
+    await s.run(Notifier.use((n) => n.setMute("server", "server-b", "1h")))
+    await linked(s, review)
+    expect(s.t.shell.notices).toHaveLength(1)
+    await s.run(Notifier.use((n) => n.setMute("server", "server-b", "off")))
+    // The kind is off: nothing shows.
+    await s.run(
+      SettingsStore.use((x) =>
+        x.update({
+          notifyKinds: {
+            reply: true,
+            mention: true,
+            approval: true,
+            question: true,
+            task_failed: true,
+            routine_failed: true,
+            part_review: false,
+          },
+        }),
+      ),
+    )
+    await linked(s, review)
+    expect(s.t.shell.notices).toHaveLength(1)
+  })
+
   test("a mute works per server: one computer muted, the other not", async () => {
     const s = await setup()
     s.t.shell.focused = false

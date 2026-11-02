@@ -1,13 +1,131 @@
-export const TASK_STATES = ["queued", "running", "waiting", "done", "failed", "cancelled"] as const
+export const TASK_STATES = [
+  "queued",
+  "running",
+  "waiting",
+  "review",
+  "done",
+  "failed",
+  "blocked",
+  "cancelled",
+] as const
 export type TaskState = (typeof TASK_STATES)[number]
 
 /** Where a task came from. "agent" is a message of another agent (spec 007). */
 export const TASK_SOURCES = ["chat", "channel", "routine", "workflow", "agent"] as const
 export type TaskSource = (typeof TASK_SOURCES)[number]
 
-/** States in which a task can still be stopped. */
+/** States in which a task can still be stopped. A task in review is not one of them (spec 005). */
 export const ACTIVE_STATES: readonly TaskState[] = ["queued", "running", "waiting"]
 export const isActive = (state: TaskState) => ACTIVE_STATES.includes(state)
+
+/** States that a task never leaves by itself. "In review" is not one of them (spec 005). */
+export const FINAL_STATES: readonly TaskState[] = ["done", "failed", "blocked", "cancelled"]
+export const isFinal = (state: TaskState) => FINAL_STATES.includes(state)
+
+/** A blocked task counts as a failed one for the lead, routines, workflows and notices (spec 005). */
+export const isFailure = (state: TaskState) => state === "failed" || state === "blocked"
+
+/**
+ * True while the work of a request has not stopped: a part is queued, running, waiting, or in
+ * review (spec 004). The summary of the lead waits while this holds, and so does the check.
+ */
+export const requestOpen = (states: readonly TaskState[]) =>
+  states.some((s) => isActive(s) || s === "review")
+
+// ---------------------------------------------------------------------------------------------
+// Blocked (spec 005).
+// ---------------------------------------------------------------------------------------------
+
+/** The word at the start of the last line of a reply that could not do the work. */
+export const BLOCKED_WORD = "Blocked:"
+
+/** The reason of a blocked task is cut at this many characters. */
+export const BLOCKED_REASON_MAX = 200
+
+/**
+ * The code that a blocked task keeps as its error, with the reason as the detail. A blocked task
+ * whose last line gave no reason has its own code, so that the text is never empty.
+ */
+export const BLOCKED_CODE = "blocked"
+export const BLOCKED_EMPTY_CODE = "blocked_empty"
+
+/**
+ * Told to the agent of a task that comes from a part of a plan, a message of another agent, a
+ * routine or a workflow (spec 005). A task of a direct chat gets no such text, because the user
+ * reads the reply there.
+ */
+export const BLOCKED_RULE =
+  'If you could not do the work, end your reply with a last line that starts with "Blocked:" and gives the reason in one sentence. Write that line in no other case.'
+
+/** True when a task of this source gets the rule of "Blocked" in its instructions. */
+export const toldAboutBlocked = (task: Pick<Task, "source" | "parentId">) =>
+  task.source === "agent" ||
+  task.source === "routine" ||
+  task.source === "workflow" ||
+  (task.source === "channel" && task.parentId !== null)
+
+/**
+ * Reads the last line of a reply that has text. When it starts with "Blocked:" in any letter
+ * case, the reason is the text after the colon, with the spaces at both ends removed, cut at 200
+ * characters. Gives null when the reply is not blocked, and "" when the line gave no reason.
+ */
+export const blockedReason = (text: string): string | null => {
+  const last = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .findLast((line) => line !== "")
+  if (last === undefined || last.slice(0, BLOCKED_WORD.length).toLowerCase() !== "blocked:")
+    return null
+  const reason = last.slice(BLOCKED_WORD.length).trim()
+  return [...reason].length > BLOCKED_REASON_MAX
+    ? [...reason].slice(0, BLOCKED_REASON_MAX).join("")
+    : reason
+}
+
+/** How a turn that ended with no error and was not stopped ends the task. */
+export type TurnEnd =
+  | { readonly state: "done" }
+  | { readonly state: "blocked"; readonly reason: string }
+  | { readonly state: "review" }
+
+/**
+ * The end of a turn that ended with no error (spec 005). A turn with an error is Failed and a turn
+ * that the user stopped is Cancelled, so neither comes here. A "Blocked:" line beats review: a part
+ * that could not do the work is not offered for review.
+ */
+export const endOfTurn = (replyText: string, options: { readonly review: boolean }): TurnEnd => {
+  const reason = blockedReason(replyText)
+  if (reason !== null) return { state: "blocked", reason }
+  return options.review ? { state: "review" } : { state: "done" }
+}
+
+/** The error that a blocked task keeps. */
+export const blockedError = (reason: string) =>
+  reason === "" ? { code: BLOCKED_EMPTY_CODE, detail: "" } : { code: BLOCKED_CODE, detail: reason }
+
+/** True when this error is the one that `blockedError` makes. */
+export const isBlockedError = (error: { readonly code: string } | null) =>
+  error !== null && (error.code === BLOCKED_CODE || error.code === BLOCKED_EMPTY_CODE)
+
+// ---------------------------------------------------------------------------------------------
+// Review (spec 004, 005).
+// ---------------------------------------------------------------------------------------------
+
+/** "Request changes" takes a text of 1 to 2000 characters. */
+export const REVIEW_CHANGES_MAX = 2000
+
+/** True when the text of "Request changes" is allowed. */
+export const validChanges = (text: string) => {
+  const length = [...text.trim()].length
+  return length >= 1 && length <= REVIEW_CHANGES_MAX
+}
+
+/** The label of the part that "Request changes" starts: the old label with a prefix, cut at 48. */
+export const CHANGES_PREFIX = "Changes: "
+export const changesLabel = (label: string, max = 48) => {
+  const full = [...`${CHANGES_PREFIX}${label}`]
+  return full.length > max ? `${full.slice(0, max - 1).join("")}…` : full.join("")
+}
 
 export const TASK_LABEL_MAX = 60
 
@@ -146,7 +264,7 @@ export const taskTimes = (
   const from = task.askedAt ?? task.createdAt
   const span = (end: number | null, start: number) =>
     end === null ? null : Math.max(0, end - start)
-  const ended = !isActive(task.state) && !(task.error && UNSEEN_ENDS.has(task.error.code))
+  const ended = isFinal(task.state) && !(task.error && UNSEEN_ENDS.has(task.error.code))
   return {
     wait: span(task.startedAt, task.createdAt),
     firstReply: span(task.firstReplyAt, from),

@@ -141,7 +141,8 @@
 .chip:hover:not(:disabled) {
   background: var(--c-hover);
 }
-.chip[data-state="failed"] {
+.chip[data-state="failed"],
+.chip[data-state="blocked"] {
   border-color: var(--c-danger);
 }
 .chipLabel {
@@ -238,7 +239,8 @@
 .step[data-state="done"] .stepIcon {
   color: var(--c-success);
 }
-.step[data-state="failed"] .stepIcon {
+.step[data-state="failed"] .stepIcon,
+.step[data-state="blocked"] .stepIcon {
   color: var(--c-danger);
 }
 .stepLabel {

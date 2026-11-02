@@ -11,6 +11,7 @@ import {
   taskTimes,
   taskTree,
 } from "@robot/shared"
+import { Eye, OctagonX } from "lucide-solid"
 import {
   createEffect,
   createMemo,
@@ -25,6 +26,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
+import { useEndRequest, useReview } from "../review/Review.tsx"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
@@ -43,6 +45,28 @@ const reasonKey = (task: Task): MessageKey =>
   task.error && `error.${task.error.code}` in catalogueKeys
     ? (`error.${task.error.code}` as MessageKey)
     : "error.unknown"
+
+/** The icon of a state that has one: a part in review has an eye, a blocked task a stop sign. */
+const StateIcon = (props: { state: Task["state"] }) => (
+  <>
+    <Show when={props.state === "review"}>
+      <Eye size={12} aria-hidden="true" />
+    </Show>
+    <Show when={props.state === "blocked"}>
+      <OctagonX size={12} aria-hidden="true" />
+    </Show>
+  </>
+)
+
+/** A request has parts that may still be open, so "End the request" is offered (spec 004, 005). */
+const OPEN_REQUEST = new Set<Task["state"]>([
+  "queued",
+  "running",
+  "waiting",
+  "review",
+  "failed",
+  "blocked",
+])
 
 const duration = (task: Task) => {
   const ms = taskDuration(task)
@@ -83,6 +107,8 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   const ui = useUi()
   const [error, setError] = createSignal<ErrorText>()
   const retry = useRetry()
+  const reviewing = useReview((e) => setError(e))
+  const ending = useEndRequest((e) => setError(e))
   const [detail, { refetch }] = createResource(() => call("tasks.get", { id: props.id }))
   onCleanup(window.robot.on("tasks.changed", () => void refetch()))
   const act = async (run: () => Promise<unknown>) => {
@@ -101,13 +127,20 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   return (
     <Dialog label={t("tasks.detail.title")} onClose={props.onClose} testId="task-detail">
       {retry.dialog()}
+      {reviewing.dialog()}
+      {ending.dialog()}
       <Show when={detail()}>
         {(d) => (
           <div class={styles.detail}>
             <h2 class={styles.title}>{d().task.label}</h2>
             <p class={styles.meta}>
               {d().task.agentName} · {t(`tasks.source.${d().task.source}` as MessageKey)} ·{" "}
-              <span data-testid="task-detail-state" data-state={d().task.state}>
+              <span
+                class={styles.state}
+                data-testid="task-detail-state"
+                data-state={d().task.state}
+              >
+                <StateIcon state={d().task.state} />
                 {t(`tasks.state.${d().task.state}` as MessageKey)}
               </span>
             </p>
@@ -168,6 +201,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   {(node) => (
                     <li style={{ "padding-left": `${node.depth * 16}px` }}>
                       <span data-state={node.task.state} class={styles.state}>
+                        <StateIcon state={node.task.state} />
                         {t(`tasks.state.${node.task.state}` as MessageKey)}
                       </span>{" "}
                       {node.task.agentName}: {node.task.label}
@@ -196,9 +230,40 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   {t("tasks.stop")}
                 </Button>
               </Show>
+              <Show when={d().task.state === "review"}>
+                <Show
+                  when={!ui.linked() && d().task.originName === null}
+                  fallback={
+                    // The user decides on the computer that owns the task (spec 005, 012, 019).
+                    <span class={styles.muted} data-testid="task-decide-on">
+                      {t("review.decideOn", {
+                        name: ui.linked()
+                          ? (ui.server()?.name ?? "")
+                          : d().task.originName || t("sync.anotherComputer"),
+                      })}
+                    </span>
+                  }
+                >
+                  <Button
+                    onClick={() => void reviewing.accept(d().task.id)}
+                    data-testid="task-accept"
+                  >
+                    {t("tasks.accept")}
+                  </Button>
+                  <Button
+                    onClick={() => reviewing.requestChanges(d().task.id)}
+                    data-testid="task-request-changes"
+                  >
+                    {t("tasks.requestChanges")}
+                  </Button>
+                </Show>
+              </Show>
               <Show
                 when={
-                  !ui.linked() && (d().task.state === "failed" || d().task.state === "cancelled")
+                  !ui.linked() &&
+                  (d().task.state === "failed" ||
+                    d().task.state === "blocked" ||
+                    d().task.state === "cancelled")
                 }
               >
                 <Button
@@ -215,6 +280,18 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   data-testid="task-retry"
                 >
                   {t("tasks.retry")}
+                </Button>
+              </Show>
+              <Show
+                when={
+                  !ui.linked() &&
+                  d().task.source === "channel" &&
+                  d().task.originName === null &&
+                  OPEN_REQUEST.has(d().task.state)
+                }
+              >
+                <Button onClick={() => ending.start(d().task.id)} data-testid="task-end-request">
+                  {t("tasks.endRequest")}
                 </Button>
               </Show>
               <Show when={d().task.sourceId && ["chat", "channel"].includes(d().task.source)}>
@@ -400,6 +477,7 @@ export const TasksPage = () => {
                     </Show>
                     <td>
                       <span class={styles.state} data-state={task.state} data-testid="task-state">
+                        <StateIcon state={task.state} />
                         {t(`tasks.state.${task.state}` as MessageKey)}
                       </span>
                       <Show when={task.waitsFor}>

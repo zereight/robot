@@ -287,6 +287,18 @@ export interface RpcMethods {
    * holds the retry note and nothing starts. The same request with `confirmed` starts the task.
    */
   "tasks.retry": { input: { id: string; confirmed?: boolean }; output: RetryResult }
+  /**
+   * Ends the review of a part: it is done (spec 005). Only on the computer that owns the task, and
+   * not a request that a linked device may call (spec 012).
+   */
+  "tasks.accept": { input: { id: string }; output: undefined }
+  /**
+   * Ends the review of a part as done and starts a new part for the same member with `text` as
+   * its prompt (spec 005). The text has 1 to 2000 characters.
+   */
+  "tasks.requestChanges": { input: { id: string; text: string }; output: undefined }
+  /** Cancels every task of the request of this task that is not final (spec 004, 005). */
+  "tasks.endRequest": { input: { id: string }; output: undefined }
   "channels.list": { input: { serverId: string }; output: readonly Channel[] }
   "channels.create": { input: ChannelCreate; output: Channel }
   "channels.update": { input: { id: string; patch: ChannelPatch }; output: Channel }

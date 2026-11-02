@@ -181,6 +181,9 @@ describe("a computer that opens a linked server", () => {
       "settings.update",
       "routines.list",
       "tasks.retry",
+      "tasks.accept",
+      "tasks.requestChanges",
+      "tasks.endRequest",
     ]) {
       const r = await invoke(b, local.id, method, { id: agent.id, serverId: local.id })
       expect(r.ok).toBe(false)

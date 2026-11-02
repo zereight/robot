@@ -947,3 +947,79 @@ describe("the accounts that sync carries (spec 006, 019)", () => {
     ).toEqual([...RUNTIME_KINDS].sort())
   })
 })
+
+describe("review of parts and blocked tasks cross with their task and channel (spec 004, 005, 019)", () => {
+  const op = (kind: string, id: string, fields: Record<string, unknown>) => ({
+    k: kind,
+    i: id,
+    o: "dev-a",
+    f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+  })
+
+  test("the setting Review parts is a field of the channel; a wrong value does not pass", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-review")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    // Off at first.
+    const before = KINDS.channel.read(ctxA, a.channel.id)?.fields
+    expect(before?.reviewParts).toBe(false)
+    a.db.run("UPDATE channel SET review_parts = 1 WHERE id = ?", a.channel.id)
+    const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
+    expect(fields.reviewParts).toBe(true)
+    expect(parseOp(op("channel", a.channel.id, fields), NOW)).toBeDefined()
+    expect(
+      parseOp(op("channel", a.channel.id, { ...fields, reviewParts: "yes" }), NOW),
+    ).toBeUndefined()
+
+    // The other computer makes the channel with the setting, and a change reaches it.
+    const b = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(b, a.channel.id, { ...fields, members: [] })).toBe(true)
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.reviewParts).toBe(true)
+    KINDS.channel.write(b, a.channel.id, { reviewParts: false })
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.reviewParts).toBe(false)
+  })
+
+  test("a channel from a computer that has no such setting counts as off", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-review-old")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const { reviewParts: _drop, ...older } = copy(
+      KINDS.channel.read(ctxA, a.channel.id)?.fields,
+    ) as Fields
+    expect(parseOp(op("channel", "older", older), NOW)).toBeDefined()
+    const b = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(b, "older", { ...older, members: [] })).toBe(true)
+    expect(KINDS.channel.read(b, "older")?.fields.reviewParts).toBe(false)
+  })
+
+  test("a task in review or blocked passes with its reason; an unknown state does not", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-review-task")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const id = KINDS.task.ids(a.db, "", 10)[0] ?? ""
+    const fields = copy(KINDS.task.read(ctxA, id)?.fields) as Fields
+    for (const state of ["review", "blocked"]) {
+      const blocked = state === "blocked"
+      const next = {
+        ...fields,
+        state,
+        error: blocked ? { code: "blocked", detail: "no access to the repository" } : null,
+      }
+      expect(parseOp(op("task", id, next), NOW), state).toBeDefined()
+    }
+    expect(parseOp(op("task", id, { ...fields, state: "approved" }), NOW)).toBeUndefined()
+
+    // The state arrives on the other computer, which shows it.
+    const b = target(openDatabase(":memory:"), dir)
+    const agentFields = copy(KINDS.agent.read(ctxA, String(fields.agentId))?.fields) as Fields
+    expect(KINDS.agent.create(b, String(fields.agentId), agentFields)).toBe(true)
+    expect(KINDS.task.create(b, id, { ...fields, state: "review", error: null })).toBe(true)
+    KINDS.task.write(b, id, {
+      state: "blocked",
+      error: { code: "blocked", detail: "no access to the repository" },
+    })
+    const row = KINDS.task.read(b, id)?.fields
+    expect(row?.state).toBe("blocked")
+    expect(row?.error).toEqual({ code: "blocked", detail: "no access to the repository" })
+  })
+})

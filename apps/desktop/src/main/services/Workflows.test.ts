@@ -15,6 +15,12 @@ const server = Bun.serve({
     const body = (await req.json()) as { messages: { content: string }[] }
     const last = body.messages.at(-1)?.content ?? ""
     if (last.includes("FAIL")) return Response.json({ error: { message: "boom" } }, { status: 500 })
+    // A reply that ends with a Blocked line (spec 005).
+    if (last.includes("BLOCKME"))
+      return new Response(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "I looked.\nBlocked: no access to the folder" } }] })}\n\ndata: [DONE]\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      )
     const chunk = `data: ${JSON.stringify({ choices: [{ delta: { content: `Done(${last.split("\n")[0]})` } }] })}\n\ndata: [DONE]\n\n`
     return new Response(chunk, { headers: { "content-type": "text/event-stream" } })
   },
@@ -269,5 +275,32 @@ describe("workflows", () => {
       (e) => e,
     )
     expect(refused).toMatchObject({ code: "graph_no_steps" })
+  })
+  test("an agent step whose task ends as Blocked is a failed step, with the reason (spec 005, 010)", async () => {
+    const s = await setup()
+    const wf = await s.create(
+      [
+        s.agentStep("a", s.ada.id, "BLOCKME in the folder"),
+        s.agentStep("b", s.bo.id, "Never runs"),
+      ],
+      [s.edge("a", "b")],
+    )
+    const detail = await s.finished((await s.start(wf.id)).id)
+    expect(detail.run.state).toBe("failed")
+    expect(states(detail)).toEqual({ a: "failed", b: "skipped" })
+    expect(detail.steps.find((x) => x.stepId === "a")?.error).toBe("no access to the folder")
+  })
+
+  test("a blocked step with Continue on failure lets the next step run", async () => {
+    const s = await setup()
+    const wf = await s.create(
+      [
+        s.agentStep("a", s.ada.id, "BLOCKME in the folder", true),
+        s.agentStep("b", s.bo.id, "Go on"),
+      ],
+      [s.edge("a", "b")],
+    )
+    const detail = await s.finished((await s.start(wf.id)).id)
+    expect(states(detail)).toEqual({ a: "failed", b: "done" })
   })
 })

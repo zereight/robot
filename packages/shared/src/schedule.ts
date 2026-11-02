@@ -182,6 +182,7 @@ export type RoutineEntryState =
   | "waiting"
   | "done"
   | "failed"
+  | "blocked"
   | "cancelled"
   | "missed"
   | "skipped"

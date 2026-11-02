@@ -332,6 +332,7 @@ export interface WireNotice {
     | "question"
     | "task_failed"
     | "routine_failed"
+    | "part_review"
     | "workflow_notice"
   readonly channelId: string | null
   readonly title: string
