@@ -4,6 +4,7 @@ import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { claudeLogin, claudeVersion, runClaude } from "./claude.ts"
 import { codexLogin, runCodex } from "./codex.ts"
+import { runMuse } from "./muse.ts"
 import { piLogin } from "./pi.ts"
 import type { RuntimeRun } from "./types.ts"
 
@@ -181,5 +182,112 @@ describe("pi program", () => {
     const large = login.models?.find((m) => m.id === "anthropic/fake-large")
     expect(large?.efforts).toEqual(["low", "medium", "high"])
     fake.setPi({ ready: true })
+  })
+})
+
+describe("muse program", () => {
+  const ask = (patch: Partial<RuntimeRun> = {}) => base(fake.muse, { model: "default", ...patch })
+
+  test("a turn goes through the session host and streams the reply", async () => {
+    const events = await collect(runMuse(ask({ effort: "high" })))
+    expect(text(events)).toBe("Echo: Hello there")
+    expect(events.at(-1)).toEqual({ type: "usage", input: 20, output: 5 })
+    const call = fake.museCalls().at(-1) as Record<string, unknown>
+    expect((call.args as string[])[0]).toBe("serve")
+    expect(call.effort).toBe("high")
+    // Files of other agent tools stay out, and the program does not update itself.
+    expect(call.foreignKill).toBe("1")
+    expect(call.autoUpdate).toBe("1")
+    expect(call.session).toMatchObject({ approvalMode: "onRequest" })
+  })
+
+  test("the reply is done when the host says so, not when its reminder agents end", async () => {
+    // The stand-in host keeps running after the reply, like the real one with a reminder agent.
+    const started = Date.now()
+    await collect(runMuse(ask()))
+    expect(Date.now() - started).toBeLessThan(5000)
+  })
+
+  test("a step that needs approval shows as a card, and Allow lets it run", async () => {
+    const asked: unknown[] = []
+    const events = await collect(
+      runMuse(
+        ask({
+          prompt: "do it [ask]",
+          approve: async (request) => {
+            asked.push(request)
+            return true
+          },
+        }),
+      ),
+    )
+    expect(asked).toEqual([
+      {
+        callId: "tool-1",
+        risky: true,
+        key: "run_command:delete_outside",
+        summary: "rm /etc/robot-test",
+      },
+    ])
+    expect(text(events)).toBe("Ran it.")
+    const decision = fake.museCalls().findLast((c) => c.kind === "decide") as {
+      params: Record<string, unknown>
+    }
+    expect(decision.params).toMatchObject({
+      approvalId: "approval-1",
+      choiceId: "allow-once",
+      requirementId: { approvalId: "approval-1", sourceIndex: 0 },
+    })
+    expect(decision.params.feedback).toBeUndefined()
+  })
+
+  test("Deny tells the program, and the turn goes on", async () => {
+    const events = await collect(
+      runMuse(ask({ prompt: "do it [ask]", approve: async () => false })),
+    )
+    expect(text(events)).toBe("Not allowed.")
+    const decision = fake.museCalls().findLast((c) => c.kind === "decide") as {
+      params: Record<string, unknown>
+    }
+    expect(decision.params).toMatchObject({
+      choiceId: "deny",
+      feedback: "The user denied this step.",
+    })
+  })
+
+  test("Stop while the card waits ends the turn and the program", async () => {
+    const controller = new AbortController()
+    const events = collect(
+      runMuse(
+        ask({
+          prompt: "do it [ask]",
+          signal: controller.signal,
+          approve: () =>
+            new Promise<boolean>((_, reject) => {
+              controller.signal.addEventListener("abort", () => reject(new Error("stopped")))
+              setTimeout(() => controller.abort(), 100)
+            }),
+        }),
+      ),
+    )
+    // The call shows, but nothing of the reply does: the step never ran.
+    expect(text(await events)).toBe("")
+  })
+
+  test("a failed turn becomes a failure of the provider", async () => {
+    await expect(collect(runMuse(ask({ prompt: "[fail]" })))).rejects.toMatchObject({
+      code: "provider_error",
+      message: "boom",
+    })
+  })
+
+  test("a run that cannot ask stays headless", async () => {
+    const before = fake.museCalls().length
+    const events = await collect(runMuse(ask({ permission: "full" })))
+    expect(text(events)).toBe("Echo: Hello there")
+    const call = fake.museCalls().at(-1) as { args: string[] }
+    expect(fake.museCalls().length).toBe(before + 1)
+    expect(call.args[0]).toBe("exec")
+    expect(call.args).toContain("--disable-approval")
   })
 })
