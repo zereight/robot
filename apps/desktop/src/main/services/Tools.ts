@@ -11,11 +11,16 @@ import { basename, dirname, join, relative, resolve } from "node:path"
 import {
   type ActionDecider,
   type ApprovalAnswer,
+  checkRequestAddress,
   type GuardedStep,
   guardDecision,
   holdOutside,
   hostOf,
   insideWorkspace,
+  isPlainField,
+  isSecretName,
+  isSecretValue,
+  isUsableHeader,
   KNOWLEDGE_FOLDER,
   KNOWLEDGE_SOURCE_BYTES,
   KNOWLEDGE_SOURCES,
@@ -25,7 +30,21 @@ import {
   type MemoryNote,
   needsApproval,
   type PermissionLevel,
+  parseOrigin,
+  parseSecretAuth,
   riskyReason,
+  SECRET_CANCELLED,
+  SECRET_FIELD_MAX,
+  SECRET_LABEL_MAX,
+  SECRET_METHODS,
+  SECRET_REASON_MAX,
+  SECRET_SAVED,
+  SECRET_SEND_CHARS,
+  SECRETS_PER_AGENT,
+  type SecretAddressError,
+  type SecretAsk,
+  type SecretMethod,
+  secretNameKey,
   type ToolAsk,
   type TurnMark,
 } from "@robot/shared"
@@ -34,6 +53,7 @@ import type { ToolEvent, ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall, ToolDef } from "../providers/chat.ts"
 import { BRIDGE_TOOL_NAMES, type BridgeHandler, SEARCH_TOOL_NAME } from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
+import { type SecretBody, sendWithSecret } from "../secrets/request.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
@@ -42,7 +62,9 @@ import { AppError } from "./errors.ts"
 import { Knowledge, type KnowledgePlan } from "./Knowledge.ts"
 import { Memory, type MemoryOrigin } from "./Memory.ts"
 import { type PageBounds, Platform } from "./Platform.ts"
+import { SavedSecrets } from "./SavedSecrets.ts"
 import { Search } from "./Search.ts"
+import { SettingsStore } from "./Settings.ts"
 
 export interface ToolContext {
   readonly agentId: string
@@ -68,6 +90,8 @@ export interface ToolContext {
   readonly turn: TurnMark
   /** The task of the turn, for the action log. */
   readonly taskId: string | null
+  /** Records how a protected card ended, so the card shows "Saved" or "Cancelled" (spec 020). */
+  readonly onSecret?: (callId: string, result: "saved" | "cancelled") => void
 }
 
 /**
@@ -106,8 +130,16 @@ export interface ToolsService {
    * `execute` gives to the agent as a failed step.
    */
   guarded<A>(context: ToolContext, callId: string, request: GuardedRequest<A>): Promise<A>
-  /** Answers a card that waits. Unknown cards are ignored. */
+  /**
+   * Answers a card that waits. Unknown cards are ignored, and so is a protected card: its value
+   * goes only through `answerSecret`.
+   */
   respond(agentId: string, callId: string, answer: string): Effect.Effect<void>
+  /**
+   * Answers a protected card of this computer (spec 020): a value saves it in the keychain, null
+   * cancels. A linked device cannot answer it: a value never goes over a device link.
+   */
+  answerSecret(agentId: string, callId: string, value: string | null): Effect.Effect<void, AppError>
   /** True while a task of this computer waits for the answer to this card. */
   isWaiting(agentId: string, callId: string): boolean
   /** Whether the browser of an agent is open, and whether the user holds the controls. */
@@ -279,6 +311,65 @@ const DEFS: Record<string, ToolDef> = {
       [],
     ),
   },
+  ask_secret: {
+    name: "ask_secret",
+    description:
+      "Ask the user for an API key or a password for one web service. The user types it in a protected field. You never see the value: you get its name, and use it with secret_request. Do not ask the user to type a key in the chat.",
+    schema: {
+      type: "object",
+      properties: {
+        name: str("A name for the secret: 1 to 40 letters, digits, - and _. Unique for you."),
+        label: str("A short label, for example 'Weather API key'."),
+        reason: str("Why you need it, in one or two sentences."),
+        origin: str(
+          "The origin of the service: scheme, host and port only, for example https://api.example.com.",
+        ),
+        send_as: {
+          type: "string",
+          enum: ["bearer", "header", "basic"],
+          description:
+            "How the value is sent: bearer (Authorization: Bearer), header (a header that you name), or basic (a basic sign-in; the value is the password).",
+        },
+        header: str("For send_as header: the name of the header, for example X-Api-Key."),
+        user: str("For send_as basic: the user name."),
+        replace: {
+          type: "boolean",
+          description: "True to ask for a new value for a secret that is saved already.",
+        },
+      },
+      required: ["name", "label", "reason", "origin", "send_as"],
+    },
+  },
+  secret_request: {
+    name: "secret_request",
+    description:
+      "Send one HTTP request with a saved secret. The app adds the value. The address must have the same scheme, host and port as the origin of the secret. Redirects are not followed. You get the status, the content type and at most 20000 characters of the body.",
+    schema: {
+      type: "object",
+      properties: {
+        name: str("The name of the saved secret."),
+        url: str("The full address."),
+        method: { type: "string", enum: [...SECRET_METHODS], description: "The method." },
+        body: str("For methods other than GET: the body. Optional."),
+        body_type: {
+          type: "string",
+          enum: ["json", "form", "text"],
+          description: "The kind of the body. Default: json.",
+        },
+        headers: {
+          type: "object",
+          additionalProperties: { type: "string" },
+          description: "Extra headers. Optional. For methods other than GET only.",
+        },
+      },
+      required: ["name", "url", "method"],
+    },
+  },
+  forget_secret: {
+    name: "forget_secret",
+    description: "Delete a saved secret. Its value leaves the keychain.",
+    schema: object({ name: str("The name of the saved secret.") }, ["name"]),
+  },
 }
 
 const KNOWLEDGE_TOOLS = new Set(["read_article", "write_article", "delete_article", "add_source"])
@@ -321,9 +412,29 @@ const cut = (value: string, max: number) =>
     ? `${value.slice(0, max)}\n[cut: ${value.length - max} more characters]`
     : value
 
+/** What the model reads when a step with a saved secret is refused (spec 020). */
+const SECRET_REFUSALS: Record<SecretAddressError, string> = {
+  invalid: "The address is not valid.",
+  scheme: "Only https addresses work (http only on this computer or the local network).",
+  http_public:
+    "Only https works for a service on the internet. http works only on this computer or the local network.",
+  parts: "The origin has the scheme, the host and the port only: no user, path or query.",
+  blocked: "Refused: the address leads to a link-local or a cloud metadata address.",
+  local_off:
+    "Refused: the address is on this computer or the local network, and the user did not allow saved secrets there. The user can turn on 'Allow saved secrets on this computer and the local network' in settings, Permissions.",
+  other_origin:
+    "Refused: the address must have the same scheme, host and port as the origin of the secret.",
+}
+
 class Denied extends Error {}
 /** A guarded step that a Deny rule or the level "Read only" refuses. The agent reads the message. */
 class Refused extends Error {}
+/** A step with a saved secret that failed. The agent reads the message. */
+class SecretFailure extends Error {}
+
+const BODY_KINDS = ["json", "form", "text"] as const
+/** The extra headers of one request. */
+const SECRET_HEADERS_MAX = 50
 
 export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/Tools") {
   static readonly layer = Layer.effect(
@@ -334,6 +445,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const search = yield* Search
       const actionLog = yield* ActionLog
       const knowledge = yield* Knowledge
+      const saved = yield* SavedSecrets
+      const settingsStore = yield* SettingsStore
       const platform = yield* Platform
       const bus = yield* EventBus
       const control = new Set<string>()
@@ -356,6 +469,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
       /** The card that waits, by agent and call. The answer says which device gave it, if any. */
       const waiting = new Map<string, (answer: string, by: string | null) => void>()
+      /** The protected cards that wait, by agent and call (spec 020). */
+      const secretCards = new Map<string, SecretAsk>()
+      /** The switch "Allow saved secrets on this computer and the local network". */
+      const allowLocal = () => Effect.runSync(settingsStore.get).secretsLocal
 
       const allowed = (agentId: string, key: string) =>
         db.get("SELECT 1 AS x FROM agent_allow WHERE agent_id = ? AND key = ?", agentId, key) !==
@@ -884,6 +1001,236 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      const failed = (output: string): ToolOutcome => ({ output, failed: true })
+
+      /** "ask for a secret" (spec 020, flow 1). */
+      const askSecret = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const name = text(args, "name").trim()
+        if (!isSecretName(name))
+          return failed("The name must have 1 to 40 characters: letters, digits, - and _.")
+        const origin = parseOrigin(text(args, "origin"))
+        if (!origin.ok) return failed(SECRET_REFUSALS[origin.error])
+        if (origin.local && !allowLocal()) return failed(SECRET_REFUSALS.local_off)
+        const auth = parseSecretAuth(args.send_as, args.header, args.user)
+        if (!auth)
+          return failed(
+            "send_as must be bearer, header with a header name (not Authorization), or basic with a user name (no colon).",
+          )
+        const label = text(args, "label").trim().slice(0, SECRET_LABEL_MAX)
+        const reason = text(args, "reason").trim().slice(0, SECRET_REASON_MAX)
+        const found = saved.match(ctx.agentId, name, origin.origin, auth)
+        if (found.kind === "conflict")
+          return failed(
+            `A secret named ${found.secret.name} exists for another origin or way to send. It is refused. The user must delete the old one first (settings, Permissions, Saved secrets).`,
+          )
+        if (found.kind === "full")
+          return failed(`You hold ${SECRETS_PER_AGENT} saved secrets. Forget one first.`)
+        if (found.kind === "same" && args.replace !== true)
+          return {
+            output: found.secret.valueMissing
+              ? `The secret ${found.secret.name} is saved, but its value is missing on this computer. Ask again with replace true, or the user replaces it in settings.`
+              : `The secret ${found.secret.name} is saved already. Use it with secret_request.`,
+            failed: false,
+          }
+        const ask: SecretAsk = {
+          kind: "secret",
+          name: found.kind === "same" ? found.secret.name : name,
+          label,
+          reason,
+          origin: origin.origin,
+          auth,
+          ...(found.kind === "same" ? { replace: true } : {}),
+        }
+        const result = await guarded(ctx, call.id, {
+          step: "secret_new",
+          target: `[${ask.name}] ${ask.origin}`,
+          work: async () => {
+            const id = `${ctx.agentId}:${call.id}`
+            secretCards.set(id, ask)
+            try {
+              const reply = await wait(ctx, call.id, ask)
+              return reply.answer === SECRET_SAVED ? SECRET_SAVED : SECRET_CANCELLED
+            } finally {
+              secretCards.delete(id)
+            }
+          },
+        })
+        ctx.onSecret?.(call.id, result)
+        return result === SECRET_SAVED
+          ? {
+              output: `Saved the secret ${ask.name} for ${ask.origin}. Use it with secret_request. You will never see its value.`,
+              failed: false,
+            }
+          : { output: "The user cancelled. No value was saved.", failed: false }
+      }
+
+      /** "request with a secret" (spec 020, flow 2). */
+      const secretRequest = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const name = text(args, "name").trim()
+        const secret = saved.find(ctx.agentId, name)
+        if (!secret)
+          return failed(`There is no saved secret named ${name}. Ask for it with ask_secret.`)
+        const method = text(args, "method").toUpperCase() as SecretMethod
+        if (!(SECRET_METHODS as readonly string[]).includes(method))
+          return failed("The method must be GET, POST, PUT, PATCH or DELETE.")
+        const address = checkRequestAddress(text(args, "url"), secret.origin, allowLocal())
+        if (!address.ok) return failed(SECRET_REFUSALS[address.error])
+        const rawHeaders = args.headers
+        const hasHeaders =
+          rawHeaders !== undefined &&
+          rawHeaders !== null &&
+          !(typeof rawHeaders === "object" && Object.keys(rawHeaders).length === 0)
+        const hasBody = args.body !== undefined && args.body !== null && args.body !== ""
+        let body: SecretBody | undefined
+        const headers: Record<string, string> = {}
+        if (method === "GET") {
+          if (hasBody || hasHeaders)
+            return failed("A GET request has no body and no extra headers.")
+        } else {
+          if (hasHeaders) {
+            if (typeof rawHeaders !== "object" || Array.isArray(rawHeaders))
+              return failed("headers must be an object of names and texts.")
+            const entries = Object.entries(rawHeaders as Record<string, unknown>)
+            if (entries.length > SECRET_HEADERS_MAX)
+              return failed(`At most ${SECRET_HEADERS_MAX} extra headers.`)
+            const authName =
+              secret.auth.kind === "header" ? secret.auth.header.toLowerCase() : "authorization"
+            for (const [key, value] of entries) {
+              if (
+                typeof value !== "string" ||
+                value.length > SECRET_FIELD_MAX * 40 ||
+                !isPlainField(value) ||
+                !isUsableHeader(key) ||
+                key.toLowerCase() === authName ||
+                key.toLowerCase() === "content-type"
+              )
+                return failed(`The header ${key} cannot be sent.`)
+              headers[key] = value
+            }
+          }
+          if (hasBody) {
+            const kind = (BODY_KINDS as readonly string[]).includes(text(args, "body_type"))
+              ? (text(args, "body_type") as SecretBody["kind"])
+              : "json"
+            let bodyText: string
+            if (typeof args.body === "string") bodyText = args.body
+            else if (kind === "form" && typeof args.body === "object")
+              bodyText = new URLSearchParams(
+                Object.entries(args.body as Record<string, unknown>).map(([k, v]) => [
+                  k,
+                  String(v),
+                ]),
+              ).toString()
+            else bodyText = JSON.stringify(args.body)
+            if (bodyText.length > SECRET_SEND_CHARS)
+              return failed(`The body can have ${SECRET_SEND_CHARS} characters at most.`)
+            if (kind === "json") {
+              try {
+                JSON.parse(bodyText)
+              } catch {
+                return failed("The body is not valid JSON. Use body_type text or form.")
+              }
+            }
+            body = { kind, text: bodyText }
+          }
+        }
+        if (secret.valueMissing)
+          return failed(
+            `Value missing: this computer holds no value for the secret ${secret.name}. The user must replace the value in settings, or you ask again with replace true.`,
+          )
+        const target = `[${secret.name}] ${method} ${address.url.toString()}`
+        const nameKey = secretNameKey(secret.name)
+        const send = async () => {
+          const value = secret.value()
+          if (value === null)
+            throw new SecretFailure(`Value missing: the secret ${secret.name} has no value.`)
+          const result = await sendWithSecret({
+            url: address.url,
+            method,
+            ...(body ? { body } : {}),
+            headers,
+            auth: secret.auth,
+            value,
+            allowLocal: allowLocal(),
+            signal: ctx.signal,
+          })
+          if (result.kind === "refused") throw new SecretFailure(SECRET_REFUSALS[result.error])
+          if (result.kind === "failed") {
+            if (result.reason === "stopped" || ctx.signal.aborted) throw new Error("stopped")
+            throw new SecretFailure(
+              result.reason === "timeout"
+                ? "The request took longer than 30 seconds and was stopped."
+                : "The request failed: the service could not be reached.",
+            )
+          }
+          return result
+        }
+        // A rule matches the name and the method, or the name and any method (spec 007).
+        const ruleKey = `secret_request:${nameKey}:${method}`
+        const anyKey = `secret_request:${nameKey}:*`
+        const result =
+          method === "GET"
+            ? await (async () => {
+                if (!allowed(ctx.agentId, anyKey)) await approve(ctx, call, false, ruleKey, target)
+                return send()
+              })()
+            : await guarded(ctx, call.id, {
+                step: "secret_request",
+                target,
+                work: send,
+                usual: async () => {
+                  if (!needsApproval(ctx.permission, true)) return "level"
+                  if (allowed(ctx.agentId, ruleKey) || allowed(ctx.agentId, anyKey))
+                    return "allow_rule"
+                  await approve(ctx, call, true, ruleKey, target)
+                  return "user"
+                },
+              })
+        // The answer of the service reaches the agent: it is outside content (spec 007).
+        holdOutside(ctx.turn, { kind: "secret", name: secret.name })
+        saved.touch(secret.id)
+        if (result.kind === "redirect")
+          return {
+            output: `Status: ${result.status}\nRedirect to: ${result.location}\nThe app does not follow redirects. Make a new request if you need that address.`,
+            failed: false,
+          }
+        const lines = [
+          `Status: ${result.status}`,
+          `Content type: ${result.contentType || "none"}`,
+          "",
+          result.body,
+          ...(result.cut
+            ? ["", `[The body was cut. You got the first ${result.body.length} characters.]`]
+            : []),
+        ]
+        return { output: lines.join("\n"), failed: result.status >= 400 }
+      }
+
+      /** "forget a secret" (spec 020, flow 3). */
+      const forgetSecret = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        const name = text(args, "name").trim()
+        const secret = saved.find(ctx.agentId, name)
+        if (!secret) return failed(`There is no saved secret named ${name}.`)
+        await approve(ctx, call, false, "forget_secret", `[${secret.name}] ${secret.origin}`)
+        saved.remove(secret.id)
+        return {
+          output: `Forgot the secret ${secret.name}. Its value left the keychain.`,
+          failed: false,
+        }
+      }
+
       const run = async (ctx: ToolContext, call: ToolCall): Promise<ToolOutcome> => {
         const args = parseArgs(call)
         switch (call.name) {
@@ -964,6 +1311,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return await changeTool(ctx, call, args)
           case "add_source":
             return await sourceTool(ctx, call, args)
+          case "ask_secret":
+            return await askSecret(ctx, call, args)
+          case "secret_request":
+            return await secretRequest(ctx, call, args)
+          case "forget_secret":
+            return await forgetSecret(ctx, call, args)
           default:
             return { output: `Unknown tool: ${call.name}`, failed: true }
         }
@@ -975,6 +1328,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         } catch (error) {
           if (error instanceof Denied) return { output: "The user denied this step.", failed: true }
           if (error instanceof Refused) return { output: error.message, failed: true }
+          if (error instanceof SecretFailure) return { output: error.message, failed: true }
           if (ctx.signal.aborted) throw error
           return { output: error instanceof Error ? error.message : String(error), failed: true }
         }
@@ -1051,7 +1405,31 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           Effect.gen(function* () {
             // A linked device that answers is named on the card (spec 012).
             const actor = yield* CurrentActor
-            waiting.get(`${agentId}:${callId}`)?.(answer, actor?.name ?? null)
+            const id = `${agentId}:${callId}`
+            // The value of a protected card never goes this way (spec 020).
+            if (secretCards.has(id)) return
+            waiting.get(id)?.(answer, actor?.name ?? null)
+          }),
+        answerSecret: (agentId, callId, value) =>
+          Effect.gen(function* () {
+            // A linked device never answers a protected card: a value never goes over a link.
+            const actor = yield* CurrentActor
+            if (actor) return yield* new AppError({ code: "not_allowed" })
+            const id = `${agentId}:${callId}`
+            const ask = secretCards.get(id)
+            const resolveCard = waiting.get(id)
+            if (!ask || !resolveCard) return yield* new AppError({ code: "secret_card_gone" })
+            if (value === null) {
+              resolveCard(SECRET_CANCELLED, null)
+              return
+            }
+            if (!isSecretValue(value)) return yield* new AppError({ code: "secret_value_invalid" })
+            yield* Effect.try({
+              try: () =>
+                saved.save(agentId, { name: ask.name, origin: ask.origin, auth: ask.auth }, value),
+              catch: (e) => (e instanceof AppError ? e : new AppError({ code: "secret_keychain" })),
+            })
+            resolveCard(SECRET_SAVED, null)
           }),
       })
     }),

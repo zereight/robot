@@ -47,6 +47,11 @@ export const Settings = Schema.Struct({
   linkPort: Schema.Number,
   /** What a message does that the user sends while the agent works (spec 003). */
   duringTurn: Schema.Literals(DURING_TURN),
+  /**
+   * "Allow saved secrets on this computer and the local network" (spec 020). Off by default.
+   * A setting saved before this switch existed has none, and the switch is off.
+   */
+  secretsLocal: Schema.Boolean,
 })
 export type Settings = typeof Settings.Type
 
@@ -76,6 +81,7 @@ export const defaultSettings: Settings = {
   acceptLinks: false,
   linkPort: 0,
   duringTurn: "join",
+  secretsLocal: false,
 }
 
 export type Locale = "en" | "ko"

@@ -138,6 +138,9 @@ export const outsideOfCall = (name: string, input: string): OutsideSource | null
   const args = argsOf(input)
   const url = typeof args.url === "string" ? args.url : ""
   if (name === "add_source") return url ? { kind: "page", host: hostOf(url) } : null
+  // The answer of a request with a saved secret (spec 020).
+  if (name === "secret_request")
+    return typeof args.name === "string" ? { kind: "secret", name: args.name } : null
   if (name === "browser_close" || name === "browser_click" || name === "browser_type") return null
   const kind = toolStepKind(name)
   if (kind === "web" || kind === "browser") return { kind: "page", host: hostOf(url) }

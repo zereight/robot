@@ -137,7 +137,11 @@ export const toolNameOf = (parts: readonly MessagePart[], callId: string) => {
  * none. An article card is about files. Null when the tool name is none of the kinds.
  */
 export const askStep = (ask: ToolAsk, toolName: string | undefined): ToolStepKind | null =>
-  ask.kind === "question" ? null : ask.kind === "article" ? "files" : toolStepKind(toolName ?? "")
+  ask.kind === "question" || ask.kind === "secret"
+    ? null
+    : ask.kind === "article"
+      ? "files"
+      : toolStepKind(toolName ?? "")
 
 /** An approval or a question that waits for the user. */
 export interface IslandAttention {
