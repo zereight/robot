@@ -9,6 +9,7 @@ import {
   runtimeModels,
   runtimeSupport,
   takesAdaptiveThinking,
+  takesThinkingBudget,
 } from "./providers.ts"
 
 describe("providers", () => {
@@ -51,9 +52,42 @@ describe("providers", () => {
     expect(effortsFor("anthropic", "claude-sonnet-4-6")).toEqual(["low", "medium", "high", "max"])
     expect(effortsFor("anthropic", "claude-opus-4-6")).toEqual(["low", "medium", "high", "max"])
     expect(effortsFor("anthropic", "claude-opus-4-5-20251101")).toEqual(["low", "medium", "high"])
-    // These do not take an effort level at all.
-    for (const id of ["claude-sonnet-4-5", "claude-haiku-4-5", "claude-3-7-sonnet-latest"])
+    // These think with a budget: the three levels set the budget.
+    for (const id of [
+      "claude-sonnet-4-5",
+      "claude-haiku-4-5-20251001",
+      "claude-3-7-sonnet-latest",
+      "claude-opus-4-1-20250805",
+      "claude-opus-4-20250514",
+      "claude-sonnet-4-0",
+    ])
+      expect(effortsFor("anthropic", id)).toEqual(["low", "medium", "high"])
+    // These do not think at all.
+    for (const id of ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest", "claude-2.1"])
       expect(effortsFor("anthropic", id)).toEqual([])
+  })
+
+  test("the thinking budget is for the older models only", () => {
+    for (const id of [
+      "claude-sonnet-4-5-20250929",
+      "claude-haiku-4-5",
+      "claude-3-7-sonnet-20250219",
+      "claude-opus-4-1",
+      "claude-opus-4-20250514",
+      "claude-sonnet-4-20250514",
+    ])
+      expect(takesThinkingBudget(id)).toBe(true)
+    // Opus 4.5 and later take an effort setting; the 3.5 models do not think.
+    for (const id of [
+      "claude-opus-4-5-20251101",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "claude-opus-4-8",
+      "claude-haiku-5-5",
+      "claude-3-5-haiku-latest",
+      "gpt-5",
+    ])
+      expect(takesThinkingBudget(id)).toBe(false)
   })
 
   test("only Claude 4.6 and later models take adaptive thinking", () => {

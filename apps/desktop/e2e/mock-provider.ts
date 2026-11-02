@@ -218,6 +218,12 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
       index: 0,
       delta: { type: "thinking_delta", thinking: p.thinking },
     })
+    // The real stream closes a thinking block with its signature.
+    send("content_block_delta", {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "signature_delta", signature: "mock-signature" },
+    })
     send("content_block_stop", { type: "content_block_stop", index: 0 })
   }
   for (const chunk of p.chunks ?? []) {
@@ -272,9 +278,16 @@ export const startMockProvider = async () => {
               },
             },
           },
+          // An older model: no effort setting, but it thinks with a budget.
           {
             id: "claude-sonnet-4-5",
             display_name: "Claude Sonnet 4.5",
+            capabilities: { effort: { supported: false } },
+          },
+          // An old model that does not think at all.
+          {
+            id: "claude-3-5-haiku-latest",
+            display_name: "Claude Haiku 3.5",
             capabilities: { effort: { supported: false } },
           },
         ],
