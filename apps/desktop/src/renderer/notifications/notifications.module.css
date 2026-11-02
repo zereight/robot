@@ -6,13 +6,13 @@
 
 .title {
   margin: 12px 0 0;
-  font-size: 1rem;
+  font-size: var(--text-m);
 }
 
 .hint {
   margin: 0;
   color: var(--c-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
 }
 
 .row,
