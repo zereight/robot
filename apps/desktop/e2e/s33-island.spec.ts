@@ -321,6 +321,19 @@ test("island attention card: place, kind of step, 1 of N, previous and next, ans
   await expect(island.getByTestId("island-next")).toHaveAttribute("aria-label", "Next request")
   await expect.poll(() => notices().length).toBeGreaterThanOrEqual(3)
   await expectFitted(app, island)
+  // The approval answers of the approval card stay, and Open app joins them. The buttons may use
+  // a second row. Every button is inside the window, and the page needs no scroll bar.
+  await expect(island.getByTestId("island-allow")).toHaveText("Allow once")
+  await expect(island.getByTestId("island-always")).toHaveText("Always allow for this agent")
+  await expect(island.getByTestId("island-deny")).toHaveText("Deny")
+  await expect(island.getByTestId("island-open")).toHaveText("Open app")
+  const windowNow = await islandWindow(app)
+  for (const id of ["allow", "always", "deny", "open"]) {
+    const box = await island.getByTestId(`island-${id}`).boundingBox()
+    expect(box, `button ${id}`).not.toBeNull()
+    expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(windowNow?.height ?? 0)
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(windowNow?.width ?? 0)
+  }
   await snap(island, "s33-03-attention.png")
 
   // Next and previous go through the requests.
@@ -336,13 +349,22 @@ test("island attention card: place, kind of step, 1 of N, previous and next, ans
   await island.getByTestId("island-prev").click()
   await expect(position).toHaveText("1 of 3")
 
-  // Allow the first one: the island shows "1 of 2" with the next request, and the task goes on.
+  // Always allow the first one: the island shows "1 of 2" with the next request, and the task goes
+  // on. The answer is "always" for this agent only, so the other requests still wait.
   expect(existsSync(paths.Ada)).toBe(true)
-  await island.getByTestId("island-allow").click()
+  await island.getByTestId("island-always").click()
   await expect(position).toHaveText("1 of 2")
   await expect(summary).toContainText("b-second.txt")
+  await expect(attention).toContainText("Bo")
   await expect.poll(() => existsSync(paths.Ada), { timeout: 15_000 }).toBe(false)
   expect(existsSync(paths.Bo)).toBe(true)
+  expect(existsSync(paths.Cy)).toBe(true)
+  // The next step of the same kind from the same agent asks no more.
+  const again = victim("a-again")
+  await sendTo(page, id("Ada"), rm(again))
+  await expect.poll(() => existsSync(again), { timeout: 15_000 }).toBe(false)
+  await expect(position).toHaveText("1 of 2")
+  await expect(summary).toContainText("b-second.txt")
 
   // Deny the next one: one request is left, with no count.
   await island.getByTestId("island-deny").click()
@@ -516,6 +538,7 @@ test("island in Korean with reduce motion: texts, cards still show and close", a
   await expect(island.getByTestId("island-attention")).toBeVisible({ timeout: 20_000 })
   await expect(island.getByTestId("island-meta")).toHaveText("일대일 채팅 · 명령")
   await expect(island.getByTestId("island-allow")).toHaveText("한 번 허용")
+  await expect(island.getByTestId("island-always")).toHaveText("이 에이전트에 항상 허용")
   await expect(island.getByTestId("island-deny")).toHaveText("거부")
   await expect(island.getByTestId("island-open")).toHaveText("앱 열기")
   await sendTo(page, id("Cy"), rm(victim("ko-two")))
