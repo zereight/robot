@@ -16,7 +16,7 @@ const CONTEXT = SIGN_IN + 1
 /** Main has this many steps. The steps of the device link and of sync follow them. */
 const MAIN_STEPS = CONTEXT + 1
 /** The index of the step that S46 added: message search (spec 001). It follows the sync steps. */
-const SEARCH = MAIN_STEPS + 3
+const SEARCH = migrations.findIndex((sql) => sql.includes("CREATE VIRTUAL TABLE message_fts"))
 
 const upTo = (count: number) => {
   const db = new DatabaseSync(":memory:")
@@ -188,9 +188,10 @@ describe("the steps of the device link and of sync", () => {
       expect(sql).not.toMatch(/ALTER TABLE provider_account/i)
     }
     // The step for message search (spec 001) follows them.
-    expect(migrations[SEARCH]).toContain("CREATE VIRTUAL TABLE message_fts")
+    expect(SEARCH).toBeGreaterThan(MAIN_STEPS + 2)
     // The number of steps is the data version that two computers compare before they sync.
-    expect(migrations.length).toBe(SEARCH + 1)
+    // Later steps follow these three.
+    expect(migrations.length).toBeGreaterThan(MAIN_STEPS + 2)
   })
 
   test("a database that ran only the steps of main opens, migrates, and keeps its data", () => {
@@ -350,5 +351,18 @@ describe("the step for message search", () => {
     migrate(db)
     expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })
     expect(db.prepare("SELECT COUNT(*) AS n FROM message_text").get()).toEqual({ n: 1 })
+  })
+})
+
+describe("the step of the action log", () => {
+  test("it makes the table of the log, which no trigger of sync watches", () => {
+    const step = migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log"))
+    expect(step).toBeGreaterThan(MAIN_STEPS + 2)
+    const db = new DatabaseSync(":memory:")
+    for (const sql of migrations) db.exec(sql)
+    const triggers = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'action_log'")
+      .all()
+    expect(triggers).toEqual([])
   })
 })

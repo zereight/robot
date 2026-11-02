@@ -8,12 +8,14 @@ import {
   type MessagePart,
   messageFiles,
   messageText,
+  type OutsideSource,
   type ToolAsk,
 } from "@robot/shared"
 import { BookOpen, Copy, Download, ExternalLink, Pencil, Reply, User, Wrench } from "lucide-solid"
 import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
@@ -215,6 +217,18 @@ const ToolCard = (props: {
                 </Match>
                 <Match when={ask().kind === "approval"}>
                   <div>{t("chat.tool.approval")}</div>
+                  {/* A guarded step in a turn that holds outside content (spec 007). */}
+                  <Show when={(ask() as { outside?: OutsideSource }).outside}>
+                    {(source) => (
+                      <div class={styles.outside} role="note" data-testid="ask-outside">
+                        <strong>{t("outside.held")}</strong>
+                        <span data-testid="ask-outside-source">
+                          {t("outside.first", { source: outsideSourceText(t, source()) })}
+                        </span>
+                        <span class={styles.outsideHint}>{t("outside.hint")}</span>
+                      </div>
+                    )}
+                  </Show>
                   <pre>{(ask() as { summary: string }).summary}</pre>
                   <div class={styles.askActions}>
                     <Button
