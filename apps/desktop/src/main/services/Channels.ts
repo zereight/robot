@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
+  askKind,
+  askSummary,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
   type Channel,
@@ -36,6 +38,7 @@ import { applyEvent } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Knowledge } from "./Knowledge.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Tasks } from "./Tasks.ts"
@@ -132,6 +135,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const providers = yield* Providers
       const tasks = yield* Tasks
       const tools = yield* Tools
+      const knowledge = yield* Knowledge
       const notifier = yield* Notifier
       const agents = yield* Agents
 
@@ -391,8 +395,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   serverId: o.channel.server_id,
                   channelId: o.channel.id,
                   callId,
-                  kind: ask.kind,
-                  summary: islandSummary(ask.kind === "approval" ? ask.summary : ask.question),
+                  kind: askKind(ask),
+                  summary: islandSummary(askSummary(ask)),
                   target: { kind: "channel", id: o.channel.id, messageId: id },
                 })
               else notifier.clearAttention(o.agent.id, callId)
@@ -402,6 +406,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               })
             },
             onMemory: (callId, memoryId) => changePart(callId, (p) => ({ ...p, memoryId })),
+            onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
+            knowledgeChanges: { count: 0 },
           }
           const events = yield* providers.events(
             o.agent.model_account_id,
@@ -409,10 +415,27 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               model: o.agent.model_name,
               effort: o.agent.model_effort,
               system: useTools
-                ? `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`
+                ? [
+                    `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`,
+                    // An agent in a channel uses its own knowledge only.
+                    knowledge.prompt(
+                      o.agent.id,
+                      o.turns.at(-1)?.content ?? "",
+                      providers.isRuntime(o.agent.model_account_id) ? "files" : "tools",
+                    ) ?? "",
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n")
                 : o.system,
               turns: o.turns,
-              ...(useTools ? { tools: tools.defs(o.agent.memory_enabled === 1) } : {}),
+              ...(useTools
+                ? {
+                    tools: tools.defs({
+                      memory: o.agent.memory_enabled === 1,
+                      knowledge: knowledge.enabled(o.agent.id),
+                    }),
+                  }
+                : {}),
               signal: controller.signal,
               workspace: o.agent.workspace,
               permission: o.agent.permission,
@@ -442,10 +465,15 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(Stream.runForEach(onEvent))
         })
 
+        // A vendor program writes the Knowledge folder itself. The folder is read again after it.
+        const writesFiles =
+          !!o.agent.model_account_id && providers.isRuntime(o.agent.model_account_id)
+        knowledge.begin(o.agent.id)
         yield* stream.pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
               controller.abort()
+              knowledge.end(o.agent.id, writesFiles ? "agent" : "user")
               notifier.clearAgent(o.agent.id)
               // A step that did not finish cannot keep a running mark or a question card.
               for (const [i, part] of parts.entries()) {

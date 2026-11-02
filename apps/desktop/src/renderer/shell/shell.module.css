@@ -470,6 +470,10 @@
   animation: dialog-in var(--motion-medium) var(--ease-out);
 }
 
+.dialog[data-wide="true"] {
+  max-width: min(1080px, 94vw);
+}
+
 .dialogBackdrop[data-closing="true"] .dialog {
   animation: dialog-out var(--motion-fast) var(--ease-in) forwards;
 }

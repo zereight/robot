@@ -227,6 +227,7 @@ Unclear spec points and the choices made for them are in
 | **M4** | Routines and workflows | Done in alpha.3 |
 | **M5** | Phone app (Expo) and desktop link | Deferred until the desktop app is finished and in use |
 | **M6** | Notifications and status island | Done (next release) |
+| **M8** | Agent knowledge: linked articles, sources, change list, check | Done (next release) |
 
 ## Contributing
 

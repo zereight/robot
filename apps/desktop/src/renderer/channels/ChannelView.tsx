@@ -43,6 +43,7 @@ const removedAgent = (name: string): Agent => ({
   state: "offline",
   permission: "ask_risky",
   memoryEnabled: false,
+  knowledgeEnabled: false,
   createdAt: 0,
 })
 

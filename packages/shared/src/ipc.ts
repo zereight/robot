@@ -7,6 +7,12 @@ import type {
   ChannelPatch,
 } from "./channels.ts"
 import type { ChatMessage, ChatSend, QueuedMessage } from "./chat.ts"
+import type {
+  KnowledgeArticle,
+  KnowledgeChange,
+  KnowledgeFindings,
+  KnowledgeView,
+} from "./knowledge.ts"
 import type { MemoryItem } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type {
@@ -117,6 +123,26 @@ export interface RpcMethods {
   "memory.add": { input: { agentId: string; text: string }; output: MemoryItem }
   "memory.update": { input: { id: string; text: string }; output: MemoryItem }
   "memory.delete": { input: { id: string }; output: undefined }
+  "knowledge.list": { input: { agentId: string; query?: string }; output: KnowledgeView }
+  "knowledge.get": { input: { agentId: string; file: string }; output: KnowledgeArticle }
+  /** Saves an article as the user. `file` is null for a new article. */
+  "knowledge.save": {
+    input: { agentId: string; file: string | null; title: string; summary: string; body: string }
+    output: KnowledgeArticle
+  }
+  "knowledge.delete": { input: { agentId: string; file: string }; output: undefined }
+  "knowledge.deleteSource": { input: { agentId: string; name: string }; output: undefined }
+  "knowledge.openSource": { input: { agentId: string; name: string }; output: undefined }
+  "knowledge.openFolder": { input: { agentId: string }; output: undefined }
+  /** The last 50 changes, newest first. */
+  "knowledge.changes": { input: { agentId: string }; output: readonly KnowledgeChange[] }
+  /** One change, or null when it left the list of 50. */
+  "knowledge.change": {
+    input: { agentId: string; changeId: string }
+    output: KnowledgeChange | null
+  }
+  "knowledge.undo": { input: { agentId: string; changeId: string }; output: undefined }
+  "knowledge.findings": { input: { agentId: string }; output: KnowledgeFindings }
   /** Answers an approval card (`allow`, `always`, `deny`) or a question card (the text). */
   "tools.respond": {
     input: { agentId: string; callId: string; answer: ApprovalAnswer | string }
@@ -191,6 +217,8 @@ export interface RpcEvents {
   "runtimes.changed": RuntimeStatus
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
+  /** An article, a source or the change list of an agent changed. */
+  "knowledge.changed": { agentId: string }
   "browser.changed": { agentId: string }
   "routines.changed": { serverId: string }
   "workflows.changed": { serverId: string }
