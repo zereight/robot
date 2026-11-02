@@ -1,8 +1,10 @@
+import type { TeachState } from "@robot/shared"
 import { createEffect, createResource, onCleanup, Show } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import styles from "./agents.module.css"
+import { TeachBar, useTeach } from "./Teach.tsx"
 
 /** What covers the place of the browser when it is open. The page is hidden under these. */
 const COVERS = '[role="dialog"], [role="menu"]'
@@ -49,7 +51,11 @@ const useBrowserPlace = (agentId: () => string, box: () => HTMLElement | undefin
   })
 }
 
-const Pane = (props: { agentId: string; control: boolean }) => {
+const Pane = (props: {
+  agentId: string
+  control: boolean
+  teaching: Extract<TeachState, { phase: "recording" }> | undefined
+}) => {
   const { t } = useApp()
   let box: HTMLDivElement | undefined
   useBrowserPlace(
@@ -63,25 +69,29 @@ const Pane = (props: { agentId: string; control: boolean }) => {
       data-testid="browser-pane"
       data-control={props.control}
     >
-      <div class={styles.browserBar} data-testid="browser-bar" data-control={props.control}>
-        <span class={styles.browserStatus}>
-          {props.control ? t("browser.yours") : t("browser.agents")}
-        </span>
-        <Button
-          onClick={() =>
-            call("browser.control", { agentId: props.agentId, control: !props.control })
-          }
-          data-testid="browser-control"
-        >
-          {props.control ? t("browser.giveBack") : t("browser.takeOver")}
-        </Button>
-        <Button
-          onClick={() => call("browser.close", { agentId: props.agentId })}
-          data-testid="browser-close"
-        >
-          {t("browser.close")}
-        </Button>
-      </div>
+      <Show when={!props.teaching}>
+        <div class={styles.browserBar} data-testid="browser-bar" data-control={props.control}>
+          <span class={styles.browserStatus}>
+            {props.control ? t("browser.yours") : t("browser.agents")}
+          </span>
+          <Button
+            onClick={() =>
+              call("browser.control", { agentId: props.agentId, control: !props.control })
+            }
+            data-testid="browser-control"
+          >
+            {props.control ? t("browser.giveBack") : t("browser.takeOver")}
+          </Button>
+          <Button
+            onClick={() => call("browser.close", { agentId: props.agentId })}
+            data-testid="browser-close"
+          >
+            {t("browser.close")}
+          </Button>
+        </div>
+      </Show>
+      {/* While the user teaches a task, the teaching bar takes the place of the browser bar. */}
+      <Show when={props.teaching}>{(state) => <TeachBar state={state()} />}</Show>
       <div ref={box} class={styles.browserView} data-testid="browser-view" />
     </section>
   )
@@ -101,9 +111,14 @@ export const BrowserPane = (props: { agentId: string }) => {
       if (agentId === props.agentId) void refetch()
     }),
   )
+  const teach = useTeach()
+  const teaching = () => {
+    const now = teach()
+    return now.phase === "recording" && now.agentId === props.agentId ? now : undefined
+  }
   return (
-    <Show when={state()?.open}>
-      <Pane agentId={props.agentId} control={state()?.control ?? false} />
+    <Show when={state()?.open || teaching()}>
+      <Pane agentId={props.agentId} control={state()?.control ?? false} teaching={teaching()} />
     </Show>
   )
 }
