@@ -23,8 +23,9 @@ import {
   STARTER_ROUTINE_SCHEDULE,
   STARTERS,
   type StarterId,
-  type StarterPick,
+  type StarterSetup,
   starterExtras,
+  starterSetup,
   starterText,
   suggestName,
 } from "@robot/shared"
@@ -68,10 +69,11 @@ export interface AgentFormValues {
   /** Only when an existing agent is edited. */
   memoryEnabled?: boolean
   /**
-   * Set when the user picked a starter on this computer: the app also makes its routine and its
-   * skill (spec 002). A linked server gets the three fields only, so a form there sends none.
+   * Set when the user picked a starter on this computer that makes more than the three fields: the
+   * strings of its routine and its skill, in the language of the pick. The app makes them on
+   * Create (spec 002). A linked server gets the three fields only, so a form there sends none.
    */
-  starter?: StarterPick
+  starter?: StarterSetup
 }
 
 export interface AgentFormProps {
@@ -209,6 +211,17 @@ export const AgentForm = (props: AgentFormProps) => {
   }
 
   /**
+   * The strings that go with the request on Create: the text of the starter in the language of
+   * the pick, not the language of the interface now. None for Blank, for a starter that makes
+   * nothing else, for an agent that exists, and on a linked server (spec 002, 012).
+   */
+  const setup = (): StarterSetup | null => {
+    const picked = starter()
+    if (props.agent || remote() || picked === "blank") return null
+    return starterSetup(starterText(starterLocale(), picked))
+  }
+
+  /**
    * Puts a random name in the field. Names of active and archived agents on the server are
    * skipped, because both count for the rule that names are unique (002).
    */
@@ -234,6 +247,7 @@ export const AgentForm = (props: AgentFormProps) => {
     if (!valid() || busy()) return
     setBusy(true)
     setError(undefined)
+    const extra = setup()
     try {
       await props.onSubmit({
         name: name().trim(),
@@ -242,9 +256,7 @@ export const AgentForm = (props: AgentFormProps) => {
         face: face(),
         model: model(),
         // A linked server gets the three fields only: it has no routine or skill to make (012).
-        ...(!props.agent && !remote() && starter() !== "blank"
-          ? { starter: { id: starter() as StarterId, locale: starterLocale() } }
-          : {}),
+        ...(extra ? { starter: extra } : {}),
         // A client has no sections (012). A section that was deleted while the form was open
         // shows as "No section".
         ...(remote()

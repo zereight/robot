@@ -9,6 +9,7 @@ import {
   starterText,
 } from "@robot/shared"
 import { Effect, Exit } from "effect"
+import { runRequest } from "../rpc.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
@@ -52,6 +53,7 @@ const setup = async () => {
   const t = testRuntime()
   const run = t.runtime.runPromise
   const local = await run(Servers.use((s) => s.local))
+  /** The request of the window: the strings of the starter in the language of the pick. */
   const form = (name: string, id: StarterId, locale: "en" | "ko" = "en"): AgentStarterCreate => {
     const text = starterText(locale, id)
     return {
@@ -59,7 +61,7 @@ const setup = async () => {
       name,
       role: text.role,
       instructions: text.instructions,
-      starter: { id, locale },
+      starter: { routine: text.routine, skill: text.skill },
     }
   }
   const make = (name: string, id: StarterId, locale: "en" | "ko" = "en") =>
@@ -301,6 +303,128 @@ describe("a starter makes its extra setup on Create", () => {
     expect(failCode(exit as never)).toBe("agent_name_taken")
     expect(await s.routines()).toEqual([])
     expect(await s.skills()).toHaveLength(1)
+    await s.runtime.dispose()
+  })
+})
+
+describe("the request carries the strings, and the main process checks them", () => {
+  const send = (s: Awaited<ReturnType<typeof setup>>, input: unknown, actor = null) =>
+    runRequest(s.runtime, "agents.createFromStarter", input, actor)
+  const names = (s: Awaited<ReturnType<typeof setup>>) =>
+    s.run(Agents.use((a) => a.list(s.local.id, false))).then((list) => list.map((x) => x.name))
+
+  test("a request from the window makes the agent, the routine and the skill from its strings", async () => {
+    const s = await setup()
+    const request = {
+      ...s.form("Morning", "briefer"),
+      starter: {
+        routine: { name: "Own routine", prompt: "Own prompt." },
+        skill: { name: "Own skill", description: "Own line.", instructions: "Own steps." },
+      },
+    }
+    const result = await send(s, request)
+    expect(result.ok).toBe(true)
+    expect(await s.routines()).toMatchObject([
+      { name: "Own routine", prompt: "Own prompt.", enabled: false },
+    ])
+    expect(await s.skills()).toMatchObject([
+      { name: "Own skill", description: "Own line.", instructions: "Own steps." },
+    ])
+    await s.runtime.dispose()
+  })
+
+  test("a wrong string makes nothing: no agent, no routine, no skill", async () => {
+    const s = await setup()
+    const base = s.form("Morning", "briefer")
+    const skill = base.starter.skill as NonNullable<typeof base.starter.skill>
+    const routine = base.starter.routine as NonNullable<typeof base.starter.routine>
+    const wrong = [
+      { routine: { ...routine, name: "" }, skill },
+      { routine: { ...routine, name: "x".repeat(61) }, skill },
+      { routine: { ...routine, prompt: " " }, skill },
+      { routine: { ...routine, prompt: "x".repeat(20_001) }, skill },
+      { routine, skill: { ...skill, name: "" } },
+      { routine, skill: { ...skill, name: "x".repeat(41) } },
+      { routine, skill: { ...skill, description: "x".repeat(141) } },
+      { routine, skill: { ...skill, instructions: "" } },
+      { routine, skill: { ...skill, instructions: "x".repeat(20_001) } },
+      { routine: "Weekday briefing", skill },
+      { skill },
+    ]
+    for (const starter of wrong) {
+      const result = await send(s, { ...base, starter })
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.code).toBe("invalid_input")
+    }
+    expect(await names(s)).toEqual([])
+    expect(await s.routines()).toEqual([])
+    expect(await s.skills()).toEqual([])
+    await s.runtime.dispose()
+  })
+
+  test("a request cannot make a routine that is on, or change its schedule or place", async () => {
+    const s = await setup()
+    const base = s.form("Morning", "briefer")
+    const result = await send(s, {
+      ...base,
+      starter: {
+        routine: {
+          ...base.starter.routine,
+          enabled: true,
+          schedule: { kind: "every", minutes: 1, from: 0 },
+          place: { kind: "channel", channelId: "c" },
+        },
+        skill: { ...base.starter.skill, enabled: false, agentIds: null },
+      },
+    })
+    expect(result.ok).toBe(true)
+    const agent = (await s.run(Agents.use((a) => a.list(s.local.id, false))))[0]
+    const [routine] = await s.routines()
+    expect(routine).toMatchObject({
+      agentId: agent?.id,
+      enabled: false,
+      place: { kind: "agent" },
+      schedule: { kind: "weekly", days: [1, 2, 3, 4, 5], time: "08:00" },
+    })
+    const [skill] = await s.skills()
+    expect(skill?.enabled).toBe(1)
+    expect(s.agentsOf(skill as SkillRow)).toEqual([agent?.id as string])
+    await s.runtime.dispose()
+  })
+
+  test("a linked device cannot send the request", async () => {
+    const s = await setup()
+    const result = await send(s, s.form("Morning", "briefer"), {
+      id: "dev",
+      name: "Phone",
+    } as never)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.code).toBe("not_allowed")
+    expect(await names(s)).toEqual([])
+    expect(await s.routines()).toEqual([])
+    expect(await s.skills()).toEqual([])
+    await s.runtime.dispose()
+  })
+
+  test("the note names the part as the app keeps it: trimmed, with no slash", async () => {
+    const s = await setup()
+    await s.fillRoutines(ROUTINES_MAX)
+    await s.fillSkills(SKILLS_MAX)
+    const agent = await s.run(
+      Starters.use((x) =>
+        x.create({
+          ...s.form("Morning", "briefer"),
+          starter: {
+            routine: { name: "  Padded routine  ", prompt: "Go." },
+            skill: { name: " /Slash skill ", description: "", instructions: "Go." },
+          },
+        }),
+      ),
+    )
+    const names = (await s.messages(agent)).flatMap((m) =>
+      m.parts.map((p) => (p.kind === "note" && p.note === "starter_not_made" ? p.name : "")),
+    )
+    expect(names).toEqual(["Padded routine", "Slash skill"])
     await s.runtime.dispose()
   })
 })

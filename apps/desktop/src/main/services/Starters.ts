@@ -3,7 +3,7 @@ import {
   type AgentStarterCreate,
   ROUTINES_MAX,
   STARTER_ROUTINE_SCHEDULE,
-  starterText,
+  skillName,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Agents } from "./Agents.ts"
@@ -19,6 +19,10 @@ export interface StartersService {
    * posts in the chat of the agent (spec 009), and a skill for this agent only that is on (spec
    * 017). At 50 routines or 100 skills that part is not made. The agent is made in every case,
    * and the first notes in its chat say what was not made and why (spec 002, "Starters").
+   *
+   * The strings of the routine and the skill come with the request, in the language of the pick.
+   * This process holds no text catalogue. The request is checked before anything is made. The
+   * schedule, the pause and the place are set here, never by the request.
    */
   create(input: AgentStarterCreate): Effect.Effect<Agent, AppError>
 }
@@ -46,10 +50,9 @@ export class Starters extends Context.Service<Starters, StartersService>()("robo
           Effect.gen(function* () {
             const { starter, ...form } = input
             const agent = yield* agents.create(form)
-            const text = starterText(starter.locale, starter.id)
 
-            if (text.routine) {
-              const routine = text.routine
+            if (starter.routine) {
+              const routine = starter.routine
               const failure: "limit" | "error" | null =
                 routineCount(agent.serverId) >= ROUTINES_MAX
                   ? "limit"
@@ -74,13 +77,13 @@ export class Starters extends Context.Service<Starters, StartersService>()("robo
                   kind: "note",
                   note: "starter_not_made",
                   what: "routine",
-                  name: routine.name,
+                  name: routine.name.trim(),
                   why: failure,
                 })
             }
 
-            if (text.skill) {
-              const skill = text.skill
+            if (starter.skill) {
+              const skill = starter.skill
               const failure = yield* skills
                 .createForAgent(
                   agent.id,
@@ -104,7 +107,7 @@ export class Starters extends Context.Service<Starters, StartersService>()("robo
                   kind: "note",
                   note: "starter_not_made",
                   what: "skill",
-                  name: skill.name,
+                  name: skillName(skill.name),
                   why: failure,
                 })
             }

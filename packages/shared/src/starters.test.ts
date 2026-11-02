@@ -7,6 +7,7 @@ import { validSchedule } from "./schedule.ts"
 import {
   SKILL_DESCRIPTION_MAX,
   SKILL_INSTRUCTIONS_MAX,
+  SKILL_NAME_MAX,
   skillName,
   skillProblems,
 } from "./skills.ts"
@@ -15,9 +16,9 @@ import {
   STARTER_PLANS,
   STARTER_ROUTINE_SCHEDULE,
   STARTERS,
-  starterExtras,
-  starterText,
+  StarterSetup,
 } from "./starters.ts"
+import { starterExtras, starterSetup, starterText } from "./starterText.ts"
 
 const LOCALES = ["en", "ko"] as const
 const HANGUL = /[\u3131-\uD79D]/
@@ -167,18 +168,104 @@ describe("starters", () => {
 describe("the request of the form", () => {
   const form = { serverId: "s", name: "Briefer", role: "", instructions: "" }
   const decode = Schema.decodeUnknownSync(AgentStarterCreate)
+  /** The request is refused by the check, and not by a mistake in the test. */
+  const refused = (value: unknown, reason?: string) => {
+    let error: unknown
+    try {
+      decode(value)
+    } catch (e) {
+      error = e
+    }
+    expect((error as Error | undefined)?.name, JSON.stringify(value).slice(0, 80)).toBe(
+      "SchemaError",
+    )
+    if (reason) expect((error as Error).message).toContain(reason)
+  }
+  const routine = { name: "Weekday briefing", prompt: "Write my briefing." }
+  const skill = { name: "Brief me now", description: "", instructions: "Write it now." }
+  const good = { routine, skill }
 
-  test("a starter pick holds an id and the language of the pick", () => {
-    expect(decode({ ...form, starter: { id: "briefer", locale: "ko" } }).starter).toEqual({
-      id: "briefer",
-      locale: "ko",
-    })
-    expect(() => decode({ ...form, starter: { id: "nobody", locale: "ko" } })).toThrow()
-    expect(() => decode({ ...form, starter: { id: "briefer", locale: "fr" } })).toThrow()
-    expect(() => decode(form)).toThrow()
+  test("the strings of every starter, in each language, pass the checks", () => {
+    for (const locale of LOCALES)
+      for (const id of STARTERS) {
+        const setup = starterSetup(starterText(locale, id))
+        expect(setup === null, `${id} ${locale}`).toBe(
+          !STARTER_PLANS[id].routine && !STARTER_PLANS[id].skill,
+        )
+        if (setup) expect(decode({ ...form, starter: setup }).starter).toEqual(setup)
+      }
+  })
+
+  test("the Assistant has no strings, so the window makes a plain agent", () => {
+    expect(starterSetup(starterText("en", "assistant"))).toBeNull()
+    expect(starterSetup(starterText("ko", "assistant"))).toBeNull()
+  })
+
+  test("a part that the starter does not make is null, and the field must be there", () => {
+    expect(decode({ ...form, starter: { routine: null, skill } }).starter.routine).toBeNull()
+    expect(decode({ ...form, starter: { routine, skill: null } }).starter.skill).toBeNull()
+    refused({ ...form, starter: { skill } })
+    refused(form)
+    // The old request, with an id and a language, is no longer a request.
+    refused({ ...form, starter: { id: "briefer", locale: "en" } })
   })
 
   test("the fields of the form keep the checks of a plain agent", () => {
-    expect(() => decode({ ...form, name: "", starter: { id: "briefer", locale: "en" } })).toThrow()
+    refused({ ...form, name: "", starter: good })
+    refused({ ...form, name: "x".repeat(41), starter: good })
+  })
+
+  test("a wrong routine string makes no request", () => {
+    const wrong = (value: Partial<typeof routine>) => ({
+      ...form,
+      starter: { routine: { ...routine, ...value }, skill: null },
+    })
+    refused(wrong({ name: "" }))
+    refused(wrong({ name: "   " }))
+    refused(wrong({ name: "x".repeat(ROUTINE_NAME_MAX + 1) }))
+    refused(wrong({ prompt: "" }))
+    refused(wrong({ prompt: " \n " }))
+    refused(wrong({ prompt: "x".repeat(ROUTINE_PROMPT_MAX + 1) }))
+    // The limits themselves are allowed.
+    expect(() => decode(wrong({ name: "x".repeat(ROUTINE_NAME_MAX) }))).not.toThrow()
+    expect(() => decode(wrong({ prompt: "x".repeat(ROUTINE_PROMPT_MAX) }))).not.toThrow()
+    refused(wrong({ name: 5 as unknown as string }))
+  })
+
+  test("a wrong skill string makes no request", () => {
+    const wrong = (value: Partial<typeof skill>) => ({
+      ...form,
+      starter: { routine: null, skill: { ...skill, ...value } },
+    })
+    refused(wrong({ name: "" }), "skill_name_empty")
+    refused(wrong({ name: " / " }), "skill_name_empty")
+    refused(wrong({ name: "x".repeat(SKILL_NAME_MAX + 1) }), "skill_name_long")
+    refused(wrong({ description: "x".repeat(SKILL_DESCRIPTION_MAX + 1) }), "skill_description_long")
+    refused(wrong({ instructions: "" }), "skill_empty")
+    refused(wrong({ instructions: "  " }), "skill_empty")
+    refused(wrong({ instructions: "x".repeat(SKILL_INSTRUCTIONS_MAX + 1) }), "skill_empty")
+    // The limits themselves are allowed, and a description may be empty.
+    expect(() => decode(wrong({ name: "x".repeat(SKILL_NAME_MAX) }))).not.toThrow()
+    expect(() => decode(wrong({ description: "x".repeat(SKILL_DESCRIPTION_MAX) }))).not.toThrow()
+    expect(() => decode(wrong({ instructions: "x".repeat(SKILL_INSTRUCTIONS_MAX) }))).not.toThrow()
+    refused(wrong({ instructions: 5 as unknown as string }))
+  })
+
+  test("a request cannot set the schedule, the pause or the place of the routine", () => {
+    const sly = {
+      ...routine,
+      enabled: true,
+      schedule: { kind: "every", minutes: 1, from: 0 },
+      place: { kind: "channel", channelId: "c" },
+      agentId: "other",
+    }
+    const made = StarterSetup.pipe(Schema.decodeUnknownSync)({ routine: sly, skill: null })
+    expect(made.routine).toEqual(routine)
+    const skillSly = { ...skill, enabled: false, agents: null, agentIds: ["other"] }
+    const madeSkill = StarterSetup.pipe(Schema.decodeUnknownSync)({
+      routine: null,
+      skill: skillSly,
+    })
+    expect(madeSkill.skill).toEqual(skill)
   })
 })

@@ -350,14 +350,17 @@ test("starters: at 100 skills the agent is made without its skill, and the first
   const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
   await resizeWindow(app, 1200, 900)
   const serverId = await serverOf(page)
-  // 100 agents from Researcher make 100 skills.
+  // 100 agents with a starter skill make 100 skills. The name of each skill gets a number.
   for (let n = 0; n < 100; n++)
     await rpc(page, "agents.createFromStarter", {
       serverId,
       name: `Bot ${n}`,
       role: "",
       instructions: "",
-      starter: { id: "researcher", locale: "en" },
+      starter: {
+        routine: null,
+        skill: { name: "Check a claim", description: "", instructions: "Check the claim." },
+      },
     })
   expect(skillsIn(userData)).toHaveLength(100)
 
@@ -374,6 +377,63 @@ test("starters: at 100 skills the agent is made without its skill, and the first
     "Not made: the skill “Brief me now”. This server already has 100 skills, the most that it can hold.",
   )
   await shot(page, "s53-06-note-skill-limit")
+  await app.close()
+})
+
+test("starters: the main process checks the strings of the request", async () => {
+  test.setTimeout(120_000)
+  const userData = freshUserData()
+  const { app, page } = await launch(userData, { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1200, 900)
+  const serverId = await serverOf(page)
+  const base = { serverId, name: "Morning", role: "", instructions: "" }
+  const routine = { name: "Own routine", prompt: "Own prompt." }
+  const skill = { name: "Own skill", description: "", instructions: "Own steps." }
+
+  // A wrong string is refused, and nothing is made: no agent, no routine, no skill.
+  const wrong = [
+    { routine: { ...routine, name: "x".repeat(61) }, skill },
+    { routine: { ...routine, prompt: "  " }, skill },
+    { routine, skill: { ...skill, name: "" } },
+    { routine, skill: { ...skill, description: "x".repeat(141) } },
+    { routine, skill: { ...skill, instructions: "" } },
+    { routine },
+  ]
+  for (const starter of wrong)
+    await expect(rpc(page, "agents.createFromStarter", { ...base, starter })).rejects.toThrow(
+      "invalid_input",
+    )
+  expect(await agentsOf(page)).toEqual([])
+  expect(await routinesOf(page)).toEqual([])
+  expect(skillsIn(userData)).toEqual([])
+
+  // A request cannot turn the routine on, or change its schedule, its place or the agents of the
+  // skill: the app sets them itself.
+  await rpc(page, "agents.createFromStarter", {
+    ...base,
+    starter: {
+      routine: {
+        ...routine,
+        enabled: true,
+        schedule: { kind: "every", minutes: 1, from: 0 },
+        place: { kind: "channel", channelId: "x" },
+      },
+      skill: { ...skill, enabled: false, agentIds: null },
+    },
+  })
+  const [made] = await agentsOf(page)
+  const [row] = await routinesOf(page)
+  expect(row).toMatchObject({
+    agentId: made?.id,
+    name: "Own routine",
+    prompt: "Own prompt.",
+    enabled: false,
+    place: { kind: "agent" },
+    schedule: { kind: "weekly", days: [1, 2, 3, 4, 5], time: "08:00" },
+  })
+  const [kept] = skillsIn(userData)
+  expect(kept).toMatchObject({ name: "Own skill", enabled: 1 })
+  expect(agentsOfSkill(kept)).toEqual([made?.id as string])
   await app.close()
 })
 
@@ -526,7 +586,7 @@ test("starters: a linked device gets the three fields only", async () => {
             name: "Sneaky",
             role: "",
             instructions: "",
-            starter: { id: "briefer", locale: "en" },
+            starter: { routine: { name: "Weekday briefing", prompt: "Go." }, skill: null },
           },
           id,
         )
