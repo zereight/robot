@@ -124,3 +124,46 @@
   padding: 4px 0;
   color: var(--c-text-muted);
 }
+
+/* The action log (spec 007). */
+.words {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.log {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.logRow {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.logHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.logTarget {
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.logTag {
+  font-size: var(--text-s);
+  color: var(--c-text-muted);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+.logTag[data-result="refused"],
+.logTag[data-result="failed"] {
+  color: var(--c-danger);
+}
