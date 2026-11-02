@@ -32,3 +32,4 @@ One line per merged change: date, pull request, role, and the specs it implement
 | 2026-11-02 | Approval and question cards stay after an app restart; the task waits and goes on after the answer | Spec author | 005, 007, 003, 010, 015 |
 | 2026-11-02 | Random name suggestion in the new agent form | Implementer | 002 |
 | 2026-11-02 | Fix: channel start text keeps the same side padding as the messages | Implementer | — |
+| 2026-11-02 | Missing features: decision model and fast pick, `@all`, lead check, end a request, waits-behind line, threads and fork, command list, context meter, restart notice, roles, main agent, agent files, agent messaging, workflow assistant, step effort, computer use, Claude variables, logs, phone parity; list of slices in `docs/spec-changes.md` | Spec author | 000, 001, 002, 003, 004, 005, 006, 007, 009, 010, 011, 012, 013, 014 |

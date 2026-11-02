@@ -34,10 +34,14 @@ new user knows where to look.
 - A working agent has a small success-colour dot on its face. A channel with work running has the
   same dot on its `#` mark.
 - The row's accessible name includes the last message, but the row does not show it.
+- A place that waits for the user stays in its own section and keeps its badge. There is no
+  separate group for places that need the user.
+- Right click (or a long press) on a place opens a menu. "Mark as read" clears the unread count of
+  that place only, not of other places.
 
 ## Header
 
-- Direct chat: the agent's face, name and model.
+- Direct chat: the agent's face, name, model, the context meter (see 003), and the list of threads.
 - Channel: `#`, the name, a thin divider, then the topic in muted text. The topic truncates.
 
 ## States

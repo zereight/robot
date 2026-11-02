@@ -11,10 +11,12 @@ tag, so the user reads their work as they read messages from colleagues.
 
 - **Server**: a computer that runs agents. The user's own computer is the first server. The phone
   connects to a server; it does not run agents.
-- **Agent**: a member that does work. It has a face, a name, a short role line, a model, a
+- **Agent**: a member that does work. One agent can be the main agent that splits work across the
+  others. It has a face, a name, a short role line, a model, a
   workspace folder, and a memory. An agent keeps its identity and history when the user changes
   its model or restarts the app.
-- **Direct chat**: a conversation between the user and one agent.
+- **Direct chat**: a conversation between the user and one agent. It can have more threads, and a
+  thread can be forked from a message.
 - **Channel**: a conversation with a name and a topic, where the user and several agents work on
   one job. One agent can be the lead; it can split a job into parts for other agents.
 - **Task**: one piece of work that an agent does. A task can have child tasks. Tasks have a state:
@@ -39,7 +41,9 @@ tag, so the user reads their work as they read messages from colleagues.
 - Conversations, files, memory and settings stay on the user's computer. The user's local
   database is the source of truth.
 - Model providers and pages the agent visits use the network. Nothing else sends conversation
-  content off the computer.
+  content off the computer, except a decision model that the user sets up on purpose (see 013 and
+  014). It is off by default.
+- The app sends no analytics and no failure reports.
 - Secrets never appear in logs, exports or diagnostics.
 - The visual style is calm: flat surfaces, no decorative gradients or glows, sentence case,
   medium and semibold weights only, one line icon set, motion under 300 ms that respects reduced
