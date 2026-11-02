@@ -6,7 +6,9 @@ The user follows and directs agents from an iPhone or Android phone while away f
 
 ## Concepts
 
-- The phone does not run agents. It shows the servers it is paired with and acts on them.
+- The phone does not run agents. It shows the servers it is paired with and acts on them. So it
+  works only with at least one Mac that runs ROBot (000, 012).
+- The app exists for iOS and for Android, with the same screens and the same features.
 - **Paired server**: a computer that accepted this phone (see 012). A phone can pair with
   several computers, for example two laptops. Each one keeps its own agents and data.
 
@@ -35,6 +37,12 @@ The user follows and directs agents from an iPhone or Android phone while away f
 The phone asks the user for a device name that the computer will show, then opens the pairing
 camera.
 
+## States
+
+- **No server yet**: the Servers screen and the pairing camera say, in one short line, that the
+  phone works with a Mac that runs ROBot, and that the user installs ROBot on the Mac first. The
+  screen offers Add server. The phone does nothing else until one pairing is done.
+
 ## Same as the computer
 
 The phone follows the computer in these points: the `@all` mention in channels (004), the random
@@ -47,14 +55,23 @@ shows no marketplace.
 ## Rules
 
 - Native look on each platform: system fonts, system back gesture, bottom sheets for menus.
+- iOS and Android have every feature of this spec. No feature is for one system only.
 - The phone keeps a cache of recent messages for each server so the last view opens offline,
   marked "Offline". Unpairing a server deletes its cache.
 - Notifications: a reply in a direct chat, a mention, an approval request, a failed task. Each
   kind can be turned off.
   They show while the app runs and is linked to the server. A closed app gets none (012).
 
+## Out of scope
+
+- Use with no Mac. The phone runs no agents, and no service hosts them for it (000, 012).
+
 ## Acceptance
 
 - Pair, open an agent, send a message, see the streamed reply, answer an approval.
+- Pair an iPhone and an Android phone with the same Mac. Both list the same places. A message
+  sent from one shows on the other at once, with "from <device name>".
+- Start the app with no paired server: the Servers screen says that a Mac with ROBot is needed,
+  and offers Add server.
 - Pair with two computers: both show on the Servers screen, and each opens its own agents.
 - With the computer off, the phone shows the cached conversation with the offline mark.

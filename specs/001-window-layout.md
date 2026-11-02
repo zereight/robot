@@ -152,8 +152,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 ## Rules
 
 - Window width under 800 px: the rail narrows to 56 px and the activity panel closes.
-- On macOS the rail leaves room for the window buttons at the top left.
-- Keyboard: Cmd/Ctrl+K focuses search. Up and down move through places. Enter opens one.
+- The rail leaves room for the window buttons at the top left.
+- Keyboard: Cmd+K focuses search. Up and down move through places. Enter opens one.
 
 ## Acceptance
 

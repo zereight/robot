@@ -23,7 +23,7 @@ The user knows when an agent needs them or finishes, without watching the window
 - The mute row in Settings → Notifications follows the server on screen: "This server" for this
   computer, or "Server <name>" for a linked one.
 
-## Status island (macOS, optional)
+## Status island (optional)
 
 - A small dark shape at the top centre of the screen, around the camera notch when there is one.
 - Idle: the app mark at the left and a still muted dot at the right. Nothing moves when idle.
