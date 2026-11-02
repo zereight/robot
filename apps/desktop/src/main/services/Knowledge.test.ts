@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -463,6 +464,105 @@ describe("changes and undo", () => {
     expect((await s.list()).articles.map((a) => a.title)).toEqual(["Note"])
   })
 
+  test("an undo is a new change by the user, so it can be undone again", async () => {
+    const s = await setup()
+    await s.turn(call("write_article", { title: "Alpha", summary: "s", body: "agent text" }))
+    const file = join(s.folder, "Alpha.md")
+    await s.turn(call("delete_article", { title: "Alpha" }))
+    expect(existsSync(file)).toBe(false)
+    const [deleted] = await s.changes()
+    // Undo the delete: the article returns, and the undo is a change of the user.
+    await s.k((x) => x.undo(s.agent.id, deleted?.id ?? ""))
+    expect(readFileSync(file, "utf8")).toContain("agent text")
+    const [undo] = await s.changes()
+    expect(undo).toMatchObject({ kind: "add", title: "Alpha", actor: "user", undone: false })
+    expect(undo?.id).not.toBe(deleted?.id)
+    expect((await s.list()).articles[0]?.editor).toBe("user")
+    // Undo the undo: it is deleted again, by the user.
+    await s.k((x) => x.undo(s.agent.id, undo?.id ?? ""))
+    expect(existsSync(file)).toBe(false)
+    const [again] = await s.changes()
+    expect(again).toMatchObject({ kind: "delete", title: "Alpha", actor: "user", undone: false })
+    // And again: the article is back with its text.
+    await s.k((x) => x.undo(s.agent.id, again?.id ?? ""))
+    expect(readFileSync(file, "utf8")).toContain("agent text")
+    expect((await s.changes()).length).toBe(5)
+  })
+
+  test("an undo of an edit is an edit by the user; it can be undone, and it protects the article", async () => {
+    const s = await setup()
+    await s.turn(call("write_article", { title: "Alpha", summary: "s", body: "one" }))
+    await s.turn(call("write_article", { title: "Alpha", body: "two" }))
+    const [edit] = await s.changes()
+    await s.k((x) => x.undo(s.agent.id, edit?.id ?? ""))
+    const file = join(s.folder, "Alpha.md")
+    expect(readFileSync(file, "utf8")).toContain("one")
+    const [undo] = await s.changes()
+    expect(undo).toMatchObject({ kind: "edit", actor: "user" })
+    expect(undo?.before).toContain("two")
+    // The undo counts as an edit by the user: the agent must ask before it changes the article.
+    await s.send(call("write_article", { title: "Alpha", body: "three" }))
+    expect((await s.waitingCard())?.kind).toBe("article")
+    await s.respond("deny")
+    await s.finished()
+    expect(readFileSync(file, "utf8")).toContain("one")
+    // Undo the undo: "two" comes back.
+    await s.k((x) => x.undo(s.agent.id, undo?.id ?? ""))
+    expect(readFileSync(file, "utf8")).toContain("two")
+  })
+
+  test("undo does not look at later changes: it puts the earlier text back", async () => {
+    const s = await setup()
+    await s.save("Alpha", "one", "s")
+    await s.save("Alpha", "two", "s", "Alpha.md")
+    const [second] = await s.changes()
+    await s.save("Alpha", "three", "s", "Alpha.md")
+    await s.save("Alpha", "four", "s", "Alpha.md")
+    // The edit to "two" is undone, though two edits came after it: the text before it is back.
+    await s.k((x) => x.undo(s.agent.id, second?.id ?? ""))
+    const text = readFileSync(join(s.folder, "Alpha.md"), "utf8")
+    expect(text).toContain("one")
+    expect(text).not.toContain("four")
+    // The undo of a rename puts the old title back: the article is found by its file.
+    await s.save("Alpha beta", "five", "s", "Alpha.md")
+    const [renamed] = await s.changes()
+    await s.k((x) => x.undo(s.agent.id, renamed?.id ?? ""))
+    expect((await s.list()).articles.map((a) => a.title)).toEqual(["Alpha"])
+  })
+
+  test("an older change of an article that was renamed since: its earlier text comes back", async () => {
+    const s = await setup()
+    await s.save("Alpha", "one", "s")
+    await s.save("Alpha", "two", "s", "Alpha.md")
+    const [edit] = await s.changes()
+    await s.save("Beta", "two", "s", "Alpha.md")
+    expect((await s.list()).articles.map((a) => a.title)).toEqual(["Beta"])
+    // The article of the change is not there under its old title or file any more. The earlier
+    // text is put back; the renamed article stays.
+    await s.k((x) => x.undo(s.agent.id, edit?.id ?? ""))
+    expect((await s.list()).articles.map((a) => a.title)).toEqual(["Alpha", "Beta"])
+    expect(readFileSync(join(s.folder, "Alpha.md"), "utf8")).toContain("one")
+    // An article that kept its title but moved to another file is found by its title.
+    await s.save("Gamma", "g1", "s")
+    await s.save("Gamma", "g2", "s", "Gamma.md")
+    const [gammaEdit] = await s.changes()
+    renameSync(join(s.folder, "Gamma.md"), join(s.folder, "Moved.md"))
+    await s.k((x) => x.undo(s.agent.id, gammaEdit?.id ?? ""))
+    expect((await s.list()).articles.map((a) => a.title)).toEqual(["Alpha", "Beta", "Gamma"])
+    expect(existsSync(join(s.folder, "Gamma.md"))).toBe(true)
+    expect(readFileSync(join(s.folder, "Gamma.md"), "utf8")).toContain("g1")
+  })
+
+  test("an added article that is gone already cannot be undone; the error is plain", async () => {
+    const s = await setup()
+    await s.save("Alpha")
+    const [added] = await s.changes()
+    await s.k((x) => x.remove(s.agent.id, "Alpha.md"))
+    await expect(s.k((x) => x.undo(s.agent.id, added?.id ?? ""))).rejects.toMatchObject({
+      code: "knowledge_not_found",
+    })
+  })
+
   test("undo of a delete fails when another article took the title", async () => {
     const s = await setup()
     await s.save("Note", "one")
@@ -530,6 +630,67 @@ describe("files are the truth", () => {
     const view = await s.list()
     expect(view.articles).toHaveLength(1)
     expect(view.skipped).toBe(1)
+  })
+
+  test("a file that another app wrote has no limits: a long title, summary and body are shown", async () => {
+    const s = await setup()
+    await s.save("Alpha")
+    const title = "T".repeat(300)
+    writeFileSync(
+      join(s.folder, "Long.md"),
+      `---\ntitle: ${title}\nsummary: ${"s".repeat(400)}\n---\n\n${"b".repeat(30_000)}\n`,
+    )
+    const view = await s.list()
+    expect(view.articles.map((a) => a.title)).toEqual(["Alpha", title])
+    expect(view.skipped).toBe(0)
+    const article = await s.k((x) => x.get(s.agent.id, "Long.md"))
+    expect(article.summary).toHaveLength(400)
+    expect(article.body).toHaveLength(30_000)
+    // The agent can open it by its title.
+    await s.turn(call("read_article", { title }))
+    expect((await s.toolParts())[0]?.knowledge).toEqual({ kind: "read", title })
+    // The limits hold when the agent or the user saves: a summary of 400 characters is too long.
+    await s.turn(call("write_article", { title, body: "new body" }))
+    expect((await s.toolParts())[0]?.knowledge).toMatchObject({
+      kind: "failed",
+      code: "knowledge_title_invalid",
+    })
+    await expect(s.save(title, "new")).rejects.toMatchObject({ code: "knowledge_title_invalid" })
+  })
+
+  test("the first file of a title stays; the file that came second is hidden, not deleted", async () => {
+    const s = await setup()
+    await s.save("Zed", "app text")
+    // "Aaa.md" sorts before "Zed.md", but the app knew Zed first.
+    writeFileSync(join(s.folder, "Aaa.md"), "---\ntitle: zed\n---\n\nOther app.\n")
+    const view = await s.list()
+    expect(view.articles.map((a) => [a.title, a.file])).toEqual([["Zed", "Zed.md"]])
+    expect(view.skipped).toBe(1)
+    // The hidden file is not a change, and the article is not recorded as deleted.
+    expect((await s.changes()).map((c) => c.kind)).toEqual(["add"])
+    // When the second file goes, nothing is lost.
+    rmSync(join(s.folder, "Aaa.md"))
+    expect((await s.list()).skipped).toBe(0)
+    expect((await s.list()).articles.map((a) => a.title)).toEqual(["Zed"])
+    expect((await s.changes()).map((c) => c.kind)).toEqual(["add"])
+  })
+
+  test("hidden files, other folders and other kinds of file are ignored", async () => {
+    const s = await setup()
+    await s.save("Alpha")
+    mkdirSync(join(s.folder, "notes"), { recursive: true })
+    mkdirSync(join(s.folder, ".git"), { recursive: true })
+    writeFileSync(join(s.folder, ".hidden.md"), "# Hidden\n")
+    writeFileSync(join(s.folder, "notes", "Inner.md"), "# Inner\n")
+    writeFileSync(join(s.folder, ".git", "Config.md"), "# Config\n")
+    writeFileSync(join(s.folder, "readme.txt"), "not an article")
+    // The sources folder holds sources: a Markdown file there is not an article.
+    mkdirSync(join(s.folder, "sources"), { recursive: true })
+    writeFileSync(join(s.folder, "sources", "Source.md"), "# A source\n")
+    const view = await s.list()
+    expect(view.articles.map((a) => a.title)).toEqual(["Alpha"])
+    expect(view.skipped).toBe(0)
+    expect(view.total).toBe(1)
   })
 
   test("the last change time is the time of the file", async () => {
@@ -1057,6 +1218,76 @@ describe("a vendor program writes the folder itself", () => {
     expect(existsSync(join(s.folder, "Leak.md"))).toBe(false)
     for (const name of readdirSync(s.folder))
       expect(readFileSync(join(s.folder, name), "utf8")).not.toContain(KEY)
+  })
+})
+
+describe("a vendor program, more cases", () => {
+  const vendor = async (s: Awaited<ReturnType<typeof setup>>, write: () => void) => {
+    await s.k((x) => Effect.sync(() => x.begin(s.agent.id)))
+    write()
+    await s.k((x) => Effect.sync(() => x.end(s.agent.id, "agent")))
+  }
+
+  test("a token that is not a stored key is put back too; a file that is new is deleted", async () => {
+    const s = await setup()
+    await s.save("Alpha", "clean text", "kept summary")
+    const before = readFileSync(join(s.folder, "Alpha.md"), "utf8")
+    const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+    await vendor(s, () => {
+      writeFileSync(join(s.folder, "Alpha.md"), `---\ntitle: Alpha\nsummary: x\n---\n\n${token}\n`)
+      writeFileSync(join(s.folder, "New.md"), `# New\n\nA token ${token}\n`)
+      writeFileSync(join(s.folder, "Fine.md"), "# Fine\n\nNo secret here.\n")
+    })
+    expect(readFileSync(join(s.folder, "Alpha.md"), "utf8")).toBe(before)
+    expect(existsSync(join(s.folder, "New.md"))).toBe(false)
+    // The files that are fine stay, and only they are changes of the agent.
+    const view = await s.list()
+    expect(view.articles.map((a) => [a.title, a.editor])).toEqual([
+      ["Alpha", "user"],
+      ["Fine", "agent"],
+    ])
+    expect((await s.changes()).map((c) => [c.kind, c.title, c.actor])).toEqual([
+      ["add", "Fine", "agent"],
+      ["add", "Alpha", "user"],
+    ])
+    for (const name of readdirSync(s.folder))
+      expect(readFileSync(join(s.folder, name), "utf8")).not.toContain(token)
+  })
+
+  test("a deleted file and an edited file are changes of the agent; the limits are not enforced", async () => {
+    const s = await setup()
+    await s.save("Alpha", "one")
+    await s.save("Beta", "two")
+    await vendor(s, () => {
+      rmSync(join(s.folder, "Alpha.md"))
+      writeFileSync(join(s.folder, "Beta.md"), "---\ntitle: Beta\n---\n\nedited\n")
+      // Six new files, more than the 5 changes a turn may make: the app told the limit only.
+      for (let i = 0; i < 6; i++) writeFileSync(join(s.folder, `v${i}.md`), `# V${i}\n\nx\n`)
+    })
+    expect((await s.list()).total).toBe(7)
+    const changes = (await s.changes()).slice(0, 8)
+    expect(changes.every((c) => c.actor === "agent")).toBe(true)
+    expect(changes.map((c) => c.kind).sort()).toEqual([
+      "add",
+      "add",
+      "add",
+      "add",
+      "add",
+      "add",
+      "delete",
+      "edit",
+    ])
+  })
+
+  test("the instructions tell the folder, the format, and the limits of 5 changes and 500 articles", async () => {
+    const s = await setup()
+    const text =
+      (await s.run(Knowledge.use((x) => Effect.succeed(x.prompt(s.agent.id, "", "files"))))) ?? ""
+    expect(text).toContain(s.folder)
+    expect(text).toContain("title:")
+    expect(text).toContain("at most 5 article changes in one turn")
+    expect(text).toContain("500 articles at most")
+    expect(text).toContain("There are no articles yet.")
   })
 })
 

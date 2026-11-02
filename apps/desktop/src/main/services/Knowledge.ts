@@ -29,6 +29,7 @@ import {
   KNOWLEDGE_SOURCES,
   KNOWLEDGE_SUMMARY_MAX,
   KNOWLEDGE_TITLE_MAX,
+  KNOWLEDGE_TURN_CHANGES_MAX,
   type KnowledgeActor,
   type KnowledgeArticle,
   type KnowledgeChange,
@@ -413,10 +414,15 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
         let names: string[] = []
         if (exists) {
           try {
+            // Hidden files and folders are not read. Only Markdown files count.
             names = readdirSync(folder, { withFileTypes: true })
               .filter((e) => e.isFile() && !e.name.startsWith(".") && /\.md$/i.test(e.name))
               .map((e) => e.name)
-              .sort()
+              // A file that the app knows comes first, so that a new file of another app with the
+              // same title is the second file, which is not shown.
+              .sort(
+                (a, b) => Number(rows.has(b)) - Number(rows.has(a)) || (a < b ? -1 : a > b ? 1 : 0),
+              )
           } catch {
             names = []
           }
@@ -424,6 +430,7 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
         const entries: Entry[] = []
         const byFile = new Map<string, Entry>()
         const titles = new Set<string>()
+        const hidden = new Set<string>()
         let skipped = 0
         let changed = false
         for (const file of names) {
@@ -449,6 +456,7 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
           const key = titleKey(parsed.title)
           if (titles.has(key)) {
             skipped++
+            hidden.add(file)
             continue
           }
           const row = rows.get(file)
@@ -499,7 +507,8 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
           byFile.set(file, entry)
         }
         for (const row of rows.values()) {
-          if (byFile.has(row.file)) continue
+          // A file that is hidden still exists. It is not deleted.
+          if (byFile.has(row.file) || hidden.has(row.file)) continue
           // The file is gone, or it no longer counts as an article.
           const parsed = parseArticleFile(row.file, row.content)
           record(agentId, "delete", parsed.title, row.file, row.content, actor)
@@ -782,7 +791,11 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
         if (!row) return fail("knowledge_not_found")
         if (row.undone_at !== null) return fail("knowledge_undone")
         const scanned = scan(agentId, "user")
-        const held = scanned.byFile.get(row.file)
+        // Later changes do not matter: the article is the one in this file, or else the one with
+        // this title (it may have been renamed and its file with it).
+        const held =
+          scanned.byFile.get(row.file) ??
+          scanned.entries.find((e) => titleKey(e.title) === titleKey(row.title))
         if (row.kind === "add") {
           // An added article goes again.
           if (!held) return fail("knowledge_not_found")
@@ -990,7 +1003,7 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
             ].join("\n\n")
           }
           return [
-            `Your knowledge is a folder of Markdown files, one file for each article: ${scanned.folder}. Read it with your file tools before you use it, and keep it current. A file starts with a header between two lines of --- that holds "title:", "summary:" and one "source:" line for each source file; then comes the body. Put a source file in the "${KNOWLEDGE_SOURCES}" folder inside it, and never change or delete a source. Name an article file after its title.`,
+            `Your knowledge is a folder of Markdown files, one file for each article: ${scanned.folder}. Read it with your file tools before you use it, and keep it current. A file starts with a header between two lines of --- that holds "title:", "summary:" and one "source:" line for each source file; then comes the body. Put a source file in the "${KNOWLEDGE_SOURCES}" folder inside it, and never change or delete a source. Name an article file after its title. Make at most ${KNOWLEDGE_TURN_CHANGES_MAX} article changes in one turn.`,
             rules,
             list,
           ].join("\n\n")
