@@ -58,8 +58,10 @@ service holds it.
    - "Send my data to <name>": the other computer takes the data of this one. Data that only
      the other computer has is removed.
 3. The other computer shows "Sync with <name>?" with the choice, the "Syncs" and "Does not sync"
-   lists in short, and how many items it will drop. The text says that <name> can change its
-   agents, chats, memory, routines and workflows, and that the user can stop at any time. The
+   lists in short, and how many items it will drop. The text says that <name> can change and
+   delete its agents, channels, chats, memory, routines and workflows, and can answer the
+   approval requests of its tasks, including steps that change files and run commands (as a
+   linked device can, 012). The text also says that the user can stop at any time. The
    buttons are Allow and Deny.
 4. On Allow, each computer first saves a backup of its data (a ROBot export, 014) in a
    "backups" folder in its data folder. The app keeps the newest 3 sync backups. Then the copy
@@ -67,6 +69,12 @@ service holds it.
 5. When the copy ends, the row shows "Up to date". The agents that came from the other computer
    use the permission level "Ask for everything" and a new, empty workspace folder on this
    computer. Their model accounts show "Not connected" until the user connects them here.
+
+### Sync and the switch of 012
+
+Sync gives the other computer more than the switch "Can create and change agents" (012). So,
+while sync is on, that switch shows as on for the other computer and the user cannot turn it
+off. "Stop syncing" returns the switch to the value that it had before sync began.
 
 ### Every day
 
@@ -88,8 +96,13 @@ service holds it.
    run here, also not at a schedule time.
 2. "Run on this computer" moves it. The other computer shows "Runs on <name>" at once. The
    "Missed" rule of 009 counts only on the computer where it runs.
-3. A workflow with a channel trigger fires on its "Runs on" computer for a message from either
-   computer. A message that is older than 5 minutes when it arrives does not fire it.
+3. Only the computer that will run a routine or workflow can choose to run it. A change from the
+   other computer that makes it run on this computer is ignored. The user here decides with
+   "Run on this computer".
+4. A workflow with a channel trigger fires on its "Runs on" computer for a message from either
+   computer. A message that is older than 5 minutes when it arrives does not fire it. The age
+   uses the difference between the two clocks, which the computers measure when they connect.
+   So a wrong clock does not make an old message look new, or a new one look old.
 
 ### Files of messages
 
@@ -101,6 +114,8 @@ service holds it.
 
 - Settings → Devices → the computer → "Stop syncing". Both computers keep all their data. The
   other computer shows "<name> stopped syncing." Removing the link (012) also stops the sync.
+- A routine or workflow that runs on the other computer keeps "Runs on <name>" and does not run
+  here until the user chooses "Run on this computer". Two computers never run it by default.
 - A new sync after a stop starts as "Merge". Items with the same origin match, so no copies
   appear. An item that the user deleted on one computer while sync was off comes back from the
   other.
@@ -146,7 +161,9 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   channels here." with Delete and Keep. Keep leaves them here, and they come back to the other
   computer.
 - **One task per agent**: while both computers are online, an agent runs one task at a time
-  across both (005). A task that waits shows "Waits for the task on <name>."
+  across both (005). A task that waits shows "Waits for the task on <name>." There is no lock
+  between the computers. If the user starts a task for one agent on both computers within about
+  one second, both tasks can run. After that, the rule holds.
 - Unread counts follow the read state: reading a place on one computer clears its count on the
   other. Data that arrives by sync makes no system notification. An approval or a question of a
   task on the other computer does (015).
@@ -190,6 +207,10 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   MacBook 2 moves it, and MacBook 1 shows "Runs on MacBook 2".
 - Delete an archived agent on MacBook 1. It is gone on MacBook 2, and its workspace folder is
   still on the disk. Delete 8 agents at once: MacBook 2 asks before it deletes them.
+- MacBook 1 sends a change that makes a routine run on MacBook 2. The routine on MacBook 2
+  still shows "Runs on MacBook 1" and does not run.
+- Turn sync on while the switch "Can create and change agents" for MacBook 1 is off on MacBook 2:
+  the switch shows on and cannot be turned off. After "Stop syncing" it is off again.
 - Stop syncing. A change on MacBook 1 does not reach MacBook 2. Remove the link in the same
   way: sync ends.
 - After a sync, MacBook 2 holds no key and no token of MacBook 1.

@@ -65,7 +65,8 @@ client shows it and sends commands.
   user picks one and chooses "Remove access". That device cannot connect again until it is
   paired again.
 - On the server, each linked device in that list has the switch "Can create and change agents".
-  It takes effect at once, also for a connection that is open. A link made before this switch
+  It takes effect at once, also for a connection that is open. While the two computers sync
+  (016), the switch for that device shows as on and cannot be changed. A link made before this switch
   existed has it off until the user turns it on.
 - On the client: Settings → Devices lists the servers this device can open. The user picks one
   and chooses "Remove". The link ends on both sides. The cache of that server is deleted.
