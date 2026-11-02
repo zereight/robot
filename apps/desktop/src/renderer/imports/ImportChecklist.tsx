@@ -38,8 +38,8 @@ export const ChecklistCard = (props: {
       aria-label={t("checklist.title")}
     >
       <div class={styles.head}>
-        <span class={styles.from} data-testid="checklist-from">
-          {t("checklist.from")}
+        <span class={styles.from} data-testid="checklist-sender">
+          {t("checklist.sender")}
         </span>
         <span class={styles.title}>{t("checklist.title")}</span>
         <span class={styles.hint} data-testid="checklist-progress">

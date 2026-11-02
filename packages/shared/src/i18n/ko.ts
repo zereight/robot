@@ -1134,7 +1134,7 @@ export const ko: Record<MessageKey, string> = {
   "importReview.counts.workflows": "워크플로우 {workflows}개(꺼짐)를 만들어요.",
   "importReview.nothing": "체크한 항목이 없어요.",
   "error.import_nothing_picked": "체크한 항목이 없어요. 가져올 부분을 하나 이상 체크하세요.",
-  "checklist.from": "ROBot",
+  "checklist.sender": "ROBot",
   "checklist.title": "가져온 뒤 할 일",
   "checklist.intro": "가져온 항목 중 아래는 직접 마무리해야 해요.",
   "checklist.progress": "{count}개 중 {done}개 완료",

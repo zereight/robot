@@ -139,7 +139,7 @@ test("review before an import: agent file and workflow file, ticks, not imported
   await placeRows(page).first().click()
   const checklist = page.getByTestId("chat-checklist")
   await expect(checklist).toBeVisible()
-  await expect(checklist.getByTestId("checklist-from")).toHaveText("ROBot")
+  await expect(checklist.getByTestId("checklist-sender")).toHaveText("ROBot")
   await expect(checklist.getByTestId("checklist-item")).toHaveCount(1)
   await expect(checklist.getByTestId("checklist-item")).toContainText("Evening note")
   await expect(checklist.getByTestId("checklist-item")).toHaveAttribute("data-done", "false")
