@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto"
 import {
   type ActionDecider,
+  blockedError,
   isActive,
+  isFinal,
   isRuntimeKind,
   isTaskProgress,
   type LoggedStep,
@@ -17,7 +19,9 @@ import {
   type TaskProgress,
   type TaskSource,
   type TaskState,
+  type TurnEnd,
   taskLabel,
+  validChanges,
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Layer, Semaphore } from "effect"
 import { resumeOf } from "../providers/resume.ts"
@@ -94,8 +98,14 @@ export interface RetryOptions {
   readonly awayFrom?: string
 }
 
-/** Starts the work again for a failed or cancelled task of one source. */
+/** Starts the work again for a failed, blocked or cancelled task of one source. */
 export type RetryHandler = (task: Task) => Effect.Effect<void, AppError>
+
+/**
+ * Starts the new part that "Request changes" asks for (spec 005): the same member, `text` as the
+ * prompt, linked to `old` and in the same request.
+ */
+export type ChangesHandler = (old: Task, text: string) => Effect.Effect<void, AppError>
 
 /**
  * What the sync service tells the tasks about the other computer (spec 019). The tasks cannot
@@ -121,7 +131,15 @@ export interface TasksService {
     taskId: string,
     agentId: string,
     work: Effect.Effect<A, E, R>,
-    options?: { readonly resumed?: boolean },
+    options?: {
+      readonly resumed?: boolean
+      /**
+       * Says how a turn that ended with no error ends the task: done, blocked, or in review
+       * (spec 005). Without it the task is done. A turn with an error is failed and a stopped
+       * turn is cancelled, whatever this says.
+       */
+      readonly finish?: (value: A) => TurnEnd
+    },
   ): Effect.Effect<A, E, R>
   /**
    * The tasks that waited for an approval or a question when the app closed and wait on (spec
@@ -148,6 +166,21 @@ export interface TasksService {
   stopAny(taskId: string): Effect.Effect<void, AppError>
   /** Stops the tasks of this agent that run on the other computer (spec 019). Local ones stay. */
   stopRemoteFor(agentId: string): Effect.Effect<void, AppError>
+  /**
+   * Ends the review of a part: the task is done (spec 005). Only on the computer that owns the
+   * task, and only for a task in review.
+   */
+  accept(taskId: string): Effect.Effect<void, AppError>
+  /**
+   * Ends the review as done and starts a new part for the same member with `text` (1 to 2000
+   * characters) as its prompt (spec 005).
+   */
+  requestChanges(taskId: string, text: string): Effect.Effect<void, AppError>
+  /**
+   * Cancels every task of the request of this task that is not final, also a task in review, and
+   * stops the turns that still run. A task that is done keeps its result (spec 004, 005).
+   */
+  endRequest(taskId: string): Effect.Effect<void, AppError>
   /** The sync service gives its view of the other computer. */
   setRemote(remote: RemoteTasks): void
   /** The name of the other computer with this id, for "Runs on <name>" (spec 019). */
@@ -167,7 +200,9 @@ export interface TasksService {
   /** The logged steps of a task, oldest first. */
   steps(taskId: string): readonly LoggedStep[]
   onRetry(source: TaskSource, handler: RetryHandler): void
-  /** Calls `listener` when a task ends as done, failed or cancelled. */
+  /** Sets how a source starts the new part of "Request changes". */
+  onChanges(source: TaskSource, handler: ChangesHandler): void
+  /** Calls `listener` when a task ends as done, failed, blocked or cancelled. */
   onEnd(listener: (task: Task) => void): void
   list(serverId: string): Effect.Effect<readonly Task[]>
   get(taskId: string): Effect.Effect<TaskDetail, AppError>
@@ -220,6 +255,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const stops = new Map<string, Deferred.Deferred<void>>()
       const live = new Set<string>()
       const retryHandlers = new Map<TaskSource, RetryHandler>()
+      const changesHandlers = new Map<TaskSource, ChangesHandler>()
       const endListeners: ((task: Task) => void)[] = []
       let remote: RemoteTasks | undefined
 
@@ -271,6 +307,34 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         )
         if (server) bus.emit("tasks.changed", { serverId: server.server_id })
       }
+      /** A part waits for the review of the user: one notification of the kind "part in review". */
+      const reviewNotice = (id: string, agentId: string) => {
+        const task = row(id)
+        const agent = db.get<{ server_id: string; name: string }>(
+          "SELECT server_id, name FROM agent WHERE id = ?",
+          agentId,
+        )
+        const channel =
+          task?.source === "channel" && task.source_id
+            ? db.get<{ name: string }>("SELECT name FROM channel WHERE id = ?", task.source_id)
+            : undefined
+        // The main process holds no interface text, so the title and the body are names and the label.
+        if (task && agent && channel && task.source_id && task.origin === null)
+          notifier.notify({
+            kind: "part_review",
+            agentId,
+            serverId: agent.server_id,
+            channelId: task.source_id,
+            title: `${agent.name} · ${channel.name}`,
+            body: task.label || task.prompt,
+            target: {
+              kind: "channel",
+              id: task.source_id,
+              ...(task.message_id ? { messageId: task.message_id } : {}),
+            },
+          })
+      }
+
       const setState = (
         id: string,
         agentId: string,
@@ -281,7 +345,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         db.run(
           `UPDATE task SET state = ?, error_code = ?, error_detail = ?,
              started_at = CASE WHEN ? = 'running' AND started_at IS NULL THEN ? ELSE started_at END,
-             finished_at = CASE WHEN ? IN ('done', 'failed', 'cancelled') THEN ? ELSE finished_at END
+             finished_at = CASE WHEN ? IN ('done', 'failed', 'blocked', 'cancelled') THEN ? ELSE finished_at END
            WHERE id = ?`,
           state,
           error?.code ?? null,
@@ -293,7 +357,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           id,
         )
         changed(agentId)
-        if (state === "done" || state === "failed" || state === "cancelled") {
+        if (isFinal(state)) {
           const ended = endListeners.length > 0 ? row(id) : undefined
           // A listener never stops the end of a task.
           if (ended)
@@ -305,7 +369,9 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               }
             }
         }
-        if (state === "failed" && error?.code !== "app_stopped") {
+        if (state === "review") reviewNotice(id, agentId)
+        // A blocked task is a failed one for the notice (spec 005, 015).
+        if (state === "blocked" || (state === "failed" && error?.code !== "app_stopped")) {
           const task = row(id)
           const agent = db.get<{ server_id: string; name: string }>(
             "SELECT server_id, name FROM agent WHERE id = ?",
@@ -383,7 +449,10 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         taskId: string,
         agentId: string,
         work: Effect.Effect<A, E, R>,
-        options?: { readonly resumed?: boolean },
+        options?: {
+          readonly resumed?: boolean
+          readonly finish?: (value: A) => TurnEnd
+        },
       ) => {
         const stopSignal = stops.get(taskId) ?? Deferred.makeUnsafe<void>()
         stops.set(taskId, stopSignal)
@@ -420,7 +489,18 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             Effect.sync(() => {
               live.delete(taskId)
               stops.delete(taskId)
-              if (Exit.isSuccess(exit)) return setState(taskId, agentId, "done")
+              if (Exit.isSuccess(exit)) {
+                let end: TurnEnd = { state: "done" }
+                // A reading that fails never stops the end of a task.
+                try {
+                  if (options?.finish) end = options.finish(exit.value)
+                } catch (e) {
+                  console.error("task finish failed", e)
+                }
+                if (end.state === "blocked")
+                  return setState(taskId, agentId, "blocked", blockedError(end.reason))
+                return setState(taskId, agentId, end.state)
+              }
               if (Cause.hasInterruptsOnly(exit.cause)) return setState(taskId, agentId, "cancelled")
               const failure = Cause.squash(exit.cause) as { code?: unknown; detail?: unknown }
               setState(taskId, agentId, "failed", {
@@ -491,7 +571,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         Effect.suspend((): Effect.Effect<RetryResult, AppError> => {
           const current = row(taskId)
           if (!current) return Effect.fail(new AppError({ code: "task_not_found" }))
-          if (current.state !== "failed" && current.state !== "cancelled")
+          if (
+            current.state !== "failed" &&
+            current.state !== "blocked" &&
+            current.state !== "cancelled"
+          )
             return Effect.fail(new AppError({ code: "cannot_retry_task" }))
           const handler = retryHandlers.get(current.source)
           if (!handler) return Effect.fail(new AppError({ code: "cannot_retry_task" }))
@@ -500,6 +584,66 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             if (note) return Effect.succeed({ started: false, note })
           }
           return handler(toTask(current, remote)).pipe(Effect.as<RetryResult>({ started: true }))
+        })
+
+      /** The task in review that the user decides on, or the reason why the user cannot. */
+      const inReview = (taskId: string): Effect.Effect<TaskRow, AppError> =>
+        Effect.suspend(() => {
+          const current = row(taskId)
+          if (!current) return Effect.fail(new AppError({ code: "task_not_found" }))
+          // The user decides on the computer that owns the task (spec 005, 019).
+          if (current.origin !== null)
+            return Effect.fail(
+              new AppError({
+                code: "task_elsewhere",
+                detail: remote?.nameOf(current.origin) ?? "",
+              }),
+            )
+          if (current.state !== "review")
+            return Effect.fail(new AppError({ code: "task_not_in_review" }))
+          return Effect.succeed(current)
+        })
+
+      const accept = (taskId: string) =>
+        inReview(taskId).pipe(
+          Effect.map((current) => setState(current.id, current.agent_id, "done")),
+        )
+
+      const requestChanges = (taskId: string, text: string) =>
+        Effect.gen(function* () {
+          const current = yield* inReview(taskId)
+          const value = text.trim()
+          if (!validChanges(value)) return yield* new AppError({ code: "invalid_input" })
+          const handler = changesHandlers.get(current.source)
+          if (!handler) return yield* new AppError({ code: "cannot_request_changes" })
+          // The new part exists before the old one is done, so the request is never without an open part.
+          yield* handler(toTask(current, remote), value)
+          setState(current.id, current.agent_id, "done")
+        })
+
+      const endRequest = (taskId: string): Effect.Effect<void, AppError> =>
+        Effect.gen(function* () {
+          const current = row(taskId)
+          if (!current) return yield* new AppError({ code: "task_not_found" })
+          if (current.origin !== null)
+            return yield* new AppError({
+              code: "task_elsewhere",
+              detail: remote?.nameOf(current.origin) ?? "",
+            })
+          // The request starts at the first task: the parent of a part, up to the top.
+          let top = current
+          for (let up = top.parent_id ? row(top.parent_id) : undefined; up; ) {
+            top = up
+            up = top.parent_id ? row(top.parent_id) : undefined
+          }
+          // The parent goes first, so a parent that waits ends before it can start anything.
+          for (const id of withDescendants(top.id)) {
+            const found = row(id)
+            if (!found || found.origin !== null || isFinal(found.state)) continue
+            const signal = stops.get(id)
+            if (live.has(id) && signal) yield* Deferred.succeed(signal, undefined)
+            else setState(id, found.agent_id, "cancelled")
+          }
         })
 
       const recordStep = (step: StepRecord) => {
@@ -594,11 +738,15 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         },
         computerName: (originId) => remote?.nameOf(originId) ?? "",
         retry,
+        accept,
+        requestChanges,
+        endRequest,
         noteFor,
         depthOf,
         recordStep,
         steps,
         onRetry: (source, handler) => void retryHandlers.set(source, handler),
+        onChanges: (source, handler) => void changesHandlers.set(source, handler),
         onEnd: (listener) => void endListeners.push(listener),
         list: (serverId) =>
           Effect.sync(() =>

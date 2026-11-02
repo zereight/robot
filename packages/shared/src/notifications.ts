@@ -8,6 +8,7 @@ export const NOTIFY_KINDS = [
   "question",
   "task_failed",
   "routine_failed",
+  "part_review",
   "workflow_notice",
 ] as const
 export type NotifyKind = (typeof NOTIFY_KINDS)[number]

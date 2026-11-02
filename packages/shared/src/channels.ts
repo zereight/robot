@@ -18,6 +18,8 @@ export interface Channel {
   readonly memberIds: readonly string[]
   /** The user section of the Channels list that holds the channel, or null for "No section". */
   readonly sectionId: string | null
+  /** "Review parts": a part of a plan that ends well waits for the user (spec 004). Off at first. */
+  readonly reviewParts: boolean
   readonly unread: number
   readonly working: boolean
 }
@@ -38,6 +40,7 @@ export const ChannelPatch = Schema.Struct({
   memberIds: Schema.optionalKey(ChannelCreate.fields.memberIds),
   leadId: Schema.optionalKey(ChannelCreate.fields.leadId),
   sectionId: ChannelCreate.fields.sectionId,
+  reviewParts: Schema.optionalKey(Schema.Boolean),
 })
 export type ChannelPatch = typeof ChannelPatch.Type
 
@@ -82,6 +85,19 @@ export interface PartChip {
   readonly newestReplyId: string | null
 }
 
+/**
+ * The state of the part that a message belongs to, on the last message of that part (spec 004).
+ * The channel shows under it the bar of a part in review, and the card of a blocked or failed one.
+ */
+export interface PartInfo {
+  readonly taskId: string
+  readonly state: TaskState
+  /** The reason of a blocked or failed part. */
+  readonly error: { readonly code: string; readonly detail: string } | null
+  /** The name of the other computer that owns the part, when it came by sync (spec 019). */
+  readonly ownerName: string | null
+}
+
 export interface ChannelMessage extends Omit<ChatMessage, "agentId" | "author"> {
   readonly channelId: string
   readonly author: "user" | "agent"
@@ -93,6 +109,8 @@ export interface ChannelMessage extends Omit<ChatMessage, "agentId" | "author"> 
   /** True while the user has to say which member takes this job. */
   readonly awaiting: boolean
   readonly chips: readonly PartChip[]
+  /** Set on the last message of a part of a plan. */
+  readonly part: PartInfo | null
 }
 
 export type MemberState = "idle" | "working" | "waiting" | "offline"

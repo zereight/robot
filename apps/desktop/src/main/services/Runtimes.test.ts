@@ -22,6 +22,7 @@ import { type FakeRuntimes, makeFakeRuntimes, sha256, tarGzOf } from "../../../e
 import { runRequest } from "../rpc.ts"
 import { type Ctx, KINDS } from "../sync/kinds.ts"
 import { parseOp } from "../sync/wire.ts"
+import { ActionLog } from "./ActionLog.ts"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
@@ -1384,6 +1385,11 @@ describe("the level Read only on a vendor program (spec 007)", () => {
     expect((await s.card())?.state).toBe("failed")
     expect(await s.card()).toMatchObject({ refused: "read_only" })
     expect(messageText((await s.reply()) as ChatMessage)).toBe("It was denied.")
+    // The refused step is in the action log: Refused, decided by the level (spec 007).
+    const refused = await s.run(ActionLog.use((l) => l.list({ result: "refused" })))
+    expect(refused.map((e) => [e.kind, e.target, e.decidedBy])).toEqual([
+      ["shell", "touch a.txt", "level"],
+    ])
   })
 
   test("the browser of the app is refused at Read only for a vendor program too", async () => {

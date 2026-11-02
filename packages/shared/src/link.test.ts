@@ -100,6 +100,10 @@ describe("client requests", () => {
       "data.export",
       "data.restore",
       "tasks.retry",
+      // The user decides on the review of a part on the computer that owns the task (spec 005, 012).
+      "tasks.accept",
+      "tasks.requestChanges",
+      "tasks.endRequest",
       "devices.get",
     ]) {
       expect(isClientMethod(method)).toBe(false)

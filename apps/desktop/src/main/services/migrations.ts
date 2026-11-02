@@ -668,4 +668,9 @@ export const migrations: readonly string[] = [
   -- from before this step has none, and shows no line about it.
   ALTER TABLE task ADD COLUMN progress TEXT;
   `,
+  `
+  -- Review of parts (spec 004). "Review parts" is a setting of the channel, off at first. It syncs
+  -- with the channel (spec 019): the dirty trigger of the channel already watches every column.
+  ALTER TABLE channel ADD COLUMN review_parts INTEGER NOT NULL DEFAULT 0;
+  `,
 ]

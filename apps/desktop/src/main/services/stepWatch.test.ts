@@ -124,4 +124,26 @@ describe("step watch", () => {
     watch.see(done(call("1", "run_command", { command: "rm x" }), { failed: true }), [mark("1")])
     expect(logged[0]?.result).toBe("refused")
   })
+  test("a step that Read only refuses is logged as Refused for every kind of the log, and the browser has none (spec 007)", () => {
+    const { watch, logged } = make()
+    const refused = (id: string, name: string, input: object) =>
+      ({
+        type: "tool",
+        state: "failed",
+        call: call(id, name, input),
+        output: "Refused",
+        refused: "read_only",
+      }) as AgentEvent
+    watch.see(refused("1", "write_file", { path: "a.txt", content: "x" }))
+    watch.see(refused("2", "run_command", { command: "rm -rf x" }))
+    // The tool of a connection: the target is the name, never the arguments.
+    watch.see(refused("3", "mcp__files__remove", { path: "secret-argument.txt" }))
+    // The browser is no kind of the action log.
+    watch.see(refused("4", "browser_open", { url: "https://example.com" }))
+    expect(logged.map((l) => [l.kind, l.access, l.target, l.result])).toEqual([
+      ["file", "write", "a.txt", "refused"],
+      ["shell", null, "rm -rf x", "refused"],
+      ["connection", null, "mcp__files__remove", "refused"],
+    ])
+  })
 })

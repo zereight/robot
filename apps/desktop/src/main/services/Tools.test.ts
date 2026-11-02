@@ -5,6 +5,7 @@ import { type ChatMessage, type MessagePart, newTurnMark } from "@robot/shared"
 import { Effect } from "effect"
 import type { ToolEvent } from "../providers/agent.ts"
 import { BRIDGE_TOOL_NAMES } from "../runtimes/bridge.ts"
+import { ActionLog } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
 import { CurrentActor } from "./actor.ts"
 import { Chat } from "./Chat.ts"
@@ -770,6 +771,47 @@ describe("the level Read only (spec 007)", () => {
     expect(existsSync(wrote)).toBe(false)
     expect(existsSync(touched)).toBe(false)
     expect(s.t.browserLog).toEqual([])
+  })
+
+  test("each step that Read only refuses is in the action log, as Refused, decided by the level", async () => {
+    const s = await setup("read_only")
+    for (const [name, args] of [
+      ["write_file", { path: "w.txt", content: "x" }],
+      ["run_command", { command: "touch t.txt" }],
+    ] as const) {
+      await s.send(call(name, args))
+      await s.finished()
+      expect(await s.toolPart()).toMatchObject({ state: "failed", refused: "read_only" })
+    }
+    // The browser is no kind of the log (spec 007, "Action log"): it is refused and not logged.
+    await s.send(call("browser_open", { url: "https://example.com" }))
+    await s.finished()
+    expect(await s.toolPart()).toMatchObject({ state: "failed", refused: "read_only" })
+
+    const log = await s.run(ActionLog.use((l) => l.list({ result: "refused" })))
+    expect(
+      log
+        .map((e) => ({
+          kind: e.kind,
+          access: e.access,
+          target: e.target,
+          decidedBy: e.decidedBy,
+          agentName: e.agentName,
+        }))
+        .sort((a, b) => a.kind.localeCompare(b.kind)),
+    ).toEqual([
+      { kind: "file", access: "write", target: "w.txt", decidedBy: "level", agentName: "Ada" },
+      { kind: "shell", access: null, target: "touch t.txt", decidedBy: "level", agentName: "Ada" },
+    ])
+    // An entry belongs to the task of the step, so the page of the log opens it.
+    expect(log.every((e) => e.taskId !== null)).toBe(true)
+    // A step that ran is logged as Ran; the refused ones are not counted as run.
+    writeFileSync(join(s.agent.workspace, "a.txt"), "hello")
+    await s.send(call("read_file", { path: "a.txt" }))
+    await s.finished()
+    const all = await s.run(ActionLog.use((l) => l.list()))
+    expect(all.filter((e) => e.result === "ran").map((e) => e.target)).toEqual(["a.txt"])
+    expect(all.filter((e) => e.result === "refused")).toHaveLength(2)
   })
 
   test("it comes first: an Always allow that the user gave at another level does not open the step", async () => {

@@ -1,5 +1,5 @@
 import type { Channel, ChannelActivity, TaskState } from "@robot/shared"
-import { Check, Circle, Loader, X } from "lucide-solid"
+import { Check, Circle, Eye, Loader, OctagonX, X } from "lucide-solid"
 import { createResource, For, type JSX, onCleanup, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { call } from "../lib/rpc.ts"
@@ -21,6 +21,9 @@ const stepIcon = (state: TaskState): { icon: JSX.Element; key: string } => {
     }
   if (state === "done") return { icon: <Check size={14} />, key: "channels.step.done" }
   if (state === "failed") return { icon: <X size={14} />, key: "channels.step.failed" }
+  // A part in review has an eye, and a blocked part has a stop sign (spec 004).
+  if (state === "review") return { icon: <Eye size={14} />, key: "channels.step.review" }
+  if (state === "blocked") return { icon: <OctagonX size={14} />, key: "channels.step.blocked" }
   return { icon: <Circle size={14} />, key: "channels.step.todo" }
 }
 
