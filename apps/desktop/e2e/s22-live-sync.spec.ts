@@ -18,6 +18,7 @@ import {
   synced,
   syncState,
   turnOnSync,
+  whilePaused,
 } from "./sync-helpers.ts"
 
 // Live sync (spec 019, S22): changes cross within 5 s, streaming grows on both computers, the
@@ -281,7 +282,9 @@ test("live sync: a delete reaches the other computer and keeps its folder; many 
     await expect.poll(() => agentNames(two.page), { timeout: 20_000 }).toHaveLength(9)
     for (const id of ids) await rpc(one.page, "agents.archive", { id })
     await expect.poll(() => archivedCount(two.page, serverTwo), { timeout: 20_000 }).toBe(8)
-    for (const id of ids) await rpc(one.page, "agents.delete", { id })
+    await whilePaused(one.page, async () => {
+      for (const id of ids) await rpc(one.page, "agents.delete", { id })
+    })
     await expect(two.page.getByTestId("sync-guard-dialog")).toBeVisible({ timeout: 20_000 })
     await expect(two.page.getByTestId("sync-guard-body")).toContainText(
       "MacBook 1 wants to delete 8 agents and channels here.",
@@ -296,7 +299,9 @@ test("live sync: a delete reaches the other computer and keeps its folder; many 
     await expect.poll(() => archivedCount(one.page, serverOne), { timeout: 20_000 }).toBe(8)
 
     // Delete them again and say Delete: now they are gone on MacBook 2 too.
-    for (const id of ids) await rpc(one.page, "agents.delete", { id })
+    await whilePaused(one.page, async () => {
+      for (const id of ids) await rpc(one.page, "agents.delete", { id })
+    })
     await expect(two.page.getByTestId("sync-guard-dialog")).toBeVisible({ timeout: 20_000 })
     await two.page.getByTestId("sync-guard-delete").click()
     await expect.poll(() => archivedCount(two.page, serverTwo), { timeout: 10_000 }).toBe(0)
