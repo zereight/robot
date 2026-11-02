@@ -21,6 +21,7 @@ import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { SavedSecrets } from "./services/SavedSecrets.ts"
 import { Search } from "./services/Search.ts"
 import type { Secrets } from "./services/Secrets.ts"
 import { Sections } from "./services/Sections.ts"
@@ -74,9 +75,12 @@ export const appLayer = (options: AppLayerOptions) => {
   const runtimes = Runtimes.layer.pipe(Layer.provideMerge(devices))
   const providers = Providers.layer.pipe(Layer.provideMerge(runtimes))
   const notifier = Notifier.layer.pipe(Layer.provideMerge(providers))
-  const memory = Layer.mergeAll(Memory.layer, ActionLog.layer, Search.layer).pipe(
-    Layer.provideMerge(notifier),
-  )
+  const memory = Layer.mergeAll(
+    Memory.layer,
+    ActionLog.layer,
+    Search.layer,
+    SavedSecrets.layer,
+  ).pipe(Layer.provideMerge(notifier))
   const knowledge = Knowledge.layer.pipe(Layer.provideMerge(memory))
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))

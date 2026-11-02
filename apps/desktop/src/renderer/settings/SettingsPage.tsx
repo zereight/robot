@@ -24,6 +24,7 @@ import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { useClosing } from "../ui/Presence.tsx"
 import { ActionLogSection } from "./ActionLogSection.tsx"
+import { SavedSecretsSection } from "./SavedSecretsSection.tsx"
 import styles from "./settings.module.css"
 
 export const sections = [
@@ -342,6 +343,7 @@ export const SettingsPage = (props: {
             <Appearance />
           </Match>
           <Match when={section() === "permissions"}>
+            <SavedSecretsSection />
             <ActionLogSection />
           </Match>
           <Match when={section() === "data"}>

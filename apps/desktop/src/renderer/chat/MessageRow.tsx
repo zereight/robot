@@ -12,6 +12,8 @@ import {
   messageSkill,
   messageText,
   type OutsideSource,
+  type SecretAsk,
+  type SecretAuth,
   type SkillPart,
   type ToolAsk,
 } from "@robot/shared"
@@ -66,6 +68,123 @@ const Thinking = (props: { text: string; live: boolean }) => {
   )
 }
 
+/** How a secret is sent, in words. */
+const authText = (t: ReturnType<typeof useApp>["t"], auth: SecretAuth) =>
+  auth.kind === "bearer"
+    ? t("secret.auth.bearer")
+    : auth.kind === "header"
+      ? t("secret.auth.header", { header: auth.header })
+      : t("secret.auth.basic", { user: auth.user })
+
+/**
+ * The protected card of spec 020: the reason, the origin in large text, the way to send, a hidden
+ * field, Save and Cancel. The field is cleared when the save starts. On a linked device, or when
+ * the agent runs on the other computer, the card says where to answer and has no field.
+ */
+const SecretCard = (props: {
+  agent: Agent
+  callId: string
+  ask: SecretAsk
+  /** The name of the computer that runs the agent, when it is not this one. */
+  elsewhere: string | undefined
+}) => {
+  const { t } = useApp()
+  const [failure, setFailure] = createSignal<ErrorText>()
+  const [busy, setBusy] = createSignal(false)
+  let field: HTMLInputElement | undefined
+  const answer = async (value: string | null) => {
+    setFailure(undefined)
+    setBusy(true)
+    try {
+      await call("secrets.answer", { agentId: props.agent.id, callId: props.callId, value })
+    } catch (e) {
+      setFailure(describeError(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const save = () => {
+    const value = field?.value ?? ""
+    // The value leaves the field before the save starts (spec 020).
+    if (field) field.value = ""
+    if (!value) return
+    void answer(value)
+  }
+  return (
+    <div class={styles.secretCard} data-testid="secret-card">
+      <strong>
+        {props.ask.label
+          ? t("secret.card.title", { label: props.ask.label })
+          : t("secret.card.titlePlain")}
+      </strong>
+      <Show when={props.ask.reason}>
+        <div data-testid="secret-reason">
+          {t("secret.card.reason", { reason: props.ask.reason })}
+        </div>
+      </Show>
+      <div class={styles.time}>{t("secret.card.origin")}</div>
+      <div class={styles.secretOrigin} data-testid="secret-origin">
+        {props.ask.origin}
+      </div>
+      <div class={styles.time} data-testid="secret-name">
+        {t("secret.card.name", { name: props.ask.name })} · {authText(t, props.ask.auth)}
+      </div>
+      <Show when={props.ask.replace}>
+        <div data-testid="secret-replace">{t("secret.card.replace", { name: props.ask.name })}</div>
+      </Show>
+      <Show
+        when={props.elsewhere === undefined}
+        fallback={
+          <div class={styles.fromDevice} role="status" data-testid="secret-elsewhere">
+            {t("secret.card.elsewhere", { name: props.elsewhere ?? "" })}
+          </div>
+        }
+      >
+        <Show when={failure()}>
+          {(err) => (
+            <div class={styles.fromDevice} role="alert" data-testid="secret-error">
+              {t(err().key, err().params)}
+            </div>
+          )}
+        </Show>
+        <form
+          class={styles.askActions}
+          onSubmit={(e) => {
+            e.preventDefault()
+            save()
+          }}
+        >
+          <input
+            ref={field}
+            class={styles.askInput}
+            type="password"
+            autocomplete="off"
+            spellcheck={false}
+            maxLength={16384}
+            placeholder={t("secret.card.field")}
+            aria-label={t("secret.card.field")}
+            data-testid="secret-input"
+          />
+          <Button type="submit" variant="primary" disabled={busy()} data-testid="secret-save">
+            {t("secret.card.save")}
+          </Button>
+          <Button
+            disabled={busy()}
+            onClick={() => {
+              if (field) field.value = ""
+              void answer(null)
+            }}
+            data-testid="secret-cancel"
+          >
+            {t("secret.card.cancel")}
+          </Button>
+        </form>
+        <div class={styles.time}>{t("secret.card.hint")}</div>
+      </Show>
+    </div>
+  )
+}
+
 const ToolCard = (props: {
   agent: Agent
   part: Extract<MessagePart, { kind: "tool" }>
@@ -114,6 +233,13 @@ const ToolCard = (props: {
             {t("chat.tool.answeredInChat")}
           </span>
         </Show>
+        <Show when={props.part.secret}>
+          {(result) => (
+            <span class={styles.fromDevice} data-testid="secret-result" data-result={result()}>
+              {result() === "saved" ? t("secret.card.saved") : t("secret.card.cancelled")}
+            </span>
+          )}
+        </Show>
         <Show when={props.part.decision}>
           {(decision) => (
             <span
@@ -152,6 +278,18 @@ const ToolCard = (props: {
                 )}
               </Show>
               <Switch>
+                <Match when={ask().kind === "secret" ? (ask() as SecretAsk) : undefined}>
+                  {(secret) => (
+                    <SecretCard
+                      agent={props.agent}
+                      callId={props.part.id}
+                      ask={secret()}
+                      elsewhere={
+                        props.from ?? (ui.linked() ? (ui.server()?.name ?? "") : undefined)
+                      }
+                    />
+                  )}
+                </Match>
                 <Match when={ask().kind === "article" ? ask() : undefined}>
                   {(article) => {
                     const a = () => article() as Extract<ToolAsk, { kind: "article" }>

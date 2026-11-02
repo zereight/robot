@@ -758,6 +758,21 @@
   font-size: 0.85rem;
 }
 
+/* The protected card of a saved secret: the origin shows in large text (spec 020). */
+.secretCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 3px solid var(--c-accent);
+  padding: 4px 0 4px 10px;
+}
+
+.secretOrigin {
+  font-size: 1.25rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .askActions {
   display: flex;
   flex-wrap: wrap;
