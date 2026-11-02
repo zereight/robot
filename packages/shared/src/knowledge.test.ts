@@ -59,11 +59,45 @@ describe("article files", () => {
   })
 
   test("a file with no header is an article: file name, first line, whole text", () => {
-    const parsed = parseArticleFile("Idea.md", "# Idea\n\nA plain note.\nMore.\n")
+    const parsed = parseArticleFile("Idea.md", "A plain note.\nMore.\n")
     expect(parsed.title).toBe("Idea")
     expect(parsed.summary).toBe("A plain note.")
-    expect(parsed.body).toBe("# Idea\n\nA plain note.\nMore.")
+    expect(parsed.body).toBe("A plain note.\nMore.")
     expect(parsed.sources).toEqual([])
+    // The first line is the first line: a heading is not skipped. Empty lines before it are.
+    expect(parseArticleFile("Idea.md", "\n\n# Idea\n\nA plain note.\n").summary).toBe("# Idea")
+  })
+
+  test("a header with no title and no summary is the same: file name and first line", () => {
+    const parsed = parseArticleFile(
+      "Trip.md",
+      "---\ntags: travel\n---\n\nPacking list for the trip.\n",
+    )
+    expect(parsed).toMatchObject({
+      title: "Trip",
+      summary: "Packing list for the trip.",
+      body: "Packing list for the trip.",
+      extra: ["tags: travel"],
+    })
+    // A header that names a title or a summary, even an empty one, is not changed.
+    expect(parseArticleFile("T.md", "---\ntitle: Own\n---\n\nText.\n")).toMatchObject({
+      title: "Own",
+      summary: "",
+    })
+    expect(parseArticleFile("T.md", "---\nsummary:\n---\n\nText.\n")).toMatchObject({
+      title: "T",
+      summary: "",
+    })
+  })
+
+  test("a file from another app has no limits: a long title, summary and body are read as they are", () => {
+    const parsed = parseArticleFile(
+      "x.md",
+      `---\ntitle: ${"t".repeat(300)}\nsummary: ${"s".repeat(400)}\n---\n\n${"b".repeat(30_000)}\n`,
+    )
+    expect(parsed.title).toHaveLength(300)
+    expect(parsed.summary).toHaveLength(400)
+    expect(parsed.body).toHaveLength(30_000)
   })
 
   test("line endings of Windows and a byte order mark do not matter", () => {
@@ -127,26 +161,67 @@ describe("contents list", () => {
     expect(contentsLine({ title: "T", summary: "", updatedAt: 0 })).toBe("- T")
   })
 
-  test("at most 100 lines; words of the message first, then the newest", () => {
+  test("at most 100 lines with the note; words of the message first, then the newest", () => {
     const entries = Array.from({ length: 150 }, (_, i) => entry(i + 1))
     // Article 007 is old, but the message names its words.
     entries[6] = { title: "Deploy pipeline", summary: "steps of the release", updatedAt: 0 }
-    const { lines, omitted } = contentsList(entries, "How does the deploy pipeline work?")
-    expect(lines).toHaveLength(KNOWLEDGE_LINES_MAX)
-    expect(omitted).toBe(50)
+    const { lines, omitted, note } = contentsList(entries, "How does the deploy pipeline work?")
+    // The line that says how many are left out counts as one of the 100.
+    expect(lines).toHaveLength(KNOWLEDGE_LINES_MAX - 1)
+    expect(omitted).toBe(51)
+    expect(note).toBe("(51 more articles are not in this list.)")
     expect(lines[0]).toBe("- Deploy pipeline: steps of the release")
     // The rest are the newest: 150 down.
     expect(lines[1]).toBe("- Article 150: summary")
     expect(lines).not.toContain("- Article 001: summary")
   })
 
-  test("at most 6,000 characters", () => {
+  test("100 articles fit whole and have no note; 101 do not", () => {
+    const hundred = Array.from({ length: 100 }, (_, i) => entry(i + 1))
+    const whole = contentsList(hundred, "")
+    expect(whole.lines).toHaveLength(100)
+    expect(whole.omitted).toBe(0)
+    expect(whole.note).toBeNull()
+    const more = contentsList([...hundred, entry(101)], "")
+    expect(more.lines.length + 1).toBeLessThanOrEqual(KNOWLEDGE_LINES_MAX)
+    expect(more.omitted).toBe(101 - more.lines.length)
+    expect(more.note).toContain(String(more.omitted))
+  })
+
+  test("the lines that share words come first, whatever their age; the others follow, newest first", () => {
+    const entries = Array.from({ length: 120 }, (_, i) => entry(i + 1))
+    entries[0] = { title: "Old fox", summary: "the red fox", updatedAt: -5 }
+    entries[1] = { title: "Older fox", summary: "another fox note", updatedAt: -9 }
+    const { lines } = contentsList(entries, "tell me about the fox")
+    expect(lines.slice(0, 2)).toEqual(["- Old fox: the red fox", "- Older fox: another fox note"])
+    expect(lines[2]).toBe("- Article 120: summary")
+  })
+
+  test("at most 6,000 characters with the note", () => {
     const entries = Array.from({ length: 60 }, (_, i) => entry(i + 1, "x".repeat(150)))
-    const { lines } = contentsList(entries, "")
-    const size = lines.reduce((sum, l) => sum + l.length + 1, 0)
+    const { lines, note } = contentsList(entries, "")
+    const size = [...lines, note ?? ""].reduce((sum, l) => sum + l.length + 1, 0)
     expect(size).toBeLessThanOrEqual(KNOWLEDGE_CHARS_MAX)
     expect(lines.length).toBeLessThan(60)
     expect(lines[0]).toContain("Article 060")
+    expect(note).not.toBeNull()
+  })
+
+  test("a line that does not fit is left out; shorter lines after it still come", () => {
+    const entries = Array.from({ length: 120 }, (_, i) => entry(i + 1))
+    // Another app wrote a title longer than the whole list may be. It is the newest.
+    entries.push({ title: "T".repeat(7000), summary: "", updatedAt: 1e9 })
+    const { lines, omitted } = contentsList(entries, "")
+    expect(lines.some((l) => l.includes("TTTT"))).toBe(false)
+    expect(lines[0]).toBe("- Article 120: summary")
+    expect(lines).toHaveLength(KNOWLEDGE_LINES_MAX - 1)
+    expect(omitted).toBe(121 - lines.length)
+  })
+
+  test("a summary longer than the limit is cut in the list, not the title", () => {
+    expect(contentsLine({ title: "T", summary: "s".repeat(400), updatedAt: 0 })).toBe(
+      `- T: ${"s".repeat(160)}`,
+    )
   })
 
   test("a word also matches a Korean noun with a particle", () => {

@@ -969,17 +969,18 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
           const info = agentInfo(agentId)
           if (info?.knowledge_enabled !== 1) return null
           const scanned = scan(agentId, "user")
-          const { lines, omitted } = contentsList(scanned.entries, message)
+          const { lines, note } = contentsList(
+            scanned.entries,
+            message,
+            (omitted) =>
+              `(${omitted} more articles are not in this list.${
+                mode === "tools" ? " Read one by its title." : ""
+              })`,
+          )
           const list =
-            lines.length === 0
+            lines.length === 0 && note === null
               ? "There are no articles yet."
-              : `Contents (title: summary):\n${lines.join("\n")}${
-                  omitted > 0
-                    ? `\n(${omitted} more articles are not in this list.${
-                        mode === "tools" ? " Read one by its title." : ""
-                      })`
-                    : ""
-                }`
+              : `Contents (title: summary):\n${[...lines, ...(note === null ? [] : [note])].join("\n")}`
           const rules = `An article has a title of 1 to ${KNOWLEDGE_TITLE_MAX} characters that is unique ignoring case, a summary of up to ${KNOWLEDGE_SUMMARY_MAX} characters, and a Markdown body of up to ${KNOWLEDGE_BODY_MAX} characters. Link to another article with [[Title]] in the body. There can be ${KNOWLEDGE_ARTICLES_MAX} articles at most. Never put a password, key or token in an article.`
           if (mode === "tools") {
             return [

@@ -571,11 +571,44 @@ describe("the contents list", () => {
       ),
     )
     const text = (await prompt) ?? ""
-    const lines = text.split("\n").filter((l) => l.startsWith("- "))
-    expect(lines.length).toBeLessThanOrEqual(KNOWLEDGE_LINES_MAX)
-    expect(lines.join("\n").length).toBeLessThanOrEqual(KNOWLEDGE_CHARS_MAX)
+    const list = (text.split("Contents (title: summary):\n")[1] ?? "").split("\n")
+    const lines = list.filter((l) => l.startsWith("- "))
+    // The line with the count is the last line of the list, and it is inside the limits.
+    expect(list.at(-1)).toBe("(52 more articles are not in this list. Read one by its title.)")
+    expect(list.length).toBeLessThanOrEqual(KNOWLEDGE_LINES_MAX)
+    expect(list.join("\n").length).toBeLessThanOrEqual(KNOWLEDGE_CHARS_MAX)
+    expect(lines.length).toBe(99)
     expect(lines[0]).toBe("- Deploy pipeline: release steps")
-    expect(text).toContain("51 more articles are not in this list")
+    // A vendor program reads the files itself, so it gets no hint to read by title.
+    const files = await s.run(
+      Knowledge.use((x) =>
+        Effect.succeed(x.prompt(s.agent.id, "how does the deploy pipeline go", "files")),
+      ),
+    )
+    expect(files).toContain("(52 more articles are not in this list.)")
+  })
+
+  test("a list that fits is given whole, with no line about missing articles", async () => {
+    const s = await setup()
+    mkdirSync(s.folder, { recursive: true })
+    for (let i = 0; i < 100; i++)
+      writeFileSync(
+        join(s.folder, `n${i}.md`),
+        `---\ntitle: Note ${String(i).padStart(3, "0")}\nsummary: filler\n---\n\nx\n`,
+      )
+    const text =
+      (await s.run(
+        Knowledge.use((x) => Effect.succeed(x.prompt(s.agent.id, "anything", "tools"))),
+      )) ?? ""
+    expect(text.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(100)
+    expect(text).not.toContain("are not in this list")
+    // One more article, and the list is cut.
+    writeFileSync(join(s.folder, "last.md"), "---\ntitle: Last\nsummary: one more\n---\n\nx\n")
+    const cut =
+      (await s.run(
+        Knowledge.use((x) => Effect.succeed(x.prompt(s.agent.id, "anything", "tools"))),
+      )) ?? ""
+    expect(cut).toContain("are not in this list")
   })
 
   test("agents do not read each other's knowledge", async () => {

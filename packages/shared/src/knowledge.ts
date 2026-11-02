@@ -167,18 +167,21 @@ export const parseArticleFile = (fileName: string, raw: string): ArticleFile => 
   const sources: string[] = []
   const extra: string[] = []
   let body = text
-  let headed = false
+  let named = false
   if (lines[0]?.trimEnd() === "---") {
     const end = lines.findIndex((line, i) => i > 0 && line.trimEnd() === "---")
     if (end > 0) {
-      headed = true
       for (const line of lines.slice(1, end)) {
         const match = /^([A-Za-z][\w-]*):\s?(.*)$/.exec(line)
         const key = match?.[1]?.toLowerCase()
         const value = match?.[2] ?? ""
-        if (key === "title") title = cleanLine(value)
-        else if (key === "summary") summary = cleanLine(value)
-        else if (key === "source") {
+        if (key === "title") {
+          title = cleanLine(value)
+          named = true
+        } else if (key === "summary") {
+          summary = cleanLine(value)
+          named = true
+        } else if (key === "source") {
           const name = value.trim()
           if (name && !sources.includes(name)) sources.push(name)
         } else if (line.trim() !== "") extra.push(line)
@@ -190,8 +193,9 @@ export const parseArticleFile = (fileName: string, raw: string): ArticleFile => 
     }
   }
   body = body.replace(/^\n+/, "").trimEnd()
-  if (!headed) {
-    const first = body.split("\n").find((line) => line.trim() !== "" && !line.startsWith("#"))
+  // No title and no summary: the summary is the first line of the text, as it is.
+  if (!named) {
+    const first = body.split("\n").find((line) => line.trim() !== "")
     summary = first ? cleanLine(first).slice(0, KNOWLEDGE_SUMMARY_MAX) : ""
   }
   return { title: title || cleanLine(stem(fileName)), summary, body, sources, extra }
@@ -291,20 +295,29 @@ export interface ContentsEntry {
   readonly updatedAt: number
 }
 
-export const contentsLine = (entry: ContentsEntry) =>
-  entry.summary ? `- ${entry.title}: ${entry.summary}` : `- ${entry.title}`
+/** One line of the contents list. A summary that a valid article cannot have is cut. */
+export const contentsLine = (entry: ContentsEntry) => {
+  const summary = [...entry.summary].slice(0, KNOWLEDGE_SUMMARY_MAX).join("")
+  return summary ? `- ${entry.title}: ${summary}` : `- ${entry.title}`
+}
 
 /**
  * The contents list for one turn: a line for each article, at most 100 lines and 6,000
- * characters. A list that fits is given whole, by title. A longer list gives the lines that
- * share words with the message first, then the newest.
+ * characters. A list that fits is given whole, by title. If it does not fit, the lines that
+ * share words with the message come first, then the newest. A line that does not fit is left
+ * out. After a list that is cut, one line says how many articles are not in it: `note` writes
+ * it, and it counts in the 100 lines and the 6,000 characters.
  */
-export const contentsList = (entries: readonly ContentsEntry[], message: string) => {
-  const fits = (lines: readonly string[]) =>
-    lines.length <= KNOWLEDGE_LINES_MAX &&
-    lines.reduce((sum, line) => sum + line.length + 1, 0) <= KNOWLEDGE_CHARS_MAX
-  const all = [...entries].sort((a, b) => a.title.localeCompare(b.title))
-  if (fits(all.map(contentsLine))) return { lines: all.map(contentsLine), omitted: 0 }
+export const contentsList = (
+  entries: readonly ContentsEntry[],
+  message: string,
+  note: (omitted: number) => string = (omitted) =>
+    `(${omitted} more articles are not in this list.)`,
+) => {
+  const size = (lines: readonly string[]) => lines.reduce((sum, line) => sum + line.length + 1, 0)
+  const all = [...entries].sort((a, b) => a.title.localeCompare(b.title)).map(contentsLine)
+  if (all.length <= KNOWLEDGE_LINES_MAX && size(all) <= KNOWLEDGE_CHARS_MAX)
+    return { lines: all, omitted: 0, note: null as string | null }
   const wanted = words(message)
   const scored = entries
     .map((entry) => {
@@ -315,15 +328,19 @@ export const contentsList = (entries: readonly ContentsEntry[], message: string)
       return { entry, score }
     })
     .sort((a, b) => b.score - a.score || b.entry.updatedAt - a.entry.updatedAt)
+  // The line that says how many articles are left out is the longest when all are left out.
+  const room = KNOWLEDGE_CHARS_MAX - (note(entries.length).length + 1)
   const lines: string[] = []
   let chars = 0
   for (const { entry } of scored) {
+    if (lines.length >= KNOWLEDGE_LINES_MAX - 1) break
     const line = contentsLine(entry)
-    if (lines.length >= KNOWLEDGE_LINES_MAX || chars + line.length + 1 > KNOWLEDGE_CHARS_MAX) break
+    if (chars + line.length + 1 > room) continue
     lines.push(line)
     chars += line.length + 1
   }
-  return { lines, omitted: entries.length - lines.length }
+  const omitted = entries.length - lines.length
+  return { lines, omitted, note: note(omitted) as string | null }
 }
 
 export interface FindingsInput {
