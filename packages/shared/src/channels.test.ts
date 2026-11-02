@@ -28,13 +28,34 @@ describe("plans", () => {
       const plan = parsePlan(text, members)
       expect(plan?.plan).toBe("Two parts")
       expect(plan?.parts).toEqual([
-        { member: "Bo", label: "Intro", prompt: "Write it" },
-        { member: "Cy", label: "Check", prompt: "Check\nmore" },
+        { member: "Bo", label: "Intro", prompt: "Write it", doneTest: null },
+        { member: "Cy", label: "Check", prompt: "Check\nmore", doneTest: null },
       ])
     }
     expect(planText(parsePlan(json, members) as never)).toBe(
       "Two parts\n\n1. Bo: Intro\n2. Cy: Check",
     )
+  })
+  test("a part may carry a done test: one line, up to 200 characters", () => {
+    const long = "x".repeat(250)
+    const plan = parsePlan(
+      JSON.stringify({
+        plan: "Parts",
+        parts: [
+          { member: "Bo", label: "A", prompt: "Do A", doneTest: "Holds a title\nand a date" },
+          { member: "Cy", label: "B", prompt: "Do B", done_test: long },
+          { member: "Bo", label: "C", prompt: "Do C", doneTest: "   " },
+          { member: "Cy", label: "D", prompt: "Do D", doneTest: 7 },
+        ],
+      }),
+      members,
+    )
+    expect(plan?.parts.map((p) => p.doneTest)).toEqual([
+      "Holds a title and a date",
+      "x".repeat(200),
+      null,
+      null,
+    ])
   })
   test("an ordinary answer, bad JSON and unknown members are no plan", () => {
     expect(parsePlan("Here is my answer {not json}", members)).toBeNull()

@@ -32,6 +32,7 @@ import {
   TASK_SOURCES,
   TASK_STATES,
   TriggerSchema,
+  VERDICTS,
   validSchedule,
   validWatch,
   WatchSchema,
@@ -1204,6 +1205,11 @@ interface TaskRow {
   first_reply_at: number | null
   origin: string | null
   progress: string | null
+  done_test: string | null
+  verdict: string | null
+  verdict_reason: string | null
+  judged_at: number | null
+  decided_at: number | null
 }
 
 const task: KindDef = {
@@ -1233,6 +1239,13 @@ const task: KindDef = {
     origin: { check: str(64, 1) },
     // How far the turn went (spec 005). It syncs with the task; null for a task from before.
     progress: { check: nullable(oneOf(TASK_PROGRESS)) },
+    // The done test, the verdict of the lead and the decision of the user (spec 004, 005, 019).
+    // The done test is set when the part is made. The verdict and the decision come later.
+    doneTest: { check: nullable(str(1000, 1)) },
+    verdict: { check: nullable(oneOf(VERDICTS)) },
+    verdictReason: { check: nullable(str(1000, 1)) },
+    judgedAt: { check: nullable(int) },
+    decidedAt: { check: nullable(int) },
   },
   required: [
     "agentId",
@@ -1250,6 +1263,11 @@ const task: KindDef = {
     "finishedAt",
     "origin",
     "progress",
+    "doneTest",
+    "verdict",
+    "verdictReason",
+    "judgedAt",
+    "decidedAt",
   ],
   fixed: [
     "agentId",
@@ -1262,6 +1280,7 @@ const task: KindDef = {
     "createdAt",
     "askedAt",
     "origin",
+    "doneTest",
   ],
   count: (db) => q.count(db, "task"),
   ids: (db, after, limit) => q.ids(db, "task", after, limit),
@@ -1287,6 +1306,11 @@ const task: KindDef = {
         firstReplyAt: r.first_reply_at,
         origin: r.origin ?? ctx.self,
         progress: r.progress,
+        doneTest: r.done_test,
+        verdict: r.verdict,
+        verdictReason: r.verdict_reason,
+        judgedAt: r.judged_at,
+        decidedAt: r.decided_at,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: r.finished_at ?? r.started_at ?? r.created_at,
@@ -1315,6 +1339,11 @@ const task: KindDef = {
       first_reply_at: f.firstReplyAt ?? null,
       origin: originColumn(ctx, f.origin),
       progress: f.progress,
+      done_test: f.doneTest ?? null,
+      verdict: f.verdict ?? null,
+      verdict_reason: f.verdictReason ?? null,
+      judged_at: f.judgedAt ?? null,
+      decided_at: f.decidedAt ?? null,
     })
     return true
   },
@@ -1322,6 +1351,10 @@ const task: KindDef = {
     const e = f.error as { code: string; detail: string } | null | undefined
     update(ctx.db, "task", "id = ?", [id], {
       ...(f.progress !== undefined ? { progress: f.progress } : {}),
+      ...(f.verdict !== undefined ? { verdict: f.verdict } : {}),
+      ...(f.verdictReason !== undefined ? { verdict_reason: f.verdictReason } : {}),
+      ...(f.judgedAt !== undefined ? { judged_at: f.judgedAt } : {}),
+      ...(f.decidedAt !== undefined ? { decided_at: f.decidedAt } : {}),
       ...(f.messageId !== undefined ? { message_id: f.messageId } : {}),
       ...(f.state !== undefined ? { state: f.state } : {}),
       ...(f.error !== undefined

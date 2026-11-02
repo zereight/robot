@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { ChatMessage, MessagePart } from "./chat.ts"
+import { cleanDoneTest } from "./check.ts"
 import type { TaskState } from "./task.ts"
 
 export const CHANNEL_NAME_MAX = 60
@@ -158,6 +159,8 @@ export interface PlanPart {
   readonly member: string
   readonly label: string
   readonly prompt: string
+  /** What a finished part must hold: one line, up to 200 characters. Null when the lead gave none. */
+  readonly doneTest: string | null
 }
 
 export interface ParsedPlan {
@@ -186,7 +189,7 @@ export const parsePlan = (text: string, members: readonly string[]): ParsedPlan 
   if (!Array.isArray(raw)) return null
   const parts: PlanPart[] = []
   for (const item of raw) {
-    const { member, label, prompt } = (item ?? {}) as Record<string, unknown>
+    const { member, label, prompt, doneTest, done_test } = (item ?? {}) as Record<string, unknown>
     if (typeof member !== "string" || typeof prompt !== "string" || !prompt.trim()) continue
     const name = members.find((m) => m.toLocaleLowerCase() === member.trim().toLocaleLowerCase())
     if (!name) continue
@@ -195,6 +198,7 @@ export const parsePlan = (text: string, members: readonly string[]): ParsedPlan 
       label:
         (typeof label === "string" && label.trim() ? label : prompt).trim().split("\n")[0] ?? "",
       prompt: prompt.trim(),
+      doneTest: cleanDoneTest(doneTest ?? done_test),
     })
     if (parts.length === PLAN_STEPS_MAX) break
   }

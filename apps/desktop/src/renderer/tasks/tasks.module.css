@@ -198,3 +198,17 @@
 .spacer {
   flex: 1;
 }
+
+.verdict {
+  margin: 0;
+  font-size: var(--text-s);
+  font-weight: 600;
+}
+
+.verdict[data-verdict="met"] {
+  color: var(--c-success);
+}
+
+.verdict[data-verdict="not_met"] {
+  color: var(--c-danger);
+}

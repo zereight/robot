@@ -50,6 +50,11 @@ const task = (id: string, extra: Partial<Task> = {}): Task => ({
   originName: null,
   waitsFor: null,
   progress: "not_sent",
+  doneTest: null,
+  verdict: null,
+  verdictReason: null,
+  judgedAt: null,
+  decidedAt: null,
   ...extra,
 })
 
