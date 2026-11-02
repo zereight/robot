@@ -42,6 +42,7 @@ import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
+import { Checklists } from "./services/Checklists.ts"
 import { Data } from "./services/Data.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
@@ -422,9 +423,27 @@ export const handlers: Handlers = {
       Effect.flatMap(({ serverId }) => AgentFiles.use((f) => f.open(serverId))),
     ),
   "agentFile.apply": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, model: Schema.NullOr(AgentModel) }))(
-      input,
-    ).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        model: Schema.NullOr(AgentModel),
+        pick: Schema.Array(
+          Schema.Struct({
+            index: Schema.Int,
+            instructions: Schema.Boolean,
+            routines: Schema.Array(Schema.Int),
+          }),
+        ),
+      }),
+    )(input).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
+  "checklists.forAgent": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Checklists.use((c) => c.forAgent(agentId))),
+    ),
+  "checklists.forWorkflow": (input) =>
+    decode(Schema.Struct({ workflowId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ workflowId }) => Checklists.use((c) => c.forWorkflow(workflowId))),
+    ),
   "providers.list": () => Providers.use((p) => p.list),
   "providers.connect": (input) =>
     decode(ProviderConnect)(input).pipe(
@@ -782,7 +801,7 @@ export const handlers: Handlers = {
       Effect.flatMap(({ serverId }) => WorkflowFiles.use((f) => f.open(serverId))),
     ),
   "workflowFile.apply": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+    decode(Schema.Struct({ serverId: Schema.String, pick: Schema.Array(Schema.Int) }))(input).pipe(
       Effect.flatMap((data) => WorkflowFiles.use((f) => f.import(data))),
     ),
   "notifications.mutes": () => Notifier.use((n) => Effect.succeed(n.mutes())),

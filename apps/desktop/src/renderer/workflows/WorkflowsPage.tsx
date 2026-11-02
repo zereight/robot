@@ -2,6 +2,7 @@ import type { MessageKey, Workflow, WorkflowFilePreview } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
 import { createEffect, createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import type { ErrorText } from "../lib/errors.ts"
+import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
 import { RoutinesView } from "../routines/RoutinesPage.tsx"
 import shell from "../shell/shell.module.css"
@@ -39,6 +40,16 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
         if (flashRow(`[data-workflow-id="${target.id}"]`)) takeTarget("workflow")
       })
     } else takeTarget("workflow")
+  })
+  // A checklist item asked for one workflow: show its card and focus its switch.
+  createEffect(() => {
+    const target = ui.revealTarget()
+    if (target?.kind !== "workflow" || !workflows().some((w) => w.id === target.id)) return
+    queueMicrotask(() => {
+      const card = document.querySelector<HTMLElement>(`[data-workflow-id="${target.id}"]`)
+      if (card) showRevealed(card, "wf-enabled")
+      ui.clearReveal()
+    })
   })
   const [exporting, setExporting] = createSignal(false)
   const [importPreview, setImportPreview] = createSignal<WorkflowFilePreview>()
@@ -108,9 +119,9 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
             <div
               class={styles.card}
               data-testid="wf-card"
+              data-workflow-id={w.id}
               data-running={w.running}
               data-enabled={w.enabled}
-              data-workflow-id={w.id}
             >
               <div class={styles.cardMain}>
                 <strong>{w.name}</strong>
@@ -172,6 +183,7 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
 /** The page of routines and workflows. */
 export const WorkflowsPage = () => {
   const { t } = useApp()
+  const ui = useUi()
   const [tab, setTab] = createSignal<"routines" | "workflows">("routines")
   const [open, setOpen] = createSignal<{ workflow: Workflow | null }>()
   // The Today page asks for a routine or a workflow: the page shows the tab that holds it.
@@ -180,6 +192,13 @@ export const WorkflowsPage = () => {
     if (target?.kind === "routine") setTab("routines")
     else if (target?.kind === "workflow") setTab("workflows")
     if (target?.kind === "routine" || target?.kind === "workflow") setOpen(undefined)
+  })
+  // A checklist item opens the list where the user does the step (spec 014).
+  createEffect(() => {
+    const target = ui.revealTarget()
+    if (!target) return
+    setOpen(undefined)
+    setTab(target.kind === "routine" ? "routines" : "workflows")
   })
   return (
     <div class={`${shell.page} ${styles.page}`} data-testid="workflows-page">

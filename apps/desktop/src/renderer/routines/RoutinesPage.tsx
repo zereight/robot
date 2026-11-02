@@ -18,6 +18,7 @@ import {
   Show,
 } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
@@ -37,7 +38,7 @@ const useFormat = () => {
     new Intl.DateTimeFormat(app.locale(), { dateStyle: "medium", timeStyle: "short" }).format(at)
 }
 
-const useScheduleWords = () => {
+export const useScheduleWords = () => {
   const { t } = useApp()
   const app = useApp()
   const dayName = (d: number) =>
@@ -321,6 +322,18 @@ export const RoutinesView = () => {
     }),
   )
   onCleanup(window.robot.on("tasks.changed", () => void refetchEntries()))
+  // A checklist item asked for one routine: show its card in the list and focus its switch.
+  createEffect(() => {
+    const target = ui.revealTarget()
+    if (target?.kind !== "routine") return
+    setMode("list")
+    if (!routines().some((r) => r.id === target.id)) return
+    queueMicrotask(() => {
+      const card = document.querySelector<HTMLElement>(`[data-routine-id="${target.id}"]`)
+      if (card) showRevealed(card, "routine-enabled")
+      ui.clearReveal()
+    })
+  })
   const shift = (dir: number) => {
     const a = new Date(anchor())
     if (mode() === "week") a.setDate(a.getDate() + 7 * dir)
@@ -374,8 +387,8 @@ export const RoutinesView = () => {
               <div
                 class={styles.card}
                 data-testid="routine-card"
-                data-enabled={r.enabled}
                 data-routine-id={r.id}
+                data-enabled={r.enabled}
               >
                 <div class={styles.cardMain}>
                   <strong>{r.name}</strong>
