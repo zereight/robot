@@ -20,6 +20,8 @@ import {
   RUN_STATES,
   RUNTIME_KINDS,
   ScheduleSchema,
+  SKILL_INSTRUCTIONS_MAX,
+  SKILL_NAME_MAX,
   STEP_KINDS,
   STEP_STATES,
   StepSchema,
@@ -212,6 +214,14 @@ const partCheck = (v: unknown): boolean => {
     case "text":
     case "thinking":
       return shape(["kind", "text"])(v) && str(TEXT_MAX)(v.text)
+    // A skill chip syncs with its message (spec 019): its name and its copy of the instructions.
+    case "skill":
+      return (
+        shape(["kind", "name", "instructions"])(v) &&
+        // A name of 40 characters can take two code units for each.
+        str(SKILL_NAME_MAX * 2, 1)(v.name) &&
+        str(SKILL_INSTRUCTIONS_MAX, 1)(v.instructions)
+      )
     case "file":
       return (
         shape(["kind", "name", "path", "size"])(v) &&

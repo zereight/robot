@@ -26,6 +26,8 @@ export interface ChatViewProps {
   start: JSX.Element
   onConnect: () => void
   onChooseModel: () => void
+  /** Shows at the end of the list, after the messages, for example a draft skill card. */
+  end?: JSX.Element
 }
 
 const NEAR_BOTTOM_PX = 48
@@ -177,6 +179,7 @@ export const ChatView = (props: ChatViewProps) => {
           <Show when={working()}>
             <WorkingLine since={streaming()?.createdAt ?? Date.now()} />
           </Show>
+          {props.end}
         </div>
       </div>
       <Show when={!atBottom() || backTo() !== undefined}>
