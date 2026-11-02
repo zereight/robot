@@ -101,6 +101,35 @@ const answer = (body: ChatBody): Plan => {
   // A condition in the mode "Ask a model": the model answers yes when the text holds "Hello".
   if (text === "Reply with yes or no only.")
     return { chunks: [last.includes("Hello") ? "Yes" : "No"], delay: 0 }
+  // The check of a lead (spec 004): the system text says that the work has stopped.
+  if (String(body.messages[0]?.content ?? "").includes("The work in the channel has stopped"))
+    return { chunks: [checkAnswer(last)], delay: 0 }
+  // A lead that splits a job into two parts with a done test each. The members are Bo and Cy.
+  if (text.includes("split verdicts") || text.includes("split stubborn"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "Two parts, each with a done test",
+          parts: [
+            {
+              member: "Bo",
+              label: "Draft the intro",
+              prompt: "Draft the intro",
+              doneTest: "The intro has a title",
+            },
+            {
+              member: "Cy",
+              label: "List the facts",
+              prompt: "List the facts HALFREPLY",
+              doneTest: "Lists five facts",
+            },
+          ],
+        }),
+      ],
+      delay: 0,
+    }
+  // A member who does half of the work.
+  if (text.includes("HALFREPLY")) return { chunks: ["Only two of the five facts."], delay: 0 }
   // A lead that splits a job answers with a plan. The members are Bo and Cy.
   if (text.includes("split two"))
     return {
@@ -180,6 +209,45 @@ const answer = (body: ChatBody): Plan => {
   // The word "limit" asks for a rate limit, unless it only quotes the reply of another agent.
   if (text.includes("limit") && !last.startsWith("Reply from the agent")) return { status: 429 }
   return { chunks: ["Hello! ", "You said: ", text], delay: 30 }
+}
+
+/**
+ * A stand-in lead for the check of a channel. It reads the parts to judge: a reply that says
+ * "Only two" is Not met, any other reply is Met. With two parts it nudges the first part that is
+ * Not met. With more parts it asks one question when the job is "stubborn", else it does nothing.
+ */
+const checkAnswer = (state: string) => {
+  const judged = state.split("Parts to judge:\n")[1]?.split("\n\nGive your check")[0] ?? ""
+  const verdicts: { part: number; verdict: string; reason?: string }[] = []
+  for (const block of judged.split(/\n\n(?=Part \d+:)/)) {
+    const match =
+      /^Part (\d+): [^\n]*\nDone test: [^\n]*\nEnd of the last reply of [^\n]*:\n([\s\S]*)$/.exec(
+        block.trim(),
+      )
+    if (!match) continue
+    const part = Number(match[1])
+    verdicts.push(
+      match[2]?.includes("Only two")
+        ? { part, verdict: "not_met", reason: "Only two of the five facts are listed." }
+        : { part, verdict: "met" },
+    )
+  }
+  const partLines = (state.split("Parts:\n")[1]?.split("\n\n")[0] ?? "").split("\n").length
+  const notMet = verdicts.find((v) => v.verdict === "not_met")
+  if (notMet && partLines <= 2)
+    return JSON.stringify({
+      verdicts,
+      action: "nudge",
+      part: notMet.part,
+      instruction: `Finish the list of five facts.${state.includes("stubborn") ? " HALFREPLY" : ""}`,
+    })
+  if (notMet && state.includes("stubborn"))
+    return JSON.stringify({
+      verdicts,
+      action: "ask",
+      question: "Which five facts do you want?",
+    })
+  return JSON.stringify({ verdicts, action: "nothing" })
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
