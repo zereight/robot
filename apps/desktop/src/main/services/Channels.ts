@@ -34,6 +34,7 @@ import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Agents } from "./Agents.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
 import { applyEvent } from "./Chat.ts"
@@ -395,6 +396,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           if (!o.agent.model_account_id || !o.agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
           const useTools = o.tools === true
+          const isRuntime = providers.isRuntime(o.agent.model_account_id)
           const changePart = (
             callId: string,
             change: (p: Extract<MessagePart, { kind: "tool" }>) => MessagePart,
@@ -447,7 +449,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                     knowledge.prompt(
                       o.agent.id,
                       o.turns.at(-1)?.content ?? "",
-                      providers.isRuntime(o.agent.model_account_id) ? "files" : "tools",
+                      isRuntime ? "files" : "tools",
                     ) ?? "",
                   ]
                     .filter(Boolean)
@@ -473,6 +475,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   ? tools.execute(context, call)
                   : { output: "Tools are not available here.", failed: true },
               approve: (request) => tools.approval(context, request),
+              // An agent runtime has no browser of its own. It calls the app for it.
+              ...(useTools && isRuntime
+                ? {
+                    bridge: tools.bridge(context, (event) => {
+                      if (!controller.signal.aborted) Effect.runSync(onEvent(event))
+                    }),
+                  }
+                : {}),
             },
           )
           // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
@@ -488,7 +498,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               }
             },
           }
-          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(Stream.runForEach(onEvent))
+          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(
+            // The program also reports its own calls of these tools. The app shows its own cards.
+            Stream.runForEach((event) =>
+              isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null
+                ? Effect.void
+                : onEvent(event),
+            ),
+          )
         })
 
         // A vendor program writes the Knowledge folder itself. The folder is read again after it.

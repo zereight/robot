@@ -6,6 +6,7 @@ import { createInterface } from "node:readline"
 import { insideWorkspace, type RuntimeLimit, riskyReason } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { bridgeToolName, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
 import type { ApprovalRequest, Login, RuntimeRun } from "./types.ts"
@@ -419,7 +420,8 @@ export const describeRequest = (
 
 // ---- running a turn --------------------------------------------------------------------
 
-export const claudeArgs = (run: RuntimeRun): string[] => {
+/** `mcpConfig` is the file that lets the program reach the tools of the app (see bridge.ts). */
+export const claudeArgs = (run: RuntimeRun, mcpConfig?: string): string[] => {
   const args = [
     "-p",
     "--input-format",
@@ -436,6 +438,7 @@ export const claudeArgs = (run: RuntimeRun): string[] => {
     "--setting-sources",
     "",
     "--strict-mcp-config",
+    ...(mcpConfig ? ["--mcp-config", mcpConfig] : []),
     "--model",
     run.model,
   ]
@@ -459,7 +462,8 @@ const TAIL = 2000
 
 export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
-  const child = spawn(run.bin, claudeArgs(run), {
+  const staged = run.bridge ? stage(run.bridge) : null
+  const child = spawn(run.bin, claudeArgs(run, staged?.claudeConfig), {
     cwd: run.workspace,
     env: runtimeEnv(),
     stdio: ["pipe", "pipe", "pipe"],
@@ -510,9 +514,10 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
           limitsResetAt = mapped.resetsAt
         } else if (mapped.kind === "permission") {
           const call = describeRequest(mapped.toolUseId, mapped.tool, mapped.input, run.workspace)
-          let allowed = false
+          // A tool of the app asks the user by itself, at the permission level of the agent.
+          let allowed = bridgeToolName(mapped.tool) !== null
           try {
-            allowed = await run.approve(call)
+            if (!allowed) allowed = await run.approve(call)
           } catch (error) {
             if (run.signal.aborted) return
             throw error
@@ -551,5 +556,6 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       await exited
       clearTimeout(timer)
     }
+    staged?.remove()
   }
 }

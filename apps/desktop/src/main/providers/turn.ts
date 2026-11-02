@@ -1,4 +1,5 @@
 import type { PermissionLevel } from "@robot/shared"
+import type { BridgeHandler } from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import type { ToolOutcome } from "./agent.ts"
 import type { ToolCall, ToolDef, Turn } from "./chat.ts"
@@ -27,4 +28,6 @@ export interface TurnHooks {
   readonly execute: (call: ToolCall) => Promise<ToolOutcome>
   /** Asks the user about a step of an agent runtime. */
   readonly approve: (request: ApprovalRequest) => Promise<boolean>
+  /** The tools of the app that an agent runtime may call, the browser. It has no tools of its own for them. */
+  readonly bridge?: BridgeHandler
 }

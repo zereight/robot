@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ChatMessage, MessagePart } from "@robot/shared"
 import { Effect } from "effect"
+import type { ToolEvent } from "../providers/agent.ts"
+import { BRIDGE_TOOL_NAMES } from "../runtimes/bridge.ts"
 import { Agents } from "./Agents.ts"
 import { CurrentActor } from "./actor.ts"
 import { Chat } from "./Chat.ts"
@@ -10,7 +12,7 @@ import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
-import { Tools } from "./Tools.ts"
+import { type ToolContext, Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
 
 const sse = (chunks: unknown[]) =>
@@ -373,5 +375,112 @@ describe("browser", () => {
     await s.finished()
     expect((await s.toolPart())?.state).toBe("failed")
     expect(s.t.browserLog).toEqual([])
+  })
+})
+
+describe("browser for an agent runtime", () => {
+  // The program has no browser of its own. It calls the app, which answers like it does for an API agent.
+  const open = async (permission: "ask_all" | "ask_risky" | "full") => {
+    const s = await setup(permission)
+    const shown: ToolEvent[] = []
+    const asks: { callId: string; ask: unknown }[] = []
+    const controller = new AbortController()
+    const context: ToolContext = {
+      agentId: s.agent.id,
+      workspace: s.agent.workspace,
+      permission,
+      signal: controller.signal,
+      onWaiting: (callId, ask) => asks.push({ callId, ask }),
+      onMemory: () => {},
+      onKnowledge: () => {},
+      knowledgeChanges: { count: 0 },
+    }
+    const bridge = await s.run(
+      Tools.use((x) => Effect.succeed(x.bridge(context, (event) => shown.push(event)))),
+    )
+    const states = () => shown.map((e) => `${e.state} ${e.call.id} ${e.call.name}`)
+    return { s, bridge, shown, asks, controller, states }
+  }
+
+  test("offers the browser tools and nothing else", async () => {
+    const { bridge } = await open("full")
+    expect(bridge.tools.map((t) => t.name)).toEqual([...BRIDGE_TOOL_NAMES])
+    expect(bridge.tools.every((t) => t.description && t.schema.type === "object")).toBe(true)
+  })
+
+  test("a call opens and reads the page, and shows one card for each call", async () => {
+    const { s, bridge, states } = await open("full")
+    const signal = new AbortController().signal
+    const opened = await bridge.call("browser_open", { url: "https://example.com/a" }, signal)
+    expect(opened.failed).toBe(false)
+    expect(opened.output).toContain("Opened https://example.com/a")
+    expect(s.t.browserLog).toContain(`${s.agent.id}:open https://example.com/a`)
+    const read = await bridge.call("browser_read", {}, signal)
+    expect(read.output).toContain("Text of https://example.com/a")
+    expect(states()).toEqual([
+      "running app-1 browser_open",
+      "done app-1 browser_open",
+      "running app-2 browser_read",
+      "done app-2 browser_read",
+    ])
+    // The user sees the same window and can take the controls, as for an API agent.
+    expect(await s.run(Tools.use((x) => Effect.succeed(x.browserState(s.agent.id))))).toEqual({
+      open: true,
+      control: false,
+    })
+  })
+
+  test("a non-web address fails without opening, and the card says failed", async () => {
+    const { s, bridge, states } = await open("full")
+    const out = await bridge.call(
+      "browser_open",
+      { url: "file:///etc/passwd" },
+      new AbortController().signal,
+    )
+    expect(out.failed).toBe(true)
+    expect(s.t.browserLog).toEqual([])
+    expect(states()).toEqual(["running app-1 browser_open", "failed app-1 browser_open"])
+  })
+
+  test("at ask for everything the app asks the user, and a deny keeps the browser closed", async () => {
+    const { s, bridge, asks, states } = await open("ask_all")
+    const signal = new AbortController().signal
+    const first = bridge.call("browser_open", { url: "https://example.com/b" }, signal)
+    await until(() => asks.some((a) => a.ask !== null))
+    expect(asks[0]).toMatchObject({ callId: "app-1", ask: { kind: "approval" } })
+    expect(s.t.browserLog).toEqual([])
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "allow")))
+    expect((await first).failed).toBe(false)
+    expect(s.t.browserLog).toContain(`${s.agent.id}:open https://example.com/b`)
+
+    const second = bridge.call("browser_read", {}, signal)
+    await until(() => asks.some((a) => a.callId === "app-2" && a.ask !== null))
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-2", "deny")))
+    expect(await second).toEqual({ output: "The user denied this step.", failed: true })
+    expect(states().at(-1)).toBe("failed app-2 browser_read")
+  })
+
+  test("at ask for risky steps a browser step does not ask", async () => {
+    const { s, bridge, asks } = await open("ask_risky")
+    await bridge.call(
+      "browser_open",
+      { url: "https://example.com/c" },
+      new AbortController().signal,
+    )
+    expect(asks).toEqual([])
+    expect(s.t.browserLog).toContain(`${s.agent.id}:open https://example.com/c`)
+  })
+
+  test("stop while a card waits ends the call, and the card is not left running", async () => {
+    const { bridge, asks, controller, shown } = await open("ask_all")
+    const pending = bridge.call(
+      "browser_open",
+      { url: "https://example.com/d" },
+      new AbortController().signal,
+    )
+    await until(() => asks.some((a) => a.ask !== null))
+    controller.abort()
+    await expect(pending).rejects.toThrow()
+    expect(shown.at(-1)).toMatchObject({ state: "failed", output: "Stopped." })
   })
 })

@@ -22,8 +22,9 @@ import {
   type ToolAsk,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer } from "effect"
-import type { ToolOutcome } from "../providers/agent.ts"
+import type { ToolEvent, ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall, ToolDef } from "../providers/chat.ts"
+import { BRIDGE_TOOL_NAMES, type BridgeHandler } from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import { CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
@@ -59,6 +60,12 @@ export interface ToolsService {
    * Resolves true to go on and false when the user denies. Rejects when the turn stops.
    */
   approval(context: ToolContext, request: ApprovalRequest): Promise<boolean>
+  /**
+   * The tools of the app that an agent runtime may call: the browser. The runtime has no tool of
+   * its own for them, so it calls the app (see bridge.ts). Each call runs like the call of an API
+   * agent, at the permission level of the agent. `show` puts the card of the call in the reply.
+   */
+  bridge(context: ToolContext, show: (event: ToolEvent) => void): BridgeHandler
   /** Answers a card that waits. Unknown cards are ignored. */
   respond(agentId: string, callId: string, answer: string): Effect.Effect<void>
   /** True while a task of this computer waits for the answer to this card. */
@@ -765,6 +772,16 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      const execute = async (ctx: ToolContext, call: ToolCall): Promise<ToolOutcome> => {
+        try {
+          return await run(ctx, call)
+        } catch (error) {
+          if (error instanceof Denied) return { output: "The user denied this step.", failed: true }
+          if (ctx.signal.aborted) throw error
+          return { output: error instanceof Error ? error.message : String(error), failed: true }
+        }
+      }
+
       return Tools.of({
         defs: (options) =>
           Object.values(DEFS).filter(
@@ -772,14 +789,31 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               (options.memory || d.name !== "save_memory") &&
               (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)),
           ),
-        execute: async (ctx, call) => {
-          try {
-            return await run(ctx, call)
-          } catch (error) {
-            if (error instanceof Denied)
-              return { output: "The user denied this step.", failed: true }
-            if (ctx.signal.aborted) throw error
-            return { output: error instanceof Error ? error.message : String(error), failed: true }
+        execute,
+        bridge: (ctx, show) => {
+          let count = 0
+          return {
+            tools: Object.values(DEFS).filter((d) =>
+              (BRIDGE_TOOL_NAMES as readonly string[]).includes(d.name),
+            ),
+            call: async (name, args) => {
+              const call: ToolCall = { id: `app-${++count}`, name, input: JSON.stringify(args) }
+              show({ type: "tool", state: "running", call })
+              try {
+                const outcome = await execute(ctx, call)
+                show({
+                  type: "tool",
+                  state: outcome.failed ? "failed" : "done",
+                  call,
+                  output: outcome.output,
+                })
+                return outcome
+              } catch (error) {
+                // The turn stopped. The program is told, and the card is not changed any more.
+                show({ type: "tool", state: "failed", call, output: "Stopped." })
+                throw error
+              }
+            },
           }
         },
         approval: async (ctx, request) => {

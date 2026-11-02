@@ -7,6 +7,7 @@ import { createInterface } from "node:readline"
 import type { RuntimeLimit } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { bridgeToolName, museBridge } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
@@ -248,6 +249,7 @@ export const museArgs = (run: RuntimeRun, promptFile: string): string[] => {
     "--prompt-file",
     promptFile,
     ...museSafety(run),
+    ...(run.bridge ? museBridge(run.bridge).args : []),
   ]
   if (run.model !== "default") args.push("--model", run.model)
   if (run.effort) args.push("--reasoning-effort", run.effort)
@@ -275,7 +277,7 @@ async function* runMuseExec(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   writeFileSync(promptFile, musePrompt(run), { mode: 0o600 })
   const child = spawn(run.bin, museArgs(run, promptFile), {
     cwd: run.workspace,
-    env: env(),
+    env: { ...env(), ...(run.bridge ? museBridge(run.bridge).env : {}) },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   })
@@ -365,6 +367,7 @@ export const museHostArgs = (run: RuntimeRun): string[] => [
   "--no-session-log",
   "--disable-request-user-input",
   ...(run.permission === "ask_all" ? ["--disable-write", "--disable-shell"] : []),
+  ...(run.bridge ? museBridge(run.bridge).args : []),
 ]
 
 /**
@@ -591,7 +594,7 @@ async function* runMuseHost(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   const root = realpathSync(run.workspace)
   const child = spawn(run.bin, museHostArgs(run), {
     cwd: root,
-    env: hostEnv(),
+    env: { ...hostEnv(), ...(run.bridge ? museBridge(run.bridge).env : {}) },
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   })
@@ -644,7 +647,9 @@ async function* runMuseHost(run: RuntimeRun): AsyncGenerator<AgentEvent> {
         send({ id: message.id, result: {} })
         const params = obj(message.params)
         const approvalId = str(params.approvalId)
-        let allowed = allowedApprovals.has(approvalId)
+        // A tool of the app asks the user by itself, at the permission level of the agent.
+        let allowed =
+          allowedApprovals.has(approvalId) || bridgeToolName(str(params.toolName)) !== null
         if (!allowed) {
           try {
             allowed = await run.approve(describeMuseApproval(params))

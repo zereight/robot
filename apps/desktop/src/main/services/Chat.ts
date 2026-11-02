@@ -30,6 +30,7 @@ import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { resumeOf } from "../providers/resume.ts"
+import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
 import { Database } from "./Database.ts"
@@ -439,11 +440,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           }
           // The data changed since the restart, so the card cannot go on.
           if (resumed && !resume) return yield* new AppError({ code: "app_stopped" })
+          const isRuntime = providers.isRuntime(agent.model_account_id)
           const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
           const known = knowledge.prompt(
             agentId,
             asked ? messageText(asked) : "",
-            providers.isRuntime(agent.model_account_id) ? "files" : "tools",
+            isRuntime ? "files" : "tools",
           )
           const system = [
             agent.instructions,
@@ -537,6 +539,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             {
               execute: (call) => tools.execute(context, call),
               approve: (request) => tools.approval(context, request),
+              // An agent runtime has no browser of its own. It calls the app for it, and the
+              // card of each call is the one that an API agent would show.
+              ...(isRuntime
+                ? {
+                    bridge: tools.bridge(context, (event) => {
+                      if (!controller.signal.aborted) Effect.runSync(onEvent(event))
+                    }),
+                  }
+                : {}),
             },
           )
           // Closing the stream aborts first: the generator may wait in a tool and cannot end before.
@@ -552,7 +563,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               }
             },
           }
-          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(Stream.runForEach(onEvent))
+          yield* Stream.fromAsyncIterable(closing, (e) => e).pipe(
+            // The program also reports its own calls of these tools. The app shows its own cards.
+            Stream.runForEach((event) =>
+              isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null
+                ? Effect.void
+                : onEvent(event),
+            ),
+          )
         })
 
         activity.setWorking(agentId, agent.server_id, true)

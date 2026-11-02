@@ -552,3 +552,61 @@ describe("approvals of Muse Code answered from other devices", () => {
     expect((await s.card())?.decision).toBeUndefined()
   })
 })
+
+describe("the browser for a subscription", () => {
+  const toolParts = async (s: Awaited<ReturnType<typeof chatSetup>>) =>
+    ((await s.reply())?.parts ?? []).filter((p) => p.kind === "tool")
+  const open = 'BROWSER:browser_open {"url":"https://example.com/a"}'
+
+  test("Claude Code opens a page in the browser window of the agent; one card, named as for an API agent", async () => {
+    const s = await chatSetup("claude_code", "full")
+    await s.send(open)
+    await s.settled()
+    expect(s.t.browserLog).toContain(`${s.agent.id}:open https://example.com/a`)
+    expect(messageText((await s.reply()) as ChatMessage)).toContain(
+      "Page: Opened https://example.com/a",
+    )
+    // The program reports its own call too. The reply shows the card of the app only.
+    const parts = await toolParts(s)
+    expect(parts).toHaveLength(1)
+    expect(parts[0]).toMatchObject({ id: "app-1", name: "browser_open", state: "done" })
+    // The user holds the same window as for an API agent.
+    expect(await s.run(Tools.use((x) => Effect.succeed(x.browserState(s.agent.id))))).toEqual({
+      open: true,
+      control: false,
+    })
+  })
+
+  test("at Ask for everything the app shows its card, and Allow opens the page", async () => {
+    const s = await chatSetup("claude_code", "ask_all")
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    expect((await s.card())?.id).toBe("app-1")
+    expect(s.t.browserLog).toEqual([])
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "allow")))
+    await s.settled()
+    expect(s.t.browserLog).toContain(`${s.agent.id}:open https://example.com/a`)
+    expect((await toolParts(s)).map((p) => p.state)).toEqual(["done"])
+  })
+
+  test("Deny keeps the window closed, and the program is told", async () => {
+    const s = await chatSetup("claude_code", "ask_all")
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "deny")))
+    await s.settled()
+    expect(s.t.browserLog).toEqual([])
+    expect(messageText((await s.reply()) as ChatMessage)).toContain("The user denied this step.")
+    expect((await toolParts(s)).map((p) => p.state)).toEqual(["failed"])
+  })
+
+  test("Stop while the card waits ends the turn", async () => {
+    const s = await chatSetup("claude_code", "ask_all")
+    await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    await s.run(Chat.use((c) => c.stop(s.agent.id)))
+    await s.settled()
+    expect((await s.reply())?.status).toBe("stopped")
+    expect(s.t.browserLog).toEqual([])
+  })
+})
