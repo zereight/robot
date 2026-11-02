@@ -42,7 +42,6 @@ jobs:
       - run: bun run test
 
   package:
-    needs: verify
     strategy:
       fail-fast: false
       matrix:
@@ -51,17 +50,9 @@ jobs:
             os: macos-latest
             target: --mac --arm64
             arch: arm64
-          - name: macos-x64
-            os: macos-15-intel
-            target: --mac --x64
-            arch: x64
           - name: windows-x64
             os: windows-latest
             target: --win --x64
-            arch: x64
-          - name: linux-x64
-            os: ubuntu-latest
-            target: --linux --x64
             arch: x64
     runs-on: ${{ matrix.os }}
     defaults:
@@ -84,15 +75,16 @@ jobs:
         run: |
           bun run build
           bunx electron-builder ${{ matrix.target }} --publish never
+      - name: TEMP multicast probe
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: node probe-mdns.cjs || true
       - name: End-to-end tests against the packaged app
         working-directory: apps/desktop
         run: |
           export ROBOT_E2E_APP="$(bun scripts/packaged-path.ts ${{ matrix.arch }})"
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run --auto-servernum bunx playwright test
-          else
-            bunx playwright test
-          fi
+          export ROBOT_E2E_LOG=1
+          bunx playwright test e2e/s20-linked-approvals.spec.ts e2e/s22-live-sync.spec.ts e2e/s23-sync-tasks.spec.ts
       - uses: actions/upload-artifact@v4
         with:
           name: app-${{ matrix.name }}

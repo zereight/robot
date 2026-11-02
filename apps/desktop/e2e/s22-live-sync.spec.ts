@@ -295,8 +295,28 @@ test("live sync: a delete reaches the other computer and keeps its folder; many 
     await expect.poll(() => archivedCount(one.page, serverOne), { timeout: 20_000 }).toBe(8)
 
     // Delete them again and say Delete: now they are gone on MacBook 2 too.
-    for (const id of ids) await rpc(one.page, "agents.delete", { id })
-    await expect(two.page.getByTestId("sync-guard-dialog")).toBeVisible({ timeout: 20_000 })
+    const t0 = Date.now()
+    const marks: number[] = []
+    for (const id of ids) {
+      await rpc(one.page, "agents.delete", { id })
+      marks.push(Date.now() - t0)
+    }
+    console.log("DIAG s22 delete marks ms", JSON.stringify(marks))
+    try {
+      await expect(two.page.getByTestId("sync-guard-dialog")).toBeVisible({ timeout: 20_000 })
+    } catch (error) {
+      console.log(
+        "DIAG s22 no guard: archived on two",
+        await archivedCount(two.page, serverTwo),
+        "archived on one",
+        await archivedCount(one.page, serverOne),
+        "sync list one",
+        JSON.stringify(await rpc(one.page, "sync.list")),
+        "sync list two",
+        JSON.stringify(await rpc(two.page, "sync.list")),
+      )
+      throw error
+    }
     await two.page.getByTestId("sync-guard-delete").click()
     await expect.poll(() => archivedCount(two.page, serverTwo), { timeout: 10_000 }).toBe(0)
     report("s22-delete", { archivedLeftOnTwo: await archivedCount(two.page, serverTwo) })

@@ -52,6 +52,13 @@ export const launch = async (
       ...env,
     } as Record<string, string>,
   })
+  if (process.env.ROBOT_E2E_LOG) {
+    const tag = userData.split(/[\\/]/).pop()
+    for (const name of ["stdout", "stderr"] as const)
+      app
+        .process()
+        [name]?.on("data", (d) => console.log(`APP ${tag} ${name}: ${String(d).trimEnd()}`))
+  }
   const page = await mainPage(app)
   return { app, page, userData }
 }

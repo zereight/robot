@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -234,7 +235,27 @@ test("sync tasks: a card of a computer that is off says so", async () => {
     await expect(two.page.getByTestId("ask-origin-offline")).toHaveCount(0)
     await expect(two.page.getByTestId("tool-origin")).toContainText("from MacBook 1")
     // The first computer is lost at once, as when its power goes: its task does not end by itself.
-    one.app.process().kill("SIGKILL")
+    const pid = one.app.process().pid
+    console.log("DIAG s23 kill returned", one.app.process().kill("SIGKILL"), "pid", pid)
+    await new Promise((r) => setTimeout(r, 3000))
+    console.log(
+      "DIAG s23 exitCode",
+      one.app.process().exitCode,
+      "signal",
+      one.app.process().signalCode,
+    )
+    try {
+      const cmd =
+        process.platform === "win32"
+          ? 'netstat -ano | findstr "4789"; tasklist /FI "IMAGENAME eq ROBot.exe"'
+          : "lsof -nP -iTCP:47895 -iTCP:47896 || true"
+      console.log(
+        "DIAG s23 sockets\n",
+        execSync(cmd, { shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh" }).toString(),
+      )
+    } catch (e) {
+      console.log("DIAG s23 sockets failed", String(e))
+    }
     await expect(two.page.getByTestId("ask-origin-offline")).toHaveText("MacBook 1 is offline.", {
       timeout: 30_000,
     })
