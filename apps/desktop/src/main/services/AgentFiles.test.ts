@@ -451,6 +451,30 @@ describe("import", () => {
     expect(existsSync(join(app.dataDir, "elsewhere"))).toBe(false)
   })
 
+  test("an imported agent has the same fields as an agent made by hand, including memory and knowledge", async () => {
+    const app = await setup()
+    const fields = { role: "Researcher", instructions: "Be brief.", face: { shape: 3, hue: 4 } }
+    await app.importFile(app.write("one.json", file([{ name: "Ada", ...fields }])))
+    const byHand = await app.run(
+      Agents.use((a) =>
+        a.create({ serverId: app.server.id, name: "Bob", model: app.model, ...fields }),
+      ),
+    )
+    const imported = (await app.list()).find((a) => a.name === "Ada")
+    expect(imported).toMatchObject({
+      permission: "ask_risky",
+      memoryEnabled: true,
+      knowledgeEnabled: true,
+    })
+    // Every field must match, except the ones that belong to one agent. A field that a later
+    // slice adds to the agent is compared too, so an import cannot miss it.
+    const own = new Set(["id", "name", "workspace", "createdAt"])
+    const shared = (agent: object) =>
+      Object.fromEntries(Object.entries(agent).filter(([key]) => !own.has(key)))
+    expect(shared(imported ?? {})).toEqual(shared(byHand))
+    expect(Object.keys(imported ?? {}).sort()).toEqual(Object.keys(byHand).sort())
+  })
+
   describe("refused files", () => {
     const refuse = async (app: App, path: string) => {
       app.pick.open = path
