@@ -92,6 +92,22 @@ export const faceFromName = (name: string): Face => {
 export const nameKey = (name: string) => name.trim().normalize("NFC").toLocaleLowerCase()
 
 /**
+ * Keeps agents whose name or role line contains every word of the query, ignoring case.
+ * An empty query keeps all agents. The order does not change.
+ */
+export const filterAgents = <A extends { readonly name: string; readonly role: string }>(
+  agents: readonly A[],
+  query: string,
+): readonly A[] => {
+  const words = query.normalize("NFC").toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return agents
+  return agents.filter((a) => {
+    const text = `${a.name} ${a.role}`.normalize("NFC").toLocaleLowerCase()
+    return words.every((w) => text.includes(w))
+  })
+}
+
+/**
  * The name of a copy: "Name copy", then "Name copy 2", "Name copy 3" and so on.
  * The base is shortened when the result would be longer than the name limit.
  */

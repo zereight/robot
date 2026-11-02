@@ -4,8 +4,9 @@ import {
   CHANNEL_TOPIC_MAX,
   type Channel,
   charLength,
+  filterAgents,
 } from "@robot/shared"
-import { createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -24,6 +25,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const [name, setName] = createSignal(props.channel?.name ?? "")
   const [topic, setTopic] = createSignal(props.channel?.topic ?? "")
   const [members, setMembers] = createSignal<string[]>([...(props.channel?.memberIds ?? [])])
+  const [query, setQuery] = createSignal("")
   const [leadId, setLeadId] = createSignal<string | null>(props.channel?.leadId ?? null)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
@@ -33,6 +35,8 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
     charLength(name().trim()) >= 1 &&
     charLength(name().trim()) <= CHANNEL_NAME_MAX &&
     charLength(topic().trim()) <= CHANNEL_TOPIC_MAX
+  // Members that the search hides stay chosen: the choice lives in `members`, not in the list.
+  const shown = createMemo(() => filterAgents(agents.agents(), query()))
   const toggle = (agent: Agent) => {
     const on = members().includes(agent.id)
     setMembers(on ? members().filter((m) => m !== agent.id) : [...members(), agent.id])
@@ -122,22 +126,52 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             when={agents.agents().length > 0}
             fallback={<p class={styles.hint}>{t("channels.members.none")}</p>}
           >
-            <div class={styles.memberList}>
-              <For each={agents.agents()}>
-                {(agent) => (
-                  <label class={styles.member}>
-                    <input
-                      type="checkbox"
-                      checked={members().includes(agent.id)}
-                      onChange={() => toggle(agent)}
-                      data-testid={`channel-member-${agent.name}`}
-                    />
-                    <Face face={agent.face} image={agent.faceImage} size={20} />
-                    <span>{agent.name}</span>
-                  </label>
-                )}
-              </For>
-            </div>
+            <input
+              class={`${styles.input} ${styles.memberSearch}`}
+              type="search"
+              value={query()}
+              placeholder={t("channels.members.search")}
+              aria-label={t("channels.members.search")}
+              onInput={(e) => setQuery(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                // Enter in the field must not send the form.
+                if (e.key === "Enter") e.preventDefault()
+              }}
+              data-testid="channel-member-search"
+            />
+            <Show
+              when={shown().length > 0}
+              fallback={
+                <p class={styles.hint} data-testid="channel-member-nomatch">
+                  {t("channels.members.noMatch")}
+                </p>
+              }
+            >
+              <div class={styles.memberList}>
+                <For each={shown()}>
+                  {(agent) => (
+                    <label class={styles.member}>
+                      <input
+                        type="checkbox"
+                        checked={members().includes(agent.id)}
+                        onChange={() => toggle(agent)}
+                        data-testid={`channel-member-${agent.name}`}
+                      />
+                      <Face face={agent.face} image={agent.faceImage} size={20} />
+                      <span class={styles.memberName}>{agent.name}</span>
+                      <Show when={agent.role}>
+                        <span class={styles.memberRole}>{agent.role}</span>
+                      </Show>
+                    </label>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <Show when={members().length > 0}>
+              <span class={styles.hint} aria-live="polite" data-testid="channel-member-count">
+                {t("channels.members.selected", { count: members().length })}
+              </span>
+            </Show>
           </Show>
         </fieldset>
         <label class={styles.field}>

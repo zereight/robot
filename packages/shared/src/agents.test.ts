@@ -6,6 +6,7 @@ import {
   charLength,
   copyName,
   faceFromName,
+  filterAgents,
   nameKey,
   SUGGESTED_NAME_COUNT,
   suggestName,
@@ -27,6 +28,23 @@ describe("agents", () => {
       Schema.is(AgentCreate)({ serverId: "s", name: "A", role, instructions: "" })
     expect(ok("x".repeat(120))).toBe(true)
     expect(ok("x".repeat(121))).toBe(false)
+  })
+
+  test("agent search matches name or role, every word, ignoring case", () => {
+    const list = [
+      { name: "Lia", role: "Code reviewer" },
+      { name: "Bo", role: "Researcher" },
+      { name: "리아", role: "번역가" },
+    ]
+    const names = (q: string) => filterAgents(list, q).map((a) => a.name)
+    expect(names("")).toEqual(["Lia", "Bo", "리아"])
+    expect(names("   ")).toEqual(["Lia", "Bo", "리아"])
+    expect(names("LI")).toEqual(["Lia"])
+    expect(names("re")).toEqual(["Lia", "Bo"])
+    expect(names("code review")).toEqual(["Lia"])
+    expect(names("review code")).toEqual(["Lia"])
+    expect(names("번역")).toEqual(["리아"])
+    expect(names("zzz")).toEqual([])
   })
 
   test("copies are named 'Name copy', then 'Name copy 2'", () => {
