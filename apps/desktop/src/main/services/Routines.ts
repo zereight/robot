@@ -22,7 +22,8 @@ import { Tasks } from "./Tasks.ts"
 
 export interface RoutinesService {
   list(serverId: string): Effect.Effect<readonly Routine[]>
-  create(input: RoutineInput): Effect.Effect<Routine, AppError>
+  /** Makes a routine. `paused` makes it with the switch off, so it does not run until resumed. */
+  create(input: RoutineInput, options?: { paused?: boolean }): Effect.Effect<Routine, AppError>
   update(id: string, patch: RoutinePatch): Effect.Effect<Routine, AppError>
   remove(id: string): Effect.Effect<void>
   /** Starts a run at once, outside the schedule. */
@@ -176,14 +177,14 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               .all<Row>(`${SELECT} WHERE r.server_id = ? ORDER BY r.created_at`, serverId)
               .map(toRoutine),
           ),
-        create: (input) =>
+        create: (input, options) =>
           Effect.gen(function* () {
             yield* checkInput(input.agentId, input.schedule as Schedule, input.place)
             const id = randomUUID()
             const now = Date.now()
             db.run(
               `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, channel_id, enabled, last_checked_at, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.serverId,
               input.agentId,
@@ -191,6 +192,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               input.prompt,
               JSON.stringify(input.schedule),
               input.place.kind === "channel" ? input.place.channelId : null,
+              options?.paused ? 0 : 1,
               now,
               now,
               now,

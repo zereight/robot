@@ -60,6 +60,8 @@ export const testPlatform = () => {
     pickFiles: async () => [],
     pickSavePath: async () => undefined,
     pickArchive: async () => undefined,
+    pickAgentFileSave: async () => undefined,
+    pickAgentFile: async () => undefined,
     openPath: async () => {},
     setStartAtLogin: () => {},
     setThemeSource: () => {},
