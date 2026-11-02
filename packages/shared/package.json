@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
+    "@robot/link": "workspace:*",
     "effect": "^4.1.1"
   }
 }

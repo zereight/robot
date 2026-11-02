@@ -1,0 +1,6 @@
+{
+  "CFBundleDisplayName": "ROBot",
+  "NSCameraUsageDescription": "ROBot uses the camera to read the pairing code of your computer.",
+  "NSLocalNetworkUsageDescription": "ROBot connects straight to your computer on this network.",
+  "NSPhotoLibraryUsageDescription": "ROBot lets you pick photos to send to an agent."
+}

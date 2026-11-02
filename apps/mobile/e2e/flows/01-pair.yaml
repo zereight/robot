@@ -1,0 +1,49 @@
+# First start and pairing with "Type it instead" (spec 011). ADDRESS and CODE come from the host.
+appId: host.exp.Exponent
+---
+- clearState
+- clearKeychain
+- openLink: ${URL}
+# Older Expo Go builds show their developer menu once even with the flag.
+- tapOn:
+    text: "Continue"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "welcome.name"
+    timeout: 180000
+- takeScreenshot: phone-01-first-start
+- tapOn:
+    id: "welcome.name"
+- inputText: "iPhone of Kim"
+- tapOn:
+    id: "welcome.continue"
+- extendedWaitUntil:
+    visible:
+      id: "pair.typeInstead"
+    timeout: 30000
+- takeScreenshot: phone-02-pairing-camera
+- tapOn:
+    id: "pair.typeInstead"
+- tapOn:
+    id: "pair.address"
+- inputText: ${ADDRESS}
+- tapOn:
+    id: "pair.code"
+- inputText: ${CODE}
+# The number pad has no return key: a tap on a label closes the keyboard.
+- tapOn:
+    id: "pair.code.label"
+- takeScreenshot: phone-03-type-it-instead
+- tapOn:
+    id: "pair.submit"
+- extendedWaitUntil:
+    visible:
+      id: "pair.busy"
+    timeout: 30000
+- takeScreenshot: phone-04-waiting-to-allow
+- extendedWaitUntil:
+    visible:
+      id: "server.MacBook"
+    timeout: 120000
+- takeScreenshot: phone-05-servers

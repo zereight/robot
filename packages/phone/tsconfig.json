@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The code runs in React Native and in Bun. Only the tests use the types of Bun.
+    "types": ["bun"]
+  },
+  "include": ["src"]
+}

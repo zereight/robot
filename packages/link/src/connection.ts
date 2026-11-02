@@ -1,12 +1,15 @@
-import { LINK_PROTOCOL, type LinkState, RECONNECT_MAX_MS, type WireDevice } from "@robot/shared"
+import type { RandomBytes } from "./bytes.ts"
 import type { SecureChannel } from "./channel.ts"
-import { LinkError, openAny, openLinked } from "./client.ts"
+import { openAny, openLinked } from "./client.ts"
+import { LinkError } from "./errors.ts"
 import type { Identity } from "./identity.ts"
+import type { SocketOpener } from "./socket.ts"
+import { LINK_PROTOCOL, type LinkState, RECONNECT_MAX_MS, type WireDevice } from "./wire.ts"
 
 /** What the connection needs to know about the server it opens. */
 export interface ConnectionTarget {
   readonly id: string
-  readonly publicKey: Buffer
+  readonly publicKey: Uint8Array
   readonly addresses: readonly string[]
 }
 
@@ -26,16 +29,25 @@ export interface ConnectionOptions {
   /** The newest data of the link, or undefined when the link was removed. */
   readonly target: () => ConnectionTarget | undefined
   readonly hooks: ConnectionHooks
+  readonly opener: SocketOpener
   /** The longest wait between two tries. */
   readonly maxDelayMs?: number
   /** How many failed tries turn Reconnecting into Offline. */
   readonly offlineAfter?: number
   /** How long one address gets to answer. */
   readonly connectMs?: number
+  /** How often the connection checks that the server still answers. */
+  readonly pingMs?: number
+  readonly random?: RandomBytes
 }
 
 const REQUEST_MS = 30_000
 const PING_MS = 10_000
+/**
+ * A socket of the browser API cannot send a ping frame. Then the connection asks for the summary
+ * of the server, a request that every client may make and that changes nothing.
+ */
+const HEARTBEAT_METHOD = "server.summary"
 
 /**
  * One linked server, seen from the client. It opens the server, keeps the connection, and tries
@@ -51,6 +63,7 @@ export class Connection {
   #failures = 0
   #wasOnline = false
   #stopped = true
+  #attempting = false
   #token = 0
   #nextId = 1
   readonly #pending = new Map<
@@ -93,15 +106,39 @@ export class Connection {
   stop() {
     this.#stopped = true
     this.#token++
+    this.#attempting = false
     clearTimeout(this.#timer)
     this.#drop()
   }
 
-  /** Tries at once, when the connection is not open. Used when the user clicks the tile. */
+  /** Tries at once, when the connection is not open. Used when the user asks, or the app returns. */
   retryNow() {
     if (this.#stopped || this.#channel || this.#state === "not_allowed") return
+    if (this.#attempting) return
     clearTimeout(this.#timer)
     void this.#attempt()
+  }
+
+  /**
+   * Checks that an open connection still works, at once. A phone calls this when the app comes
+   * back: the system may have cut the socket while the app was away, with no sign. A connection
+   * that does not answer in `ms` is closed, and the next try starts at once.
+   */
+  async check(ms = 3_000): Promise<boolean> {
+    if (!this.#channel || this.#state !== "online") {
+      this.retryNow()
+      return false
+    }
+    const channel = this.#channel
+    try {
+      await this.request(HEARTBEAT_METHOD, undefined, ms)
+      return true
+    } catch (error) {
+      if (this.#channel === channel && !(error instanceof LinkError && error.code !== "timeout")) {
+        channel.conn.terminate()
+      }
+      return false
+    }
   }
 
   /** Starts again after the user paired again. */
@@ -118,7 +155,7 @@ export class Connection {
     channel?.close(1000)
     // The socket of a connection that was stopped does not wait for the other side to answer
     // the close: the app can end at once (a quit must not wait for a computer that is away).
-    if (this.#stopped) channel?.conn.ws.terminate()
+    if (this.#stopped) channel?.conn.terminate()
     for (const [id, request] of this.#pending) {
       clearTimeout(request.timer)
       request.reject(new LinkError("offline"))
@@ -130,16 +167,26 @@ export class Connection {
     const target = this.#options.target()
     if (this.#stopped || !target) return
     const token = ++this.#token
+    this.#attempting = true
     try {
-      const opened = await openAny(target.addresses, this.#options.connectMs ?? 3_000)
+      const opened = await openAny(
+        target.addresses,
+        this.#options.opener,
+        this.#options.connectMs ?? 3_000,
+      )
       if (token !== this.#token) return opened.conn.close()
       const linked = await openLinked(
         opened.conn,
         this.#options.identity,
         { publicKey: target.publicKey },
         this.#options.self(),
-      )
+        this.#options.random ? { random: this.#options.random } : {},
+      ).catch((error) => {
+        opened.conn.close()
+        throw error
+      })
       if (token !== this.#token) return linked.channel.close()
+      this.#attempting = false
       this.#attach(linked.channel)
       this.#failures = 0
       this.#wasOnline = true
@@ -151,6 +198,7 @@ export class Connection {
       })
     } catch (error) {
       if (token !== this.#token) return
+      this.#attempting = false
       this.#failed(error)
     }
   }
@@ -200,20 +248,33 @@ export class Connection {
       this.#set("reconnecting")
       this.#schedule(500)
     })
-    let alive = true
-    const ws = channel.conn.ws
-    ws.on("pong", () => {
-      alive = true
-    })
-    this.#ping = setInterval(() => {
-      if (!alive) return ws.terminate()
-      alive = false
-      try {
-        ws.ping()
-      } catch {
-        ws.terminate()
-      }
-    }, PING_MS)
+    const socket = channel.conn.socket
+    const every = this.#options.pingMs ?? PING_MS
+    if (socket.ping && socket.onPong) {
+      let alive = true
+      socket.onPong(() => {
+        alive = true
+      })
+      this.#ping = setInterval(() => {
+        if (!alive) return socket.terminate()
+        alive = false
+        try {
+          socket.ping?.()
+        } catch {
+          socket.terminate()
+        }
+      }, every)
+    } else {
+      // No ping frames: a request that the server answers shows that it is still there.
+      this.#ping = setInterval(() => {
+        if (this.#channel !== channel) return
+        void this.request(HEARTBEAT_METHOD, undefined, every).catch((error: unknown) => {
+          if (this.#channel === channel && error instanceof LinkError && error.code === "timeout") {
+            socket.terminate()
+          }
+        })
+      }, every)
+    }
   }
 
   #onMessage(message: unknown) {

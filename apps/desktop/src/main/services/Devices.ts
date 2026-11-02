@@ -2,6 +2,7 @@ import { randomInt, randomUUID } from "node:crypto"
 import { mkdtempSync, rmSync } from "node:fs"
 import { networkInterfaces, tmpdir } from "node:os"
 import { join as joinPath } from "node:path"
+import { DECISION_MS, type JoinResult, type PairDevice } from "@robot/link"
 import {
   ACCESS_EVENT,
   type AccessPayload,
@@ -31,10 +32,9 @@ import {
   type WireDevice,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
-import { codeToW } from "../link/crypto/spake2.ts"
+import { codeToW } from "../link/client.ts"
 import { deviceIdOf, fromB64, type Identity, loadIdentity } from "../link/identity.ts"
 import { Nearby, type OpenSocket } from "../link/nearby.ts"
-import { DECISION_MS, type JoinResult, type PairDevice } from "../link/protocol.ts"
 import { type ClientSession, type LinkHost, LinkServer, type ServerOffer } from "../link/server.ts"
 import { Uploads } from "../link/uploads.ts"
 import type { Actor } from "./actor.ts"

@@ -1,0 +1,19 @@
+{
+  "name": "@robot/link",
+  "private": true,
+  "type": "module",
+  "description": "The client side of the device link (spec 012) in plain TypeScript: pairing, the encrypted link, the wire messages. The desktop and the phone use it.",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0"
+  }
+}

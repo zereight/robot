@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The package runs in Bun, Node, Electron and React Native. The tests use the types of Bun;
+    // the code itself uses only what all of them have.
+    "types": ["bun"]
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "@robot/mobile",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ROBot for iPhone and Android: follow and direct the agents of your computers.",
+  "author": "zereight",
+  "license": "MIT",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "typecheck": "tsc --noEmit -p .",
+    "export:android": "expo export --platform android --output-dir ../../build/mobile/android",
+    "export:ios": "expo export --platform ios --output-dir ../../build/mobile/ios",
+    "licenses": "bun scripts/licenses.ts"
+  },
+  "dependencies": {
+    "@robot/link": "workspace:*",
+    "@robot/phone": "workspace:*",
+    "@robot/shared": "workspace:*",
+    "expo": "~58.0.22",
+    "expo-build-properties": "~58.0.12",
+    "expo-camera": "~58.0.14",
+    "expo-clipboard": "~58.0.4",
+    "expo-constants": "~58.0.14",
+    "expo-crypto": "~58.0.7",
+    "expo-document-picker": "~58.0.4",
+    "expo-file-system": "~58.0.13",
+    "expo-image-picker": "~58.0.10",
+    "expo-linking": "~58.0.15",
+    "expo-localization": "~58.0.5",
+    "expo-notifications": "~58.1.7",
+    "expo-router": "~58.0.29",
+    "expo-secure-store": "~58.0.2",
+    "expo-sharing": "~58.0.21",
+    "expo-status-bar": "~58.0.4",
+    "marked": "^18.1.2",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.1",
+    "react-native-svg": "15.16.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0"
+  }
+}
