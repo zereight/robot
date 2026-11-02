@@ -17,6 +17,7 @@ import {
   type MessageStatus,
   type ModelInfo,
   messageFiles,
+  messageSkill,
   messageText,
   newTurnMark,
   type OutsideSource,
@@ -28,7 +29,9 @@ import {
   type QueueHold,
   runningStepKind,
   runtimeTakesInput,
+  type SkillPart,
   type StepEffort,
+  skillLead,
   starterOf,
   stepTurnEffort,
   type Task,
@@ -54,6 +57,7 @@ import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
+import { Skills } from "./Skills.ts"
 import { Tasks } from "./Tasks.ts"
 import type { ToolContext } from "./Tools.ts"
 import { Tools } from "./Tools.ts"
@@ -296,6 +300,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const memory = yield* Memory
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
+      const skills = yield* Skills
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
@@ -320,6 +325,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           null,
           next.files,
           sender ?? null,
+          null,
+          next.skill ?? null,
         )
         const origin = origins.get(next.id)
         if (origin) {
@@ -390,6 +397,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         files: readonly FilePart[] = [],
         from: Actor | null = null,
         joined: { readonly to: string; readonly readAt: number | null } | null = null,
+        skill: SkillPart | null = null,
       ) => {
         const id = randomUUID()
         db.run(
@@ -399,7 +407,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           agentId,
           author,
           JSON.stringify(
-            author === "user" ? [...(text ? [{ kind: "text", text }] : []), ...files] : [],
+            author === "user"
+              ? [...(skill ? [skill] : []), ...(text ? [{ kind: "text", text }] : []), ...files]
+              : [],
           ),
           author === "user" ? "done" : "streaming",
           replyTo,
@@ -418,7 +428,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       /** The text of a message for the model. A reply quotes what it answers. */
       const turnText = (r: MessageRow) => {
-        const text = messageText(toMessage(r))
+        const skill = messageSkill(toMessage(r))
+        // The agent reads the instructions of a skill chip first, then the text (spec 017).
+        const text = [
+          skill ? skillLead(skill.name, skill.instructions) : "",
+          messageText(toMessage(r)),
+        ]
+          .filter(Boolean)
+          .join("\n\n")
         const quoted = r.reply_to ? messageRow(r.reply_to) : undefined
         const quote = quoted
           ? `${messageText(toMessage(quoted))
@@ -883,6 +900,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           readonly text: string
           readonly replyTo: string | null
           readonly files: readonly FilePart[]
+          readonly skill: SkillPart | null
         },
         sender: Actor | null,
       ) {
@@ -896,6 +914,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           message.files,
           sender,
           { to: turn.replyId, readAt: question ? Date.now() : null },
+          message.skill,
         )
         if (question) {
           turn.answeredInChat(question)
@@ -918,7 +937,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const sender = yield* CurrentActor
         const agent = yield* usableAgent(input.agentId)
         const paths = input.files ?? []
-        if (!input.text.trim() && paths.length === 0)
+        // A skill chip that is off, deleted, or not for this agent is refused (spec 017).
+        const chosen = input.skillId
+          ? yield* skills.usable(input.agentId, input.skillId)
+          : undefined
+        const skill: SkillPart | null = chosen
+          ? { kind: "skill", name: chosen.name, instructions: chosen.instructions }
+          : null
+        // A message needs text, a file, or a chip.
+        if (!input.text.trim() && paths.length === 0 && !skill)
           return yield* new AppError({ code: "invalid_input" })
         // A routine or a workflow always starts new work; only the user joins a turn.
         const turn = origin ? undefined : yield* joinable(input.agentId)
@@ -934,7 +961,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           yield* join(
             input.agentId,
             turn,
-            { text: input.text, replyTo: input.replyTo, files },
+            { text: input.text, replyTo: input.replyTo, files, skill },
             sender,
           )
           return { queued: false }
@@ -942,7 +969,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (yield* isRunning(input.agentId)) {
           const queue = queues.get(input.agentId) ?? []
           if (queue.length >= QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
-          const item = { id: randomUUID(), text: input.text, replyTo: input.replyTo, files }
+          const item: QueuedMessage = {
+            id: randomUUID(),
+            text: input.text,
+            replyTo: input.replyTo,
+            files,
+            ...(skill ? { skill } : {}),
+          }
           if (origin) origins.set(item.id, origin)
           if (sender) senders.set(item.id, sender)
           queue.push(item)
@@ -958,6 +991,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           null,
           files,
           sender,
+          null,
+          skill,
         )
         if (origin) origins.set(row.id, origin)
         yield* kick(input.agentId)
@@ -1018,7 +1053,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         db.transaction(() => {
           db.run(
             "UPDATE message SET parts = ?, edited_at = ? WHERE id = ?",
-            JSON.stringify([{ kind: "text", text }, ...messageFiles(toMessage(target))]),
+            JSON.stringify([
+              // An edit keeps the chip and its copy of the instructions (spec 017).
+              ...[messageSkill(toMessage(target))].filter(Boolean),
+              { kind: "text", text },
+              ...messageFiles(toMessage(target)),
+            ]),
             Date.now(),
             messageId,
           )
@@ -1087,7 +1127,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             const sender = senders.get(itemId) ?? null
             senders.delete(itemId)
             origins.delete(itemId)
-            yield* join(agentId, turn, item, sender)
+            // "Send now" keeps the chip of the queued message (spec 017).
+            yield* join(agentId, turn, { ...item, skill: item.skill ?? null }, sender)
           }),
         deleteUnread: (agentId, messageId) =>
           Effect.suspend(() => {

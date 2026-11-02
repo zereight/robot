@@ -1,4 +1,4 @@
-import type { IslandShape } from "@robot/shared"
+import type { IslandShape, TeachEvent } from "@robot/shared"
 import { Context } from "effect"
 
 /** A place in the app window, in px from the top left corner of the window content. */
@@ -34,6 +34,12 @@ export interface BrowserPage {
   close(): void
   /** Calls back when the page is closed, by the agent, by Stop or by the user. */
   onClosed(listener: () => void): void
+  /**
+   * Starts the recorder of "Teach a task" (spec 017), or stops it with `undefined`. While it runs,
+   * the listener gets each page that opens and each step of the user. It goes on when the page
+   * is closed and opened again.
+   */
+  record(listener: ((event: TeachEvent) => void) | undefined): void
 }
 
 /** Things that need the operating system. The real one uses Electron; tests use a fake. */

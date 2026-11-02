@@ -277,3 +277,17 @@ describe("the step of messages during a turn", () => {
     expect(columns.map((c) => c.name)).toEqual(expect.arrayContaining(["joined_to", "read_at"]))
   })
 })
+
+describe("the step of skills (S45)", () => {
+  test("it comes after the step of messages during a turn, and no trigger of sync watches it", () => {
+    const joined = migrations.findIndex((sql) => sql.includes("ADD COLUMN joined_to"))
+    const step = migrations.findIndex((sql) => sql.includes("CREATE TABLE skill"))
+    expect(step).toBe(joined + 1)
+    const db = new DatabaseSync(":memory:")
+    for (const sql of migrations) db.exec(sql)
+    const triggers = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'skill'")
+      .all()
+    expect(triggers).toEqual([])
+  })
+})
