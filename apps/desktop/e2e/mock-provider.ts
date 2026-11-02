@@ -186,9 +186,13 @@ const openAiReply = async (res: ServerResponse, body: ChatBody) => {
     const output = String(finished.content)
     // An article that was read: the reply uses its text.
     const article = output.startsWith("Title: ") ? output.split("\n\n").slice(1).join("\n\n") : ""
+    // An answer of the tool "search chats": the reply uses the quotes that it found.
+    const quotes = output.startsWith("Found ") ? output.split("\n").slice(2).join(" | ") : ""
     const text = article
       ? `According to my article: ${article.slice(0, 300)}`
-      : `Tool said: ${output.slice(0, 80)}`
+      : quotes
+        ? `From the past chats: ${quotes.slice(0, 400)}`
+        : `Tool said: ${output.slice(0, 80)}`
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`)
     return res.end("data: [DONE]\n\n")
   }

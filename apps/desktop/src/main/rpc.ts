@@ -21,6 +21,8 @@ import {
   type RpcResult,
   RUNTIME_KINDS,
   redactSecrets,
+  SEARCH_CAP,
+  SEARCH_QUERY_MAX,
   SectionCreate,
   SettingsPatch,
   SIGN_IN_ID,
@@ -54,6 +56,7 @@ import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { Search } from "./services/Search.ts"
 import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
@@ -812,6 +815,23 @@ export const handlers: Handlers = {
       }),
     )(input).pipe(
       Effect.flatMap(({ serverId, days }) => Usage.use((u) => u.summary(serverId, days))),
+    ),
+  "messages.search": (input) =>
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        query: Schema.String.check(Schema.isMaxLength(SEARCH_QUERY_MAX)),
+        offset: Schema.optionalKey(
+          Schema.Number.check(
+            Schema.isInt(),
+            Schema.isBetween({ minimum: 0, maximum: SEARCH_CAP }),
+          ),
+        ),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ serverId, query, offset }) =>
+        Search.use((s) => s.page(serverId, query, offset ?? 0)),
+      ),
     ),
   "chat.history": (input) =>
     decode(ByAgent)(input).pipe(

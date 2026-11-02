@@ -5,31 +5,40 @@ import {
   clampPlaceListWidth,
   filterPlaces,
   type MessageKey,
+  markedParts,
   PLACE_LIST_MAX,
   PLACE_LIST_MIN,
   type Place,
   type PlaceKind,
   type PlaceSection,
   SECTION_NAME_MAX,
+  type SearchHit,
   type SectionId,
   type SectionSummary,
+  searchWords,
   sectionKind,
   summarize,
   type UserSectionView,
 } from "@robot/shared"
 import { ChevronDown, Ellipsis, Hash } from "lucide-solid"
 import {
+  createEffect,
   createMemo,
   createSignal,
   For,
   type JSX,
+  on,
   onCleanup,
   onMount,
   type ParentProps,
   Show,
 } from "solid-js"
+import { formatHitTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { setFocusMessage, setSearchOrigin } from "../state/focus.ts"
+import { linkEpoch } from "../state/link.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -51,7 +60,8 @@ export interface PlaceListProps {
   sectionAction?: (section: SectionId) => JSX.Element
 }
 
-const rowSelector = "[data-place-row]"
+/** The rows that the arrow keys move through: places first, then the hits of message search. */
+const rowSelector = "[data-place-row], [data-hit-row]"
 
 /** The rows of one section. Grows open and shrinks closed. */
 const SectionBody = (props: ParentProps) => {
@@ -168,6 +178,105 @@ export const PlaceList = (props: PlaceListProps) => {
   const sections = createMemo(() => filterPlaces(ui.sections(), query()))
   const searching = () => query().trim().length > 0
   const anyMatch = () => sections().some((s) => allPlaces(s).length > 0)
+
+  // Message search (spec 001) ------------------------------------------------------------------
+
+  const [hits, setHits] = createSignal<readonly SearchHit[]>([])
+  const [more, setMore] = createSignal(false)
+  const [capped, setCapped] = createSignal(false)
+  /** True when the hits come from the saved messages of a linked server that is offline. */
+  const [cached, setCached] = createSignal(false)
+  /** A search is on its way: it waits for the typing to stop, or for the answer. */
+  const [pending, setPending] = createSignal(false)
+  /** The search runs for more than 300 ms. */
+  const [slow, setSlow] = createSignal(false)
+  const [loadingMore, setLoadingMore] = createSignal(false)
+  let searchRun = 0
+  let searchedServer: string | undefined
+
+  /** The text is long enough to look in the messages too. */
+  const messageSearch = () => searchWords(query()) !== null
+  const clearHits = () => {
+    setHits([])
+    setMore(false)
+    setCapped(false)
+    setCached(false)
+  }
+  const takePage = (
+    page: { hits: readonly SearchHit[]; more: boolean; capped: boolean; cached: boolean },
+    append: boolean,
+  ) => {
+    if (append) {
+      const known = new Set(hits().map((h) => h.messageId))
+      setHits([...hits(), ...page.hits.filter((h) => !known.has(h.messageId))])
+    } else setHits(page.hits)
+    setMore(page.more)
+    setCapped(page.capped)
+    setCached(page.cached)
+  }
+
+  createEffect(
+    on(
+      () => [query(), ui.server()?.id, ui.server()?.state, linkEpoch.value()] as const,
+      ([text, serverId]) => {
+        const run = ++searchRun
+        setLoadingMore(false)
+        // Hits of another server must not stay on screen while the new answer is on its way.
+        if (serverId !== searchedServer) clearHits()
+        searchedServer = serverId
+        if (!serverId || searchWords(text) === null) {
+          clearHits()
+          setPending(false)
+          setSlow(false)
+          return
+        }
+        setPending(true)
+        // The user may still type: the request goes out when the typing pauses.
+        const wait = setTimeout(() => {
+          const late = setTimeout(() => run === searchRun && setSlow(true), 300)
+          call("messages.search", { serverId, query: text, offset: 0 })
+            .then((page) => run === searchRun && takePage(page, false))
+            .catch(() => run === searchRun && clearHits())
+            .finally(() => {
+              clearTimeout(late)
+              if (run !== searchRun) return
+              setPending(false)
+              setSlow(false)
+            })
+        }, 150)
+        onCleanup(() => clearTimeout(wait))
+      },
+    ),
+  )
+
+  const showMore = async () => {
+    const serverId = ui.server()?.id
+    if (!serverId || loadingMore()) return
+    const run = searchRun
+    setLoadingMore(true)
+    try {
+      const page = await call("messages.search", {
+        serverId,
+        query: query(),
+        offset: hits().length,
+      })
+      if (run === searchRun) takePage(page, true)
+    } catch {
+      // The hits that show stay as they are.
+    } finally {
+      if (run === searchRun) setLoadingMore(false)
+    }
+  }
+
+  /** Opens the place of a hit, and shows the message there. "Back" there returns to this place. */
+  const openHit = (hit: SearchHit) => {
+    const from = ui.place()
+    const to = { kind: hit.kind, id: hit.placeId }
+    const here = ui.ui.page === "chats" && from?.kind === to.kind && from.id === to.id
+    setSearchOrigin(from && !here ? { serverId: ui.server()?.id, from, to } : undefined)
+    ui.selectPlace(to)
+    setFocusMessage(hit.messageId)
+  }
   /** The user sections of a built-in section in their true order, also when search hides some. */
   const userSectionsOf = (id: SectionId) => ui.sections().find((s) => s.id === id)?.sections ?? []
 
@@ -572,6 +681,49 @@ export const PlaceList = (props: PlaceListProps) => {
     )
   }
 
+  const renderHit = (hit: SearchHit) => {
+    const time = () => formatHitTime(app.locale(), hit.createdAt)
+    return (
+      <button
+        type="button"
+        class={styles.hit}
+        data-hit-row
+        data-testid="search-hit"
+        data-message-id={hit.messageId}
+        data-hit-place={hit.placeName}
+        aria-label={t("search.hit", { place: hit.placeName, time: time(), text: hit.snippet })}
+        onClick={() => openHit(hit)}
+      >
+        <span class={styles.hitHead}>
+          <span class={styles.hitMark}>
+            {hit.kind === "channel" ? (
+              <Hash size={16} />
+            ) : (
+              props.face?.({
+                kind: hit.kind,
+                id: hit.placeId,
+                name: hit.placeName,
+                unread: 0,
+                working: false,
+                lastMessage: null,
+                sectionId: null,
+              })
+            )}
+          </span>
+          <span class={styles.hitPlace} data-user-data>
+            {hit.placeName}
+          </span>
+          <span class={styles.hitTime}>{time()}</span>
+        </span>
+        <span class={styles.hitText} data-user-data data-testid="search-hit-text">
+          <For each={markedParts(hit.snippet, hit.marks)}>
+            {(part) => (part.marked ? <mark>{part.text}</mark> : part.text)}
+          </For>
+        </span>
+      </button>
+    )
+  }
+
   const renderSection = (section: PlaceSection) => {
     const kind = sectionKind(section.id)
     const collapsed = () => ui.ui.collapsed.includes(section.id) && !searching()
@@ -658,11 +810,47 @@ export const PlaceList = (props: PlaceListProps) => {
         />
       </div>
       <div class={styles.placeScroll} ref={list}>
-        <Show
-          when={!searching() || anyMatch()}
-          fallback={<div class={styles.sectionEmpty}>{t("places.noMatch")}</div>}
-        >
-          <For each={sections()}>{renderSection}</For>
+        <Show when={messageSearch() && cached()}>
+          <div class={styles.sectionEmpty} role="status" data-testid="search-offline">
+            {t("search.offline", { name: ui.server()?.name ?? "" })}
+          </div>
+        </Show>
+        {/* A section with no match hides itself while the user searches. */}
+        <For each={sections()}>{renderSection}</For>
+        <Show when={messageSearch() && (hits().length > 0 || slow())}>
+          <section data-testid="search-messages" aria-label={t("search.messages")}>
+            <div class={styles.sectionTop}>
+              <span class={styles.groupHeader}>{t("search.messages")}</span>
+            </div>
+            <For each={hits()}>{renderHit}</For>
+            <Show when={more()}>
+              <button
+                type="button"
+                class={styles.showMore}
+                aria-busy={loadingMore()}
+                disabled={loadingMore()}
+                onClick={() => void showMore()}
+                data-testid="search-more"
+              >
+                {t("search.more")}
+              </button>
+            </Show>
+            <Show when={!more() && capped()}>
+              <div class={styles.sectionEmpty} data-testid="search-capped">
+                {t("search.capped")}
+              </div>
+            </Show>
+            <Show when={slow()}>
+              <div class={styles.sectionEmpty} role="status" data-testid="search-searching">
+                {t("search.searching")}
+              </div>
+            </Show>
+          </section>
+        </Show>
+        <Show when={searching() && !anyMatch() && hits().length === 0 && !pending()}>
+          <div class={styles.sectionEmpty} data-testid="search-nothing">
+            {t("places.noMatch")}
+          </div>
         </Show>
       </div>
       {/* biome-ignore lint/a11y/useSemanticElements: a focusable window splitter has no native element */}
