@@ -169,8 +169,8 @@ const Proposals = (props: { proposals: readonly MemoryProposal[] }) => {
   const origin = (p: MemoryProposal) => {
     if (!p.place) return undefined
     return p.place.name === null
-      ? t("memory.proposals.fromGone")
-      : t("memory.proposals.from", { name: p.place.name })
+      ? t("memory.proposals.placeGone")
+      : t("memory.proposals.place", { name: p.place.name })
   }
   return (
     <>
