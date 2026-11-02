@@ -45,6 +45,21 @@ export const formatHitTime = (locale: Locale, at: number, now = Date.now()) => {
   }).format(at)
 }
 
+/**
+ * How long ago something happened, in words of the language ("5 minutes ago", "3시간 전"). Less than
+ * a minute reads as "now". The words come from the language, so no text is written here.
+ */
+export const formatSince = (locale: Locale, at: number, now = Date.now()) => {
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" })
+  const seconds = Math.max(0, Math.round((now - at) / 1000))
+  if (seconds < 60) return formatter.format(0, "second")
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return formatter.format(-minutes, "minute")
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return formatter.format(-hours, "hour")
+  return formatter.format(-Math.floor(hours / 24), "day")
+}
+
 /** Elapsed time as m:ss. */
 export const formatElapsed = (ms: number) => {
   const seconds = Math.max(0, Math.floor(ms / 1000))

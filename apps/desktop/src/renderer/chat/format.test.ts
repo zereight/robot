@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { formatDay, formatElapsed, formatHitTime } from "./format.ts"
+import { formatDay, formatElapsed, formatHitTime, formatSince } from "./format.ts"
 
 test("elapsed time reads as m:ss", () => {
   expect(formatElapsed(0)).toBe("0:00")
@@ -26,4 +26,14 @@ test("a hit of message search shows the time today, and the day on other days", 
   expect(earlier).toMatch(/30/)
   expect(earlier).not.toMatch(/2026/)
   expect(formatHitTime("en", new Date(2025, 11, 31, 9, 5).getTime(), now)).toMatch(/2025/)
+})
+
+test("the time since a change is a number of minutes, hours or days in the words of the language", () => {
+  const now = new Date(2026, 10, 3, 12, 0, 0).getTime()
+  expect(formatSince("en", now - 20_000, now)).toBe("now")
+  expect(formatSince("en", now - 5 * 60_000, now)).toBe("5 minutes ago")
+  expect(formatSince("en", now - 61 * 60_000, now)).toBe("1 hour ago")
+  expect(formatSince("en", now - 3 * 86_400_000, now)).toBe("3 days ago")
+  expect(formatSince("en", now + 5_000, now)).toBe("now")
+  expect(formatSince("ko", now - 5 * 60_000, now)).toBe("5분 전")
 })

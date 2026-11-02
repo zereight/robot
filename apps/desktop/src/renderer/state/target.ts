@@ -1,8 +1,11 @@
 import { createSignal } from "solid-js"
 
-/** A thing that a page is asked to show: the Today page opens a task, a routine or an account. */
+/**
+ * A thing that a page is asked to show: the Today page opens a task, a routine or an account, and
+ * the profile of an agent opens the Tasks page for that agent (`agentTasks`).
+ */
 export interface OpenTarget {
-  readonly kind: "task" | "routine" | "workflow" | "account"
+  readonly kind: "task" | "routine" | "workflow" | "account" | "agentTasks"
   readonly id: string
 }
 

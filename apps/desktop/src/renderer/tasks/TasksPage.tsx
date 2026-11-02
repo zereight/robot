@@ -3,11 +3,13 @@ import {
   filterTasks,
   isActive,
   type MessageKey,
+  type Moment,
   TASK_SOURCES,
   TASK_STATES,
   type Task,
   type TaskFilter,
   taskDuration,
+  taskMoments,
   taskTimes,
   taskTree,
 } from "@robot/shared"
@@ -21,7 +23,7 @@ import {
   onCleanup,
   Show,
 } from "solid-js"
-import { formatElapsed, formatTime } from "../chat/format.ts"
+import { formatElapsed, formatHitTime, formatTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
@@ -101,6 +103,54 @@ const TaskTimesList = (props: { task: Task }) => {
   )
 }
 
+/**
+ * The moments of a task with their clock times, in plain text (spec 005). A moment that did not
+ * happen is not listed. The three times above keep their own meaning.
+ */
+const MomentsList = (props: { task: Task; leadName: string | null }) => {
+  const { t, locale } = useApp()
+  const text = (moment: Moment): string => {
+    switch (moment.id) {
+      case "given":
+        return moment.by.kind === "lead"
+          ? t("moments.given.lead", { name: moment.by.name })
+          : t(
+              moment.by.kind === "agent"
+                ? "moments.given.agent"
+                : (`moments.given.${moment.by.source}` as MessageKey),
+            )
+      case "started":
+        return t("moments.started")
+      case "ended":
+        return t(`moments.ended.${moment.how}` as MessageKey)
+      case "decided":
+        return moment.decision === "accepted"
+          ? t("moments.decided.accepted")
+          : t("moments.decided.changes", { text: moment.text ?? "" })
+      case "judged":
+        return moment.verdict === "met"
+          ? t("moments.judged.met")
+          : t("moments.judged.not_met", { reason: moment.reason || t("tasks.verdict.noReason") })
+      case "closed":
+        return t("moments.closed", { state: t(`tasks.state.${moment.state}` as MessageKey) })
+    }
+  }
+  return (
+    <ol class={styles.moments} data-testid="task-moments">
+      <For each={taskMoments(props.task, props.leadName)}>
+        {(moment) => (
+          <li data-testid="task-moment" data-moment={moment.id}>
+            <time class={styles.joinedTime} data-at={moment.at}>
+              {formatHitTime(locale(), moment.at)}
+            </time>
+            <span class={styles.text}>{text(moment)}</span>
+          </li>
+        )}
+      </For>
+    </ol>
+  )
+}
+
 const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   const app = useApp()
   const { t } = app
@@ -163,6 +213,8 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
             </Show>
             <h3>{t("tasks.times")}</h3>
             <TaskTimesList task={d().task} />
+            <h3>{t("moments.title")}</h3>
+            <MomentsList task={d().task} leadName={d().leadName} />
             <h3>{t("tasks.prompt")}</h3>
             <pre class={styles.text}>{d().task.prompt}</pre>
             {/* The done test and the verdict of the lead belong to a part of a channel (spec 004, 005). */}
@@ -350,6 +402,12 @@ export const TasksPage = () => {
     const target = takeTarget("task")
     if (target) setOpenId(target.id)
   })
+  // The profile of an agent asks for the tasks of that agent: the filter is set to it (spec 002).
+  createEffect(() => {
+    if (openTarget()?.kind !== "agentTasks") return
+    const target = takeTarget("agentTasks")
+    if (target) setFilter({ agentId: target.id })
+  })
   const [tasks, { refetch }] = createResource(
     () => ui.server()?.id,
     (serverId) => call("tasks.list", { serverId }).catch(() => []),
@@ -406,8 +464,16 @@ export const TasksPage = () => {
             onChange={(e) => set("agentId", e.currentTarget.value)}
             data-testid="tasks-filter-agent"
           >
-            <option value="">{t("tasks.filter.all")}</option>
-            <For each={agents.agents()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
+            <option value="" selected={!filter().agentId}>
+              {t("tasks.filter.all")}
+            </option>
+            <For each={agents.agents()}>
+              {(a) => (
+                <option value={a.id} selected={filter().agentId === a.id}>
+                  {a.name}
+                </option>
+              )}
+            </For>
           </select>
         </label>
         <label class={styles.filter}>
