@@ -7,7 +7,7 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 ## Rules
 
 - One local database file holds servers, agents, conversations, tasks, routines, workflows,
-  memory, settings, permission rules, the action log (007), skills (017) and connections (018).
+  memory (with its proposals and history, see 008), settings, permission rules, the action log (007), skills (017) and connections (018).
   Attachments are files next to it.
 - The data folder is in the system's app data location under the name "ROBot".
 - The database is the source of truth. Nothing remote is a cache of it. Two computers that sync
@@ -51,13 +51,15 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   - Browser: failed tool calls, Stop requests with their result, warnings, and live view input
     that the app dropped or refused (see 007).
   - Workflows: retries, final failures of model steps and conditions (see 010).
-- A log line never holds a secret, a key, or the text of a message.
+- A log line never holds a secret, a key, the text of a message, or a search text (see 001).
 
 ## Export and backup
 
 - Export: one archive with the database, attachments, agent knowledge, and a readme of the
   format. Secrets are not included. The archive holds the rules, the action log, the skills and
   the connections without their secret values.
+- The memory history in the archive follows the rule for chats: text that looks like a secret is
+  replaced with "[redacted]".
 - Import of a ROBot export into an empty app restores everything except secrets. Every
   connection comes back turned off (see 018), so an import never starts a program or sends data.
 

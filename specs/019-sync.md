@@ -26,7 +26,7 @@ service holds it.
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
 | Channels | Name, topic, members, lead, archive state. |
 | Messages | Direct chats and channels, with tool cards, plan steps and reply chips. |
-| Tasks | State and result. They show on the tasks page with the name of the origin. |
+| Tasks | State, result, and how far a failed turn went (005). They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent. |
 | Routines and workflows | The definition (for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
 | Read state | The last place that the user read in each chat. |
@@ -41,7 +41,8 @@ service holds it.
 | Skills (017) | Not in this version. A skill is saved on one computer, and the user makes it again on the other one. A message that used a skill keeps its chip and its copy of the instructions, and syncs with the message. |
 | Workspace folders and the files in them | They are large and belong to a computer. Use git or a file service. |
 | Browser windows and their sessions | They belong to a computer. |
-| Settings, theme, language, notification choices, mutes | Settings are local (013). |
+| Settings, theme, language, notification choices, mutes | Settings are local (013). The silent limit (005) is one of them. |
+| Memory history, memory proposals, and the memory switches of an agent (on or off, save at once or ask first) (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are choices of one computer. A memory item that arrives by sync makes no history row. |
 | Usage numbers | They count what ran on this computer. |
 | Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
 | User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives in the default section. |

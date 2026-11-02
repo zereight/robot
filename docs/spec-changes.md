@@ -24,6 +24,12 @@ These are in the code today and the specs now say something else.
 | 009 | No limit on routines, and a routine that fails keeps running. | At most 50 routines. A note for a schedule under 15 minutes. A routine pauses after 3 failed runs in a row. |
 | 003 | The command list shows commands and runtime skills. | It also shows the skills that the user saved (017). A message can hold a skill chip. |
 | 015 | The island shows faces and a count while agents work, and the first waiting request. | A detail card with one row for each working agent (place, what it does, time). The attention card shows the place and the kind of step, and the user can go through all waiting requests ("1 of N"). In the mode "always", a result card shows when a reply ends or a task or routine fails. |
+| 001, 003, 007, 008 | Search looks at place names only. An agent cannot search its past chats. | The search field also lists matching messages, and a click opens the message. An agent has the tool "search chats" while its memory is on. |
+| 003, 005 | A failed row tells the reason only. After a restart the notice has "Continue" only. | A failed row also tells how far the turn went (not sent, sent, started). If the request never reached the model, the notice has "Send again" in place of "Continue". |
+| 005, 013 | A turn that shows nothing runs without end. | A turn with no sign of life for 10 minutes (the user can change this) is stopped and fails. A wait for the user and a running tool step do not count. |
+| 006 | A vendor program from a crashed run can stay. A slow status check can hold up a screen. | The app ends its own leftover programs at start. A status check ends after 15 seconds and the runtime reads "Not available: no answer". |
+| 008 | The agent saves memory at once. The only undo is the chat line. The agent can save any text. | A choice for each agent: save at once, or ask first with a tab for proposals. A history tab with undo. The memory tool refuses a text that looks like a secret. |
+| 001, 020 | Pages: agents and chats, workflows, tasks, usage. | Also the Today page, with a badge on its button for the requests that wait. |
 
 ## Slices
 
@@ -45,5 +51,10 @@ These are in the code today and the specs now say something else.
 | S32 | Connections: the Connections page, test, tool cards, risky-step rule, rules for connection tools, time and size limits, import turns them off. Needs S30. | 018, 007, 013, 014, 000 |
 | S33 | Status island detail: the detail card of working agents, the richer attention card with "1 of N", the result card in the mode "always". | 015 |
 | S34 | Waiting tasks survive a restart: a task with no parent that waits for an approval or a question still waits after the app starts again, its card shows again, the island and the notification ask once, and Allow lets it go on. Other work that was running or queued is still marked failed with the restart reason. | 005, 007, 015 |
+| S35 | Message search: the group "Messages" under the search field, the hit row, the jump to the message, search on a linked server and in the cache, the tool "search chats" for agents with memory on. | 001, 007, 012, 011, 014 |
+| S36 | Silent and cut turns: the progress of a turn, the lines on a failed row, "Send again" in the restart notice, the silent limit and its setting, leftover programs ended at start, the status check that ends after 15 seconds. | 005, 003, 006, 013, 019, 011 |
+| S37 | Today page: the page button and badge, the four groups, live update, the line for a group that cannot be read, the line on a linked server. | 020, 001, 012, 015 |
+| S38 | Memory control: the choice "save at once" or "ask me first", the tabs Items, Proposals and History, undo, the refusal of secrets, the limits, what syncs and what exports. | 008, 012, 014, 019 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30.
+S35 to S38 do not depend on each other. S35 and S36 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.

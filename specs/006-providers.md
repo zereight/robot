@@ -52,6 +52,12 @@ The user connects the model accounts they already have, and each agent uses one 
   meter works (see 003).
 - When a provider says a usage limit is reached, the turn fails with that reason and the time it
   resets, if known.
+- **Leftover programs**: when the app starts, it ends the vendor programs that it started in an
+  earlier run and that still run, for example after a crash. It ends only programs that it
+  started itself. It never ends a program that the user started.
+- **Status check**: the app checks the status of a runtime in the background. A check that gets
+  no answer in 15 seconds ends, and the runtime shows "Not available: no answer". A runtime with
+  a status check that hangs or crashes never delays a turn of another provider.
 
 ## Acceptance
 
@@ -61,3 +67,9 @@ The user connects the model accounts they already have, and each agent uses one 
 - Type the name of a variable that the app needs for itself: the row is refused.
 - Connect an API key, pick a model, get a reply. Disconnect: the chat shows the reconnect button.
 - No secret appears in the database file, the logs or an export.
+- Start a turn on a stand-in program, end the app with no warning, and start it again: the
+  stand-in program no longer runs. A program with the same name that the user started by hand
+  still runs.
+- A stand-in runtime never answers its status check. Within 15 seconds its row shows "Not
+  available: no answer". A chat with an agent on an API account, opened at that time, answers
+  with no delay.
