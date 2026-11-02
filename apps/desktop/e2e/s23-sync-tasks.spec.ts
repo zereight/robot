@@ -26,6 +26,7 @@ interface TaskInfo {
   retryOf: string | null
   prompt: string
   agentName: string
+  createdAt: number
 }
 
 const localServer = async (page: Page) =>
@@ -86,6 +87,12 @@ test("sync tasks: a message sent on computer 2 runs only there, and the tasks pa
     await expect(
       one.page.getByTestId("message").filter({ hasText: "You said: Hello from the second" }),
     ).toHaveCount(1, { timeout: 15_000 })
+    // The task row crosses in its own change, so it can come after the reply.
+    await expect
+      .poll(async () => (await tasksOf(one.page)).filter((t) => t.originName === "MacBook 2"), {
+        timeout: 15_000,
+      })
+      .toHaveLength(1)
     const onOne = await tasksOf(one.page)
     const onTwo = await tasksOf(two.page)
     expect(onOne.filter((t) => t.originName === null)).toEqual([])
@@ -143,6 +150,14 @@ test("sync tasks: an approval is answered on the other computer, one task per ag
     await shot(two.page, "s23-02-card-on-two")
 
     // One task per agent: a message on the second computer waits for the task on the first.
+    // Spec 019 lets two tasks run if they start within about one second of each other, so the
+    // message goes when the second computer knows of the task and that second has passed.
+    const firstTask = async () =>
+      (await tasksOf(two.page)).find((t) => t.originName === "MacBook 1" && t.state === "waiting")
+    await expect.poll(async () => (await firstTask())?.id, { timeout: 15_000 }).toBeDefined()
+    const first = await firstTask()
+    const sinceStart = Date.now() - (first?.createdAt ?? 0)
+    if (sinceStart < 1_500) await two.page.waitForTimeout(1_500 - sinceStart)
     await send(two.page, "Hello again")
     await expect
       .poll(async () => (await tasksOf(two.page)).find((t) => t.waitsFor !== null)?.waitsFor, {

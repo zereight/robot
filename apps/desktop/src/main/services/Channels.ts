@@ -80,6 +80,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
@@ -376,6 +377,15 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       }
       const placesChanged = (serverId: string) => bus.emit("places.changed", { serverId })
 
+      /** The time of a new message of a channel (see `nextMessageTime`). */
+      const timeIn = (channelId: string) =>
+        nextMessageTime(
+          db.get<{ t: number | null }>(
+            "SELECT MAX(created_at) AS t FROM channel_message WHERE channel_id = ?",
+            channelId,
+          )?.t,
+        )
+
       const insertUserMessage = (
         channelId: string,
         text: string,
@@ -390,7 +400,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           channelId,
           JSON.stringify([{ kind: "text", text }]),
           awaiting ? 1 : 0,
-          Date.now(),
+          timeIn(channelId),
           Date.now(),
           from?.id ?? null,
           from?.name ?? null,
@@ -513,7 +523,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           o.kind,
           o.taskId,
           o.agent.model_name,
-          Date.now(),
+          timeIn(o.channel.id),
         )
         tasks.setMessage(o.taskId, id)
         emitMessage(id)
@@ -1072,7 +1082,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       /** A message of the lead in the channel, with no streaming: a nudge or a question. */
       const leadSays = (channel: ChannelRow, lead: AgentRow, taskId: string, text: string) => {
         const id = randomUUID()
-        const now = Date.now()
+        const now = timeIn(channel.id)
         db.run(
           `INSERT INTO channel_message (id, channel_id, author, agent_id, kind, parts, status, task_id, model, created_at, finished_at)
            VALUES (?, ?, 'agent', ?, 'text', ?, 'done', ?, ?, ?, ?)`,
@@ -1684,7 +1694,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           const channel = channelRow(channelId)
           if (!channel) return
           const id = randomUUID()
-          const now = Date.now()
+          const now = timeIn(channelId)
           db.run(
             `INSERT INTO channel_message (id, channel_id, author, agent_id, kind, parts, status, created_at, finished_at)
              VALUES (?, ?, 'agent', ?, 'text', ?, 'done', ?, ?)`,

@@ -53,7 +53,7 @@ export const ChatView = (props: ChatViewProps) => {
   const app = useApp()
   const { t } = app
   const ui = useUi()
-  const chat = createChat(props.agent.id)
+  const chat = createChat(props.agent.id, () => (ui.linked() ? ui.server()?.id : undefined))
   const place: PlaceRef = { kind: "agent", id: props.agent.id }
   const [replyTo, setReplyTo] = createSignal<ChatMessage>()
   const [atBottom, setAtBottom] = createSignal(true)

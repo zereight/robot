@@ -281,7 +281,9 @@ describe("blocked parts", () => {
       error: { code: "blocked", detail: "no access to the repository" },
     })
     expect(list[1]?.chips.map((c) => c.state)).toEqual(["done", "blocked"])
-    // The lead reads the part and its reason, and is asked to name it.
+    // The lead reads the part and its reason, and is asked to name it. The summary message is
+    // saved before its request reaches the model, so the test waits for the request.
+    await until(() => requests.some((r) => r.all.includes("All parts have ended")))
     const ask = requests.find((r) => r.all.includes("All parts have ended"))
     expect(ask?.all).toContain("Repo (Cy): blocked (reason: no access to the repository)")
     expect(ask?.all).toContain("If a part was blocked, name the part and give its reason.")

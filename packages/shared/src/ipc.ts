@@ -575,7 +575,14 @@ export interface RobotBridge {
   ): Promise<RpcResult<RpcOutput<M>>>
   /** The full path of a file that the user dropped on the window. Empty when unknown. */
   pathForFile(file: File): string
-  on<E extends RpcEvent>(event: E, listener: (payload: RpcEvents[E]) => void): () => void
+  /**
+   * `server` is the linked server that sent the event (spec 012). It is absent for an event of
+   * this computer.
+   */
+  on<E extends RpcEvent>(
+    event: E,
+    listener: (payload: RpcEvents[E], server?: string) => void,
+  ): () => void
 }
 
 export const INVOKE_CHANNEL = "robot:invoke"

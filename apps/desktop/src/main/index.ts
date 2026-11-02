@@ -47,9 +47,9 @@ const closeRuntime = async (runtime: ReturnType<typeof makeRuntime>) => {
   }
 }
 
-const broadcast = (event: string, payload: unknown) => {
+const broadcast = (event: string, payload: unknown, server?: string) => {
   for (const win of BrowserWindow.getAllWindows())
-    win.webContents.send(EVENT_CHANNEL, event, payload)
+    win.webContents.send(EVENT_CHANNEL, event, payload, server)
 }
 
 const makeRuntime = () =>

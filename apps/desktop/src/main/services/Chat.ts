@@ -68,6 +68,7 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
+import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers, storedFailure } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -526,6 +527,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           hold: holdOf(agentId),
         })
 
+      /** The time of a new message of a direct chat (see `nextMessageTime`). */
+      const timeIn = (agentId: string) =>
+        nextMessageTime(
+          db.get<{ t: number | null }>(
+            "SELECT MAX(created_at) AS t FROM message WHERE agent_id = ?",
+            agentId,
+          )?.t,
+        )
+
       const insertMessage = (
         agentId: string,
         author: "user" | "agent",
@@ -552,7 +562,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           author === "user" ? "done" : "streaming",
           replyTo,
           model,
-          Date.now(),
+          timeIn(agentId),
           from?.id ?? null,
           from?.name ?? null,
           joined?.to ?? null,
@@ -1484,7 +1494,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             id,
             agentId,
             JSON.stringify([part]),
-            Date.now(),
+            timeIn(agentId),
           )
           const row = messageRow(id)
           if (row) emitMessage(row)

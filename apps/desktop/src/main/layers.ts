@@ -43,7 +43,8 @@ export interface AppLayerOptions {
   readonly platform: PlatformService
   readonly databaseFile?: string
   readonly localServerName: string
-  readonly emit: (event: string, payload: unknown) => void
+  /** `server` is the linked server that sent the event; absent for this computer. */
+  readonly emit: (event: string, payload: unknown, server?: string) => void
   readonly secrets: Layer.Layer<Secrets>
   /** The port of the device link. Tests use 0 to let the system choose. */
   readonly linkPort?: number

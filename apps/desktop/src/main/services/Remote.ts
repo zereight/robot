@@ -183,7 +183,8 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               if (event === "notice") showNotice(row.id, payload as WireNotice)
               cache.applyEvent(row.id, event, payload)
               // The window shows these. They do not go to the devices of this computer.
-              if (event !== "notice" && event !== "revoked") bus.window(event as never, payload)
+              if (event !== "notice" && event !== "revoked")
+                bus.window(event as never, payload, devices.link(row.id)?.serverId ?? row.id)
               for (const h of eventHandlers) h(row.id, event, payload)
             },
             onOnline: (info) => {

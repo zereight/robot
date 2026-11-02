@@ -167,6 +167,20 @@ const setup = async () => {
 }
 
 describe("Chat", () => {
+  test("no two messages of a chat have the same time, so every computer shows them in one order", async () => {
+    // A question and its reply are often made in the same millisecond. A computer that syncs gets
+    // them in any order, and orders by time (spec 019), so equal times would swap them there.
+    const t = await setup()
+    for (let i = 0; i < 8; i++) {
+      await t.send(`question ${i}`)
+      await t.settled()
+    }
+    const times = (await t.history()).messages.map((m) => m.createdAt)
+    expect(times).toHaveLength(16)
+    for (let i = 1; i < times.length; i++)
+      expect(times[i] as number).toBeGreaterThan(times[i - 1] as number)
+  })
+
   test("a reply streams in and is stored with usage; the place list shows it", async () => {
     const t = await setup()
     await t.send("hello")

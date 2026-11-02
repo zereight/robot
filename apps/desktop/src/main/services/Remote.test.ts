@@ -162,6 +162,13 @@ describe("a computer that opens a linked server", () => {
     )
     // B's own events reach its window, and A's events are among them.
     expect(b.events.some((e) => e.event === "chat.message")).toBe(true)
+    // Each event of A names A's server, so a view of B never takes it for an agent of B that has
+    // the same id (two computers that sync, spec 019).
+    const fromA = b.events.filter(
+      (e) => e.event === "chat.message" && (e.payload as ChatMessage).agentId === agent.id,
+    )
+    expect(fromA.length).toBeGreaterThan(0)
+    expect(fromA.every((e) => e.server === local.id)).toBe(true)
     // Give a leak time to show, then look at what C got from B.
     await new Promise((r) => setTimeout(r, 400))
     expect(c.events.filter((e) => e.event === "chat.message")).toEqual([])
