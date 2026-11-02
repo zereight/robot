@@ -6,18 +6,60 @@ Agents do repeat work on a schedule without the user starting it.
 
 ## Concepts
 
-- **Routine**: agent, prompt, schedule, on/off, and the place where results post (the agent's chat
-  or a channel).
+- **Routine**: agent, prompt, one trigger, on/off, the place where results post (the agent's chat
+  or a channel), and a model and effort. The model and effort are "Same as the agent" by default.
+  The user can pick another model and effort for the routine only, for example a cheaper model
+  for a simple check.
+- **Trigger**: a schedule, or a watch. A routine has one trigger, never both.
 - **Schedule**: once at a time; every N minutes or hours; daily at times; weekly on days at a time;
   or a cron expression for advanced users. All in the user's time zone.
+- **Watch**: the routine checks one thing at a fixed interval and runs only when it changed. See
+  "Watch".
 
 ## Flows
 
-1. Create: from the agent profile or the routines list, the user sets prompt, schedule and place.
-   The app shows the next three run times in words.
+1. Create: from the agent profile or the routines list, the user sets prompt, trigger, place, and
+   if wanted a model and effort. For a schedule, the app shows the next three run times in words.
 2. Calendar: a week and a month view show past runs (done or failed) and future runs.
 3. Run now: starts a run at once, outside the schedule.
 4. Pause and resume: a paused routine keeps its settings and does not run.
+
+## Watch
+
+- The interval is one of: 5, 15 or 30 minutes, 1, 6 or 12 hours, or 1 day.
+- What to watch is one of:
+  - **A file or a folder**: a path. For a file, the app compares its size, its change time and
+    its content. For a folder, it compares the names, sizes and change times of the files inside
+    it, also in the folders inside it, up to 2000 files.
+  - **The output of a command**: a shell command that runs in the agent workspace. The app
+    compares its output and its exit code.
+  - **A tool of a connection** (see 018): the connection, the tool and its arguments. The app
+    compares the result.
+- When the user saves a watch on a command or a tool, the form shows the full command, or the
+  connection, the tool and the arguments, and says that it runs at each check without a question.
+  The user must confirm to save. A Deny rule (007) that matches the check refuses it at each
+  check.
+- The first check keeps the result and does not run the routine. Each later check compares with
+  the last result. When it differs, the routine runs, and the result becomes the new one to
+  compare with.
+- A run of a watch gets the prompt and a short text of the change:
+  - for a file or a folder: the files that were added, removed and changed, at most 200 lines,
+  - for a command or a tool: the old and the new result, each cut to 20000 characters.
+  The change text is outside content (see 007).
+- A switch "Post when nothing changed" is off by default. When it is on, each check with no
+  change posts one muted line in the place of the routine. No task is made for it.
+- A check has a time limit of 60 seconds and keeps at most 1 MB of output. A check that fails
+  (a missing path, a time limit, a failed tool call, a refusal by a rule) counts as a failed run
+  for "Repeated failure". It shows as Failed in the calendar, with the reason. A command that
+  ends with an exit code that is not 0 is not a failure: the code is part of the result.
+- The detail of a watch routine shows "Checks every N" and the time of the next check. The
+  calendar shows its past runs and failed checks, and no future runs.
+- While the computer is off or asleep, no check runs. On wake, one check runs at once. No check
+  is "Missed".
+- A watch with an interval of 5 minutes shows the note "This checks about 288 times a day.", in
+  the same way as a short schedule. The note does not stop the save.
+- When a check is due while the last run of the same routine still goes, the check waits until
+  the run ends.
 
 ## Limits and safeguards
 
@@ -34,7 +76,7 @@ Agents do repeat work on a schedule without the user starting it.
     the reason of the last failure. The calendar keeps all past runs.
   - The user gets one notification of the kind "routine failed" (see 015). Its text says that the
     routine is paused.
-  - Resume, and any edit of the prompt, the schedule, the agent or the place, sets the count to 0.
+  - Resume, and any edit of the prompt, the trigger, the agent or the place, sets the count to 0.
     A restart of the app keeps the count.
 
 ## Rules
@@ -47,6 +89,11 @@ Agents do repeat work on a schedule without the user starting it.
   with the reason of the block. A blocked run counts as a failed run for the pause above.
 - Missed runs while the computer was off or asleep: on wake, the app runs at most one missed run
   per routine, and only if it is less than 12 hours late. The others show as "Missed".
+- A run that starts more than 15 minutes after its planned time gets both times, in the user's
+  time zone, with the prompt. So the agent knows that it runs late and can adapt, for example
+  when the prompt says "this morning".
+- A run uses the model and effort of the routine. When the account of that model is not
+  connected, the run fails with that reason. It does not use another model.
 - A run does not start while the previous run of the same routine is still going; it is marked
   "Skipped".
 - When two computers sync (019), a routine runs on one computer only. The other computer shows
@@ -66,3 +113,13 @@ Agents do repeat work on a schedule without the user starting it.
   one fails: the routine is not paused.
 - With 50 routines, the form for one more refuses to save. Delete one: the save works.
 - A schedule of every 5 minutes shows "This runs about 288 times a day." and can be saved.
+- A watch on a folder, every 5 minutes: the first check does not run the routine. Add a file to
+  the folder: the next check runs the routine, and the run gets the name of the new file. A
+  check with no change makes no task.
+- A watch on the command `cat missing.txt`: the exit code is not 0, the output is kept, and no
+  failure is counted. A watch on a path that does not exist fails 3 checks in a row: the routine
+  is paused with "Paused after 3 failed runs".
+- A watch on a command needs the confirm before it saves.
+- The computer sleeps through a planned run and wakes 40 minutes later: the run gets the planned
+  time and the start time.
+- A routine with its own model uses that model, while its agent uses another.

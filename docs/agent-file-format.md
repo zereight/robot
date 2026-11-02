@@ -109,8 +109,9 @@ A tool must not write secrets into an agent file.
 
 1. ROBot checks the size, then the whole file. If one value is not valid, ROBot refuses the whole
    file and makes no agent.
-2. The user sees the list of agents that ROBot will make, picks one model for all of them, and
-   confirms.
+2. The user sees the review screen (spec 014, "Review before an import"): each agent, its
+   instructions and its routines, with tick boxes. Routines start not ticked. The user picks one
+   model for all of them, and confirms.
 3. ROBot makes the agents in the order of the file. It makes new agents only. It never changes an
    agent that exists.
 4. If the name of an agent is taken on the server, the agent gets a number: `Ada` becomes `Ada 2`,

@@ -23,6 +23,10 @@ These are in the code today and the specs now say something else.
 | 007 | No record of what the tools did. | An action log of file, shell, web and connection steps, kept for 90 days and at most 100000 entries. |
 | 009 | No limit on routines, and a routine that fails keeps running. | At most 50 routines. A note for a schedule under 15 minutes. A routine pauses after 3 failed runs in a row. |
 | 003 | The command list shows commands and runtime skills. | It also shows the skills that the user saved (017). A message can hold a skill chip. |
+| 003 | A message sent while the agent works waits in a queue until the turn ends. | By default it joins the running turn and the agent reads it at the next step. A message answers a waiting question card. The queue stays as a setting, with "Send now". |
+| 007 | Allow rules and permission levels decide every step the same way in every turn. | A turn that holds outside content asks before guarded steps (own settings, memory, secrets), also when an Allow rule matches, except at "Full access". |
+| 009 | A routine has a schedule and uses the model of its agent. | A routine has a schedule or a watch. It can have its own model and effort. A late run gets the planned time and the start time. |
+| 002, 010 | Import lists what it will make, and the user confirms. | A review screen with tick boxes, routines not ticked, "Not imported", and a checklist after the import (014). |
 | 015 | The island shows faces and a count while agents work, and the first waiting request. | A detail card with one row for each working agent (place, what it does, time). The attention card shows the place and the kind of step, and the user can go through all waiting requests ("1 of N"). In the mode "always", a result card shows when a reply ends or a task or routine fails. |
 | 005, 007, 013 | Nothing limits a chain of agent messages, the steps of a task, or repeated reads. | A message chain stops at depth 8. A task stops at 300 steps by default (a setting from 20 to 2000). The third read with the same target and the same result is refused. |
 | 005, 003, 004 | Retry starts a new task at once. | Retry shows a note first when the earlier try ran steps that may have changed things. |
@@ -60,10 +64,18 @@ These are in the code today and the specs now say something else.
 | S35 | Limits of a task: message chain depth, step limit and its setting, refusal of repeated reads. The retry note in chat, channel and Tasks page. | 005, 007, 003, 004, 013, 019 |
 | S36 | Runtime states with "Check again" and "Repair", and the disabled message box. The level "Read only", the confirm for "Full access", the line under the level, the read or write mark in the log. | 006, 007, 003, 012, 019 |
 | S37 | Review of parts and the state Blocked: the channel setting, the eye and stop sign icons, the actions on the part and on the Tasks page, labels in routines, workflows and notices. Needs S35 (both change the Tasks page). | 004, 005, 009, 010, 012, 015, 019 |
+| S38 | Messages during a turn: the setting, "Read at the next step", Delete before it is read, a message that answers a question card, the queue with "Send now", the queue for runtimes that take no input during a turn, the message in the task detail. | 003, 005, 013 |
+| S39 | Outside content: the mark of a turn, the guarded steps, the card with "This turn holds outside content" and no "Always allow", turns that the user did not start, the log entries. The guard of memory saves. | 007, 008 |
+| S40 | Changes from the chat: the settings tool for the agent and for the app settings, loose model names, the line with Undo, the fields the agent cannot change, instruction history with restore, export and sync of the history. Needs S39. | 002, 007, 013, 014, 019 |
+| S41 | Saved secrets: the three tools, the protected card, the origin check, no redirects, the switch for local addresses, limits, redaction of the answer, the Saved secrets part of settings, the rules for requests, export without values. Needs S39. | 020, 007, 013, 014, 015 |
+| S42 | Task times: wait, first reply and total, the task detail, the median on the usage page. The performance command and report of `docs/performance.md`, and the size check in CI. | 005, 006 |
+| S43 | Watch routines: the trigger form with the confirm, the three kinds of watch, checks and the change text, "Post when nothing changed", failed checks, the model and effort of a routine, the times of a late run. Needs S39. | 009, 007, 014 |
+| S44 | Review before an import: the review screen for agent files and workflow files, ticks at the start, "Not imported", the checklist after the import. | 014, 002, 010 |
+| S45 | Teach a task: the form, the recording bar, the steps and the hidden secrets, the limits, the draft skill card, Save and "Try it". | 017, 007, 014 |
 | S46 | Message search: the group "Messages" under the search field, the hit row, the jump to the message, search on a linked server and in the cache, the tool "search chats" for agents with memory on. | 001, 007, 012, 011, 014 |
 | S47 | Silent and cut turns: the progress of a turn, the lines on a failed row, "Send again" in the restart notice, the silent limit and its setting, leftover programs ended at start. Follows S35: the line for the progress sits next to its retry note. | 005, 003, 006, 013, 019, 011 |
 | S48 | Today page: the page button and badge, the four groups, live update, the line for a group that cannot be read, the line on a linked server. | 021, 001, 012, 015 |
 | S49 | Memory control: the choice "save at once" or "ask me first", the tabs Items, Proposals and History, undo, the refusal of secrets, the limits, what syncs and what exports. | 008, 012, 014, 019 |
 
-S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35.
+S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.

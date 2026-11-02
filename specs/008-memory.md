@@ -62,6 +62,10 @@ keep, and can undo a change.
 - The memory tool refuses a text that looks like a secret (see 014). It does not save it and does
   not suggest it, and it tells the agent to leave the secret out. The user can type such a text
   by hand.
+- A save in a turn that holds outside content asks first (see 007, "Outside content"). So a
+  web page cannot put a lasting order into the memory of an agent. This holds for "Save at
+  once". A proposal is not memory, so a proposal in such a turn needs no card. The user still
+  decides in the tab Proposals.
 - Each change to an item makes a history row. A change that arrives by sync (019) makes none.
   Such a change can turn an Undo off, because the item is not as that row left it.
 - History keeps 90 days and at most 1000 rows for each agent. The oldest rows go first. Removing

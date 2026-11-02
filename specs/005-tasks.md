@@ -15,13 +15,25 @@ and workflows.
 - **States**: queued → running → (waiting for user ↔ running) → done | failed | blocked |
   cancelled. A part of a channel that asks for review has one more state, in review, before done
   (see "Review").
+- **Times**: each task keeps three times, in seconds.
+  - **Wait**: from the moment the task is made to the moment it starts.
+  - **First reply**: from the message that started the task to the first part of the reply that
+    the app stores and the user can see. When no message started the task (a routine or a
+    workflow), the time counts from the moment the task is made. Reply text counts, and so do a
+    question card and an approval card. Thinking, the working line and tool cards do not count.
+  - **Total**: from the message that started the task, or from the moment the task is made, to
+    the end of the task. It includes the time that the task waited for the user.
+  - A time that is not known is shown as "—", never as 0. A restart keeps the times that are
+    known. Retry makes a new task with its own times.
 - **Progress**: how far the turn of a task went. See "How far a turn went".
 
 ## Tasks page
 
 - A table of tasks, newest first: agent face and name, label, source, state, duration.
 - Filters: state, agent, source. Search by label.
-- A row opens the task: its prompt, its steps, its messages, and its child tasks as a tree.
+- A row opens the task: its prompt, its steps, its messages, its child tasks as a tree, and its
+  three times. The messages that joined the task during its turn (see 003) are listed under the
+  prompt, with their times.
 - Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), accept or
   request changes (in review; see "Review"), open source place.
 - A task of a channel (see 004) also has "End the request", which cancels the whole request.
@@ -159,6 +171,11 @@ its Retry shows no retry note.
   still run. A task that is done keeps its result. After the cancel, no task of the request starts
   again by itself. Retry still makes a new task.
 - A routine run whose tasks are all cancelled shows as cancelled, not as done (see 009).
+- A message that joins a running turn (see 003) belongs to the task of that turn. It does not
+  make a new task. The prompt of the task stays the message that started it.
+- The usage page (see 006) shows, for each agent and day, the median "First reply" time of the
+  chat tasks that ended as done.
+- The times are stored in the local database with the task. They hold no message text.
 - Retry makes a new task with the same prompt and links it to the old one.
 - After an app restart, a task that waits for an approval or a question still waits. The card
   shows again (see 007). This holds only when the task has no parent task, is not part of a
@@ -176,6 +193,10 @@ its Retry shows no retry note.
 
 - Start two tasks for one agent: the second waits until the first ends.
 - Restart during a task: it shows as failed with the restart reason and can be retried.
+- A fake provider waits 2 seconds, then streams a reply. The task shows a "First reply" time of
+  2 seconds or a little more. A task that failed before any reply shows "—" for "First reply".
+- A message joins a running turn: the tasks page shows one task, and its detail lists the
+  message under the prompt.
 - A task waits for an approval. Restart the app: the task is still waiting, and its card shows
   again. Allow the step: the task goes on.
 - A task waits for an approval, and a second task for the same agent is queued. Restart the app:
