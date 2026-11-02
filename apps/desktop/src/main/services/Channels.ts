@@ -41,6 +41,7 @@ import { AppError } from "./errors.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
+import { Sections } from "./Sections.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
 
@@ -78,6 +79,7 @@ interface ChannelRow {
   name: string
   topic: string
   lead_agent_id: string | null
+  place_section_id: string | null
 }
 
 interface MessageRow {
@@ -138,13 +140,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
       const agents = yield* Agents
+      const sections = yield* Sections
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
       db.run("UPDATE channel_message SET status = 'stopped' WHERE status = 'streaming'")
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, lead_agent_id FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -181,6 +184,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           leadId:
             row.lead_agent_id && memberIds.includes(row.lead_agent_id) ? row.lead_agent_id : null,
           memberIds,
+          sectionId: row.place_section_id,
           unread,
           working: hasActiveWork(row.id),
         }
@@ -793,18 +797,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const memberIds = [...new Set(input.memberIds)]
         yield* checkName(input.serverId, name, null)
         yield* checkMembers(input.serverId, memberIds, input.leadId)
+        const sectionId = yield* sections.check(input.serverId, "channel", input.sectionId ?? null)
         const id = randomUUID()
         const now = Date.now()
         db.transaction(() => {
           db.run(
-            `INSERT INTO channel (id, server_id, name, name_key, topic, lead_agent_id, created_at, updated_at, last_read_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO channel (id, server_id, name, name_key, topic, lead_agent_id, place_section_id,
+              created_at, updated_at, last_read_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.serverId,
             name,
             name.toLocaleLowerCase(),
             topic,
             input.leadId,
+            sectionId,
             now,
             now,
             now,
@@ -841,6 +848,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               : null
         yield* checkName(row.server_id, name, id)
         yield* checkMembers(row.server_id, memberIds, leadId)
+        const sectionId =
+          patch.sectionId !== undefined
+            ? yield* sections.check(row.server_id, "channel", patch.sectionId)
+            : row.place_section_id
         // A member that works in this channel stays until its part ends or the user stops it.
         for (const removed of current.memberIds.filter((m) => !memberIds.includes(m))) {
           const busy = db.get(
@@ -853,11 +864,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         }
         db.transaction(() => {
           db.run(
-            `UPDATE channel SET name = ?, name_key = ?, topic = ?, lead_agent_id = ?, updated_at = ? WHERE id = ?`,
+            `UPDATE channel SET name = ?, name_key = ?, topic = ?, lead_agent_id = ?, place_section_id = ?,
+              updated_at = ? WHERE id = ?`,
             name,
             name.toLocaleLowerCase(),
             topic,
             leadId,
+            sectionId,
             Date.now(),
             id,
           )
@@ -989,7 +1002,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, lead_agent_id FROM channel
+                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )

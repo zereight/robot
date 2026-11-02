@@ -7,7 +7,9 @@ import {
   ChatSend,
   INVOKE_CHANNEL,
   MESSAGE_MAX,
+  MOVE_DIRECTIONS,
   MUTE_CHOICES,
+  PlaceKind,
   ProviderConnect,
   RoutineInput,
   RoutinePatch,
@@ -17,6 +19,7 @@ import {
   type RpcResult,
   RUNTIME_KINDS,
   redactSecrets,
+  SectionCreate,
   SettingsPatch,
   UiStatePatch,
   USAGE_RANGES,
@@ -42,6 +45,7 @@ import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
 import { Tasks } from "./services/Tasks.ts"
@@ -139,6 +143,39 @@ export const handlers: Handlers = {
   "places.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Places.use((p) => p.list(serverId))),
+    ),
+  "places.move": (input) =>
+    decode(
+      Schema.Struct({
+        kind: PlaceKind,
+        id: Schema.String,
+        sectionId: Schema.NullOr(Schema.String),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ kind, id, sectionId }) =>
+        Sections.use((s) => s.assign({ kind, id }, sectionId)),
+      ),
+      done,
+    ),
+  "sections.create": (input) =>
+    decode(SectionCreate)(input).pipe(
+      Effect.flatMap((data) => Sections.use((s) => s.create(data))),
+    ),
+  "sections.rename": (input) =>
+    decode(Schema.Struct({ id: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, name }) => Sections.use((s) => s.rename(id, name))),
+    ),
+  "sections.move": (input) =>
+    decode(Schema.Struct({ id: Schema.String, direction: Schema.Literals(MOVE_DIRECTIONS) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ id, direction }) => Sections.use((s) => s.move(id, direction))),
+      done,
+    ),
+  "sections.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Sections.use((s) => s.remove(id))),
+      done,
     ),
   "ui.get": () => UiStore.use((s) => s.get),
   "ui.update": (input) =>
