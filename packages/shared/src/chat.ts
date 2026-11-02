@@ -3,6 +3,7 @@ import type { KnowledgeNote } from "./knowledge.ts"
 import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
+import type { SecretAsk } from "./secrets.ts"
 
 export type MessagePart =
   | { readonly kind: "text"; readonly text: string }
@@ -36,6 +37,8 @@ export type MessagePart =
       readonly knowledge?: KnowledgeNote
       /** Set when a message of the user in the chat answered this question card (spec 003). */
       readonly answeredInChat?: boolean
+      /** Set when a protected card ended: the value was saved, or the user cancelled (spec 020). */
+      readonly secret?: "saved" | "cancelled"
     }
 
 /** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */
@@ -67,14 +70,25 @@ export type ToolAsk =
       readonly after: string | null
       readonly askedAt?: number
     }
+  /** The agent asks for the value of a saved secret: a card with a hidden field (spec 020). */
+  | SecretAsk
 
 /** The text that the status island shows for a card that waits. */
 export const askSummary = (ask: ToolAsk) =>
-  ask.kind === "approval" ? ask.summary : ask.kind === "question" ? ask.question : ask.title
+  ask.kind === "approval"
+    ? ask.summary
+    : ask.kind === "question"
+      ? ask.question
+      : ask.kind === "secret"
+        ? `${ask.label || ask.name} (${ask.origin})`
+        : ask.title
 
-/** The kind of a card for the status island: an article card is an approval. */
+/**
+ * The kind of a card for the status island: an article card is an approval. A protected card
+ * counts as a question, and the island has no field for it (spec 020).
+ */
 export const askKind = (ask: ToolAsk): "approval" | "question" =>
-  ask.kind === "question" ? "question" : "approval"
+  ask.kind === "question" || ask.kind === "secret" ? "question" : "approval"
 
 /**
  * Whether the card has the choice "Always allow for this agent" (spec 007): an approval, not the

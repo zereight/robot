@@ -29,6 +29,7 @@ import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, secretKey } from "./Providers.ts"
+import { SavedSecrets } from "./SavedSecrets.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -104,12 +105,17 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
       const agents = yield* Agents
       const servers = yield* Servers
       const settings = yield* SettingsStore
+      const savedSecrets = yield* SavedSecrets
       const bus = yield* EventBus
 
       const writeArchive = Effect.fn("Data.writeArchive")(function* (target: string) {
-        const known = (yield* providers.list)
-          .map((a) => secrets.get(secretKey(a.id)))
-          .filter((k): k is string => k !== null)
+        const known = [
+          ...(yield* providers.list)
+            .map((a) => secrets.get(secretKey(a.id)))
+            .filter((k): k is string => k !== null),
+          // The values of saved secrets (spec 020) are hidden too, wherever a text holds one.
+          ...savedSecrets.knownValues(),
+        ]
 
         const work = mkdtempSync(join(tmpdir(), "robot-export-"))
         try {
@@ -128,6 +134,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
             out.exec("DROP TABLE IF EXISTS message_fts; DROP TABLE IF EXISTS message_text")
             // The links of this computer stay on it: an export holds no device keys or addresses.
             out.exec("DELETE FROM device_link")
+            // A saved secret keeps its name, agent, origin and way to send, never its value or the
+            // name of the value in the keychain of this computer (spec 020).
+            out.exec("UPDATE saved_secret SET value_ref = NULL; DELETE FROM saved_secret_drop")
             // Sync records belong to this pair of computers (spec 019). They are not exported.
             for (const table of [
               "sync_pair",
@@ -381,6 +390,13 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO knowledge_file SELECT * FROM imp.knowledge_file")
               db.run("INSERT INTO knowledge_change SELECT * FROM imp.knowledge_change")
               db.run("INSERT INTO agent_allow SELECT * FROM imp.agent_allow")
+              // The values stay in the keychain of the other computer: each secret shows
+              // "Value missing" until the user replaces it (spec 020).
+              db.run(
+                `INSERT INTO saved_secret (id, agent_id, name, name_key, origin, auth, value_ref, saved_at, last_used_at)
+                 SELECT id, agent_id, name, name_key, origin, auth, NULL, saved_at, last_used_at
+                 FROM imp.saved_secret WHERE agent_id IN (SELECT id FROM agent)`,
+              )
               db.run("INSERT INTO task SELECT * FROM imp.task")
               db.run("INSERT INTO import_checklist SELECT * FROM imp.import_checklist")
               db.run(

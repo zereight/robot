@@ -477,3 +477,38 @@ describe("the step for memory control", () => {
     expect(db.prepare("SELECT COUNT(*) AS n FROM sync_dirty").get()).toEqual({ n: 0 })
   })
 })
+
+describe("the step of saved secrets", () => {
+  test("it keeps no value, no trigger of sync watches it, and an agent takes its secrets along", () => {
+    const step = migrations.findIndex((sql) => sql.includes("CREATE TABLE saved_secret"))
+    expect(step).toBeGreaterThan(MAIN_STEPS + 2)
+    const db = new DatabaseSync(":memory:")
+    for (const sql of migrations) db.exec(sql)
+    const synced = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'saved_secret'",
+      )
+      .all()
+    expect(synced).toEqual([])
+    const columns = db
+      .prepare("SELECT name FROM pragma_table_info('saved_secret')")
+      .all()
+      .map((c) => (c as { name: string }).name)
+    expect(columns).not.toContain("value")
+    db.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+      INSERT INTO place_section (id, server_id, kind, name, name_key, position, created_at)
+        VALUES ('p', 's', 'agent', 'Team', 'team', 0, 0);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, place_section_id, knowledge_enabled, created_at, updated_at)
+        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 'p', 0, 1, 1);
+      INSERT INTO saved_secret (id, agent_id, name, name_key, origin, auth, value_ref, saved_at)
+        VALUES ('k', 'a', 'Key', 'key', 'https://x.test', '{"kind":"bearer"}', 'ref-1', 1);
+      DELETE FROM agent WHERE id = 'a';
+    `)
+    expect(db.prepare("SELECT COUNT(*) AS n FROM saved_secret").get()).toEqual({ n: 0 })
+    expect(db.prepare("SELECT value_ref FROM saved_secret_drop").all()).toEqual([
+      { value_ref: "ref-1" },
+    ])
+  })
+})

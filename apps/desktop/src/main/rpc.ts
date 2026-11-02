@@ -59,6 +59,7 @@ import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
 import { Runtimes } from "./services/Runtimes.ts"
+import { SavedSecrets } from "./services/SavedSecrets.ts"
 import { Search } from "./services/Search.ts"
 import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
@@ -572,6 +573,40 @@ export const handlers: Handlers = {
         result: Schema.optionalKey(Schema.Literals(["ran", "failed", "refused", "stopped"])),
       }),
     )(input).pipe(Effect.flatMap((filter) => ActionLog.use((log) => log.list(filter)))),
+  "secrets.list": (input) =>
+    decode(Schema.Struct({ agentId: Schema.optionalKey(Schema.String) }))(input).pipe(
+      Effect.flatMap(({ agentId }) => SavedSecrets.use((s) => Effect.sync(() => s.list(agentId)))),
+    ),
+  // The value of a secret goes from the window to the keychain only (spec 020).
+  "secrets.answer": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        callId: Schema.String,
+        value: Schema.NullOr(Schema.String),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, callId, value }) =>
+        Tools.use((t) => t.answerSecret(agentId, callId, value)),
+      ),
+      done,
+    ),
+  "secrets.replace": (input) =>
+    decode(Schema.Struct({ id: Schema.String, value: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, value }) =>
+        SavedSecrets.use((s) =>
+          Effect.try({
+            try: () => s.replace(id, value),
+            catch: (e) => (e instanceof AppError ? e : new AppError({ code: "secret_keychain" })),
+          }),
+        ),
+      ),
+    ),
+  "secrets.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => SavedSecrets.use((s) => Effect.sync(() => s.remove(id)))),
+      done,
+    ),
   "memory.add": (input) =>
     decode(Schema.Struct({ agentId: Schema.String, text: Schema.String }))(input).pipe(
       Effect.flatMap(({ agentId, text }) => Memory.use((m) => m.add(agentId, text, "user"))),

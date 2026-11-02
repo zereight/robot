@@ -594,4 +594,32 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX memory_history_agent ON memory_history (agent_id, at);
   `,
+  `
+  -- Saved secrets (spec 020). The value is in the system keychain, under the name in
+  -- \`value_ref\`; it is never in this database. \`value_ref\` is NULL when this computer holds no
+  -- value, for example after an import. The table stays on this computer: no trigger of sync
+  -- watches it (spec 019).
+  CREATE TABLE saved_secret (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    value_ref TEXT,
+    saved_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    UNIQUE (agent_id, name_key)
+  );
+  -- The keychain names of values that must go: the app removes them and then the rows.
+  CREATE TABLE saved_secret_drop (
+    value_ref TEXT PRIMARY KEY
+  ) WITHOUT ROWID;
+  -- Deleting an agent deletes its secrets, also when sync deletes the agent.
+  CREATE TRIGGER saved_secret_agent_gone AFTER DELETE ON agent BEGIN
+    INSERT OR IGNORE INTO saved_secret_drop (value_ref)
+      SELECT value_ref FROM saved_secret WHERE agent_id = OLD.id AND value_ref IS NOT NULL;
+    DELETE FROM saved_secret WHERE agent_id = OLD.id;
+  END;
+  `,
 ]

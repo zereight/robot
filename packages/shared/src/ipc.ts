@@ -38,6 +38,7 @@ import type {
 } from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { SearchPage } from "./search.ts"
+import type { SavedSecret } from "./secrets.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
 import type { Skill, SkillInput } from "./skills.ts"
@@ -295,6 +296,23 @@ export interface RpcMethods {
     input: { agentId?: string; result?: ActionResult }
     output: readonly ActionLogEntry[]
   }
+  /**
+   * The saved secrets of this computer (spec 020), never a value. Not offered to a linked device,
+   * and a value never goes over a link.
+   */
+  "secrets.list": { input: { agentId?: string }; output: readonly SavedSecret[] }
+  /**
+   * Answers a protected card of this computer: `value` saves it in the keychain, `null` cancels.
+   * The answer of a linked device or of the other computer of a sync pair is refused.
+   */
+  "secrets.answer": {
+    input: { agentId: string; callId: string; value: string | null }
+    output: undefined
+  }
+  /** Puts a new value for a saved secret in the keychain. */
+  "secrets.replace": { input: { id: string; value: string }; output: SavedSecret }
+  /** Deletes a saved secret and its value. */
+  "secrets.delete": { input: { id: string }; output: undefined }
   "knowledge.list": { input: { agentId: string; query?: string }; output: KnowledgeView }
   "knowledge.get": { input: { agentId: string; file: string }; output: KnowledgeArticle }
   /** Saves an article as the user. `file` is null for a new article. */
@@ -461,6 +479,8 @@ export interface RpcEvents {
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
   "actionLog.changed": Record<string, never>
+  /** A saved secret was added, used, replaced or deleted. */
+  "secrets.changed": Record<string, never>
   /** An article, a source or the change list of an agent changed. */
   "knowledge.changed": { agentId: string }
   "browser.changed": { agentId: string }
