@@ -90,7 +90,7 @@ client shows it and sends commands.
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
 | Answer approval cards and questions | Routines, workflows, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |
-| See the task list and task details; stop a task | Browser "Take control"; accept or request changes on a part in review (004); the Today page (020); memory proposals and memory history (008) |
+| See the task list and task details; stop a task | Browser "Take control"; accept or request changes on a part in review (004); the Today page (021); memory proposals and memory history (008) |
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory | Export and import of data |
 
 A client sees the user sections of the server (001) and cannot make, rename, order or delete

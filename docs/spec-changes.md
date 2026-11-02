@@ -35,7 +35,7 @@ These are in the code today and the specs now say something else.
 | 005, 013 | A turn that shows nothing runs without end. | A turn with no sign of life for 10 minutes (the user can change this) is stopped and fails. A wait for the user and a running tool step do not count. The failed row also tells how far the turn went, next to the retry note. |
 | 006 | A vendor program from a crashed run can stay. | The app ends its own leftover programs at start. A runtime with a hung check never delays a turn of another provider. |
 | 008 | The agent saves memory at once. The only undo is the chat line. The agent can save any text. | A choice for each agent: save at once, or ask first with a tab for proposals. A history tab with undo. The memory tool refuses a text that looks like a secret. |
-| 001, 020 | Pages: agents and chats, workflows, tasks, usage. | Also the Today page, with a badge on its button for the items that wait in "Needs you". |
+| 001, 021 | Pages: agents and chats, workflows, tasks, usage. | Also the Today page, with a badge on its button for the items that wait in "Needs you". |
 
 ## Slices
 
@@ -60,10 +60,10 @@ These are in the code today and the specs now say something else.
 | S35 | Limits of a task: message chain depth, step limit and its setting, refusal of repeated reads. The retry note in chat, channel and Tasks page. | 005, 007, 003, 004, 013, 019 |
 | S36 | Runtime states with "Check again" and "Repair", and the disabled message box. The level "Read only", the confirm for "Full access", the line under the level, the read or write mark in the log. | 006, 007, 003, 012, 019 |
 | S37 | Review of parts and the state Blocked: the channel setting, the eye and stop sign icons, the actions on the part and on the Tasks page, labels in routines, workflows and notices. Needs S35 (both change the Tasks page). | 004, 005, 009, 010, 012, 015, 019 |
-| S38 | Message search: the group "Messages" under the search field, the hit row, the jump to the message, search on a linked server and in the cache, the tool "search chats" for agents with memory on. | 001, 007, 012, 011, 014 |
-| S39 | Silent and cut turns: the progress of a turn, the lines on a failed row, "Send again" in the restart notice, the silent limit and its setting, leftover programs ended at start. Follows S35: the line for the progress sits next to its retry note. | 005, 003, 006, 013, 019, 011 |
-| S40 | Today page: the page button and badge, the four groups, live update, the line for a group that cannot be read, the line on a linked server. | 020, 001, 012, 015 |
-| S41 | Memory control: the choice "save at once" or "ask me first", the tabs Items, Proposals and History, undo, the refusal of secrets, the limits, what syncs and what exports. | 008, 012, 014, 019 |
+| S46 | Message search: the group "Messages" under the search field, the hit row, the jump to the message, search on a linked server and in the cache, the tool "search chats" for agents with memory on. | 001, 007, 012, 011, 014 |
+| S47 | Silent and cut turns: the progress of a turn, the lines on a failed row, "Send again" in the restart notice, the silent limit and its setting, leftover programs ended at start. Follows S35: the line for the progress sits next to its retry note. | 005, 003, 006, 013, 019, 011 |
+| S48 | Today page: the page button and badge, the four groups, live update, the line for a group that cannot be read, the line on a linked server. | 021, 001, 012, 015 |
+| S49 | Memory control: the choice "save at once" or "ask me first", the tabs Items, Proposals and History, undo, the refusal of secrets, the limits, what syncs and what exports. | 008, 012, 014, 019 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35.
-S38 to S41 do not depend on each other, except that S39 follows S35. S38 and S39 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
+S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
