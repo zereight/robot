@@ -195,6 +195,11 @@ describe("the steps of the device link and of sync", () => {
     // The number of steps is the data version that two computers compare before they sync.
     // Later steps follow these.
     expect(migrations.length).toBeGreaterThan(PROGRESS)
+    // S44: the checklist that an import leaves is a step of its own, after the action log (S39).
+    const checklist = migrations.findIndex((sql) => sql.includes("CREATE TABLE import_checklist"))
+    const actionLog = migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log"))
+    expect(checklist).toBeGreaterThan(actionLog)
+    expect(migrations[checklist]).not.toContain("action_log")
   })
 
   test("a task from before the progress step keeps its row and shows no progress", () => {

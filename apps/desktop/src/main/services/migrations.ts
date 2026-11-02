@@ -465,6 +465,19 @@ export const migrations: readonly string[] = [
   CREATE UNIQUE INDEX skill_name ON skill (server_id, name_key);
   `,
   `
+  -- The checklist that an import leaves for a new agent or a new workflow (spec 014). It belongs
+  -- to this computer and does not sync.
+  CREATE TABLE import_checklist (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT REFERENCES agent (id) ON DELETE CASCADE,
+    workflow_id TEXT REFERENCES workflow (id) ON DELETE CASCADE,
+    items TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX import_checklist_agent ON import_checklist (agent_id);
+  CREATE INDEX import_checklist_workflow ON import_checklist (workflow_id);
+  `,
+  `
   -- How far the turn of a task went: not_sent, sent or started (spec 005). It only goes up. A task
   -- from before this step has none, and shows no line about it.
   ALTER TABLE task ADD COLUMN progress TEXT;

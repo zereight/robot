@@ -1107,7 +1107,6 @@ export const en = {
   "error.knowledge_io": "The Knowledge folder cannot be read or written.",
   "agentFile.menu.export": "Export agents…",
   "agentFile.menu.importFile": "Import agents…",
-  "agentFile.routines": "Routines: {count}",
   "agentFile.close": "Close",
   "agentFile.export.title": "Export agents",
   "agentFile.export.hint":
@@ -1118,14 +1117,44 @@ export const en = {
   "agentFile.export.submit": "Export…",
   "agentFile.exported": "Saved {count} agents to {path}",
   "agentFile.import.title": "Import agents",
-  "agentFile.import.intro":
-    "ROBot will make these new agents. It does not change an agent that exists.",
   "agentFile.import.renamed": "Name in the file: {name}",
-  "agentFile.import.paused": "Every routine starts paused.",
   "agentFile.import.model": "Model for all of these agents",
   "agentFile.import.submit": "Import {count} agents",
   "agentFile.import.stopped":
     "The import stopped at {name}. {made} agents were made and stay. Reason: {reason}",
+  "importReview.agents.intro":
+    "Tick the parts to import. ROBot makes new agents only. It does not change an agent that exists.",
+  "importReview.workflows.intro":
+    "Tick the workflows to import. ROBot makes new workflows only. It does not change a workflow that exists.",
+  "importReview.instructions": "Instructions ({count} characters)",
+  "importReview.noInstructions": "No instructions",
+  "importReview.routine": "Routine “{name}”",
+  "importReview.routine.paused": "Starts paused",
+  "importReview.secret": "A secret was removed",
+  "importReview.missing": "Agents not found: {names}",
+  "importReview.notImported.title": "Not imported",
+  "importReview.notImported.empty": "The file holds nothing that ROBot cannot make.",
+  "importReview.notImported.file": "The file: {field}",
+  "importReview.notImported.field": "{owner}: {field}",
+  "importReview.notImported.step": "{owner}, step {step} “{name}”: the channel",
+  "importReview.reason.unknown_field": "This version of ROBot does not know this field.",
+  "importReview.reason.no_place":
+    "The file holds no channel, so the post step has no place. Pick one after the import.",
+  "importReview.counts.agents": "ROBot will make {agents} agents, {routines} routines (paused).",
+  "importReview.counts.workflows": "ROBot will make {workflows} workflows (off).",
+  "importReview.nothing": "Nothing is ticked.",
+  "error.import_nothing_picked": "Nothing is ticked. Tick at least one part to import.",
+  "checklist.sender": "ROBot",
+  "checklist.title": "After the import",
+  "checklist.intro": "These parts of the import still need you.",
+  "checklist.progress": "{done} of {count} done",
+  "checklist.routine": "Turn on the routine “{name}”. It starts paused.",
+  "checklist.stepAgent": "Pick an agent for step {n} “{name}”.",
+  "checklist.stepPlace": "Pick a place for step {n} “{name}”.",
+  "checklist.workflowOn": "Turn on the workflow. Its schedule does not run while it is off.",
+  "checklist.turnOn": "Turn on",
+  "checklist.pick": "Pick",
+  "checklist.done": "Done",
   "error.agent_file_format": "This file is not an agent file.",
   "error.agent_file_version": "This file has format version {detail}. This app reads version 1.",
   "error.agent_file_too_large": "The file is larger than 10 MB.",
@@ -1198,16 +1227,10 @@ export const en = {
   "workflowFile.export.submit": "Export…",
   "workflowFile.exported": "Saved {count} workflows to {path}",
   "workflowFile.import.title": "Import workflows",
-  "workflowFile.import.intro":
-    "ROBot makes these workflows as new ones. It does not change a workflow that exists.",
   "workflowFile.import.renamed": "Name in the file: {name}",
   "workflowFile.import.counts": "{steps} steps, {notes} notes",
   "workflowFile.import.off":
     "Every imported workflow is off. Turn it on when its trigger should work.",
-  "workflowFile.import.missing":
-    'These agents are not found. A step that names one shows "Pick an agent" until you pick an agent:',
-  "workflowFile.import.places":
-    '{count} post steps show "Pick a place", because the file holds no channel.',
   "workflowFile.import.submit": "Import {count} workflows",
   "workflowFile.import.stopped":
     "The import stopped at {name}. {made} workflows were made and stay. Reason: {reason}",

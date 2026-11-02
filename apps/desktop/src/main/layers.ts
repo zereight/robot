@@ -7,6 +7,7 @@ import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
+import { Checklists } from "./services/Checklists.ts"
 import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
 import { Devices } from "./services/Devices.ts"
@@ -61,6 +62,7 @@ export const appLayer = (options: AppLayerOptions) => {
     Sections.layer,
     Activity.layer,
     Skills.layer,
+    Checklists.layer,
   ).pipe(Layer.provideMerge(base))
   const devices = Devices.layer({
     computerName: options.localServerName,
