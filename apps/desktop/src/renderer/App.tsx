@@ -29,6 +29,7 @@ import { useChannels } from "./state/channels.tsx"
 import { setFocusMessage } from "./state/focus.ts"
 import { useUi } from "./state/ui.tsx"
 import { TasksPage } from "./tasks/TasksPage.tsx"
+import { TodayPage } from "./today/TodayPage.tsx"
 import { IconButton } from "./ui/controls.tsx"
 import { Menu } from "./ui/Menu.tsx"
 import { Presence } from "./ui/Presence.tsx"
@@ -162,6 +163,7 @@ export const App = () => {
           )
         }
         pages={{
+          today: () => <TodayPage />,
           usage: () => <UsagePage />,
           tasks: () => <TasksPage />,
           workflows: () => <WorkflowsPage />,
