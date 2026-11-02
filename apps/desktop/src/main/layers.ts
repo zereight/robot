@@ -1,6 +1,7 @@
 import { join } from "node:path"
 import { Layer } from "effect"
 import type { OpenSocket } from "./link/nearby.ts"
+import { ActionLog } from "./services/ActionLog.ts"
 import { Activity } from "./services/Activity.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
@@ -67,7 +68,7 @@ export const appLayer = (options: AppLayerOptions) => {
   const runtimes = Runtimes.layer.pipe(Layer.provideMerge(devices))
   const providers = Providers.layer.pipe(Layer.provideMerge(runtimes))
   const notifier = Notifier.layer.pipe(Layer.provideMerge(providers))
-  const memory = Memory.layer.pipe(Layer.provideMerge(notifier))
+  const memory = Layer.mergeAll(Memory.layer, ActionLog.layer).pipe(Layer.provideMerge(notifier))
   const knowledge = Knowledge.layer.pipe(Layer.provideMerge(memory))
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))

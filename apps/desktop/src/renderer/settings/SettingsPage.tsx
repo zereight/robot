@@ -17,6 +17,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { useClosing } from "../ui/Presence.tsx"
+import { ActionLogSection } from "./ActionLogSection.tsx"
 import styles from "./settings.module.css"
 
 export const sections = [
@@ -26,6 +27,7 @@ export const sections = [
   "devices",
   "notifications",
   "archive",
+  "permissions",
   "data",
   "about",
 ] as const
@@ -305,6 +307,9 @@ export const SettingsPage = (props: {
           </Match>
           <Match when={section() === "appearance"}>
             <Appearance />
+          </Match>
+          <Match when={section() === "permissions"}>
+            <ActionLogSection />
           </Match>
           <Match when={section() === "data"}>
             <Data />

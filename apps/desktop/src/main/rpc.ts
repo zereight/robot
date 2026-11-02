@@ -35,6 +35,7 @@ import type { AppServices } from "./layers.ts"
 import licenses from "./licenses.json"
 import { modelChoices } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
+import { ActionLog } from "./services/ActionLog.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
 import { Agents } from "./services/Agents.ts"
 import type { Actor } from "./services/actor.ts"
@@ -540,6 +541,13 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String, query: Schema.optionalKey(Schema.String) }))(
       input,
     ).pipe(Effect.flatMap(({ agentId, query }) => Memory.use((m) => m.list(agentId, query)))),
+  "actionLog.list": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.optionalKey(Schema.String),
+        result: Schema.optionalKey(Schema.Literals(["ran", "failed", "refused", "stopped"])),
+      }),
+    )(input).pipe(Effect.flatMap((filter) => ActionLog.use((log) => log.list(filter)))),
   "memory.add": (input) =>
     decode(Schema.Struct({ agentId: Schema.String, text: Schema.String }))(input).pipe(
       Effect.flatMap(({ agentId, text }) => Memory.use((m) => m.add(agentId, text, "user"))),
