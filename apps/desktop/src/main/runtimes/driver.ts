@@ -2,18 +2,17 @@ import type { RuntimeKind, RuntimeLimit } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import {
   claudeLogin,
+  claudeProbe,
   claudeSignIn,
   claudeSignOut,
   claudeUsage,
-  claudeVersion,
-  parseVersion,
   runClaude,
 } from "./claude.ts"
-import { codexLogin, codexSignIn, runCodex } from "./codex.ts"
-import { runtimeEnv } from "./env.ts"
-import { MUSE_SIGN_IN_HOSTS, museLogin, museSignIn, museVersion, runMuse } from "./muse.ts"
-import { piLogin, piVersion, runPi } from "./pi.ts"
-import { execute, type Finished } from "./proc.ts"
+import { codexLogin, codexProbe, codexSignIn, runCodex } from "./codex.ts"
+import { MUSE_SIGN_IN_HOSTS, museLogin, museProbe, museSignIn, runMuse } from "./muse.ts"
+import { piLogin, piProbe, runPi } from "./pi.ts"
+import type { Finished } from "./proc.ts"
+import type { VersionProbe } from "./readiness.ts"
 import type { Login, RuntimeRun } from "./types.ts"
 
 export interface SignInPrompt {
@@ -23,7 +22,11 @@ export interface SignInPrompt {
 
 /** What the app does with one kind of program. */
 export interface Driver {
-  version(bin: string): Promise<string | null>
+  /**
+   * Asks the program for its version, once, with no model turn. The answer says why a program
+   * fails: it does not start, does not answer, or gives text that the app cannot read.
+   */
+  probe(bin: string): Promise<VersionProbe>
   /**
    * Who is signed in. `dir` is the folder of a separate sign-in. Only a driver that has
    * `signOut` takes it; the others look at the one sign-in that the program has.
@@ -51,14 +54,9 @@ export interface Driver {
   run(run: RuntimeRun): AsyncGenerator<AgentEvent>
 }
 
-const codexVersion = async (bin: string) => {
-  const done = await execute(bin, ["--version"], { env: runtimeEnv(), timeoutMs: 15_000 })
-  return done.code === 0 ? parseVersion(done.stdout) : null
-}
-
 export const drivers: Record<RuntimeKind, Driver> = {
   claude_code: {
-    version: claudeVersion,
+    probe: claudeProbe,
     login: claudeLogin,
     usage: claudeUsage,
     signIn: (bin, signal, _onPrompt, dir) => claudeSignIn(bin, signal, dir),
@@ -66,17 +64,17 @@ export const drivers: Record<RuntimeKind, Driver> = {
     run: runClaude,
   },
   codex: {
-    version: codexVersion,
+    probe: codexProbe,
     login: codexLogin,
     signIn: (bin, signal) => codexSignIn(bin, signal),
     run: runCodex,
   },
   muse: {
-    version: museVersion,
+    probe: museProbe,
     login: museLogin,
     signIn: museSignIn,
     signInHosts: MUSE_SIGN_IN_HOSTS,
     run: runMuse,
   },
-  pi: { version: piVersion, login: piLogin, run: runPi },
+  pi: { probe: piProbe, login: piLogin, run: runPi },
 }

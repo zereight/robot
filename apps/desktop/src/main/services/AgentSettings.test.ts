@@ -240,6 +240,19 @@ describe("the settings tool (spec 002, Changes from the chat)", () => {
     expect((await s.current()).name).toBe("Ava")
   })
 
+  test("at Read only a question reads, and a change is refused by the guard and logged with the level", async () => {
+    const s = await setup("read_only")
+    await s.turn(settings({}))
+    expect((await s.part())?.output).toContain("- model: mock-fast")
+    expect(await s.run(ActionLog.use((l) => l.list()))).toEqual([])
+    await s.turn(settings({ name: "Ava" }))
+    expect((await s.part())?.state).toBe("failed")
+    expect((await s.current()).name).toBe("Ada")
+    expect(await s.run(ActionLog.use((l) => l.list()))).toMatchObject([
+      { kind: "settings", decidedBy: "level", result: "refused" },
+    ])
+  })
+
   test("an agent of a vendor program does not get the tool", async () => {
     const s = await setup()
     const names = (o: { settings?: boolean }) =>

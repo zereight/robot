@@ -54,7 +54,7 @@ import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Notifier } from "./Notifier.ts"
-import { Providers } from "./Providers.ts"
+import { Providers, storedFailure } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
@@ -475,6 +475,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             },
             onMemory: (callId, memory) => changePart(callId, (p) => ({ ...p, memory })),
             origin: { kind: "channel", id: o.channel.id, messageId: id },
+            onRefused: (callId, refused) => changePart(callId, (p) => ({ ...p, refused })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
             knowledgeChanges: { count: 0 },
@@ -587,12 +588,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               } else if (Cause.hasInterruptsOnly(exit.cause)) save("stopped")
               else {
                 const failure = Cause.squash(exit.cause)
-                if (failure instanceof ProviderFailure)
-                  save("failed", {
-                    code: failure.code,
-                    detail: failure.detail ?? "",
-                    resetsAt: failure.resetsAt ?? null,
-                  })
+                if (failure instanceof ProviderFailure) save("failed", storedFailure(failure))
                 else if (failure instanceof AppError)
                   save("failed", {
                     code: failure.code,

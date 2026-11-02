@@ -13,9 +13,27 @@ const state = () =>
 const args = process.argv.slice(2)
 const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// Every call is noted, so that a test can tell a check (a version or a sign-in question) from a turn.
+appendFileSync(join(dir, "codex-asks.jsonl"), `${JSON.stringify(args.slice(0, 3))}\n`)
+
+// The help text of `exec` names the read-only sandbox unless the test says there is no such mode.
+if (args.includes("--help")) {
+  console.log("Run Codex non-interactively\n\nUsage: codex exec [OPTIONS] [PROMPT]")
+  if (!state().noReadOnly)
+    console.log("  -s, --sandbox <SANDBOX_MODE>  [possible values: read-only, workspace-write]")
+  process.exit(0)
+}
+// A program that exits at start, that does not answer, or that gives an answer with no version.
+if (state().exitAtStart) {
+  console.error("fake codex: cannot start")
+  process.exit(1)
+}
+// `hang` is the time in ms that the program is silent. A test sets a time that is longer than the
+// check of the app and shorter than the test, so no program stays behind.
+if (args[0] === "--version" && state().hang) await sleep(Number(state().hang) || 120_000)
 
 if (args[0] === "--version") {
-  console.log("codex-cli 9.9.9")
+  console.log(state().garbage ? "no number in this answer" : "codex-cli 9.9.9")
   process.exit(0)
 }
 

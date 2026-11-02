@@ -11,11 +11,23 @@ const callsFile = join(dir, "muse-calls.jsonl")
 const state = () =>
   existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8")) : { loggedIn: true }
 const args = process.argv.slice(2)
+// Every call is noted, so that a test can tell a check from a turn.
+appendFileSync(join(dir, "muse-asks.jsonl"), `${JSON.stringify(args.slice(0, 3))}\n`)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const out = (payload_type, payload) =>
   process.stdout.write(
     `${JSON.stringify({ schema_version: 1, record_type: "event", payload_type, payload })}\n`,
   )
+
+// The help text of `exec` and `serve` names the two controls unless the test says there is no such mode.
+if (args.includes("--help")) {
+  console.log(`muse ${args[0]} [OPTIONS]`)
+  if (!state().noReadOnly) {
+    console.log("      --disable-write\n          Disable non-shell workspace filesystem writes")
+    console.log("      --disable-shell\n          Disable workspace shell execution")
+  }
+  process.exit(0)
+}
 
 if (args[0] === "--version") {
   console.log("Muse Code 9.9.9 (9.9.9-R1)")

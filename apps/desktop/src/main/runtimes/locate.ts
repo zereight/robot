@@ -1,7 +1,15 @@
-import { accessSync, constants, readFileSync, statSync } from "node:fs"
+import {
+  accessSync,
+  constants,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs"
 import { homedir } from "node:os"
-import { delimiter, join } from "node:path"
-import { type RuntimeKind, SIGN_IN_ID } from "@robot/shared"
+import { delimiter, dirname, join } from "node:path"
+import { isRuntimeKind, type RuntimeKind, SIGN_IN_ID } from "@robot/shared"
 
 const NAMES: Record<RuntimeKind, string> = {
   claude_code: "claude",
@@ -103,3 +111,47 @@ export const findBinary = (
     if (isFile(path)) return { path, source: "system" }
   return null
 }
+
+// ---- the places where the app saw a program --------------------------------------------
+
+/**
+ * The file where the app keeps the last place where it found each program. It is how the app
+ * knows that a program "was" somewhere: a place that is gone is a program that needs repair, and a
+ * program that was never seen is not installed (spec 006). It holds paths and nothing else.
+ */
+const placesFile = (dataDir: string) => join(dataDir, "runtimes", "places.json")
+
+const readPlaces = (dataDir: string): Partial<Record<RuntimeKind, string>> => {
+  try {
+    const parsed = JSON.parse(readFileSync(placesFile(dataDir), "utf8")) as Record<string, unknown>
+    const places: Partial<Record<RuntimeKind, string>> = {}
+    for (const [kind, path] of Object.entries(parsed))
+      if (isRuntimeKind(kind) && typeof path === "string" && path) places[kind] = path
+    return places
+  } catch {
+    return {}
+  }
+}
+
+/** Keeps the place where a program was found. A failure to write changes nothing else. */
+export const rememberPlace = (dataDir: string, kind: RuntimeKind, path: string) => {
+  try {
+    const places = readPlaces(dataDir)
+    if (places[kind] === path) return
+    places[kind] = path
+    mkdirSync(dirname(placesFile(dataDir)), { recursive: true })
+    const temporary = `${placesFile(dataDir)}.tmp`
+    writeFileSync(temporary, JSON.stringify(places))
+    renameSync(temporary, placesFile(dataDir))
+  } catch {
+    // The memory is a help for the message. The look goes on without it.
+  }
+}
+
+/**
+ * A place where the app knew the program before, or null: the copy that it downloaded, or the
+ * place where it last found the program. A path that was only set in the environment is not a
+ * place that the app knew: the user may point it at nothing to say that there is no program.
+ */
+export const knownPlace = (dataDir: string, kind: RuntimeKind): string | null =>
+  managedPath(dataDir, kind) ?? readPlaces(dataDir)[kind] ?? null

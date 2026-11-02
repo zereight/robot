@@ -1,10 +1,11 @@
-export const PERMISSION_LEVELS = ["ask_all", "ask_risky", "full"] as const
+export const PERMISSION_LEVELS = ["read_only", "ask_all", "ask_risky", "full"] as const
 export type PermissionLevel = (typeof PERMISSION_LEVELS)[number]
 export const DEFAULT_PERMISSION: PermissionLevel = "ask_risky"
 
 /**
  * True when `next` lets the agent do more without asking than `current` does. The order of
- * `PERMISSION_LEVELS` is the order of care, strictest first.
+ * `PERMISSION_LEVELS` is the order of care, strictest first: Read only, Ask for everything, Ask for
+ * risky steps, Full access (spec 007, 012).
  */
 export const isLooser = (next: PermissionLevel, current: PermissionLevel) =>
   PERMISSION_LEVELS.indexOf(next) > PERMISSION_LEVELS.indexOf(current)
@@ -85,6 +86,60 @@ export const riskyReason = (command: string, workspace: string): RiskReason | nu
   return null
 }
 
-/** Whether a step waits for the user, by the permission level and the risk of the step. */
+/**
+ * Whether a step waits for the user, by the permission level and the risk of the step. A step that
+ * "Read only" lets run is asked about as at "Ask for risky steps": a read outside the workspace
+ * asks. Which steps "Read only" lets run is `readOnlyRefuses` (spec 007).
+ */
 export const needsApproval = (level: PermissionLevel, risky: boolean) =>
-  level === "ask_all" ? true : level === "ask_risky" ? risky : false
+  level === "ask_all" ? true : level === "full" ? false : risky
+
+/** "Full access" asks the user to confirm when the user picks it. No other level asks (spec 007). */
+export const levelNeedsConfirm = (level: PermissionLevel) => level === "full"
+
+/**
+ * The tools of the app that "Read only" lets run: read, list and search files, fetch a web page,
+ * ask the user a question, save memory, read an article of knowledge, and list agents. Every other
+ * tool is refused, also a tool that the app gets later (spec 007).
+ */
+export const READ_ONLY_TOOLS: readonly string[] = [
+  "list_files",
+  "read_file",
+  "search_files",
+  "fetch_url",
+  "ask_user",
+  "save_memory",
+  "read_article",
+  "list_agents",
+]
+
+/**
+ * The tools that "Read only" hands to the guard of spec 007 ("Outside content"). The guard decides:
+ * it refuses a request for a new secret and a request with a saved secret that uses a method other
+ * than GET, and a change of the agent's own settings, and it writes the entry of the action log
+ * with the level as the one who decided. A request with a saved secret that uses GET runs, and so
+ * does a call of the settings tool that only reads.
+ */
+export const READ_ONLY_GUARDED_TOOLS: readonly string[] = [
+  "ask_secret",
+  "secret_request",
+  "settings",
+]
+
+/** True when the level is "Read only" and the tool of the app is not one that it lets run. */
+export const readOnlyRefuses = (level: PermissionLevel, tool: string) =>
+  level === "read_only" &&
+  !READ_ONLY_TOOLS.includes(tool) &&
+  !READ_ONLY_GUARDED_TOOLS.includes(tool)
+
+/**
+ * The same rule for a step that a vendor program asks about, by the key of its card. The steps
+ * that read files or fetch a page pass. A write, a command and any tool that the app does not know
+ * are refused.
+ */
+export const readOnlyRefusesKey = (level: PermissionLevel, key: string) =>
+  level === "read_only" &&
+  !/^(?:read_file|list_files|fetch_url|web_search|network)(?::|$)/.test(key)
+
+/** Why a step did not run. Only "read_only" exists now; rules come with their own reasons. */
+export type RefusalReason = "read_only"
