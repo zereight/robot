@@ -60,6 +60,9 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     return id ? ui.places[id] : undefined
   })
   const narrow = () => width() < NARROW_WIDTH
+  // Past its limits the list edge follows the pointer with growing resistance, then springs back.
+  const [stretch, setStretch] = createSignal(0)
+  const [snapping, setSnapping] = createSignal(false)
   /** The open settings section, or undefined when settings are closed. Not kept between runs. */
   const [settingsSection, setSettingsSection] = createSignal<string>()
 
@@ -91,6 +94,12 @@ const createUiState = (initial: UiState, servers: readonly Server[]) => {
     toggleActivityPanel: () => update({ activityPanel: !ui.activityPanel }),
     /** Changes the width on screen only. Call `saveWidth` when the drag ends. */
     previewWidth: (placeListWidth: number) => setUi({ placeListWidth }),
+    /** Extra width in px (negative or positive) while a drag is past a limit. Only on screen. */
+    stretch,
+    setStretch,
+    /** True while the edge springs back after a drag past a limit. */
+    snapping,
+    setSnapping,
     saveWidth: () => update({ placeListWidth: ui.placeListWidth }),
   }
 }

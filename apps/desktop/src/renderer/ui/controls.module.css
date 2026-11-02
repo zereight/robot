@@ -11,6 +11,7 @@
 }
 
 .segmented {
+  position: relative;
   display: inline-flex;
   margin: 0;
   padding: 2px;
@@ -20,8 +21,24 @@
   border: 1px solid var(--c-border);
 }
 
+/* One surface slides under the checked option. It is clipped, so only that option shows it. */
+.thumb {
+  position: absolute;
+  inset: 2px;
+  border-radius: calc(var(--radius-m) - 2px);
+  background: var(--c-selected);
+  clip-path: inset(0 var(--thumb-r, 100%) 0 var(--thumb-l, 0) round calc(var(--radius-m) - 2px));
+  transition: clip-path var(--motion-medium) var(--ease-in-out);
+  pointer-events: none;
+}
+
+.thumb:not([data-ready="true"]) {
+  visibility: hidden;
+}
+
 .segment {
   position: relative;
+  z-index: 1;
   cursor: pointer;
   border: 0;
   background: transparent;
@@ -29,7 +46,7 @@
   border-radius: calc(var(--radius-m) - 2px);
   font-weight: 500;
   color: var(--c-text-muted);
-  transition: background var(--motion-fast) var(--ease-out);
+  transition: color var(--motion-fast) var(--ease-out);
 }
 
 .segment:hover {
@@ -42,7 +59,6 @@
 }
 
 .segment:has(input:checked) {
-  background: var(--c-selected);
   color: var(--c-text);
 }
 
