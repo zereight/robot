@@ -48,6 +48,11 @@ interface MessageRow {
   model: string | null
   created_at: number
   edited_at: number | null
+  /**
+   * The notes that went to Claude Code with this message of the user: the memory items that
+   * related to it then. They are kept so that the next turn sends the same text again.
+   */
+  context: string | null
 }
 
 interface AgentModelRow {
@@ -90,6 +95,8 @@ export interface ChatService {
 const EMIT_EVERY_MS = 50
 const SAVE_EVERY_MS = 500
 const QUOTE_MAX = 500
+/** The line before the notes that the app adds to a message for Claude Code. */
+const NOTES_LEAD = "Notes from the app for this message. The user did not write them:"
 
 /** Copies the files into the `attachments` folder of a workspace. A name that is taken gets a number. */
 export const copyAttachments = (workspace: string, paths: readonly string[]): FilePart[] => {
@@ -265,8 +272,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return row
       }
 
-      /** The conversation so far, as turns for the provider. A reply quotes what it answers. */
-      const buildTurns = (agentId: string, exceptId: string): Turn[] =>
+      /**
+       * The conversation so far, as turns for the provider. A reply quotes what it answers.
+       * With `notes`, a message of the user brings the notes that it had when it was asked.
+       */
+      const buildTurns = (agentId: string, exceptId: string, notes: boolean): Turn[] =>
         rows(agentId)
           .filter((r) => r.id !== exceptId && !(r.author === "agent" && r.status === "failed"))
           .map((r) => {
@@ -282,9 +292,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             const files = messageFiles(toMessage(r))
               .map((f) => `[Attached file: ${f.path}]`)
               .join("\n")
+            const kept =
+              notes && r.author === "user" && r.context ? `\n\n${NOTES_LEAD}\n${r.context}` : ""
             return {
               role: r.author === "user" ? "user" : "assistant",
-              content: quote + [text, files].filter(Boolean).join("\n\n"),
+              content: quote + [text, files].filter(Boolean).join("\n\n") + kept,
             }
           })
 
@@ -366,6 +378,17 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             return yield* new AppError({ code: "provider_not_connected" })
           }
           const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
+          // Claude Code reads the start of a request from the cache of the model, but only when
+          // that start is the same as in the turn before. What the app tells it about this
+          // message therefore goes with the message, and is kept with it, and not into the
+          // instructions, which come first in the request and would change at each message.
+          const withNotes = providers.runtimeKind(agent.model_account_id) === "claude_code"
+          const notes =
+            remembered.length > 0
+              ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
+              : ""
+          if (withNotes && lastUser)
+            db.run("UPDATE message SET context = ? WHERE id = ?", notes || null, lastUser.id)
           const known = knowledge.prompt(
             agentId,
             asked ? messageText(asked) : "",
@@ -374,9 +397,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const system = [
             agent.instructions,
             `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
-            remembered.length > 0
-              ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
-              : "",
+            withNotes ? "" : notes,
             known ?? "",
           ]
             .filter(Boolean)
@@ -427,7 +448,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               model: agent.model_name,
               effort: agent.model_effort,
               system,
-              turns: buildTurns(agentId, reply.id),
+              turns: buildTurns(agentId, reply.id, withNotes),
               tools: tools.defs({
                 memory: agent.memory_enabled === 1,
                 knowledge: knowledge.enabled(agentId),

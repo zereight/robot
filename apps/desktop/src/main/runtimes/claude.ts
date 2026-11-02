@@ -285,6 +285,10 @@ export const claudeFailure = (text: string, resetsAt: number | null): ProviderFa
 
 const TAIL = 2000
 
+/** The message of a turn: one text block for each block of the chat. */
+export const claudeContent = (run: RuntimeRun) =>
+  (run.blocks ?? [run.prompt]).map((text) => ({ type: "text", text }))
+
 export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
   const child = spawn(run.bin, claudeArgs(run), {
@@ -321,7 +325,7 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   let rejected = false
   let result: Extract<Mapped, { kind: "result" }> | undefined
   try {
-    send({ type: "user", message: { role: "user", content: run.prompt } })
+    send({ type: "user", message: { role: "user", content: claudeContent(run) } })
     for await (const line of lines) {
       if (!line.trim()) continue
       let message: unknown

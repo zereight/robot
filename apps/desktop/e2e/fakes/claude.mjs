@@ -96,13 +96,19 @@ const delta = (text) =>
     event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
   })
 
-async function turn(prompt) {
+// The message is a text, or a list of text blocks, as the real program takes both.
+async function turn(content) {
+  const blocks = Array.isArray(content)
+    ? content.map((b) => String(b.text ?? ""))
+    : [String(content)]
+  const prompt = blocks.join("\n\n")
   appendFileSync(
     callsFile,
     `${JSON.stringify({
       args,
       cwd: process.cwd(),
       prompt,
+      blocks,
       hasApiKey: Boolean(process.env.ANTHROPIC_API_KEY),
     })}\n`,
   )
@@ -159,7 +165,12 @@ async function turn(prompt) {
     })
     delta(allowed ? "It ran." : "It was denied.")
   } else {
-    const last = String(prompt).split("\n").at(-1)
+    // The text of the last message of the user, without its label and without the notes.
+    const last = (blocks.at(-1) ?? "")
+      .split("\n\nNotes from the app")[0]
+      .split("\n")
+      .at(-1)
+      .replace(/^User: /, "")
     delta("Echo: ")
     await sleep(30)
     delta(last)

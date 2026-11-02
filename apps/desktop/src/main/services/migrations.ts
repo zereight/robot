@@ -246,4 +246,7 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX knowledge_change_agent ON knowledge_change (agent_id, at);
   `,
+  `
+  ALTER TABLE message ADD COLUMN context TEXT;
+  `,
 ]

@@ -68,10 +68,23 @@ describe("claude program", () => {
     } finally {
       delete process.env.ANTHROPIC_API_KEY
     }
-    const call = fake.claudeCalls().at(-1) as { args: string[]; prompt: string; hasApiKey: boolean }
+    const call = fake.claudeCalls().at(-1) as {
+      args: string[]
+      prompt: string
+      blocks: string[]
+      hasApiKey: boolean
+    }
     expect(call.prompt).toBe("Which key?")
+    // Without blocks, the prompt is the one block.
+    expect(call.blocks).toEqual(["Which key?"])
     expect(call.hasApiKey).toBe(false)
     expect(call.args[call.args.indexOf("--model") + 1]).toBe("opus")
+  })
+
+  test("the chat goes to the program as one text block for each message", async () => {
+    await collect(runClaude(base(fake.claude, { blocks: ["first block", "second block"] })))
+    const call = fake.claudeCalls().at(-1) as { blocks: string[] }
+    expect(call.blocks).toEqual(["first block", "second block"])
   })
 
   test("a step that needs approval waits for the answer; yes lets it run", async () => {

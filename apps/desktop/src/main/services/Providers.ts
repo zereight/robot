@@ -11,7 +11,7 @@ import { Context, Effect, Layer } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
 import { type Connection, keepEffort, listModels, ProviderFailure } from "../providers/client.ts"
 import type { TurnHooks, TurnInput } from "../providers/turn.ts"
-import { buildPrompt } from "../runtimes/prompt.ts"
+import { buildBlocks, buildPrompt } from "../runtimes/prompt.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -40,6 +40,8 @@ export interface ProvidersService {
   isConnected(accountId: string): boolean
   /** True when the account is a vendor program (an agent runtime), not an API account. */
   isRuntime(accountId: string): boolean
+  /** Which vendor program answers for the account, or null for an API account. */
+  runtimeKind(accountId: string): RuntimeKind | null
   /** Like `isConnected`, but looks at an agent runtime again when the last look is old. */
   verify(accountId: string): Effect.Effect<boolean>
   /**
@@ -96,6 +98,10 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
       const isRuntime = (id: string) => {
         const row = lookup(id)
         return row ? isRuntimeKind(row.kind) : false
+      }
+      const runtimeKind = (id: string) => {
+        const row = lookup(id)
+        return row && isRuntimeKind(row.kind) ? row.kind : null
       }
       const findRow = (id: string) =>
         Effect.suspend(() => {
@@ -200,6 +206,9 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
             effort: input.effort,
             system: input.system,
             prompt: buildPrompt(input.turns),
+            // Claude Code reads the start of a request from the cache of the model when its
+            // blocks are the same as in the turn before. The other programs get the text.
+            ...(kind === "claude_code" ? { blocks: buildBlocks(input.turns) } : {}),
             workspace: input.workspace,
             permission: input.permission,
             useTools: input.useTools,
@@ -309,6 +318,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
         connection,
         isConnected,
         isRuntime,
+        runtimeKind,
         verify: (id) =>
           Effect.gen(function* () {
             const row = lookup(id)
