@@ -29,7 +29,10 @@ The user knows when an agent needs them or finishes, without watching the window
 - Attention: an approval or question expands the island with the agent face, a short summary
   and buttons to answer or open the app (see "Attention card").
 - The user can turn it off, or show it only for attention.
-- The island shows work and requests of this computer only, not those of a linked server.
+- The island shows work and requests of this computer, and of tasks of the computer that this one
+  syncs with (019). It never shows those of a linked server. An approval of a task that runs on
+  the other computer has no "Always allow" button on the island: only the computer that runs the
+  task can save a rule (007).
 
 ### Detail card
 
