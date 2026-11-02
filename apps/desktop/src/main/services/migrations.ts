@@ -465,6 +465,19 @@ export const migrations: readonly string[] = [
   CREATE UNIQUE INDEX skill_name ON skill (server_id, name_key);
   `,
   `
+  -- The checklist that an import leaves for a new agent or a new workflow (spec 014). It belongs
+  -- to this computer and does not sync.
+  CREATE TABLE import_checklist (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT REFERENCES agent (id) ON DELETE CASCADE,
+    workflow_id TEXT REFERENCES workflow (id) ON DELETE CASCADE,
+    items TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX import_checklist_agent ON import_checklist (agent_id);
+  CREATE INDEX import_checklist_workflow ON import_checklist (workflow_id);
+  `,
+  `
   -- Memory control (spec 008). None of this syncs (spec 019): no dirty trigger is made here, and
   -- the choice of an agent is not a field of the agent that sync carries.
   -- "now" is "Save at once", "ask" is "Ask me first".
