@@ -432,11 +432,12 @@ export const electronPlatform = (): PlatformService => {
       }
       await shell.trashItem(path)
     },
-    isFocused: () =>
-      !(isTestRun && process.env.ROBOT_TEST_UNFOCUSED) &&
-      mainWindow !== undefined &&
-      !mainWindow.isDestroyed() &&
-      mainWindow.isFocused(),
+    isFocused: () => {
+      // A test run shows its window without the focus, so the system focus tells nothing there.
+      // The window counts as focused unless the test asks for the opposite.
+      if (isTestRun) return !process.env.ROBOT_TEST_UNFOCUSED
+      return mainWindow !== undefined && !mainWindow.isDestroyed() && mainWindow.isFocused()
+    },
     notify: (notice, onClick) => {
       if (isTestRun) {
         // A test run never shows a system notification. A test that asks for a log gets one.
@@ -452,6 +453,11 @@ export const electronPlatform = (): PlatformService => {
     showWindow: () => {
       if (!mainWindow || mainWindow.isDestroyed()) return
       if (mainWindow.isMinimized()) mainWindow.restore()
+      if (isTestRun) {
+        // A test run never takes the focus from the user.
+        mainWindow.showInactive()
+        return
+      }
       mainWindow.show()
       mainWindow.focus()
     },
