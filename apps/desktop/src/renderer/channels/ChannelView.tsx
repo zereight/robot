@@ -17,6 +17,7 @@ import { Face } from "../agents/Face.tsx"
 import chat from "../chat/chat.module.css"
 import { formatDay } from "../chat/format.ts"
 import { MessageRow } from "../chat/MessageRow.tsx"
+import { shapeOf } from "../chat/shape.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
@@ -229,7 +230,7 @@ export const ChannelView = (props: { channel: Channel }) => {
   }
   createEffect(
     on(
-      () => [messages.messages.length, messages.messages.at(-1)?.parts] as const,
+      () => [messages.messages.length, shapeOf(messages.messages.at(-1))] as const,
       () => atBottom() && queueMicrotask(scrollToBottom),
     ),
   )

@@ -21,8 +21,9 @@ import {
   redactSecrets,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
-import { unzipSync, zipSync } from "fflate"
+import { unzipSync } from "fflate"
 import { Agents } from "./Agents.ts"
+import { type ArchiveFile, writeZip } from "./archive.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -304,33 +305,45 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
             out.close()
           }
 
-          const entries: Record<string, Uint8Array> = {
-            "README.txt": utf8(README),
-            "meta.json": utf8(
-              JSON.stringify({ format: FORMAT, schema: migrations.length, exportedAt: Date.now() }),
-            ),
-            "robot.db": readFileSync(copy),
-          }
+          // The files are read from the disk one by one while the archive is written, so the data
+          // of the user is never all in memory, and the main process is free for the chats.
+          const entries: ArchiveFile[] = [
+            { name: "README.txt", data: utf8(README) },
+            {
+              name: "meta.json",
+              data: utf8(
+                JSON.stringify({
+                  format: FORMAT,
+                  schema: migrations.length,
+                  exportedAt: Date.now(),
+                }),
+              ),
+            },
+            { name: "robot.db", path: copy },
+          ]
           let files = 0
           for (const server of yield* servers.list) {
             for (const archived of [false, true]) {
               for (const agent of yield* agents.list(server.id, archived)) {
                 const dir = join(agent.workspace, "attachments")
                 for (const name of filesIn(dir)) {
-                  entries[`attachments/${agent.id}/${name}`] = readFileSync(join(dir, name))
+                  entries.push({ name: `attachments/${agent.id}/${name}`, path: join(dir, name) })
                   files++
                 }
                 // Articles are text and lose their keys. Sources are copied as they are.
                 for (const file of knowledgeFiles(agent.workspace)) {
-                  entries[`knowledge/${agent.id}/${file.rel}`] = file.article
-                    ? utf8(redactSecrets(file.data.toString("utf8"), known))
-                    : file.data
+                  entries.push({
+                    name: `knowledge/${agent.id}/${file.rel}`,
+                    data: file.article
+                      ? utf8(redactSecrets(file.data.toString("utf8"), known))
+                      : file.data,
+                  })
                   files++
                 }
               }
             }
           }
-          writeFileSync(target, zipSync(entries, { level: 6 }))
+          yield* Effect.promise(() => writeZip(target, entries))
           return { path: target, files }
         } finally {
           rmSync(work, { recursive: true, force: true })

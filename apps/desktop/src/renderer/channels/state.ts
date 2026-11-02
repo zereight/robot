@@ -33,10 +33,15 @@ export const createChannelChat = (
       })
   const offMessage = window.robot.on("channel.message", (message, from) => {
     if (message.channelId !== channelId || !isForView(server(), from)) return
-    setState(
-      "messages",
-      produce((list) => placeMessage(list, message)),
-    )
+    // A message that is there is updated field by field, so the row and the parts of a reply
+    // that streams stay. A new message goes to the place that its time says.
+    const index = state.messages.findIndex((m) => m.id === message.id)
+    if (index >= 0) setState("messages", index, reconcile(message, { key: "id", merge: true }))
+    else
+      setState(
+        "messages",
+        produce((list) => placeMessage(list, message)),
+      )
   })
   const offRemoved = window.robot.on("channel.removed", (event, from) => {
     if (event.channelId === channelId && isForView(server(), from))

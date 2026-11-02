@@ -29,11 +29,18 @@ export const createChat = (agentId: string, server: () => ViewServer = () => und
     cut: null,
   })
 
-  const upsert = (message: ChatMessage) =>
-    setState(
-      "messages",
-      produce((list) => placeMessage(list, message)),
-    )
+  // A message that is there is updated field by field, not replaced. The row and the parts of a
+  // reply that streams then stay, and only the text that grew is drawn again. A new message goes
+  // to the place that its time says.
+  const upsert = (message: ChatMessage) => {
+    const index = state.messages.findIndex((m) => m.id === message.id)
+    if (index >= 0) setState("messages", index, reconcile(message, { key: "id", merge: true }))
+    else
+      setState(
+        "messages",
+        produce((list) => placeMessage(list, message)),
+      )
+  }
 
   const mine = (id: string, from: ViewServer) => id === agentId && isForView(server(), from)
   const offMessage = window.robot.on("chat.message", (message, from) => {
