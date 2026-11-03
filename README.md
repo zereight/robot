@@ -9,7 +9,7 @@
 [![CI](https://github.com/zereight/robot/actions/workflows/ci.yml/badge.svg)](https://github.com/zereight/robot/actions/workflows/ci.yml)
 [![Release](https://github.com/zereight/robot/actions/workflows/release.yml/badge.svg)](https://github.com/zereight/robot/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
+![Platforms](https://img.shields.io/badge/platform-macOS%20(Apple%20silicon)-lightgrey)
 
 English · 한국어 interface
 
@@ -72,10 +72,9 @@ Get the latest build from [Releases](https://github.com/zereight/robot/releases)
 
 | Platform | File |
 | --- | --- |
-| macOS, Apple silicon | `ROBot-<version>-mac-arm64.dmg` |
-| macOS, Intel | `ROBot-<version>-mac-x64.dmg` |
-| Windows x64 | `ROBot-<version>-win-x64.exe` |
-| Linux x64 | `ROBot-<version>-linux-x86_64.AppImage` or `-linux-amd64.deb` |
+| macOS, Apple silicon (M1 or later) | `ROBot-<version>-mac-arm64.dmg` |
+
+There is no app for an Intel Mac, for Windows or for Linux.
 
 Each release has a `SHA256SUMS.txt` file. Check a download with
 `shasum -a 256 -c SHA256SUMS.txt --ignore-missing`.
@@ -84,18 +83,12 @@ Each release has a `SHA256SUMS.txt` file. Check a download with
 
 - macOS: Control-click the app and choose **Open** the first time, or run
   `xattr -dr com.apple.quarantine /Applications/ROBot.app`.
-- Windows: if SmartScreen warns, choose **More info**, then **Run anyway**.
 
 ### Where your data is
 
-| System | Folder |
-| --- | --- |
-| macOS | `~/Library/Application Support/ROBot` |
-| Windows | `%APPDATA%\ROBot` |
-| Linux | `~/.config/ROBot` |
+`~/Library/Application Support/ROBot`
 
-API keys are not in this folder. They are in the macOS Keychain, the Windows Credential Manager,
-or the Secret Service on Linux.
+API keys are not in this folder. They are in the macOS Keychain.
 
 ## Screenshots
 
@@ -114,8 +107,7 @@ The end-to-end tests make these pictures from the real app.
 
 - [Bun](https://bun.sh) 1.4 or later
 - Node.js 24 (only for Playwright)
-- macOS, Windows or Linux. Linux needs the Electron system libraries and a Secret Service
-  (for example `gnome-keyring`).
+- A Mac with Apple silicon (M1 or later)
 
 ### Commands
 
@@ -187,7 +179,7 @@ docs/                Spec questions, provenance, release process
 | --- | --- | --- |
 | Unit | `bun test` | Services against an in-memory database, SSE parsing, provider requests, schemas, contrast of every theme colour (WCAG 4.5:1), catalogue parity, licence list |
 | End to end | Playwright with Electron | The real app against a local mock provider: every M1 flow, restarts, both languages, narrow windows, motion limits |
-| Packaged | Same suite, `ROBOT_E2E_APP` | The installed app on macOS arm64 and x64, Windows x64 and Linux x64 |
+| Packaged | Same suite, `ROBOT_E2E_APP` | The installed app on macOS arm64 |
 
 End-to-end runs write screenshots, a report and a motion video under `build/e2e`. CI keeps them
 as an artifact for each run.

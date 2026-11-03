@@ -7,9 +7,9 @@ Role: Implementer. This page describes how ROBot desktop builds are made and pub
 | Platform | Files | Signature |
 | --- | --- | --- |
 | macOS Apple silicon | `ROBot-<v>-mac-arm64.dmg`, `.zip` | Ad-hoc (no Developer ID yet) |
-| macOS Intel | `ROBot-<v>-mac-x64.dmg`, `.zip` | Ad-hoc |
-| Windows x64 | `ROBot-<v>-win-x64.exe` (installer) | None |
-| Linux x64 | `ROBot-<v>-linux-x86_64.AppImage`, `ROBot-<v>-linux-amd64.deb` | None |
+
+The desktop app is for Macs with Apple silicon only (specs/000-product.md). There is no build for
+an Intel Mac, for Windows or for Linux.
 
 `SHA256SUMS.txt` lists a checksum for each file.
 
@@ -22,10 +22,9 @@ Role: Implementer. This page describes how ROBot desktop builds are made and pub
 3. The **Release** workflow runs:
    - `verify`: the tag must equal the version in `apps/desktop/package.json`; then lint, typecheck
      and unit tests.
-   - `package`: starts at the same time as `verify`. It builds on four runners (macOS arm64,
-     macOS x64, Windows x64, Linux x64) and runs the whole end-to-end suite against each packaged
-     app.
-   - `release`: starts only when `verify` and all four `package` jobs pass. It makes a **draft**
+   - `package`: starts at the same time as `verify`. It builds on one Apple silicon runner and
+     runs the whole end-to-end suite against the packaged app.
+   - `release`: starts only when `verify` and `package` pass. It makes a **draft**
      release with the files, checksums and generated notes. A version with `-` is marked as a
      pre-release.
 
@@ -39,8 +38,8 @@ A failed run makes no release. Fix the cause on `main`, delete the tag
 
 ## Dry run
 
-Actions > Release > Run workflow builds and tests all four apps and keeps them as workflow
-artifacts for 14 days. It makes no release. A PR that changes the packaging files runs the same
+Actions > Release > Run workflow builds and tests the app and keeps it as a workflow artifact
+for 14 days. It makes no release. A PR that changes the packaging files runs the same
 dry run.
 
 ## Local build
@@ -52,7 +51,6 @@ against it: `cd apps/desktop && ROBOT_E2E_APP="$(bun scripts/packaged-path.ts)" 
 
 - macOS: the app is not notarized. Open it once with Control-click > Open, or run
   `xattr -dr com.apple.quarantine /Applications/ROBot.app`.
-- Windows: SmartScreen may warn. Choose More info > Run anyway.
 
 ## Later
 
