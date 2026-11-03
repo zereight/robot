@@ -435,7 +435,7 @@ describe("the mark goes to later turns of the same place", () => {
     expect((await s.marks(agentPlace(s))).outside?.program).toBe(true)
   })
 
-  test("a thread that holds the mark keeps it for its own next turns, and Clear is for that place only", async () => {
+  test("a message from Teams goes to the main thread, so a thread of the agent holds no mark", async () => {
     const s = await setup("full")
     const thread = await s.run(Chat.use((c) => c.createThread(s.ada.id)))
     const here: MarkPlace = { kind: "thread", id: thread.id }
