@@ -1,0 +1,17 @@
+{
+  "name": "@robot/teams-bridge",
+  "private": true,
+  "type": "module",
+  "description": "A separate program for the user's own computer. It reads one Teams chat in a browser where the user signed in, and answers in it. It is not part of the app. It uses the outside program helper (spec 023) from milestone M1 on.",
+  "license": "MIT",
+  "scripts": {
+    "login": "bun src/cli.ts login",
+    "inspect": "bun src/cli.ts inspect",
+    "watch": "bun src/cli.ts watch",
+    "echo": "bun src/cli.ts echo",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "playwright-core": "^1.64.1"
+  }
+}

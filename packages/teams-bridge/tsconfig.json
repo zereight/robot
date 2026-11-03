@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The page callbacks of Playwright run in a browser, so they need the DOM types.
+    "lib": ["ES2023", "DOM"],
+    "types": ["bun"]
+  },
+  "include": ["src"]
+}
