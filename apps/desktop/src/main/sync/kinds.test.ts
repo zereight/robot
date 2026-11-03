@@ -266,6 +266,22 @@ const source = async () => {
     NOW,
     NOW,
   )
+  // A thread with a fork origin, and the line "Compacted" in it (spec 003, 019).
+  sql(
+    "INSERT INTO thread (id, agent_id, title, titled, created_at, archived_at, fork_thread_id, fork_message_id) VALUES ('th-1', ?, 'Plan', 1, ?, NULL, NULL, 'msg-1')",
+    ada.id,
+    NOW,
+  )
+  sql(
+    "INSERT INTO message (id, agent_id, thread_id, author, parts, status, created_at, finished_at) VALUES ('msg-2', ?, 'th-1', 'agent', ?, 'done', ?, ?)",
+    ada.id,
+    JSON.stringify([
+      { kind: "compacted", summary: "Short summary", at: NOW, auto: true },
+      { kind: "note", note: "compact_failed", code: "provider_error" },
+    ]),
+    NOW,
+    NOW,
+  )
   sql(
     "INSERT INTO channel_message (id, channel_id, author, agent_id, kind, parts, status, created_at, finished_at) VALUES ('cm-1', ?, 'agent', ?, 'text', ?, 'done', ?, ?)",
     channel.id,
