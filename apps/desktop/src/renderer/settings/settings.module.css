@@ -223,3 +223,9 @@
 .number[aria-invalid="true"] {
   border-color: var(--c-danger);
 }
+
+/* A button beside a row of text keeps its label on one line. */
+.noWrap {
+  white-space: nowrap;
+  flex-shrink: 0;
+}

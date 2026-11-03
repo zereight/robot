@@ -1,6 +1,7 @@
 import type { AgentFileImported, AgentFilePreview } from "./agentFile.ts"
 import type { InstructionVersion, SettingsLineState } from "./agentSettings.ts"
 import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
+import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
 import type {
   Channel,
   ChannelActivity,
@@ -200,6 +201,23 @@ export interface RpcMethods {
   "sections.move": { input: { id: string; direction: MoveDirection }; output: undefined }
   /** Deletes the section. Its places move to "No section"; none is deleted. */
   "sections.delete": { input: { id: string }; output: undefined }
+  /** The browser profiles of this computer, each with the agents that use it. */
+  "browserProfiles.list": { input: undefined; output: readonly BrowserProfile[] }
+  "browserProfiles.create": { input: BrowserProfileCreate; output: BrowserProfile }
+  "browserProfiles.rename": { input: { id: string; name: string }; output: BrowserProfile }
+  /**
+   * Deletes a profile and the browser data it holds. Its agents go back to their own data. Pages
+   * that use it close. A linked device cannot call it.
+   */
+  "browserProfiles.delete": { input: { id: string }; output: undefined }
+  /**
+   * Gives an agent a browser profile, or its own data again (`profileId` null). An open page of
+   * the agent closes. It is refused while the user holds the browser of the agent.
+   */
+  "browserProfiles.assign": {
+    input: { agentId: string; profileId: string | null }
+    output: undefined
+  }
   "ui.get": { input: undefined; output: UiState }
   "ui.update": { input: UiStatePatch; output: UiState }
   "agents.list": { input: { serverId: string; archived: boolean }; output: readonly Agent[] }
@@ -551,6 +569,8 @@ export interface RpcEvents {
   /** An article, a source or the change list of an agent changed. */
   "knowledge.changed": { agentId: string }
   "browser.changed": { agentId: string }
+  /** A browser profile was made, renamed or deleted, or an agent got another one. */
+  "browserProfiles.changed": Record<string, never>
   /** "Teach a task" started, recorded a step, paused, stopped, made a draft, or ended. */
   "teach.changed": TeachState
   "routines.changed": { serverId: string }

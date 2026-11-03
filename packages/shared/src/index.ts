@@ -1,6 +1,7 @@
 export * from "./agentFile.ts"
 export * from "./agentSettings.ts"
 export * from "./agents.ts"
+export * from "./browserProfiles.ts"
 export * from "./channels.ts"
 export * from "./chat.ts"
 export * from "./check.ts"

@@ -20,6 +20,10 @@ export const testPlatform = () => {
   /** Whether the input of the user was let in or kept out, as "agent:on" or "agent:off". */
   const browserInput: string[] = []
   const pages = new Map<string, BrowserPage>()
+  /** The browser profile that each agent uses now, as the fake platform was told. */
+  const browserProfiles = new Map<string, string>()
+  /** The browser profiles whose saved data was deleted, in order. */
+  const clearedProfiles: string[] = []
   /** The recorders of "Teach a task" that run now, by agent. A test calls one to act as the user. */
   const recorders = new Map<string, (event: TeachEvent) => void>()
   const shell = {
@@ -117,16 +121,46 @@ export const testPlatform = () => {
       pages.set(agentId, page)
       return page
     },
+    setBrowserProfile: (agentId, profileId) => {
+      const before = browserProfiles.get(agentId)
+      if (profileId === undefined) browserProfiles.delete(agentId)
+      else browserProfiles.set(agentId, profileId)
+      if (before !== profileId) pages.get(agentId)?.close()
+    },
+    clearBrowserProfile: async (profileId) => {
+      clearedProfiles.push(profileId)
+    },
   }
-  return { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, recorders, shell }
+  return {
+    platform,
+    dataDir,
+    trashed,
+    browserLog,
+    browserPlaced,
+    browserInput,
+    browserProfiles,
+    clearedProfiles,
+    recorders,
+    shell,
+  }
 }
 
 /** The full app layer on an in-memory database, with recorded events. */
 export const testRuntime = (
   options: { name?: string; network?: MemoryNetwork; decisionUrl?: string } = {},
 ) => {
-  const { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, recorders, shell } =
-    testPlatform()
+  const {
+    platform,
+    dataDir,
+    trashed,
+    browserLog,
+    browserPlaced,
+    browserInput,
+    browserProfiles,
+    clearedProfiles,
+    recorders,
+    shell,
+  } = testPlatform()
   const events: { event: string; payload: unknown; server?: string }[] = []
   const runtime = ManagedRuntime.make(
     appLayer({
@@ -151,6 +185,8 @@ export const testRuntime = (
     browserLog,
     browserPlaced,
     browserInput,
+    browserProfiles,
+    clearedProfiles,
     recorders,
     shell,
   }
