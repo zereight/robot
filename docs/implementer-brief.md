@@ -19,3 +19,20 @@ Rules:
 - Start with milestone M1. Open one pull request per vertical slice, with an end-to-end test
   that drives the real app and writes a report or screenshot.
 - Add a line to `docs/provenance.md` for each merged change, with role "Implementer".
+
+Before you call a slice done:
+
+- Walk the "Surfaces check" in `specs/README.md` for each change: ways in, devices, runtimes,
+  ways out, seeing the state, data and words. Say in the pull request which lines applied.
+- Use the words of `docs/glossary.md` in interface text, in English and Korean.
+
+Tests:
+
+- Wait for a signal of the app: an event, a stored state, a drawn element, or the end of a queue.
+  Do not wait for a fixed time. A test that passes only with a longer sleep is wrong.
+- Never start the app or a test against the real data folder of the user, and never write to it.
+  Each test makes its own data folder.
+- When a defect needs real data, copy the database into a new test folder while no app has it
+  open, or with a copy method of the database that gives one consistent file. Copy in only. Never
+  link the test folder to the real one, and never copy back.
+- Use stand-in providers. A test sends nothing to a real model account.

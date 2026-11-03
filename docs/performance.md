@@ -45,6 +45,45 @@ the numbers fair, and which numbers can stop a pull request. Choose your own too
 - The times, the CPU use and the memory are for information. They do not fail CI, because shared
   CI computers are not stable.
 
+## Phone app
+
+The phone app (spec 011) has its own plan. It uses the same rules for fair numbers: a release
+build, the same device or simulator, the same system version, and a data folder made for the test
+on the paired computer.
+
+### Setup
+
+- One computer runs ROBot with the fake provider of the setup above, 3 agents, and one direct
+  chat of 500 messages with Markdown, code blocks and tables. The phone pairs with it on the local
+  network.
+- Measure on an iOS simulator and on an Android emulator. Measure on a real phone before a release
+  of the phone app, and say in the report which one gave each number.
+
+### What to measure
+
+| Measure | Start | End |
+| --- | --- | --- |
+| Cold launch | Start of the phone app after a full quit | The list of places is drawn with its unread counts and accepts a tap |
+| Open a chat | Tap on the chat of 500 messages | The newest messages are drawn and the message box accepts input |
+| Scroll | A fling from the newest message to the oldest and back | The time of each frame, and the frames that were late |
+| Streaming | The fake provider sends one part every 50 ms for 10 seconds | The time of each frame while the reply grows, and the parts that were drawn late |
+| Reconnect | The computer goes off the network for 10 seconds and comes back | The phone shows the server as connected and the newest message |
+| Idle | 30 seconds with a chat open and no work | CPU use and memory of the phone app |
+
+- Take 5 samples of each launch and of each open, and report the median and the worst sample.
+- Record a trace of the phone app for each measure with frames. The trace is part of the report.
+
+### Fix loop
+
+1. Record the trace and the report with the label "before".
+2. Mark the frames or the time span that is slow, and say which measure it changes.
+3. Change the code.
+4. Record again with the label "after", under the same setup.
+5. The compare command shows each measure, the two values and the change in percent, as for the
+   desktop app. Attach both reports to the pull request.
+
+- The numbers of the phone app do not fail CI, for the reason given for the desktop app.
+
 ## Times of tasks
 
 The app stores the times of each task (spec 005): wait, first reply and total. The report reads
