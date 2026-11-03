@@ -91,67 +91,73 @@ const ServerRow = (props: { entry: ServerEntry }) => {
   }
 
   return (
-    <li class={styles.item} data-testid="server-row" data-name={props.entry.name}>
-      <div class={styles.itemMain} style={{ flex: 1 }}>
-        <span class={styles.itemName}>{props.entry.name}</span>
-        <span class={styles.itemMeta} data-testid="server-row-state" data-state={props.entry.state}>
-          {stateLine()}
-        </span>
-        <Show
-          when={editing()}
-          fallback={
-            <span class={styles.itemMeta} data-testid="server-row-addresses">
-              {props.entry.addresses.join(", ")}
-            </span>
-          }
-        >
-          <label class={styles.field}>
-            <span class={styles.fieldLabel}>{t("devices.server.addresses")}</span>
-            <textarea
-              class={styles.textarea}
-              value={text()}
-              onInput={(e) => setText(e.currentTarget.value)}
-              data-testid="server-addresses-input"
-            />
-            <span class={styles.hint}>{t("devices.server.addresses.hint")}</span>
-          </label>
-          <Show when={error()}>
-            {(err) => (
-              <p class={styles.error} role="alert" data-testid="server-addresses-error">
-                {t(err().key, err().params)}
-              </p>
-            )}
+    <li class={styles.itemStack} data-testid="server-row" data-name={props.entry.name}>
+      <div class={styles.itemHead}>
+        <div class={styles.itemMain}>
+          <span class={styles.itemName}>{props.entry.name}</span>
+          <span
+            class={styles.itemMeta}
+            data-testid="server-row-state"
+            data-state={props.entry.state}
+          >
+            {stateLine()}
+          </span>
+          <Show
+            when={editing()}
+            fallback={
+              <span class={styles.itemMeta} data-testid="server-row-addresses">
+                {props.entry.addresses.join(", ")}
+              </span>
+            }
+          >
+            <label class={styles.field}>
+              <span class={styles.fieldLabel}>{t("devices.server.addresses")}</span>
+              <textarea
+                class={styles.textarea}
+                value={text()}
+                onInput={(e) => setText(e.currentTarget.value)}
+                data-testid="server-addresses-input"
+              />
+              <span class={styles.hint}>{t("devices.server.addresses.hint")}</span>
+            </label>
+            <Show when={error()}>
+              {(err) => (
+                <p class={styles.error} role="alert" data-testid="server-addresses-error">
+                  {t(err().key, err().params)}
+                </p>
+              )}
+            </Show>
+            <div class={styles.actions}>
+              <Button variant="primary" onClick={save} data-testid="server-addresses-save">
+                {t("devices.server.save")}
+              </Button>
+              <Button onClick={() => setEditing(false)}>{t("devices.server.cancel")}</Button>
+            </div>
           </Show>
-          <div class={styles.actions}>
-            <Button variant="primary" onClick={save} data-testid="server-addresses-save">
-              {t("devices.server.save")}
-            </Button>
-            <Button onClick={() => setEditing(false)}>{t("devices.server.cancel")}</Button>
-          </div>
-        </Show>
+        </div>
         <Show when={!editing()}>
-          <SyncRow linkId={props.entry.id} name={props.entry.name} state={props.entry.state} />
+          <div class={styles.actions}>
+            <Button
+              onClick={() => {
+                setText(props.entry.addresses.join("\n"))
+                setError(undefined)
+                setEditing(true)
+              }}
+              data-testid="server-edit"
+            >
+              {t("devices.server.edit")}
+            </Button>
+            <Button
+              onClick={() => call("devices.server.remove", { id: props.entry.id })}
+              data-testid="server-remove"
+            >
+              {t("devices.server.remove")}
+            </Button>
+          </div>
         </Show>
       </div>
       <Show when={!editing()}>
-        <div class={styles.actions}>
-          <Button
-            onClick={() => {
-              setText(props.entry.addresses.join("\n"))
-              setError(undefined)
-              setEditing(true)
-            }}
-            data-testid="server-edit"
-          >
-            {t("devices.server.edit")}
-          </Button>
-          <Button
-            onClick={() => call("devices.server.remove", { id: props.entry.id })}
-            data-testid="server-remove"
-          >
-            {t("devices.server.remove")}
-          </Button>
-        </div>
+        <SyncRow linkId={props.entry.id} name={props.entry.name} state={props.entry.state} />
       </Show>
     </li>
   )
