@@ -21,6 +21,9 @@ const PROGRESS = migrations.findIndex((sql) => sql.includes("ALTER TABLE task AD
 const VERDICT = migrations.findIndex((sql) => sql.includes("ALTER TABLE task ADD COLUMN done_test"))
 /** The index of the step that S46 added: message search (spec 001). It follows the sync steps. */
 const MOMENTS = migrations.findIndex((sql) => sql.includes("ALTER TABLE task ADD COLUMN ended_at"))
+const AGENT_MESSAGE = migrations.findIndex((sql) =>
+  sql.includes("ALTER TABLE task ADD COLUMN agent_message"),
+)
 const SEARCH = migrations.findIndex((sql) => sql.includes("CREATE VIRTUAL TABLE message_fts"))
 
 const upTo = (count: number) => {
@@ -867,5 +870,50 @@ describe("the migration for the review of connection tools (spec 018)", () => {
     expect(
       db.prepare("SELECT reviewed, review_adopt FROM tool_connection WHERE id = 'new'").get(),
     ).toEqual({ reviewed: "[]", review_adopt: 0 })
+  })
+})
+
+describe("the step of the mark of a message from another agent", () => {
+  const server = `
+    INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+    INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+      workspace, section, knowledge_enabled, created_at, updated_at)
+      VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 0, 1, 1);
+  `
+
+  test("it only adds one nullable column, once, after the step of the moments", () => {
+    expect(AGENT_MESSAGE).toBeGreaterThan(MOMENTS)
+    expect(migrations.filter((sql) => sql.includes("ADD COLUMN agent_message"))).toHaveLength(1)
+    const sql = migrations[AGENT_MESSAGE] ?? ""
+    expect(sql).not.toMatch(/DROP|DELETE|UPDATE |NOT NULL/i)
+    expect(sql).toContain("ALTER TABLE task ADD COLUMN agent_message TEXT;")
+  })
+
+  test("a task from before it keeps its row, with no mark", () => {
+    const db = upTo(AGENT_MESSAGE)
+    db.exec(server)
+    db.exec(`
+      INSERT INTO task (id, agent_id, prompt, label, source, source_id, state, created_at)
+        VALUES ('t', 'a', 'old', 'old', 'agent', 'a', 'done', 1);
+    `)
+    db.exec(migrations[AGENT_MESSAGE] as string)
+    expect(db.prepare("SELECT id, source, state, agent_message FROM task").all()).toEqual([
+      { id: "t", source: "agent", state: "done", agent_message: null },
+    ])
+  })
+
+  test("a task with a mark marks itself for sync, in a sync pair", () => {
+    const db = upTo(AGENT_MESSAGE + 1)
+    db.exec(server)
+    db.exec(`
+      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+    `)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec(`
+      INSERT INTO task (id, agent_id, prompt, label, source, source_id, state, created_at, agent_message)
+        VALUES ('t', 'a', 'x', 'x', 'agent', 'a', 'queued', 1, 'send');
+    `)
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([{ kind: "task", id: "t" }])
   })
 })

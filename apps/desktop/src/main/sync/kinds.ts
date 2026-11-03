@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
+  AGENT_MESSAGE_KINDS,
   AGENT_NAME_MAX,
   AGENT_ROLE_MAX,
   CHANNEL_NAME_MAX,
@@ -1464,6 +1465,7 @@ interface TaskRow {
   ended_as: string | null
   decision: string | null
   decision_text: string | null
+  agent_message: string | null
 }
 
 const task: KindDef = {
@@ -1505,6 +1507,9 @@ const task: KindDef = {
     endedAs: { check: nullable(oneOf(ENDED_AS)) },
     decision: { check: nullable(oneOf(DECISIONS)) },
     decisionText: { check: nullable(str(REVIEW_CHANGES_MAX * 2)) },
+    // A send or a reply of a message from another agent (spec 029, 019). It is set when the task
+    // is made. A computer of an older step has none: the task is then not counted as a hand-off.
+    agentMessage: { check: nullable(oneOf(AGENT_MESSAGE_KINDS)) },
   },
   required: [
     "agentId",
@@ -1544,6 +1549,7 @@ const task: KindDef = {
     "askedAt",
     "origin",
     "doneTest",
+    "agentMessage",
   ],
   count: (db) => q.count(db, "task"),
   ids: (db, after, limit) => q.ids(db, "task", after, limit),
@@ -1578,6 +1584,7 @@ const task: KindDef = {
         endedAs: r.ended_as,
         decision: r.decision,
         decisionText: r.decision_text,
+        agentMessage: r.agent_message,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: r.finished_at ?? r.started_at ?? r.created_at,
@@ -1615,6 +1622,7 @@ const task: KindDef = {
       ended_as: f.endedAs ?? null,
       decision: f.decision ?? null,
       decision_text: f.decisionText ?? null,
+      agent_message: f.agentMessage ?? null,
     })
     return true
   },

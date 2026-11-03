@@ -22,6 +22,7 @@ import { KeepAwake } from "./services/KeepAwake.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
+import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
@@ -135,7 +136,8 @@ export const appLayer = (options: AppLayerOptions) => {
   )
   const places = Places.layer.pipe(Layer.provideMerge(teamsLink))
   const today = Today.layer.pipe(Layer.provideMerge(places))
-  const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(today))
+  const orgChart = OrgChart.layer.pipe(Layer.provideMerge(today))
+  const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(orgChart))
   const workflowFiles = WorkflowFiles.layer.pipe(Layer.provideMerge(agentFiles))
   const remote = Remote.layer.pipe(Layer.provideMerge(workflowFiles))
   const data = Data.layer.pipe(Layer.provideMerge(remote))

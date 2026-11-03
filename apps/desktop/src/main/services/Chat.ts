@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs"
 import { basename, extname, join } from "node:path"
 import {
+  type AgentMessageKind,
   type AgentModel,
   ATTACH_BYTES,
   ATTACH_MAX,
@@ -195,6 +196,11 @@ export interface TaskOrigin {
   readonly prompt?: string
   /** The agent that asked. The reply of this task goes back to it as a new message (spec 007). */
   readonly requester?: string
+  /**
+   * Whether a message of the source "agent" is a send or the reply that comes back to the sender.
+   * The task keeps it (spec 029). A retry of a task has none.
+   */
+  readonly agentMessage?: AgentMessageKind
   /** The task that this one tries again (a Retry of a routine run). */
   readonly retryOf?: string
   /**
@@ -932,6 +938,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               depth: taskDepth({ kind: "message", depth: tasks.depthOf(task.id) }),
               prompt: text,
               returning: true,
+              agentMessage: "reply",
             },
           ).pipe(Effect.ignore)
         })
@@ -1017,6 +1024,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 ? (askedAt ?? null)
                 : null,
             ...(origin?.depth !== undefined ? { depth: origin.depth } : {}),
+            ...(origin?.agentMessage ? { agentMessage: origin.agentMessage } : {}),
           }))
         const depth = tasks.depthOf(task.id)
         if (!resumed) {
@@ -2735,6 +2743,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 depth: taskDepth({ kind: "message", depth: from.depth }),
                 prompt: text,
                 requester: from.agentId,
+                agentMessage: "send",
               },
             ),
           )
