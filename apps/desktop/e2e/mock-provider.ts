@@ -73,12 +73,37 @@ const plan = (body: ChatBody): Plan => {
       .split("\n")
       .at(-1) ?? ""
   const pause = Number(/pause (\d+)ms/.exec(text)?.[1] ?? 0)
-  return { ...answer(body), pause }
+  const planned = answer(body)
+  return { ...planned, pause: planned.pause ?? pause }
 }
 
 const answer = (body: ChatBody): Plan => {
   const last = body.messages.at(-1)?.content ?? ""
   const text = last.split("\n").at(-1) ?? ""
+  // "Make a skill" from work (spec 017): the system text says so. The draft depends on the work.
+  // "FAILDRAFT" in the work fails the first request for that work; "SLOWDRAFT" answers late.
+  if (String(body.messages[0]?.content ?? "").includes("You write a reusable skill from work")) {
+    if (last.includes("FAILDRAFT") && !failedOnce.has(last)) {
+      failedOnce.add(last)
+      return { status: 500 }
+    }
+    const [name, description] = last.includes("an article that an agent wrote")
+      ? ["Release steps", "When the user wants to ship a release"]
+      : last.includes("a fact that an agent keeps")
+        ? ["Linter first", "When the user wants to commit code"]
+        : ["Weekly report", "When the user wants the weekly report"]
+    return {
+      chunks: [
+        JSON.stringify({
+          name,
+          description,
+          instructions: `1. Do the work of ${name}.\n2. Check the result.\nAsk the user before you delete anything.`,
+        }),
+      ],
+      delay: 0,
+      pause: last.includes("SLOWDRAFT") ? 2500 : 0,
+    }
+  }
   // "Teach a task": the model writes a draft skill from the steps. A result that holds "fail
   // draft" fails once, so the card shows "Try again".
   if (text === "Reply with the JSON object only.") {
@@ -336,7 +361,12 @@ export interface SentPart {
   readonly at: number
 }
 
-const openAiReply = async (res: ServerResponse, body: ChatBody, sent: SentPart[]) => {
+const openAiReply = async (
+  res: ServerResponse,
+  body: ChatBody,
+  sent: SentPart[],
+  dropped: string[],
+) => {
   const calls = toolCalls(body)
   if (calls.length > 0) {
     res.writeHead(200, { "content-type": "text/event-stream" })
@@ -390,6 +420,12 @@ const openAiReply = async (res: ServerResponse, body: ChatBody, sent: SentPart[]
     return
   }
   const p = plan(body)
+  // A draft request that waits, and that the app closes: the app dropped it (spec 017).
+  if (p.pause && String(body.messages[0]?.content ?? "").includes("You write a reusable skill")) {
+    res.on("close", () => {
+      if (!res.writableEnded) dropped.push(String(body.messages.at(-1)?.content ?? ""))
+    })
+  }
   if (p.status === 429) {
     res.writeHead(429, { "content-type": "application/json", "retry-after": "120" })
     return res.end(JSON.stringify({ error: { message: "rate limited" } }))
@@ -461,6 +497,8 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
 export const startMockProvider = async () => {
   const requests: RecordedRequest[] = []
   const sent: SentPart[] = []
+  /** The draft requests that the app closed before the answer came (spec 017). */
+  const dropped: string[] = []
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost")
     const body = await readBody(req)
@@ -508,7 +546,8 @@ export const startMockProvider = async () => {
         ],
       })
     }
-    if (url.pathname === "/v1/chat/completions") return openAiReply(res, body as ChatBody, sent)
+    if (url.pathname === "/v1/chat/completions")
+      return openAiReply(res, body as ChatBody, sent, dropped)
     if (url.pathname === "/anthropic/v1/messages") return anthropicReply(res, body as ChatBody)
     json(res, 404, { error: { message: "not found" } })
   })
@@ -519,6 +558,7 @@ export const startMockProvider = async () => {
     anthropicUrl: `http://127.0.0.1:${port}/anthropic`,
     requests,
     sent,
+    dropped,
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => resolve())
