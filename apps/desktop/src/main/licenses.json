@@ -5,11 +5,6 @@
     "license": "MIT"
   },
   {
-    "name": "@napi-rs/keyring",
-    "version": "2.1.2",
-    "license": "MIT"
-  },
-  {
     "name": "@noble/ciphers",
     "version": "2.4.0",
     "license": "MIT"

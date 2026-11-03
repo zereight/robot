@@ -2,7 +2,13 @@ use std::io;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let context = match robot_host::parse_args(std::env::args().skip(1)) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // A short command of the main process: one keychain read or write, then the end.
+    if args.first().map(String::as_str) == Some("secrets") {
+        let code = robot_host::secrets::run(&args[1..], io::stdin(), io::stdout(), io::stderr());
+        return ExitCode::from(code);
+    }
+    let context = match robot_host::parse_args(args) {
         Ok(context) => context,
         Err(message) => {
             eprintln!("robot-host: {message}");
