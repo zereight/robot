@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import type { ChannelMessage } from "@robot/shared"
 import { Agents } from "./Agents.ts"
-import { Channels } from "./Channels.ts"
+import { Channels, SUMMARY_RULE } from "./Channels.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
@@ -287,6 +287,8 @@ describe("blocked parts", () => {
     const ask = requests.find((r) => r.all.includes("All parts have ended"))
     expect(ask?.all).toContain("Repo (Cy): blocked (reason: no access to the repository)")
     expect(ask?.all).toContain("If a part was blocked, name the part and give its reason.")
+    // The summary gives what the user can use, short, and not how the work was done (spec 004).
+    expect(ask?.all).toContain(SUMMARY_RULE)
   })
 
   test("a blocked part is final: the lead does not wait for it", async () => {
