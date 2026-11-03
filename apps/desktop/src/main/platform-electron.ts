@@ -22,6 +22,7 @@ import {
   WebContentsView,
 } from "electron"
 import type { BrowserPage, PageBounds, PlatformService } from "./services/Platform.ts"
+import { createTeamsSurface, TEAMS_PAGE_KEY, type TeamsSurface } from "./teams/surface.ts"
 import { type Resolver, systemResolver } from "./web/fetch.ts"
 import { fitPage, PAGE_VIEW } from "./web/pageFit.ts"
 import { pageUserAgent } from "./web/userAgent.ts"
@@ -387,6 +388,7 @@ const electronBrowser = (agentId: string): BrowserPage => {
         text: text.slice(0, PAGE_TEXT_MAX),
       }
     },
+    evaluate: <T>(code: string) => run<T>(code),
     click: async (selector) => {
       const found = await run<boolean>(
         `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.click(); return true })()`,
@@ -539,6 +541,22 @@ const fitIsland = (size: { width: number; height: number }) => {
 export const electronPlatform = (): PlatformService => {
   const dataDir = app.getPath("userData")
   mkdirSync(dataDir, { recursive: true })
+  let teamsSurface: TeamsSurface | undefined
+  const pageOf = (agentId: string): BrowserPage => {
+    const known = browsers.get(agentId)
+    if (known) return known
+    const page = electronBrowser(agentId)
+    browsers.set(agentId, page)
+    return page
+  }
+  const platformSetBrowserProfile = (agentId: string, profileId: string | undefined) => {
+    const before = partitionOf(agentId)
+    if (profileId === undefined) browserProfiles.delete(agentId)
+    else browserProfiles.set(agentId, profileId)
+    // The page that is open keeps the data it began with, so it closes. The next page of the
+    // agent opens on the new data.
+    if (partitionOf(agentId) !== before) browsers.get(agentId)?.close()
+  }
   return {
     appName: app.getName(),
     appVersion: app.getVersion(),
@@ -728,21 +746,14 @@ export const electronPlatform = (): PlatformService => {
     },
     setIslandShape,
     fitIsland,
-    browser: (agentId) => {
-      const known = browsers.get(agentId)
-      if (known) return known
-      const page = electronBrowser(agentId)
-      browsers.set(agentId, page)
-      return page
+    browser: pageOf,
+    teams: () => {
+      // The Teams page is a page like the browser of an agent, with a key that no agent has.
+      teamsSurface ??= createTeamsSurface(pageOf(TEAMS_PAGE_KEY))
+      return teamsSurface
     },
-    setBrowserProfile: (agentId, profileId) => {
-      const before = partitionOf(agentId)
-      if (profileId === undefined) browserProfiles.delete(agentId)
-      else browserProfiles.set(agentId, profileId)
-      // The page that is open keeps the data it began with, so it closes. The next page of the
-      // agent opens on the new data.
-      if (partitionOf(agentId) !== before) browsers.get(agentId)?.close()
-    },
+    setTeamsProfile: (profileId) => platformSetBrowserProfile(TEAMS_PAGE_KEY, profileId),
+    setBrowserProfile: platformSetBrowserProfile,
     clearBrowserProfile: async (profileId) => {
       const data = session.fromPartition(`persist:browser-${profileId}`)
       await data.clearStorageData()
