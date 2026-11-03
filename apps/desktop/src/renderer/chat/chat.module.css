@@ -312,6 +312,19 @@
   font-size: var(--text-xs);
 }
 
+.lineButton {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--c-accent);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.lineButton:hover {
+  text-decoration: underline;
+}
+
 .pulse {
   width: 6px;
   height: 6px;

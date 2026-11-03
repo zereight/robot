@@ -29,6 +29,10 @@ export const en = {
   "settings.stepLimit.hint":
     "A task stops as failed when it takes this many steps. Use a whole number from 20 to 2000.",
   "settings.stepLimit.invalid": "Use a whole number from 20 to 2000.",
+  "settings.agentsAtOnce": "Agents working at once",
+  "settings.agentsAtOnce.hint":
+    "How many tasks can run at the same time. Other tasks wait in the queue.",
+  "settings.agentsAtOnce.invalid": "Use a whole number from 1 to 8.",
 
   "settings.theme": "Theme",
   "settings.theme.system": "Follow the system",
@@ -491,7 +495,9 @@ export const en = {
   "chat.today": "Today",
   "chat.yesterday": "Yesterday",
   "chat.messages": "Messages",
-  "error.queue_full": "Too many messages are waiting. Wait for the agent or remove one.",
+  "error.queue_full": "10 messages wait. Remove one or wait.",
+  "error.tasks_full": "{detail} has 20 tasks that wait. Try again later.",
+  "error.task_not_queued": "Only a queued task can run next.",
   "error.cannot_retry": "Only the last failed reply can be tried again.",
   "error.cannot_edit": "Only your last message can be changed.",
   "error.queue_item_gone": "This message was already sent.",
@@ -566,6 +572,7 @@ export const en = {
   "tasks.error": "Reason",
   "tasks.children": "Parts",
   "tasks.stop": "Stop",
+  "tasks.runNext": "Run next",
   "tasks.retry": "Try again",
   "tasks.openSource": "Open place",
   "tasks.openSource.thread":
@@ -1845,6 +1852,8 @@ export const en = {
   "recent.behind.routine": "Waits behind the routine {name}",
   "recent.behind.workflow": "Waits behind the workflow {name}",
   "recent.behind.agent": "Waits behind a message of another agent",
+  "recent.behind.thread": "Waits for another thread",
+  "recent.behind.slot": "Waits for a free slot. Slots: {count}",
   "recent.behind.computer": "Waits behind the task on {name}",
   "settings.section.decision": "Decision model",
   "decision.hint":

@@ -31,6 +31,10 @@ export const ko: Record<MessageKey, string> = {
   "settings.stepLimit.hint":
     "작업이 이 단계 수에 이르면 실패로 멈춰요. 20에서 2000 사이의 정수를 쓰세요.",
   "settings.stepLimit.invalid": "20에서 2000 사이의 정수를 입력하세요.",
+  "settings.agentsAtOnce": "동시에 일하는 에이전트 수",
+  "settings.agentsAtOnce.hint":
+    "동시에 실행할 수 있는 작업 수예요. 다른 작업은 대기열에서 기다려요.",
+  "settings.agentsAtOnce.invalid": "1에서 8 사이의 정수를 입력하세요.",
 
   "settings.theme": "테마",
   "settings.theme.system": "시스템 설정 따르기",
@@ -491,7 +495,9 @@ export const ko: Record<MessageKey, string> = {
   "chat.today": "오늘",
   "chat.yesterday": "어제",
   "chat.messages": "메시지",
-  "error.queue_full": "기다리는 메시지가 너무 많아요. 에이전트를 기다리거나 메시지를 지워 주세요.",
+  "error.queue_full": "메시지 10개가 기다리고 있어요. 하나를 지우거나 기다려 주세요.",
+  "error.tasks_full": "{detail}에게 기다리는 작업이 20개 있어요. 나중에 다시 해 주세요.",
+  "error.task_not_queued": "대기 중인 작업만 먼저 실행할 수 있어요.",
   "error.cannot_retry": "마지막으로 실패한 답변만 다시 시도할 수 있어요.",
   "error.cannot_edit": "마지막으로 보낸 내 메시지만 수정할 수 있어요.",
   "error.queue_item_gone": "이 메시지는 이미 보냈어요.",
@@ -566,6 +572,7 @@ export const ko: Record<MessageKey, string> = {
   "tasks.error": "사유",
   "tasks.children": "하위 작업",
   "tasks.stop": "중지",
+  "tasks.runNext": "먼저 실행",
   "tasks.retry": "다시 시도",
   "tasks.openSource": "대화 열기",
   "tasks.openSource.thread": "다른 스레드의 작업이에요. 에이전트를 실행하는 컴퓨터에서 여세요.",
@@ -1831,6 +1838,8 @@ export const ko: Record<MessageKey, string> = {
   "recent.behind.routine": "루틴 {name} 뒤에서 기다려요",
   "recent.behind.workflow": "워크플로 {name} 뒤에서 기다려요",
   "recent.behind.agent": "다른 에이전트의 메시지 작업 뒤에서 기다려요",
+  "recent.behind.thread": "다른 스레드를 기다려요",
+  "recent.behind.slot": "빈 실행 자리를 기다려요. 실행 자리: {count}",
   "recent.behind.computer": "{name}의 작업 뒤에서 기다려요",
   "settings.section.decision": "결정 모델",
   "decision.hint":

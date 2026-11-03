@@ -616,6 +616,11 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => Tasks.use((t) => t.stopAny(id))),
       done,
     ),
+  "tasks.runNext": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Tasks.use((t) => t.runNext(id))),
+      done,
+    ),
   "tasks.retry": (input) =>
     decode(Schema.Struct({ id: Schema.String, confirmed: Schema.optionalKey(Schema.Boolean) }))(
       input,

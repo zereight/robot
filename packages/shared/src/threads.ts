@@ -3,6 +3,8 @@
  * process and the window use the same ones.
  */
 
+import type { RecentPlace } from "./work.ts"
+
 /** An agent has at most this many threads, the main thread included (spec 003, "Threads"). */
 export const THREAD_MAX = 50
 /** The title of a thread is the first line of its first message, at most this many characters. */
@@ -32,11 +34,23 @@ export interface ChatThread {
   readonly fork: { readonly threadId: string | null; readonly messageId: string } | null
   readonly unread: number
   readonly busy: ThreadBusy | null
+  /** The task of the thread that waits in the queue, and what it waits behind (spec 005). */
+  readonly queued?: QueuedLine | null
+}
+
+/** The line of a queued task in its thread (spec 003, 005). */
+export interface QueuedLine {
+  readonly taskId: string
+  readonly behind: RecentPlace | null
 }
 
 /** The threads of one agent, for the list in the chat header. */
 export interface ChatThreads {
-  readonly main: { readonly unread: number; readonly busy: ThreadBusy | null }
+  readonly main: {
+    readonly unread: number
+    readonly busy: ThreadBusy | null
+    readonly queued?: QueuedLine | null
+  }
   /** Threads other than the main thread, the newest first. Archived threads too. */
   readonly threads: readonly ChatThread[]
 }

@@ -626,8 +626,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             permission: o.agent.permission,
             signal: controller.signal,
             onWaiting: (callId, ask) => {
-              tasks.setWaiting(o.taskId, ask !== null)
-              silence.waiting(ask !== null)
+              // An answer needs a slot again (spec 005): the step goes on when the task has one.
+              const back = tasks.setWaiting(o.taskId, ask !== null)
+              if (ask) silence.waiting(true)
               if (ask)
                 notifier.attention({
                   agentId: o.agent.id,
@@ -646,6 +647,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 const { ask: _drop, ...rest } = p
                 return ask ? { ...rest, state: "waiting", ask } : { ...rest, state: "running" }
               })
+              // The silent limit counts again when the task runs again.
+              return ask ? undefined : back.then(() => silence.waiting(false))
             },
             onMemory: (callId, memory) => changePart(callId, (p) => ({ ...p, memory })),
             origin: { kind: "channel", id: o.channel.id, messageId: id },
@@ -883,6 +886,20 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           },
         )
 
+      /**
+       * A part for an agent whose queue is full is made as Failed with the reason, and does not
+       * run (spec 005, "Queue").
+       */
+      const failedIfFull = (agentId: string) => {
+        const full = tasks.queueFull(agentId)
+        return full ? { failed: { code: full.code, detail: full.detail ?? "" } } : {}
+      }
+      /** Fails with the reason when the queue of the agent is full (spec 005, "Queue"). */
+      const checkQueue = (agentId: string) => {
+        const full = tasks.queueFull(agentId)
+        return full ? Effect.fail(full) : Effect.void
+      }
+
       const runRoutine = (
         channelId: string,
         agentId: string,
@@ -911,6 +928,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             !(yield* providers.verify(agent.model_account_id))
           )
             return yield* new AppError({ code: "provider_not_connected" })
+          // A full queue fails the routine run with the reason.
+          yield* checkQueue(agentId)
           const task = yield* tasks.create({
             agentId,
             prompt,
@@ -931,6 +950,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         Effect.gen(function* () {
           const agent = agentRow(agentId)
           if (!agent) return
+          yield* checkQueue(agentId)
           const task = yield* tasks.create({
             agentId,
             prompt,
@@ -1188,18 +1208,24 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             parentId: job.id,
             retryOf: target.id,
             ...(target.doneTest ? { doneTest: target.doneTest } : {}),
+            ...failedIfFull(member.id),
           })
           nudged.add(target.id)
           nudged.add(part.id)
-          // The member answers in the channel. The look waits for the end of the turn.
-          yield* Effect.exit(
-            memberTurn(
-              channel,
-              member,
-              part,
-              partText(part.label, action.instruction, part.doneTest),
-              "text",
-              lead,
+          if (part.state === "failed") return "nudged" as const
+          // The member answers in the channel. The look waits for the end of the turn, and uses no
+          // slot while it waits (spec 005, "Queue").
+          yield* tasks.withoutSlot(
+            job.id,
+            Effect.exit(
+              memberTurn(
+                channel,
+                member,
+                part,
+                partText(part.label, action.instruction, part.doneTest),
+                "text",
+                lead,
+              ),
             ),
           )
           return "nudged" as const
@@ -1264,37 +1290,45 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 sourceId: channel.id,
                 parentId: task.id,
                 ...(part.doneTest ? { doneTest: part.doneTest } : {}),
+                ...failedIfFull(agent.id),
               })
-              partTasks.push({ task: partTask, agent, prompt: part.prompt })
+              if (partTask.state !== "failed")
+                partTasks.push({ task: partTask, agent, prompt: part.prompt })
             }
             emitMessage(reply.id)
             // The plan is the first reply of the lead that the user sees.
             tasks.replied(task.id)
-            yield* Effect.forEach(
-              partTasks,
-              ({ task: partTask, agent, prompt }) =>
-                Effect.exit(
-                  memberTurn(
-                    channel,
-                    agent,
-                    partTask,
-                    partText(partTask.label, prompt, partTask.doneTest),
-                    "text",
-                    lead,
-                  ),
-                ),
-              { concurrency: "unbounded", discard: true },
-            )
-            emitMessage(reply.id)
-
             // A part in review has not ended: the summary waits for the decision of the user. A
             // part that "Request changes" or a nudge starts is a new part of this request, so the
             // wait looks at the parts again (spec 004, 005).
-            const waitForParts = Effect.gen(function* () {
+            const partsOpen = Effect.gen(function* () {
               while (requestOpen(tasks.children(task.id).map((part) => part.state)))
                 yield* Effect.sleep(PARTS_POLL_MS)
             })
-            yield* waitForParts
+            // While the lead waits for its parts, it uses no slot (spec 005, "Queue").
+            const waitForParts = tasks.withoutSlot(task.id, partsOpen)
+            yield* tasks.withoutSlot(
+              task.id,
+              Effect.gen(function* () {
+                yield* Effect.forEach(
+                  partTasks,
+                  ({ task: partTask, agent, prompt }) =>
+                    Effect.exit(
+                      memberTurn(
+                        channel,
+                        agent,
+                        partTask,
+                        partText(partTask.label, prompt, partTask.doneTest),
+                        "text",
+                        lead,
+                      ),
+                    ),
+                  { concurrency: "unbounded", discard: true },
+                )
+                emitMessage(reply.id)
+                yield* partsOpen
+              }),
+            )
 
             // The check (spec 004): when the work has stopped, the lead gives verdicts and then
             // nudges, asks or does nothing. A nudge starts a new part, and the lead waits for it.
@@ -1362,6 +1396,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         retryOf: string | null = null,
       ) =>
         Effect.gen(function* () {
+          yield* checkQueue(lead.id)
           const task = yield* tasks.create({
             agentId: lead.id,
             prompt: text,
@@ -1389,7 +1424,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               parentId: task.parentId,
               retryOf: task.id,
               ...(task.doneTest ? { doneTest: task.doneTest } : {}),
+              ...failedIfFull(agent.id),
             })
+            if (part.state === "failed") return
             const lead = channel.lead_agent_id ? agentRow(channel.lead_agent_id) : undefined
             yield* background(
               memberTurn(
@@ -1450,7 +1487,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             sourceId: channel.id,
             parentId: old.parentId,
             retryOf: old.id,
+            ...failedIfFull(agent.id),
           })
+          if (part.state === "failed") return
           yield* background(
             memberTurn(channel, agent, part, `Your part: ${part.label}\n${text}`, "text", null),
           )
@@ -1681,9 +1720,18 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           const result = yield* decision.pick(pickInput(channel, jobId, job, members))
           const chosen = result.index === null ? undefined : members[result.index]
           // The member may have been archived while the model thought.
-          const taker = chosen && agentRow(chosen.id)?.archived_at === null ? chosen : undefined
+          // A member whose queue filled while the model thought does not take the job (spec 005).
+          const full = chosen ? tasks.queueFull(chosen.id) !== null : false
+          const taker =
+            chosen && agentRow(chosen.id)?.archived_at === null && !full ? chosen : undefined
           const reason =
-            result.index === null ? result.reason : taker ? undefined : "unknown_option"
+            result.index === null
+              ? result.reason
+              : taker
+                ? undefined
+                : full
+                  ? "tasks_full"
+                  : "unknown_option"
           appendLog(platform.dataDir, "channels", {
             event: "fast_pick",
             chosen: taker !== undefined,
@@ -1694,7 +1742,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           })
           if (taker) return yield* startDirect(channel, taker.id, job)
           const leadAgent = leadId ? agentRow(leadId) : undefined
-          if (leadAgent) return yield* startLead(channel, leadAgent, job)
+          // A lead whose queue is full takes no job: the user picks, as with no lead (spec 005).
+          if (leadAgent && tasks.queueFull(leadAgent.id) === null)
+            return yield* startLead(channel, leadAgent, job)
           // No lead: the user picks. The job waits, and the row shows the member buttons.
           db.run("UPDATE channel_message SET awaiting = 1 WHERE id = ?", jobId)
           emitMessage(jobId)
@@ -1749,9 +1799,20 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const lead = toChannel(channel).leadId
         // The fast pick runs for a job that names no member, when no other job or part is open and
         // at least two members can take it (spec 004).
-        const candidates = mentioned.length === 0 ? availableMembers(channelId) : []
+        // A member whose queue is full takes no job: the fast pick leaves it out (spec 005).
+        const candidates =
+          mentioned.length === 0
+            ? availableMembers(channelId).filter((m) => tasks.queueFull(m.id) === null)
+            : []
         const picking = candidates.length >= 2 && !hasOpenWork(channelId) && (yield* decision.ready)
         const awaiting = mentioned.length === 0 && lead === null && !picking
+        // A full queue refuses the message before it shows, and the box keeps the text.
+        if (mentioned.length > 0)
+          for (const name of mentioned) {
+            const member = members.find((m) => m.name === name)
+            if (member) yield* checkQueue(member.id)
+          }
+        else if (!picking && lead !== null) yield* checkQueue(lead)
         const jobId = insertUserMessage(channelId, value, awaiting, sender)
         placesChanged(channel.server_id)
         for (const handler of messageHandlers) handler(channelId, value)
@@ -1783,6 +1844,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         if (!message.awaiting) return yield* new AppError({ code: "job_already_taken" })
         if (!memberRows(channelId).some((m) => m.id === agentId))
           return yield* new AppError({ code: "agent_not_found" })
+        yield* checkQueue(agentId)
         db.run("UPDATE channel_message SET awaiting = 0 WHERE id = ?", messageId)
         emitMessage(messageId)
         yield* startDirect(

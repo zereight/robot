@@ -208,6 +208,11 @@ export interface QueuedMessage {
   readonly replyTo: string | null
   /** The skill chip of the message, with its copy of the instructions. */
   readonly skill?: SkillPart
+  /**
+   * Why the message does not go yet: the task queue of the agent is full (spec 005, "Queue"). It
+   * goes when a queued task starts or ends.
+   */
+  readonly blocked?: { readonly code: string; readonly detail: string }
 }
 
 /**

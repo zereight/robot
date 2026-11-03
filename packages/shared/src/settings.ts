@@ -12,6 +12,12 @@ export type DuringTurn = (typeof DURING_TURN)[number]
 export const AGENTS_AT_ONCE_MIN = 1
 export const AGENTS_AT_ONCE_MAX = 8
 export const AGENTS_AT_ONCE_DEFAULT = 4
+/** True for a valid number of "Agents working at once" (spec 005, 013). */
+export const isAgentsAtOnce = (value: unknown): value is number =>
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= AGENTS_AT_ONCE_MIN &&
+  value <= AGENTS_AT_ONCE_MAX
 
 export const Language = Schema.Literals(["system", "en", "ko"])
 export const Theme = Schema.Literals(["system", "dark", "light"])

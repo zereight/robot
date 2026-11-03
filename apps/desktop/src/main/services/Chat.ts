@@ -44,6 +44,7 @@ import {
   type PermissionLevel,
   type PlaceRef,
   QUEUE_MAX,
+  type QueuedLine,
   type QueuedMessage,
   type QueueHold,
   type RetryResult,
@@ -173,6 +174,11 @@ export interface TaskOrigin {
   readonly requester?: string
   /** The task that this one tries again (a Retry of a routine run). */
   readonly retryOf?: string
+  /**
+   * A reply that comes back to the agent that asked (spec 005, "Limits of a task"). It makes its
+   * task also when the queue of the agent is full.
+   */
+  readonly returning?: boolean
 }
 
 /** A conversation of an agent: the main thread (`threadId` null) or another thread (spec 003). */
@@ -800,6 +806,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               outside: { kind: "agent", name: replier.name },
               depth: taskDepth({ kind: "message", depth: tasks.depthOf(task.id) }),
               prompt: text,
+              returning: true,
             },
           ).pipe(Effect.ignore)
         })
@@ -1105,8 +1112,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             permission: agent.permission,
             signal: controller.signal,
             onWaiting: (callId, ask) => {
-              tasks.setWaiting(task.id, ask !== null)
-              silence.waiting(ask !== null)
+              // An answer needs a slot again (spec 005): the step goes on when the task has one.
+              const back = tasks.setWaiting(task.id, ask !== null)
+              if (ask) silence.waiting(true)
               if (ask)
                 notifier.attention({
                   agentId,
@@ -1131,6 +1139,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   ask: p.ask && sameAsk(p.ask, ask) ? p.ask : ask,
                 }
               })
+              // The silent limit counts again when the task runs again.
+              return ask ? undefined : back.then(() => silence.waiting(false))
             },
             onMemory: (callId, memory) => changePart(callId, (p) => ({ ...p, memory })),
             origin: { kind: "agent", id: agentId, messageId: reply.id },
@@ -1340,15 +1350,45 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const key = keyOf(place)
           // Messages that the turn did not read go first: they are in the chat already.
           if (unreadLeft.delete(key)) return true
-          const next = queues.get(key)?.shift()
-          if (!next) return false
+          const queue = queues.get(key) ?? []
+          const head = queue[0]
+          if (!head) return false
+          // The queue of the agent is full: the message stays in the message queue with the
+          // reason, and goes when a queued task starts or ends (spec 005, "Queue").
+          const full = origins.get(head.id)?.returning ? null : tasks.queueFull(place.agentId)
+          if (full) {
+            queue[0] = { ...head, blocked: { code: full.code, detail: full.detail ?? "" } }
+            emitQueue(place)
+            return false
+          }
+          queue.shift()
           emitQueue(place)
+          const { blocked: _blocked, ...next } = head
           insertQueued(place, next)
           return true
         })
 
+      /** The places of an agent whose first queued message waits for space in the task queue. */
+      const blockedPlaces = (agentId: string): Place[] =>
+        [...queues.entries()].flatMap(([key, queue]) => {
+          if (!queue[0]?.blocked) return []
+          if (key === agentId) return [mainOf(agentId)]
+          const thread = threadRow(agentId, key)
+          return thread ? [{ agentId, threadId: key }] : []
+        })
+
       const kick = (place: Place) =>
         FiberMap.run(workers, keyOf(place), worker(place), { onlyIfMissing: true })
+      /** Sends the first queued message of a place that has no turn, when the queue has space. */
+      const kickQueued = (place: Place) =>
+        FiberMap.run(
+          workers,
+          keyOf(place),
+          Effect.gen(function* () {
+            if (yield* nextQueued(place)) yield* worker(place)
+          }),
+          { onlyIfMissing: true },
+        )
       const isRunning = (place: Place) => FiberMap.has(workers, keyOf(place))
 
       const usableAgent = (agentId: string, model?: AgentModel) =>
@@ -1446,9 +1486,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           return yield* new AppError({ code: "invalid_input" })
         // A routine or a workflow always starts new work; only the user joins a turn.
         const turn = origin ? undefined : yield* joinable(place)
-        const isFull = (queues.get(keyOf(place))?.length ?? 0) >= QUEUE_MAX
-        if (!turn && (yield* isRunning(place)) && isFull)
+        const queued = queues.get(keyOf(place))?.length ?? 0
+        // A message queue that waits for space in the task queue keeps its order (spec 005).
+        const behind = queued > 0 || (yield* isRunning(place))
+        if (!turn && behind && queued >= QUEUE_MAX)
           return yield* new AppError({ code: "queue_full" })
+        // A new turn makes a task: the queue of the agent must have space (spec 005, "Queue").
+        if (!turn && !behind && !origin?.returning) {
+          const full = tasks.queueFull(input.agentId)
+          if (full) return yield* full
+        }
         const files = yield* Effect.try({
           try: () => copyAttachments(agent.workspace, paths),
           catch: (e) => (e instanceof AppError ? e : new AppError({ code: "file_unreadable" })),
@@ -1463,7 +1510,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           )
           return { queued: false }
         }
-        if (yield* isRunning(place)) {
+        if ((yield* isRunning(place)) || (queues.get(keyOf(place))?.length ?? 0) > 0) {
           const queue = queues.get(keyOf(place)) ?? []
           if (queue.length >= QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
           const item: QueuedMessage = {
@@ -1522,6 +1569,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const place = placeOfMessage(agentId, messageId)
         const key = keyOf(place)
         if (yield* isRunning(place)) return yield* new AppError({ code: "agent_working" })
+        const full = tasks.queueFull(agentId)
+        if (full) return yield* full
         const last = rows(place).at(-1)
         // A reply that failed is asked again. So is a reply that stopped at the step limit: its
         // task has failed (spec 005). So is a reply that a restart cut off before the request
@@ -1980,6 +2029,19 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                     : null
           return busy
         })
+      /** The queued task of a thread and what it waits behind (spec 003, 005). */
+      const queuedOf = (place: Place) =>
+        Effect.sync(() => {
+          const id = db.get<{ id: string }>(
+            `SELECT t.id FROM task t JOIN message m ON m.id = t.message_id
+             WHERE t.agent_id = ? AND m.thread_id IS ? AND t.state = 'queued'
+             ORDER BY t.created_at LIMIT 1`,
+            place.agentId,
+            place.threadId,
+          )?.id
+          const line: QueuedLine | null = id ? { taskId: id, behind: tasks.behindOf(id) } : null
+          return line
+        })
       /** The unread replies of each conversation of an agent, by the id of the thread ("" for main). */
       const unreadOf = (agentId: string) =>
         new Map(
@@ -2021,11 +2083,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             "SELECT * FROM thread WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC",
             agentId,
           ))
-            list.push(
-              toThread(row, unread.get(row.id) ?? 0, yield* busyOf({ agentId, threadId: row.id })),
-            )
+            list.push({
+              ...toThread(
+                row,
+                unread.get(row.id) ?? 0,
+                yield* busyOf({ agentId, threadId: row.id }),
+              ),
+              queued: yield* queuedOf({ agentId, threadId: row.id }),
+            })
           const out: ChatThreads = {
-            main: { unread: unread.get("") ?? 0, busy: yield* busyOf(mainOf(agentId)) },
+            main: {
+              unread: unread.get("") ?? 0,
+              busy: yield* busyOf(mainOf(agentId)),
+              queued: yield* queuedOf(mainOf(agentId)),
+            },
             threads: list,
           }
           return out
@@ -2179,6 +2250,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         threadsChanged(agentId)
       })
 
+      // A queued task started or ended: a message queue that waited for space can go on (spec 005).
+      tasks.onQueueSpace((agentId) => {
+        for (const place of blockedPlaces(agentId)) Effect.runFork(kickQueued(place))
+      })
+
       tasks.onRetry("chat", (task) =>
         Effect.suspend(() => {
           const place = task.messageId
@@ -2258,7 +2334,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               ? "This agent cannot answer now: its model is not connected."
               : code === "queue_full"
                 ? "This agent has too many waiting messages. Try again later."
-                : `The message was not sent (${code}).`,
+                : code === "tasks_full"
+                  ? `${failure instanceof AppError ? failure.detail : "The agent"} has 20 tasks that wait. Try again later.`
+                  : `The message was not sent (${code}).`,
           )
         },
       })

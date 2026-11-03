@@ -101,6 +101,13 @@ const QueueItem = (props: {
           {t("chat.queue.files", { count: props.item.files.length })}
         </span>
       </Show>
+      <Show when={props.item.blocked}>
+        {(blocked) => (
+          <span class={styles.queueLabel} data-testid="queued-blocked">
+            {t(`error.${blocked().code}` as MessageKey, { detail: blocked().detail })}
+          </span>
+        )}
+      </Show>
       <Show when={props.working}>
         <Button
           class={styles.sendNow}
@@ -573,7 +580,11 @@ export const Composer = (props: ComposerProps) => {
         </div>
       </Show>
       <Show when={error()}>
-        {(err) => <div class={styles.composerError}>{t(err().key, err().params)}</div>}
+        {(err) => (
+          <div class={styles.composerError} data-testid="composer-error">
+            {t(err().key, err().params)}
+          </div>
+        )}
       </Show>
     </div>
   )

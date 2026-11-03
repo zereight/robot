@@ -318,6 +318,11 @@ export interface RpcMethods {
   "tasks.recent": { input: { agentId: string }; output: readonly RecentWorkRow[] }
   "tasks.stop": { input: { id: string }; output: undefined }
   /**
+   * Moves a queued task of this computer to the front of the queue (spec 005, "Run next"). Not a
+   * request that a linked device may call.
+   */
+  "tasks.runNext": { input: { id: string }; output: undefined }
+  /**
    * Tries a task again. When the first try ran steps that may have changed things, the answer
    * holds the retry note and nothing starts. The same request with `confirmed` starts the task.
    */

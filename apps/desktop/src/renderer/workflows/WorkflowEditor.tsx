@@ -414,6 +414,9 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
     // The silent limit keeps its number of minutes: "silent_limit:30".
     if (reason.startsWith(`${SILENT_CODE}:`))
       return t("error.silent_limit", { detail: reason.slice(SILENT_CODE.length + 1) })
+    // A full queue keeps the name of the agent: "tasks_full:Ada".
+    if (reason.startsWith("tasks_full:"))
+      return t("error.tasks_full", { detail: reason.slice("tasks_full:".length) })
     for (const key of [`workflows.error.${reason}`, `error.${reason}`])
       if (key in catalogues.en) return t(key as MessageKey)
     return reason

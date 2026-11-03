@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
-import { taskTimes } from "@robot/shared"
+import { type TaskSource, taskTimes } from "@robot/shared"
 import { Deferred, Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
@@ -9,6 +9,7 @@ import { AppError } from "./errors.ts"
 import { secretKey } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
 import { testPlatform, testRuntime } from "./testing.ts"
@@ -575,5 +576,224 @@ describe("Tasks", () => {
       expect(task.progress).toBe(progress)
     }
     await second.dispose()
+  })
+})
+
+// Spec 005, "Queue": the order, "Run next", the limit of the queue and the slots (S71, S72).
+describe("Tasks queue and slots", () => {
+  const queueSetup = async (agentsAtOnce: number) => {
+    const base = await setup()
+    await base.run(SettingsStore.use((s) => s.update({ agentsAtOnce })))
+    const makeFrom = (agentId: string, prompt: string, source: TaskSource) =>
+      base.run(Tasks.use((t) => t.create({ agentId, prompt, source, sourceId: agentId })))
+    /** Starts a task whose work records its prompt and then waits for the gate. */
+    const start = (
+      task: { id: string; agentId: string; prompt: string },
+      order: string[],
+      gate?: Deferred.Deferred<void>,
+    ) =>
+      base.run(
+        Tasks.use((t) =>
+          t.run(
+            task.id,
+            task.agentId,
+            Effect.gen(function* () {
+              order.push(task.prompt)
+              if (gate) yield* Deferred.await(gate)
+            }),
+          ),
+        ),
+      )
+    return { ...base, makeFrom, start }
+  }
+
+  test("a task of a normal source starts before a routine, and routines start oldest first", async () => {
+    const { run, agent, makeFrom, start } = await queueSetup(1)
+    const [ada, bo, cy, di] = [
+      await agent("Ada"),
+      await agent("Bo"),
+      await agent("Cy"),
+      await agent("Di"),
+    ]
+    const gate = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const first = start(await makeFrom(ada.id, "running", "chat"), order, gate)
+    await sleep(20)
+    const routineOld = start(await makeFrom(bo.id, "routine old", "routine"), order)
+    const routineNew = start(await makeFrom(cy.id, "routine new", "workflow"), order)
+    const chat = start(await makeFrom(di.id, "chat", "chat"), order)
+    await sleep(20)
+    await run(Deferred.succeed(gate, undefined))
+    await Promise.all([first, routineOld, routineNew, chat])
+    expect(order).toEqual(["running", "chat", "routine old", "routine new"])
+  })
+
+  test("Run next moves a queued task to the front; the latest pick goes first", async () => {
+    const { run, agent, makeFrom, start, state } = await queueSetup(4)
+    const ada = await agent("Ada")
+    const gate = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const running = await makeFrom(ada.id, "running", "chat")
+    const p1 = start(running, order, gate)
+    await sleep(20)
+    const two = await makeFrom(ada.id, "two", "chat")
+    const three = await makeFrom(ada.id, "three", "routine")
+    const four = await makeFrom(ada.id, "four", "chat")
+    const rest = [start(two, order), start(three, order), start(four, order)]
+    await sleep(20)
+    await run(Tasks.use((t) => t.runNext(three.id)))
+    await run(Tasks.use((t) => t.runNext(four.id)))
+    // The running task goes on; a task that is not queued has no "Run next".
+    expect(await state(running.id)).toBe("running")
+    const refused = await run(Tasks.use((t) => t.runNext(running.id))).catch(
+      (e: AppError) => e.code,
+    )
+    expect(refused).toBe("task_not_queued")
+    await run(Deferred.succeed(gate, undefined))
+    await Promise.all([p1, ...rest])
+    expect(order).toEqual(["running", "four", "three", "two"])
+  })
+
+  test("a full slot count makes a task wait; Stop and a higher number start it at once", async () => {
+    const { run, agent, makeFrom, state } = await queueSetup(2)
+    const [ada, bo, cy] = [await agent("Ada"), await agent("Bo"), await agent("Cy")]
+    const a = await makeFrom(ada.id, "a", "chat")
+    const b = await makeFrom(bo.id, "b", "chat")
+    const c = await makeFrom(cy.id, "c", "chat")
+    const runs = [a, b, c].map((task) =>
+      run(Tasks.use((t) => t.run(task.id, task.agentId, Effect.never))).catch(() => {}),
+    )
+    await sleep(30)
+    expect(await state(a.id)).toBe("running")
+    expect(await state(b.id)).toBe("running")
+    expect(await state(c.id)).toBe("queued")
+    expect(await run(Tasks.use((t) => Effect.sync(() => t.behindOf(c.id))))).toEqual({
+      kind: "slot",
+      count: 2,
+    })
+    // Stop of a task frees its slot at once.
+    await run(Tasks.use((t) => t.stop(a.id)))
+    await sleep(30)
+    expect(await state(a.id)).toBe("cancelled")
+    expect(await state(c.id)).toBe("running")
+
+    // A new number applies at once to the tasks that wait.
+    const d = await makeFrom(ada.id, "d", "chat")
+    runs.push(run(Tasks.use((t) => t.run(d.id, ada.id, Effect.never))).catch(() => {}))
+    await sleep(30)
+    expect(await state(d.id)).toBe("queued")
+    await run(SettingsStore.use((s) => s.update({ agentsAtOnce: 3 })))
+    await sleep(30)
+    expect(await state(d.id)).toBe("running")
+    expect(await state(b.id)).toBe("running")
+    for (const task of [b, c, d]) await run(Tasks.use((t) => t.stop(task.id)))
+    await Promise.all(runs)
+  })
+
+  test("the tasks of a busy agent keep their place, and the next free agent starts", async () => {
+    const { run, agent, makeFrom, start } = await queueSetup(2)
+    const [ada, bo, cy] = [await agent("Ada"), await agent("Bo"), await agent("Cy")]
+    const gateA = Deferred.makeUnsafe<void>()
+    const gateB = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const p = [
+      start(await makeFrom(ada.id, "a1", "chat"), order, gateA),
+      start(await makeFrom(bo.id, "b1", "chat"), order, gateB),
+    ]
+    await sleep(20)
+    p.push(start(await makeFrom(ada.id, "a2", "chat"), order))
+    p.push(start(await makeFrom(cy.id, "c1", "chat"), order))
+    await sleep(20)
+    await run(Deferred.succeed(gateB, undefined))
+    await sleep(20)
+    expect(order).toEqual(["a1", "b1", "c1"])
+    await run(Deferred.succeed(gateA, undefined))
+    await Promise.all(p)
+    expect(order).toEqual(["a1", "b1", "c1", "a2"])
+  })
+
+  test("a task that waits for the user uses no slot, and waits as queued for a slot after the answer", async () => {
+    const { run, agent, makeFrom, state } = await queueSetup(1)
+    const [ada, bo] = [await agent("Ada"), await agent("Bo")]
+    const a = await makeFrom(ada.id, "a", "chat")
+    const b = await makeFrom(bo.id, "b", "chat")
+    const answer = Deferred.makeUnsafe<void>()
+    const gateB = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const pa = run(
+      Tasks.use((t) =>
+        t.run(
+          a.id,
+          ada.id,
+          Effect.gen(function* () {
+            yield* Effect.promise(() => t.setWaiting(a.id, true))
+            yield* Deferred.await(answer)
+            yield* Effect.promise(() => t.setWaiting(a.id, false))
+            order.push("a goes on")
+          }),
+        ),
+      ),
+    )
+    await sleep(20)
+    expect(await state(a.id)).toBe("waiting")
+    const pb = run(
+      Tasks.use((t) =>
+        t.run(
+          b.id,
+          bo.id,
+          Effect.gen(function* () {
+            order.push("b")
+            yield* Deferred.await(gateB)
+          }),
+        ),
+      ),
+    )
+    await sleep(20)
+    expect(await state(b.id)).toBe("running")
+    await run(Deferred.succeed(answer, undefined))
+    await sleep(20)
+    expect(await state(a.id)).toBe("queued")
+    await run(Deferred.succeed(gateB, undefined))
+    await Promise.all([pa, pb])
+    expect(order).toEqual(["b", "a goes on"])
+    expect(await state(a.id)).toBe("done")
+  })
+
+  test("a parent that waits for its child uses no slot, also when the number is 1", async () => {
+    const { run, agent, makeFrom, make, state } = await queueSetup(1)
+    const [ada, bo] = [await agent("Ada"), await agent("Bo")]
+    const parent = await makeFrom(ada.id, "parent", "chat")
+    const child = await make(bo.id, "child", parent.id)
+    await run(
+      Tasks.use((t) =>
+        t.run(parent.id, ada.id, t.withoutSlot(parent.id, t.run(child.id, bo.id, Effect.void))),
+      ),
+    )
+    expect(await state(child.id)).toBe("done")
+    expect(await state(parent.id)).toBe("done")
+  })
+
+  test("an agent takes at most 20 queued tasks; a part over the limit is made as Failed", async () => {
+    const { run, agent, makeFrom } = await queueSetup(4)
+    const ada = await agent("Ada")
+    for (let i = 0; i < 19; i++) await makeFrom(ada.id, `t${i}`, "chat")
+    expect(await run(Tasks.use((t) => Effect.sync(() => t.queueFull(ada.id))))).toBeNull()
+    await makeFrom(ada.id, "t19", "chat")
+    const full = await run(Tasks.use((t) => Effect.sync(() => t.queueFull(ada.id))))
+    expect(full?.code).toBe("tasks_full")
+    expect(full?.detail).toBe("Ada")
+    const failed = await run(
+      Tasks.use((t) =>
+        t.create({
+          agentId: ada.id,
+          prompt: "over",
+          source: "channel",
+          sourceId: ada.id,
+          failed: { code: "tasks_full", detail: "Ada" },
+        }),
+      ),
+    )
+    expect(failed.state).toBe("failed")
+    expect(failed.error).toEqual({ code: "tasks_full", detail: "Ada" })
   })
 })

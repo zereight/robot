@@ -51,6 +51,12 @@ export const createThreads = (
     if (event.agentId === agentId() && isForView(server(), from)) load()
   })
   onCleanup(off)
+  // The line of a queued task follows the queue: a task that starts or ends elsewhere changes it.
+  onCleanup(
+    window.robot.on("tasks.changed", (_event, from) => {
+      if (isForView(server(), from)) load()
+    }),
+  )
   return state
 }
 

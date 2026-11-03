@@ -94,6 +94,10 @@ export type RecentPlace =
   | { readonly kind: "computer"; readonly name: string }
   | { readonly kind: "chat" }
   | { readonly kind: "agent" }
+  /** The agent works in another thread of its chat (spec 003). */
+  | { readonly kind: "thread" }
+  /** All slots are in use (spec 005, "Queue"): `count` is the number of slots. */
+  | { readonly kind: "slot"; readonly count: number }
 
 /** One row of the block "Recent work". */
 export interface RecentWorkRow {
@@ -123,6 +127,30 @@ export const lastChange = (
  * The words for the state of a row (spec 002): what a task that has not ended waits for, and the
  * plain state for the others. A blocked task also shows its reason (see `recentReason`).
  */
+/** The words of what a queued task waits behind (spec 005, "Tasks page"). */
+export const behindWords = (
+  place: RecentPlace,
+): { readonly key: MessageKey; readonly params?: Record<string, string> } => {
+  switch (place.kind) {
+    case "channel":
+      return { key: "recent.behind.channel", params: { name: place.name } }
+    case "routine":
+      return { key: "recent.behind.routine", params: { name: place.name } }
+    case "workflow":
+      return { key: "recent.behind.workflow", params: { name: place.name } }
+    case "computer":
+      return { key: "recent.behind.computer", params: { name: place.name } }
+    case "chat":
+      return { key: "recent.behind.chat" }
+    case "agent":
+      return { key: "recent.behind.agent" }
+    case "thread":
+      return { key: "recent.behind.thread" }
+    case "slot":
+      return { key: "recent.behind.slot", params: { count: String(place.count) } }
+  }
+}
+
 export const recentWords = (
   row: Pick<RecentWorkRow, "wait" | "behind"> & { readonly task: Pick<Task, "state"> },
 ): { readonly key: MessageKey; readonly params?: Record<string, string> } => {
@@ -133,23 +161,7 @@ export const recentWords = (
     if (row.wait === "question") return { key: "recent.waits.question" }
     return { key: "tasks.state.waiting" }
   }
-  if (state === "queued" && row.behind) {
-    const place = row.behind
-    switch (place.kind) {
-      case "channel":
-        return { key: "recent.behind.channel", params: { name: place.name } }
-      case "routine":
-        return { key: "recent.behind.routine", params: { name: place.name } }
-      case "workflow":
-        return { key: "recent.behind.workflow", params: { name: place.name } }
-      case "computer":
-        return { key: "recent.behind.computer", params: { name: place.name } }
-      case "chat":
-        return { key: "recent.behind.chat" }
-      case "agent":
-        return { key: "recent.behind.agent" }
-    }
-  }
+  if (state === "queued" && row.behind) return behindWords(row.behind)
   return { key: `tasks.state.${state}` as MessageKey }
 }
 

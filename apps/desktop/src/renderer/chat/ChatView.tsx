@@ -1,8 +1,10 @@
 import {
   type Agent,
+  behindWords,
   type ChatMessage,
   canAddThread,
   type PlaceRef,
+  type QueuedLine,
   sameDay,
   startsGroup,
 } from "@robot/shared"
@@ -62,6 +64,39 @@ const WorkingLine = (props: { since: number; compacting: boolean }) => {
   )
 }
 
+/**
+ * The line of the task of this thread that waits in the queue (spec 003, 005): what it waits
+ * behind, and "Run next". A linked computer and the phone have no "Run next" (011, 012).
+ */
+const QueuedTaskLine = (props: { line: QueuedLine; canRunNext: boolean }) => {
+  const { t } = useApp()
+  const words = () => (props.line.behind ? behindWords(props.line.behind) : undefined)
+  return (
+    <div class={styles.working} data-testid="queued-task-line">
+      <span data-testid="queued-task-behind">
+        {words()
+          ? t(words()?.key ?? "tasks.state.queued", words()?.params)
+          : t("tasks.state.queued")}
+      </span>
+      <Show when={props.canRunNext}>
+        <button
+          type="button"
+          class={styles.lineButton}
+          onClick={() =>
+            void call("tasks.runNext", { id: props.line.taskId }).catch((e: unknown) => {
+              const error = describeError(e)
+              showToast("error", error.key, error.params)
+            })
+          }
+          data-testid="queued-run-next"
+        >
+          {t("tasks.runNext")}
+        </button>
+      </Show>
+    </div>
+  )
+}
+
 export const ChatView = (props: ChatViewProps) => {
   const app = useApp()
   const { t } = app
@@ -86,6 +121,13 @@ export const ChatView = (props: ChatViewProps) => {
       ? threads.list.main.busy
       : (threads.list.threads.find((x) => x.id === props.threadId)?.busy ?? null)
   }
+  /** The queued task of the open thread, while no turn runs in it. */
+  const queuedLine = () => {
+    if (busy() !== "queued") return undefined
+    return props.threadId === null
+      ? (threads.list.main.queued ?? undefined)
+      : (threads.list.threads.find((x) => x.id === props.threadId)?.queued ?? undefined)
+  }
   const place: PlaceRef = { kind: "agent", id: props.agent.id }
   const [replyTo, setReplyTo] = createSignal<ChatMessage>()
   const [atBottom, setAtBottom] = createSignal(true)
@@ -99,7 +141,10 @@ export const ChatView = (props: ChatViewProps) => {
   const streaming = () => chat.messages.find((m) => m.status === "streaming")
   const retry = useRetry()
   const working = () => {
-    if (streaming() !== undefined || compacting()) return true
+    if (compacting()) return true
+    // A task that waits in the queue has an empty reply already: it shows its queued line.
+    if (busy() === "queued") return false
+    if (streaming() !== undefined) return true
     const now = busy()
     return now === undefined ? props.agent.state === "working" : now === "turn"
   }
@@ -262,6 +307,9 @@ export const ChatView = (props: ChatViewProps) => {
           <Show when={working()}>
             <WorkingLine since={streaming()?.createdAt ?? Date.now()} compacting={compacting()} />
           </Show>
+          <Show when={!working() && queuedLine()}>
+            {(line) => <QueuedTaskLine line={line()} canRunNext={!ui.linked()} />}
+          </Show>
           {props.end}
         </div>
       </div>
@@ -307,7 +355,7 @@ export const ChatView = (props: ChatViewProps) => {
         <Composer
           agent={props.agent}
           threadId={props.threadId}
-          working={working()}
+          working={working() || busy() === "queued"}
           queue={chat.queue}
           hold={chat.hold}
           replyTo={replyTo()}
