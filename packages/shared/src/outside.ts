@@ -267,6 +267,17 @@ export type ActionResult = "ran" | "failed" | "refused" | "stopped"
  * of the four kinds of "Permission rules": file, shell command, web page, tool of a connection.
  */
 export type ActionKind = GuardedStep | LoggedKind
+/** Every kind of step that the action log holds, for its filter (spec 007). */
+export const ACTION_KINDS = [
+  "memory",
+  "settings",
+  "secret_request",
+  "secret_new",
+  "file",
+  "shell",
+  "web",
+  "connection",
+] as const satisfies readonly ActionKind[]
 
 /** One entry of the action log. */
 export interface ActionLogEntry {

@@ -42,6 +42,10 @@ export interface ActionLogInput {
 export interface ActionLogFilter {
   readonly agentId?: string
   readonly result?: ActionResult
+  /** The kind of step (spec 007: the log has filters for the agent, the result and the step kind). */
+  readonly kind?: ActionKind
+  /** A search of the target: the entries whose target holds this text, with no regard to case. */
+  readonly search?: string
 }
 
 export interface ActionLogService {
@@ -195,6 +199,15 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             if (filter.result) {
               where.push("l.result = ?")
               params.push(filter.result)
+            }
+            if (filter.kind) {
+              where.push("l.kind = ?")
+              params.push(filter.kind)
+            }
+            const search = filter.search?.trim()
+            if (search) {
+              where.push("l.target LIKE ? ESCAPE '\\'")
+              params.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`)
             }
             return db
               .all<Row>(

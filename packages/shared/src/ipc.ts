@@ -31,7 +31,7 @@ import type {
 } from "./link.ts"
 import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryProposal } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
-import type { ActionLogEntry, ActionResult } from "./outside.ts"
+import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
 import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
 import type {
   ModelInfo,
@@ -384,7 +384,7 @@ export interface RpcMethods {
   "placeMarks.clear": { input: { place: MarkPlace }; output: PlaceMarks }
   /** The action log of this computer, newest first (spec 007). It is not offered to a linked device. */
   "actionLog.list": {
-    input: { agentId?: string; result?: ActionResult }
+    input: { agentId?: string; result?: ActionResult; kind?: ActionKind; search?: string }
     output: readonly ActionLogEntry[]
   }
   /**

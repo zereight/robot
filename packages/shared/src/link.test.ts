@@ -100,6 +100,13 @@ describe("client requests", () => {
       "usage.summary",
       // A linked device sees the line "Holds a sensitive read" and cannot clear it (spec 007, 012).
       "placeMarks.clear",
+      // A linked device cannot add, change or delete a permission rule, and the rules stay on the
+      // computer (spec 007, 012, 019).
+      "rules.list",
+      "rules.add",
+      "rules.update",
+      "rules.delete",
+      "actionLog.list",
       "browser.control",
       "data.export",
       "data.restore",

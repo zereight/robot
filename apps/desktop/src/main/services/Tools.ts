@@ -920,7 +920,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           level: ctx.permission,
           outside: outside !== null,
           starter: ctx.turn.starter,
-          denied: request.rule?.kind === "deny",
+          // "Read only" comes before the rules (spec 007): there it refuses the step first.
+          denied: request.rule?.kind === "deny" && ctx.permission !== "read_only",
         })
         if (verdict === "refuse_rule" && ruleOf) {
           log("deny_rule", "refused", ruleOf.rule)

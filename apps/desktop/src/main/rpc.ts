@@ -1,4 +1,5 @@
 import {
+  ACTION_KINDS,
   AgentCreate,
   AgentModel,
   AgentPatch,
@@ -738,6 +739,8 @@ export const handlers: Handlers = {
       Schema.Struct({
         agentId: Schema.optionalKey(Schema.String),
         result: Schema.optionalKey(Schema.Literals(["ran", "failed", "refused", "stopped"])),
+        kind: Schema.optionalKey(Schema.Literals(ACTION_KINDS)),
+        search: Schema.optionalKey(Schema.String),
       }),
     )(input).pipe(Effect.flatMap((filter) => ActionLog.use((log) => log.list(filter)))),
   "rules.list": (input) =>
