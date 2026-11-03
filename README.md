@@ -114,7 +114,7 @@ The end-to-end tests make these pictures from the real app.
 ### Commands
 
 ```sh
-bun install          # dependencies and the Electron binary
+bun install          # dependencies, the Electron binary and the Git hooks
 bun run dev          # run the desktop app with hot reload
 bun run lint         # Biome
 bun run format       # Biome, with fixes
@@ -130,6 +130,17 @@ bun run dist         # package for this computer into dist/desktop
 
 If your shell sets `ELECTRON_RUN_AS_NODE=1`, unset it before `bun run dev`. The end-to-end
 harness does this for you.
+
+### Git hooks
+
+`bun install` sets `core.hooksPath` to `.githooks`. Two hooks run on your computer:
+
+- `pre-commit` runs Biome on the staged files. It writes no fixes.
+- `pre-push` runs `bun run check`. It does not run the end-to-end suite. When `cargo` is not in
+  PATH, it skips the host checks and says so; CI still runs them.
+
+`git commit --no-verify` and `git push --no-verify` skip them. CI runs the same checks, so a skipped
+hook only moves the failure to the pull request.
 
 ### Repository layout
 
@@ -228,6 +239,11 @@ Some hosted test machines block multicast; the test of nearby computers then che
 its flow without the list. The number of end-to-end workers is half of the CPU cores; set
 `ROBOT_E2E_WORKERS` to change it. CI splits the end-to-end suite over two runners and retries a
 failed test once; the report marks a test that passed on the retry as flaky.
+
+CI runs the end-to-end suite on every push to `main`. A pull request runs it too, unless every
+changed file is one that the desktop app does not use: `docs/`, `specs/`, `apps/mobile/`,
+`.githooks/`, Markdown files, the licence, and some `.github` files (`ci.yml` is not one of them).
+The lint, typecheck and unit tests of the `check` job run on every pull request.
 
 ```sh
 bun run e2e                                        # whole suite

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Biome on the staged files only. It writes no fixes, so the index stays as you made it.
+# "bun run format" fixes the files. "git commit --no-verify" skips this hook.
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-commit: bun is not in PATH, so Biome was skipped. CI still runs it." >&2
+  exit 0
+fi
+
+exec bunx biome check --staged --no-errors-on-unmatched
