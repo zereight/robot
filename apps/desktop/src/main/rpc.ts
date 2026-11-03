@@ -655,8 +655,16 @@ export const handlers: Handlers = {
       Effect.flatMap(({ channelId }) => Channels.use((c) => c.history(channelId))),
     ),
   "channels.send": (input) =>
-    decode(Schema.Struct({ channelId: Schema.String, text: Schema.String }))(input).pipe(
-      Effect.flatMap(({ channelId, text }) => Channels.use((c) => c.send(channelId, text))),
+    decode(
+      Schema.Struct({
+        channelId: Schema.String,
+        text: Schema.String,
+        replyTo: Schema.optionalKey(Schema.NullOr(Schema.String)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ channelId, text, replyTo }) =>
+        Channels.use((c) => c.send(channelId, text, replyTo)),
+      ),
     ),
   "channels.assign": (input) =>
     decode(

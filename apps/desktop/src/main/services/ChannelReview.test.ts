@@ -318,3 +318,47 @@ describe("blocked parts", () => {
     expect(requests.find((r) => r.last === "@Bo say hi")?.system).not.toContain('"Blocked:"')
   })
 })
+
+describe("a reply to a part (spec question of 004)", () => {
+  test("a reply with no mention goes to the member of the part as a new part, with its done test", async () => {
+    const s = await setup()
+    await s.send("split two things")
+    await until(async () => kinds(await s.history()).includes("agent:summary"))
+    const intro = (await s.parts()).find((t) => t.label === "Intro")
+    const boReply = (await s.history()).find((m) => m.taskId === intro?.id)
+    expect(boReply).toBeDefined()
+    requests.length = 0
+    await s.run(Channels.use((c) => c.send(s.channel.id, "make it shorter", boReply?.id ?? null)))
+    await until(async () => (await s.parts()).some((t) => t.retryOf === intro?.id))
+    await s.settled()
+    const follow = (await s.parts()).find((t) => t.retryOf === intro?.id)
+    expect(follow?.agentId).toBe(s.bo.id)
+    expect(follow?.label).toBe("Changes: Intro")
+    expect(follow?.parentId).toBe(intro?.parentId)
+    expect(follow?.doneTest).toBe(intro?.doneTest)
+    // The member got the reply, and the lead made no new plan for it.
+    expect(
+      requests.some((r) => r.all.includes("make it shorter") && r.system.includes("You are Bo")),
+    ).toBe(true)
+    expect(
+      requests.some((r) => r.last === "make it shorter" && r.system.includes("You are Lia")),
+    ).toBe(false)
+  })
+
+  test("a reply with a mention follows the mention, and a reply to a message of no part goes to the lead", async () => {
+    const s = await setup()
+    await s.send("split two things")
+    await until(async () => kinds(await s.history()).includes("agent:summary"))
+    const intro = (await s.parts()).find((t) => t.label === "Intro")
+    const boReply = (await s.history()).find((m) => m.taskId === intro?.id)
+    const before = (await s.parts()).length
+    await s.run(Channels.use((c) => c.send(s.channel.id, "@Cy check this", boReply?.id ?? null)))
+    await s.settled()
+    expect((await s.parts()).length).toBe(before)
+    const summary = (await s.history()).find((m) => m.kind === "summary")
+    requests.length = 0
+    await s.run(Channels.use((c) => c.send(s.channel.id, "thanks", summary?.id ?? null)))
+    await until(() => requests.some((r) => r.last === "thanks"))
+    expect(requests.find((r) => r.last === "thanks")?.system).toContain("You are Lia")
+  })
+})
