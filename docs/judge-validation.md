@@ -66,6 +66,26 @@ Catch rate for a Fail item. Report the number of such answers apart.
 6. A person labels every synthetic item too. A flaw that was put in is not a label. The person
    decides.
 
+### Export of real parts
+
+A tool makes the items from real parts. Do not copy replies by hand.
+
+- Make a copy of the database while the app is closed. The tool reads only the copy, never the
+  original, and never writes to it.
+- It writes one item for each finished part that has a done test and a reply. An item holds the
+  whole reply, the done test, the members with their role lines, and the last 12 messages from
+  before the time of the verdict.
+- It groups the parts as the checks did. A real check judges in one call the parts that had no
+  verdict at that time. So the parts of one job whose verdicts were saved at nearly the same time
+  form one group. A job with a nudge has more than one group. The parts of a job that have no
+  verdict form a group of their own. The time gap that splits groups is a guess. A person can
+  change it.
+- It leaves out the verdict, the reason of the verdict, and the decision of the user.
+- It leaves the label of the person empty. The replay refuses to run while an item has no label.
+  An unlabeled item never counts as a skip. The count of items shows how many are not labeled.
+- It refuses to write inside the repository, and it refuses to replace a file that exists unless
+  the person asks for it. It prints counts only, never the text of an item.
+
 ### Private data
 
 - Real items hold conversations of the user. Keep them outside the repository.
@@ -101,11 +121,14 @@ A replay sends an item to the model again and reads the verdict.
 - A real check judges all parts of a job in one call and also chooses an action. For the baseline,
   replay the real groups of parts.
 - Run each item 3 times. Report the share of items whose verdict changes between runs.
-- Known limit: an item does not hold the state of the other parts of its job. The replay shows
-  every part as done, with no verdict. This equals a first check. It differs after a nudge, when a
-  real check also lists the earlier verdicts and the failed parts. That difference changes the
-  choice of an action more than it changes a verdict. When real checks after a nudge are in the
-  data, add the state of the other parts to the items.
+- Known limit: an item does not hold the other parts of its job. A real check lists every part
+  of the job that existed at that time, also a part that failed, was blocked, or has no done test,
+  and the numbers of the parts count all of them. After a nudge it also lists the earlier
+  verdicts. The replay lists only the parts of the group, as done and with no verdict, so the list
+  and the numbers can differ. The replay equals a real check only when every part of the job is
+  done, has a done test, and was judged in the first check. The difference changes the choice of
+  an action more than it changes a verdict. When real checks of such jobs are in the data, add
+  the state of the other parts to the items.
 
 ## Runs
 
