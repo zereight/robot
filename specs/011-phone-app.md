@@ -37,6 +37,10 @@ The user follows and directs agents from an iPhone or Android phone while away f
    workflow and reading its runs need only the link. Editing steps and asking the assistant need
    the switch "Can create and change agents" of that computer (012).
 7. **Settings**: language, theme, notifications, unpair.
+8. **Org chart**: a read-only list of the main agent, the channels with their members and leads,
+   the state of each agent, and the work that agents handed to each other in the last 7 days. It
+   is a list, not a canvas (see 029, "Phone"). A tap on an agent opens its chat, and a tap on a
+   channel header opens the channel. It needs only the link.
 
 ## First start
 
@@ -69,6 +73,7 @@ camera.
 | Phone 1 | First start, pairing, Servers, Places, Conversation (read, streamed replies, send, stop, reply, attach photos and files, open files), approval and question cards in the conversation, Needs you (approvals and questions only), offline cache, notifications while the app is open, Settings. |
 | Phone 2 | Needs you with failed channel parts, Workflows, and the list in "Same as the computer". |
 | Phone 3 | The group "Pinned" and sections inside sections, the list in "More on the phone", and voice (027). |
+| Phone 4 | The screen "Org chart" as a read-only list (029). |
 
 Until a screen comes, the phone does not show it. Phone 1 is a complete app: every screen it
 shows works.
@@ -157,3 +162,6 @@ start a handover (003) and does not make a skill from work (017). It shows the m
 - A message with three images shows a stack. A tap opens the viewer, and a swipe goes to the next
   image.
 - Open the thinking row of a reply: the sheet lists every thought of the turn.
+- Open the screen "Org chart": it lists the main agent, each channel with its members and lead, and
+  the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer off, the
+  screen says so and shows no list (029).

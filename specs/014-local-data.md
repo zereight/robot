@@ -99,6 +99,9 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   the connections without their secret values.
 - The cards of the board and their comments (024) are in the archive, with their numbers and
   their links to tasks. An import restores them.
+- The org chart (029) holds no data of its own. It is drawn from agents, channels and tasks, which
+  the archive holds. So the archive has no part for it, and an import into an empty profile draws
+  the same chart.
 - The memory history in the archive follows the rule for secrets above: text that looks like a
   secret is replaced with "[redacted]".
 - Import of a ROBot export into an empty profile (022) restores everything except secrets. Every
