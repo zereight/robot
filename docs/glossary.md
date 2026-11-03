@@ -105,6 +105,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Work card | A card that the board makes by itself for a task that has no card (024). | 진행 중인 작업 카드 (proposed) | planned card, ticket |
 | Backlog, To do, Doing, Done | The four columns of the board (024). Agents leave "Backlog" alone. | 백로그, 할 일, 진행 중, 완료 (proposed) | In progress, Review |
 | Mine | The switch of a card that the user does alone. Agents do not see it (024). | 내가 할 일 (proposed) | Human, private |
+| Org chart | The page that draws the main agent, the channels with their members and leads, the state of each agent, and the work that agents handed to each other (029). It shows teams and hand-offs. It is no tree of bosses. | 조직도 (proposed) | hierarchy, boss tree, employee tree, reporting line |
+| Handed work | A task that one agent sent to another with "send message" in the last 7 days. The org chart draws it as a dashed line with a number (029, 007). | 넘긴 작업 (proposed) | delegation, assignment |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
 | Keep going | The app asks an agent to go on when a turn ends with open steps (005). | 이어서 진행 (proposed) | autopilot, auto-run |

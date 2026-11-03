@@ -91,7 +91,7 @@ client shows it and sends commands.
 
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
-| See places in the sections of the server, unread counts, working dots | Delete or restore agents and channels |
+| See places in the sections of the server, unread counts, working dots; see the org chart (029) | Delete or restore agents and channels |
 | Read messages, search places and messages | Change model accounts, skills, connections and settings. Review the tools of a connection (018). Make a skill from work (017). Hand over a chat (003) |
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
@@ -216,7 +216,8 @@ means a profile on a computer.
   place), a page of messages, search of places and of messages (001), send message, stop, edit,
   retry, mark a place as read, approve, answer question, upload attachment, download attachment,
   task list, task details, stop a task, workflow list, one workflow, run history, run details,
-  create, update, delete and turn on or off a workflow, run a workflow, stop a run.
+  create, update, delete and turn on or off a workflow, run a workflow, stop a run, and the org
+  chart (029).
 - The phone app (011) may ask for more: end a request (see 004). The aim of 011 is that the phone
   can do whatever the user can do in a conversation on the computer. Start and fork a thread,
   compact a conversation and "Run next" are on no client in this version (003, 005), and each of
@@ -226,7 +227,7 @@ means a profile on a computer.
   workflow needs the switch "Can create and change agents".
 - A server pushes: new and changed messages, task state changes, agent state changes, approval
   requests and questions, unread counts, changes to the sections or to the section of a place,
-  changes to workflows, and changes to the state of a run.
+  changes to workflows, changes to the state of a run, and changes to the org chart (029).
 - A server pushes the start and the end of a quiet turn (005, "Quiet line"), with the name and
   the seconds on the quiet clock at the time of the push. The client counts on from that value.
   It does not get a push each second. A client that connects while a turn is quiet gets the quiet
@@ -323,6 +324,10 @@ accept connections, this is the same computer.
   The assistant panel and workflow export and import show "Open this on MacBook 2."
 - A workflow of MacBook 2 that runs on a third computer through sync shows "Runs on <name>" on
   MacBook 1, and Run is off.
+- On MacBook 1, open the Org chart page of MacBook 2 with the switch off. The chart of MacBook 2
+  shows with no edit control. An agent of MacBook 2 starts a task: its node shows "working" on
+  MacBook 1 within 1 second. Turn MacBook 2 off: the page shows "MacBook 2 is offline." and no
+  chart (029).
 - Type a wrong code 5 times: the code ends. Wait 5 minutes: the code ends.
 - Pair a computer with itself: a plain error shows.
 - A Mac has two profiles. Pair one phone with each. Each phone lists one server and shows nothing

@@ -204,6 +204,10 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - Only a linked computer that the user set to sync can send changes. Turning "Let other devices
   connect" off, or removing the link, stops the flow at once.
 - The tasks page lists tasks of both computers, with the name of the origin and a filter.
+- The org chart (029) stores nothing, so it adds nothing to "Syncs". Each computer draws it from
+  its own copy of agents, channels and tasks. The hand-offs count the tasks of both computers.
+  Two computers that are up to date draw the same chart, except for the state "offline" of an
+  agent, which depends on the model accounts of each computer.
 - Sync data is not part of an export (014).
 - A big history, for example 50,000 messages, copies in batches. The app stays usable while it
   copies.
@@ -235,6 +239,9 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - Edit one memory item on both computers while MacBook 2 is off. After the next sync both show
   the same newest text, and the older text exists as a second item.
 - A task on MacBook 1 waits for an approval. Answer it on MacBook 2. The task goes on.
+- Agent A on MacBook 2 sends three messages to agent B with the tool "send message". After the
+  sync, the org chart on MacBook 1 shows a hand-off line from A to B with the number 3. The groups
+  and leads of both charts are equal (029).
 - A routine from MacBook 1 does not run on MacBook 2 at its time. "Run on this computer" on
   MacBook 2 moves it, and MacBook 1 shows "Runs on MacBook 2".
 - Delete an archived agent on MacBook 1. It is gone on MacBook 2, and its workspace folder is
