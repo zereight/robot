@@ -749,7 +749,10 @@ export const electronPlatform = (): PlatformService => {
     browser: pageOf,
     teams: () => {
       // The Teams page is a page like the browser of an agent, with a key that no agent has.
-      teamsSurface ??= createTeamsSurface(pageOf(TEAMS_PAGE_KEY))
+      // A test run can load a stand-in site on this computer in place of Teams, and never reaches
+      // the real Teams.
+      const url = isTestRun ? process.env.ROBOT_TEST_TEAMS_URL : undefined
+      teamsSurface ??= createTeamsSurface(pageOf(TEAMS_PAGE_KEY), url ? { url } : {})
       return teamsSurface
     },
     setTeamsProfile: (profileId) => platformSetBrowserProfile(TEAMS_PAGE_KEY, profileId),

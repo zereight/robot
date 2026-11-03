@@ -127,6 +127,8 @@ export interface TeamsSurfaceOptions {
   /** Waits between two reads while a click on a chat takes effect. A test gives a quick one. */
   readonly wait?: (ms: number) => Promise<void>
   readonly selectors?: TeamsPageSelectors
+  /** Where the page loads. Only a test run sets it, to a stand-in site on this computer. */
+  readonly url?: string
 }
 
 /** How long a click on a chat may take to show in the header: 12 reads, 250 ms apart. */
@@ -154,7 +156,7 @@ export const createTeamsSurface = (
   const look = async (): Promise<TeamsLook> => {
     if (!driver.isOpen() || reload) {
       try {
-        await driver.open(sel.url)
+        await driver.open(options.url ?? sel.url)
         reload = false
       } catch (error) {
         if (isOfflineError(error)) {
