@@ -1,0 +1,5 @@
+# The Rust version of the host (host/). CI and every machine use the same one.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

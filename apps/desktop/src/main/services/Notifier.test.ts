@@ -569,6 +569,9 @@ describe("the island, other computers and Always allow", () => {
     const ownNext = file(s, "list-own-next.txt")
     const peerNext = file(s, "list-peer-next.txt")
     await s.send(removal(ownFile))
+    // The two turns run at once, so the request of this agent must be there before Bo asks:
+    // otherwise a slow machine can show the two in the other order.
+    await until(async () => (await s.island()).waiting.length === 1)
     await s.sendTo(peer.id, removal(peerFile))
     await until(async () => (await s.island()).waiting.length === 2)
     // The request of Bo is shown as one of the sync peer, as the sync service does.

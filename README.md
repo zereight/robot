@@ -106,6 +106,8 @@ The end-to-end tests make these pictures from the real app.
 ### Requirements
 
 - [Bun](https://bun.sh) 1.4 or later
+- [Rust](https://rustup.rs) through rustup. `rust-toolchain.toml` sets the version, and rustup
+  gets it at the first build
 - Node.js 24 (only for Playwright)
 - A Mac with Apple silicon (M1 or later)
 
@@ -118,10 +120,13 @@ bun run lint         # Biome
 bun run format       # Biome, with fixes
 bun run typecheck    # TypeScript, every workspace
 bun run test         # unit tests (bun test, files in parallel)
-bun run check        # lint, typecheck and unit tests in one go
+bun run check        # lint, typecheck, unit tests and the host checks in one go
+bun run host:check   # host: rustfmt, clippy and cargo test
 bun run e2e          # build, then Playwright drives the real app
 bun run dist         # package for this computer into dist/desktop
 ```
+
+`dev`, `build`, `e2e` and `dist` build the host first (`bun run --cwd apps/desktop build:host`).
 
 If your shell sets `ELECTRON_RUN_AS_NODE=1`, unset it before `bun run dev`. The end-to-end
 harness does this for you.
@@ -129,6 +134,7 @@ harness does this for you.
 ### Repository layout
 
 ```text
+host/                The host program in Rust: the work of the app, apart from the windows
 apps/desktop/
   src/main/          Electron main process: Effect services, RPC, providers, SQLite
   src/preload/       The narrow bridge the window can call
@@ -177,7 +183,16 @@ have no transparency. Remove the alpha channel after the export, for example wit
 │ node:sqlite  │ OS keychain  │ model APIs   │
 │ (WAL)        │              │ (SSE)        │
 └──────────────┴──────────────┴──────────────┘
+                │ one JSON line per request and per answer (stdin / stdout)
+┌───────────────┴──────────── host (Rust) ───┐
+│ the methods that moved: app.licenses       │
+└────────────────────────────────────────────┘
 ```
+
+- **Host.** The work of the app moves from the main process to `host/`, a Rust program, one
+  method at a time, until the main process only keeps the windows. The main process starts the
+  host at the first call, sends it the methods in its list of host methods, and restarts it after
+  a stop. The host ends when its input closes, so it never outlives the app.
 
 - **Main process.** Each area is an [Effect](https://effect.website) service with a layer. A test
   runtime swaps the platform, secrets and network for fakes, so unit tests cover the real

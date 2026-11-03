@@ -26,6 +26,12 @@ jobs:
           key: deps-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: deps-${{ runner.os }}-
       - run: bun install --frozen-lockfile
+      # rustup gets the Rust version of rust-toolchain.toml at the first cargo command.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+      - name: Host checks (rustfmt, clippy, cargo test)
+        run: bun run host:check
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
@@ -60,6 +66,9 @@ jobs:
           key: deps-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: deps-${{ runner.os }}-
       - run: bun install --frozen-lockfile
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
       - name: End-to-end tests
         run: bun run e2e --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
