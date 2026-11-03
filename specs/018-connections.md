@@ -21,6 +21,14 @@ as tools. Every use goes through the same approval and rule system as the built-
   connection gives. The user can turn off a single tool. A tool that is off is not given to any
   agent.
 - **State**: Off, Not tested, Connected (with the number of tools), or Error (with the reason).
+  Connected also tells how many tools need review.
+- **Reviewed tools**: the tools of a connection that the user has seen and accepted. For each tool,
+  the app keeps its name, its description, the names and descriptions of its parameters, and its
+  read-only mark.
+- **Held tool**: a tool that the connection offers now and that is new, or that differs from its
+  reviewed tool in any of those parts. No agent gets a held tool until the user accepts it. A
+  connection can change a description after the user added it. A description is text that the
+  model reads, so a changed description can carry an order.
 - **Read-only mark**: a connection can mark a tool as one that only reads and changes nothing. MCP
   calls this a hint. The test list shows the mark beside the tool.
 - **Trust read-only marks**: a switch of each connection, off by default. See "Rules".
@@ -34,7 +42,8 @@ as tools. Every use goes through the same approval and rule system as the built-
      see what it does. The user must confirm to save.
 2. Test: the "Test" button connects once and shows the tools (name and description), or the
    reason of the failure: program not found, program ended, no answer in 20 seconds, address
-   refused, sign-in refused, or an answer that is not valid.
+   refused, sign-in refused, or an answer that is not valid. When the user saves the form after a
+   Test of that same form worked, the tools that the Test showed are the reviewed tools.
 3. Use: an agent that may use the connection sees its tools in the next turn. When the agent
    calls one, a tool card shows in the chat with the connection name and the tool name (see 003).
    The approval rules of 007 apply (see "Rules").
@@ -44,6 +53,12 @@ as tools. Every use goes through the same approval and rule system as the built-
    removes it. The page never shows a saved secret again.
 6. Remove: after a confirm. The saved secrets of the connection leave the keychain, and so do the
    rules for its tools (see 007). The action log keeps its entries.
+7. Review: the row of a connection with held tools shows "N tools need review" and the button
+   "Review". The dialog lists each held tool with the tag "New" or "Changed". For a changed tool,
+   it shows the old text and the new text of the description and of the parameters, and tells
+   whether the read-only mark changed. Each tool has the button "Accept". The dialog also has
+   "Accept all" and "Close". "Close" keeps the tools held. An accepted tool is a reviewed tool with
+   its new text, and agents get it from the next turn.
 
 ## States
 
@@ -53,6 +68,8 @@ as tools. Every use goes through the same approval and rule system as the built-
   muted line, "The connection NAME is not available.", for that turn.
 - A connection is down in the middle of a call: the step fails with the reason, and the turn goes
   on.
+- A connection has held tools when a turn starts: the turn goes on without them. The chat shows
+  one muted line, "Tools of the connection NAME wait for your review.", for that turn.
 
 ## Rules
 
@@ -77,7 +94,8 @@ as tools. Every use goes through the same approval and rule system as the built-
 - In a turn that holds outside content (007), a call of a tool with the mark is a risky step
   again. Outside text can make the agent put data in the arguments.
 - The app reads the tools and their marks when the connection starts. A change of a mark counts
-  from the next start of the connection.
+  from the next start of the connection, and only after the user accepts the tool (see "Tool
+  review").
 - The result of a tool with the read-only mark is still outside content (007).
 - Every other step of a tool of a connection is a risky step (see 007). At "Ask for risky steps" it
   asks, unless an Allow rule matches. The approval card shows the connection name, the tool name
@@ -98,8 +116,29 @@ as tools. Every use goes through the same approval and rule system as the built-
 - The phone shows and answers approval cards for these tools as for any other tool (see 011). It
   does not add or edit connections.
 
+### Tool review
+
+- When a connection starts, the app compares the tools that it offers with the reviewed tools. It
+  compares each text up to 20000 characters, after it removes spaces at both ends. A tool that
+  differs is held. A tool that is reviewed and that the connection no longer offers leaves the
+  reviewed tools. When it comes back, it is a new tool.
+- A connection with no reviewed tools holds all its tools at its first start. This is the case for
+  a connection that the user saved with no Test, and for a connection that an import brought back.
+- The reviewed tools are cleared when the user changes how the app reaches the server: the command,
+  the arguments, the working folder, the environment values, the address or the headers. A change
+  of the name or of a switch does not clear them.
+- A connection that exists before this rule keeps its tools: the tools that it offers at its first
+  start after the update are its reviewed tools.
+- A held tool has no read-only mark. Rules for a tool (007) stay as they are, and they count again
+  when the user accepts the tool.
+- The reviewed tools are stored with the connection in the local database. An export holds none of
+  them.
+- Only the computer shows the review. A linked device (012) and the phone (011) cannot review.
+  Connections do not sync (019).
+
 ## Out of scope
 
+- A row on the Today page (021) or a notice for held tools.
 - A sign-in through a browser window for a connection. The user can put an access token in a
   header instead.
 - A catalogue of ready connections, or a download of connection programs.
@@ -134,3 +173,16 @@ All checks use a small test program as the connection, written for the test.
   "Ask for risky steps" asks. Turn it on: the call runs with no card, and the tool card shows "Read
   only, as the connection says". At "Ask for everything" it still asks.
 - With "Trust read-only marks" on, the agent fetches a page and then calls "search": the call asks.
+- Add the test program, press Test, and save. Change the description of one tool in the test
+  program, and start a turn that needs the connection. The connection starts, the row shows "1 tool
+  needs review", the agent does not see that tool, the other tools work, and the chat shows "Tools
+  of the connection NAME wait for your review." Press "Review": the dialog shows the old and the new
+  description. Press "Accept": the next turn gets the tool with the new description.
+- The test program offers a new tool after a restart: the tool is held with the tag "New".
+- Save a connection with no Test, and start a turn: all its tools are held.
+- Change the command of a connection that has reviewed tools: the reviewed tools are cleared, and
+  the next start holds all tools.
+- A tool changes its read-only mark from off to on: the tool is held, and the agent does not get it
+  until the user accepts it.
+- Export, then import into an empty app, then turn the connection on: the connection has no
+  reviewed tools, and all its tools are held at the first start.
