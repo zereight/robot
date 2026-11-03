@@ -27,7 +27,7 @@ service holds it.
 | Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
 | Channels | Name, topic, instructions, members, lead, the "Review parts" setting, archive state. |
-| Messages | Direct chats and channels, with tool cards, plan steps and reply chips. |
+| Messages | Direct chats with their threads, and channels, with tool cards, plan steps, reply chips and the rows "Compacted". |
 | Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent, with the channel of a channel note. |
 | Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes), the run history, and the "Runs on" computer. |

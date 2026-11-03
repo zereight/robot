@@ -11,6 +11,10 @@ The user sets the app up the way they like in one place.
   300; see 005), "While an agent works, new messages" (see 003, "Messages during a turn"), and the
   silent limit: how long a turn may show no sign of life before the app stops it (see 005). The
   choices are 1, 5, 10 (default), 30 and 60 minutes, and Never.
+  Two more settings are here. "Compact long chats automatically" is on or off; the default is on
+  (see 003, "Automatic compact"). "Agents working at once" is a whole number from 1 to 8; the
+  default is 4 (see 005, "Queue"). Both belong to the open profile and are local to the computer,
+  as the other settings.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
@@ -112,6 +116,10 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   the key.
 - Change the silent limit to 30 minutes: a turn that starts after the change fails after 30 minutes
   of silence and not after 10. Choose Never: a silent turn does not fail by itself.
+- Turn off "Compact long chats automatically": a chat that is at 90 percent use starts its next
+  turn with no compact. Turn it on: the next turn compacts first.
+- Set "Agents working at once" to 1: tasks of two agents run one after the other. Set it to 9 or 0:
+  the field refuses the value and keeps the old one.
 - Two agents have the role lines "Designer" and "designer": the Roles page shows one role with
   two agents. Rename it to the role line of a third agent: all three agents have one role.
 - Remove a role: its agents have an empty role line and keep their chats.

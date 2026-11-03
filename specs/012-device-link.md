@@ -213,10 +213,10 @@ means a profile on a computer.
   retry, mark a place as read, approve, answer question, upload attachment, download attachment,
   task list, task details, stop a task, workflow list, one workflow, run history, run details,
   create, update, delete and turn on or off a workflow, run a workflow, stop a run.
-- The phone app (011) may ask for more: end a request (see 004), start and fork a thread, and
-  compact a conversation. The aim of 011 is that the phone can do whatever the user can do in a
-  conversation on the computer. A computer client does not offer these in this version, and each
-  of them needs its own slice.
+- The phone app (011) may ask for more: end a request (see 004). The aim of 011 is that the phone
+  can do whatever the user can do in a conversation on the computer. Start and fork a thread,
+  compact a conversation and "Run next" are on no client in this version (003, 005), and each of
+  them needs its own slice.
 - The rules of "Create and change agents" and "Workflows" apply to every client, the phone too:
   running and stopping a workflow need only the right to send messages, and a change to a
   workflow needs the switch "Can create and change agents".

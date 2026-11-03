@@ -56,6 +56,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M16 | The changes to 003, 004, 005, 012 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md), and the phone plan of [docs/performance.md](../docs/performance.md) | Slices S59 and S60: the quiet line, and the measures of the phone app |
 | M17 | 023, and the changes to 000, 002, 004, 005, 007, 008, 009, 012, 013, 014, 017, 018 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S61 to S68: usage of a task and token limits, "Ask when unsure", read-only marks, memory check, channel notes, handbook and channel instructions, team file, outside programs |
 | M18 | The change to 010 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S69: the workflow starter "TLA+ check" |
+| M19 | The changes to 003, 005, 013 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md), with S20 | Slices S20, S70, S71 and S72: threads, context meter and compact, automatic compact, the order of the task queue with "Run next", and the number of slots ("Agents working at once") |
 
 ## Surfaces check
 

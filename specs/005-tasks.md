@@ -42,10 +42,12 @@ and workflows.
   prompt, with their times. For a part it also shows the done test and the verdict. It shows a
   list of moments too (see "Moments").
 - Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), accept or
-  request changes (in review; see "Review"), open source place.
+  request changes (in review; see "Review"), run next (queued; see "Queue"), open source place.
 - A task of a channel (see 004) also has "End the request", which cancels the whole request.
 - A queued task shows what it waits behind: the work that its agent runs now, with the place of
-  that work. If the agent is busy in its own chat, the line says so.
+  that work. If the agent is busy in its own chat, the line says so. If the agent is busy in
+  another thread, the line says so. A task that waits for a free slot (see "Queue") says so and
+  shows the number of slots.
 
 ## Usage of a task
 
@@ -244,10 +246,64 @@ stops the turn.
 - The quiet line is the same for an agent that uses the tools of the app and for an agent on a
   vendor runtime. For a vendor runtime, a sign of life is what the program reports to the app.
 
+## Queue
+
+- Each agent has one queue. A task joins it when the app makes the task. All threads of the agent
+  (003) share this queue. The rules of this section are the same for every runtime (006).
+- The queue of an agent holds at most 20 queued tasks. A task that waits for the user, or for a
+  task that it gave out, is not queued and does not count. The reason for a task over the limit is
+  "<name> has 20 tasks that wait. Try again later." What happens:
+  - A message of the user: the app makes no task. The box keeps its text and shows the reason. A
+    queued message (003) that the app sends at the end of a turn stays in the message queue and
+    shows the reason.
+  - A run of a routine: the app makes no task, and the run is Failed (009).
+  - A step of a workflow: the app makes no task, and the step fails (010).
+  - A part of a channel job: the app makes the part in the state Failed, with the reason, so that
+    the lead and Retry see it.
+  - "Send message" (007) and an outside program (023): the call gets the reason. No task is made.
+  - A reply that comes back (see "Limits of a task") always makes its task, also over the limit.
+  - A memory check (008) is not added. The app adds it after the next turn that ends as done.
+  - Retry, a nudge and a request for changes follow the rule of their source.
+- **Order**: the tasks that wait start in this order. It holds for the queue of one agent and for
+  the slots described below.
+  1. The tasks that the user picked with "Run next", the latest pick first.
+  2. The tasks of normal sources, the oldest first. These are a chat, a channel, another agent and
+     an outside program.
+  3. The tasks of background sources, the oldest first. These are a routine and a workflow.
+  4. A memory check. It starts only when its agent has no other task that runs or waits (008).
+- A new task never stops a task that runs. It only takes its place in the order. A task of a
+  background source has no time limit in the queue. A run of a routine that is still queued when
+  the next run is due counts as a run that is still going, so the next run is Skipped (009).
+- **Run next**: on a queued task, the user picks "Run next" on the Tasks page or on the line of the
+  queued task. The task goes to the front of the order. It does not stop the task that runs. It
+  works for every queued task, also a part of a channel job and a workflow step. It cannot start a
+  task before a task of its agent that waits for the user. It is off for a task that is not
+  queued. It has no undo: the position matters only until the task starts. A linked computer and
+  the phone do not have it in this version (011, 012).
+- **Agents at once**: a setting in General (013), "Agents working at once". It is a whole number
+  from 1 to 8. The default is 4. The word "slot" means one of the tasks that can run at the same
+  time.
+  - At most that many tasks run at the same time in one profile (022). Each profile uses its own
+    number, also when it is not open. Each task that runs uses one slot.
+  - A task that waits for the user (an approval or a question) uses no slot. A task that waits for
+    a task that it gave out uses no slot either. So a parent task and its child cannot hold each
+    other, also when the number is 1.
+  - When the user answers, or when the last child ends, the task needs a slot again. If none is
+    free, it waits as queued at the front of the order, before the "Run next" picks. Its agent
+    stays held, so no other task of that agent starts.
+  - A task that cannot start because all slots are in use waits as queued. Its line says "Waits
+    for a free slot". When a slot is free, the first task in the order whose agent is not busy
+    starts. The tasks of a busy agent keep their place in the order.
+  - A new number applies at once to the tasks that wait. A task that runs is never stopped for it.
+    Stop of a task frees its slot at once.
+  - The number is a setting of the profile (013).
+- When two computers sync (019), each computer counts and orders the tasks that it made. "Run
+  next" is on only on the computer that made the task. A pick does not sync.
+
 ## Rules
 
-- One agent runs one task at a time. Other tasks for it wait in its queue in order. When two
-  computers sync (019) and both are online, this holds across both computers.
+- One agent runs one task at a time. Other tasks for it wait in its queue, in the order of
+  "Queue". When two computers sync (019) and both are online, this holds across both computers.
 - A task waiting for the user (an approval or a question) does not block other agents.
 - Stopping a parent stops its children.
 - A parent task waits for the tasks it gave out. So the cancel of one child alone would leave the
@@ -277,6 +333,29 @@ stops the turn.
 ## Acceptance
 
 - Start two tasks for one agent: the second waits until the first ends.
+- An agent runs a long task. A routine task and then a chat task wait for the same agent. The chat
+  task starts first, although the routine task came first. Two routine tasks start in the order
+  they were made. A memory check waits behind both.
+- Three tasks wait for one agent. Pick "Run next" on the third: it starts first when the running
+  task ends. Pick it on the second afterwards: the second starts before the third.
+- The queue of an agent holds 20 queued tasks. The 21st chat message is not made as a task, and the
+  box keeps its text and shows "<name> has 20 tasks that wait. Try again later." A routine run in
+  the same state is a failed run with that reason. A part of a channel job is made as Failed with
+  that reason. A reply that comes back from another agent still starts its task.
+- Set "Agents working at once" to 2 and give a task to each of three agents. Two tasks run. The
+  third shows "Waits for a free slot". Stop one running task: the third starts at once. Raise the
+  number to 3 while one waits: it starts at once and the tasks that run go on.
+- The number is 2 and three tasks wait. The agent of the first task is busy in a chat. When a slot
+  is free, the second task starts and the first keeps its place in the order.
+- A task waits for an approval, and the number is 1. A task of another agent starts and runs. A
+  second task of the first agent stays queued.
+- The number is 1. Task A waits for an approval, and the task of another agent runs and takes the
+  slot. The user allows the step of A: A waits as queued, with its agent held, and runs when the
+  slot is free.
+- The number is 1. Agent A gives a part to agent B and waits for its answer. B starts, and A holds
+  no slot. The part ends and A goes on.
+- Two tasks of one agent in two threads: the second waits, and its thread shows "Waits for another
+  thread".
 - Restart during a task: it shows as failed with the restart reason and can be retried.
 - A fake provider waits 2 seconds, then streams a reply. The task shows a "First reply" time of
   2 seconds or a little more. A task that failed before any reply shows "—" for "First reply".
