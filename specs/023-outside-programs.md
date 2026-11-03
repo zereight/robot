@@ -54,7 +54,9 @@ With the access "Read and send work", also:
 
 - **Send a message**: a message to the direct chat of one agent or to one channel, at most 100000
   characters. It goes the same way as a message of the user (003, 004), with one difference: it
-  never joins a running turn. When the agent works, the message waits and starts its own turn. It
+  never joins a running turn. When the agent works, the message waits and starts its own turn. The
+  waiting message is not in the queue of the user (003). It has no "Send now" and no edit, and it
+  never merges with messages of the user. It
   shows in the place with the mark "Sent by <program name>". It returns the task that it started.
 - **Wait for a task**: waits until the task ends, waits for the user, or 10 minutes pass. It
   returns the state ("Still running" after 10 minutes, "Waits for the user", or the final state)
@@ -82,6 +84,8 @@ With the access "Read and send work", also:
   settings of the app (002, "Changes from the chat"), ask the user at every level, "Full access"
   too.
 - A task of an outside program has depth 0 (005).
+- A job that an outside program sends to a channel holds outside content in every part (007). Its
+  parts ask before a change of settings at every level, as its own turn does.
 - The helper reaches ROBot on this computer only. ROBot offers no network address for it. The way
   between the helper and ROBot is open only to the user of the system who runs ROBot.
 - The helper answers in English, because its reader is a program. The settings page is in the

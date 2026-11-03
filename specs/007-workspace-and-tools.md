@@ -85,10 +85,17 @@ the user gets a card only when the check is sure that the user asked for the ste
   with the normal approval card, and the decision model gets no request:
   - the turn holds no outside content (see "Outside content"). Outside text can steer what the
     agent writes in a step, so the check cannot judge such a step;
+  - no earlier turn that the agent still sees in this chat, thread or channel held outside content.
+    A compact (003) keeps this mark. A new thread or a fork clears it;
   - the turn has words of the user (see below);
-  - a command has at most 500 characters. A longer command is not checked.
+  - a command has at most 500 characters. A longer command is not checked;
+  - a command does not run a file that the agent wrote or changed with a file step in this chat,
+    thread or channel. A short command can start a long script.
 - **Words of the user**: the messages of the user that started the turn or joined it (003), or the
-  prompt of a routine (009). A message of another agent, of an outside program (023) or of a watch
+  prompt of a routine (009). The prompt of a routine from an agent file (002) counts only after the
+  user saves the routine form once. For a part of a channel job (004), the words of the user are
+  the job message, when the user posted the job and the turn of the lead held no outside content
+  before it made the part. A message of another agent, of an outside program (023) or of a watch
   is not words of the user. A step of a workflow has no words of the user, because the assistant
   of a workflow can write the prompt of a step (010).
 - For a checked step, the app asks the decision model one question: does the user ask for this
@@ -268,12 +275,16 @@ text is in the turn.
   - the answer of a request with a saved secret (020),
   - the change that starts a routine with a watch trigger (009),
   - a message from another agent,
-  - a message of an outside program (023).
+  - a message of an outside program (023),
+  - a hit of "search chats" (see "Searching past chats") on a message that the user did not write.
   Files in the workspace and files that the user attaches are not outside content.
 - A turn **holds outside content** from the first step that gives outside content to the agent
   until the turn ends. A turn that a watch routine, a message from another agent or a message of
   an outside program starts holds outside content from its start. A message of an outside program
   never joins a running turn (023).
+- A part of a channel job (004) holds outside content from its start when the job came from
+  another agent or an outside program, or when the turn of the lead held outside content before it
+  made the part.
 - **Guarded steps** are:
   - a change of the agent's own settings or instructions (see 002, "Changes from the chat"),
   - a save to memory (see 008),
@@ -289,11 +300,13 @@ text is in the turn.
   with a saved secret that uses a method other than GET are refused, as other changes are (see
   "Permission levels"). A save to memory follows the rule above.
 - At "Full access", a guarded step runs with no question. A Deny rule still refuses it. The
-  exception is a turn that an outside program started (023).
+  exception is a turn that an outside program started, or a part of a job that an outside program
+  sent (023).
 - A turn that the user did not start (a routine, a workflow, a message from another agent, or a
   message of an outside program) asks before a change of the agent's own settings or
-  instructions, also when it holds no outside content, at every permission level except "Full
-  access". In a turn that an outside program started, it asks at "Full access" too (023).
+  instructions, or of the settings of the app (002), also when it holds no outside content, at
+  every permission level except "Full access". In a turn that an outside program started, and in
+  a part of a job that an outside program sent, it asks at "Full access" too (023).
 - The action log (see "Action log") has an entry for each guarded step. The entry says whether
   the turn held outside content.
 
@@ -401,3 +414,10 @@ text is in the turn.
   and the decision model gets no request.
 - Turn the switch "Permission checks" off. An agent at "Ask when unsure" asks for each risky step,
   and the line under its level says that it works as "Ask for risky steps".
+- "Ask when unsure": the agent fetches a page in one turn. In the next turn of the same chat, the
+  user asks for an install. The step asks the user, and the decision model gets no request. In a
+  new thread, the same request goes to the check.
+- "Ask when unsure": the agent writes a script with a file step, then runs it with a short command.
+  The step asks the user.
+- An outside program posts a job in a channel with a lead. A member saves a fact to memory with
+  "Save at once" in its part: an approval card shows with "This turn holds outside content".

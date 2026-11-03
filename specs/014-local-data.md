@@ -31,7 +31,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
     screenshot. It sends no value of a secret control.
   - For permission checks (see 007, "Ask when unsure"), when the user turns them on, the app sends
     the words of the user in the turn (at most 2000 characters), the kind of the step, and the
-    command text (at most 500 characters), the host, or the name of a connection and a tool.
+    full command, the host, or the name of a connection and a tool. A command of more than 500
+    characters is not sent, and the step asks.
   - A local server on this computer is the only choice that sends nothing off the computer.
   - There is one more exception: a connection that the user adds on purpose (see 018). The app
     sends data to it only when an agent calls one of its tools. The data is what the agent wrote
