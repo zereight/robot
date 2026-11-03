@@ -1,4 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync } from "node:fs"
+import { homedir } from "node:os"
 import { basename, join, join as joinPath } from "node:path"
 import {
   type IslandShape,
@@ -20,11 +21,27 @@ import {
   WebContentsView,
 } from "electron"
 import type { BrowserPage, PageBounds, PlatformService } from "./services/Platform.ts"
+import { type Resolver, systemResolver } from "./web/fetch.ts"
 
 /** True when an end-to-end test runs the app. The app then leaves system settings alone. */
 export const isTestRun = Boolean(process.env.ROBOT_USER_DATA)
 
 const PAGE_TEXT_MAX = 20_000
+
+/**
+ * A test run can give a table of host names and the addresses they lead to, as JSON in
+ * `ROBOT_TEST_HOSTS`. A name that is not in the table fails like a name that does not exist, so a
+ * test never reaches the real name service. A real run has none.
+ */
+const testHosts = (): Resolver | undefined => {
+  if (!isTestRun || !process.env.ROBOT_TEST_HOSTS) return undefined
+  const table = JSON.parse(process.env.ROBOT_TEST_HOSTS) as Record<string, string[]>
+  return async (host) => {
+    const list = table[host.toLowerCase()]
+    if (!list) throw new Error(`ENOTFOUND ${host}`)
+    return list.map((address) => ({ address, family: address.includes(":") ? 6 : 4 }))
+  }
+}
 
 const browsers = new Map<string, BrowserPage>()
 /** The browser profile that each agent uses. An agent that is not here uses its own data. */
@@ -337,6 +354,9 @@ export const electronPlatform = (): PlatformService => {
     platform: process.platform,
     dataDir,
     defaultWorkspaceRoot: join(dataDir, "workspaces"),
+    // A test run can name a home folder of its own. A real run always uses the home of the user.
+    homeDir: isTestRun && process.env.ROBOT_TEST_HOME ? process.env.ROBOT_TEST_HOME : homedir(),
+    resolveHost: testHosts() ?? systemResolver,
     systemLocale: () => process.env.ROBOT_SYSTEM_LOCALE ?? app.getLocale(),
     pickFolder: async (defaultPath) => {
       if (isTestRun && process.env.ROBOT_TEST_PICK_FOLDER) return process.env.ROBOT_TEST_PICK_FOLDER

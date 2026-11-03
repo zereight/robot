@@ -33,6 +33,7 @@ import {
   outsideOfCall,
   outsideOfParts,
   type PermissionLevel,
+  type PlaceRef,
   QUEUE_MAX,
   type QueuedMessage,
   type QueueHold,
@@ -70,6 +71,7 @@ import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
+import { PlaceMarks } from "./PlaceMarks.ts"
 import { Providers, storedFailure } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
@@ -366,6 +368,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const activity = yield* Activity
       const tasks = yield* Tasks
       const tools = yield* Tools
+      const placeMarks = yield* PlaceMarks
       const memory = yield* Memory
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
@@ -743,7 +746,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // The mark of the turn (spec 007, "Outside content"). A turn that waited through a
         // restart gets it back from its saved steps and from the card that waits.
         const fresh = resumed ? undefined : origin
-        const mark = newTurnMark(fresh?.starter ?? starterOf(task.source), fresh?.outside ?? null)
+        // The turn also holds a sensitive read from its start when the chat does (spec 007,
+        // "Sensitive places"): an earlier turn read a credential place, and no one cleared it.
+        const place: PlaceRef = { kind: "agent", id: agentId }
+        const mark = newTurnMark(
+          fresh?.starter ?? starterOf(task.source),
+          fresh?.outside ?? null,
+          placeMarks.get(place).sensitive,
+        )
         if (kept) holdOutside(mark, outsideOfParts(parts))
         const counted = kept
           ? db.get<{ input_tokens: number | null; output_tokens: number | null }>(
@@ -819,6 +829,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               taskId: task.id,
               decidedBy: tools.decidedBy(agentId, callId),
               outside: mark.source,
+              sensitive: mark.sensitive,
             }),
         })
 
@@ -976,6 +987,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             depth,
             guard: createReadGuard(),
             onReason: (callId, reason) => changePart(callId, (p) => ({ ...p, reason })),
+            // The chat holds the mark from the first read, so the next turns hold it too.
+            onSensitive: (label) => placeMarks.holdSensitive(place, label),
           }
           // A step of a workflow can ask for its own effort for this one turn. It is read for each
           // turn, so a retry decides again from the step and the model, not from the first try.

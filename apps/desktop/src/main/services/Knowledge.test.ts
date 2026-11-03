@@ -29,7 +29,7 @@ import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
-import { testRuntime } from "./testing.ts"
+import { allowLocalHost, testRuntime } from "./testing.ts"
 
 const KEY = "sk-know-test-0123456789abcdef"
 
@@ -148,6 +148,8 @@ const setup = async (permission: Level = "ask_risky") => {
   const agent = await make("Ada")
   await run(Agents.use((a) => a.update(agent.id, { permission })))
   mkdirSync(agent.workspace, { recursive: true })
+  // The test pages are on this computer: a fetch of a local host needs its rule (spec 007).
+  await allowLocalHost(t.runtime, agent.id)
   const folder = join(agent.workspace, "Knowledge")
   const k = <A, E>(f: (service: Context) => Effect.Effect<A, E>) => run(Knowledge.use(f))
   type Context = Parameters<Parameters<typeof Knowledge.use>[0]>[0]

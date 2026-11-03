@@ -720,4 +720,14 @@ export const migrations: readonly string[] = [
   );
   CREATE INDEX agent_browser_profile ON agent_browser (profile_id);
   `,
+  `
+  -- The mark of a sensitive read (spec 007, "Sensitive places"). A chat (the agent) or a channel
+  -- whose next turn holds a sensitive read has the label of the first credential place that was
+  -- read, or NULL. It is stored with the place and syncs with it (spec 019): the dirty trigger of
+  -- the agent and of the channel already watches every column. The action log says whether the
+  -- turn of a step held a sensitive read, with the same label or NULL.
+  ALTER TABLE agent ADD COLUMN sensitive_mark TEXT;
+  ALTER TABLE channel ADD COLUMN sensitive_mark TEXT;
+  ALTER TABLE action_log ADD COLUMN sensitive TEXT;
+  `,
 ]

@@ -16,9 +16,13 @@ import {
   chainAtLimit,
   changeSummary,
   checkRequestAddress,
+  classifyHostWriting,
+  commandChangesControl,
+  commandReads,
   type GuardedStep,
   guardDecision,
   holdOutside,
+  holdSensitive,
   hostOf,
   insideWorkspace,
   isPlainField,
@@ -32,8 +36,10 @@ import {
   type KnowledgeNote,
   MEMORY_TEXT_MAX,
   type MemoryNote,
+  makePlaces,
   needsApproval,
   type PermissionLevel,
+  type PlaceEnv,
   parseOrigin,
   parseSecretAuth,
   REPEATED_READ_TEXT,
@@ -53,8 +59,11 @@ import {
   type SecretAddressError,
   type SecretAsk,
   type SecretMethod,
+  type SensitiveLabel,
   type SettingsNote,
   secretNameKey,
+  sendDecision,
+  sendsData,
   type ToolAsk,
   type TurnMark,
 } from "@robot/shared"
@@ -64,6 +73,7 @@ import type { ToolCall, ToolDef } from "../providers/chat.ts"
 import { BRIDGE_TOOL_NAMES, type BridgeHandler, SEARCH_TOOL_NAME } from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import { type SecretBody, sendWithSecret } from "../secrets/request.ts"
+import { checkedFetch } from "../web/fetch.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { AgentSettings } from "./AgentSettings.ts"
 import { CurrentActor } from "./actor.ts"
@@ -119,6 +129,11 @@ export interface ToolContext {
   readonly guard?: ReadGuard
   /** Records why a step failed, as a code that the card translates. */
   readonly onReason?: (callId: string, reason: { code: string; detail?: string }) => void
+  /**
+   * The turn read a credential place for the first time (spec 007, "Sensitive places"): the place
+   * of the turn holds the mark from now on, so its next turns hold the sensitive read too.
+   */
+  readonly onSensitive?: (label: SensitiveLabel) => void
 }
 
 /** What "send message" needs from the chat service, which is built after the tools. */
@@ -228,6 +243,15 @@ interface Job {
   readonly ended: Promise<void>
 }
 const FETCH_TIMEOUT_MS = 20_000
+/** What the model reads when a fetch fails for a reason of the network or of the address. */
+const FETCH_FAILURES = {
+  invalid: "The address is not valid.",
+  scheme: "Only http and https addresses work.",
+  redirects: "The address redirects too many times.",
+  timeout: "The page took too long to answer.",
+  network: "The page could not be reached.",
+  stopped: "Stopped.",
+} as const
 const FETCH_MAX = 50_000
 const LIST_MAX = 200
 const SEARCH_MAX = 50
@@ -558,6 +582,15 @@ const SECRET_REFUSALS: Record<SecretAddressError, string> = {
 class Denied extends Error {}
 /** A guarded step that a Deny rule or the level "Read only" refuses. The agent reads the message. */
 class Refused extends Error {}
+/**
+ * A web page fetch that reached an address that is never allowed: a link-local or a cloud
+ * metadata address (spec 007, "Addresses of a web page fetch"). The app decides, at every level.
+ */
+class AddressNotAllowed extends Error {}
+
+/** What the model reads when a fetch reaches an address that is never allowed. */
+const ADDRESS_MESSAGE =
+  "Refused: this address is not allowed. It is a link-local or a cloud metadata address. Do not try another way to reach it; tell the user what you needed."
 /** A step with a saved secret that failed. The agent reads the message. */
 class SecretFailure extends Error {}
 
@@ -594,6 +627,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       let messenger: Messenger | undefined
       /** The calls that the user answered on a card, until the action log has read them. */
       const answered = new Set<string>()
+      /** The calls that the app refused for an address that is never allowed, until the log has read them. */
+      const refusedByApp = new Set<string>()
       const browserChanged = (agentId: string) => bus.emit("browser.changed", { agentId })
       const pageOf = (agentId: string) => {
         const page = platform.browser(agentId)
@@ -665,6 +700,72 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         } else if (answer !== "allow") throw new Denied()
       }
 
+      /**
+       * A card with Allow once and Deny only (spec 007). It resolves true on Allow and false on
+       * Deny, and rejects when the turn stops. A linked device that answers "always" gives one
+       * "allow": a card of this kind saves no rule.
+       */
+      const askOnce = async (
+        ctx: ToolContext,
+        callId: string,
+        ask: { summary: string; sensitive?: SensitiveLabel },
+      ): Promise<boolean> => {
+        const reply = await wait(ctx, callId, { kind: "approval", once: true, ...ask })
+        if (answered.size >= 1000) answered.clear()
+        answered.add(`${ctx.agentId}:${callId}`)
+        const yes = reply.answer === "allow" || reply.answer === "always"
+        if (reply.by) ctx.onDecision?.(callId, yes ? "allow" : "deny", reply.by)
+        return yes
+      }
+
+      /**
+       * The lists of sensitive places for this turn (spec 007). The home folder comes from the
+       * platform, so a test works in a home folder of its own. The workspaces of agents are not
+       * data of ROBot, also when they are inside the data folder.
+       */
+      const placeEnv = (ctx: ToolContext): PlaceEnv => ({
+        home: platform.homeDir,
+        real: (path) => realOf(path),
+        data: {
+          folder: platform.dataDir,
+          except: [platform.defaultWorkspaceRoot, ctx.workspace],
+        },
+      })
+
+      /**
+       * The turn read a credential place. The turn holds the sensitive read from now on, and the
+       * place of the turn holds the mark for its next turns (spec 007, "Sensitive places").
+       */
+      const markSensitive = (ctx: ToolContext, label: SensitiveLabel | null) => {
+        if (!label) return
+        const first = ctx.turn.sensitive === null
+        holdSensitive(ctx.turn, label)
+        if (first) ctx.onSensitive?.(label)
+      }
+
+      /**
+       * A step that sends data out, in a turn that holds a sensitive read: it asks with a card
+       * that has Allow once and Deny only, also when a rule allows it ("Full access" runs it).
+       * Returns true when this decided the step, so the usual approval is not asked as well. It
+       * throws `Denied` when the user denies. A turn that holds no sensitive read returns false.
+       */
+      const sensitiveSend = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        summary: string,
+        held: SensitiveLabel | null,
+      ): Promise<boolean> => {
+        const verdict = sendDecision({ level: ctx.permission, sensitive: held !== null })
+        if (verdict === "usual") return false
+        if (
+          verdict === "ask" &&
+          held &&
+          !(await askOnce(ctx, call.id, { summary, sensitive: held }))
+        )
+          throw new Denied()
+        return true
+      }
+
       /** See `ToolsService.guarded`. */
       const guarded = async <A>(
         ctx: ToolContext,
@@ -682,6 +783,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             result,
             taskId: ctx.taskId,
             outside,
+            sensitive: ctx.turn.sensitive,
           })
         const verdict = guardDecision({
           step: request.step,
@@ -791,6 +893,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           const child = spawn(command, {
             cwd: ctx.workspace,
             shell: true,
+            // The lists of sensitive places start at this home folder (spec 007). The user's own
+            // run has the same value as before. A test run has a home folder of its own, so a
+            // command that names `~` never reaches a real place of the user.
+            env: { ...process.env, HOME: platform.homeDir },
             stdio: ["ignore", "pipe", "pipe"],
             detached: process.platform !== "win32",
           })
@@ -886,8 +992,15 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           .join("\n\n")
       }
 
-      const searchFiles = (root: string, query: string, skip: (dir: string) => boolean) => {
+      const searchFiles = (
+        root: string,
+        query: string,
+        skip: (dir: string) => boolean,
+        /** The label of the credential place that holds a file, so a hit in one is a sensitive read. */
+        credential: (path: string) => SensitiveLabel | null,
+      ) => {
         const hits: string[] = []
+        let read: SensitiveLabel | null = null
         const q = query.toLocaleLowerCase()
         const walk = (dir: string) => {
           for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -898,23 +1011,66 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             } else if (entry.isFile() && statSync(path).size < 1_000_000) {
               const lines = readFileSync(path, "utf8").split("\n")
               for (const [i, line] of lines.entries()) {
-                if (line.toLocaleLowerCase().includes(q) && !line.includes("\0"))
+                if (line.toLocaleLowerCase().includes(q) && !line.includes("\0")) {
                   hits.push(`${relative(root, path)}:${i + 1}: ${line.trim().slice(0, 200)}`)
+                  read ??= credential(path)
+                }
                 if (hits.length >= SEARCH_MAX) return
               }
             }
           }
         }
         walk(root)
-        return hits
+        return { hits, read }
       }
 
-      /** Fetches a page with GET. A page of HTML becomes plain text. */
-      const fetchPage = async (ctx: ToolContext, url: string) => {
-        const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)])
-        const response = await fetch(url, { signal, redirect: "follow" })
-        let body = await response.text()
-        if ((response.headers.get("content-type") ?? "").includes("html"))
+      /**
+       * Fetches a page with GET (spec 007, "Addresses of a web page fetch"). A page of HTML becomes
+       * plain text. The step goes this way:
+       * 1. An address that is never allowed is refused at every level, with no question.
+       * 2. In a turn that holds a sensitive read, the step asks with Allow once and Deny only.
+       *    Otherwise it asks as a fetch asks at the level of the agent.
+       * 3. The app checks the address that the connection really uses, after the look-up of the
+       *    name and after each redirect. A local address is a hard step: it asks, and a rule for
+       *    the host can allow it when the host is written as numbers, `localhost` or `.local`. A
+       *    name that leads to a local address always asks.
+       */
+      const fetchPage = async (ctx: ToolContext, call: ToolCall, url: string) => {
+        let host = ""
+        try {
+          host = new URL(url).hostname
+        } catch {}
+        const writing = classifyHostWriting(host)
+        if (writing.kind === "never") throw new AddressNotAllowed(host)
+        // The card that asks for a local address in its own right takes the place of the usual one.
+        if (!(await sensitiveSend(ctx, call, url, ctx.turn.sensitive)) && writing.kind !== "local")
+          await approve(ctx, call, false, "fetch_url", url)
+        const result = await checkedFetch({
+          url,
+          signal: ctx.signal,
+          resolve: platform.resolveHost,
+          timeoutMs: FETCH_TIMEOUT_MS,
+          allowLocal: async ({ host: local, url: stepUrl, byName }) => {
+            // "Full access" runs a hard step with no question.
+            if (ctx.permission === "full") return true
+            if (byName) return await askOnce(ctx, call.id, { summary: stepUrl })
+            try {
+              await approve(ctx, call, true, `fetch_url:local:${local}`, stepUrl)
+              return true
+            } catch (error) {
+              if (error instanceof Denied) return false
+              throw error
+            }
+          },
+        })
+        if (result.kind === "refused") throw new AddressNotAllowed(result.host)
+        if (result.kind === "denied") throw new Denied()
+        if (result.kind === "failed") {
+          if (result.reason === "stopped" || ctx.signal.aborted) throw new Error("stopped")
+          throw new Error(FETCH_FAILURES[result.reason])
+        }
+        let body = result.body
+        if (result.contentType.includes("html"))
           body = body
             .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
             .replace(/<[^>]+>/g, " ")
@@ -922,14 +1078,18 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             .replace(/\s+/g, " ")
             .trim()
         // The text of the page reaches the agent: the turn holds outside content from now on.
-        holdOutside(ctx.turn, { kind: "page", host: hostOf(response.url || url) })
-        return { status: response.status, ok: response.ok, body }
+        holdOutside(ctx.turn, { kind: "page", host: hostOf(result.url || url) })
+        return { status: result.status, ok: result.ok, body }
       }
 
-      const fetchUrl = async (ctx: ToolContext, url: string): Promise<ToolOutcome> => {
+      const fetchUrl = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        url: string,
+      ): Promise<ToolOutcome> => {
         if (!/^https?:\/\//i.test(url))
           return { output: "Only http and https addresses work.", failed: true }
-        const page = await fetchPage(ctx, url)
+        const page = await fetchPage(ctx, call, url)
         return { output: cut(`[status ${page.status}]\n${page.body}`, FETCH_MAX), failed: !page.ok }
       }
 
@@ -993,6 +1153,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       ): ToolOutcome => {
         // A stop ends the turn. It is not a failure of the call.
         if (ctx.signal.aborted) throw error
+        // An address that is never allowed is a refusal of the app, not a failure of the source.
+        if (error instanceof AddressNotAllowed) throw error
         const code =
           error instanceof Denied
             ? "knowledge_denied"
@@ -1153,8 +1315,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             name = name || basename(p.full)
           } else {
             if (!/^https?:\/\//i.test(url)) throw new AppError({ code: "knowledge_source_invalid" })
-            await approve(ctx, call, false, "fetch_url", url)
-            const page = await fetchPage(ctx, url)
+            const page = await fetchPage(ctx, call, url)
             if (!page.ok)
               throw new AppError({ code: "knowledge_fetch_failed", detail: `${page.status}` })
             data = `Fetched from ${url}\n\n${page.body}\n`
@@ -1568,6 +1729,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const entries = readdirSync(p.full, { withFileTypes: true })
               .slice(0, LIST_MAX)
               .map((e) => `${e.isDirectory() ? "dir " : "file"} ${e.name}`)
+            // The list of a credential place is a sensitive read (spec 007).
+            markSensitive(ctx, makePlaces(placeEnv(ctx)).credential(p.full))
             return { output: entries.join("\n") || "(empty)", failed: false }
           }
           case "read_file": {
@@ -1576,13 +1739,21 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             if (blocked) return { output: blocked, failed: true }
             await approve(ctx, call, !p.inside, `read_file${p.inside ? "" : ":outside"}`, p.full)
             const output = cut(readFileSync(p.full, "utf8"), READ_MAX)
+            // The agent has the text of a file of a credential place now (spec 007).
+            markSensitive(ctx, makePlaces(placeEnv(ctx)).credential(p.full))
             return repeated(ctx, call, p.full, output) ?? { output, failed: false }
           }
           case "write_file": {
             const p = place(ctx, text(args, "path"))
             const blocked = knowledgeBlock(ctx, p.full)
             if (blocked) return { output: blocked, failed: true }
-            await approve(ctx, call, !p.inside, `write_file${p.inside ? "" : ":outside"}`, p.full)
+            // A change to a control place is a hard step (spec 007): it asks as a risky step does,
+            // also inside the workspace, and "Always allow" keeps a rule for this one path.
+            const control = makePlaces(placeEnv(ctx)).control(p.full)
+            if (control)
+              await approve(ctx, call, true, `write_file:control:${realOf(p.full)}`, p.full)
+            else
+              await approve(ctx, call, !p.inside, `write_file${p.inside ? "" : ":outside"}`, p.full)
             mkdirSync(dirname(p.full), { recursive: true })
             const content = text(args, "content")
             writeFileSync(p.full, content)
@@ -1590,9 +1761,16 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
           case "search_files": {
             // The search leaves out the sources, and the articles while knowledge is on.
-            const hits = searchFiles(ctx.workspace, text(args, "query"), (dir) => {
-              return knowledgeBlock(ctx, dir) !== null
-            })
+            const places = makePlaces(placeEnv(ctx))
+            const { hits, read } = searchFiles(
+              ctx.workspace,
+              text(args, "query"),
+              (dir) => knowledgeBlock(ctx, dir) !== null,
+              (path) => places.credential(path),
+            )
+            // A hit in a credential place is a sensitive read, and so is a search of a folder
+            // that is one (spec 007).
+            markSensitive(ctx, read ?? places.credential(ctx.workspace))
             return { output: hits.join("\n") || "No matches.", failed: false }
           }
           case "run_command": {
@@ -1600,15 +1778,28 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             if (!command.trim()) return { output: "No command.", failed: true }
             const reason = riskyReason(command, ctx.workspace)
             const first = command.trim().split(/\s+/)[0] ?? ""
-            await approve(ctx, call, reason !== null, `run_command:${reason ?? first}`, command)
+            const env = placeEnv(ctx)
+            // The text of the command can name a credential place: this step is a sensitive read,
+            // and it counts for its own decision when it also sends data out.
+            const reads = commandReads(env, command)
+            const decided =
+              sendsData(command) &&
+              (await sensitiveSend(ctx, call, command, ctx.turn.sensitive ?? reads))
+            if (!decided) {
+              // A change to a control place is a hard step (spec 007), with a rule for this command.
+              if (commandChangesControl(env, command, ctx.workspace))
+                await approve(ctx, call, true, `run_command:control:${command}`, command)
+              else
+                await approve(ctx, call, reason !== null, `run_command:${reason ?? first}`, command)
+            }
+            markSensitive(ctx, reads)
             return await runCommand(ctx, command)
           }
           case "job_output":
             return await jobOutput(ctx, Number(args.job), Number(args.wait_seconds) || 0)
           case "fetch_url": {
             const url = text(args, "url")
-            await approve(ctx, call, false, "fetch_url", url)
-            const page = await fetchUrl(ctx, url)
+            const page = await fetchUrl(ctx, call, url)
             return repeated(ctx, call, url, page.output) ?? page
           }
           case "list_agents":
@@ -1672,6 +1863,11 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           if (error instanceof Denied)
             return { output: "The user denied this step.", failed: true, notRun: true }
           if (error instanceof Refused) return { output: error.message, failed: true, notRun: true }
+          if (error instanceof AddressNotAllowed) {
+            // The app decided: the card says so, and the action log names the app (spec 007).
+            refusedByApp.add(`${ctx.agentId}:${call.id}`)
+            return { output: ADDRESS_MESSAGE, failed: true, notRun: true, refused: "address" }
+          }
           if (error instanceof SecretFailure) return { output: error.message, failed: true }
           if (ctx.signal.aborted) throw error
           return { output: error instanceof Error ? error.message : String(error), failed: true }
@@ -1680,7 +1876,11 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
 
       return Tools.of({
         decidedBy: (agentId, callId) =>
-          answered.delete(`${agentId}:${callId}`) ? "user" : "level",
+          refusedByApp.delete(`${agentId}:${callId}`)
+            ? "app"
+            : answered.delete(`${agentId}:${callId}`)
+              ? "user"
+              : "level",
         setMessenger: (m) => {
           messenger = m
         },

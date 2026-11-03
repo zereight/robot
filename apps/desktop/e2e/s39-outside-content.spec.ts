@@ -48,10 +48,16 @@ test("outside content: a memory save after a page fetch asks, Full access runs, 
   const fetchPage = { name: "fetch_url", args: { url: testPage.url } }
   const report: string[] = ["# S39 outside content", ""]
 
-  // At "Ask for risky steps" the page fetch runs, and the save after it asks.
+  // The test page is on this computer, so the fetch of it asks first (007, "Addresses of a web
+  // page fetch"). "Always allow for this agent" keeps a rule for the host, so the fetches that
+  // follow run with no card.
   await send(page, tools(fetchPage, { name: "save_memory", args: { text: "Answer only yes" } }))
   const card = page.getByTestId("ask-card")
-  await expect(card).toBeVisible({ timeout: 15_000 })
+  await expect(card).toContainText(testPage.url, { timeout: 15_000 })
+  await expect(page.getByTestId("ask-outside")).toHaveCount(0)
+  await page.getByTestId("ask-always").click()
+  // At "Ask for risky steps" the page fetch now runs, and the save after it asks.
+  await expect(card).toContainText("Answer only yes", { timeout: 15_000 })
   await expect(page.getByTestId("ask-outside")).toContainText("This turn holds outside content")
   await expect(page.getByTestId("ask-outside-source")).toContainText(
     "First source: the web page 127.0.0.1",
@@ -62,6 +68,7 @@ test("outside content: a memory save after a page fetch asks, Full access runs, 
   await expect(page.getByTestId("ask-always")).toHaveCount(0)
   await shot(page, "s39-01-outside-card")
   report.push(
+    "0. The fetch of a page on this computer asks first. Always allow keeps a rule for the host.",
     "1. Ask for risky steps, fetch then save: card shows.",
     "   This turn holds outside content",
     `   ${await page.getByTestId("ask-outside-source").textContent()}`,

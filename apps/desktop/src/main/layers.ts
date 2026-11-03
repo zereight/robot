@@ -19,6 +19,7 @@ import { Host } from "./services/Host.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
+import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
 import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
@@ -80,6 +81,7 @@ export const appLayer = (options: AppLayerOptions) => {
     Activity.layer,
     Skills.layer,
     Checklists.layer,
+    PlaceMarks.layer,
   ).pipe(Layer.provideMerge(base))
   const devices = Devices.layer({
     computerName: options.localServerName,

@@ -13,6 +13,7 @@ import {
   FACE_SHAPES,
   INSTRUCTION_SOURCES,
   isOutsideSource,
+  isSensitiveLabel,
   KNOWLEDGE_TITLE_MAX,
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
@@ -158,14 +159,16 @@ const askCheck = (v: unknown): boolean => {
   const timeOk = v.askedAt === undefined || int(v.askedAt)
   if (v.kind === "approval") {
     return (
-      shape(["kind", "summary"], ["askedAt", "once", "outside"])(v) &&
+      shape(["kind", "summary"], ["askedAt", "once", "outside", "sensitive"])(v) &&
       // The summary is the command text as the program or the model wrote it, so it may be as
       // long as the input of the same card. A cut would show the user less than what runs.
       str(TEXT_MAX)(v.summary) &&
       timeOk &&
       (v.once === undefined || bool(v.once)) &&
       // A guarded step in a turn that holds outside content names its first source (spec 007).
-      (v.outside === undefined || isOutsideSource(v.outside))
+      (v.outside === undefined || isOutsideSource(v.outside)) &&
+      // A step that sends data out in a turn that read a credential place names its label.
+      (v.sensitive === undefined || isSensitiveLabel(v.sensitive))
     )
   }
   if (v.kind === "question") {
@@ -541,6 +544,7 @@ interface AgentRow {
   created_at: number
   updated_at: number
   last_read_at: number
+  sensitive_mark: string | null
 }
 
 const readFace = (ctx: Ctx, file: string | null) => {
@@ -612,6 +616,8 @@ const agent: KindDef = {
       ),
     },
     archived: { check: bool },
+    // The mark of a sensitive read of the chat (spec 007). A computer of an older step has none.
+    sensitive: { check: nullable(isSensitiveLabel) },
     readAt: { check: int, merge: "max" },
     createdAt: { check: int },
   },
@@ -634,6 +640,7 @@ const agent: KindDef = {
             ? { accountId: r.model_account_id, model: r.model_name, effort: r.model_effort }
             : null,
         archived: r.archived_at !== null,
+        sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         readAt: r.last_read_at,
         createdAt: r.created_at,
       },
@@ -663,6 +670,7 @@ const agent: KindDef = {
       permission: "ask_all",
       memory_enabled: 1,
       archived_at: f.archived === true ? now : null,
+      sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       created_at: f.createdAt,
       updated_at: now,
       last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
@@ -697,6 +705,8 @@ const agent: KindDef = {
     if (f.archived !== undefined) {
       columns.archived_at = f.archived ? (row.archived_at ?? now) : null
     }
+    if (f.sensitive !== undefined)
+      columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
     if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
     columns.updated_at = now
     update(ctx.db, "agent", "id = ?", [id], columns)
@@ -722,6 +732,7 @@ interface ChannelRow {
   topic: string
   lead_agent_id: string | null
   review_parts: number
+  sensitive_mark: string | null
   created_at: number
   updated_at: number
   last_read_at: number
@@ -756,6 +767,8 @@ const channel: KindDef = {
     lead: { check: nullable(str(100, 1)) },
     // "Review parts" (spec 004). A computer of an older step has none, and it counts as off.
     reviewParts: { check: (v) => typeof v === "boolean" },
+    // The mark of a sensitive read of the channel (spec 007). A computer of an older step has none.
+    sensitive: { check: nullable(isSensitiveLabel) },
     members: {
       check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
     },
@@ -775,6 +788,7 @@ const channel: KindDef = {
         topic: r.topic,
         lead: r.lead_agent_id,
         reviewParts: r.review_parts === 1,
+        sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         members: ctx.db
           .all<{ agent_id: string }>(
             "SELECT agent_id FROM channel_member WHERE channel_id = ? ORDER BY position",
@@ -798,6 +812,7 @@ const channel: KindDef = {
       topic: f.topic,
       lead_agent_id: f.lead,
       review_parts: f.reviewParts === true ? 1 : 0,
+      sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       created_at: f.createdAt,
       updated_at: now,
       last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
@@ -816,6 +831,8 @@ const channel: KindDef = {
     if (f.topic !== undefined) columns.topic = f.topic
     if (f.lead !== undefined) columns.lead_agent_id = f.lead
     if (typeof f.reviewParts === "boolean") columns.review_parts = f.reviewParts ? 1 : 0
+    if (f.sensitive !== undefined)
+      columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
     if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
     columns.updated_at = ctx.now()
     update(ctx.db, "channel", "id = ?", [id], columns)
