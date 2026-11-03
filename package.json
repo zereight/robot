@@ -18,7 +18,8 @@
     "dist": "bun run --cwd apps/desktop dist",
     "version": "bun apps/desktop/scripts/version.ts",
     "sizes": "bun apps/desktop/scripts/sizes.ts",
-    "perf": "bun apps/desktop/scripts/perf.ts"
+    "perf": "bun apps/desktop/scripts/perf.ts",
+    "judge-replay": "bun apps/desktop/scripts/judge-replay.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
