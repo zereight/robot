@@ -187,20 +187,26 @@
   padding: 4px 8px 12px;
 }
 
+/* The row is as tall as the 28 px buttons, and the title and the buttons share one centre line. */
 .sectionTop {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  min-height: 34px;
+  padding-top: 6px;
+  border-radius: var(--radius-m);
+  transition: background var(--motion-fast) var(--ease-out);
 }
 
 .sectionHeader {
   flex: 1;
+  align-self: stretch;
   display: flex;
   align-items: center;
   gap: 4px;
   width: 100%;
   border: 0;
   background: transparent;
-  padding: 12px 4px 4px;
+  padding: 0 4px;
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--c-text-muted);
@@ -243,14 +249,13 @@
   padding-left: 12px;
 }
 
-.userSection > .sectionTop .sectionHeader {
-  padding-top: 8px;
+.userSection > .sectionTop {
+  min-height: 30px;
+  padding-top: 2px;
 }
 
 /* The menu button of a user section shows when the pointer or the focus is on the header. */
 .sectionAction {
-  align-self: flex-end;
-  margin-bottom: 1px;
   opacity: 0;
   transition: opacity var(--motion-fast) var(--ease-out);
 }
@@ -262,11 +267,6 @@
 }
 
 /* A header under a dragged row shows as selected. */
-.sectionTop {
-  border-radius: var(--radius-m);
-  transition: background var(--motion-fast) var(--ease-out);
-}
-
 .sectionTop[data-drop="true"] {
   background: var(--c-selected);
 }
@@ -278,7 +278,7 @@
 /* The group "Messages" of the search: a header, hit rows, "Show more". */
 .groupHeader {
   flex: 1;
-  padding: 12px 4px 4px;
+  padding: 0 4px;
   font-size: var(--text-xs);
   font-weight: 600;
   color: var(--c-text-muted);
@@ -379,6 +379,11 @@
 .nameBox {
   width: 100%;
   padding: 8px 4px 2px;
+}
+
+/* The row of a header already has 2 px above it. */
+.sectionTop > .nameBox {
+  padding-top: 6px;
 }
 
 .nameInput {

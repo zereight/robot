@@ -489,6 +489,10 @@
 }
 
 .box {
+  /* One line of the box is this tall for the text, the attach button and the send button, so
+     their centres line up. When the text grows, the buttons stay at the last line. */
+  --box-row: 32px;
+  --box-line: 1.45;
   display: flex;
   align-items: flex-end;
   gap: 8px;
@@ -512,13 +516,18 @@
   border: 0;
   background: transparent;
   outline: none;
-  padding: 6px 0;
+  padding: max(0px, calc((var(--box-row) - 1em * var(--box-line)) / 2)) 0;
   max-height: 40vh;
-  min-height: 24px;
+  min-height: var(--box-row);
   /* The box grows with the text. A scrollbar shows only when the cap is reached (see Composer). */
   overflow-y: hidden;
-  line-height: 1.45;
+  line-height: var(--box-line);
   user-select: text;
+}
+
+/* The attach button is 28 px. It sits in the middle of one line of the box. */
+.attach {
+  margin-block: calc((var(--box-row) - 28px) / 2);
 }
 
 .sendButton {
@@ -526,8 +535,8 @@
     background var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
-  width: 32px;
-  height: 32px;
+  width: var(--box-row);
+  height: var(--box-row);
   border-radius: calc(var(--radius-l) - 6px);
   border: 0;
   display: grid;
