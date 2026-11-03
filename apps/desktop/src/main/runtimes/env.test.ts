@@ -24,6 +24,22 @@ describe("runtimeEnv", () => {
     expect(env.CODEX_API_KEY).toBeUndefined()
   })
 
+  test("opencode keeps its keys, because the user set up its providers with them", () => {
+    const env = runtimeEnv(
+      { PATH: "/usr/bin", OPENAI_API_KEY: "k", ANTHROPIC_API_KEY: "k", OPENROUTER_API_KEY: "k" },
+      "/home/a",
+      "opencode",
+    )
+    expect(env.OPENAI_API_KEY).toBe("k")
+    expect(env.ANTHROPIC_API_KEY).toBe("k")
+    expect(env.OPENROUTER_API_KEY).toBe("k")
+    // It does not update itself while the app uses it.
+    expect(env.OPENCODE_DISABLE_AUTOUPDATE).toBe("1")
+    expect(
+      runtimeEnv({ PATH: "/usr/bin" }, "/home/a", "pi").OPENCODE_DISABLE_AUTOUPDATE,
+    ).toBeUndefined()
+  })
+
   test("the usual tool folders are added to a short PATH", () => {
     if (process.platform === "win32") return
     const env = runtimeEnv({ PATH: "/usr/bin" }, "/home/a")

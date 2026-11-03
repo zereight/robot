@@ -16,6 +16,9 @@ import { execute } from "./proc.ts"
  * - Muse Code: `--disable-write` and `--disable-shell`. The program removes the tools.
  * - pi: `--tools read,grep,find,ls`. The help text of the program names this as its read-only mode.
  * - Pi-Bolt: none. It was not on the computer, so no help text could show a mode.
+ * - opencode: none. Its help text names no mode that blocks changes. It blocks tools by rules in
+ *   its settings, and a rule is not a mode that the help text names. The app uses those rules for
+ *   "Ask for everything" and below, but "Read only" does not start (spec 007).
  */
 export interface HelpCheck {
   /** The arguments that print a help text. */
@@ -33,6 +36,8 @@ export const READ_ONLY_HELP: Record<RuntimeKind, readonly HelpCheck[]> = {
     { args: ["serve", "--help"], needs: [/--disable-write\b/, /--disable-shell\b/] },
   ],
   pi: [{ args: ["--help"], needs: [/(^|\s)--tools\b/m] }],
+  // No check: a program with no check has no mode.
+  opencode: [],
 }
 
 const HELP_MS = 15_000
@@ -40,6 +45,7 @@ const HELP_MS = 15_000
 /** True when the help text of the program at `bin` names every control for its read-only mode. */
 export const hasReadOnlyMode = async (kind: RuntimeKind, bin: string): Promise<boolean> => {
   const env = runtimeEnv(process.env, undefined, kind)
+  if (READ_ONLY_HELP[kind].length === 0) return false
   for (const check of READ_ONLY_HELP[kind]) {
     const done = await execute(bin, check.args, { env, timeoutMs: HELP_MS })
     if (done.failure !== undefined || done.code !== 0) return false

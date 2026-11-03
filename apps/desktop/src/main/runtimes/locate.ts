@@ -16,6 +16,7 @@ const NAMES: Record<RuntimeKind, string> = {
   codex: "codex",
   muse: "muse",
   pi: "pi",
+  opencode: "opencode",
 }
 
 export const binaryName = (kind: RuntimeKind, platform = process.platform) =>
@@ -77,6 +78,14 @@ const wellKnown = (kind: RuntimeKind, home: string) => {
   if (kind === "claude_code") return [local, join(home, ".claude", "local", name)]
   if (kind === "pi")
     return [local, join(home, ".npm-global", "bin", name), join(home, ".bun", "bin", name)]
+  // The folders of the install script, of npm and of bun.
+  if (kind === "opencode")
+    return [
+      local,
+      join(home, ".opencode", "bin", name),
+      join(home, ".npm-global", "bin", name),
+      join(home, ".bun", "bin", name),
+    ]
   return [local]
 }
 

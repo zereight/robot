@@ -240,6 +240,7 @@ export const en = {
   "providers.kind.codex": "Codex (ChatGPT subscription)",
   "providers.kind.muse": "Muse Code (Meta account)",
   "providers.kind.pi": "pi (its own sign-ins)",
+  "providers.kind.opencode": "opencode (its own sign-ins)",
   "providers.name": "Account name",
   "providers.name.placeholder": "For example: Work",
   "providers.baseUrl": "Base URL",
@@ -256,7 +257,7 @@ export const en = {
   "providers.cancel": "Cancel",
   "providers.empty": "No accounts yet. Add one to give your agents a model.",
   "providers.runtimes":
-    "Claude Code, Codex, Muse Code and pi use the sign-ins you already have. ROBot starts the program on this computer; it never reads a sign-in. A separate Claude Code sign-in is kept by the program, in the data folder of ROBot. pi uses the models that you set up in pi, with their own billing.",
+    "Claude Code, Codex, Muse Code, pi and opencode use the sign-ins you already have. ROBot starts the program on this computer; it never reads a sign-in. A separate Claude Code sign-in is kept by the program, in the data folder of ROBot. pi and opencode use the models that you set up in them, with their own billing.",
   "providers.signIn.choice": "Claude account",
   "providers.signIn.computer": "This computer's account",
   "providers.signIn.own": "Another account",
@@ -288,6 +289,10 @@ export const en = {
     "Install pi on this computer (npm package @earendil-works/pi-coding-agent), then choose Check again.",
   "runtime.signIn.pi":
     "Sign in inside pi: start pi and use /login, or set up a key. Then choose Check again.",
+  "runtime.install.opencode":
+    "Install opencode 2 or later on this computer (for example: brew install opencode), then choose Check again.",
+  "runtime.signIn.opencode":
+    "Sign in inside opencode: run opencode auth login, or set up a key. ROBot needs opencode 2 or later. Then choose Check again.",
   "runtime.signInCode": "Open the page and check that this code matches:",
   "runtime.signingIn": "Waiting for the sign-in in your browser…",
   "runtime.cancel": "Cancel",
@@ -397,6 +402,8 @@ export const en = {
     "Muse Code reads no messages during a turn. Your messages wait here until the turn ends.",
   "chat.hold.pi":
     "pi reads no messages during a turn. Your messages wait here until the turn ends.",
+  "chat.hold.opencode":
+    "opencode reads no messages during a turn. Your messages wait here until the turn ends.",
   "chat.tool.answeredInChat": "Answered in the chat",
   "settings.duringTurn": "While an agent works, new messages",
   "settings.duringTurn.hint":
@@ -743,6 +750,13 @@ export const en = {
   "agents.permission.line.pi.ask_risky":
     "pi starts with its read, search, edit and write tools, and no shell.",
   "agents.permission.line.pi.full": "pi starts with all its tools.",
+  "agents.permission.line.opencode.read_only": "opencode has no read-only mode of its own.",
+  "agents.permission.line.opencode.ask_all":
+    "opencode starts with its edit and shell tools turned off.",
+  "agents.permission.line.opencode.ask_risky":
+    "opencode starts with its edit and write tools, and no shell.",
+  "agents.permission.line.opencode.full":
+    "opencode starts with all its tools. Deny rules in its own settings still apply.",
   "agents.permission.confirm.title": "Use Full access?",
   "agents.permission.confirm.body":
     "The agent changes files and runs commands without asking. Deny rules still apply.",
