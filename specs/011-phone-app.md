@@ -67,7 +67,7 @@ camera.
 | --- | --- |
 | Phone 1 | First start, pairing, Servers, Places, Conversation (read, streamed replies, send, stop, reply, attach photos and files, open files), approval and question cards in the conversation, Needs you (approvals and questions only), offline cache, notifications while the app is open, Settings. |
 | Phone 2 | Needs you with failed channel parts, Workflows, and the list in "Same as the computer". |
-| Phone 3 | The group "Pinned" and sections inside sections, the list in "More on the phone", and voice (025). |
+| Phone 3 | The group "Pinned" and sections inside sections, the list in "More on the phone", and voice (027). |
 
 Until a screen comes, the phone does not show it. Phone 1 is a complete app: every screen it
 shows works.
@@ -103,7 +103,7 @@ start a handover (003) and does not make a skill from work (017). It shows the m
 - **Image stack**: a message with more than one image shows the images as a stack of cards, also
   while the message is still being sent. A tap opens a viewer where the user swipes through them.
 - **Icon**: the Android app icon has a layer for the themed icons of the system.
-- **Voice**: dictate, read aloud and voice chat. See 025.
+- **Voice**: dictate, read aloud and voice chat. See 027.
 - **Quiet notices**: the computer holds a notice back while the user works at it. See 015.
 
 ## Rules

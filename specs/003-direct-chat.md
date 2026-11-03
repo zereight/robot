@@ -17,7 +17,7 @@ The user gives an agent work in plain language and sees what the agent does whil
   (read a file, ran a command, opened a page), and its result state. A click opens the details.
 - Thinking, when the model gives it, folds into one muted line that the user can open.
 - Hover on a row shows actions: reply, copy, fork (see "Threads"), and for the user's own last
-  message, edit. On a finished message of an agent it also shows "Read aloud" (025) and "Mark as
+  message, edit. On a finished message of an agent it also shows "Read aloud" (027) and "Mark as
   unread" (see "Mark as unread").
 
 ## Flows
@@ -54,7 +54,7 @@ The user gives an agent work in plain language and sees what the agent does whil
     match and marks it. Escape closes the bar and takes the marks away. The find looks at the text
     of the messages of that chat only, not at tool cards or thinking. It ignores letter case.
     Cmd+K (001) searches all places and stays as it is. The phone has no find bar in this version.
-11. Dictate: the microphone button of the message box turns speech into text in the box (025).
+11. Dictate: the microphone button of the message box turns speech into text in the box (027).
 
 ## Messages during a turn
 

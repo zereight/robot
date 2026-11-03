@@ -98,11 +98,11 @@ A new word goes here in the same pull request as the spec that brings it.
 | Web hook | A trigger of a workflow: an address on this computer that an outside service calls (010). | 웹훅 (proposed) | endpoint, API |
 | Pinned | A place that the user keeps at the top of the place list (001). | 고정됨 (proposed) | favourite, starred |
 | Mark as unread | The action that makes a message and the later messages of agents count as unread again (003). | 읽지 않음으로 표시 (proposed) | flag |
-| Dictate | Speech that becomes text in the message box (025). | 받아쓰기 (proposed) | transcribe |
-| Read aloud | The app speaks a finished message of an agent (025). | 소리 내어 읽기 (proposed) | narrate, TTS |
-| Voice chat | A spoken talk with one agent on the phone (025). | 음성 대화 (proposed) | call |
+| Dictate | Speech that becomes text in the message box (027). | 받아쓰기 (proposed) | transcribe |
+| Read aloud | The app speaks a finished message of an agent (027). | 소리 내어 읽기 (proposed) | narrate, TTS |
+| Voice chat | A spoken talk with one agent on the phone (027). | 음성 대화 (proposed) | call |
 | Menu bar item | The small icon of the app in the menu bar of the Mac (015). | 메뉴 막대 항목 (proposed) | tray, widget |
-| Recogniser | The speech recognition of the system of a device. It must run on the device (025). | 음성 인식기 (proposed) | speech service |
+| Recogniser | The speech recognition of the system of a device. It must run on the device (027). | 음성 인식기 (proposed) | speech service |
 | Limit reason | The plan limit, the credit or the quota is spent. It moves an agent to its backup model (006). | 한도 소진 (proposed) | error |
 | Image stack | The stack of cards that shows more than one image of a message on the phone (011). | 이미지 묶음 (proposed) | gallery |
 | Thinking sheet | The sheet on the phone that lists all thoughts of a turn (011). | 생각 보기 (proposed) | log |

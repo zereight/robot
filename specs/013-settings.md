@@ -16,7 +16,7 @@ The user sets the app up the way they like in one place.
   default is 4 (see 005, "Queue"). Both belong to the open profile and are local to the computer,
   as the other settings.
   More settings are here. "Keep going on open steps" is on or off; the default is on (see 005,
-  "Keep going"). "Dictation language" and "Reading speed" are in 025. "Show in the menu bar" is
+  "Keep going"). "Dictation language" and "Reading speed" are in 027. "Show in the menu bar" is
   on or off; the default is off (see 015, "Menu bar item").
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).

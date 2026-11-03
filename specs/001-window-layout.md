@@ -198,7 +198,7 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - The rail, the place list, the pages and the selection belong to the open profile. A switch of
   profile changes all of them, and each profile keeps its own selection (022).
 - Keyboard: Cmd+K focuses search. Cmd+F finds in the open chat (003); on a page that is not a
-  chat it does nothing. Cmd+Shift+D starts and stops dictation (025). Up and down move through
+  chat it does nothing. Cmd+Shift+D starts and stops dictation (027). Up and down move through
   places. Enter opens one. The help button opens a page that lists these keys.
 - **Quit**: Cmd+Q, and "Quit" in the menu of the menu bar item (015), quit the app. When no agent
   works and no task waits for the user, the app quits at once. When an agent works or a task
