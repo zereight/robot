@@ -52,6 +52,11 @@ program makes it with mode 0700. Keep it on an encrypted disk, and keep it out o
 
 ## Tests
 
-`bun test packages/teams-bridge` runs the pure logic and a fake chat page. The fake page uses the
-guessed selectors, so the tests show nothing about the real Teams page. The browser tests need
-Google Chrome and skip with a note when it is not installed.
+- `bun test packages/teams-bridge` runs the 15 tests of the pure logic. The shared test run of the
+  repository (CI) includes them.
+- `bun run --cwd packages/teams-bridge test:browser` runs 13 more tests on a fake chat page in
+  Chrome without a window. They are not in the shared test run, because a browser loads the
+  computer and can slow the tests that run at the same time. They need Google Chrome, and they
+  skip with a note when it is not installed.
+
+The fake page uses the guessed selectors, so these tests show nothing about the real Teams page.

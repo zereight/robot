@@ -9,7 +9,8 @@
     "inspect": "bun src/cli.ts inspect",
     "watch": "bun src/cli.ts watch",
     "echo": "bun src/cli.ts echo",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "test:browser": "cd ../.. && bun test ./packages/teams-bridge/src/teams.browser.ts ./packages/teams-bridge/src/loop.browser.ts"
   },
   "dependencies": {
     "playwright-core": "^1.64.1"
