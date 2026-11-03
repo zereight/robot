@@ -146,7 +146,10 @@ export default function Conversation() {
         : view.state === "update_app"
           ? t("chat.updateBox")
           : t("chat.offlineBox", { name: view.link.name })
-  const members = channel ? agents.filter((a) => channel.memberIds.includes(a.id)) : []
+  // The members in the order of the channel (spec 004), as on the computer.
+  const members = channel
+    ? channel.memberIds.flatMap((memberId) => agents.find((a) => a.id === memberId) ?? [])
+    : []
 
   return (
     <KeyboardAvoidingView
