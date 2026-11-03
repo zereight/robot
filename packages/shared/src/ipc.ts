@@ -45,6 +45,7 @@ import type { SearchPage } from "./search.ts"
 import type { SavedSecret } from "./secrets.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type { SkillDraftResult, SkillSourceRef } from "./skillDraft.ts"
 import type { Skill, SkillInput } from "./skills.ts"
 import type { AgentStarterCreate } from "./starters.ts"
 import type { RetryResult } from "./steps.ts"
@@ -446,6 +447,27 @@ export interface RpcMethods {
   "teach.retry": { input: undefined; output: undefined }
   "teach.save": { input: SkillInput; output: Skill }
   "teach.discard": { input: undefined; output: undefined }
+  /** Skills (spec 017). */
+  "skills.list": { input: { serverId: string }; output: readonly Skill[] }
+  /** The skills that an agent may use now: on, and for this agent or for all agents. */
+  "skills.forAgent": { input: { agentId: string }; output: readonly Skill[] }
+  /** `agentIds` is the list of agents that may use the skill, or `null` for all agents. */
+  "skills.create": {
+    input: SkillInput & { serverId: string; agentIds: readonly string[] | null }
+    output: Skill
+  }
+  "skills.setEnabled": { input: { id: string; enabled: boolean }; output: Skill }
+  "skills.delete": { input: { id: string }; output: undefined }
+  /**
+   * "Make a skill" from a task, an article or a memory item: one request to the model account of
+   * the agent of the source (spec 017). It makes no task and no message. `requestId` names the
+   * request, so that `skills.draftCancel` can drop it.
+   */
+  "skills.draft": {
+    input: { requestId: string; source: SkillSourceRef }
+    output: SkillDraftResult
+  }
+  "skills.draftCancel": { input: { requestId: string }; output: undefined }
   "routines.list": { input: { serverId: string }; output: readonly Routine[] }
   "routines.create": { input: RoutineInput; output: Routine }
   "routines.update": { input: { id: string; patch: RoutinePatch }; output: Routine }
@@ -573,6 +595,8 @@ export interface RpcEvents {
   "browserProfiles.changed": Record<string, never>
   /** "Teach a task" started, recorded a step, paused, stopped, made a draft, or ended. */
   "teach.changed": TeachState
+  /** A skill was made, turned on or off, or deleted. */
+  "skills.changed": { serverId: string }
   "routines.changed": { serverId: string }
   "workflows.changed": { serverId: string }
   "workflows.run": { runId: string }

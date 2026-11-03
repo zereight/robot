@@ -71,6 +71,8 @@ import { Search } from "./services/Search.ts"
 import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { SkillDrafts } from "./services/SkillDrafts.ts"
+import { Skills } from "./services/Skills.ts"
 import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
@@ -918,6 +920,59 @@ export const handlers: Handlers = {
       }),
     )(input).pipe(Effect.flatMap((draft) => Teach.use((t) => t.save(draft)))),
   "teach.discard": () => Teach.use((t) => t.discard).pipe(done),
+  "skills.list": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Skills.use((s) => s.list(serverId))),
+    ),
+  "skills.forAgent": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Skills.use((s) => s.forAgent(agentId))),
+    ),
+  "skills.create": (input) =>
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        name: Schema.String.check(Schema.isMaxLength(1000)),
+        description: Schema.String.check(Schema.isMaxLength(10_000)),
+        instructions: Schema.String.check(Schema.isMaxLength(100_000)),
+        agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ serverId, agentIds, ...skill }) =>
+        Skills.use((s) => s.create(serverId, skill, agentIds)),
+      ),
+    ),
+  "skills.setEnabled": (input) =>
+    decode(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, enabled }) => Skills.use((s) => s.setEnabled(id, enabled))),
+    ),
+  "skills.delete": (input) =>
+    decode(Schema.Struct({ id: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id }) => Skills.use((s) => s.remove(id))),
+      done,
+    ),
+  "skills.draft": (input) =>
+    decode(
+      Schema.Struct({
+        requestId: Schema.String.check(Schema.isMaxLength(100)),
+        source: Schema.Union([
+          Schema.Struct({ kind: Schema.Literal("task"), id: Schema.String }),
+          Schema.Struct({
+            kind: Schema.Literal("article"),
+            agentId: Schema.String,
+            file: Schema.String.check(Schema.isMaxLength(1000)),
+          }),
+          Schema.Struct({ kind: Schema.Literal("memory"), id: Schema.String }),
+        ]),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ requestId, source }) => SkillDrafts.use((d) => d.draft(requestId, source))),
+    ),
+  "skills.draftCancel": (input) =>
+    decode(Schema.Struct({ requestId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ requestId }) => SkillDrafts.use((d) => d.cancel(requestId))),
+      done,
+    ),
   "routines.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Routines.use((r) => r.list(serverId))),

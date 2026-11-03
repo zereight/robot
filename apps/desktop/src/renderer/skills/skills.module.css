@@ -1,0 +1,136 @@
+/* The skill form (spec 017, flow 1). */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.failed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agentList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  margin: 4px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.agentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+/* The list of skills in settings. */
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.itemMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.itemName {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.itemMeta {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.itemActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+/* The list above the message box when the user types a slash (spec 003, flow 7). */
+.picker {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  margin: 0 0 6px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-l);
+  background: var(--c-elevated);
+}
+
+.pick {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.pick[aria-selected="true"],
+.pick:hover {
+  background: var(--c-hover);
+}
+
+.pickName {
+  font-weight: 500;
+}
+
+.pickHint {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}

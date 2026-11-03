@@ -12,6 +12,7 @@ import { formatDateTime } from "../chat/format.ts"
 import { Markdown } from "../chat/Markdown.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { makeSkillFromWork } from "../skills/SkillForm.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
@@ -353,6 +354,20 @@ export const KnowledgePage = (props: { agent: Agent; onClose: () => void }) => {
                       <Button onClick={startEdit} data-testid="knowledge-edit">
                         {t("knowledge.edit")}
                       </Button>
+                      <Show when={!ui.linked()}>
+                        <Button
+                          onClick={() =>
+                            makeSkillFromWork({
+                              kind: "article",
+                              agentId: agentId(),
+                              file: a().file,
+                            })
+                          }
+                          data-testid="knowledge-make-skill"
+                        >
+                          {t("skills.make")}
+                        </Button>
+                      </Show>
                       <Button onClick={remove} data-testid="knowledge-delete">
                         {t("knowledge.delete")}
                       </Button>

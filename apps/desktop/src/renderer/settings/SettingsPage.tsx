@@ -42,6 +42,7 @@ export const sections = [
   "archive",
   "browser",
   "permissions",
+  "skills",
   "data",
   "about",
 ] as const

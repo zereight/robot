@@ -6,6 +6,7 @@ import {
   messageText,
   type QueuedMessage,
   type QueueHold,
+  type Skill,
 } from "@robot/shared"
 import {
   CornerDownRight,
@@ -16,9 +17,19 @@ import {
   Square,
   X,
 } from "lucide-solid"
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import skillStyles from "../skills/skills.module.css"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -38,6 +49,9 @@ export interface ComposerProps {
   onConnect: () => void
   onChooseModel: () => void
 }
+
+/** The picker shows at most this many skills (spec 003). */
+const SKILL_LIST_MAX = 30
 
 /** The reason why queued messages cannot go into the turn. */
 const holdKey = (hold: QueueHold) => `chat.hold.${hold.runtime}` as MessageKey
@@ -124,6 +138,41 @@ export const Composer = (props: ComposerProps) => {
   const [files, setFiles] = createSignal<string[]>([])
   /** The skill chip at the start of the box (spec 017). One at a time. */
   const [skill, setSkill] = createSignal<{ id: string; name: string }>()
+  // The command picker (spec 003, flow 7): a slash as the first character opens a list of the
+  // skills that the user saved for this agent. The list narrows as the user types.
+  const [skillList, { refetch: refetchSkills }] = createResource(
+    () => props.agent.id,
+    (agentId) => call("skills.forAgent", { agentId }).catch(() => [] as readonly Skill[]),
+    { initialValue: [] as readonly Skill[] },
+  )
+  onCleanup(window.robot.on("skills.changed", () => void refetchSkills()))
+  const [highlight, setHighlight] = createSignal(0)
+  const [dismissed, setDismissed] = createSignal(false)
+  const matches = createMemo(() => {
+    const typed = /^\/(\S*)$/.exec(text())
+    if (!typed) return []
+    const q = (typed[1] ?? "").toLocaleLowerCase()
+    const all = skillList()
+    const starts = all.filter((x) => x.name.toLocaleLowerCase().startsWith(q))
+    const inside = all.filter((x) => !starts.includes(x) && x.name.toLocaleLowerCase().includes(q))
+    return [...starts, ...inside].slice(0, SKILL_LIST_MAX)
+  })
+  const pickerOpen = () => !dismissed() && matches().length > 0
+  createEffect(() => {
+    void text()
+    setHighlight(0)
+    setDismissed(false)
+  })
+  /** The chip takes the place of the slash text. A second skill replaces the first. */
+  const pickSkill = (picked: Skill) => {
+    setSkill({ id: picked.id, name: picked.name })
+    setText("")
+    setError(undefined)
+    queueMicrotask(() => {
+      resize()
+      input?.focus()
+    })
+  }
   let input: HTMLTextAreaElement | undefined
   // "Try it" on a draft skill card puts the chip and the result text in the box.
   createEffect(() => {
@@ -204,6 +253,26 @@ export const Composer = (props: ComposerProps) => {
   const onKeyDown = (event: KeyboardEvent) => {
     // While an input method composes text (for example Korean), Enter ends the composition.
     if (event.isComposing || event.keyCode === 229) return
+    if (pickerOpen()) {
+      const list = matches()
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        const step = event.key === "ArrowDown" ? 1 : -1
+        setHighlight((highlight() + step + list.length) % list.length)
+        return
+      }
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault()
+        const chosen = list[highlight()]
+        if (chosen) pickSkill(chosen)
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setDismissed(true)
+        return
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       void send()
@@ -408,6 +477,35 @@ export const Composer = (props: ComposerProps) => {
               </span>
             </div>
           )}
+        </Show>
+        <Show when={pickerOpen()}>
+          <div
+            class={skillStyles.picker}
+            role="listbox"
+            aria-label={t("skills.picker")}
+            data-testid="skill-picker"
+          >
+            <For each={matches()}>
+              {(item, index) => (
+                <button
+                  type="button"
+                  role="option"
+                  class={skillStyles.pick}
+                  aria-selected={highlight() === index()}
+                  // The box keeps the focus, so a click does not end the typing.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => pickSkill(item)}
+                  data-testid="skill-option"
+                  data-skill={item.name}
+                >
+                  <span class={skillStyles.pickName}>/{item.name}</span>
+                  <Show when={item.description}>
+                    <span class={skillStyles.pickHint}>{item.description}</span>
+                  </Show>
+                </button>
+              )}
+            </For>
+          </div>
         </Show>
         <div class={styles.box} ref={dropZone}>
           <IconButton label={t("chat.attach")} onClick={pick} data-testid="composer-attach">

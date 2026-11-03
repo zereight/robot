@@ -1,8 +1,5 @@
-import { mkdirSync } from "node:fs"
-import { join } from "node:path"
 import {
   addStep,
-  parseDraft,
   type Skill,
   type SkillInput,
   TEACH_RESULT_MAX,
@@ -19,13 +16,13 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Fiber, Layer } from "effect"
 import { Database } from "./Database.ts"
+import { askForDraft, draftOf } from "./draftRequest.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Platform } from "./Platform.ts"
-import { Providers, toAppError } from "./Providers.ts"
+import { Providers } from "./Providers.ts"
 import { Skills } from "./Skills.ts"
 import { Tools } from "./Tools.ts"
-import { canAnswerPlainPrompt } from "./workflowAsk.ts"
 
 export interface TeachService {
   readonly state: Effect.Effect<TeachState>
@@ -149,43 +146,12 @@ export class Teach extends Context.Service<Teach, TeachService>()("robot/main/Te
 
       /** One request to the model of the agent, for a draft skill. */
       const ask = (s: Session) =>
-        Effect.gen(function* () {
-          const agent = db.get<{ model_account_id: string | null; model_name: string | null }>(
-            "SELECT model_account_id, model_name FROM agent WHERE id = ?",
-            s.agentId,
-          )
-          if (!agent?.model_account_id || !agent.model_name)
-            return yield* new AppError({ code: "provider_not_connected" })
-          const account = (yield* providers.list).find((a) => a.id === agent.model_account_id)
-          if (!account?.connected) return yield* new AppError({ code: "provider_not_connected" })
-          if (!canAnswerPlainPrompt(account.kind))
-            return yield* new AppError({ code: "teach_model_unusable" })
-          const scratch = join(platform.dataDir, "scratch")
-          mkdirSync(scratch, { recursive: true })
-          const controller = new AbortController()
-          const events = yield* providers.events(
-            account.id,
-            {
-              model: agent.model_name,
-              effort: null,
-              system: TEACH_SYSTEM,
-              turns: [{ role: "user", content: teachPrompt(s.result, s.steps) }],
-              signal: controller.signal,
-              workspace: scratch,
-              permission: "ask_all",
-              useTools: false,
-            },
-            { execute: async () => ({ output: "", failed: true }), approve: async () => false },
-          )
-          return yield* Effect.tryPromise({
-            try: async () => {
-              let text = ""
-              for await (const event of events) if (event.type === "text") text += event.text
-              return text
-            },
-            catch: toAppError,
-          }).pipe(Effect.onInterrupt(() => Effect.sync(() => controller.abort())))
-        })
+        askForDraft(
+          { db, providers, dataDir: platform.dataDir },
+          s.agentId,
+          TEACH_SYSTEM,
+          teachPrompt(s.result, s.steps),
+        )
 
       /** Asks for the draft in the background. The card shows the outcome. */
       const requestDraft = (s: Session) => {
@@ -365,18 +331,4 @@ export class Teach extends Context.Service<Teach, TeachService>()("robot/main/Te
   )
 }
 
-/**
- * The draft in the answer of the model. An answer that is not the asked form becomes the
- * instructions, and the result text gives the name. An empty answer gives `undefined`.
- */
-export const draftOf = (answer: string, result: string): TeachDraft | undefined => {
-  const parsed = parseDraft(answer)
-  if (parsed) return parsed.name ? parsed : { ...parsed, name: [...result].slice(0, 40).join("") }
-  const text = answer.trim()
-  if (!text) return undefined
-  return {
-    name: [...result].slice(0, 40).join("").trim(),
-    description: "",
-    instructions: text.slice(0, 20_000),
-  }
-}
+export { draftOf }
