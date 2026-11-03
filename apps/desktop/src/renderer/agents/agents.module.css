@@ -60,6 +60,18 @@
   border-color: var(--c-focus);
 }
 
+/* A field that blocks Save keeps the danger colour, also while it has the focus. */
+.input[aria-invalid="true"],
+.input[aria-invalid="true"]:focus-visible {
+  border-color: var(--c-danger);
+}
+
+/* The reason under a field that blocks Save. */
+.fieldError {
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+}
+
 .nameRow {
   display: flex;
   align-items: center;
