@@ -25,6 +25,15 @@ A new word goes here in the same pull request as the spec that brings it.
 | Saved secret | A key or password that an agent uses and the model never sees (020). | 저장된 비밀 값 | credential, token |
 | Model account | A provider or a vendor program that the user signed in to (006). | 모델 계정 | provider (in interface text), subscription |
 | Permission level | How much an agent may do before it asks (007). | 권한 수준 | mode, autonomy |
+| Ask when unsure | The level at which the decision model checks a risky step against the words of the user (007). | 확실하지 않을 때만 확인 (proposed) | auto mode, autopilot |
+| Permission checks | The switch that lets the decision model check steps (013). | 권한 판단 (proposed) | classifier, guard |
+| Read-only mark | The mark of a connection that a tool changes nothing (018). | 읽기 전용 표시 (proposed) | safe tool |
+| Handbook | One text that every agent of a server reads (002). | 핸드북 (proposed) | company docs, soul, system prompt |
+| Channel instructions | The text that each member reads in turns of one channel (004). | 채널 지침 (proposed) | channel prompt |
+| Channel note | A memory item of an agent for one channel (008). | 채널 메모 (proposed) | group memory |
+| Memory check | A short turn that suggests facts that an agent did not save (008). | 메모리 점검 (proposed) | reflection, learning |
+| Token limit | The most tokens that one run of a routine may use (009). | 토큰 한도 (proposed) | budget (ROBot shows no money limit) |
+| Outside program | A program on this computer that reads and sends work in ROBot through MCP (023). | 외부 프로그램 (proposed) | integration, API client |
 | Action log | The list of tool steps and who decided them (007). | 작업 기록 | history, audit |
 | Profile | A separate space on one computer (022). | 프로필 | account, user, workspace |
 

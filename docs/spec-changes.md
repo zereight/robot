@@ -50,6 +50,13 @@ These are in the code today and the specs now say something else.
 | 012, 010 | A computer client cannot open the workflows of a linked server. | It sees the workflows and their runs, runs and stops them, and answers approval steps. With the switch "Can create and change agents" it also edits them. The assistant and the workflow file stay on the server. |
 | 000, 001, 011, 012, 013, 014, 015, 019 | One computer holds one set of data, and it is one server. | A computer can hold up to 5 profiles. A profile has its own data, accounts, settings, linked devices and sync pair, and it is the server that a phone pairs with. The window shows one profile. The rail has a profile button when there are 2 or more. A profile that is not open keeps working, and makes no notice on the computer. The first profile is the data that exists today. |
 | 003, 004, 005, 012, 015 | A quiet turn shows "Working…" until the silent limit stops it. | After 90 seconds with no sign of life (or half the silent limit, when shorter), every place that shows the turn reads "No answer from <name> for <time>". The turn goes on. |
+| 007, 013, 014 | Four permission levels. | A fifth level, "Ask when unsure", between "Ask for risky steps" and "Full access". The decision model checks risky steps against the words of the user. Hard steps always ask. |
+| 018 | Every call of a tool of a connection is risky. | With the switch "Trust read-only marks" of a connection, a tool that the connection marks as read only runs with no card at "Ask for risky steps" and "Ask when unsure". |
+| 005, 009 | Usage shows per agent and day only. | Each task keeps its tokens. The task view shows the total of a tree with a line for each agent. A routine can have a token limit for each run. |
+| 008 | An agent saves facts only in its turns. Its memory is the same in every place. | A memory check can suggest facts after every 10 done turns. A channel note is read only in its channel. |
+| 002, 004, 013 | Each agent has only its own instructions. | A handbook for every agent of a server, and instructions for each channel. |
+| 002, 014, 017 | An agent file holds agents and routines. | It can also hold channels, skills (made off) and the handbook (not ticked on import). |
+| 023, 000, 005, 013, 014 | No program on the computer can talk to ROBot. | An outside program that the user adds can read, send work, wait and stop through a helper over MCP. It cannot answer approvals or change anything else. |
 
 ## Slices
 
@@ -97,6 +104,14 @@ These are in the code today and the specs now say something else.
 | S58 | Profiles with linked devices and sync: every profile runs while the app runs, with its own device identity, name, switch, pairing code and device list. A phone or computer sees one profile only. The refusal to link two profiles of one computer. A sync pair of two profiles. No notice, sound or island card on the computer for a profile that is not open, and the dot in the menu. Needs S56. A link that exists before this slice must still work. | 022, 011, 012, 015, 019 |
 | S59 | Quiet line: the quiet time, the line "No answer from <name> for <time>" in the chat, the plan step, the Tasks page row, the island detail card, and on the phone and a linked device. No notification. The line goes at the next sign of life. Needs S47 for the clock of the silent limit. | 005, 003, 004, 015, 011, 012 |
 | S60 | Phone performance: the setup, the measures, the traces and the "before" and "after" reports of the phone app in `docs/performance.md`, with the compare command. No change to the app. | 011 |
+| S61 | Usage of a task: tokens and cost of each task, the total of a tree with the line of each agent, the cached share, the total on the card of the lead, the run details, and the token limit of a routine with its 80 percent line and its failure. | 005, 009, 019, 011, 012 |
+| S62 | Ask when unsure: the level and its place in the picker, hard and checked steps, the request to the decision model and what it never holds, the 3-second limit, "Allowed by the check" and "The check was not sure", the switch "Permission checks", the fall back to "Ask for risky steps", the log entries. Needs S18, S30 and S39. | 007, 013, 014, 012 |
+| S63 | Read-only marks: the mark in the tool list, the switch "Trust read-only marks", the tool card text, and the levels where the mark counts. Needs S32. | 018, 007 |
+| S64 | Memory check: the choice, the count, the task with the source "memory check", what it reads, the one tool, at most 5 proposals, "Check now", vendor runtimes in read-only mode. Needs S49. | 008, 005, 012, 019 |
+| S65 | Channel notes: the channel of an item, what a turn reads, the filter and the move, "Not a member", the delete of a channel. Needs S49. | 008, 004, 014, 019 |
+| S66 | Handbook and channel instructions: the settings page with the history and restore, the switch "Read the handbook", the order of the texts, the refusal of secrets, the channel field, what a linked device can change. | 002, 004, 013, 012, 019, 014 |
+| S67 | Team file: the three tick boxes of the export, channels, skills and the handbook in the file, their limits, the review screen and the import rules. Update `docs/agent-file-format.md` to version 2, and keep reading version 1. Needs S44 and S66. | 002, 014, 017 |
+| S68 | Outside programs: the settings part, entries and keys, the helper, the tools for "Read" and "Read and send work", the mark "Sent by", outside content from the start, the limits, the log, the profile of an entry. Needs S39. | 023, 000, 005, 013, 014 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -104,9 +119,14 @@ S50 needs no code change in the app besides text, and can go first. S52 follows 
 S57 does not depend on S55, but both change the same packaging and data code, so do S55 first when both are open. S58 needs S57.
 S55 does not depend on the other slices. It removes code, so it goes best when no other slice is open on the same files.
 S59 follows S47. S60 does not depend on the other slices.
+S61 to S68 do not depend on each other, except as listed. S66 and S61 give the largest gain for the effort.
 
 ## Decided against
 
+- Temporary helpers: an agent that gives parts of a request to short-lived helpers and joins their
+  results. Decided against on 2026-11-03. Vendor programs already start their own helpers (015,
+  "another agent"), and a channel with a lead splits a job between agents that the user can see.
+  Open for a later change if agents that use the tools of the app need it.
 - A password, a PIN or a lock for a profile. Not in the first version (022). A profile keeps work
   apart and does not lock anyone out; a separate user account of the system is the wall. Open for
   a later change.

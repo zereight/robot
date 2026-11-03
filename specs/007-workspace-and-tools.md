@@ -15,7 +15,8 @@ Each agent works in its own folder with real tools, and the user stays in contro
   the connections that the user added (see 018), read and change its own settings (see 002,
   "Changes from the chat"), and ask for and use saved secrets (see 020).
 - **Permission level** per agent: "Read only", "Ask for everything", "Ask for risky steps"
-  (default), or "Full access". The list goes from the strictest to the loosest level. A linked
+  (default), "Ask when unsure", or "Full access". The list goes from the strictest to the loosest
+  level. A linked
   device (012) can make the level stricter, never looser. See "Permission levels".
 - **Rule**: a saved decision that the user made. A rule can allow or deny a kind of step. See
   "Permission rules".
@@ -63,6 +64,52 @@ Each agent works in its own folder with real tools, and the user stays in contro
   runtime of that agent, for example which mode of the program the app sets. For an agent that
   uses the tools of the app, it tells that the app decides each step.
 - A linked device can set "Read only" and every other stricter level (012).
+
+## Ask when unsure
+
+At "Ask for risky steps" the user answers many cards for steps that the user just asked for. At
+"Ask when unsure", the decision model (013) checks a risky step against the words of the user, and
+the user gets a card only when the check is not sure.
+
+- **Hard steps** always ask at this level, as at "Ask for risky steps":
+  - deleting files outside the workspace,
+  - anything that uses `sudo`,
+  - a file step whose path is inside the data folder of ROBot (014),
+  - a request with a saved secret that uses a method other than GET, and a request for a new
+    secret (020),
+  - a guarded step in a turn that holds outside content (see "Outside content").
+- **Checked steps** are the other risky steps (see "Rules"): commands that use the network to send
+  data, installing software, and a call of a tool of a connection (018). A step that is not risky
+  runs with no question, as at "Ask for risky steps".
+- For a checked step, the app asks the decision model one question: does the user ask for this
+  step? The two options are "The user asked for this" and "The user did not ask for this".
+  - The step runs with no card when "The user asked for this" has a probability of 0.9 or more.
+    Its tool card shows "Allowed by the check".
+  - In every other case the step asks the user with the normal approval card: a lower
+    probability, no answer in 3 seconds, an error, no key, or the switch "Permission checks" off.
+    The card has the line "The check was not sure".
+- What the app sends for a check:
+  - the words of the user for this turn: the message that started the turn and the messages that
+    joined it (003). For a routine, its prompt (009). For a step of a workflow, the prompt of the
+    step (010). At most the last 2000 characters.
+  - the kind of the step and its target: the command text cut at 500 characters, the host, or the
+    connection name and the tool name. It sends no arguments of a tool of a connection.
+  - It never sends the output of a tool, a web page, a reply or thinking of the agent, memory,
+    files, or the value of a secret. So text from outside cannot steer the check.
+- A turn with no words of the user has nothing to check against. In a turn that a message from
+  another agent started, or that a watch routine started (009), every checked step asks.
+- The rules come first (see "Permission rules"). A Deny rule refuses the step and an Allow rule
+  runs it, with no check.
+- The user can pick this level only when the switch "Permission checks" is on (013). With the
+  switch off, the level is off in the picker with the muted line "Turn on permission checks in
+  Settings, Decision model." When the switch goes off later, an agent at this level works as at
+  "Ask for risky steps", and the line under the level says so.
+- An agent on a vendor runtime (006) cannot use this level in this version. The level is off in
+  the picker for these agents with the muted line "<program> decides its own steps."
+- The action log names "the check" as the one who decided, with the probability. A step that the
+  check sent to the user names the user, and the reason of the check.
+- The level is looser than "Ask for risky steps". A linked device (012) cannot set it, except to
+  make "Full access" stricter.
 
 ## Working with other agents
 
@@ -189,8 +236,9 @@ The action log lets the user see what the agents did, and why a step ran or did 
   agent, the step kind, a short target, who decided, and the result.
   - The target is a path, a command, a host, or the name of a connection and a tool. A target is
     cut at 200 characters. For a tool of a connection the target holds no arguments.
-  - Who decided: the permission level, an Allow rule, a Deny rule, the user on a card, or "a rule
-    that cannot be read" followed by the user.
+  - Who decided: the permission level, an Allow rule, a Deny rule, the check of "Ask when unsure"
+    with its probability, the user on a card, or "a rule that cannot be read" followed by the
+    user.
   - For a file step, whether the step read or wrote.
   - The result: Ran, Failed, Refused, or Stopped.
   - An entry that a rule decided names the rule. The row opens the rules page on that rule. A rule
@@ -224,7 +272,8 @@ text is in the turn.
   - a request with a saved secret that uses a method other than GET, and a request for a new
     secret (see 020).
 - In a turn that holds outside content, a guarded step asks the user with an approval card at
-  "Read only", "Ask for everything" and at "Ask for risky steps", also when an Allow rule matches it. The
+  "Read only", "Ask for everything", "Ask for risky steps" and "Ask when unsure", also when an
+  Allow rule matches it. The
   card has Allow once and Deny only. It has the line "This turn holds outside content" and names
   the first source: the host of the page, the connection and tool, the routine, or the agent.
 - At "Read only", a change of the agent's own settings, a request for a new secret, and a request
@@ -314,3 +363,18 @@ text is in the turn.
   held outside content.
 - A routine prompt asks the agent to change its name: an approval card shows, at "Ask for risky
   steps", also with no outside content.
+- "Ask when unsure" with a stand-in decision model. The user writes "install the package left-pad".
+  The agent runs an install command. The stand-in answers "The user asked for this" at 0.95: the
+  step runs with no card, its tool card shows "Allowed by the check", and the log names the check
+  and 0.95. The stand-in answers at 0.6: an approval card shows with "The check was not sure".
+- "Ask when unsure": the stand-in decision model does not answer in 3 seconds. The step asks the
+  user.
+- "Ask when unsure": the agent runs `sudo` with words of the user that ask for it. The step asks
+  the user, and the decision model gets no request.
+- "Ask when unsure": the agent fetches a page, then calls a tool of a connection. The request to
+  the stand-in decision model holds the words of the user, the connection name and the tool name.
+  It holds no text of the page and no arguments of the tool.
+- "Ask when unsure": a message from another agent starts the turn. A checked step asks the user,
+  and the decision model gets no request.
+- Turn the switch "Permission checks" off. An agent at "Ask when unsure" asks for each risky step,
+  and the line under its level says that it works as "Ask for risky steps".

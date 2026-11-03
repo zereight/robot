@@ -30,6 +30,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
 | 021 | [Today: what waits for the user, what went wrong, what ran today, what runs next](021-today.md) | Draft |
 | 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
+| 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
 
 ## Milestones
 
@@ -53,6 +54,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M14 | The changes to 000, 001, 011, 012 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S55: the desktop app is for Macs with Apple silicon only; the phone app is for iOS and Android |
 | M15 | 022, and the changes to 000, 001, 011, 012, 013, 014, 015 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S57 and S58: profiles on one computer, and profiles with linked devices and sync |
 | M16 | The changes to 003, 004, 005, 012 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md), and the phone plan of [docs/performance.md](../docs/performance.md) | Slices S59 and S60: the quiet line, and the measures of the phone app |
+| M17 | 023, and the changes to 000, 002, 004, 005, 007, 008, 009, 012, 013, 014, 017, 018 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S61 to S68: usage of a task and token limits, "Ask when unsure", read-only marks, memory check, channel notes, handbook and channel instructions, team file, outside programs |
 
 ## Surfaces check
 

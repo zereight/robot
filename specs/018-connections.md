@@ -21,6 +21,9 @@ as tools. Every use goes through the same approval and rule system as the built-
   connection gives. The user can turn off a single tool. A tool that is off is not given to any
   agent.
 - **State**: Off, Not tested, Connected (with the number of tools), or Error (with the reason).
+- **Read-only mark**: a connection can mark a tool as one that only reads and changes nothing. MCP
+  calls this a hint. The test list shows the mark beside the tool.
+- **Trust read-only marks**: a switch of each connection, off by default. See "Rules".
 
 ## Flows
 
@@ -65,7 +68,14 @@ as tools. Every use goes through the same approval and rule system as the built-
   redirect to another host.
 - Secret values are in the system keychain (see 014). They are not in the database, the logs, the
   export, or the action log.
-- Every step of a tool of a connection is a risky step (see 007). At "Ask for risky steps" it
+- With "Trust read-only marks" on, a call of a tool with the read-only mark is not a risky step.
+  It runs with no card at "Ask for risky steps" and at "Ask when unsure", and its tool card shows
+  "Read only, as the connection says". At "Ask for everything" it still asks. At "Read only" it is
+  still refused, because the app cannot check the mark. The switch text says that the connection
+  sets the mark and the app cannot check it. A change of the mark after a test counts at the next
+  turn.
+- The result of a tool with the read-only mark is still outside content (007).
+- Every other step of a tool of a connection is a risky step (see 007). At "Ask for risky steps" it
   asks, unless an Allow rule matches. The approval card shows the connection name, the tool name
   and the arguments that the agent wrote. "Always allow for this agent" saves a rule for that one
   tool. The user can write a rule for "any tool" of a connection in the rules page. A Deny rule

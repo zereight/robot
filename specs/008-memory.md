@@ -16,6 +16,10 @@ keep, and can undo a change.
 - **Proposal**: a fact that an agent suggests and the user has not accepted. A proposal is not
   memory. The agent does not read it.
 - **History**: the list of changes to the memory of one agent.
+- **Channel note**: a memory item that names one channel (004). The agent reads it only in turns
+  of that channel. An item with no channel is a general item.
+- **Memory check**: a choice for each agent, off by default. When it is on, the app gives the
+  agent a short turn after every 10 done turns, to find facts that it did not save.
 
 ## Flows
 
@@ -46,7 +50,17 @@ keep, and can undo a change.
      says: "A newer change exists. Undo that one first."
    - An undo is a change too. It has its own row, and the user can undo it.
 5. Before each turn, the agent gets the memory items that relate to the new message, up to a
-   limit set by the size of the model's context.
+   limit set by the size of the model's context. In a turn of a channel, these are its general
+   items and its channel notes for that channel. In any other turn, these are its general items
+   only.
+6. Channel note: in a turn of a channel, the memory tool can save an item or a proposal as a note
+   for that channel. The agent chooses. The tab Items has a filter: "All", "General", and one entry
+   for each channel that has notes of this agent. A note row shows the channel name. The user can
+   move an item to "General", or to a channel that the agent is a member of. A move is a change
+   with a history row.
+7. Memory check: the choice "Memory check" is on the memory page, under "Memory saving". Its text
+   says that each check is a turn of the model and uses the account of the agent. "Check now" runs
+   a check at once with the turns since the last check. It is off when there are none.
 
 ## Rules
 
@@ -80,6 +94,42 @@ keep, and can undo a change.
   work on the computer where the change was made. On a linked device (012) and on the other
   computer of a sync pair (019), the lines are plain text with no link and no undo control.
 
+### Channel notes
+
+- A channel note counts in every limit of items and proposals, as a general item does.
+- An agent that leaves a channel keeps its notes for it, and does not read them. The tab marks them
+  "Not a member". When the agent joins the channel again, it reads them again.
+- An archived channel keeps the notes. The delete of a channel (004) deletes the notes of every
+  agent for it. Each one gets a history row, and the one who made the change is "the delete of a
+  channel". Undo of such a row makes a general item.
+- Channel notes sync (019) and an export holds them (014), as other items do. An agent file (002)
+  holds no memory.
+
+### Memory check
+
+- The count: each turn of the agent that ends as done adds 1: a chat, a part of a channel job, a
+  routine and a workflow step. A turn that fails, stops, is cancelled or ends as Blocked adds
+  nothing. A restart keeps the count. The count is 0 when the choice goes on.
+- At 10, the app adds a check to the queue of the agent (005). It runs when the agent has no other
+  task. The count goes to 0 when the check starts.
+- The check is a task with the source "memory check". It shows on the Tasks page and on the usage
+  page. It posts no message in any place, and it makes no notification, also when it fails.
+- What the check reads: the messages of the user and the replies of the agent in the turns that it
+  counted, at most 20000 characters, the newest first; and the items and proposals of the agent.
+  It reads no tool output, no web page and no file.
+- In the check, the agent has one tool: suggest a fact. It can make at most 5 proposals. It makes
+  proposals also when the choice "Memory saving" is "Save at once", so the user decides each one.
+  The proposal rules above hold: 500 characters, no duplicates, no secrets, at most 20 that wait.
+  The tab Proposals shows "From a memory check" as the source.
+- The check uses the model and effort of the agent. For an agent on a vendor runtime (006), the
+  program runs in its read-only mode. A program with no read-only mode cannot use the check: the
+  choice is off for that agent, with the muted line "<program> has no read-only mode."
+- With memory off, no check runs and the count does not grow.
+- On a sync pair (019), the check runs on the computer that ran the turn that made the count 10.
+  The count is local to each computer. Proposals sync as before.
+- A linked device (012) sees the choice. It can change it only with the switch "Can create and
+  change agents".
+
 ## Out of scope
 
 - Memory shared between agents.
@@ -104,3 +154,11 @@ keep, and can undo a change.
   fact is known.
 - Turn memory off: the agent has no memory tools. The items stay in the tab.
 - Open the same agent on a linked device: the line "Saved to memory" has no undo control.
+- In a channel, ask an agent to remember a fact for this channel. A note with the channel name
+  shows in Items. In its direct chat, the agent does not get the note. In the channel, it does.
+- Remove the agent from the channel: the note shows "Not a member" and is not read. Add it again:
+  the note is read again.
+- Delete the channel: the note is gone, and History has a row by "the delete of a channel".
+- Turn "Memory check" on with "Save at once". After 10 done turns, a task "memory check" runs when
+  the agent is free. A stand-in model suggests 2 facts: the tab Proposals shows 2 proposals "From a
+  memory check", and no item is made. A failed turn does not count toward the 10.

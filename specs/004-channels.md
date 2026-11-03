@@ -6,8 +6,9 @@ The user gives a job to a group of agents in one place and watches them divide a
 
 ## Concepts
 
-- **Channel**: name (1 to 60 characters), topic (up to 200), members (agents), one optional lead
-  agent, the setting "Review parts" (off by default), and an optional section: a user section of
+- **Channel**: name (1 to 60 characters), topic (up to 200), instructions (up to 4000 characters,
+  empty by default), members (agents), one optional lead agent, the setting "Review parts" (off by
+  default), and an optional section: a user section of
   the Channels list (see 001, "User sections"). With no section, the channel shows in the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
   parts and give each part to a member.
@@ -151,6 +152,12 @@ The user gives a job to a group of agents in one place and watches them divide a
 ## Rules
 
 - Agents in a channel see the channel messages; each agent keeps its own memory and workspace.
+- **Channel instructions**: each member gets the instructions of the channel in every turn of
+  that channel, after its own instructions (002, "Handbook"). The lead gets them too. The fast pick
+  does not get them. The user edits them in channel settings. A change counts from the next turn. No
+  agent can change them. Text that looks like a secret is refused on save. They sync (019), an
+  export holds them (014), and a linked device can change them only with the switch "Can create
+  and change agents" (012).
 - A member that is busy with other work keeps a new part in its queue (see 005). The part shows
   what it waits behind: the name of the channel and the first words of the job that the member
   runs now, or a note that the member is busy in its own chat. The block of waiting parts in the
@@ -200,3 +207,5 @@ The user gives a job to a group of agents in one place and watches them divide a
   read it.
 - The lead is blocked by a usage limit when the parts end: no part gets a verdict, and the job
   does not fail.
+- A channel with the instructions "Write the answer as a list." A member answers a job: its turn
+  gets the instructions after its own. The same agent in its direct chat does not get them.

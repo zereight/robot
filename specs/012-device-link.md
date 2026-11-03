@@ -117,8 +117,9 @@ agents and channels of the server in the same screens as on the server (002, 004
 button on a section, the agent profile, the channel settings, the memory list.
 
 - **Fields a client can set:** name, face (shape and hue; no uploaded image), role line,
-  instructions, model and effort. The section of an agent is not offered. For a channel: name,
-  topic, members and lead. A client does not archive, delete or restore channels.
+  instructions, model, effort and the switch "Read the handbook". The section of an agent is not
+  offered. For a channel: name, topic, instructions, members and lead. A client can also read and
+  change the handbook (002), and turn the memory check of an agent on or off (008). A client does not archive, delete or restore channels.
 - **Memory:** a client does the same four things as the profile of an agent on the server (008):
   list and search, add, edit and delete items. It has no switch for memory on or off.
 - **Model:** the client picks from the model accounts that are connected on the server. It cannot
@@ -128,8 +129,8 @@ button on a section, the agent profile, the channel settings, the memory list.
   profile on a client says "Workspace: on <server name>" and shows no path.
 - **Permission level:** an agent that a client creates starts at the level that the server uses
   for new agents ("Ask for risky steps"). A client can set a stricter level. From the loosest to
-  the strictest, the levels are "Full access", "Ask for risky steps", "Ask for everything" and
-  "Read only" (007). A client cannot set a looser level, and it cannot add an "Always allow"
+  the strictest, the levels are "Full access", "Ask when unsure", "Ask for risky steps", "Ask
+  for everything" and "Read only" (007). A client cannot set a looser level, and it cannot add an "Always allow"
   rule.
 - **Names:** the rules of 002 and 004 hold on the server. A name that is taken gives a plain
   error on the client.

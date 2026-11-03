@@ -14,13 +14,16 @@ The user sets the app up the way they like in one place.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
-- **Decision model**: the fast model for channel picks and computer use. See "Decision model".
+- **Decision model**: the fast model for channel picks, computer use and permission checks. See
+  "Decision model".
+- **Handbook**: one text that every agent reads. See 002, "Handbook".
 - **Roles**: the role lines of all agents. See "Roles".
 - **Permissions**: the rules that allow or deny steps, the action log (see 007), the saved
   secrets, and the switch "Allow saved secrets on this computer and the local network" (see
   020).
 - **Skills**: the saved instructions that the user calls with a slash. See 017.
 - **Connections**: the outside tools that agents can use. See 018.
+- **Outside programs**: programs on this computer that may read and send work in ROBot. See 023.
 - **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
   that can open this computer, with the switch "Can create and change agents" for each, and the
   computers this computer can open, see 012. Each linked computer has a sync row, see 019.
@@ -64,6 +67,10 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   the names of the controls of a window go to the service above. The same section shows from the
   computer use page, so the user can turn it on where the user gives the system permission.
 - Channel picks use this model (see 004, "Fast pick").
+- A switch "Permission checks" is off by default. With it on, agents at the level "Ask when
+  unsure" ask this model before a checked step (see 007, "Ask when unsure"). Its text says that the
+  words of the user in a turn, and the command text or the name of a tool, go to the service
+  above. A choice that is not set up cannot turn the switch on.
 
 ## Roles
 

@@ -23,13 +23,14 @@ service holds it.
 
 | Item | Notes |
 | --- | --- |
-| Agents | Face, name, role line, instructions, model choice, archive state. |
+| Agents | Face, name, role line, instructions, the switch "Read the handbook", model choice, archive state. |
+| Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Channels | Name, topic, members, lead, the "Review parts" setting, archive state. |
+| Channels | Name, topic, instructions, members, lead, the "Review parts" setting, archive state. |
 | Messages | Direct chats and channels, with tool cards, plan steps and reply chips. |
-| Tasks | State (also in review and blocked), reason and result, and how far a failed turn went (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
-| Memory | The items of each agent. |
-| Routines and workflows | The definition (for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
+| Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
+| Memory | The items of each agent, with the channel of a channel note. |
+| Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
 | Read state | The last place that the user read in each chat. |
 
 ### Does not sync
@@ -50,6 +51,8 @@ service holds it.
 | User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives in the default section. |
 | The decision model and the other settings of 013 | Settings are local. |
 | Linked devices and their keys | They are not data of the agents. |
+| The memory check: its switch and its count (008) | The switch is a choice of one computer, like the other memory switches. Each computer counts its own turns. |
+| Outside programs and their keys (023) | A key reaches one computer only. |
 
 ## Flows
 

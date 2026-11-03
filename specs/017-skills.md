@@ -111,7 +111,9 @@ agent, and the agent writes a draft skill from what the user did.
 - Skills work in direct chats and threads. They do not work in channels, routines or workflows in
   this version.
 - Skills are stored in the local database. An export holds them (see 014). An agent file (see
-  002) does not.
+  002) holds them only when the user ticks "Skills of these agents". An imported skill is off. It
+  counts in the limit of 100. A skill over the limit is not made, and the review screen lists it
+  under "Not imported" with the reason.
 - A skill is not a secret store. The instructions go to the model provider with the message, as
   any message does.
 

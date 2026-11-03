@@ -15,6 +15,7 @@ An agent has:
 - **Role line**: up to 120 characters, shown under the name in profiles. It is the job title of
   the agent. Settings list all role lines (see 013).
 - **Instructions**: free text that the agent always follows.
+- **Read the handbook**: a switch, on by default. See "Handbook".
 - **Model**: the provider and model it uses (see 006), and an effort level when the model has one.
 - **Workspace**: a folder on the computer that belongs to this agent (see 007).
 - **Section**: the user section of the Agents list that it shows in, or none. With none, the agent
@@ -53,7 +54,8 @@ An agent has:
    are only for this agent (see 017), the text also says how many, and that they are deleted
    too.
 10. Export agents: from the menu of the Agents section header, the user picks agents and a file
-    name. The app writes one file. Import agents: the user picks such a file. The app shows the
+    name. The same dialog has three tick boxes, all off at the start: "Channels of these agents",
+    "Skills of these agents" and "Handbook". The app writes one file. Import agents: the user picks such a file. The app shows the
     review screen (see 014, "Review before an import"), asks for one model for all of them (see
     006), and asks to confirm.
 11. Recent work: the profile lists the latest tasks of the agent (see "Recent work").
@@ -77,7 +79,8 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - The agent cannot change these, from the chat or in any other way: its permission level, the
   rules (007), the workspace folder, computer use, the main agent switch, the memory switch, the
   connections and skills that it may use, saved secrets (020), sync, devices, archive and delete,
-  and the fields of other agents. When the user asks for one of these, the agent says where in
+  the fields of other agents, the handbook, the switch "Read the handbook", the memory check
+  (008), and the instructions of a channel (004). When the user asks for one of these, the agent says where in
   the profile or in settings the user can change it.
 - The agent changes a setting only when the user asks for it. A question such as "which model
   are you?" reads the settings and changes nothing.
@@ -114,6 +117,23 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - Import makes new agents only. It never changes an agent that exists. A name that is taken gets
   a number, ignoring case, inside the length limit. Every imported routine starts paused.
 - If an import fails, the agents made so far stay. The error says why it stopped.
+- **Channels in the file**: with "Channels of these agents", the file holds each channel whose
+  members are all among the picked agents and that is not archived: name, topic, instructions, the
+  setting "Review parts", the members and the lead, by the names of the agents in the file. It holds
+  no message, no section and no memory note. Import makes new channels only. A name that is taken
+  gets a number. A channel whose member the user did not tick on the review screen is made without
+  that member. A lead that is not made leaves the channel with no lead.
+- **Skills in the file**: with "Skills of these agents", the file holds each skill that the picked
+  agents may use, with its name, its instructions, and the agents in the file that may use it. A
+  skill for all agents is written for the agents in the file only. Import makes new skills only. A
+  name that is taken gets a number. An imported skill is off, so the user turns it on after a look
+  at its instructions (017).
+- **Handbook in the file**: with "Handbook", the file holds the handbook. On import, the review
+  screen shows it not ticked, with the first lines. When the user ticks it, it replaces the
+  handbook of this server, and the old text stays in the handbook history (see "Handbook").
+- The limits stay: at most 40 agents and 10 MB. The file also holds at most 40 channels and 100
+  skills. A file over a limit is refused.
+- A file of the first format version, with agents only, can still be read.
 
 ## Starters
 
@@ -166,6 +186,28 @@ and skills for the new agent.
 - The block changes while the profile is open. With no task, one muted line says "No work yet."
 - The block does not show the thinking of the agent.
 
+## Handbook
+
+The handbook is one text for all agents of a server: who the user is, what the work is for, and
+the ways of work that every agent follows. The user writes it once and does not copy it into each
+agent.
+
+- The handbook is a part of settings (013). It holds 0 to 20000 characters. It is empty at the
+  start. An empty handbook gives nothing to any agent.
+- Before each turn, an agent with "Read the handbook" on gets the handbook before its own
+  instructions. In a channel, the instructions of the channel come after the instructions of the
+  agent (004). When two texts say different things, the later text wins. The app tells the agent
+  this order.
+- The switch "Read the handbook" is in the profile of the agent, under the instructions. The user
+  turns it off for an agent that must not get it.
+- A change of the handbook counts from the next turn. A turn that runs keeps the text that it had.
+- No agent can change the handbook, from the chat or with any tool. The handbook page has a
+  history of the last 20 versions, with the time and "Restore", as the instruction history has.
+- The handbook syncs (019) and an export holds it (014). A linked device (012) can read it, and can
+  change it only with the switch "Can create and change agents".
+- Text that looks like a secret is refused on save, with the reason. The handbook is sent to the
+  model provider of each agent that reads it, and the page says so.
+
 ## Rules
 
 - Changing the model keeps the agent's history, memory and workspace.
@@ -208,3 +250,16 @@ and skills for the new agent.
 - Open the profile of an agent that has 25 tasks: "Recent work" lists 20. A task that waits for an
   approval says "Waits for your approval". A part in review says "Waits for your review". "Show
   all" opens the Tasks page for this agent.
+- Write a handbook "Answer in Korean." An agent with "Read the handbook" on answers in Korean. Turn
+  the switch off for that agent: its next turn does not get the handbook.
+- Ask an agent in the chat to change the handbook: nothing changes, and the agent says where the
+  user can change it.
+- Change the handbook three times, and restore the first version: the handbook has the first text,
+  and the history has a new version.
+- Export two agents with "Channels of these agents" and "Skills of these agents" ticked. One
+  channel has both agents, another has a third agent too. Import the file in an empty app: the
+  review screen lists the first channel and the skills of the two agents. After the import, the
+  channel exists with both members and its lead, the skills exist and are off, and the second
+  channel does not exist.
+- Import a file with a handbook into an app that has a handbook: the review screen shows the
+  handbook not ticked. Import without the tick: the handbook does not change.
