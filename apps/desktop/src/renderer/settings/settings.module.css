@@ -229,3 +229,70 @@
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* The permission rules (spec 007). */
+.logTag[data-decision="deny"] {
+  color: var(--c-danger);
+}
+
+.logRow[data-focused="true"] {
+  background: var(--c-selected);
+  border-radius: var(--radius-m);
+  padding-inline: 8px;
+}
+
+.ruleForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 360px;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formInline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* The row of the action log that a rule decided opens that rule: the link covers the row. */
+.logRow:has(.ruleLink) {
+  position: relative;
+}
+
+.ruleLink {
+  all: unset;
+  cursor: pointer;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+}
+
+.ruleLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.ruleLink:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+}
+
+.ruleDeleted {
+  font-size: var(--text-s);
+  color: var(--c-text-muted);
+}

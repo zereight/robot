@@ -273,10 +273,18 @@ const ToolCard = (props: {
             ? t(
                 props.part.refused === "address"
                   ? "chat.tool.refusedAddress"
-                  : "chat.tool.refusedReadOnly",
+                  : props.part.refused === "rule"
+                    ? "chat.tool.refusedRule"
+                    : "chat.tool.refusedReadOnly",
               )
             : t(`chat.tool.${props.part.state}` as MessageKey)}
         </span>
+        {/* A step that an Allow rule let run says so (spec 007, "Permission rules"). */}
+        <Show when={props.part.ruleAllowed}>
+          <span class={styles.fromDevice} data-testid="tool-rule-allowed">
+            {t("chat.tool.ruleAllowed")}
+          </span>
+        </Show>
         <Show when={props.part.reason}>
           {(reason) => (
             <span class={styles.toolReason} data-testid="tool-reason" data-code={reason().code}>
@@ -438,6 +446,12 @@ const ToolCard = (props: {
                 </Match>
                 <Match when={ask().kind === "approval"}>
                   <div>{t("chat.tool.approval")}</div>
+                  {/* A rule that the app cannot read meets the step (spec 007). */}
+                  <Show when={(ask() as { unreadable?: true }).unreadable}>
+                    <div class={styles.outside} role="note" data-testid="ask-unreadable">
+                      <strong>{t("chat.tool.unreadable")}</strong>
+                    </div>
+                  </Show>
                   {/* A guarded step in a turn that holds outside content (spec 007). */}
                   <Show when={(ask() as { outside?: OutsideSource }).outside}>
                     {(source) => (

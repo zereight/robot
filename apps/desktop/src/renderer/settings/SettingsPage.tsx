@@ -32,6 +32,7 @@ import { useClosing } from "../ui/Presence.tsx"
 import { ActionLogSection } from "./ActionLogSection.tsx"
 import { BrowserProfilesSection } from "./BrowserProfilesSection.tsx"
 import { DecisionSection } from "./DecisionSection.tsx"
+import { RulesSection } from "./RulesSection.tsx"
 import { SavedSecretsSection } from "./SavedSecretsSection.tsx"
 import styles from "./settings.module.css"
 
@@ -452,6 +453,7 @@ export const SettingsPage = (props: {
           </Match>
           <Match when={section() === "permissions"}>
             <SavedSecretsSection />
+            <RulesSection />
             <ActionLogSection />
           </Match>
           <Match when={section() === "data"}>

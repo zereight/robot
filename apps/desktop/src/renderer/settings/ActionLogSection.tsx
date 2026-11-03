@@ -1,10 +1,11 @@
-import type { ActionLogEntry, ActionResult, MessageKey } from "@robot/shared"
+import type { ActionLogEntry, ActionResult, ActionRule, MessageKey } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
 import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
 import { sensitiveLabelText } from "../lib/sensitive.ts"
 import { useApp } from "../state/app.tsx"
+import { showRules } from "../state/rulesLink.ts"
 import { Segmented } from "../ui/controls.tsx"
 import styles from "./settings.module.css"
 
@@ -23,6 +24,14 @@ export const ActionLogSection = () => {
     call("actionLog.list", r === "all" ? {} : { result: r }),
   )
   onCleanup(window.robot.on("actionLog.changed", () => void refetch()))
+  onCleanup(window.robot.on("rules.changed", () => void refetch()))
+  /** The match text of a rule as the log shows it: the second part, when the rule has one. */
+  const ruleText = (rule: ActionRule) =>
+    rule.kind === "connection"
+      ? `${rule.text} · ${rule.detail ?? t("rules.anyTool")}`
+      : rule.kind === "secret"
+        ? `${rule.text} · ${rule.detail ?? t("rules.anyMethod")}`
+        : rule.text
 
   const row = (e: ActionLogEntry) => (
     <li
@@ -65,6 +74,36 @@ export const ActionLogSection = () => {
           ? t("permissions.log.sensitive", { label: sensitiveLabelText(t, e.sensitive) })
           : t("permissions.log.noSensitive")}
       </div>
+      {/* The rule that decided the step. A rule that was deleted later shows its text. */}
+      <Show when={e.rule}>
+        {(rule) => (
+          <div data-testid="action-log-rule" data-deleted={rule().deleted}>
+            <Show
+              when={!rule().deleted}
+              fallback={
+                <span class={styles.ruleDeleted}>
+                  {t("permissions.log.rule", { text: ruleText(rule()) })} ·{" "}
+                  <strong data-testid="action-log-rule-deleted">
+                    {t("permissions.log.ruleDeleted")}
+                  </strong>
+                </span>
+              }
+            >
+              <button
+                type="button"
+                class={styles.ruleLink}
+                data-testid="action-log-rule-open"
+                aria-label={t("permissions.log.ruleOpen", { text: ruleText(rule()) })}
+                onClick={() => {
+                  showRules({ ruleId: rule().id })
+                }}
+              >
+                {t("permissions.log.rule", { text: ruleText(rule()) })}
+              </button>
+            </Show>
+          </div>
+        )}
+      </Show>
     </li>
   )
 

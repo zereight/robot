@@ -1,0 +1,470 @@
+import type {
+  Agent,
+  MessageKey,
+  PermissionRule,
+  RuleDecision,
+  RuleInput,
+  RuleKind,
+} from "@robot/shared"
+import { RULE_KINDS, RULE_TEXT_MAX, RULES_MAX, SECRET_METHODS } from "@robot/shared"
+import {
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  type JSX,
+  on,
+  onCleanup,
+  Show,
+} from "solid-js"
+import { Face } from "../agents/Face.tsx"
+import { formatDateTime } from "../chat/format.ts"
+import { describeError, type ErrorText } from "../lib/errors.ts"
+import { call } from "../lib/rpc.ts"
+import { useApp } from "../state/app.tsx"
+import { clearRulesTarget, rulesTarget } from "../state/rulesLink.ts"
+import { useUi } from "../state/ui.tsx"
+import { Button, Segmented } from "../ui/controls.tsx"
+import { Dialog } from "../ui/Dialog.tsx"
+import { Presence } from "../ui/Presence.tsx"
+import styles from "./settings.module.css"
+
+/** The value of the agent filter: every rule, the rules for all agents, or one agent. */
+const EVERY = ""
+const ALL_AGENTS = "*"
+
+type DecisionFilter = RuleDecision | "all"
+const DECISIONS: readonly DecisionFilter[] = ["all", "allow", "deny"]
+
+/** What the form holds while the user types. */
+interface Draft {
+  agent: string
+  kind: RuleKind
+  text: string
+  detail: string
+  anyDetail: boolean
+  decision: RuleDecision
+}
+
+/**
+ * Settings, Permissions: the permission rules of spec 007. Rules come newest first. The user can
+ * filter by agent and by decision, add a rule, edit a rule and delete a rule. A rule that the app
+ * cannot read says so, and the user can delete it.
+ */
+export const RulesSection = () => {
+  const app = useApp()
+  const { t } = app
+  const ui = useUi()
+  const [agentFilter, setAgentFilter] = createSignal(EVERY)
+  const [decisionFilter, setDecisionFilter] = createSignal<DecisionFilter>("all")
+  const [focused, setFocused] = createSignal<string>()
+  const [rules, { refetch }] = createResource(
+    () => ({ agent: agentFilter(), decision: decisionFilter() }),
+    (filter) =>
+      call("rules.list", {
+        ...(filter.agent === EVERY
+          ? {}
+          : { agentId: filter.agent === ALL_AGENTS ? null : filter.agent }),
+        ...(filter.decision === "all" ? {} : { decision: filter.decision }),
+      }),
+  )
+  const [count, { refetch: refetchCount }] = createResource(
+    async () => (await call("rules.list", {})).length,
+  )
+  const [agents, { refetch: refetchAgents }] = createResource(
+    () => ui.localServer()?.id,
+    async (serverId) => [
+      ...(await call("agents.list", { serverId, archived: false })),
+      ...(await call("agents.list", { serverId, archived: true })),
+    ],
+    { initialValue: [] as readonly Agent[] },
+  )
+  onCleanup(
+    window.robot.on("rules.changed", () => {
+      void refetch()
+      void refetchCount()
+    }),
+  )
+  onCleanup(
+    window.robot.on("agents.changed", () => {
+      void refetchAgents()
+      void refetch()
+      void refetchCount()
+    }),
+  )
+  const agentOf = (id: string | null) => (id ? agents().find((a) => a.id === id) : undefined)
+
+  // A request from the profile of an agent or from a row of the action log (spec 007).
+  createEffect(
+    on(rulesTarget, (target) => {
+      if (!target) return
+      clearRulesTarget()
+      setDecisionFilter("all")
+      setAgentFilter(target.agentId ?? EVERY)
+      setFocused(target.ruleId)
+      if (target.ruleId)
+        queueMicrotask(() =>
+          document
+            .querySelector(`[data-rule-id="${target.ruleId}"]`)
+            ?.scrollIntoView({ block: "center" }),
+        )
+    }),
+  )
+  // Once the list is drawn, the rule of a request is brought into view.
+  createEffect(() => {
+    const id = focused()
+    if (!id || !rules.latest) return
+    queueMicrotask(() =>
+      document.querySelector(`[data-rule-id="${id}"]`)?.scrollIntoView({ block: "center" }),
+    )
+  })
+
+  const [editing, setEditing] = createSignal<{ rule?: PermissionRule; draft: Draft }>()
+  const [error, setError] = createSignal<ErrorText>()
+
+  const blank = (): Draft => ({
+    agent: agentFilter() === EVERY ? (agents()[0]?.id ?? ALL_AGENTS) : agentFilter(),
+    kind: "shell",
+    text: "",
+    detail: "",
+    anyDetail: true,
+    decision: "allow",
+  })
+  const draftOf = (rule: PermissionRule): Draft => ({
+    agent: rule.agentId ?? ALL_AGENTS,
+    kind: rule.kind ?? "shell",
+    text: rule.text,
+    detail: rule.detail ?? "",
+    anyDetail: rule.detail === null,
+    decision: rule.decision ?? "allow",
+  })
+  const inputOf = (draft: Draft): RuleInput => ({
+    agentId: draft.agent === ALL_AGENTS ? null : draft.agent,
+    kind: draft.kind,
+    text: draft.text,
+    ...(draft.kind === "connection" || draft.kind === "secret"
+      ? { detail: draft.anyDetail ? null : draft.detail }
+      : {}),
+    decision: draft.decision,
+  })
+
+  const save = async () => {
+    const current = editing()
+    if (!current) return
+    setError(undefined)
+    try {
+      const input = inputOf(current.draft)
+      const saved = current.rule
+        ? await call("rules.update", { id: current.rule.id, rule: input })
+        : await call("rules.add", input)
+      setEditing(undefined)
+      setFocused(saved.id)
+      await refetch()
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+  const remove = async (rule: PermissionRule) => {
+    setError(undefined)
+    try {
+      await call("rules.delete", { id: rule.id })
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+
+  /** The match text of a rule as a row shows it. */
+  const matchText = (rule: PermissionRule) => {
+    if (rule.kind === "connection") return `${rule.text} · ${rule.detail ?? t("rules.anyTool")}`
+    if (rule.kind === "secret") return `${rule.text} · ${rule.detail ?? t("rules.anyMethod")}`
+    return rule.text
+  }
+
+  const row = (rule: PermissionRule) => {
+    const agent = () => agentOf(rule.agentId)
+    return (
+      <li
+        class={styles.logRow}
+        data-testid="rule-row"
+        data-rule-id={rule.id}
+        data-decision={rule.decision ?? "unreadable"}
+        data-kind={rule.kind ?? ""}
+        data-focused={focused() === rule.id ? "true" : undefined}
+      >
+        <div class={styles.logHead}>
+          <span class={styles.secretAgent} data-testid="rule-agent">
+            <Show when={rule.agentId !== null} fallback={<span>{t("rules.allAgents")}</span>}>
+              <Show when={agent()}>
+                {(a) => <Face face={a().face} image={a().faceImage} size={20} />}
+              </Show>
+              <span>{agent()?.name ?? t("secrets.unknownAgent")}</span>
+            </Show>
+          </span>
+          <Show
+            when={rule.readable && rule.decision}
+            fallback={
+              <span class={styles.logTag} data-result="failed" data-testid="rule-unreadable">
+                {t("rules.unreadable")}
+              </span>
+            }
+          >
+            {(decision) => (
+              <span class={styles.logTag} data-decision={decision()} data-testid="rule-tag">
+                {t(`rules.decision.${decision()}` as MessageKey)}
+              </span>
+            )}
+          </Show>
+        </div>
+        <div class={styles.logTarget} data-testid="rule-text">
+          {matchText(rule)}
+        </div>
+        <div class={styles.hint}>
+          {[
+            rule.kind ? t(`rules.kind.${rule.kind}` as MessageKey) : "—",
+            formatDateTime(app.locale(), rule.createdAt),
+          ].join(" · ")}
+        </div>
+        <Show when={!rule.readable}>
+          <div class={styles.hint} data-testid="rule-unreadable-hint">
+            {t("rules.unreadable.hint")}
+          </div>
+        </Show>
+        <div class={styles.actions}>
+          <Show when={rule.readable}>
+            <Button
+              onClick={() => {
+                setError(undefined)
+                setEditing({ rule, draft: draftOf(rule) })
+              }}
+              data-testid="rule-edit"
+            >
+              {t("rules.edit")}
+            </Button>
+          </Show>
+          <Button onClick={() => void remove(rule)} data-testid="rule-delete">
+            {t("rules.delete")}
+          </Button>
+        </div>
+      </li>
+    )
+  }
+
+  const patch = (change: Partial<Draft>) => {
+    const current = editing()
+    if (current) setEditing({ ...current, draft: { ...current.draft, ...change } })
+  }
+  /** A name above a control. The control carries the same name for assistive technology. */
+  const field = (label: string, body: JSX.Element) => (
+    <div class={styles.formField}>
+      <span class={styles.label} aria-hidden="true">
+        {label}
+      </span>
+      {body}
+    </div>
+  )
+
+  return (
+    <div data-testid="rules">
+      <div class={styles.row}>
+        <div>
+          <div class={styles.label}>{t("rules.title")}</div>
+          <div class={`${styles.hint} ${styles.words}`}>{t("rules.hint")}</div>
+        </div>
+        <Button
+          variant="primary"
+          class={styles.noWrap}
+          disabled={(count() ?? 0) >= RULES_MAX}
+          onClick={() => {
+            setError(undefined)
+            setEditing({ draft: blank() })
+          }}
+          data-testid="rule-add"
+        >
+          {t("rules.add")}
+        </Button>
+      </div>
+      <div class={styles.row}>
+        <select
+          class={styles.select}
+          aria-label={t("rules.filterAgent")}
+          data-testid="rules-agent"
+          value={agentFilter()}
+          onChange={(e) => setAgentFilter(e.currentTarget.value)}
+        >
+          <option value={EVERY}>{t("rules.anyAgent")}</option>
+          <option value={ALL_AGENTS}>{t("rules.allAgents")}</option>
+          <For each={agents()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
+        </select>
+        <Segmented
+          label={t("rules.filterDecision")}
+          testId="rules-decision"
+          value={decisionFilter()}
+          onChange={setDecisionFilter}
+          options={DECISIONS.map((d) => ({
+            value: d,
+            label: d === "all" ? t("rules.anyDecision") : t(`rules.decision.${d}` as MessageKey),
+          }))}
+        />
+      </div>
+      <Show when={!editing() && error()}>
+        {(err) => (
+          <div class={styles.error} role="alert" data-testid="rules-error">
+            {t(err().key, err().params)}
+          </div>
+        )}
+      </Show>
+      <Show
+        when={(rules.latest ?? []).length > 0}
+        fallback={
+          <p class={styles.muted} data-testid="rules-empty">
+            {t("rules.empty")}
+          </p>
+        }
+      >
+        <ul class={styles.log} data-testid="rules-list">
+          <For each={rules.latest ?? []}>{row}</For>
+        </ul>
+      </Show>
+      <Presence when={editing()}>
+        {(current) => (
+          <Dialog
+            label={current.rule ? t("rules.edit.title") : t("rules.add.title")}
+            onClose={() => setEditing(undefined)}
+            testId="rule-dialog"
+          >
+            <form
+              class={styles.ruleForm}
+              onSubmit={(e) => {
+                e.preventDefault()
+                void save()
+              }}
+            >
+              <h2 class={styles.label}>
+                {current.rule ? t("rules.edit.title") : t("rules.add.title")}
+              </h2>
+              {field(
+                t("rules.field.agent"),
+                <select
+                  class={styles.select}
+                  aria-label={t("rules.field.agent")}
+                  data-testid="rule-form-agent"
+                  value={current.draft.agent}
+                  onChange={(e) => patch({ agent: e.currentTarget.value })}
+                >
+                  <option value={ALL_AGENTS}>{t("rules.allAgents")}</option>
+                  <For each={agents()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
+                </select>,
+              )}
+              {field(
+                t("rules.field.kind"),
+                <select
+                  class={styles.select}
+                  aria-label={t("rules.field.kind")}
+                  data-testid="rule-form-kind"
+                  value={current.draft.kind}
+                  onChange={(e) =>
+                    patch({
+                      kind: e.currentTarget.value as RuleKind,
+                      detail: "",
+                      anyDetail: true,
+                    })
+                  }
+                >
+                  <For each={RULE_KINDS}>
+                    {(k) => <option value={k}>{t(`rules.kind.${k}` as MessageKey)}</option>}
+                  </For>
+                </select>,
+              )}
+              {field(
+                t(`rules.match.${current.draft.kind}` as MessageKey),
+                <input
+                  class={styles.input}
+                  aria-label={t(`rules.match.${current.draft.kind}` as MessageKey)}
+                  value={current.draft.text}
+                  maxLength={RULE_TEXT_MAX}
+                  spellcheck={false}
+                  autocomplete="off"
+                  data-testid="rule-form-text"
+                  onInput={(e) => patch({ text: e.currentTarget.value })}
+                />,
+              )}
+              <Show when={current.draft.kind === "connection"}>
+                {field(
+                  t("rules.field.tool"),
+                  <span class={styles.formInline}>
+                    <label class={styles.check}>
+                      <input
+                        type="checkbox"
+                        checked={current.draft.anyDetail}
+                        data-testid="rule-form-any"
+                        onChange={(e) => patch({ anyDetail: e.currentTarget.checked })}
+                      />
+                      {t("rules.anyTool")}
+                    </label>
+                    <Show when={!current.draft.anyDetail}>
+                      <input
+                        class={styles.input}
+                        aria-label={t("rules.field.tool")}
+                        value={current.draft.detail}
+                        maxLength={RULE_TEXT_MAX}
+                        spellcheck={false}
+                        data-testid="rule-form-detail"
+                        onInput={(e) => patch({ detail: e.currentTarget.value })}
+                      />
+                    </Show>
+                  </span>,
+                )}
+              </Show>
+              <Show when={current.draft.kind === "secret"}>
+                {field(
+                  t("rules.field.method"),
+                  <select
+                    class={styles.select}
+                    aria-label={t("rules.field.method")}
+                    data-testid="rule-form-method"
+                    value={current.draft.anyDetail ? "" : current.draft.detail}
+                    onChange={(e) =>
+                      patch({
+                        anyDetail: e.currentTarget.value === "",
+                        detail: e.currentTarget.value,
+                      })
+                    }
+                  >
+                    <option value="">{t("rules.anyMethod")}</option>
+                    <For each={SECRET_METHODS}>{(m) => <option value={m}>{m}</option>}</For>
+                  </select>,
+                )}
+              </Show>
+              <div class={styles.formField}>
+                <span class={styles.label}>{t("rules.field.decision")}</span>
+                <Segmented
+                  label={t("rules.field.decision")}
+                  testId="rule-form-decision"
+                  value={current.draft.decision}
+                  onChange={(decision) => patch({ decision })}
+                  options={(["allow", "deny"] as const).map((d) => ({
+                    value: d,
+                    label: t(`rules.decision.${d}` as MessageKey),
+                  }))}
+                />
+              </div>
+              <Show when={error()}>
+                {(err) => (
+                  <div class={styles.error} role="alert" data-testid="rule-form-error">
+                    {t(err().key, err().params)}
+                  </div>
+                )}
+              </Show>
+              <div class={styles.actions}>
+                <Button onClick={() => setEditing(undefined)}>{t("rules.cancel")}</Button>
+                <Button type="submit" variant="primary" data-testid="rule-form-save">
+                  {t("rules.save")}
+                </Button>
+              </div>
+            </form>
+          </Dialog>
+        )}
+      </Presence>
+    </div>
+  )
+}

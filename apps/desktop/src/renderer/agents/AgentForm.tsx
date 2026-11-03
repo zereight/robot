@@ -47,6 +47,7 @@ import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useScheduleWords } from "../routines/RoutinesPage.tsx"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
+import { showRules } from "../state/rulesLink.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -586,6 +587,23 @@ export const AgentForm = (props: AgentFormProps) => {
             <span class={styles.hint} data-testid="agent-permission-stricter">
               {t("agents.permission.stricter")}
             </span>
+          </Show>
+          {/* The rules page is for this computer only (spec 007, 012). */}
+          <Show when={props.agent && !remote()}>
+            <button
+              type="button"
+              class={styles.linkButton}
+              data-testid="agent-rules-link"
+              onClick={() => {
+                const agent = props.agent
+                if (!agent) return
+                showRules({ agentId: agent.id })
+                props.onCancel()
+                ui.openSettings("permissions")
+              }}
+            >
+              {t("agents.permission.rules")}
+            </button>
           </Show>
         </div>
         <Presence when={confirmFull()}>
