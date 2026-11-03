@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native"
 import { toggleSection } from "../../../src/prefs.ts"
 import { useApp, useServer } from "../../../src/state/context.tsx"
 import { radius, space, text } from "../../../src/theme/palette.ts"
+import { AvatarMark } from "../../../src/ui/AvatarMark.tsx"
 import { Face } from "../../../src/ui/Face.tsx"
 import { Body, Button, HeaderButton, Notice, Screen } from "../../../src/ui/kit.tsx"
 import { stateText } from "../../../src/ui/states.ts"
@@ -224,9 +225,7 @@ const PlaceRow = (props: {
       {place.kind === "agent" ? (
         <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
       ) : (
-        <View style={[styles.hash, { backgroundColor: palette.surface }]}>
-          <Text style={[styles.hashText, { color: palette.textMuted }]}>#</Text>
-        </View>
+        <AvatarMark glyph="#" size={36} />
       )}
       <View style={styles.placeText}>
         <View style={styles.placeTop}>
@@ -280,14 +279,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.s,
     borderRadius: radius.m,
   },
-  hash: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.m,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  hashText: { fontSize: text.l, fontWeight: "700" },
   placeText: { flex: 1, gap: 2 },
   placeTop: { flexDirection: "row", alignItems: "center", gap: space.s },
   placeName: { fontSize: text.m, flexShrink: 1 },

@@ -79,9 +79,13 @@ tag, so the user reads their work as they read messages from colleagues.
   trains or evolves. The rule covers text that the user reads. It does not cover the instructions
   that the app sends to a model. The memory page and the knowledge page of an agent show one muted
   line with this fact (see 008 and 016).
-- The visual style is calm: flat surfaces, no decorative gradients or glows, sentence case,
-  medium and semibold weights only, one line icon set, motion under 300 ms that respects reduced
-  motion settings.
+- The visual style is calm: flat surfaces, no decorative gradients, sentence case, medium and
+  semibold weights only, one line icon set, motion under 300 ms that respects reduced motion
+  settings.
+- Light is the one exception to the flat style. It shows who or what is here, and nothing else:
+  the app mark and the avatars (see 002, "Avatars") glow, and so does the badge of the app mark
+  on a working agent (see 003, "States"). Light is not used to decorate a surface, a button or a
+  text. Light that does not belong to the app mark or to an avatar needs a change of this spec.
 
 ## Out of scope
 

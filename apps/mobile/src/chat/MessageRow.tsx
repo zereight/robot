@@ -5,6 +5,7 @@ import { errorText, fileSizeText } from "../i18n/index.ts"
 import { Markdown } from "../markdown/Markdown.tsx"
 import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
+import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Face } from "../ui/Face.tsx"
 import type { RowMessage } from "./rows.ts"
 import { ToolCard } from "./ToolCard.tsx"
@@ -69,11 +70,7 @@ export const MessageRow = memo(
             isAgent ? (
               <Face face={agent?.face} image={agent?.faceImage} size={36} />
             ) : (
-              <View style={[styles.you, { backgroundColor: palette.accent }]}>
-                <Text style={[styles.youText, { color: palette.accentText }]}>
-                  {t("chat.you").slice(0, 1)}
-                </Text>
-              </View>
+              <AvatarMark glyph={t("chat.you").slice(0, 1)} size={36} />
             )
           ) : null}
         </View>
@@ -243,8 +240,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: space.m, paddingHorizontal: space.l, paddingVertical: 2 },
   headRow: { paddingTop: space.m },
   side: { width: 36 },
-  you: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  youText: { fontSize: text.m, fontWeight: "700" },
   main: { flex: 1, gap: space.xs, minWidth: 0 },
   header: { flexDirection: "row", alignItems: "center", gap: space.s },
   name: { fontSize: text.m, fontWeight: "600", flexShrink: 1 },

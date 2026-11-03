@@ -1,0 +1,28 @@
+/* The rim and the second ring are two steps of light, with no blur: a blur costs a pass of drawing. */
+.disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--c-mark-tile);
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--c-mark-glow) 40%, transparent),
+    inset 0 0 0 4px color-mix(in srgb, var(--c-mark-glow) 9%, transparent);
+}
+
+/* The wide faint copy and the sharp glyph lie on each other. */
+.glow,
+.core {
+  grid-area: 1 / 1;
+  display: grid;
+}
+
+.core {
+  color: var(--c-mark-eyes);
+}
+
+.glow {
+  color: var(--c-mark-glow);
+  opacity: 0.22;
+}

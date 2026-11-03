@@ -10,8 +10,8 @@ losing their history.
 An agent has:
 
 - **Name**: 1 to 40 characters, unique on its server.
-- **Face**: a generated round character with a hue and a shape. The user can pick another
-  shape and one of ten hues, or upload an image.
+- **Face**: a generated round avatar with a hue and a shape (see "Avatars"). The user can pick
+  another shape and one of ten hues, or upload an image.
 - **Role line**: up to 120 characters, shown under the name in profiles. It is the job title of
   the agent. Settings list all role lines (see 013).
 - **Instructions**: free text that the agent always follows.
@@ -228,13 +228,49 @@ agent.
 - Text that looks like a secret is refused on save, with the reason. The handbook is sent to the
   model provider of each agent that reads it, and the page says so.
 
+## Avatars
+
+An avatar is the small round mark that shows who speaks, or whose place it is. ROBot has four: the
+face of an agent, the picture of an agent, the mark of the user, and the mark of a channel. They
+are one family, as the app mark is: a very dark disc with a thin rim of light, and features or a
+glyph of light that glow.
+
+- **Drawn face**: a very dark disc that the hue tints, with a thin rim of light in the colour of
+  the hue. The features of the shape are near white, and a soft glow of the colour of the hue
+  lies round them. There are six shapes and ten hues, as before. The hue picks the colour of the
+  light. It does not pick the colour of the disc. Every shape shows its features, the first shape
+  too.
+- **Dark in both themes**: the disc is as dark in the light theme as in the dark theme, as the
+  tile of the app mark is. A face does not change when the user changes the theme. The features
+  stand out from the disc by a contrast of 7 to 1 or more.
+- **Picture**: an uploaded picture is round and has the same thin rim as a drawn face, in the
+  hue of the agent. The picture itself is not changed. A channel picture (004) has the same rim,
+  in the colour of the light of the app mark.
+- **Mark of the user**: a dark disc with the same rim and one glyph of light: a person on the
+  desktop, and the first letter of the word for "you" on the phone.
+- **Mark of a channel**: a dark disc with the same rim and a `#` of light. A channel with a
+  picture shows the picture in its place.
+- **The glow is still.** It does not pulse, move, or change when the pointer is over it. A drawn
+  face moves only once, for under 300 ms, at these moments: its agent ends a reply (a small nod
+  and a blink), a reply fails (a shake), the agent asks the user a question (a small nod), and the
+  agent is new (the face drops in and blinks). A face with closed eyes does not blink. With
+  reduced motion, nothing moves.
+- **Sizes**: the same drawing at every size, from 16 px to 80 px. The glow of a small avatar is
+  quieter than the glow of a large one, because a small glow cannot show detail.
+- **Cost**: avatars must not slow the app. A chat of 500 messages scrolls as smoothly with its
+  avatars as it would with flat ones. A list of many avatars, such as the place list or the list
+  of messages, draws as fast as a list of flat discs of the same size.
+- **Phone**: the phone draws the same avatars, with the same shapes and colours as the desktop.
+- **Form**: the colour swatches of the hues show the colour of the light, and the preview shows
+  the face as it will look.
+
 ## Rules
 
 - Changing the model keeps the agent's history, memory and workspace.
 - A working agent cannot be deleted; the user must stop it first.
 - A linked device that the user allows can create, edit, duplicate and archive agents on this
   computer, with limits on the folder, the permission level and the model accounts (012).
-- The face is the same everywhere: list, messages, activity panel, phone.
+- The avatar of an agent is the same everywhere: list, messages, activity panel, phone.
 - Agents made by other ways than the form (an import, a tool of another agent, a starter) keep
   the name they were given.
 
@@ -293,3 +329,11 @@ agent.
   channel does not exist.
 - Import a file with a handbook into an app that has a handbook: the review screen shows the
   handbook not ticked. Import without the tick: the handbook does not change.
+- Make agents of all six shapes: each face shows its features and its glow, the first shape too.
+  Pick another hue in the form: the colour of the light changes, and the disc stays dark.
+- Switch from the dark theme to the light theme: no avatar changes.
+- Upload a picture: it shows round with a thin rim of light in the hue of the agent, in the
+  place list, in messages and in the form. Remove it: the drawn face comes back.
+- Look at a chat with many messages from the user and from agents: the mark of the user is a dark
+  disc with a person glyph of light, and the avatars of agents are the faces. Scroll through the
+  chat: nothing stutters because of the avatars.

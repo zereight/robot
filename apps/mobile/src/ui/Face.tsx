@@ -1,86 +1,68 @@
-import type { Face as FaceValue } from "@robot/shared"
+import {
+  type FaceLayer,
+  type FacePart,
+  type Face as FaceValue,
+  faceLayers,
+  facePaint,
+  faceParts,
+  faceTones,
+} from "@robot/shared"
+import type { ComponentType } from "react"
 import { Image } from "react-native"
 import Svg, { Circle, Ellipse, G, Path, Rect } from "react-native-svg"
-import { faceColour } from "../theme/palette.ts"
 
-const ink = "#1b1d23"
-
-/** The features of one face shape, the same drawings as on the desktop (viewBox 64). */
-const Features = ({ shape }: { readonly shape: number }) => {
-  const line = { stroke: ink, strokeWidth: 3, strokeLinecap: "round" as const, fill: "none" }
-  switch (shape) {
-    case 0:
-      return (
-        <G>
-          <Circle cx="24" cy="28" r="4" fill={ink} />
-          <Circle cx="40" cy="28" r="4" fill={ink} />
-          <Path d="M23 39 Q32 47 41 39" {...line} />
-        </G>
-      )
-    case 1:
-      return (
-        <G>
-          <Ellipse cx="24" cy="28" rx="3" ry="5.5" fill={ink} />
-          <Ellipse cx="40" cy="28" rx="3" ry="5.5" fill={ink} />
-          <Path d="M26 42 H38" {...line} />
-        </G>
-      )
-    case 2:
-      return (
-        <G>
-          <Rect x="15" y="22" width="34" height="12" rx="6" fill={ink} />
-          <Circle cx="24" cy="28" r="2.5" fill="#fff" />
-          <Circle cx="40" cy="28" r="2.5" fill="#fff" />
-          <Path d="M28 43 H36" {...line} />
-        </G>
-      )
-    case 3:
-      return (
-        <G>
-          <Circle cx="32" cy="29" r="8" fill={ink} />
-          <Circle cx="34.5" cy="26.5" r="2.5" fill="#fff" />
-          <Path d="M26 43 Q32 47 38 43" {...line} />
-        </G>
-      )
-    case 4:
-      return (
-        <G>
-          <Path d="M19 30 Q24 25 29 30" {...line} />
-          <Path d="M35 30 Q40 25 45 30" {...line} />
-          <Circle cx="32" cy="42" r="3" fill={ink} />
-        </G>
-      )
-    default:
-      return (
-        <G>
-          <Path d="M32 6 V14" {...line} />
-          <Circle cx="32" cy="7" r="3" fill={ink} />
-          <Rect x="20" y="25" width="7" height="7" rx="1.5" fill={ink} />
-          <Rect x="37" y="25" width="7" height="7" rx="1.5" fill={ink} />
-          <Path d="M24 41 Q32 46 40 41" {...line} />
-        </G>
-      )
-  }
+const tags: Record<FacePart["tag"], ComponentType<Record<string, unknown>>> = {
+  circle: Circle as ComponentType<Record<string, unknown>>,
+  ellipse: Ellipse as ComponentType<Record<string, unknown>>,
+  rect: Rect as ComponentType<Record<string, unknown>>,
+  path: Path as ComponentType<Record<string, unknown>>,
 }
 
-/** A round agent face: the uploaded picture, or the drawn character in its hue. */
+/**
+ * One layer of the light of a face: the features of a shape in one colour. The sharp core is the
+ * top layer. Under it lie wider, fainter layers: together they are the glow, the same drawing as
+ * on the desktop. A layer does not use a blur filter, so it looks the same on every phone and
+ * stays cheap in a long list.
+ */
+const Layer = ({ shape, layer }: { readonly shape: number; readonly layer: FaceLayer }) => (
+  <G>
+    {faceParts(shape).map((part, index) => {
+      const Tag = tags[part.tag]
+      // The parts of a shape never change order, so the place in the list is a steady key.
+      // biome-ignore lint/suspicious/noArrayIndexKey: see above
+      return <Tag key={index} {...part.geometry} {...facePaint(part, layer)} />
+    })}
+  </G>
+)
+
+/**
+ * A round agent face: the uploaded picture, or a drawn character that glows in the dark in its
+ * hue, like the app mark. A picture has the same rim of light.
+ */
 export const Face = (props: {
   readonly face: FaceValue | null | undefined
   readonly image?: string | null | undefined
   readonly size: number
   readonly label?: string | undefined
 }) => {
+  const face = props.face ?? { shape: 0, hue: 0 }
+  const tones = faceTones(face.hue)
   if (props.image?.startsWith("data:image/")) {
     return (
       <Image
         source={{ uri: props.image }}
         {...(props.label ? { accessibilityLabel: props.label } : {})}
         accessibilityElementsHidden={!props.label}
-        style={{ width: props.size, height: props.size, borderRadius: props.size / 2 }}
+        style={{
+          width: props.size,
+          height: props.size,
+          borderRadius: props.size / 2,
+          borderWidth: 1.5,
+          borderColor: tones.ring,
+        }}
       />
     )
   }
-  const face = props.face ?? { shape: 0, hue: 0 }
   return (
     <Svg
       width={props.size}
@@ -90,8 +72,12 @@ export const Face = (props: {
       accessibilityElementsHidden={!props.label}
       importantForAccessibility={props.label ? "yes" : "no-hide-descendants"}
     >
-      <Circle cx="32" cy="32" r="32" fill={faceColour(face.hue)} />
-      <Features shape={face.shape} />
+      <Circle cx="32" cy="32" r="32" fill={tones.tile} />
+      {/* A thin rim of light, so that the dark tile keeps its shape on a dark surface. */}
+      <Circle cx="32" cy="32" r="31.25" fill="none" stroke={tones.ring} strokeWidth={1.5} />
+      {faceLayers(face.hue, props.size).map((layer) => (
+        <Layer key={layer.grow} shape={face.shape} layer={layer} />
+      ))}
     </Svg>
   )
 }

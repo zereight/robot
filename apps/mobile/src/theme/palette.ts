@@ -52,12 +52,16 @@ export const palettes: Record<"dark" | "light", Palette> = {
   },
 }
 
+/**
+ * The colours of the app mark and of the marks that belong to its family (the face of an agent,
+ * the mark of the user, the mark of a channel). The same in both themes: the mark has its own
+ * dark tile. The same values as the desktop.
+ */
+export const mark = { tile: "#0a0817", eyes: "#eafff8", glow: "#7affd4" } as const
+
 export const space = { xs: 4, s: 8, m: 12, l: 16, xl: 24 } as const
 export const radius = { s: 4, m: 8, l: 12, round: 999 } as const
 export const text = { xs: 12, s: 14, m: 16, l: 18, xl: 22 } as const
-
-/** Background colour of a face: ten hues, light enough for dark features (as on desktop). */
-export const faceColour = (hue: number) => `hsl(${hue * 36}, 58%, 64%)`
 
 /** The relative luminance of a hex colour (WCAG 2). */
 const luminance = (hex: string) => {

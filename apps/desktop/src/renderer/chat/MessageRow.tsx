@@ -47,6 +47,7 @@ import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { openMemory } from "../state/memoryLink.ts"
 import { useUi } from "../state/ui.tsx"
+import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
 import { fileSize, formatTime } from "./format.ts"
@@ -1167,7 +1168,7 @@ const FullMessageRow = (props: MessageRowProps) => {
           when={isAgent()}
           fallback={
             <span class={styles.avatar}>
-              <User size={20} />
+              <AvatarMark icon={User} size={40} testId="user-mark" />
             </span>
           }
         >

@@ -41,6 +41,7 @@ import { useApp } from "../state/app.tsx"
 import { setFocusMessage, setSearchOrigin } from "../state/focus.ts"
 import { linkEpoch } from "../state/link.ts"
 import { useUi } from "../state/ui.tsx"
+import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { type MenuItem, PopupMenu } from "../ui/Menu.tsx"
@@ -563,7 +564,11 @@ export const PlaceList = (props: PlaceListProps) => {
         onDragEnd={endDrag}
       >
         <span class={styles.mark}>
-          {place.kind === "channel" ? <Hash size={18} /> : props.face?.(place)}
+          {place.kind === "channel" ? (
+            <AvatarMark icon={Hash} size={24} testId="channel-mark" />
+          ) : (
+            props.face?.(place)
+          )}
           <Show when={place.working}>
             <span class={styles.workingDot} data-testid="working-dot" />
           </Show>
@@ -700,7 +705,7 @@ export const PlaceList = (props: PlaceListProps) => {
         <span class={styles.hitHead}>
           <span class={styles.hitMark}>
             {hit.kind === "channel" ? (
-              <Hash size={16} />
+              <AvatarMark icon={Hash} size={24} />
             ) : (
               props.face?.({
                 kind: hit.kind,

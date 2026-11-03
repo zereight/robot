@@ -70,17 +70,8 @@
   transition-duration: 0s;
 }
 
-.avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--c-selected);
-  color: var(--c-text-muted);
-}
-
-/* Holds the face of an agent, so that the face can come in as one part. */
+/* Holds the mark of the user or the face of an agent, so that it can come in as one part. */
+.avatar,
 .avatarSlot {
   width: 40px;
   height: 40px;

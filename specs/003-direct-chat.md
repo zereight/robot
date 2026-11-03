@@ -6,7 +6,8 @@ The user gives an agent work in plain language and sees what the agent does whil
 
 ## Message rows
 
-- A row starts with the sender's face at the left, then a header line: name, a small "BOT" tag
+- A row starts with the sender's avatar at the left (see 002, "Avatars"): the face of an agent, or
+  the mark of the user. Then comes a header line: name, a small "BOT" tag
   for agents, and the time. Rows from the same sender within 5 minutes join under one header.
 - Day changes show as a centred date line.
 - Agent replies render Markdown: headings, lists, tables, code blocks with copy buttons, links,
@@ -308,7 +309,11 @@ and its role line. Nothing moves.
 
 ## States
 
-- Working: a calm animated line under the last row, with elapsed time. The line reads
+- Working: a calm animated line under the last row, with elapsed time. It starts with the badge
+  of the app mark: a small dark tile with the two smiling eyes of the app mark in light. The eyes
+  open when the badge comes in, and the light breathes while the agent works. This is the only
+  light that moves, and the badge shows nowhere else. With reduced motion, the eyes are open and
+  the light is still. The line reads
   "Working…", or, in about half of the turns, a short playful phrase that the app picks at
   random for the turn and keeps until the turn ends. At least 20 phrases exist in each language.
   The Korean phrases read as spoken Korean, not as a translation. For a turn started by a routine,
@@ -316,8 +321,8 @@ and its role line. Nothing moves.
   where the agent works (chat, channel, routine, workflow).
 - Quiet: when the turn shows no sign of life for the quiet time, the working line reads "No
   answer from <name> for <time>" (see 005, "Quiet line"). The stop button stays. The quiet line
-  does not animate. The elapsed time of the turn stays where it was. The quiet line replaces only
-  the text.
+  does not animate, and the light of its badge is still. The elapsed time of the turn stays where
+  it was. The quiet line replaces only the text.
 - Failed: an error row with the reason in plain words and a Retry button. Retry shows the retry
   note (see 005) when the first try ran steps that may have changed things. The row also tells
   how far the turn went (see 005, "How far a turn went"). A turn that the app stopped because
