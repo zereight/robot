@@ -35,8 +35,10 @@ jobs:
       - run: bun run sizes
 
   # The suite runs in two parts on two runners; each part runs its tests in parallel.
+  # The app is for Macs with Apple silicon only (specs/000-product.md), so the suite runs on
+  # macos-latest, an Apple silicon runner.
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
@@ -54,14 +56,12 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            ~/.cache/electron
+            ~/Library/Caches/electron
           key: deps-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: deps-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      - name: Install Electron system libraries
-        run: sudo apt-get update && sudo apt-get install -y xvfb libnss3 libgbm1 libasound2t64 gnome-keyring
       - name: End-to-end tests
-        run: xvfb-run --auto-servernum bun run e2e --shard=${{ matrix.shard }}/2
+        run: bun run e2e --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,6 +1,6 @@
 name: Release
 
-# A tag `v<version>` builds, tests and attaches the apps to a draft release.
+# A tag `v<version>` builds, tests and attaches the app (macOS, Apple silicon) to a draft release.
 # "Run workflow", and PRs that change packaging, build and test the same way without a release.
 on:
   push:
@@ -50,31 +50,10 @@ jobs:
       - run: bun run test
 
   # Packaging starts at once, beside verify. The release job waits for both.
+  # The desktop app is for Macs with Apple silicon only (specs/000-product.md), so this is the
+  # only build. macos-latest is an Apple silicon runner.
   package:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macos-arm64
-            os: macos-latest
-            target: --mac --arm64
-            arch: arm64
-          - name: macos-x64
-            os: macos-15-intel
-            target: --mac --x64
-            arch: x64
-          - name: windows-x64
-            os: windows-latest
-            target: --win --x64
-            arch: x64
-          - name: linux-x64
-            os: ubuntu-latest
-            target: --linux --x64
-            arch: x64
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -89,35 +68,24 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            ~/.cache/electron
-            ~/.cache/electron-builder
             ~/Library/Caches/electron
             ~/Library/Caches/electron-builder
-            ~/AppData/Local/electron/Cache
-            ~/AppData/Local/electron-builder/Cache
-          key: package-${{ matrix.name }}-${{ hashFiles('bun.lock') }}
-          restore-keys: package-${{ matrix.name }}-
+          key: package-macos-arm64-${{ hashFiles('bun.lock') }}
+          restore-keys: package-macos-arm64-
       - run: bun install --frozen-lockfile
-      - name: Install Electron system libraries
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y xvfb libnss3 libgbm1 libasound2t64 gnome-keyring
       - name: Build and package
         working-directory: apps/desktop
         run: |
           bun run build
-          bunx electron-builder ${{ matrix.target }} --publish never
+          bunx electron-builder --mac --arm64 --publish never
       - name: End-to-end tests against the packaged app
         working-directory: apps/desktop
         run: |
-          export ROBOT_E2E_APP="$(bun scripts/packaged-path.ts ${{ matrix.arch }})"
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run --auto-servernum bunx playwright test
-          else
-            bunx playwright test
-          fi
+          export ROBOT_E2E_APP="$(bun scripts/packaged-path.ts)"
+          bunx playwright test
       - uses: actions/upload-artifact@v4
         with:
-          name: app-${{ matrix.name }}
+          name: app-macos-arm64
           path: |
             dist/desktop/ROBot-*
             !dist/desktop/*.blockmap
@@ -126,7 +94,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: e2e-${{ matrix.name }}
+          name: e2e-macos-arm64
           path: build/e2e
           retention-days: 7
 
