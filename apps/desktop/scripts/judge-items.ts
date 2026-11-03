@@ -1,5 +1,6 @@
 // The export command of docs/judge-validation.md ("Data").
 //   bun run judge-items -- --db <copy of the database> --out <file.jsonl> [--since <date>] [--limit N]
+//                          [--gap-seconds <n>]
 // It reads a COPY of the database of the app, read-only, and writes the finished parts of channel
 // jobs that have a done test as the items that judge-replay.ts reads. The fields of an item are at
 // the top of judge-items-lib.ts. The items have no verdict, no decision and no "human": a person
@@ -29,7 +30,11 @@ try {
   }
   // The paths are checked first: a refused path leaves nothing behind.
   checkOutPath(cli.out, cli.db, cli.force)
-  const { items, summary } = exportItems(cli.db, { since: cli.since, limit: cli.limit })
+  const { items, summary } = exportItems(cli.db, {
+    since: cli.since,
+    limit: cli.limit,
+    gapSeconds: cli.gapSeconds,
+  })
   console.log(summaryText(summary))
   if (items.length === 0) fail("No part qualifies. Nothing was written.")
   writeItems(cli.out, itemsToJsonl(items), cli.force)

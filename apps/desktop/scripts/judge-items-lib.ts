@@ -3,8 +3,8 @@
 // judge-replay-lib.ts reads. A person labels the items, and then the replay measures the verdicts.
 //
 // WHAT AN ITEM HOLDS (the fields are the ones at the top of judge-replay-lib.ts):
-//   id        "real-0001", "real-0002", ... in the order of time. Never the id of a task.
-//   group     "job-0001", ... One value for all parts of the same job. Never the id of a task.
+//   id        "real-0001", "real-0002", ... in the order of the file. Never the id of a task.
+//   group     "check-0001", ... or "unjudged-0001", ... See "GROUPS" below. Never the id of a task.
 //   tag       always "real".
 //   label     the label of the part.
 //   doneTest  the done test of the part.
@@ -17,6 +17,39 @@
 //             verdict of the part, or older than the end of the last part of the job when the part
 //             has no verdict. Oldest first, each as {who, text}, with "who" named as the check
 //             text of the app names it: "User", the name of the agent, or "Agent".
+//
+// GROUPS: the replay judges the parts of one group in one call. So a group must hold the parts
+// that ONE real check judged together (docs/judge-validation.md, "Replay"). A job can have more
+// than one check: a check judges some parts, the lead nudges, a new part is made, and a later
+// check judges that part alone. The groups are made like this:
+//   - The parts of one job that have a verdict are sorted by the time of the verdict (judged_at).
+//     A new group starts when the gap to the previous part is more than CHECK_GAP_SECONDS (the
+//     option --gap-seconds). These groups are named "check-0001", "check-0002", ...
+//   - The parts of a job that have NO verdict were never judged by a real check. They are one
+//     group of their own, "unjudged-0001", "unjudged-0002", ..., apart from the check groups of
+//     the same job. They are never added to a check group.
+//   - Parts of two jobs are never in one group, also when their verdicts are close in time.
+//   - The groups are made from the parts that are written. --since and --limit can leave a group
+//     with fewer parts than the real check judged.
+//   - The file holds one group after the other, so a person reads a whole group together: the
+//     jobs in the order of their first part, and in a job the check groups in the order of time,
+//     then the group with no verdict. The names and the ids follow the order of the file.
+//   - Inside a group the items are sorted by the time of the verdict, then by the time the part
+//     was made. In a group with no verdict they are sorted by the time the part was made.
+//
+// THE FIRST ITEM OF A GROUP: the replay takes the channel, the topic, the members and the
+// MESSAGES of a group from the first item of the group. So the first item is always the part with
+// the earliest verdict of the group (the earliest part, in a group with no verdict). Each part
+// keeps its own messages, as built from its own time of verdict; only the first item counts.
+//
+// KNOWN LIMIT, THE NUMBERS OF THE PARTS: the replay numbers the parts of a group 1, 2, 3, ... in
+// the order of the file. In a real check the number of a part in the list "Parts" counts ALL the
+// parts of the job that existed at that time: done or not, with or without a done test, with or
+// without a verdict. An item does not hold the other parts, and no field names them, so the
+// numbers can differ. Example: a later check that judges "Part 4" of its job shows it as "Part 1"
+// here. Also, the app saves the verdicts of a check in the order of the answer of the lead, which
+// is usually, and not always, the order of the parts. The number of a part in a group follows the
+// order of the verdicts here.
 //
 // WHAT AN ITEM NEVER HOLDS: the verdict, the reason of a verdict, the decision of the user, and the
 // field "human". A person must label an item without seeing them. The code below does not even
@@ -48,6 +81,19 @@ import {
   type MessagePart,
   messageText,
 } from "@robot/shared"
+
+/**
+ * The default of --gap-seconds: the most time between the verdicts of two parts of one job that
+ * still come from ONE check. THIS IS A GUESS, not a measure. A check saves its verdicts one after
+ * the other in a short loop, right after the answer of the lead, so the times of one check are
+ * within a few milliseconds. Two checks of one job are far apart: between them the lead nudges, a
+ * member does the new part, and then the lead is called again. 3 seconds is far above that loop
+ * and, as far as we can tell, below the shortest time of a member turn and a call of the lead.
+ * It was not measured on real data. The user of the command can change it with
+ * `--gap-seconds <n>`: a number of seconds, 0 or more. Look at the counts that the command prints
+ * ("Check groups") and move the gap if they look wrong.
+ */
+export const CHECK_GAP_SECONDS = 3
 
 /** A fault that the user can read. Its message names a table, a column or an option, never a value. */
 export class ItemsError extends Error {
@@ -86,6 +132,12 @@ export interface ExportSummary {
   readonly written: number
   /** The jobs of the written items. */
   readonly jobs: number
+  /** The groups of parts that one check judged together (parts with a verdict). */
+  readonly checkGroups: number
+  /** The groups of parts that have no verdict: at most one for each job. */
+  readonly unjudgedGroups: number
+  /** The gap that separated two checks, in seconds: the default or --gap-seconds. */
+  readonly gapSeconds: number
 }
 
 export interface ExportOptions {
@@ -93,6 +145,11 @@ export interface ExportOptions {
   readonly since: number | null
   /** At most this many parts: the newest ones. Null for all. */
   readonly limit: number | null
+  /**
+   * Two parts of one job whose verdicts are more than this many seconds apart come from two
+   * checks. Left out or null: CHECK_GAP_SECONDS.
+   */
+  readonly gapSeconds?: number | null
 }
 
 // ------------------------------------------------------------------------------ the database
@@ -220,6 +277,58 @@ const PARTS = `SELECT t.id, t.parent_id, t.source_id AS channel_id, t.label, t.d
   WHERE t.source = 'channel' AND t.source_id IS NOT NULL AND t.parent_id IS NOT NULL
   ORDER BY t.created_at, t.rowid`
 
+interface Kept {
+  readonly row: PartRow
+  readonly reply: string
+  readonly channel: ChannelInfo
+}
+
+/** The parts that one real check judged together, or the parts of a job that have no verdict. */
+interface Group {
+  readonly kind: "check" | "unjudged"
+  readonly parts: readonly Kept[]
+}
+
+/**
+ * Makes the groups of the written parts (see GROUPS at the top of the file). `kept` is in the
+ * order of the time the parts were made. The jobs come in the order of their first part. In a
+ * job the check groups come in the order of time, and the group with no verdict comes last. The
+ * first part of a group is the one with the earliest verdict, or the earliest part when none of
+ * them has a verdict.
+ */
+const groupParts = (kept: readonly Kept[], gapMs: number): Group[] => {
+  const jobs = new Map<string, Kept[]>()
+  for (const part of kept) {
+    const list = jobs.get(part.row.parent_id)
+    if (list) list.push(part)
+    else jobs.set(part.row.parent_id, [part])
+  }
+  const groups: Group[] = []
+  for (const parts of jobs.values()) {
+    const judged: { part: Kept; at: number }[] = []
+    const open: Kept[] = []
+    for (const part of parts) {
+      if (part.row.judged_at === null) open.push(part)
+      else judged.push({ part, at: part.row.judged_at })
+    }
+    // A tie keeps the order of the time the parts were made (the sort is stable).
+    judged.sort((a, b) => a.at - b.at || a.part.row.created_at - b.part.row.created_at)
+    let current: Kept[] = []
+    let previous = 0
+    for (const { part, at } of judged) {
+      if (current.length > 0 && at - previous > gapMs) {
+        groups.push({ kind: "check", parts: current })
+        current = []
+      }
+      current.push(part)
+      previous = at
+    }
+    if (current.length > 0) groups.push({ kind: "check", parts: current })
+    if (open.length > 0) groups.push({ kind: "unjudged", parts: open })
+  }
+  return groups
+}
+
 const build = (db: Database, options: ExportOptions) => {
   const missing = missingFrom(db)
   if (missing.length > 0) throw new ItemsError(`The database lacks ${missing.join(", ")}. ${OLDER}`)
@@ -262,7 +371,7 @@ const build = (db: Database, options: ExportOptions) => {
   }
 
   const counts = { beforeSince: 0, notDone: 0, noDoneTest: 0, noReply: 0, unreadable: 0 }
-  const kept: { row: PartRow; reply: string; channel: ChannelInfo }[] = []
+  const kept: Kept[] = []
   for (const row of rows) {
     if (options.since !== null && row.created_at < options.since) {
       counts.beforeSince++
@@ -307,48 +416,56 @@ const build = (db: Database, options: ExportOptions) => {
      WHERE channel_id = ? AND status IN ('done', 'stopped') AND created_at < ?
      ORDER BY created_at DESC, rowid DESC LIMIT ${CHECK_MESSAGES}`,
   )
-  const groups = new Map<string, string>()
-  const items: JudgeItem[] = kept.map(({ row, reply, channel }, index) => {
-    if (!groups.has(row.parent_id)) groups.set(row.parent_id, `job-${pad(groups.size + 1)}`)
-    // The time of the verdict, or the end of the last part of the job when there is none.
-    const before = row.judged_at ?? jobEnd.get(row.parent_id) ?? row.created_at
-    const messages = (
-      messageQuery.all(row.channel_id, before) as {
-        author: string
-        agent_id: string | null
-        parts: string
-      }[]
-    )
-      .reverse()
-      .map((message) => ({
-        // Named as the app names it in the check text.
-        who:
-          message.author === "user"
-            ? "User"
-            : (channel.names.get(message.agent_id ?? "") ?? "Agent"),
-        text: textOf(message.parts) ?? "",
-      }))
-    return {
-      id: `real-${pad(index + 1)}`,
-      group: groups.get(row.parent_id) as string,
-      tag: "real",
-      label: row.label,
-      doneTest: row.done_test as string,
-      reply,
-      member: row.agent_name,
-      channel: channel.name,
-      ...(channel.topic === "" ? {} : { topic: channel.topic }),
-      members: channel.members,
-      messages,
-    } satisfies JudgeItem
-  })
+  const gapSeconds = options.gapSeconds ?? CHECK_GAP_SECONDS
+  const groups = groupParts(kept, Math.round(gapSeconds * 1000))
+  const counters = { check: 0, unjudged: 0 }
+  const items: JudgeItem[] = []
+  for (const group of groups) {
+    const name = `${group.kind}-${pad(++counters[group.kind])}`
+    for (const { row, reply, channel } of group.parts) {
+      // The time of the verdict, or the end of the last part of the job when there is none.
+      const before = row.judged_at ?? jobEnd.get(row.parent_id) ?? row.created_at
+      const messages = (
+        messageQuery.all(row.channel_id, before) as {
+          author: string
+          agent_id: string | null
+          parts: string
+        }[]
+      )
+        .reverse()
+        .map((message) => ({
+          // Named as the app names it in the check text.
+          who:
+            message.author === "user"
+              ? "User"
+              : (channel.names.get(message.agent_id ?? "") ?? "Agent"),
+          text: textOf(message.parts) ?? "",
+        }))
+      items.push({
+        id: `real-${pad(items.length + 1)}`,
+        group: name,
+        tag: "real",
+        label: row.label,
+        doneTest: row.done_test as string,
+        reply,
+        member: row.agent_name,
+        channel: channel.name,
+        ...(channel.topic === "" ? {} : { topic: channel.topic }),
+        members: channel.members,
+        messages,
+      } satisfies JudgeItem)
+    }
+  }
 
   const summary: ExportSummary = {
     found: rows.length,
     ...counts,
     overLimit,
     written: items.length,
-    jobs: groups.size,
+    jobs: new Set(kept.map((part) => part.row.parent_id)).size,
+    checkGroups: counters.check,
+    unjudgedGroups: counters.unjudged,
+    gapSeconds,
   }
   return { items, summary }
 }
@@ -381,6 +498,9 @@ export const summaryText = (s: ExportSummary) =>
   [
     `Parts of channel jobs in the database: ${s.found}`,
     `Items written: ${s.written}, from ${s.jobs} job${s.jobs === 1 ? "" : "s"}`,
+    `Check groups: ${s.checkGroups}`,
+    `Groups of parts with no verdict: ${s.unjudgedGroups}`,
+    `Gap that separates two checks: ${s.gapSeconds} second${s.gapSeconds === 1 ? "" : "s"} (--gap-seconds)`,
     `Parts skipped: ${s.notDone + s.noDoneTest + s.noReply + s.unreadable}`,
     `  not done: ${s.notDone}`,
     `  no done test: ${s.noDoneTest}`,
@@ -510,11 +630,14 @@ export interface Cli {
   readonly out: string
   readonly since: number | null
   readonly limit: number | null
+  /** Null when the option is not given: the export then uses CHECK_GAP_SECONDS. */
+  readonly gapSeconds: number | null
   readonly force: boolean
 }
 
 export const USAGE = [
-  "bun run judge-items -- --db <copy of the database> --out <file.jsonl> [--since <date>] [--limit N] [--force]",
+  "bun run judge-items -- --db <copy of the database> --out <file.jsonl> [--since <date>] [--limit N]",
+  "                       [--gap-seconds <n>] [--force]",
   "",
   "Writes the finished parts of channel jobs that have a done test as items for the replay of the",
   'check of the lead (docs/judge-validation.md). A person adds the field "human" to each item',
@@ -528,6 +651,11 @@ export const USAGE = [
   "         the user. It is made with mode 0600. An existing file is not replaced unless --force.",
   "--since  Only parts made on this date or later (UTC), for example 2026-10-01.",
   "--limit  At most N parts: the newest ones.",
+  "--gap-seconds",
+  "         The parts of one job whose verdicts are more than this many seconds apart come from two",
+  `         checks of the lead, and go in two groups. A number of 0 or more. Default ${CHECK_GAP_SECONDS}. The default is a`,
+  "         guess: if the count of check groups looks wrong, change it. Parts with no verdict go in",
+  "         a group of their own.",
   "",
   "The command prints counts only, never the text of an item.",
 ].join("\n")
@@ -536,7 +664,7 @@ export const USAGE = [
 const SINCE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/
 
 const FLAGS = new Set(["force", "help"])
-const VALUES = new Set(["db", "out", "since", "limit"])
+const VALUES = new Set(["db", "out", "since", "limit", "gap-seconds"])
 
 /** Reads the arguments. Throws an ItemsError that names the option and no value. */
 export const readCli = (args: readonly string[]): Cli => {
@@ -574,5 +702,12 @@ export const readCli = (args: readonly string[]): Cli => {
     if (!Number.isSafeInteger(limit) || limit < 1)
       throw new ItemsError("--limit must be a whole number of 1 or more.")
   }
-  return { help, db: db ?? "", out: out ?? "", since, limit, force: flags.has("force") }
+  let gapSeconds: number | null = null
+  const gapText = given.get("gap-seconds")
+  if (gapText !== undefined) {
+    gapSeconds = /^\d+(\.\d+)?$/.test(gapText) ? Number(gapText) : Number.NaN
+    if (!Number.isFinite(gapSeconds))
+      throw new ItemsError("--gap-seconds must be a number of seconds, 0 or more.")
+  }
+  return { help, db: db ?? "", out: out ?? "", since, limit, gapSeconds, force: flags.has("force") }
 }

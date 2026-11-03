@@ -20,6 +20,7 @@ import { checkStateText } from "@robot/shared"
 import { migrate } from "../src/main/services/Database.ts"
 import { migrations } from "../src/main/services/migrations.ts"
 import {
+  CHECK_GAP_SECONDS,
   checkOutPath,
   type ExportOptions,
   exportItems,
@@ -30,9 +31,10 @@ import {
   readCli,
   repositoryRoots,
   summaryText,
+  USAGE,
   writeItems,
 } from "./judge-items-lib.ts"
-import { callsFor, parseItems } from "./judge-replay-lib.ts"
+import { callsFor, groupState, parseItems } from "./judge-replay-lib.ts"
 
 // All data here is made for the tests, on the real schema of the app: the database is made with the
 // real migrations, and the rows are written with plain SQL, so a change of the schema breaks a
@@ -247,8 +249,9 @@ describe("the parts that are chosen", () => {
     w.close()
 
     const { items, summary } = run(w.file)
-    // The order is the order of time, whatever the job.
-    expect(items.map((i) => i.label)).toEqual(["LBL-a1", "LBL-b1", "LBL-a2", "LBL-b2", "LBL-a3"])
+    // The file holds one job after the other (the parts of a group are together), each in the
+    // order of time. No part has a verdict, so each job has one group with no verdict.
+    expect(items.map((i) => i.label)).toEqual(["LBL-a1", "LBL-a2", "LBL-a3", "LBL-b1", "LBL-b2"])
     expect(items.map((i) => i.id)).toEqual([
       "real-0001",
       "real-0002",
@@ -258,14 +261,22 @@ describe("the parts that are chosen", () => {
     ])
     // One group for each job: the same value for its parts, a different one for another job.
     expect(items.map((i) => i.group)).toEqual([
-      "job-0001",
-      "job-0002",
-      "job-0001",
-      "job-0002",
-      "job-0001",
+      "unjudged-0001",
+      "unjudged-0001",
+      "unjudged-0001",
+      "unjudged-0002",
+      "unjudged-0002",
     ])
-    expect(summary).toMatchObject({ found: 5, written: 5, jobs: 2, overLimit: 0, beforeSince: 0 })
-    const [first, second, third] = items as [JudgeItem, JudgeItem, JudgeItem]
+    expect(summary).toMatchObject({
+      found: 5,
+      written: 5,
+      jobs: 2,
+      checkGroups: 0,
+      unjudgedGroups: 2,
+      overLimit: 0,
+      beforeSince: 0,
+    })
+    const [first, second, , fourth] = items as [JudgeItem, JudgeItem, JudgeItem, JudgeItem]
     expect(first).toMatchObject({
       tag: "real",
       doneTest: "DONE-a1",
@@ -274,15 +285,15 @@ describe("the parts that are chosen", () => {
       channel: "Launch",
       topic: "Ship the launch",
     })
-    expect(third.member).toBe("Cy")
+    expect(second.member).toBe("Cy")
     expect(first.members).toEqual([
       { name: "Lia", role: "Leads the launch" },
       { name: "Bo", role: "Writes text" },
       { name: "Cy", role: "Checks facts" },
     ])
     // A channel with no topic has no "topic" field. The fields are these and no other.
-    expect(second.channel).toBe("Docs")
-    expect("topic" in second).toBe(false)
+    expect(fourth.channel).toBe("Docs")
+    expect("topic" in fourth).toBe(false)
     expect(Object.keys(first).sort()).toEqual([
       "channel",
       "doneTest",
@@ -385,6 +396,332 @@ describe("the parts that are chosen", () => {
   })
 })
 
+// -------------------------------------------------------------------- the groups of parts
+
+describe("the groups of parts", () => {
+  /** The group and the label of each item, in the order of the file. */
+  const shape = (items: readonly JudgeItem[]) => items.map((i) => [i.group, i.label])
+
+  /**
+   * One job with two checks. The first check judges parts 1 to 3 (the verdicts are saved a few
+   * milliseconds apart). The lead then nudges, a new part 4 is made, and a later check judges
+   * part 4 alone, 40 seconds after the first.
+   */
+  const nudged = () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    partOf(w, "TASKID-p1", "JOBID-1", { created: at(1100), verdict: "met", judged: at(50_000) })
+    partOf(w, "TASKID-p2", "JOBID-1", { created: at(1200), verdict: "met", judged: at(50_004) })
+    partOf(w, "TASKID-p3", "JOBID-1", { created: at(1300), verdict: "met", judged: at(50_007) })
+    w.message({
+      id: "MSGID-nudge",
+      channel: LAUNCH,
+      agent: "AGENTID-lia",
+      parts: text("MSG-nudge"),
+      at: at(60_000),
+    })
+    partOf(w, "TASKID-p4", "JOBID-1", { created: at(61_000), verdict: "met", judged: at(90_000) })
+    w.close()
+    return w
+  }
+
+  test("a job with two checks: parts 1 to 3 in one group and part 4 in a later one", () => {
+    const { items, summary } = run(nudged().file)
+    expect(shape(items)).toEqual([
+      ["check-0001", "LBL-p1"],
+      ["check-0001", "LBL-p2"],
+      ["check-0001", "LBL-p3"],
+      ["check-0002", "LBL-p4"],
+    ])
+    expect(items.map((i) => i.id)).toEqual(["real-0001", "real-0002", "real-0003", "real-0004"])
+    expect(summary).toMatchObject({
+      written: 4,
+      jobs: 1,
+      checkGroups: 2,
+      unjudgedGroups: 0,
+      gapSeconds: CHECK_GAP_SECONDS,
+    })
+    // Each part has its own messages: the nudge is after the first check and before the second.
+    const nudge = items.map((i) => i.messages.some((m) => m.text === "MSG-nudge"))
+    expect(nudge).toEqual([false, false, false, true])
+  })
+
+  test("the same job with a large --gap-seconds is one group", () => {
+    const w = nudged()
+    const { items, summary } = run(w.file, { since: null, limit: null, gapSeconds: 60 })
+    expect(shape(items)).toEqual([
+      ["check-0001", "LBL-p1"],
+      ["check-0001", "LBL-p2"],
+      ["check-0001", "LBL-p3"],
+      ["check-0001", "LBL-p4"],
+    ])
+    expect(summary).toMatchObject({ jobs: 1, checkGroups: 1, gapSeconds: 60 })
+    // A small gap splits the first check too: its verdicts are 4 and 3 ms apart.
+    const small = run(w.file, { since: null, limit: null, gapSeconds: 0 })
+    expect(small.items.map((i) => i.group)).toEqual([
+      "check-0001",
+      "check-0002",
+      "check-0003",
+      "check-0004",
+    ])
+  })
+
+  test("the gap is the most time that stays in one group: exactly the gap stays, a millisecond more splits", () => {
+    const pair = (gapMs: number) => {
+      const w = base()
+      w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+      partOf(w, "TASKID-a", "JOBID-1", { created: at(1000), verdict: "met", judged: at(10_000) })
+      partOf(w, "TASKID-b", "JOBID-1", {
+        created: at(1100),
+        verdict: "met",
+        judged: at(10_000 + gapMs),
+      })
+      w.close()
+      return w.file
+    }
+    const limit = CHECK_GAP_SECONDS * 1000
+    // The default is used when the option is left out, and also when it is null.
+    expect(run(pair(limit)).summary).toMatchObject({
+      checkGroups: 1,
+      gapSeconds: CHECK_GAP_SECONDS,
+    })
+    expect(run(pair(limit + 1)).summary.checkGroups).toBe(2)
+    expect(
+      run(pair(limit + 1), { since: null, limit: null, gapSeconds: null }).summary.checkGroups,
+    ).toBe(2)
+    expect(run(pair(1500), { since: null, limit: null, gapSeconds: 1.5 }).summary.checkGroups).toBe(
+      1,
+    )
+    expect(run(pair(1501), { since: null, limit: null, gapSeconds: 1.5 }).summary.checkGroups).toBe(
+      2,
+    )
+    // With a gap of 0, two verdicts at the same millisecond are still one check.
+    expect(run(pair(0), { since: null, limit: null, gapSeconds: 0 }).summary.checkGroups).toBe(1)
+  })
+
+  test("the gap is measured to the previous part, so a slow loop of verdicts stays one group", () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    for (const [n, judged] of [
+      [1, 10_000],
+      [2, 12_000],
+      [3, 14_000],
+      [4, 16_000],
+    ] as const)
+      partOf(w, `TASKID-c${n}`, "JOBID-1", {
+        created: at(1000 + n * 10),
+        verdict: "met",
+        judged: at(judged),
+      })
+    w.close()
+    // The first and the last part are 6 seconds apart, and each part is 2 seconds from the next.
+    expect(run(w.file).summary.checkGroups).toBe(1)
+  })
+
+  test("a part with no verdict goes in a group of its own, apart from the judged parts of its job", () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    // The part with no verdict was made BEFORE the judged ones and also after: it is never added.
+    partOf(w, "TASKID-early", "JOBID-1", { created: at(900) })
+    partOf(w, "TASKID-j1", "JOBID-1", { created: at(1000), verdict: "met", judged: at(5000) })
+    partOf(w, "TASKID-j2", "JOBID-1", { created: at(1100), verdict: "met", judged: at(5001) })
+    partOf(w, "TASKID-late", "JOBID-1", { created: at(2000) })
+    w.close()
+    const { items, summary } = run(w.file)
+    // The judged group first, then the group with no verdict, in the order of time.
+    expect(shape(items)).toEqual([
+      ["check-0001", "LBL-j1"],
+      ["check-0001", "LBL-j2"],
+      ["unjudged-0001", "LBL-early"],
+      ["unjudged-0001", "LBL-late"],
+    ])
+    expect(summary).toMatchObject({ jobs: 1, checkGroups: 1, unjudgedGroups: 1 })
+  })
+
+  test("a job with one judged part and one part with no verdict: two groups", () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    partOf(w, "TASKID-one", "JOBID-1", { created: at(1000), verdict: "met", judged: at(5000) })
+    partOf(w, "TASKID-two", "JOBID-1", { created: at(1100) })
+    w.close()
+    const { items, summary } = run(w.file)
+    expect(shape(items)).toEqual([
+      ["check-0001", "LBL-one"],
+      ["unjudged-0001", "LBL-two"],
+    ])
+    expect(summary).toMatchObject({ checkGroups: 1, unjudgedGroups: 1, jobs: 1 })
+  })
+
+  test("two jobs with parts judged at nearly the same time are never mixed", () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    w.job("JOBID-2", LAUNCH, "AGENTID-lia", at(200))
+    // The parts of the two jobs are made one after the other, and judged in the same millisecond.
+    partOf(w, "TASKID-a1", "JOBID-1", { created: at(1000), verdict: "met", judged: at(5000) })
+    partOf(w, "TASKID-b1", "JOBID-2", { created: at(1010), verdict: "met", judged: at(5000) })
+    partOf(w, "TASKID-a2", "JOBID-1", { created: at(1020), verdict: "met", judged: at(5001) })
+    partOf(w, "TASKID-b2", "JOBID-2", { created: at(1030), verdict: "met", judged: at(5001) })
+    // Job 2 has a second check, far from the first.
+    partOf(w, "TASKID-b3", "JOBID-2", { created: at(30_000), verdict: "met", judged: at(80_000) })
+    w.close()
+    const { items, summary } = run(w.file)
+    expect(shape(items)).toEqual([
+      ["check-0001", "LBL-a1"],
+      ["check-0001", "LBL-a2"],
+      ["check-0002", "LBL-b1"],
+      ["check-0002", "LBL-b2"],
+      ["check-0003", "LBL-b3"],
+    ])
+    expect(summary).toMatchObject({ jobs: 2, checkGroups: 3, unjudgedGroups: 0 })
+    // Also with a gap that is far larger than the distance of the two jobs.
+    const wide = run(w.file, { since: null, limit: null, gapSeconds: 3600 })
+    expect(shape(wide.items)).toEqual([
+      ["check-0001", "LBL-a1"],
+      ["check-0001", "LBL-a2"],
+      ["check-0002", "LBL-b1"],
+      ["check-0002", "LBL-b2"],
+      ["check-0002", "LBL-b3"],
+    ])
+  })
+
+  test("a group is sorted by the time of the verdict, then by the time the part was made", () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    // The lead answered with the verdict of part 2 first. Parts 1 and 3 were saved in the same
+    // millisecond: the part made first goes first.
+    partOf(w, "TASKID-p1", "JOBID-1", { created: at(1000), verdict: "met", judged: at(5002) })
+    partOf(w, "TASKID-p2", "JOBID-1", { created: at(1100), verdict: "met", judged: at(5000) })
+    partOf(w, "TASKID-p3", "JOBID-1", { created: at(1200), verdict: "met", judged: at(5002) })
+    w.close()
+    const { items } = run(w.file)
+    expect(items.map((i) => i.label)).toEqual(["LBL-p2", "LBL-p1", "LBL-p3"])
+    expect(new Set(items.map((i) => i.group))).toEqual(new Set(["check-0001"]))
+  })
+
+  test("a group with no verdict is sorted by the time the part was made, whatever the order of the rows", () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    // The row of the later part is written first.
+    partOf(w, "TASKID-second", "JOBID-1", { created: at(2000) })
+    partOf(w, "TASKID-first", "JOBID-1", { created: at(1000) })
+    partOf(w, "TASKID-third", "JOBID-1", { created: at(3000) })
+    w.close()
+    expect(run(w.file).items.map((i) => i.label)).toEqual(["LBL-first", "LBL-second", "LBL-third"])
+  })
+
+  test("the first item of a group is its earliest verdict, and the replay takes the messages of that item", () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    const put = (id: string, when: number) =>
+      w.message({
+        id: `MSGID-${id}`,
+        channel: LAUNCH,
+        agent: "AGENTID-bo",
+        parts: text(`MSG-${id}`),
+        at: at(when),
+      })
+    put("early", 3000)
+    // This message comes between the verdict of part 2 (3500) and the verdict of part 1 (3510).
+    put("between", 3505)
+    put("late", 4000)
+    // Part 1 was made first, and judged second.
+    partOf(w, "TASKID-p1", "JOBID-1", { created: at(100), verdict: "met", judged: at(3510) })
+    partOf(w, "TASKID-p2", "JOBID-1", { created: at(200), verdict: "met", judged: at(3500) })
+    w.close()
+    const { items } = run(w.file)
+    expect(items.map((i) => i.label)).toEqual(["LBL-p2", "LBL-p1"])
+    // Each part keeps its own cutoff: only part 1 sees the message between the two verdicts.
+    expect(items[0]?.messages.map((m) => m.text)).toEqual(["REPLY-p1", "REPLY-p2", "MSG-early"])
+    expect(items[1]?.messages.map((m) => m.text)).toEqual([
+      "REPLY-p1",
+      "REPLY-p2",
+      "MSG-early",
+      "MSG-between",
+    ])
+
+    // The replay: read the lines as a person would label them, and build the call of the group.
+    const labeled = items.map((item) => JSON.stringify({ ...item, human: "pass" })).join("\n")
+    const parsed = parseItems(labeled)
+    expect(parsed.problems).toEqual([])
+    const calls = callsFor("v1", parsed.items, 0, () => true)
+    expect(calls).toHaveLength(1)
+    // The state of the group uses the messages of its first item, not those of the second.
+    const state = groupState(parsed.items, parsed.items)
+    expect(state.messages).toEqual((items[0] as JudgeItem).messages)
+    expect(calls[0]?.user).toContain("[Bo]: MSG-early")
+    expect(calls[0]?.user).not.toContain("MSG-between")
+    expect(calls[0]?.user).not.toContain("MSG-late")
+    // The numbers in the call follow the order of the file.
+    expect(calls[0]?.reads).toEqual([
+      { id: "real-0001", part: 1 },
+      { id: "real-0002", part: 2 },
+    ])
+  })
+
+  test("the replay makes one call for each check group, with the parts of that check only", () => {
+    const { items } = run(nudged().file)
+    const labeled = items.map((item) => JSON.stringify({ ...item, human: "pass" })).join("\n")
+    const parsed = parseItems(labeled)
+    expect(parsed.problems).toEqual([])
+    const calls = callsFor("v1", parsed.items, 0, () => true)
+    expect(calls.map((c) => [c.group, c.reads.map((r) => r.id)])).toEqual([
+      ["check-0001", ["real-0001", "real-0002", "real-0003"]],
+      ["check-0002", ["real-0004"]],
+    ])
+    // The second check judges one part. The messages of its group hold the nudge.
+    expect(calls[0]?.user).not.toContain("MSG-nudge")
+    expect(calls[1]?.user).toContain("MSG-nudge")
+    // Known limit: the number of the part is its place in the group (1), not in the job (4).
+    expect(calls[1]?.reads).toEqual([{ id: "real-0004", part: 1 }])
+  })
+
+  test("--limit and --since make the groups from the parts that are written", () => {
+    const w = nudged()
+    const limited = run(w.file, { since: null, limit: 2 })
+    // The newest two parts: part 3 (first check) and part 4 (second check).
+    expect(shape(limited.items)).toEqual([
+      ["check-0001", "LBL-p3"],
+      ["check-0002", "LBL-p4"],
+    ])
+    expect(limited.summary).toMatchObject({ checkGroups: 2, written: 2, overLimit: 2 })
+    const one = run(w.file, { since: at(60_000), limit: null })
+    expect(shape(one.items)).toEqual([["check-0001", "LBL-p4"]])
+  })
+
+  test("the names of the groups hold no task id, and the file holds the groups one after the other", () => {
+    const { items } = run(nudged().file)
+    const out = itemsToJsonl(items)
+    expect(out).not.toMatch(/TASKID|JOBID|AGENTID|CHANNELID|MSGID/)
+    const seen: string[] = []
+    for (const item of items) if (seen.at(-1) !== item.group) seen.push(item.group)
+    // No group comes back after another one has started.
+    expect(new Set(seen).size).toBe(seen.length)
+  })
+
+  test("the printed summary counts the check groups and the jobs, and holds no text", () => {
+    const w = nudged()
+    const { summary } = run(w.file)
+    const printed = summaryText(summary)
+    expect(printed).toContain("Items written: 4, from 1 job\n")
+    expect(printed).toContain("Check groups: 2")
+    expect(printed).toContain("Groups of parts with no verdict: 0")
+    expect(printed).toContain("Gap that separates two checks: 3 seconds (--gap-seconds)")
+    expect(printed).not.toMatch(/LBL|DONE|REPLY|MSG|TASKID|JOBID|SECRET|Launch|Lia|check-|real-/)
+    // Two jobs, a check group in each, and a group with no verdict.
+    const more = base()
+    more.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    more.job("JOBID-2", DOCS, "AGENTID-lia", at(200))
+    partOf(more, "TASKID-a", "JOBID-1", { created: at(1000), verdict: "met", judged: at(5000) })
+    partOf(more, "TASKID-b", "JOBID-2", { created: at(1100), channel: DOCS })
+    more.close()
+    const text2 = summaryText(run(more.file, { since: null, limit: null, gapSeconds: 1 }).summary)
+    expect(text2).toContain("Items written: 2, from 2 jobs")
+    expect(text2).toContain("Check groups: 1")
+    expect(text2).toContain("Groups of parts with no verdict: 1")
+    expect(text2).toContain("Gap that separates two checks: 1 second (--gap-seconds)")
+  })
+})
+
 // ------------------------------------------------------------------- what is never written
 
 describe("what an item never holds", () => {
@@ -435,7 +772,7 @@ describe("what an item never holds", () => {
     const { items } = run(w.file)
     for (const item of items) {
       expect(item.id).toMatch(/^real-\d{4}$/)
-      expect(item.group).toMatch(/^job-\d{4}$/)
+      expect(item.group).toMatch(/^(check|unjudged)-\d{4}$/)
     }
     const out = itemsToJsonl(items)
     expect(out).not.toMatch(/TASKID|JOBID|AGENTID|CHANNELID|MSGID/)
@@ -874,6 +1211,45 @@ describe("the output file", () => {
     expect(message).not.toContain("SECRET-KEY")
     expect(() => readCli(["--db", "d", "--out", "o", "SECRET-VALUE"])).toThrow("(a value)")
   })
+
+  test("--gap-seconds: a number of 0 or more, left out gives null, a bad value names the option and no value", () => {
+    const gap = (...value: string[]) => readCli(["--db", "d", "--out", "o", ...value]).gapSeconds
+    expect(gap()).toBeNull()
+    expect(gap("--gap-seconds", "30")).toBe(30)
+    expect(gap("--gap-seconds", "0.5")).toBe(0.5)
+    expect(gap("--gap-seconds", "0")).toBe(0)
+    for (const bad of [
+      "-1",
+      "abc",
+      "",
+      "1e3",
+      "Infinity",
+      "NaN",
+      "1.",
+      ".5",
+      "1,5",
+      "SECRET-GAP",
+    ]) {
+      let message = ""
+      try {
+        gap("--gap-seconds", bad)
+      } catch (e) {
+        message = (e as Error).message
+      }
+      expect(message).toContain("--gap-seconds")
+      expect(message).not.toContain("SECRET-GAP")
+    }
+    expect(() => gap("--gap-seconds")).toThrow("--gap-seconds needs a value")
+    // A number too large for a finite value is refused too.
+    expect(() => gap("--gap-seconds", "9".repeat(400))).toThrow("--gap-seconds")
+  })
+
+  test("the usage text names --gap-seconds, its default, and says that the default is a guess", () => {
+    expect(USAGE).toContain("[--gap-seconds <n>]")
+    expect(USAGE).toContain(`Default ${CHECK_GAP_SECONDS}`)
+    expect(USAGE).toContain("guess")
+    expect(USAGE).toContain("counts only")
+  })
 })
 
 // --------------------------------------------------------------------------- the round trip
@@ -1067,6 +1443,46 @@ describe("the command", () => {
     const after = fileState(db)
     expect(after.mtimeMs).toBe(before.mtimeMs)
     expect(Buffer.compare(after.bytes, before.bytes)).toBe(0)
+  })
+
+  test("--gap-seconds changes the groups that the command writes", async () => {
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    partOf(w, "TASKID-p1", "JOBID-1", { created: at(1000), verdict: "met", judged: at(50_000) })
+    partOf(w, "TASKID-p2", "JOBID-1", { created: at(1100), verdict: "met", judged: at(50_003) })
+    partOf(w, "TASKID-p3", "JOBID-1", { created: at(61_000), verdict: "met", judged: at(90_000) })
+    w.close()
+    const groups = (file: string) =>
+      readFileSync(file, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => (JSON.parse(line) as { group: string }).group)
+
+    const first = join(tempDir(), "items.jsonl")
+    const byDefault = await exec(["--db", w.file, "--out", first])
+    expect(byDefault.code).toBe(0)
+    expect(byDefault.out).toContain("Items written: 3, from 1 job")
+    expect(byDefault.out).toContain("Check groups: 2")
+    expect(byDefault.out).toContain("Gap that separates two checks: 3 seconds")
+    expect(groups(first)).toEqual(["check-0001", "check-0001", "check-0002"])
+
+    const second = join(tempDir(), "items.jsonl")
+    const wide = await exec(["--db", w.file, "--out", second, "--gap-seconds", "60"])
+    expect(wide.code).toBe(0)
+    expect(wide.out).toContain("Check groups: 1")
+    expect(wide.out).toContain("Gap that separates two checks: 60 seconds")
+    expect(groups(second)).toEqual(["check-0001", "check-0001", "check-0001"])
+    for (const printed of [byDefault.out, wide.out, byDefault.err, wide.err])
+      expect(printed).not.toMatch(/LBL|DONE|REPLY|MSG|SECRET|Launch|Lia|TASKID|check-0/)
+
+    // A bad value stops the command before it reads or writes anything.
+    const third = join(tempDir(), "items.jsonl")
+    const bad = await exec(["--db", w.file, "--out", third, "--gap-seconds", "soon"])
+    expect(bad.code).toBe(1)
+    expect(bad.err).toContain("--gap-seconds")
+    expect(bad.err).not.toContain("soon")
+    expect(bad.out).toBe("")
+    expect(existsSync(third)).toBe(false)
   })
 
   test("--out inside the repository is refused and nothing is written there", async () => {
