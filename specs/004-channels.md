@@ -8,8 +8,8 @@ The user gives a job to a group of agents in one place and watches them divide a
 
 - **Channel**: name (1 to 60 characters), topic (up to 200), instructions (up to 4000 characters,
   empty by default), members (agents), one optional lead agent, the setting "Review parts" (off by
-  default), and an optional section: a user section of
-  the Channels list (see 001, "User sections"). With no section, the channel shows in the Channels list itself.
+  default), and an optional section: a user section of the Channels list (see 001, "User
+  sections"). With no section, the channel shows in the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
   parts and give each part to a member.
 - **Part**: a child task (see 005) given to one member, with a short label and, when the lead

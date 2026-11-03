@@ -69,18 +69,28 @@ Each agent works in its own folder with real tools, and the user stays in contro
 
 At "Ask for risky steps" the user answers many cards for steps that the user just asked for. At
 "Ask when unsure", the decision model (013) checks a risky step against the words of the user, and
-the user gets a card only when the check is not sure.
+the user gets a card only when the check is sure that the user asked for the step.
 
-- **Hard steps** always ask at this level, as at "Ask for risky steps":
+- **Hard steps** follow "Ask for risky steps": an Allow rule can run them, and otherwise they ask.
+  They never go to the check. They are:
   - deleting files outside the workspace,
   - anything that uses `sudo`,
   - a file step whose path is inside the data folder of ROBot (014),
   - a request with a saved secret that uses a method other than GET, and a request for a new
-    secret (020),
-  - a guarded step in a turn that holds outside content (see "Outside content").
+    secret (020).
 - **Checked steps** are the other risky steps (see "Rules"): commands that use the network to send
   data, installing software, and a call of a tool of a connection (018). A step that is not risky
   runs with no question, as at "Ask for risky steps".
+- A checked step goes to the check only when all of these are true. Otherwise it asks the user
+  with the normal approval card, and the decision model gets no request:
+  - the turn holds no outside content (see "Outside content"). Outside text can steer what the
+    agent writes in a step, so the check cannot judge such a step;
+  - the turn has words of the user (see below);
+  - a command has at most 500 characters. A longer command is not checked.
+- **Words of the user**: the messages of the user that started the turn or joined it (003), or the
+  prompt of a routine (009). A message of another agent, of an outside program (023) or of a watch
+  is not words of the user. A step of a workflow has no words of the user, because the assistant
+  of a workflow can write the prompt of a step (010).
 - For a checked step, the app asks the decision model one question: does the user ask for this
   step? The two options are "The user asked for this" and "The user did not ask for this".
   - The step runs with no card when "The user asked for this" has a probability of 0.9 or more.
@@ -88,16 +98,10 @@ the user gets a card only when the check is not sure.
   - In every other case the step asks the user with the normal approval card: a lower
     probability, no answer in 3 seconds, an error, no key, or the switch "Permission checks" off.
     The card has the line "The check was not sure".
-- What the app sends for a check:
-  - the words of the user for this turn: the message that started the turn and the messages that
-    joined it (003). For a routine, its prompt (009). For a step of a workflow, the prompt of the
-    step (010). At most the last 2000 characters.
-  - the kind of the step and its target: the command text cut at 500 characters, the host, or the
-    connection name and the tool name. It sends no arguments of a tool of a connection.
-  - It never sends the output of a tool, a web page, a reply or thinking of the agent, memory,
-    files, or the value of a secret. So text from outside cannot steer the check.
-- A turn with no words of the user has nothing to check against. In a turn that a message from
-  another agent started, or that a watch routine started (009), every checked step asks.
+- What the app sends for a check: the words of the user, at most the last 2000 characters; the
+  kind of the step; and its target: the full command, the host, or the connection name and the
+  tool name. It sends no arguments of a tool of a connection, no output of a tool, no web page, no
+  reply or thinking of the agent, no memory, no file and no value of a secret.
 - The rules come first (see "Permission rules"). A Deny rule refuses the step and an Allow rule
   runs it, with no check.
 - The user can pick this level only when the switch "Permission checks" is on (013). With the
@@ -105,7 +109,9 @@ the user gets a card only when the check is not sure.
   Settings, Decision model." When the switch goes off later, an agent at this level works as at
   "Ask for risky steps", and the line under the level says so.
 - An agent on a vendor runtime (006) cannot use this level in this version. The level is off in
-  the picker for these agents with the muted line "<program> decides its own steps."
+  the picker for these agents with the muted line "<program> decides its own steps." When an agent
+  at this level changes to a vendor runtime, it works as at "Ask for risky steps", and the line
+  under the level says so.
 - The action log names "the check" as the one who decided, with the probability. A step that the
   check sent to the user names the user, and the reason of the check.
 - The level is looser than "Ask for risky steps". A linked device (012) cannot set it, except to
@@ -261,11 +267,13 @@ text is in the turn.
   - the result of a tool of a connection (018),
   - the answer of a request with a saved secret (020),
   - the change that starts a routine with a watch trigger (009),
-  - a message from another agent.
+  - a message from another agent,
+  - a message of an outside program (023).
   Files in the workspace and files that the user attaches are not outside content.
 - A turn **holds outside content** from the first step that gives outside content to the agent
-  until the turn ends. A turn that a watch routine or a message from another agent starts holds
-  outside content from its start.
+  until the turn ends. A turn that a watch routine, a message from another agent or a message of
+  an outside program starts holds outside content from its start. A message of an outside program
+  never joins a running turn (023).
 - **Guarded steps** are:
   - a change of the agent's own settings or instructions (see 002, "Changes from the chat"),
   - a save to memory (see 008),
@@ -275,22 +283,27 @@ text is in the turn.
   "Read only", "Ask for everything", "Ask for risky steps" and "Ask when unsure", also when an
   Allow rule matches it. The
   card has Allow once and Deny only. It has the line "This turn holds outside content" and names
-  the first source: the host of the page, the connection and tool, the routine, or the agent.
+  the first source: the host of the page, the connection and tool, the routine, the agent, or the
+  outside program.
 - At "Read only", a change of the agent's own settings, a request for a new secret, and a request
   with a saved secret that uses a method other than GET are refused, as other changes are (see
   "Permission levels"). A save to memory follows the rule above.
-- At "Full access", a guarded step runs with no question. A Deny rule still refuses it.
-- A turn that the user did not start (a routine, a workflow, or a message from another agent)
-  asks before a change of the agent's own settings or instructions, also when it holds no
-  outside content, at every permission level except "Full access".
+- At "Full access", a guarded step runs with no question. A Deny rule still refuses it. The
+  exception is a turn that an outside program started (023).
+- A turn that the user did not start (a routine, a workflow, a message from another agent, or a
+  message of an outside program) asks before a change of the agent's own settings or
+  instructions, also when it holds no outside content, at every permission level except "Full
+  access". In a turn that an outside program started, it asks at "Full access" too (023).
 - The action log (see "Action log") has an entry for each guarded step. The entry says whether
   the turn held outside content.
 
 ## Rules
 
 - Risky steps: deleting files outside the workspace, commands that use the network to send data,
-  installing software, anything that uses `sudo`, every call of a tool of a connection (see
-  018), and every request with a saved secret that uses a method other than GET (see 020).
+  installing software, anything that uses `sudo`, a file step whose path is inside the data
+  folder of ROBot (014), a call of a tool of a connection (see 018; a tool with a trusted
+  read-only mark is not risky outside a turn that holds outside content), and every request with
+  a saved secret that uses a method other than GET (see 020).
 - An agent runtime from a vendor (see 006) uses the vendor's own permission prompts; the app shows
   them as approval cards. The level of the agent also sets how the app starts the program (see
   "Permission levels").
@@ -371,9 +384,19 @@ text is in the turn.
   user.
 - "Ask when unsure": the agent runs `sudo` with words of the user that ask for it. The step asks
   the user, and the decision model gets no request.
-- "Ask when unsure": the agent fetches a page, then calls a tool of a connection. The request to
-  the stand-in decision model holds the words of the user, the connection name and the tool name.
-  It holds no text of the page and no arguments of the tool.
+- "Ask when unsure": the agent calls a tool of a connection in a turn with no outside content. The
+  request to the stand-in decision model holds the words of the user, the connection name and the
+  tool name. It holds no arguments of the tool.
+- "Ask when unsure": the agent fetches a page, then calls a tool of a connection. The step asks
+  the user, and the decision model gets no request.
+- "Ask when unsure": the agent runs an install command of 600 characters. The step asks the user,
+  and the decision model gets no request.
+- "Ask when unsure": a step of a workflow runs an install command. The step asks the user.
+- At "Ask for risky steps", the agent writes a file inside the data folder of ROBot: an approval
+  card shows.
+- An agent at "Ask when unsure" changes to a vendor runtime: it asks for each risky step, and the
+  line under its level says so. A linked device cannot set "Ask when unsure" for an agent at "Ask
+  for risky steps".
 - "Ask when unsure": a message from another agent starts the turn. A checked step asks the user,
   and the decision model gets no request.
 - Turn the switch "Permission checks" off. An agent at "Ask when unsure" asks for each risky step,

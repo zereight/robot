@@ -5,7 +5,7 @@
 The user works in another program on the same computer, for example a coding agent in a terminal
 or an editor. That program can read what the agents of ROBot did and give them work, through MCP
 (Model Context Protocol, an open standard). It cannot answer approvals, change settings, or delete
-anything.
+anything, and an agent asks the user before it changes a setting for it.
 
 ## Concepts
 
@@ -45,16 +45,20 @@ With the access "Read":
 - **Read a task**: the prompt, the state, the reason of a failure, the reply text, and the usage
   (005).
 - **Read messages**: a page of at most 50 messages of one direct chat or channel, the newest first,
-  with the name of who wrote each one and its time. Files show as names only.
+  with the name of who wrote each one and its time. It gives the text of messages only. Files show
+  as names. It gives no tool card, no thinking and no content of an approval or question card.
+  Text that looks like a secret is hidden (014).
 - **Search messages**: the same search as the search field (001), at most 50 hits.
 
 With the access "Read and send work", also:
 
 - **Send a message**: a message to the direct chat of one agent or to one channel, at most 100000
-  characters. It goes the same way as a message of the user (003, 004). It shows in the place with
-  the mark "Sent by <program name>". It returns the task that it started.
+  characters. It goes the same way as a message of the user (003, 004), with one difference: it
+  never joins a running turn. When the agent works, the message waits and starts its own turn. It
+  shows in the place with the mark "Sent by <program name>". It returns the task that it started.
 - **Wait for a task**: waits until the task ends, waits for the user, or 10 minutes pass. It
-  returns the state and, when the task ended, the reply text.
+  returns the state ("Still running" after 10 minutes, "Waits for the user", or the final state)
+  and, when the task ended, the reply text.
 - **Stop a task**: stops a task that this program started, as Stop does (005).
 
 ## States
@@ -73,8 +77,15 @@ With the access "Read and send work", also:
   secret (020), memory (008), knowledge (016), the handbook (002), or the action log (007).
 - A turn that a message of an outside program starts holds outside content from its start (007,
   "Outside content"). The source is the name of the program. So guarded steps ask, and at "Ask
-  when unsure" every checked step asks, because the turn has no words of the user.
-- The helper reaches ROBot on this computer only. ROBot offers no network address for it.
+  when unsure" every checked step asks.
+- In such a turn, a change of the agent's own settings or instructions, and a change of the
+  settings of the app (002, "Changes from the chat"), ask the user at every level, "Full access"
+  too.
+- A task of an outside program has depth 0 (005).
+- The helper reaches ROBot on this computer only. ROBot offers no network address for it. The way
+  between the helper and ROBot is open only to the user of the system who runs ROBot.
+- The helper answers in English, because its reader is a program. The settings page is in the
+  language of the app.
 - An entry belongs to one profile (022). Its helper reaches that profile, also when it is not open.
 - A server holds at most 10 entries. One entry makes at most 60 calls in one minute. A call over
   the limit gets "Too many calls. Try again in a minute." and changes nothing.
@@ -113,8 +124,18 @@ With the access "Read and send work", also:
   the chat with "Sent by <program name>", and a task with the source "outside program" starts.
   "Wait for a task" returns the reply text when the turn ends.
 - The agent of that turn tries to change its own instructions: an approval card shows with "This
-  turn holds outside content" and the name of the program, also at "Ask for risky steps" with an
-  Allow rule.
+  turn holds outside content" and the name of the program, also at "Full access".
+- The agent of that turn saves a fact to memory with "Save at once": an approval card shows with
+  "This turn holds outside content".
+- The agent works on a turn of the user, and the program sends a message: the message waits, and
+  it starts its own turn when the first turn ends.
+- Remove the entry: its key gets "This key is not valid.", and a task that it started goes on.
+- "Stop a task" on a task that the user started is refused with the reason.
+- "Wait for a task" on a turn that runs for 11 minutes returns "Still running" after 10 minutes.
+- Quit ROBot: a call gets "ROBot is not running."
+- Add 10 entries: "Add program" is off, with the reason.
+- The Tasks page filter "outside program" lists the task. The phone shows the message with the mark
+  "Sent by <program name>".
 - A task of the program waits for an approval. "Wait for a task" returns "Waits for the user". No
   tool of the helper can answer the card.
 - Make a new key: the old key gets "This key is not valid.", and the new key works.

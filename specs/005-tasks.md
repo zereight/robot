@@ -8,9 +8,10 @@ and workflows.
 ## Concepts
 
 - **Task**: who does it (agent), what (prompt), where it came from (chat, channel, routine,
-  workflow, another agent, a memory check (008), or an outside program (023)), its parent task if any, its state, start and end time, and its
-  result or error.
-- **Depth**: a number. A task that the user, a routine or a workflow starts has depth 0. See
+  workflow, another agent, a memory check (008), or an outside program (023)), its parent task if
+  any, its state, start and end time, and its result or error.
+- **Depth**: a number. A task that the user, a routine, a workflow, a memory check or an outside
+  program starts has depth 0. See
   "Limits of a task".
 - **States**: queued → running → (waiting for user ↔ running) → done | failed | blocked |
   cancelled. A part of a channel that asks for review has one more state, in review, before done
@@ -292,8 +293,13 @@ stops the turn.
   No more task starts from a send. The reply that was due still comes back.
 - A channel job with two parts. The stand-in providers report 1000 input and 200 output tokens for
   the lead, and 3000 and 500 for each part. The task view of the job shows a total of 7000 input
-  and 1200 output tokens, with one line for each of the three agents, largest first. A stand-in
-  that reports no usage shows "—" in its line.
+  and 1200 output tokens, with one line for each of the three agents, largest first. The card of
+  the lead in the activity panel shows the same total.
+- A channel job with three parts, where the third member uses a stand-in that reports no usage:
+  its line shows "—", and the total counts the other agents only.
+- A stand-in reports 8000 input tokens with 6000 of them cached: the task view shows a cached
+  share of 75%. A stand-in that reports no cached input shows no cached share.
+- A routine run with two tasks shows the total tokens of both in its run details.
 - Set the step limit to 20. A stand-in provider calls a tool in every turn without end. The task
   ends as Failed at step 20 with the reason "Step limit reached (20)." The streamed reply stays.
 - A stand-in provider reads the same unchanged file three times in one turn. The third step
@@ -309,9 +315,9 @@ stops the turn.
 - The silent limit is 1 minute. A turn waits for an approval for 2 minutes: it does not fail. The
   user allows the step, the stand-in model then sends nothing for 90 seconds: the turn fails.
 - The silent limit is 10 minutes. A stand-in model sends one reply part, then nothing for 100
-  seconds, then the rest of the reply. 90 seconds after the first part, the working line of the chat reads "No answer
-  from <account name> for 1:30", and the Tasks page row and the island detail card show the same
-  text. No notification shows. When the next part arrives, the working line shows again, and the
+  seconds, then the rest of the reply. 90 seconds after the first part, the working line of the
+  chat reads "No answer from <account name> for 1:30", and the Tasks page row and the island
+  detail card show the same text. No notification shows. When the next part arrives, the working line shows again, and the
   turn ends as done.
 - The silent limit is 1 minute. A stand-in model sends nothing: the quiet line shows at about 30
   seconds, and the turn fails at about 60 seconds.

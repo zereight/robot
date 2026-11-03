@@ -69,8 +69,8 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Channel picks use this model (see 004, "Fast pick").
 - A switch "Permission checks" is off by default. With it on, agents at the level "Ask when
   unsure" ask this model before a checked step (see 007, "Ask when unsure"). Its text says that the
-  words of the user in a turn, and the command text or the name of a tool, go to the service
-  above. A choice that is not set up cannot turn the switch on.
+  words of the user in a turn, and the command text, the host or the name of a tool, go to the
+  service above. A choice that is not set up cannot turn the switch on.
 
 ## Roles
 

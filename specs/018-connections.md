@@ -72,8 +72,12 @@ as tools. Every use goes through the same approval and rule system as the built-
   It runs with no card at "Ask for risky steps" and at "Ask when unsure", and its tool card shows
   "Read only, as the connection says". At "Ask for everything" it still asks. At "Read only" it is
   still refused, because the app cannot check the mark. The switch text says that the connection
-  sets the mark and the app cannot check it. A change of the mark after a test counts at the next
-  turn.
+  sets the mark, that the app cannot check it, and that the arguments of the agent still go to
+  the connection.
+- In a turn that holds outside content (007), a call of a tool with the mark is a risky step
+  again. Outside text can make the agent put data in the arguments.
+- The app reads the tools and their marks when the connection starts. A change of a mark counts
+  from the next start of the connection.
 - The result of a tool with the read-only mark is still outside content (007).
 - Every other step of a tool of a connection is a risky step (see 007). At "Ask for risky steps" it
   asks, unless an Allow rule matches. The approval card shows the connection name, the tool name
@@ -126,3 +130,7 @@ All checks use a small test program as the connection, written for the test.
 - Export, then import into an empty app: the connection shows, it is Off, and its secret value is
   missing.
 - Add 20 connections: the form for the 21st refuses to save.
+- A connection marks the tool "search" as read only. With "Trust read-only marks" off, a call at
+  "Ask for risky steps" asks. Turn it on: the call runs with no card, and the tool card shows "Read
+  only, as the connection says". At "Ask for everything" it still asks.
+- With "Trust read-only marks" on, the agent fetches a page and then calls "search": the call asks.

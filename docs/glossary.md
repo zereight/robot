@@ -34,6 +34,12 @@ A new word goes here in the same pull request as the spec that brings it.
 | Memory check | A short turn that suggests facts that an agent did not save (008). | 메모리 점검 (proposed) | reflection, learning |
 | Token limit | The most tokens that one run of a routine may use (009). | 토큰 한도 (proposed) | budget (ROBot shows no money limit) |
 | Outside program | A program on this computer that reads and sends work in ROBot through MCP (023). | 외부 프로그램 (proposed) | integration, API client |
+| Helper | The small program of ROBot that an outside program starts (023). | 도우미 프로그램 (proposed) | bridge, server, agent |
+| Access key | The secret that tells ROBot which outside program calls (023). | 접근 키 (proposed) | token, password |
+| Read, Read and send work | The two accesses of an outside program (023). | 읽기, 읽기와 작업 보내기 (proposed) | read-only, full access |
+| Trust read-only marks | The switch of a connection that lets marked tools run with no card (018). | 읽기 전용 표시 믿기 (proposed) | safe mode |
+| Read the handbook | The switch of an agent that gives it the handbook (002). | 핸드북 읽기 (proposed) | — |
+| Cached share | Cached input divided by all input, in percent (005). | 캐시 비율 (proposed) | cache hit rate |
 | Action log | The list of tool steps and who decided them (007). | 작업 기록 | history, audit |
 | Profile | A separate space on one computer (022). | 프로필 | account, user, workspace |
 

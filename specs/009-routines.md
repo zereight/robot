@@ -71,7 +71,7 @@ Agents do repeat work on a schedule without the user starting it.
   count for a full day. The note does not stop the save.
 - **Token limit**: a routine can have a token limit for each run. It is off by default. The user
   sets a whole number from 1000 to 10000000 in the routine form. It counts the input and output
-  tokens of all tasks of the run (005, "Usage of a task").
+  tokens of all tasks of the run (005, "Usage of a task"). Cached input counts as input.
   - When a run reaches 80 percent of the limit, the run details show the muted line "80% of the
     token limit is used." It makes no notification.
   - When a run reaches the limit, the app stops the run in the same way as a Stop of the user. The
@@ -142,3 +142,5 @@ Agents do repeat work on a schedule without the user starting it.
   call: the run details show "80% of the token limit is used." It reports 5200 after the next
   call: the run stops and fails with "Token limit reached (5000)." Three such runs in a row pause
   the routine.
+- An agent on a stand-in runtime that reports no usage: the token limit field is off in the
+  routine form, with the muted line "<program> does not report tokens."

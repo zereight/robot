@@ -109,7 +109,7 @@ keep, and can undo a change.
 
 - The count: each turn of the agent that ends as done adds 1: a chat, a part of a channel job, a
   routine and a workflow step. A turn that fails, stops, is cancelled or ends as Blocked adds
-  nothing. A restart keeps the count. The count is 0 when the choice goes on.
+  nothing. A turn of a memory check adds nothing. A restart keeps the count. The count is 0 when the choice goes on.
 - At 10, the app adds a check to the queue of the agent (005). It runs when the agent has no other
   task. The count goes to 0 when the check starts.
 - The check is a task with the source "memory check". It shows on the Tasks page and on the usage
@@ -121,12 +121,13 @@ keep, and can undo a change.
   proposals also when the choice "Memory saving" is "Save at once", so the user decides each one.
   The proposal rules above hold: 500 characters, no duplicates, no secrets, at most 20 that wait.
   The tab Proposals shows "From a memory check" as the source.
-- The check uses the model and effort of the agent. For an agent on a vendor runtime (006), the
-  program runs in its read-only mode. A program with no read-only mode cannot use the check: the
-  choice is off for that agent, with the muted line "<program> has no read-only mode."
+- The check uses the model and effort of the agent. It needs the tool "suggest a fact" of the app.
+  An agent on a vendor runtime (006) that cannot call the tools of the app cannot use the check:
+  the choice is off for that agent, with the muted line "<program> cannot use the memory check."
 - With memory off, no check runs and the count does not grow.
 - On a sync pair (019), the check runs on the computer that ran the turn that made the count 10.
-  The count is local to each computer. Proposals sync as before.
+  The count is local to each computer. Proposals do not sync (019), so the proposals of a check
+  stay on the computer that ran it.
 - A linked device (012) sees the choice. It can change it only with the switch "Can create and
   change agents".
 
@@ -162,3 +163,7 @@ keep, and can undo a change.
 - Turn "Memory check" on with "Save at once". After 10 done turns, a task "memory check" runs when
   the agent is free. A stand-in model suggests 2 facts: the tab Proposals shows 2 proposals "From a
   memory check", and no item is made. A failed turn does not count toward the 10.
+- With "Memory check" on and 3 done turns since the last check, press "Check now": a check runs at
+  once. With no turn since the last check, "Check now" is off.
+- Move a channel note to "General": the agent reads it in its direct chat, and History has a row
+  for the move.
