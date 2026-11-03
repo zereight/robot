@@ -111,6 +111,23 @@ const electronBrowser = (agentId: string): BrowserPage => {
     })
     v.setVisible(true)
   }
+  /**
+   * The page of an agent never keeps the keyboard focus from the chat while the user does not hold
+   * the controls (spec 007). A load, a new address or a link that opens in the page can take the
+   * focus out of the message box. The focus then goes back to the app screen, so the box keeps
+   * the focus and the text. While another program has the focus, nothing moves: the check runs
+   * again when the window gets the focus. A test run never moves the system focus, so the window
+   * must already have it.
+   */
+  const returnFocus = () => {
+    const v = live()
+    if (!v || userInput || !host || host.isDestroyed() || !host.isFocused()) return
+    if (v.webContents.isFocused()) host.webContents.focus()
+  }
+  /** Waits one turn, so the move of the focus is over when the check runs. */
+  const returnFocusSoon = () => {
+    setImmediate(returnFocus)
+  }
   /** Removes the page from the window and tells the listeners. Does nothing when it is gone. */
   const release = () => {
     const v = view
@@ -120,7 +137,10 @@ const electronBrowser = (agentId: string): BrowserPage => {
     userInput = false
     const h = host
     host = undefined
-    if (h && !h.isDestroyed()) h.contentView.removeChildView(v)
+    if (h && !h.isDestroyed()) {
+      h.removeListener("focus", returnFocusSoon)
+      h.contentView.removeChildView(v)
+    }
     if (!v.webContents.isDestroyed()) v.webContents.close()
     for (const l of listeners) l()
   }
@@ -175,6 +195,10 @@ const electronBrowser = (agentId: string): BrowserPage => {
           )
             event.preventDefault()
         })
+        // The page takes the focus (a load, a new address, a link): the chat gets it back.
+        wc.on("focus", returnFocusSoon)
+        // The window gets the focus while the page holds it: the chat gets it back.
+        h.on("focus", returnFocusSoon)
         // The page can close itself.
         wc.once("destroyed", () => {
           if (view === created) release()
@@ -186,7 +210,11 @@ const electronBrowser = (agentId: string): BrowserPage => {
         v = created
         apply()
       }
-      await v.webContents.loadURL(url)
+      try {
+        await v.webContents.loadURL(url)
+      } finally {
+        returnFocusSoon()
+      }
       return { url: v.webContents.getURL(), title: v.webContents.getTitle() }
     },
     read: async () => {
@@ -202,12 +230,14 @@ const electronBrowser = (agentId: string): BrowserPage => {
       const found = await run<boolean>(
         `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.click(); return true })()`,
       )
+      returnFocusSoon()
       if (!found) throw new Error(`No element matches ${selector}`)
     },
     type: async (selector, text) => {
       const found = await run<boolean>(
         `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.focus(); e.value = ${JSON.stringify(text)}; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true })()`,
       )
+      returnFocusSoon()
       if (!found) throw new Error(`No element matches ${selector}`)
     },
     place: (next) => {
