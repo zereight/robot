@@ -311,6 +311,7 @@ interface ThreadRow {
   fork_thread_id: string | null
   fork_message_id: string | null
   sensitive_mark: string | null
+  outside_mark: string | null
   updated_at: number
 }
 

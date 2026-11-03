@@ -53,6 +53,7 @@ import {
   PLAN_STEPS_MAX,
   parseCheck,
   parseMentions,
+  parsePlaceOutside,
   parsePlan,
   partText,
   planText,
@@ -167,6 +168,7 @@ interface ChannelRow {
   place_section_id: string | null
   review_parts: number
   sensitive_mark: string | null
+  outside_mark: string | null
 }
 
 interface MessageRow {
@@ -248,7 +250,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -303,6 +305,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           sectionId: row.place_section_id,
           reviewParts: row.review_parts === 1,
           sensitive: isSensitiveLabel(row.sensitive_mark) ? row.sensitive_mark : null,
+          outside: parsePlaceOutside(row.outside_mark),
           unread,
           working: hasActiveWork(row.id),
         }
@@ -1922,7 +1925,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark FROM channel
+                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )

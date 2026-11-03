@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import type { ChatMessage, MessagePart } from "./chat.ts"
 import { cleanDoneTest } from "./check.ts"
+import type { PlaceOutside } from "./placeMarks.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
 import type { TaskState } from "./task.ts"
 
@@ -26,6 +27,8 @@ export interface Channel {
   readonly working: boolean
   /** The label of the first credential place that a turn of the channel read (spec 007). */
   readonly sensitive?: SensitiveLabel | null
+  /** The outside content that the next turns of the channel hold, with the program mark (spec 007). */
+  readonly outside?: PlaceOutside | null
 }
 
 export const ChannelCreate = Schema.Struct({

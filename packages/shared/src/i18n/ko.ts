@@ -705,6 +705,8 @@ export const ko: Record<MessageKey, string> = {
   "outside.source.secret": "{name}을(를) 쓴 요청의 응답",
   "outside.source.routine": "루틴 {name}",
   "outside.source.agent": "{name}이(가) 보낸 메시지",
+  "outside.source.teams": "Teams",
+  "outside.placeHeld": "바깥 내용 포함",
   "sensitive.held": "민감한 정보 읽기 포함",
   "sensitive.first": "첫 위치: {label}",
   "sensitive.askLine": "이 턴에서 키나 로그인 정보가 있는 위치를 읽었어요.",
@@ -717,6 +719,8 @@ export const ko: Record<MessageKey, string> = {
   "sensitive.label.robot": "ROBot 데이터",
   "marks.clear": "해제",
   "marks.clearTitle": '"{marks}" 표시를 해제할까요?',
+  "marks.clearOutside":
+    "에이전트는 바깥 글을 계속 볼 수 있어요. 표시를 해제하면 보호된 단계와 확인되는 단계가 이 표시 때문에 묻지 않아요.",
   "marks.clearSensitive":
     "에이전트는 읽은 내용을 계속 볼 수 있어요. 표시를 해제하면 데이터를 밖으로 보내는 단계가 이 표시 때문에 묻지 않아요.",
   "marks.cancel": "취소",

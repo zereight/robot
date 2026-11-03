@@ -2,7 +2,7 @@ import type { MessageKey, MessageParams, OutsideSource } from "@robot/shared"
 
 type Translate = (key: MessageKey, params?: MessageParams) => string
 
-/** The words for the first source of outside content (spec 007): a host, a tool, a routine, an agent. */
+/** The words for the first source of outside content (spec 007): a host, a tool, a routine, an agent, Teams. */
 export const outsideSourceText = (t: Translate, source: OutsideSource): string => {
   switch (source.kind) {
     case "page":
@@ -17,5 +17,7 @@ export const outsideSourceText = (t: Translate, source: OutsideSource): string =
       return t("outside.source.routine", { name: source.name })
     case "agent":
       return t("outside.source.agent", { name: source.name })
+    case "teams":
+      return t("outside.source.teams")
   }
 }
