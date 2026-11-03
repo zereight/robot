@@ -25,7 +25,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 015 | [Notifications and the status island](015-notifications.md) | Draft |
 | 016 | [Knowledge: linked articles an agent writes, cites and reads again](016-knowledge.md) | Draft |
 | 017 | [Skills: saved instructions that the user calls with a slash](017-skills.md) | Draft |
-| 018 | [Connections: outside tools for agents, with approvals](018-connections.md) | Draft |
+| 018 | [Connections: outside tools for agents, with approvals, and tool search for many tools](018-connections.md) | Draft |
 | 019 | [Sync between two computers: what syncs, conflicts, where tasks run](019-sync.md) | Draft |
 | 020 | [Saved secrets: keys and passwords that an agent uses and the model never sees](020-saved-secrets.md) | Draft |
 | 021 | [Today: what waits for the user, what went wrong, what ran today, what runs next](021-today.md) | Draft |

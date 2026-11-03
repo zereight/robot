@@ -121,8 +121,8 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   the key.
 - Change the silent limit to 30 minutes: a turn that starts after the change fails after 30 minutes
   of silence and not after 10. Choose Never: a silent turn does not fail by itself.
-- Turn off "Compact long chats automatically": a chat that is at 90 percent use starts its next
-  turn with no compact. Turn it on: the next turn compacts first.
+- Turn off "Compact long chats automatically": a chat that is at 90 percent use, or at 400000
+  tokens, starts its next turn with no compact. Turn it on: the next turn compacts first.
 - Set "Agents working at once" to 1: tasks of two agents run one after the other. Set it to 9 or 0:
   the field refuses the value and keeps the old one.
 - Two agents have the role lines "Designer" and "designer": the Roles page shows one role with
