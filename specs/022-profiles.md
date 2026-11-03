@@ -20,7 +20,7 @@ and linked devices. A phone that is paired with one profile sees that profile an
   of agents, the default folder for workspaces, linked devices and their keys, and the sync
   pair.
 - **What the computer holds for all profiles**: the list of profiles, which one is open, the
-  setting "start at login", the programs that the app downloaded for agent runtimes (006), and
+  settings "start at login" and "Show in the menu bar", the programs that the app downloaded for agent runtimes (006), and
   the permissions that the system gave to the app.
 
 ## Flows

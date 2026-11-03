@@ -162,15 +162,17 @@ The user gives a job to a group of agents in one place and watches them divide a
   what it waits behind: the name of the channel and the first words of the job that the member
   runs now, or a note that the member is busy in its own chat. The block of waiting parts in the
   channel shows this as one line under the part.
-- When the older messages are too long for the context of a member, the app replaces them with a
-  short summary that the lead's model writes at the lowest effort the model offers. If the
-  summary cannot be written, the part starts with the newest messages instead of failing. If the
-  assignment and the instructions alone do not fit, the part fails with a clear reason. The older
-  messages of this rule are those that do not fit in the part for the newest messages (see below).
+- The newest messages fill one part of the text of a member (see "What a member reads"). The
+  messages of the channel that do not fit there are the older messages. The app replaces them
+  with a short summary that the lead's model writes at the lowest effort the model offers. The
+  summary fills at most one quarter of the context of the model of the member.
+- If the summary cannot be written, the part starts with the newest messages and no summary,
+  instead of failing. If the assignment and the instructions alone do not fit in the context,
+  the part fails with a clear reason.
 - **What a member reads**: a turn of a member in a channel gets its text in this order.
   1. The assignment of its part.
   2. The instructions: the member's own first, then the channel's.
-  3. The messages that asked it.
+  3. The messages that asked it: the newest 5, each cut to 2,000 characters.
   4. The short summary of the older messages, when one exists (see above).
   5. The newest messages of the channel. They fill at most one quarter of the context of the
      model of the member. When the app does not know the size of the context, it takes the last
@@ -230,3 +232,11 @@ The user gives a job to a group of agents in one place and watches them divide a
   of the assignment is the last part of the text.
 - Set a picture for a channel: the place row and the header show it. Remove it: the `#` mark comes
   back. After a restart the picture is still there.
+- A stand-in model reports no size of context. A channel holds 30 messages. The request of a member
+  holds the last 20 of them. With 11 or more newest messages the request ends with the reminder of
+  the assignment. With 10 or fewer it has no reminder.
+- A stand-in model has a context of 8,000 tokens and the channel holds 200 messages: the request
+  holds the summary (at most one quarter of the context), the newest messages (at most one quarter),
+  and the 5 newest asking messages, each cut to 2,000 characters. The stand-in summary call fails:
+  the request holds the newest messages and no summary, and the part does not fail. The assignment
+  and the instructions together are larger than the context: the part fails with the reason.

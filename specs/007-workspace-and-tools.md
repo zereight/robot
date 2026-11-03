@@ -223,7 +223,8 @@ These rules hold for the browser tools of every agent that has the browser, on e
 - **Focus.** The page of an agent never takes the keyboard focus from a place where the user
   types. This holds while the page loads and when it goes to a new address.
 - **Saved logins.** The tool "sign in with a login" (020) is a browser step. It follows the
-  permission rules like any other browser step.
+  permission rules like any other browser step. It is offered to agents whose model comes from an
+  API provider only (020).
 
 ## Idle work
 

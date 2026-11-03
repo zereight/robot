@@ -100,18 +100,23 @@ limit is spent.
      provider names no time, the hold lasts 15 minutes.
   2. The turn goes on with the backup model, in the same task. If the failed try ran no step (its
      progress is "Not sent" or "Sent", see 005), the backup runs the turn from the start. If the
-     failed try ran steps ("Started"), the backup gets a short new message that asks it to go on,
-     as "Continue" does (003). The app does not send the request again, so no side effect repeats.
+     failed try ran steps ("Started"), the backup gets a short new message that asks it to go on.
+     This message is not a message of the user and has no row, as the message of "Keep going"
+     (005). The app does not send the request again, so no side effect repeats.
   3. The chat shows a muted line: "<main model> reached its limit. <backup model> goes on." The
      line gives the reset time when it is known.
 - While the hold lasts, every turn of the agent uses the backup model: a chat, a part of a channel
-  job, a message of another agent, a routine and a workflow step that have no model of their own.
-  A routine or a workflow step that sets its own model (009, 010) keeps it and gets no backup.
+  job, a message of another agent, a routine that follows the agent, and an agent step of a
+  workflow. A routine with its own model (009) keeps it. A model step and a condition in "Ask a
+  model" mode name their own provider (010), so they keep it and get no backup.
 - The header of the chat shows the backup model and "Backup until <time>". A button "Use <main
   model> now" ends the hold. The next turn then tries the main model. If that turn fails with a
   limit reason again, the hold starts again and the chat shows no second line.
 - When the hold time has passed, the next turn uses the main model again, and the header shows the
   main model again.
+- When the backup becomes not ready during a hold, for example when its account is disconnected,
+  the hold ends at once. The next turn tries the main model. If that turn fails with a limit
+  reason, it fails with that reason.
 - A turn on the backup model that fails with a limit reason too fails with that reason, as a turn
   with no backup does (see "Rules"). A backup that is not ready does not take the turn. The
   backup is ready when this computer has its account, and the account is connected and, for a
@@ -142,6 +147,11 @@ limit is spent.
 - When the model of an agent changes and the new model does not list the level of the agent, the
   agent uses the nearest level that the new model lists. When two levels are equally near, it uses
   the lower one. A routine follows 009 and a workflow step follows 010 for their own levels.
+- The model that counts is the model that runs the turn: the main model, the backup model, or the
+  model of a routine. When the level that would be used is not on the list of that model, for
+  example the level of the agent when its backup model runs, the turn uses the nearest level on
+  that list, and the lower one in a tie. A level that the running model does not list is never
+  sent.
 
 ## Model list
 

@@ -94,7 +94,8 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
 - Ways out: the same button, "Stop reading", "End".
 - Seeing the state: the active microphone, the word for the state in voice chat, "Stop reading".
   Nothing is stored, so nothing stays after a restart.
-- Data: no sound is stored or synced. The two settings belong to the device.
+- Data: no sound is stored or synced. The two settings belong to the profile (013, 022). The phone
+  keeps its own two settings in its Settings.
 - Words: see `docs/glossary.md`.
 
 ## Out of scope

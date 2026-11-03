@@ -141,7 +141,7 @@ The user knows when an agent needs them or finishes, without watching the window
 
 ## Menu bar item
 
-- A setting in General (013), "Show in the menu bar", is off by default. With it on, a small icon
+- A setting of the computer in General (013), "Show in the menu bar", is off by default. With it on, a small icon
   of the app shows in the menu bar of the Mac, also when the window is closed. It shows a still
   dot when nothing works, a moving dot while an agent works (still with reduce motion), and a
   badge when something waits for the user.
@@ -162,7 +162,8 @@ The user knows when an agent needs them or finishes, without watching the window
 - The sound plays when a result card would show (see "Result card"): the kind is reply, task
   failed or routine failed, the kind is on, the place is not muted, and no window of the app has
   the focus. It plays in every mode of the island. When several results come within one second,
-  the sound plays once.
+  the sound plays once. A result that comes while a request waits makes no card and no sound. A
+  turn that a continuation follows (005, "Keep going") makes none of them.
 - It plays on this computer for the work of this computer. A phone uses its own sound of the
   system.
 - The system notice has no sound of its own while the app plays this sound. Do-not-disturb of the

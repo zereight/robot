@@ -95,7 +95,7 @@ An agent does a job. It is a task of that agent.
 | --- | --- | --- | --- | --- |
 | `agent` | string | no | `""` | The name of the agent, at most 40 characters. See "How ROBot links the agent". |
 | `prompt` | string | no | `""` | A template. At most 20 000 characters. ROBot does not remove spaces. |
-| `effort` | string | no | the effort of the agent | One of `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`. The step runs one turn with this effort, if the model of the agent offers it. If the model does not offer it, the step uses the effort of the agent. |
+| `effort` | string | no | the effort of the agent | One of `"none"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`, `"ultra"`. The step runs one turn with this effort, if the model that runs the step lists it. If the model does not list it, the step uses the effort of the agent, and then the nearest level that the model lists (spec 006). |
 | `continueOnFailure` | boolean | no | `false` | When `true`, the run goes on if this step fails. |
 
 #### Kind `"condition"`: an if and else

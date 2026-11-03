@@ -166,10 +166,13 @@ so the user does not need to sit by it.
   workflow step or the part that made the task.
 - The continuations stop earlier when the open steps are the same as before the last
   continuation: the same count and the same labels. The task then ends as it does without Keep
-  going: Done, when the last turn ended with no error. The chat shows no line for this stop.
+  going: Done, when the last turn ended with no error (In review for a part of a channel that asks
+  for review). The chat shows no line for this stop.
 - A question card is a wait, not an end, so no continuation starts while it shows. A question
   in the plain text of a reply makes no card. The go-on message does not answer it. The app
   never answers a question of the agent for the user.
+- A turn that a continuation follows makes no notification, no result card and no sound for its
+  end (015). They come when the task ends.
 - A task that is cancelled, failed or blocked does not go on. A part of a channel job goes on
   before it is done, so the check of the lead (004) starts only after the last continuation.
 - The muted line is stored with the chat and syncs with the messages (019). A linked device and

@@ -184,7 +184,9 @@ a new issue. ROBot runs no service on the internet for this (000).
 - **Limits**: a body over 1 MB gets the answer 413. A workflow starts at most 30 times in a minute.
   More calls get 429 and start nothing. A call with valid proof counts toward the 30, also when
   the busy rule skips it.
-- **Order of checks**: the app checks the size (413), then the proof (401), then the rate (429).
+- **Order of checks**: a call to an address that the app does not know, or to a workflow that is
+  off, gets 404 first. Then the app checks the size (413), then the proof (401), then the rate
+  (429).
   A call that passes these and fails the filter of the preset gets 202 and starts nothing. Then
   the busy rule applies.
 - **Busy**: a call that comes while a run of the same workflow goes is skipped, as a schedule
@@ -252,8 +254,9 @@ a new issue. ROBot runs no service on the internet for this (000).
 - After an app restart, a run that was going is marked failed with the reason "The app
   stopped". This includes a run that waits at an approval step. Its tasks fail the same way,
   also a task that waits for an approval or a question (see 005).
-- An agent step that has no model of its own follows the backup model of its agent while the
-  agent is on it (006). A step with its own model keeps it.
+- An agent step uses the model of its agent, so it follows the backup model of the agent while
+  the agent is on it (006). A model step and a condition in "Ask a model" mode name their own
+  provider and get no backup.
 - An agent step with its own effort runs one turn with that effort. The agent keeps its own
   setting for all other turns. If the model of the agent does not offer that effort, the step
   runs with the effort of the agent. The retry of a step takes the effort from the step, not
@@ -328,3 +331,6 @@ a new issue. ROBot runs no service on the internet for this (000).
   address no longer answers.
 - Restart the app: the address of the web hook is the same. Another program holds the saved port:
   the form shows the reason and "Pick another port".
+- A call to the address of a workflow that is off, and a call to a wrong address, get 404. Two
+  profiles each have a workflow with a web hook: the two addresses use two ports, and each call
+  reaches only its own profile.
