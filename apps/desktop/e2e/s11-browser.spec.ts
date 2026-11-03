@@ -40,21 +40,34 @@ const pageSize = (app: ElectronApplication) =>
     return [0, 0] as [number, number]
   })
 
-/** Sends a real click to the page of the agent, like a mouse would. Returns the page title after. */
-const clickPage = (app: ElectronApplication) =>
-  app.evaluate(async ({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows().find((w) => w.getTitle() === "ROBot")
-    const view = win?.contentView.children.find(
-      (child) => (child as unknown as { webContents?: unknown }).webContents,
-    ) as unknown as { webContents: Electron.WebContents } | undefined
-    if (!view) return "no page"
-    const wc = view.webContents
-    const point = { x: 40, y: 80 }
-    wc.sendInputEvent({ type: "mouseDown", ...point, button: "left", clickCount: 1 })
-    wc.sendInputEvent({ type: "mouseUp", ...point, button: "left", clickCount: 1 })
-    await new Promise((r) => setTimeout(r, 300))
-    return wc.getTitle()
-  })
+/** The size that the page of the agent is laid out in. It does not depend on the window. */
+const PAGE = { width: 1280, height: 800 }
+
+/**
+ * Sends a real click to the page of the agent, like a mouse would, at a point of the page in CSS
+ * px. The view draws the page smaller or larger than its own size, so the point of the mouse is
+ * the point of the page times the scale of the view. Returns the page title after.
+ */
+const clickPage = (app: ElectronApplication, at: { x: number; y: number }) =>
+  app.evaluate(
+    async ({ BrowserWindow }, args) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.getTitle() === "ROBot")
+      const view = win?.contentView.children.find(
+        (child) => (child as unknown as { webContents?: unknown }).webContents,
+      ) as unknown as
+        | { webContents: Electron.WebContents; getBounds(): { width: number } }
+        | undefined
+      if (!view) return "no page"
+      const wc = view.webContents
+      const scale = view.getBounds().width / args.page.width
+      const point = { x: Math.round(args.at.x * scale), y: Math.round(args.at.y * scale) }
+      wc.sendInputEvent({ type: "mouseDown", ...point, button: "left", clickCount: 1 })
+      wc.sendInputEvent({ type: "mouseUp", ...point, button: "left", clickCount: 1 })
+      await new Promise((r) => setTimeout(r, 300))
+      return wc.getTitle()
+    },
+    { at, page: PAGE },
+  )
 
 test("browser: hidden until the user shows it, small or large, hide keeps it open, the agent can ask to look, take control, give back, stop closes it", async () => {
   test.setTimeout(90_000)
@@ -62,7 +75,7 @@ test("browser: hidden until the user shows it, small or large, hide keeps it ope
     res.writeHead(200, { "content-type": "text/html" })
     // The button fills the top left of the page, so a click at a known point hits it.
     res.end(
-      "<title>Hello page</title><body style='margin:0'><button style='position:fixed;left:0;top:0;width:300px;height:200px' onclick='document.title=\"Clicked\"'>Press</button><h1 style='margin-top:260px'>Greetings from the test site</h1></body>",
+      "<title>Hello page</title><body style='margin:0'><button style='position:fixed;left:0;top:0;width:300px;height:200px' onclick='document.title=\"Clicked \"+event.clientX+\",\"+event.clientY'>Press</button><h1 style='margin-top:260px'>Greetings from the test site</h1></body>",
     )
   })
   await new Promise<void>((r) => site.listen(0, "127.0.0.1", r))
@@ -88,7 +101,7 @@ test("browser: hidden until the user shows it, small or large, hide keeps it ope
   await expect.poll(async () => (await insideViews(app)).length, { timeout: 5_000 }).toBe(1)
   expect((await insideViews(app)).filter((v) => v.visible).length).toBe(0)
   // A page that nobody sees still lays out like a page in a normal window, not at a size of 0.
-  expect((await pageSize(app))[0]).toBeGreaterThanOrEqual(1000)
+  expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
   // The agent reads the page while it is hidden.
   await send(page, "TOOL browser_read {}")
   await expect(page.getByTestId("message").last()).toContainText("Greetings from the test site", {
@@ -102,17 +115,30 @@ test("browser: hidden until the user shows it, small or large, hide keeps it ope
   await expect
     .poll(async () => (await insideViews(app)).filter((v) => v.visible).length, { timeout: 5_000 })
     .toBe(1)
+  // The page keeps its own ratio (16:10) and sits in the middle of its box. It fills the box in
+  // one direction, and never goes outside it. The small box has the same ratio, so it is filled.
   const sameAs = async (testId: string) => {
     const box = await page.getByTestId(testId).boundingBox()
     const [view] = await insideViews(app)
     expect(box).not.toBeNull()
     expect(view?.title).toBe("Hello page")
-    expect(Math.abs((view?.bounds.x ?? 0) - Math.round(box?.x ?? 0))).toBeLessThanOrEqual(1)
-    expect(Math.abs((view?.bounds.y ?? 0) - Math.round(box?.y ?? 0))).toBeLessThanOrEqual(1)
-    expect(Math.abs((view?.bounds.width ?? 0) - Math.round(box?.width ?? 0))).toBeLessThanOrEqual(1)
-    expect(Math.abs((view?.bounds.height ?? 0) - Math.round(box?.height ?? 0))).toBeLessThanOrEqual(
-      1,
-    )
+    const b = view?.bounds ?? { x: 0, y: 0, width: 0, height: 0 }
+    const r = box ?? { x: 0, y: 0, width: 0, height: 0 }
+    expect(Math.abs(b.width / b.height - PAGE.width / PAGE.height)).toBeLessThan(0.02)
+    expect(b.x).toBeGreaterThanOrEqual(Math.round(r.x) - 1)
+    expect(b.y).toBeGreaterThanOrEqual(Math.round(r.y) - 1)
+    expect(b.x + b.width).toBeLessThanOrEqual(Math.round(r.x + r.width) + 1)
+    expect(b.y + b.height).toBeLessThanOrEqual(Math.round(r.y + r.height) + 1)
+    expect(
+      Math.min(Math.abs(b.width - Math.round(r.width)), Math.abs(b.height - Math.round(r.height))),
+    ).toBeLessThanOrEqual(1)
+    // In the middle: the empty room at the two sides is the same, within a px.
+    const roomX = b.x - Math.round(r.x) - (Math.round(r.x + r.width) - (b.x + b.width))
+    const roomY = b.y - Math.round(r.y) - (Math.round(r.y + r.height) - (b.y + b.height))
+    expect(Math.abs(roomX)).toBeLessThanOrEqual(2)
+    expect(Math.abs(roomY)).toBeLessThanOrEqual(2)
+    // The page has its own size, whatever the size of the view.
+    expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
   }
   await sameAs("browser-thumb")
   // The chat keeps its full width beside the panel: the box of the message is as wide as the
@@ -151,11 +177,16 @@ test("browser: hidden until the user shows it, small or large, hide keeps it ope
   await expect(page.getByTestId("browser-bar")).toBeVisible()
 
   // While the agent holds the page, a click of the user does not reach it.
-  expect(await clickPage(app)).toBe("Hello page")
+  expect(await clickPage(app, { x: 40, y: 80 })).toBe("Hello page")
   await page.getByTestId("browser-control").click()
   await expect(page.getByTestId("browser-bar")).toHaveAttribute("data-control", "true")
-  // While the user holds the page, a click reaches it.
-  expect(await clickPage(app)).toBe("Clicked")
+  // While the user holds the page, a click reaches it, at the point of the page that the user
+  // points at, also when the page is drawn smaller or larger than its own size.
+  const clicked = await clickPage(app, { x: 40, y: 80 })
+  expect(clicked).toMatch(/^Clicked \d+,\d+$/)
+  const [hitX, hitY] = clicked.replace("Clicked ", "").split(",").map(Number)
+  expect(Math.abs((hitX ?? 0) - 40)).toBeLessThanOrEqual(3)
+  expect(Math.abs((hitY ?? 0) - 80)).toBeLessThanOrEqual(3)
   await page.getByTestId("browser-control").click()
   await expect(page.getByTestId("browser-bar")).toHaveAttribute("data-control", "false")
 
@@ -308,6 +339,75 @@ test("browser: closing the app window does not end the browser work of the agent
   await expect
     .poll(async () => (await insideViews(app)).filter((v) => v.visible).length, { timeout: 5_000 })
     .toBe(1)
+  await app.close()
+  site.close()
+})
+
+test("browser: a smaller or larger window changes the scale of the page, not its size", async () => {
+  test.setTimeout(90_000)
+  const site = createServer((_, res) => {
+    res.writeHead(200, { "content-type": "text/html" })
+    // The first script of the page writes the size that it sees into the title.
+    res.end(
+      "<title>none</title><script>document.title='first ' + innerWidth + 'x' + innerHeight</script><body>Sized page</body>",
+    )
+  })
+  await new Promise<void>((r) => site.listen(0, "127.0.0.1", r))
+  const port = (site.address() as AddressInfo).port
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  // A small window first: the page must see its own size from its first script on.
+  await resizeWindow(app, 1000, 700)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await createAgent(page, "Ada")
+  const first = `first ${PAGE.width}x${PAGE.height}`
+  const view = async () => (await insideViews(app))[0]
+  const widthOfView = async () => (await view())?.bounds.width ?? 0
+  const visibleViews = async () => (await insideViews(app)).filter((v) => v.visible).length
+
+  // The page opens hidden. Its size is the same as for a page that shows.
+  await send(page, `TOOL browser_open ${JSON.stringify({ url: `http://127.0.0.1:${port}/` })}`)
+  await expect(page.getByTestId("browser-card")).toBeVisible({ timeout: 15_000 })
+  await expect.poll(async () => (await view())?.title, { timeout: 15_000 }).toBe(first)
+  expect(await visibleViews()).toBe(0)
+  expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
+
+  // Small, in the activity panel: the size is the same.
+  await page.getByTestId("browser-show").click()
+  await expect(page.getByTestId("browser-thumb")).toBeVisible()
+  await expect.poll(visibleViews, { timeout: 5_000 }).toBe(1)
+  expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
+
+  // The large view fills the conversation area, so it follows the window: the view grows and
+  // shrinks with the window and the page keeps its size.
+  await page.getByTestId("browser-enlarge").click()
+  await expect(page.getByTestId("browser-bar")).toBeVisible()
+  await expect.poll(widthOfView, { timeout: 5_000 }).toBeGreaterThan(300)
+  const atSmallWindow = await widthOfView()
+  expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
+  await resizeWindow(app, 1500, 950)
+  await expect.poll(widthOfView, { timeout: 5_000 }).toBeGreaterThan(atSmallWindow + 100)
+  expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
+  const atLargeWindow = await widthOfView()
+  await resizeWindow(app, 1000, 700)
+  await expect.poll(widthOfView, { timeout: 5_000 }).toBeLessThan(atLargeWindow - 100)
+  expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
+  // The view keeps the ratio of the page, so a change of the window never squeezes the page.
+  const shape = (await view())?.bounds
+  const ratio = (shape?.width ?? 0) / (shape?.height ?? 1)
+  expect(Math.abs(ratio - PAGE.width / PAGE.height)).toBeLessThan(0.02)
+
+  // A new address keeps the size, and its first script sees it, in a small window as well.
+  await send(
+    page,
+    `TOOL browser_open ${JSON.stringify({ url: `http://127.0.0.1:${port}/?second` })}`,
+  )
+  await expect.poll(async () => (await view())?.title, { timeout: 15_000 }).toBe(first)
+  expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
+  // Another chat hides the page. It keeps its size for the agent.
+  await createAgent(page, "Bo")
+  await expect.poll(visibleViews, { timeout: 5_000 }).toBe(0)
+  expect(await pageSize(app)).toEqual([PAGE.width, PAGE.height])
   await app.close()
   site.close()
 })

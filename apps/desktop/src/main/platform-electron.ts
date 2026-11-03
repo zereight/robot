@@ -23,14 +23,13 @@ import {
 } from "electron"
 import type { BrowserPage, PageBounds, PlatformService } from "./services/Platform.ts"
 import { type Resolver, systemResolver } from "./web/fetch.ts"
+import { fitPage, PAGE_VIEW } from "./web/pageFit.ts"
 import { pageUserAgent } from "./web/userAgent.ts"
 
 /** True when an end-to-end test runs the app. The app then leaves system settings alone. */
 export const isTestRun = Boolean(process.env.ROBOT_USER_DATA)
 
 const PAGE_TEXT_MAX = 20_000
-/** The size of a page that the user does not see. It lays out like a page in a normal window. */
-const PAGE_VIEWPORT = { width: 1280, height: 800 }
 
 /**
  * A test run can give a table of host names and the addresses they lead to, as JSON in
@@ -77,8 +76,8 @@ const shelfWindow = () => {
     // A page that works needs a size like the one of a real window, also while nobody sees it.
     shelf = new BaseWindow({
       show: false,
-      width: PAGE_VIEWPORT.width,
-      height: PAGE_VIEWPORT.height,
+      width: PAGE_VIEW.width,
+      height: PAGE_VIEW.height,
     })
   }
   return shelf
@@ -138,6 +137,52 @@ const electronBrowser = (agentId: string): BrowserPage => {
     return v.webContents
   }
   const run = async <T>(code: string): Promise<T> => need().executeJavaScript(code, true)
+  /** How much the page is drawn smaller than its own size, in the place that it has now. */
+  let scaleNow = 1
+  /**
+   * The page has a document. A view that never loaded a page does not answer the debugger, and the
+   * page that loads first would not get its size.
+   */
+  let started = false
+  /** The scale that the page has been given, and the call that gives it. */
+  let emulated: number | undefined
+  let emulating: Promise<unknown> = Promise.resolve()
+  /**
+   * Gives the page its own size (`PAGE_VIEW`), whatever the size of its place. The place only
+   * scales the picture, so a smaller window does not squeeze the layout of the page, what the
+   * agent reads from it, or where a click lands. The page sees this size from its first script on
+   * and after each load. The size belongs to a session of the debugger, so it is made again when
+   * the session ends.
+   */
+  const emulate = (scale: number) => {
+    const v = live()
+    if (!v || !started) return
+    const session = v.webContents.debugger
+    try {
+      if (!session.isAttached()) {
+        session.attach("1.3")
+        emulated = undefined
+      }
+    } catch {
+      return
+    }
+    if (emulated === scale) return
+    emulated = scale
+    emulating = session
+      .sendCommand("Emulation.setDeviceMetricsOverride", {
+        width: PAGE_VIEW.width,
+        height: PAGE_VIEW.height,
+        // 0 keeps the pixel density of the screen.
+        deviceScaleFactor: 0,
+        mobile: false,
+        scale,
+        // The view keeps the size that the app gives it.
+        dontSetVisibleSize: true,
+      })
+      .catch(() => {
+        if (emulated === scale) emulated = undefined
+      })
+  }
   /** The app screen, when the page sits in the main window. The shelf has none. */
   const screenOf = () =>
     host && host === mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined
@@ -145,11 +190,25 @@ const electronBrowser = (agentId: string): BrowserPage => {
     const v = live()
     if (!v) return
     const screenContents = screenOf()
-    if (!bounds || !screenContents) {
+    // The screen measures in CSS px. The window measures in px after the page zoom.
+    const zoom = screenContents?.getZoomFactor() ?? 1
+    const fit =
+      bounds && screenContents
+        ? fitPage({
+            x: bounds.x * zoom,
+            y: bounds.y * zoom,
+            width: bounds.width * zoom,
+            height: bounds.height * zoom,
+          })
+        : undefined
+    // The page has its size, shown or hidden. Only the scale follows the place.
+    if (fit) scaleNow = Math.round(fit.scale * 10_000) / 10_000
+    emulate(scaleNow)
+    if (!fit) {
       // A page that nobody sees keeps the size of a normal window, so it lays out the same way.
       // A view that was never visible reports a size of 0 by 0 whatever its bounds are, so it is
       // visible for one turn of the loop before it hides, and no frame draws in between.
-      v.setBounds({ x: 0, y: 0, ...PAGE_VIEWPORT })
+      v.setBounds({ x: 0, y: 0, ...PAGE_VIEW })
       if (!sized) {
         v.setVisible(true)
         sized = true
@@ -158,14 +217,7 @@ const electronBrowser = (agentId: string): BrowserPage => {
       return
     }
     sized = true
-    // The screen measures in CSS px. The window measures in px after the page zoom.
-    const zoom = screenContents.getZoomFactor()
-    v.setBounds({
-      x: Math.round(bounds.x * zoom),
-      y: Math.round(bounds.y * zoom),
-      width: Math.max(0, Math.round(bounds.width * zoom)),
-      height: Math.max(0, Math.round(bounds.height * zoom)),
-    })
+    v.setBounds(fit.bounds)
     v.setVisible(true)
   }
   /**
@@ -193,6 +245,9 @@ const electronBrowser = (agentId: string): BrowserPage => {
     if (!v) return
     view = undefined
     bounds = undefined
+    scaleNow = 1
+    started = false
+    emulated = undefined
     userInput = false
     const h = host
     host = undefined
@@ -290,6 +345,12 @@ const electronBrowser = (agentId: string): BrowserPage => {
         wc.on("focus", returnFocusSoon)
         // The window gets the focus while the page holds it: the chat gets it back.
         h.on("focus", returnFocusSoon)
+        // The session of the debugger ends (a tool of the page took it, or the page crashed): the
+        // page gets its size again.
+        wc.debugger.on("detach", () => {
+          emulated = undefined
+          if (view === created && !wc.isDestroyed()) apply()
+        })
         // The page can close itself.
         wc.once("destroyed", () => {
           if (view === created) release()
@@ -302,6 +363,15 @@ const electronBrowser = (agentId: string): BrowserPage => {
         apply()
       }
       try {
+        if (!started) {
+          // An empty page first: from then on the view answers the debugger, and the page of the
+          // address has its size before its first script runs.
+          await v.webContents.loadURL("about:blank")
+          started = true
+          emulate(scaleNow)
+        }
+        // A debugger that does not answer must not keep the agent from the page.
+        await Promise.race([emulating, new Promise((resolve) => setTimeout(resolve, 2_000))])
         await v.webContents.loadURL(url)
       } finally {
         returnFocusSoon()

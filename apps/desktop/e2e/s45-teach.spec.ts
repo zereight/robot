@@ -20,35 +20,54 @@ const PAGE = `<!doctype html><title>Teach test page</title>
 <input id="pw" type="password" style="position:fixed;left:10px;top:190px;width:280px;height:30px">
 </body>`
 
-/** Real input to the page of the agent, as a mouse and a keyboard give it. */
+/** The width that the page of the agent is laid out in. The view draws it larger or smaller. */
+const PAGE_WIDTH = 1280
+
+/**
+ * Real input to the page of the agent, as a mouse and a keyboard give it. A click is given as a
+ * point of the page, in CSS px. The mouse works on the view, so the point is the point of the page
+ * times the scale of the view.
+ */
 const input = (
   app: ElectronApplication,
   action: { click?: { x: number; y: number }; type?: string; key?: string },
 ) =>
-  app.evaluate(async ({ BrowserWindow }, act) => {
-    const win = BrowserWindow.getAllWindows().find((w) => w.getTitle() === "ROBot")
-    const view = win?.contentView.children.find(
-      (child) => (child as unknown as { webContents?: unknown }).webContents,
-    ) as unknown as { webContents: Electron.WebContents } | undefined
-    if (!view) return "no page"
-    const wc = view.webContents
-    if (act.click) {
-      const at = { ...act.click, button: "left" as const, clickCount: 1 }
-      wc.sendInputEvent({ type: "mouseDown", ...at })
-      wc.sendInputEvent({ type: "mouseUp", ...at })
-    }
-    for (const ch of act.type ?? "") {
-      wc.sendInputEvent({ type: "keyDown", keyCode: ch })
-      wc.sendInputEvent({ type: "char", keyCode: ch })
-      wc.sendInputEvent({ type: "keyUp", keyCode: ch })
-    }
-    if (act.key) {
-      wc.sendInputEvent({ type: "keyDown", keyCode: act.key })
-      wc.sendInputEvent({ type: "keyUp", keyCode: act.key })
-    }
-    await new Promise((r) => setTimeout(r, 300))
-    return wc.getTitle()
-  }, action)
+  app.evaluate(
+    async ({ BrowserWindow }, args) => {
+      const act = args.action
+      const win = BrowserWindow.getAllWindows().find((w) => w.getTitle() === "ROBot")
+      const view = win?.contentView.children.find(
+        (child) => (child as unknown as { webContents?: unknown }).webContents,
+      ) as unknown as
+        | { webContents: Electron.WebContents; getBounds(): { width: number } }
+        | undefined
+      if (!view) return "no page"
+      const wc = view.webContents
+      if (act.click) {
+        const scale = view.getBounds().width / args.pageWidth
+        const at = {
+          x: Math.round(act.click.x * scale),
+          y: Math.round(act.click.y * scale),
+          button: "left" as const,
+          clickCount: 1,
+        }
+        wc.sendInputEvent({ type: "mouseDown", ...at })
+        wc.sendInputEvent({ type: "mouseUp", ...at })
+      }
+      for (const ch of act.type ?? "") {
+        wc.sendInputEvent({ type: "keyDown", keyCode: ch })
+        wc.sendInputEvent({ type: "char", keyCode: ch })
+        wc.sendInputEvent({ type: "keyUp", keyCode: ch })
+      }
+      if (act.key) {
+        wc.sendInputEvent({ type: "keyDown", keyCode: act.key })
+        wc.sendInputEvent({ type: "keyUp", keyCode: act.key })
+      }
+      await new Promise((r) => setTimeout(r, 300))
+      return wc.getTitle()
+    },
+    { action, pageWidth: PAGE_WIDTH },
+  )
 
 /** True when the page of the agent shows in the app window. */
 const pageShows = (app: ElectronApplication) =>
