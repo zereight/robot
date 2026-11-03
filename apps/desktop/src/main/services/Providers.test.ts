@@ -20,6 +20,9 @@ const server = Bun.serve({
       return Response.json({ error: { message: "bad key" } }, { status: 401 })
     if (url.pathname === "/v1/models")
       return Response.json({ data: [{ id: "model-b" }, { id: "o3", display_name: "O3" }] })
+    // A proxy or a login page that answers 200 with a web page, not a list of models.
+    if (url.pathname === "/page/v1/models")
+      return new Response("<html>Sign in</html>", { headers: { "content-type": "text/html" } })
     return new Response("not found", { status: 404 })
   },
 })
@@ -87,6 +90,24 @@ describe("Providers", () => {
       ),
     )
     expect(code(exit)).toBe("provider_unreachable")
+  })
+
+  // A custom address is typed by hand. An address that is not a web address, or one that answers
+  // with a web page, is a plain error in the form. It never ends the app, and no account is saved.
+  test.each([
+    ["text that is not an address", "not a url"],
+    ["an address with no scheme", "localhost:11434/v1"],
+    ["an address with a scheme that the app does not speak", "ftp://127.0.0.1/v1"],
+    ["an address that answers with a web page", `http://127.0.0.1:${server.port}/page/v1`],
+  ])("a custom address is refused with a clear error: %s", async (_name, address) => {
+    const { runtime } = testRuntime()
+    const exit = await runtime.runPromiseExit(
+      Providers.use((p) =>
+        p.connect({ kind: "custom", name: "Odd", baseUrl: address, apiKey: GOOD_KEY }),
+      ),
+    )
+    expect(code(exit)).toBe("provider_unreachable")
+    expect(await runtime.runPromise(Providers.use((p) => p.list))).toHaveLength(0)
   })
 
   test.skipIf(process.platform === "win32")(

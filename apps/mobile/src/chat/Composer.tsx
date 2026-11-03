@@ -1,6 +1,6 @@
 import { ATTACH_BYTES, ATTACH_MAX } from "@robot/phone"
 import { type Agent, insertMention, mentionEntries, openMention } from "@robot/shared"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { fileSizeText } from "../i18n/index.ts"
 import { type Picked, pickFiles, pickPhotos } from "../platform/files.ts"
@@ -9,6 +9,7 @@ import { radius, space, text } from "../theme/palette.ts"
 import { Face } from "../ui/Face.tsx"
 import { ErrorLine } from "../ui/kit.tsx"
 import { Sheet } from "../ui/Sheet.tsx"
+import { createSendGate, filesAfterSend, textAfterSend } from "./sending.ts"
 
 export interface Draft {
   readonly text: string
@@ -44,6 +45,10 @@ export const Composer = (props: {
   const [menu, setMenu] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
+  // A send runs once at a time. The flag does not wait for a render, so two quick taps send once;
+  // the state turns the button off while the message goes out.
+  const gate = useRef(createSendGate()).current
+  const [sending, setSending] = useState(false)
   // The `@` list: where the caret is, and a caret that a pick asks for. The ask holds for one
   // render only, so the box is free again at once.
   const [caret, setCaret] = useState(0)
@@ -76,24 +81,29 @@ export const Composer = (props: {
 
   const send = async () => {
     const draft = { text: value.trim(), files }
-    if ((!draft.text && files.length === 0) || progress !== null) return
+    if (!draft.text && files.length === 0) return
+    if (!gate.enter()) return
+    const sentValue = value
+    setSending(true)
     setError(null)
     setProgress(files.length > 0 ? 0 : null)
     try {
       await props.onSend(draft, (sent, total) =>
         setProgress(total > 0 ? Math.round((sent / total) * 100) : null),
       )
-      setValue("")
-      setFiles([])
+      // Text and files that the user added during the send stay.
+      setValue((current) => textAfterSend(current, sentValue))
+      setFiles((current) => filesAfterSend(current, draft.files))
     } catch (e) {
       setError(errorLine(e))
     } finally {
+      gate.leave()
+      setSending(false)
       setProgress(null)
     }
   }
 
-  const canSend =
-    !props.blocked && (value.trim().length > 0 || files.length > 0) && progress === null
+  const canSend = !props.blocked && (value.trim().length > 0 || files.length > 0) && !sending
   const showStop = props.working && !canSend && !props.blocked
 
   return (
