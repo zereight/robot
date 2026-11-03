@@ -97,6 +97,8 @@ The row of each agent runtime shows one state, as a tag with text. Colour alone 
   earlier run and that still run, for example after a crash. It ends only programs that it
   started itself. It never ends a program that the user started.
 - A check of a runtime that hangs or crashes never delays a turn of another provider.
+- Token savings (026) are one section of the settings, not a part of a row. The table in 026 says
+  which savings work for the agents of each runtime.
 
 ## Acceptance
 
