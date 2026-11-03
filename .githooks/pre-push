@@ -1,0 +1,26 @@
+#!/bin/sh
+# "bun run check" before a push: lint, typecheck, unit tests and the host checks.
+# These are the same checks as the "check" job of CI. The end-to-end suite is not part of it.
+# Without cargo in PATH the host checks are skipped, and CI still runs them.
+# A push that only deletes a branch or sends tags is not checked.
+# "git push --no-verify" skips this hook.
+
+push=no
+while read -r local_ref local_sha _remote_ref _remote_sha; do
+  case "$local_ref" in refs/tags/*) continue ;; esac
+  case "$local_sha" in *[!0]*) push=yes ;; esac
+done
+
+[ "$push" = yes ] || exit 0
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "pre-push: bun is not in PATH, so the checks were skipped. CI still runs them." >&2
+  exit 0
+fi
+
+if command -v cargo >/dev/null 2>&1; then
+  exec bun run check
+fi
+
+echo "pre-push: cargo is not in PATH, so the host checks were skipped. CI still runs them." >&2
+bun run lint && bun run typecheck && bun run test
