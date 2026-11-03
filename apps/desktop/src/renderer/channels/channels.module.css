@@ -16,6 +16,11 @@
   border: 0;
   padding: 0;
   margin: 0;
+  /*
+   * A fieldset is never narrower than its content unless this is set. Without it, a long line of
+   * one member (the role) widens the whole form, and the box scrolls sideways.
+   */
+  min-width: 0;
 }
 .label {
   font-size: var(--text-xs);
