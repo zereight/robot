@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import { charLength } from "./agents.ts"
+import type { MessageKey } from "./i18n/en.ts"
 
 // The Teams link (spec 028): the pure rules of the form, the names and the states. Nothing here
 // touches a page, a clock or a database.
@@ -344,4 +345,66 @@ export const pickChat = (
   if (openTitle !== null && holdsChatTitle(openTitle, wanted))
     return { kind: "one", index: null, title: openTitle }
   return { kind: "none" }
+}
+
+// --- The words ---------------------------------------------------------------------------
+
+/** The nine facts of the page text, in order (spec 028, "Page text"). */
+export const TEAMS_FACT_KEYS = [
+  "teams.intro",
+  "teams.fact.service",
+  "teams.fact.rules",
+  "teams.fact.password",
+  "teams.fact.names",
+  "teams.fact.permission",
+  "teams.fact.read",
+  "teams.fact.computers",
+  "teams.fact.off",
+] as const satisfies readonly MessageKey[]
+
+/** The dialog of "Turn on" repeats the second, the third and the sixth fact. */
+export const TEAMS_DIALOG_FACT_KEYS = [
+  TEAMS_FACT_KEYS[1],
+  TEAMS_FACT_KEYS[2],
+  TEAMS_FACT_KEYS[5],
+] as const
+
+/** The text of a state in Settings, Teams (not for the state On, which needs the title and time). */
+export const teamsStateTextKey = (
+  state: Exclude<TeamsState, "on">,
+  chat: TeamsChatMatch | null,
+): MessageKey => {
+  switch (state) {
+    case "off":
+      return "teams.state.off"
+    case "connecting":
+      return "teams.state.connecting"
+    case "signedOut":
+      return "teams.state.signedOut"
+    case "chatNotFound":
+      return chat === "many" ? "teams.state.chatMany" : "teams.state.chatNone"
+    case "offline":
+      return "teams.state.offline"
+    case "targetMissing":
+      return "teams.state.targetMissing"
+  }
+}
+
+/** The short state word of the header mark. The state On has none (spec 028). */
+export const teamsStateWordKey = (state: TeamsState): MessageKey | null => {
+  switch (state) {
+    case "off":
+    case "on":
+      return null
+    case "connecting":
+      return "teams.stateWord.connecting"
+    case "signedOut":
+      return "teams.stateWord.signedOut"
+    case "chatNotFound":
+      return "teams.stateWord.chatNotFound"
+    case "offline":
+      return "teams.stateWord.offline"
+    case "targetMissing":
+      return "teams.stateWord.targetMissing"
+  }
 }

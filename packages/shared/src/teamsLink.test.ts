@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { catalogues, type MessageKey } from "./i18n/index.ts"
 import {
   botListWins,
   checkTeamsLink,
@@ -13,14 +14,20 @@ import {
   problemField,
   sameTeamsName,
   TEAMS_CALL_TEXT_MAX,
+  TEAMS_DIALOG_FACT_KEYS,
+  TEAMS_FACT_KEYS,
   TEAMS_LIST_MAX,
   TEAMS_MARKER_DEFAULT,
   TEAMS_MARKER_MAX,
   TEAMS_NAME_MAX,
+  TEAMS_PROBLEMS,
+  TEAMS_STATES,
   TEAMS_TITLE_MAX,
   type TeamsFields,
   teamsLinksTo,
   teamsNameKey,
+  teamsStateTextKey,
+  teamsStateWordKey,
   tidyTeamsFields,
 } from "./teamsLink.ts"
 
@@ -255,5 +262,81 @@ describe("the link of a place", () => {
     expect(teamsLinksTo(view, "channel", "agent-1")).toBe(false)
     expect(teamsLinksTo(view, "agent", "agent-2")).toBe(false)
     expect(teamsLinksTo(emptyTeamsView, "agent", "agent-1")).toBe(false)
+  })
+})
+
+describe("the words of the Teams link (spec 028, 'Interface text')", () => {
+  const teamsKeys = (locale: "en" | "ko") =>
+    Object.entries(catalogues[locale]).filter(([key]) => /^(teams\.|error\.teams_)/.test(key))
+
+  test("every reason and every state has a text in English and in Korean", () => {
+    for (const locale of ["en", "ko"] as const) {
+      const text = catalogues[locale]
+      for (const problem of TEAMS_PROBLEMS)
+        expect(text[`teams.problem.${problem}` as MessageKey]).toBeTruthy()
+      for (const state of TEAMS_STATES) {
+        if (state !== "on") expect(text[teamsStateTextKey(state, null)]).toBeTruthy()
+        const word = teamsStateWordKey(state)
+        if (word) expect(text[word]).toBeTruthy()
+      }
+      expect(text[teamsStateTextKey("chatNotFound", "many")]).toBeTruthy()
+      expect(text["teams.state.on"]).toContain("{title}")
+      for (const code of [
+        "not_set_up",
+        "locked",
+        "target_not_found",
+        "page_closed",
+        "signed_out",
+        "offline",
+        "no_chat_open",
+        "unreadable",
+      ])
+        expect(text[`error.teams_${code}` as MessageKey]).toBeTruthy()
+      expect(text["error.browser_profile_reserved"]).toBeTruthy()
+    }
+  })
+
+  test("the state words: the header mark names a state that is not On, and Off has none", () => {
+    expect(teamsStateWordKey("on")).toBeNull()
+    expect(teamsStateWordKey("off")).toBeNull()
+    expect(teamsStateWordKey("offline")).toBe("teams.stateWord.offline")
+    expect(teamsStateTextKey("chatNotFound", "none")).toBe("teams.state.chatNone")
+    expect(teamsStateTextKey("chatNotFound", "many")).toBe("teams.state.chatMany")
+  })
+
+  test("the interface says 'Teams link', never 'bridge', and never calls the sign-in an account", () => {
+    for (const locale of ["en", "ko"] as const) {
+      for (const [key, text] of teamsKeys(locale)) {
+        expect({ key, hit: /bridge|브릿지|브리지/i.test(text) }).toEqual({ key, hit: false })
+        // The sign-in texts do not call the sign-in an "account".
+        if (key.startsWith("teams.signIn") || key.startsWith("teams.signOut"))
+          expect({ key, hit: /account|계정/i.test(text) }).toEqual({ key, hit: false })
+      }
+    }
+    expect(catalogues.en["teams.title"]).toBe("Teams link")
+    expect(catalogues.ko["teams.title"]).toBe("Teams 연동")
+  })
+
+  test("the Korean texts of the link are in Korean", () => {
+    for (const [key, text] of teamsKeys("ko")) {
+      if (key.startsWith("error.")) continue
+      expect({ key, korean: /[가-힣]/.test(text) }).toEqual({ key, korean: true })
+    }
+    expect(catalogues.ko["teams.mark"]).toContain("Teams")
+  })
+
+  test("the page text has the nine facts, and the dialog repeats the second, third and sixth", () => {
+    expect(TEAMS_FACT_KEYS).toHaveLength(9)
+    for (const locale of ["en", "ko"] as const)
+      for (const key of TEAMS_FACT_KEYS) expect(catalogues[locale][key].length).toBeGreaterThan(10)
+    expect(TEAMS_DIALOG_FACT_KEYS).toEqual([
+      "teams.fact.service",
+      "teams.fact.rules",
+      "teams.fact.permission",
+    ])
+    // The facts are the ones the spec names: Microsoft's service, the company rule, no permission.
+    expect(catalogues.en["teams.fact.service"]).toContain("Microsoft")
+    expect(catalogues.en["teams.fact.rules"]).toContain("forbid")
+    expect(catalogues.en["teams.fact.permission"]).toContain("no permission")
   })
 })
