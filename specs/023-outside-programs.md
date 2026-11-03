@@ -80,12 +80,14 @@ With the access "Read and send work", also:
 - A turn that a message of an outside program starts holds outside content from its start (007,
   "Outside content"). The source is the name of the program. So guarded steps ask, and at "Ask
   when unsure" every checked step asks.
-- In such a turn, every guarded step (007), for example a change of settings or a save to memory,
-  asks the user at every level, "Full access" too. Later turns of the same chat keep the mark of
-  outside content until the user clears it (007, "The mark of a place").
+- Such a turn holds the program mark (007). In a turn with the program mark, every guarded step
+  (007), for example a change of settings or a save to memory, asks the user, also at "Full
+  access". At "Read only", the steps that "Read only" refuses stay refused. The program mark goes
+  to later turns of the same chat, to forks, to the parts of a job, and to a message that the
+  agent sends to another agent, until the user clears it (007, "The mark of a place").
 - A task of an outside program has depth 0 (005).
-- A job that an outside program sends to a channel holds outside content in every part (007). Its
-  parts ask before a change of settings at every level, as its own turn does.
+- A job that an outside program sends to a channel holds outside content and the program mark in
+  every part (007).
 - The helper reaches ROBot on this computer only. ROBot offers no network address for it. The way
   between the helper and ROBot is open only to the user of the system who runs ROBot.
 - The helper answers in English, because its reader is a program. The settings page is in the

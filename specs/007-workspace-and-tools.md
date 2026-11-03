@@ -88,8 +88,9 @@ the user gets a card only when the check is sure that the user asked for the ste
   - the turn has words of the user (see below);
   - a command has at most 500 characters. A longer command is not checked;
   - a command does not run a script file of the workspace or of another folder, for example with
-    an interpreter or with a path to the file. A short command can start a long script that any
-    turn wrote, by a file step or by a command.
+    an interpreter or with a path to the file. A task runner that reads its commands from a file,
+    for example `make` or `npm run`, also runs a script file. A short command can start a long
+    script that any turn wrote, by a file step or by a command.
 - **Words of the user**: the messages of the user that started the turn or joined it (003), or the
   prompt of a routine (009). The prompt of a routine from an agent file (002) counts only after the
   user saves the routine form once. For a part of a channel job (004), the words of the user are
@@ -312,14 +313,19 @@ text is in the turn.
 - At "Read only", a change of the agent's own settings, a request for a new secret, and a request
   with a saved secret that uses a method other than GET are refused, as other changes are (see
   "Permission levels"). A save to memory follows the rule above.
+- **Program mark**: outside content holds the program mark when one of its sources is an outside
+  program (023). The mark goes with the outside content: to later turns and forks that hold it
+  (see above), to the parts of a job, and to a message that an agent sends from a turn that holds
+  the program mark. The turn that such a message starts holds the program mark too. "Clear" (see
+  "The mark of a place") also clears the program mark of that place.
 - At "Full access", a guarded step runs with no question. A Deny rule still refuses it. The
-  exception is a turn that an outside program started, or a part of a job that an outside program
-  sent (023).
+  exception is a turn that holds the program mark: there a guarded step asks the user, also at
+  "Full access" (023).
 - A turn that the user did not start (a routine, a workflow, a message from another agent, or a
   message of an outside program) asks before a change of the agent's own settings or
   instructions, or of the settings of the app (002), also when it holds no outside content, at
-  every permission level except "Full access". In a turn that an outside program started, and in
-  a part of a job that an outside program sent, it asks at "Full access" too (023).
+  every permission level except "Full access". A turn that holds the program mark asks at "Full
+  access" too.
 - The action log (see "Action log") has an entry for each guarded step. The entry says whether
   the turn held outside content.
 
@@ -440,3 +446,8 @@ text is in the turn.
   The step asks the user, and the decision model gets no request.
 - An outside program posts a job in a channel with a lead. A member saves a fact to memory with
   "Save at once" in its part: an approval card shows with "This turn holds outside content".
+- "Full access": an outside program sends a message to agent A. A sends a message to agent B. B
+  changes its own instructions: an approval card shows. The same change in a turn of B that the
+  user started in a new thread runs with no card.
+- "Full access": an outside program sends a message, the user denies the change of settings in that
+  turn, and then writes "hi". The agent tries the change again: an approval card shows.
