@@ -1,5 +1,6 @@
 import { Schema, Struct } from "effect"
 import { DECISION_CHOICES, DECISION_MODEL_DEFAULT, DECISION_MODEL_MAX } from "./decision.ts"
+import { KEEP_AWAKE_DEFAULT, KEEP_AWAKE_MODES } from "./keepAwake.ts"
 import { DEVICE_NAME_MAX } from "./link.ts"
 import { ISLAND_MODES } from "./notifications.ts"
 import { STEP_LIMIT_DEFAULT, STEP_LIMIT_MAX, STEP_LIMIT_MIN } from "./steps.ts"
@@ -98,6 +99,11 @@ export const Settings = Schema.Struct({
   agentsAtOnce: Schema.Int.check(
     Schema.isBetween({ minimum: AGENTS_AT_ONCE_MIN, maximum: AGENTS_AT_ONCE_MAX }),
   ),
+  /**
+   * "Keep the computer awake" (spec 013): when the app stops the computer from sleeping. A setting
+   * saved before this existed has none, and the default holds the computer while an agent works.
+   */
+  keepAwake: Schema.Literals(KEEP_AWAKE_MODES),
 })
 export type Settings = typeof Settings.Type
 
@@ -135,6 +141,7 @@ export const defaultSettings: Settings = {
   decisionModelName: DECISION_MODEL_DEFAULT,
   autoCompact: true,
   agentsAtOnce: AGENTS_AT_ONCE_DEFAULT,
+  keepAwake: KEEP_AWAKE_DEFAULT,
 }
 
 export type Locale = "en" | "ko"

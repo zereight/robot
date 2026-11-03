@@ -21,6 +21,17 @@ export const en = {
   "settings.language.ko": "한국어",
   "settings.startAtLogin": "Start at login",
   "settings.startAtLogin.hint": "Open ROBot when you sign in to this computer.",
+  "settings.keepAwake": "Keep the computer awake",
+  "settings.keepAwake.hint":
+    "A computer that sleeps runs no agent and no routine. The screen can still go dark.",
+  "settings.keepAwake.off": "Off",
+  "settings.keepAwake.working": "While agents work",
+  "settings.keepAwake.routines": "Also for routines",
+  "settings.keepAwake.now.none": "The app does not hold the computer awake now.",
+  "settings.keepAwake.now.working": "Awake now. Agents that work: {count}.",
+  "settings.keepAwake.now.routines": "Awake now. Routines that are on: {count}.",
+  "settings.keepAwake.now.battery":
+    "The computer runs on its battery. A routine that waits does not hold it awake.",
   "settings.workspaceRoot": "Agent workspaces folder",
   "settings.workspaceRoot.hint": "New agents get a folder here.",
   "settings.workspaceRoot.change": "Change…",

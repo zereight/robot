@@ -48,6 +48,16 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     shown: 0,
     /** What "Save as" answers. Undefined means the user cancelled. */
     savePath: undefined as string | undefined,
+    /** Whether the computer is held awake now, and the changes of that, as "on" and "off". */
+    awake: false,
+    awakeLog: [] as string[],
+    /** Whether the computer runs on its battery. A test sets it and calls `powerChanged`. */
+    battery: false,
+    powerListeners: [] as (() => void)[],
+    /** The computer changes between its battery and power. */
+    powerChanged: () => {
+      for (const l of shell.powerListeners) l()
+    },
   }
   const fakeBrowser = (agentId: string): BrowserPage => {
     let open = false
@@ -118,6 +128,16 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     openPath: async () => {},
     openFile: async () => {},
     setStartAtLogin: () => {},
+    setKeepAwake: (on) => {
+      if (shell.awake === on) return
+      shell.awake = on
+      shell.awakeLog.push(on ? "on" : "off")
+    },
+    keepAwakeHeld: () => shell.awake,
+    onBattery: () => shell.battery,
+    onPowerSource: (listener) => {
+      shell.powerListeners.push(listener)
+    },
     setThemeSource: () => {},
     copyText: () => {},
     openExternal: async () => {},

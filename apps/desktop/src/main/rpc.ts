@@ -59,6 +59,7 @@ import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
 import { Handover } from "./services/Handover.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
+import { KeepAwake } from "./services/KeepAwake.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
@@ -928,6 +929,7 @@ export const handlers: Handlers = {
       Effect.flatMap(({ agentId, callId, answer }) => answerCard(agentId, callId, answer)),
       done,
     ),
+  "keepAwake.state": () => KeepAwake.use((k) => k.state),
   "browser.state": (input) =>
     decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
       Effect.flatMap(({ agentId }) =>

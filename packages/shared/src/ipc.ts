@@ -13,6 +13,7 @@ import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } fro
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type { HandoverOpen, HandoverState } from "./handover.ts"
 import type { AgentPick, ImportChecklist } from "./importReview.ts"
+import type { KeepAwakeState } from "./keepAwake.ts"
 import type {
   KnowledgeArticle,
   KnowledgeChange,
@@ -471,6 +472,11 @@ export interface RpcMethods {
     input: { agentId: string }
     output: { open: boolean; control: boolean; suggest: string | null }
   }
+  /**
+   * Whether the app holds this computer awake now, and why (spec 013, "Keep the computer awake").
+   * A linked device never asks: the setting belongs to the computer.
+   */
+  "keepAwake.state": { input: undefined; output: KeepAwakeState }
   /** The user takes the controls of the agent's browser, or gives them back. */
   "browser.control": { input: { agentId: string; control: boolean }; output: undefined }
   "browser.close": { input: { agentId: string }; output: undefined }
@@ -656,6 +662,8 @@ export interface ThreadRef {
 /** Events that the main process pushes to the renderer. */
 export interface RpcEvents {
   "settings.changed": Settings
+  /** The app holds the computer awake, or lets it go, or the reason changed. */
+  "keepAwake.changed": KeepAwakeState
   /** The device name, the switch, the linked devices or a connection state changed. */
   "devices.changed": Record<string, never>
   "devices.pairing": PairingState
