@@ -238,11 +238,11 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         })
 
       /**
-       * The reason of a failed step. The silent limit keeps its number of minutes, since the words
-       * of the reason need it.
+       * The reason of a failed step. The silent limit keeps its number of minutes, and a full queue
+       * keeps the name of the agent, since the words of the reason need them.
        */
       const stepReason = (code: string, detail: string | null) =>
-        code === SILENT_CODE && detail ? `${code}:${detail}` : code
+        (code === SILENT_CODE || code === "tasks_full") && detail ? `${code}:${detail}` : code
 
       const execAgent = (run: RunRow, step: Extract<Step, { kind: "agent" }>, prompt: string) =>
         Effect.gen(function* () {
@@ -261,8 +261,18 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
               },
             )
             .pipe(Effect.exit)
-          if (sent._tag === "Failure")
-            return { ok: false as const, error: "agent_not_found", result: "" }
+          // A full queue of the agent fails the step with the reason (spec 005, "Queue").
+          if (sent._tag === "Failure") {
+            const failure = Cause.squash(sent.cause)
+            return {
+              ok: false as const,
+              error:
+                failure instanceof AppError
+                  ? stepReason(failure.code, failure.detail ?? null)
+                  : "agent_not_found",
+              result: "",
+            }
+          }
           const taskId = yield* Deferred.await(started)
           const end = yield* awaitTask(taskId).pipe(Effect.onInterrupt(() => tasks.stop(taskId)))
           if (end.state === "done") {

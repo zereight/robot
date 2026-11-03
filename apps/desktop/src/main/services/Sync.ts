@@ -289,6 +289,12 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
                 bus.emit("memory.changed", { agentId: t.parent?.id ?? "" }),
               )
               break
+            case "thread":
+              // The list of threads shows in the chat header (spec 003).
+              once(`thread:${t.parent?.id}`, () =>
+                bus.emit("chat.threads", { agentId: t.parent?.id ?? "" }),
+              )
+              break
             case "iversion":
               // The instruction history shows in the profile of the agent (spec 002).
               once("agents", () => bus.emit("agents.changed", { serverId }))

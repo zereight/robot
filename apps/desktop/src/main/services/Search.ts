@@ -26,9 +26,15 @@ import { Database, type DatabaseService } from "./Database.ts"
 export interface SearchService {
   /**
    * One page of the hits for the window: the messages of the chats and channels of one server,
-   * newest first, 20 at a time, at most 200 in all. Archived chats are left out.
+   * newest first, 20 at a time, at most 200 in all. Archived chats are left out. With `mainOnly`
+   * (a linked device), messages of threads other than the main thread are left out (spec 003).
    */
-  page(serverId: string, query: string, offset: number): Effect.Effect<SearchPage>
+  page(
+    serverId: string,
+    query: string,
+    offset: number,
+    mainOnly?: boolean,
+  ): Effect.Effect<SearchPage>
   /**
    * The answer of the tool "search chats" for one agent: its own chats and the channels where it
    * is a member. `failed` is true when the words are too short to search.
@@ -37,7 +43,7 @@ export interface SearchService {
 }
 
 type Scope =
-  | { readonly kind: "server"; readonly serverId: string }
+  | { readonly kind: "server"; readonly serverId: string; readonly mainOnly?: boolean }
   | { readonly kind: "agent"; readonly agentId: string }
 
 /** A matching message, as the index knows it. */
@@ -59,7 +65,11 @@ const phrase = (word: string) => `"${word.replaceAll('"', '""')}"`
 const scopeSql = (scope: Scope): { sql: string; params: string[] } =>
   scope.kind === "server"
     ? {
-        sql: `((t.kind = 'chat' AND a.server_id = ? AND a.archived_at IS NULL)
+        sql: `((t.kind = 'chat' AND a.server_id = ? AND a.archived_at IS NULL${
+          scope.mainOnly
+            ? " AND (SELECT m.thread_id FROM message m WHERE m.id = t.message_id) IS NULL"
+            : ""
+        })
           OR (t.kind = 'channel' AND c.server_id = ?))`,
         params: [scope.serverId, scope.serverId],
       }
@@ -145,12 +155,21 @@ export class Search extends Context.Service<Search, SearchService>()("robot/main
           : { author: "agent", agent: row?.agent_id ? nameOf("agent", row.agent_id) : "" }
       }
 
+      /** The thread of a hit in a direct chat, when it is not the main thread (spec 003). */
+      const threadOf = (found: Found) =>
+        found.kind === "chat"
+          ? (db.get<{ thread_id: string | null }>(
+              "SELECT thread_id FROM message WHERE id = ?",
+              found.message_id,
+            )?.thread_id ?? null)
+          : null
+
       return Search.of({
-        page: (serverId, query, offset) =>
+        page: (serverId, query, offset, mainOnly = false) =>
           Effect.sync(() => {
             const words = searchWords(query)
             if (!words) return { hits: [], more: false, capped: false, cached: false }
-            const found = find(db, { kind: "server", serverId }, words, SEARCH_CAP + 1)
+            const found = find(db, { kind: "server", serverId, mainOnly }, words, SEARCH_CAP + 1)
             const page = pageOf(found, offset)
             const hits = page.items.map((f): SearchHit => {
               const piece = snippetOf(bodyOf(db, f), words, SEARCH_SNIPPET)
@@ -159,6 +178,7 @@ export class Search extends Context.Service<Search, SearchService>()("robot/main
                 placeId: f.place_id,
                 placeName: nameOf(f.kind === "chat" ? "agent" : "channel", f.place_id),
                 messageId: f.message_id,
+                ...(threadOf(f) ? { threadId: threadOf(f) as string } : {}),
                 createdAt: f.created_at,
                 author: writer(f).author,
                 snippet: piece.text,

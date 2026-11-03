@@ -363,12 +363,44 @@ export interface SentPart {
   readonly at: number
 }
 
+/** The context size of "mock-fast". "fill context" in a message reports 91 percent of it as used. */
+export const CONTEXT_SIZE = 100_000
+/** "use N" at the end of a message reports a use of N tokens in all. */
+const usageOf = (body: ChatBody) => {
+  const line = (body.messages.at(-1)?.content ?? "").split("\n").at(-1) ?? ""
+  const use = /use (\d+)$/.exec(line)?.[1]
+  if (use) return { prompt_tokens: Number(use) - 10, completion_tokens: 10 }
+  return line.includes("fill context")
+    ? { prompt_tokens: 90_000, completion_tokens: 1_000 }
+    : { prompt_tokens: 20, completion_tokens: 10 }
+}
+
+/**
+ * A request for the summary of a compact (spec 003). The answer is "Summary of N messages". When a
+ * message of the chat holds "summary fails", it fails. "long summary" makes it take 2 seconds, so
+ * that a test can see "Compacting…".
+ */
+const summaryReply = async (res: ServerResponse, body: ChatBody) => {
+  const chat = body.messages.filter((m) => m.role !== "system")
+  const text = chat.map((m) => String(m.content)).join("\n")
+  if (text.includes("summary fails"))
+    return json(res, 400, { error: { message: "mock bad request" } })
+  if (text.includes("long summary")) await sleep(2000)
+  res.writeHead(200, { "content-type": "text/event-stream" })
+  const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`)
+  send({ choices: [{ delta: { content: `Summary of ${chat.length - 1} messages` } }] })
+  send({ choices: [], usage: { prompt_tokens: 40, completion_tokens: 8 } })
+  res.end("data: [DONE]\n\n")
+}
+
 const openAiReply = async (
   res: ServerResponse,
   body: ChatBody,
   sent: SentPart[],
   dropped: string[],
 ) => {
+  if (String(body.messages[0]?.content ?? "").startsWith("You write the summary"))
+    return summaryReply(res, body)
   const calls = toolCalls(body)
   if (calls.length > 0) {
     res.writeHead(200, { "content-type": "text/event-stream" })
@@ -443,7 +475,7 @@ const openAiReply = async (
     sent.push({ text: chunk, at: Date.now() })
     if (p.delay) await sleep(p.delay)
   }
-  send({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 10 } })
+  send({ choices: [], usage: usageOf(body) })
   res.end("data: [DONE]\n\n")
 }
 
@@ -505,7 +537,10 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
  * A local model provider for end-to-end tests. It speaks the OpenAI-compatible API under
  * `/v1` and the Anthropic API under `/anthropic/v1`.
  */
-export const startMockProvider = async () => {
+/**
+ * `contextSize` is the size of the context of "mock-fast" (spec 003). It is 100000 when not given.
+ */
+export const startMockProvider = async (options: { contextSize?: number } = {}) => {
   const requests: RecordedRequest[] = []
   const sent: SentPart[] = []
   /** The draft requests that the app closed before the answer came (spec 017). */
@@ -521,7 +556,13 @@ export const startMockProvider = async () => {
     if (key !== GOOD_KEY) return json(res, 401, { error: { message: "invalid api key" } })
 
     if (url.pathname === "/v1/models") {
-      return json(res, 200, { data: [{ id: "mock-fast" }, { id: "o3-mini" }] })
+      // "mock-fast" tells the size of its context, for the context meter (spec 003).
+      return json(res, 200, {
+        data: [
+          { id: "mock-fast", context_length: options.contextSize ?? CONTEXT_SIZE },
+          { id: "o3-mini" },
+        ],
+      })
     }
     if (url.pathname === "/anthropic/v1/models") {
       // As the real list does: a model says which effort levels it takes.

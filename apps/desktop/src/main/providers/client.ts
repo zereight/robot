@@ -150,14 +150,38 @@ export const listModels = async (c: Connection): Promise<ModelInfo[]> => {
   const response = await request(urlFor(c, "models"), { headers: headersFor(c) })
   if (!response.ok) throw await failureFrom(response)
   const body = (await response.json()) as {
-    data?: { id: string; display_name?: string; capabilities?: unknown }[]
+    data?: ({ id: string; display_name?: string; capabilities?: unknown } & ContextFields)[]
   }
   return (body.data ?? [])
-    .map((m) => ({
-      id: m.id,
-      label: m.display_name ?? m.id,
-      efforts:
-        c.kind === "anthropic" ? anthropicEfforts(m.id, m.capabilities) : effortsFor(c.kind, m.id),
-    }))
+    .map((m) => {
+      const contextWindow = contextWindowOf(m)
+      return {
+        id: m.id,
+        label: m.display_name ?? m.id,
+        efforts:
+          c.kind === "anthropic"
+            ? anthropicEfforts(m.id, m.capabilities)
+            : effortsFor(c.kind, m.id),
+        ...(contextWindow !== undefined ? { contextWindow } : {}),
+      }
+    })
     .sort((a, b) => a.id.localeCompare(b.id))
+}
+
+/** The fields in which a model list can tell the size of the context of a model. */
+interface ContextFields {
+  context_length?: unknown
+  context_window?: unknown
+  max_input_tokens?: unknown
+}
+
+/**
+ * The size of the context of a model, from its entry in the model list (spec 003, "Context meter").
+ * Providers name it in different ways. Undefined when the entry does not tell it.
+ */
+export const contextWindowOf = (m: ContextFields): number | undefined => {
+  for (const value of [m.max_input_tokens, m.context_window, m.context_length]) {
+    if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value
+  }
+  return undefined
 }

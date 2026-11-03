@@ -21,6 +21,7 @@ import {
 } from "lucide-solid"
 import { createMemo, createSignal, For, type JSX, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
+import { openThread } from "../chat/threads.ts"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
@@ -109,6 +110,7 @@ export const TodayPage = () => {
   const open = (target: TodayOpen) => {
     switch (target.kind) {
       case "place":
+        if (target.target.kind === "agent") openThread(target.target.id, target.target.threadId)
         ui.selectPlace({ kind: target.target.kind, id: target.target.id }, ui.localServer()?.id)
         setFocusMessage(target.target.messageId)
         return

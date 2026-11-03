@@ -67,15 +67,15 @@ A new word goes here in the same pull request as the spec that brings it.
 | Server | A computer that runs agents, as shown on the rail (000). | 서버 | environment, host |
 | Linked device | A phone or computer paired with a server (012). | 연결된 기기 | remote, client |
 | Direct chat | A conversation of the user and one agent (003). | 일대일 채팅 | DM, session |
-| Thread | A branch of a direct chat (003). | 스레드 (proposed) | session |
-| Compact | To replace the older part of a conversation with a summary, for the model (003). The chat keeps its rows and shows the line "Compacted". | 압축 (proposed) | delete, clear, trim, compact place list (a different setting, 013) |
-| Compacted | The line in a chat that marks where a compact happened. It opens to the summary (003). | 압축됨 (proposed) | summarised, deleted |
-| Context meter | The ring in the chat header that shows how much of the context of the model a conversation uses (003). | 컨텍스트 사용량 (proposed) | token counter |
-| Run next | The action that moves a queued task to the front of the order (005). | 먼저 실행 (proposed) | priority, jump the queue |
-| Main thread | The direct chat itself. It cannot be archived or deleted (003). | 메인 대화 (proposed) | default thread |
-| Message queue | The short list of messages above the message box that wait for the end of a turn (003). | 메시지 대기열 (proposed) | task queue |
-| Slot | One of the tasks that can run at the same time, set by "Agents working at once" (005, 013). | 실행 자리 (proposed) | place, worker |
-| Agents working at once | The setting for the number of slots (013). | 동시에 일하는 에이전트 수 (proposed) | concurrency, workers |
+| Thread | A branch of a direct chat (003). | 스레드 | session |
+| Compact | To replace the older part of a conversation with a summary, for the model (003). The chat keeps its rows and shows the line "Compacted". | 압축 | delete, clear, trim, compact place list (a different setting, 013) |
+| Compacted | The line in a chat that marks where a compact happened. It opens to the summary (003). | 압축됨 | summarised, deleted |
+| Context meter | The ring in the chat header that shows how much of the context of the model a conversation uses (003). | 컨텍스트 사용량 | token counter |
+| Run next | The action that moves a queued task to the front of the order (005). | 먼저 실행 | priority, jump the queue |
+| Main thread | The direct chat itself. It cannot be archived or deleted (003). | 메인 대화 | default thread |
+| Message queue | The short list of messages above the message box that wait for the end of a turn (003). | 메시지 대기열 | task queue |
+| Slot | One of the tasks that can run at the same time, set by "Agents working at once" (005, 013). | 실행 자리 | place, worker |
+| Agents working at once | The setting for the number of slots (013). | 동시에 일하는 에이전트 수 | concurrency, workers |
 | Channel | A conversation of the user and several agents (004). | 채널 | room, group |
 | Lead | The agent that splits a channel job (004). | 리드 | foreman, manager |
 | Part | One piece of a channel job, for one member (004). | 부분 | subtask, ticket |

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
   defaultSettings,
+  isAgentsAtOnce,
   resolveLocale,
   Settings,
   SettingsPatch,
@@ -44,5 +45,17 @@ describe("settings", () => {
     expect(resolveLocale("system", "en-US")).toBe("en")
     expect(resolveLocale("system", "fr")).toBe("en")
     expect(resolveLocale("ko", "en-US")).toBe("ko")
+  })
+
+  test("agents working at once: a whole number from 1 to 8, 4 at first", () => {
+    expect(defaultSettings.agentsAtOnce).toBe(4)
+    for (const agentsAtOnce of [1, 8]) {
+      expect(isAgentsAtOnce(agentsAtOnce)).toBe(true)
+      expect(Schema.is(SettingsPatch)({ agentsAtOnce })).toBe(true)
+    }
+    for (const agentsAtOnce of [0, 9, 2.5]) {
+      expect(isAgentsAtOnce(agentsAtOnce)).toBe(false)
+      expect(Schema.is(SettingsPatch)({ agentsAtOnce })).toBe(false)
+    }
   })
 })

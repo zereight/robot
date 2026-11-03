@@ -147,6 +147,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.sending": "보내는 중… {percent}%",
   "chat.menu": "메시지 메뉴",
   "chat.edited": "수정됨",
+  "chat.note.compact_failed": "압축하지 못했어요: {reason} 압축 없이 이어서 했어요.",
   "chat.note.watch": "{routine}: 바뀐 게 없어요.",
   "chat.note.starter.routine.limit":
     "만들지 못한 루틴: “{name}”. 서버에 루틴을 더 둘 자리가 없어요.",

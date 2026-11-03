@@ -15,6 +15,7 @@ import {
   isFinal,
   isTaskProgress,
   median,
+  queueRank,
   REVIEW_CHANGES_MAX,
   raiseProgress,
   requestOpen,
@@ -312,5 +313,15 @@ describe("Review (spec 004, 005)", () => {
     expect(taskTimes(inReview).total).toBeNull()
     expect(taskTimes({ ...inReview, state: "done", finishedAt: 900 }).total).toBe(900)
     expect(taskTimes({ ...inReview, state: "blocked", finishedAt: 500 }).total).toBe(500)
+  })
+})
+
+describe("queue order (spec 005)", () => {
+  test("a pick of Run next first, then normal sources, then background sources", () => {
+    expect(queueRank("routine", true)).toBe(1)
+    for (const source of ["chat", "channel", "agent"] as const)
+      expect(queueRank(source, false)).toBe(2)
+    expect(queueRank("routine", false)).toBe(3)
+    expect(queueRank("workflow", false)).toBe(3)
   })
 })

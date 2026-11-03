@@ -2,7 +2,10 @@ import { type Agent, type AgentModel, runtimeModel } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
 import { createEffect, createSignal, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
+import { ContextMeter } from "../chat/ContextMeter.tsx"
 import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
+import { ThreadList } from "../chat/ThreadList.tsx"
+import { openThreadOf } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
@@ -84,6 +87,11 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         >
           {modelName()}
         </button>
+      </Show>
+      {/* A linked computer and the phone show the main thread only (spec 003, 011, 012). */}
+      <Show when={!ui.linked()}>
+        <ThreadList agentId={props.agent.id} />
+        <ContextMeter agentId={props.agent.id} threadId={openThreadOf(props.agent.id)} />
       </Show>
       {/* "Teach a task" needs the browser of this computer: a client has no menu (spec 017). */}
       <Show when={!ui.linked()}>
@@ -206,6 +214,7 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
               />
               <ChatView
                 agent={a()}
+                threadId={ui.linked() ? null : openThreadOf(a().id)}
                 start={<Start agent={a()} />}
                 onConnect={() => ui.openSettings("providers")}
                 onChooseModel={() => setPicking(true)}

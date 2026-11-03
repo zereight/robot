@@ -81,6 +81,8 @@ export interface ModelInfo {
   readonly labelKey?: MessageKey
   /** Effort levels the model takes. Empty when it has none. */
   readonly efforts: readonly string[]
+  /** The size of the context of the model in tokens, when the provider tells it (spec 003). */
+  readonly contextWindow?: number
 }
 
 /**

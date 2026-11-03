@@ -93,7 +93,11 @@ export interface ToolContext {
   readonly permission: PermissionLevel
   readonly signal: AbortSignal
   /** Shows a card that waits for the user (`ask`), or hides it again (`null`). */
-  readonly onWaiting: (callId: string, ask: ToolAsk | null) => void
+  /**
+   * A card waits (`ask`), or its wait ended (null). For null, a promise holds the step until the
+   * task can go on: it needs a slot again (spec 005, "Queue").
+   */
+  readonly onWaiting: (callId: string, ask: ToolAsk | null) => void | Promise<void>
   /** Records what the memory tool did, so its line in the chat can offer undo or a link. */
   readonly onMemory: (callId: string, note: MemoryNote) => void
   /** Where the turn runs: the chat that a suggestion for memory names as its origin. */

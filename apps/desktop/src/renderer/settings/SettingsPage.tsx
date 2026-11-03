@@ -1,4 +1,7 @@
 import {
+  AGENTS_AT_ONCE_MAX,
+  AGENTS_AT_ONCE_MIN,
+  isAgentsAtOnce,
   isStepLimit,
   type LicenseEntry,
   type MessageKey,
@@ -59,6 +62,48 @@ const Row = (props: ParentProps<{ label: string; hint?: string | undefined; test
     {props.children}
   </div>
 )
+
+/**
+ * "Agents working at once": a whole number from 1 to 8 (spec 005, 013). A number out of range
+ * shows the reason, and the old value stays.
+ */
+const AgentsAtOnce = () => {
+  const app = useApp()
+  const { t } = app
+  const [draft, setDraft] = createSignal<string>()
+  const shown = () => draft() ?? String(app.settings.agentsAtOnce)
+  const parsed = () => (/^\d+$/.test(shown().trim()) ? Number(shown().trim()) : Number.NaN)
+  const invalid = () => draft() !== undefined && !isAgentsAtOnce(parsed())
+  const commit = () => {
+    const value = parsed()
+    if (isAgentsAtOnce(value) && value !== app.settings.agentsAtOnce)
+      app.update({ agentsAtOnce: value })
+    setDraft(undefined)
+  }
+  return (
+    <Row
+      label={t("settings.agentsAtOnce")}
+      hint={invalid() ? t("settings.agentsAtOnce.invalid") : t("settings.agentsAtOnce.hint")}
+      testId="setting-agents-at-once-row"
+    >
+      <input
+        class={styles.number}
+        type="number"
+        inputMode="numeric"
+        min={AGENTS_AT_ONCE_MIN}
+        max={AGENTS_AT_ONCE_MAX}
+        step={1}
+        value={shown()}
+        aria-label={t("settings.agentsAtOnce")}
+        aria-invalid={invalid()}
+        onInput={(e) => setDraft(e.currentTarget.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        data-testid="setting-agents-at-once"
+      />
+    </Row>
+  )
+}
 
 /** The step limit of a task: a whole number from 20 to 2000 (spec 013). */
 const StepLimit = () => {
@@ -153,6 +198,14 @@ const General = () => {
           ]}
         />
       </Row>
+      <Row label={t("settings.autoCompact")} hint={t("settings.autoCompact.hint")}>
+        <Switch
+          label={t("settings.autoCompact")}
+          testId="setting-auto-compact"
+          checked={app.settings.autoCompact}
+          onChange={(autoCompact) => app.update({ autoCompact })}
+        />
+      </Row>
       <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
         <Segmented
           label={t("settings.silentLimit")}
@@ -169,6 +222,7 @@ const General = () => {
         />
       </Row>
       <StepLimit />
+      <AgentsAtOnce />
     </>
   )
 }

@@ -36,7 +36,8 @@ export const PopupMenu = (props: {
   const left = () => Math.max(8, Math.min(props.left, window.innerWidth - MENU_WIDTH - 8))
 
   onMount(() => {
-    entries()[0]?.focus()
+    // A menu with no item to choose takes the focus itself, so that Escape still closes it.
+    ;(entries()[0] ?? list)?.focus()
     const onPointer = (event: PointerEvent) => {
       if (!list?.contains(event.target as Node)) props.onClose(false)
     }
@@ -75,6 +76,7 @@ export const PopupMenu = (props: {
         role="menu"
         aria-label={props.label}
         data-testid={props.testId}
+        tabIndex={-1}
         style={{ top: `${top()}px`, left: `${left()}px`, width: `${MENU_WIDTH}px` }}
         onKeyDown={onKey}
       >

@@ -147,6 +147,7 @@ export const en = {
   "chat.sending": "Sending… {percent}%",
   "chat.menu": "Message actions",
   "chat.edited": "edited",
+  "chat.note.compact_failed": "The compact failed: {reason} The turn went on without it.",
   "chat.note.watch": "{routine}: no change.",
   "chat.note.starter.routine.limit":
     "Not made: the routine “{name}”. The server has no room for more routines.",

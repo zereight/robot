@@ -1,7 +1,7 @@
 import type { Agent, ChatMessage, MessagePart } from "@robot/shared"
 import { memo, type ReactNode, useState } from "react"
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native"
-import { fileSizeText } from "../i18n/index.ts"
+import { errorText, fileSizeText } from "../i18n/index.ts"
 import { Markdown } from "../markdown/Markdown.tsx"
 import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
@@ -221,7 +221,9 @@ const Part = (props: {
         <Text style={[styles.small, { color: palette.textMuted }]}>
           {part.note === "watch_unchanged"
             ? t("chat.note.watch", { routine: part.routine })
-            : t(`chat.note.starter.${part.what}.${part.why}`, { name: part.name })}
+            : part.note === "compact_failed"
+              ? t("chat.note.compact_failed", { reason: errorText(locale, part.code) })
+              : t(`chat.note.starter.${part.what}.${part.why}`, { name: part.name })}
         </Text>
       )
     case "tool":

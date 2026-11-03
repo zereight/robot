@@ -14,6 +14,7 @@ import { watchReactions } from "./agents/reactions.ts"
 import { ChannelDialog } from "./channels/ChannelDialog.tsx"
 import { ChannelPanel } from "./channels/ChannelPanel.tsx"
 import { ChannelHeader, ChannelView } from "./channels/ChannelView.tsx"
+import { openThread } from "./chat/threads.ts"
 import { DevicesSection } from "./devices/DevicesSection.tsx"
 import { JoinDialog } from "./devices/JoinDialog.tsx"
 import { SyncGuardDialog, SyncRequestDialog } from "./devices/SyncDialogs.tsx"
@@ -49,6 +50,8 @@ export const App = () => {
   // A click on a notification, or on the island, opens the place and shows the message.
   onCleanup(
     window.robot.on("app.openPlace", (target) => {
+      // A reply in a thread opens that thread (spec 003).
+      if (target.kind === "agent" && !target.serverId) openThread(target.id, target.threadId)
       ui.selectPlace({ kind: target.kind, id: target.id }, target.serverId ?? ui.localServer()?.id)
       setFocusMessage(target.messageId)
     }),

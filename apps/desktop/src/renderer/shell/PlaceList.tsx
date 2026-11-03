@@ -34,6 +34,7 @@ import {
   Show,
 } from "solid-js"
 import { formatHitTime } from "../chat/format.ts"
+import { openThread } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
@@ -274,6 +275,8 @@ export const PlaceList = (props: PlaceListProps) => {
     const to = { kind: hit.kind, id: hit.placeId }
     const here = ui.ui.page === "chats" && from?.kind === to.kind && from.id === to.id
     setSearchOrigin(from && !here ? { serverId: ui.server()?.id, from, to } : undefined)
+    // A hit in a thread opens that thread (spec 001, 003).
+    if (hit.kind === "agent") openThread(hit.placeId, hit.threadId)
     ui.selectPlace(to)
     setFocusMessage(hit.messageId)
   }

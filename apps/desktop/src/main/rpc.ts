@@ -115,6 +115,15 @@ const ByRuntime = Schema.Struct({
   signIn: Schema.optionalKey(Schema.NullOr(SignInId)),
 })
 const ByAgent = Schema.Struct({ agentId: Schema.String })
+/** A conversation of an agent: the main thread when `threadId` is missing or null (spec 003). */
+const ByThread = Schema.Struct({
+  agentId: Schema.String,
+  threadId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+})
+const placeOf = (input: { readonly agentId: string; readonly threadId?: string | null }) => ({
+  agentId: input.agentId,
+  threadId: input.threadId ?? null,
+})
 const FileOfMessage = Schema.Struct({
   agentId: Schema.String,
   path: Schema.String.check(Schema.isMaxLength(300)),
@@ -605,6 +614,11 @@ export const handlers: Handlers = {
   "tasks.stop": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Tasks.use((t) => t.stopAny(id))),
+      done,
+    ),
+  "tasks.runNext": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Tasks.use((t) => t.runNext(id))),
       done,
     ),
   "tasks.retry": (input) =>
@@ -1160,21 +1174,26 @@ export const handlers: Handlers = {
       }),
     )(input).pipe(
       Effect.flatMap(({ serverId, query, offset }) =>
-        Search.use((s) => s.page(serverId, query, offset ?? 0)),
+        // A linked device finds the main thread only (spec 003, 001).
+        CurrentActor.pipe(
+          Effect.flatMap((actor) =>
+            Search.use((s) => s.page(serverId, query, offset ?? 0, actor !== null)),
+          ),
+        ),
       ),
     ),
   "chat.history": (input) =>
-    decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) => Chat.use((c) => c.history(agentId))),
+    decode(ByThread)(input).pipe(
+      Effect.flatMap(({ agentId, threadId }) => Chat.use((c) => c.history(agentId, threadId))),
     ),
   "chat.send": (input) =>
     decode(ChatSend)(input).pipe(Effect.flatMap((data) => Chat.use((c) => c.send(data)))),
   "chat.stop": (input) =>
-    decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) =>
+    decode(ByThread)(input).pipe(
+      Effect.flatMap(({ agentId, threadId }) =>
         // A reply that runs on the other computer of a sync pair is stopped there (spec 019).
-        Chat.use((c) => c.stop(agentId)).pipe(
-          Effect.andThen(Tasks.use((t) => t.stopRemoteFor(agentId))),
+        Chat.use((c) => c.stop(agentId, threadId)).pipe(
+          Effect.andThen(threadId ? Effect.void : Tasks.use((t) => t.stopRemoteFor(agentId))),
         ),
       ),
       done,
@@ -1229,11 +1248,65 @@ export const handlers: Handlers = {
       done,
     ),
   "chat.markRead": (input) =>
+    decode(ByThread)(input).pipe(
+      Effect.flatMap(({ agentId, threadId }) => Chat.use((c) => c.markRead(agentId, threadId))),
+      done,
+    ),
+  "chat.meter": (input) =>
+    decode(ByThread)(input).pipe(Effect.flatMap((i) => Chat.use((c) => c.meter(placeOf(i))))),
+  "chat.compact": (input) =>
+    decode(ByThread)(input).pipe(
+      Effect.flatMap((i) => Chat.use((c) => c.compact(placeOf(i)))),
+      done,
+    ),
+  "chat.threads": (input) =>
     decode(ByAgent)(input).pipe(
-      Effect.flatMap(({ agentId }) => Chat.use((c) => c.markRead(agentId))),
+      Effect.flatMap(({ agentId }) => Chat.use((c) => c.threads(agentId))),
+    ),
+  "chat.thread.create": (input) =>
+    decode(ByAgent)(input).pipe(
+      Effect.flatMap(({ agentId }) => Chat.use((c) => c.createThread(agentId))),
+    ),
+  "chat.thread.fork": (input) =>
+    decode(Schema.Struct({ ...ByThread.fields, messageId: Schema.String }))(input).pipe(
+      Effect.flatMap((i) => Chat.use((c) => c.fork(placeOf(i), i.messageId))),
+    ),
+  "chat.thread.rename": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        threadId: Schema.String,
+        title: Schema.String.check(Schema.isMaxLength(1000)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, threadId, title }) =>
+        Chat.use((c) => c.renameThread(agentId, threadId, title)),
+      ),
+      done,
+    ),
+  "chat.thread.archive": (input) =>
+    decode(
+      Schema.Struct({ agentId: Schema.String, threadId: Schema.String, archived: Schema.Boolean }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, threadId, archived }) =>
+        Chat.use((c) => c.archiveThread(agentId, threadId, archived)),
+      ),
+      done,
+    ),
+  "chat.thread.delete": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, threadId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId, threadId }) => Chat.use((c) => c.deleteThread(agentId, threadId))),
       done,
     ),
 }
+
+/** True when the input names a thread other than the main thread. */
+const otherThread = (input: unknown) =>
+  typeof input === "object" &&
+  input !== null &&
+  "threadId" in input &&
+  (input as { threadId?: unknown }).threadId !== null &&
+  (input as { threadId?: unknown }).threadId !== undefined
 
 /** Runs one request and turns every outcome into plain data. */
 export const runRequest = async (
@@ -1249,6 +1322,10 @@ export const runRequest = async (
   }
   if (isHostMethod(method)) {
     return runtime.runPromise(Host.use((h) => Effect.promise(() => h.call(method, input, actor))))
+  }
+  // A linked device has the main thread only in this version (spec 011, 012).
+  if (actor && method.startsWith("chat.") && otherThread(input)) {
+    return { ok: false, error: { code: "not_allowed", message: "Not allowed" } }
   }
   const handler =
     (actor ? linkHandlers[method] : undefined) ??

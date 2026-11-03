@@ -604,7 +604,9 @@ describe("browser for an agent runtime", () => {
       workspace: s.agent.workspace,
       permission,
       signal: controller.signal,
-      onWaiting: (callId, ask) => asks.push({ callId, ask }),
+      onWaiting: (callId, ask) => {
+        asks.push({ callId, ask })
+      },
       onMemory: () => {},
       onKnowledge: () => {},
       knowledgeChanges: { count: 0 },

@@ -20,7 +20,11 @@ export interface ChatState {
  * The messages and queue of one direct chat, kept in step with the main process. `server` is the
  * server that the view shows (see `isForView`).
  */
-export const createChat = (agentId: string, server: () => ViewServer = () => undefined) => {
+export const createChat = (
+  agentId: string,
+  server: () => ViewServer = () => undefined,
+  threadId: () => string | null = () => null,
+) => {
   const [state, setState] = createStore<ChatState>({
     loaded: false,
     messages: [],
@@ -43,15 +47,17 @@ export const createChat = (agentId: string, server: () => ViewServer = () => und
   }
 
   const mine = (id: string, from: ViewServer) => id === agentId && isForView(server(), from)
+  /** True for an event of the thread that the view shows (spec 003, "Threads"). */
+  const ofThread = (id: string | null | undefined) => (id ?? null) === threadId()
   const offMessage = window.robot.on("chat.message", (message, from) => {
-    if (mine(message.agentId, from)) upsert(message)
+    if (mine(message.agentId, from) && ofThread(message.threadId)) upsert(message)
   })
   const offRemoved = window.robot.on("chat.removed", (event, from) => {
     if (mine(event.agentId, from))
       setState("messages", (list) => list.filter((m) => m.id !== event.messageId))
   })
   const offQueue = window.robot.on("chat.queue", (event, from) => {
-    if (!mine(event.agentId, from)) return
+    if (!mine(event.agentId, from) || !ofThread(event.threadId)) return
     setState("queue", reconcile([...event.queue]))
     setState("hold", event.hold ?? null)
   })
@@ -61,27 +67,41 @@ export const createChat = (agentId: string, server: () => ViewServer = () => und
     offQueue()
   })
 
-  const load = () =>
-    call("chat.history", { agentId })
-      .then((history) => {
-        setState({
-          loaded: true,
-          messages: [...history.messages],
-          queue: [...history.queue],
-          hold: history.hold ?? null,
-          cut: history.cut ?? null,
+  let run = 0
+  const load = () => {
+    const ticket = ++run
+    const thread = threadId()
+    return (
+      call("chat.history", thread ? { agentId, threadId: thread } : { agentId })
+        .then((history) => {
+          if (ticket !== run) return
+          setState({
+            loaded: true,
+            messages: [...history.messages],
+            queue: [...history.queue],
+            hold: history.hold ?? null,
+            cut: history.cut ?? null,
+          })
         })
-      })
-      // A linked server that is offline and has nothing saved: the view stays empty. One that
-      // removed this device takes its messages from the view too (spec 012).
-      .catch((error) =>
-        setState(
-          error instanceof RpcFailure && error.error.code === "not_allowed"
-            ? { loaded: true, messages: [], queue: [], hold: null, cut: null }
-            : { loaded: true },
-        ),
-      )
-  void load()
+        // A linked server that is offline and has nothing saved: the view stays empty. One that
+        // removed this device takes its messages from the view too (spec 012).
+        .catch((error) => {
+          if (ticket !== run) return
+          setState(
+            error instanceof RpcFailure && error.error.code === "not_allowed"
+              ? { loaded: true, messages: [], queue: [], hold: null, cut: null }
+              : { loaded: true },
+          )
+        })
+    )
+  }
+  // Another thread opens with its own messages and queue.
+  createEffect(
+    on(threadId, () => {
+      setState({ loaded: false, messages: [], queue: [], hold: null, cut: null })
+      void load()
+    }),
+  )
   // A linked server that came back: read what happened while it was away.
   createEffect(on(linkEpoch.value, () => void load(), { defer: true }))
 

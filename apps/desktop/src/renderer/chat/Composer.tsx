@@ -36,9 +36,12 @@ import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
 import { pendingFill, takeFill } from "./fill.ts"
+import { threadPart } from "./threads.ts"
 
 export interface ComposerProps {
   agent: Agent
+  /** The thread that the box writes to (spec 003, "Threads"). Null is the main thread. */
+  threadId: string | null
   working: boolean
   queue: readonly QueuedMessage[]
   /** Set when the program of the agent takes no input during a turn: "Send now" is off. */
@@ -58,6 +61,7 @@ const holdKey = (hold: QueueHold) => `chat.hold.${hold.runtime}` as MessageKey
 
 const QueueItem = (props: {
   agentId: string
+  threadId: string | null
   item: QueuedMessage
   working: boolean
   hold: QueueHold | null
@@ -70,6 +74,7 @@ const QueueItem = (props: {
     if (text().trim())
       await call("chat.queue.update", {
         agentId: props.agentId,
+        ...threadPart(props.threadId),
         itemId: props.item.id,
         text: text().trim(),
       })
@@ -96,15 +101,24 @@ const QueueItem = (props: {
           {t("chat.queue.files", { count: props.item.files.length })}
         </span>
       </Show>
+      <Show when={props.item.blocked}>
+        {(blocked) => (
+          <span class={styles.queueLabel} data-testid="queued-blocked">
+            {t(`error.${blocked().code}` as MessageKey, { detail: blocked().detail })}
+          </span>
+        )}
+      </Show>
       <Show when={props.working}>
         <Button
           class={styles.sendNow}
           disabled={props.hold !== null}
           title={props.hold ? t(holdKey(props.hold)) : undefined}
           onClick={() =>
-            call("chat.queue.sendNow", { agentId: props.agentId, itemId: props.item.id }).catch(
-              (e: unknown) => props.onError(describeError(e)),
-            )
+            call("chat.queue.sendNow", {
+              agentId: props.agentId,
+              ...threadPart(props.threadId),
+              itemId: props.item.id,
+            }).catch((e: unknown) => props.onError(describeError(e)))
           }
           data-testid="queued-send-now"
         >
@@ -121,7 +135,13 @@ const QueueItem = (props: {
       </IconButton>
       <IconButton
         label={t("chat.queue.remove")}
-        onClick={() => call("chat.queue.remove", { agentId: props.agentId, itemId: props.item.id })}
+        onClick={() =>
+          call("chat.queue.remove", {
+            agentId: props.agentId,
+            ...threadPart(props.threadId),
+            itemId: props.item.id,
+          })
+        }
         data-testid="queued-remove"
       >
         <X size={14} />
@@ -234,6 +254,7 @@ export const Composer = (props: ComposerProps) => {
     try {
       await call("chat.send", {
         agentId: props.agent.id,
+        ...threadPart(props.threadId),
         text: value,
         replyTo: props.replyTo?.id ?? null,
         files: [...files()],
@@ -328,6 +349,7 @@ export const Composer = (props: ComposerProps) => {
             {(item) => (
               <QueueItem
                 agentId={props.agent.id}
+                threadId={props.threadId}
                 item={item}
                 working={props.working}
                 hold={props.hold}
@@ -547,7 +569,9 @@ export const Composer = (props: ComposerProps) => {
               data-stop="true"
               aria-label={t("chat.stop")}
               title={t("chat.stop")}
-              onClick={() => call("chat.stop", { agentId: props.agent.id })}
+              onClick={() =>
+                call("chat.stop", { agentId: props.agent.id, ...threadPart(props.threadId) })
+              }
               data-testid="composer-stop"
             >
               <Square size={14} />
@@ -556,7 +580,11 @@ export const Composer = (props: ComposerProps) => {
         </div>
       </Show>
       <Show when={error()}>
-        {(err) => <div class={styles.composerError}>{t(err().key, err().params)}</div>}
+        {(err) => (
+          <div class={styles.composerError} data-testid="composer-error">
+            {t(err().key, err().params)}
+          </div>
+        )}
       </Show>
     </div>
   )

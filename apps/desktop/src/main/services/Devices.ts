@@ -625,7 +625,15 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
 
         // Events that linked devices see.
         bus.tap((event: RpcEvent, payload: unknown) => {
-          if ((PUSHED_EVENTS as readonly string[]).includes(event)) push(event, payload)
+          if (!(PUSHED_EVENTS as readonly string[]).includes(event)) return
+          // A linked device has the main thread only (spec 011, 012). It never gets the messages
+          // or the message queue of another thread.
+          if (
+            (event === "chat.message" || event === "chat.queue") &&
+            typeof (payload as { threadId?: unknown }).threadId === "string"
+          )
+            return
+          push(event, payload)
         })
 
         const state = (): DevicesState => {

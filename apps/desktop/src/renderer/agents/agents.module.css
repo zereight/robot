@@ -632,3 +632,65 @@
 .recentRow[data-state="blocked"] .recentState {
   color: var(--c-danger);
 }
+
+/* The list of threads in the chat header (spec 003). */
+.threadTitle {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.threadButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.threadButton[data-unread="true"] .threadTitle::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-inline-start: 6px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  vertical-align: middle;
+}
+
+.threadError {
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+}
+
+/* The context meter (spec 003): a small ring. */
+.meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  border-radius: var(--radius-s);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.meter:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.meterTrack {
+  stroke: var(--c-border);
+}
+
+.meterFill {
+  stroke: var(--c-accent);
+  transition: stroke-dashoffset var(--motion-medium) var(--ease-out);
+}
+
+.meter[data-level="high"] .meterFill {
+  stroke: var(--c-danger);
+}

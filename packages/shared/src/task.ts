@@ -1,4 +1,5 @@
 import type { Verdict } from "./check.ts"
+import type { RecentPlace } from "./work.ts"
 
 export const TASK_STATES = [
   "queued",
@@ -15,6 +16,20 @@ export type TaskState = (typeof TASK_STATES)[number]
 /** Where a task came from. "agent" is a message of another agent (spec 007). */
 export const TASK_SOURCES = ["chat", "channel", "routine", "workflow", "agent"] as const
 export type TaskSource = (typeof TASK_SOURCES)[number]
+
+/**
+ * The queue of an agent holds at most this many queued tasks (spec 005, "Queue"). A task that
+ * waits for the user or for a task that it gave out does not count.
+ */
+export const TASKS_QUEUED_MAX = 20
+
+/**
+ * The rank of a task that waits in the queue (spec 005, "Queue"): a lower rank starts first. 0 is a
+ * task that went on after a wait and needs a slot again, 1 a pick of "Run next", 2 a normal source
+ * and 3 a background source.
+ */
+export const queueRank = (source: TaskSource, picked: boolean): 1 | 2 | 3 =>
+  picked ? 1 : source === "routine" || source === "workflow" ? 3 : 2
 
 /** States in which a task can still be stopped. A task in review is not one of them (spec 005). */
 export const ACTIVE_STATES: readonly TaskState[] = ["queued", "running", "waiting"]
@@ -187,6 +202,11 @@ export interface Task {
   readonly retryOf: string | null
   /** The message that started the task, or holds its reply. */
   readonly messageId: string | null
+  /**
+   * The thread of a chat task that is not the main thread (spec 003). A linked device cannot open
+   * it in this version (011, 012).
+   */
+  readonly threadId?: string
   readonly state: TaskState
   readonly error: { readonly code: string; readonly detail: string } | null
   readonly createdAt: number
@@ -203,6 +223,11 @@ export interface Task {
   readonly originName: string | null
   /** The name of the other computer whose task of this agent runs now, while this one waits. */
   readonly waitsFor: string | null
+  /**
+   * For a queued task of this computer: what it waits behind (spec 005, "Tasks page"), the work of
+   * its agent or a free slot. Absent or null when nothing is known.
+   */
+  readonly behind?: RecentPlace | null
   /** How far the turn went. Null for a task from before the app kept it (spec 005). */
   readonly progress: TaskProgress | null
   /**

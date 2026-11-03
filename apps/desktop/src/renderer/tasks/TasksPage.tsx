@@ -1,4 +1,5 @@
 import {
+  behindWords,
   catalogues,
   filterTasks,
   isActive,
@@ -24,6 +25,7 @@ import {
   Show,
 } from "solid-js"
 import { formatElapsed, formatHitTime, formatTime } from "../chat/format.ts"
+import { openThread } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
@@ -39,6 +41,7 @@ import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { showToast } from "../ui/toast.ts"
 import styles from "./tasks.module.css"
 
 // A reason with no text of its own shows the general error text.
@@ -60,6 +63,30 @@ const StateIcon = (props: { state: Task["state"] }) => (
     </Show>
   </>
 )
+
+/**
+ * "Run next" is on for a queued task of this computer that has not started (spec 005, "Queue"). A
+ * linked computer and the phone do not have it (011, 012).
+ */
+const canRunNext = (task: Task, linked: boolean) =>
+  !linked && task.state === "queued" && task.originName === null
+
+/** What a queued task waits behind, in words (spec 005, "Tasks page"). */
+const BehindLine = (props: { task: Task; testid: string; class: string | undefined }) => {
+  const { t } = useApp()
+  return (
+    <Show when={props.task.state === "queued" && props.task.behind}>
+      {(behind) => {
+        const words = () => behindWords(behind())
+        return (
+          <div class={props.class} data-testid={props.testid}>
+            {t(words().key, words().params)}
+          </div>
+        )
+      }}
+    </Show>
+  )
+}
 
 /** A request has parts that may still be open, so "End the request" is offered (spec 004, 005). */
 const OPEN_REQUEST = new Set<Task["state"]>([
@@ -172,6 +199,9 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   }
   const openSource = (task: Task) => {
     if (!task.sourceId || (task.source !== "chat" && task.source !== "channel")) return
+    // A linked device has the main thread only (spec 003, 012): the button is off for a thread.
+    if (ui.linked() && task.threadId) return
+    if (task.source === "chat") openThread(task.sourceId, task.threadId)
     ui.selectPlace({ kind: task.source === "chat" ? "agent" : "channel", id: task.sourceId })
     props.onClose()
   }
@@ -202,6 +232,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 })}
               </p>
             </Show>
+            <BehindLine task={d().task} testid="task-detail-behind" class={styles.meta} />
             <Show when={d().task.waitsFor}>
               {(name) => (
                 <p class={styles.meta} data-testid="task-detail-waits">
@@ -309,6 +340,14 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   {t("tasks.stop")}
                 </Button>
               </Show>
+              <Show when={canRunNext(d().task, ui.linked())}>
+                <Button
+                  onClick={() => act(() => call("tasks.runNext", { id: d().task.id }))}
+                  data-testid="task-run-next"
+                >
+                  {t("tasks.runNext")}
+                </Button>
+              </Show>
               <Show when={d().task.state === "review"}>
                 <Show
                   when={!ui.linked() && d().task.originName === null}
@@ -383,9 +422,23 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 </Button>
               </Show>
               <Show when={d().task.sourceId && ["chat", "channel"].includes(d().task.source)}>
-                <Button onClick={() => openSource(d().task)} data-testid="task-open-source">
+                <Button
+                  onClick={() => openSource(d().task)}
+                  disabled={ui.linked() && d().task.threadId !== undefined}
+                  title={
+                    ui.linked() && d().task.threadId !== undefined
+                      ? t("tasks.openSource.thread")
+                      : undefined
+                  }
+                  data-testid="task-open-source"
+                >
                   {t("tasks.openSource")}
                 </Button>
+                <Show when={ui.linked() && d().task.threadId !== undefined}>
+                  <span class={styles.meta} data-testid="task-open-source-off">
+                    {t("tasks.openSource.thread")}
+                  </span>
+                </Show>
               </Show>
               <span class={styles.spacer} />
               <Button variant="primary" onClick={props.onClose}>
@@ -588,6 +641,22 @@ export const TasksPage = () => {
                             {t("tasks.waitsFor", { name: name() })}
                           </div>
                         )}
+                      </Show>
+                      <BehindLine task={task} testid="task-behind" class={styles.muted} />
+                      <Show when={canRunNext(task, ui.linked())}>
+                        <button
+                          type="button"
+                          class={styles.rowButton}
+                          onClick={() =>
+                            void call("tasks.runNext", { id: task.id }).catch((e: unknown) => {
+                              const error = describeError(e)
+                              showToast("error", error.key, error.params)
+                            })
+                          }
+                          data-testid="task-run-next"
+                        >
+                          {t("tasks.runNext")}
+                        </button>
                       </Show>
                     </td>
                     <td class={styles.num}>{duration(task)}</td>

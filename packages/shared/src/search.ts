@@ -35,6 +35,8 @@ export interface SearchHit {
   readonly placeId: string
   readonly placeName: string
   readonly messageId: string
+  /** The thread of a hit in a direct chat, when it is not the main thread. The hit opens it (spec 001, 003). */
+  readonly threadId?: string
   readonly createdAt: number
   readonly author: "user" | "agent"
   /** Plain text: a piece of the message, at most `SEARCH_SNIPPET` characters. */

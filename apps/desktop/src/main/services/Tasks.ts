@@ -13,6 +13,7 @@ import {
   lastChange,
   messageText,
   type OutsideSource,
+  queueRank,
   RECENT_WORK_MAX,
   type RecentPlace,
   type RecentWorkRow,
@@ -23,6 +24,7 @@ import {
   retryNote,
   retryNoteForModel,
   type SensitiveLabel,
+  TASKS_QUEUED_MAX,
   type Task,
   type TaskDetail,
   type TaskProgress,
@@ -37,16 +39,17 @@ import { Cause, Context, Deferred, Effect, Exit, Layer } from "effect"
 import { resumeOf } from "../providers/resume.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { Activity } from "./Activity.ts"
-import { AgentGate, rankOf } from "./agentGate.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Notifier } from "./Notifier.ts"
+import { SettingsStore } from "./Settings.ts"
 
 interface TaskRow {
   id: string
   agent_id: string
   agent_name: string
+  thread_id: string | null
   prompt: string
   label: string
   source: TaskSource
@@ -98,6 +101,11 @@ export interface TaskInput {
   readonly depth?: number
   /** What a finished part must hold: one line, up to 200 characters (spec 004). */
   readonly doneTest?: string | null
+  /**
+   * The task is made as Failed with this error and never runs: a part of a channel job over the
+   * limit of queued tasks (spec 005, "Queue").
+   */
+  readonly failed?: { readonly code: string; readonly detail: string }
 }
 
 /** One step of a task for the action log (spec 007). */
@@ -148,9 +156,9 @@ export interface TasksService {
   /** Makes a queued task. */
   create(input: TaskInput): Effect.Effect<Task>
   /**
-   * Runs `work` for a task. An agent runs one task at a time: others wait, in the order of spec
-   * 005 ("Queue"): tasks of the user and of other agents first, then routines and workflows. The task
-   * is running while `work` runs, then done, failed or cancelled by how `work` ends.
+   * Runs `work` for a task. An agent runs one task at a time, and at most "Agents working at once"
+   * tasks run (spec 005, "Queue"). Others wait, in the order of the queue. The task is running
+   * while `work` runs, then done, failed or cancelled by how `work` ends.
    */
   run<A, E, R>(
     taskId: string,
@@ -171,8 +179,32 @@ export interface TasksService {
    * 005). The chat starts their turns again. `run` with `resumed` keeps the place of the agent.
    */
   waitingAfterRestart(): readonly Task[]
-  /** Marks a running task as waiting for the user, or running again. */
-  setWaiting(taskId: string, waiting: boolean): void
+  /**
+   * Marks a running task as waiting for the user, or running again. A task that waits uses no
+   * slot (spec 005, "Queue"). When it goes on, it needs a slot again: the promise resolves when it
+   * has one, or at once when the task ends.
+   */
+  setWaiting(taskId: string, waiting: boolean): Promise<void>
+  /**
+   * Runs `work` while a task waits for the tasks that it gave out (spec 005, "Queue"). The task
+   * uses no slot, and its agent stays held. After `work`, the task takes a slot again, at the
+   * front of the order.
+   */
+  withoutSlot<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
+  /**
+   * "Run next" (spec 005): the queued task goes to the front of the order, before the tasks of
+   * earlier picks. Only for a queued task of this computer.
+   */
+  runNext(taskId: string): Effect.Effect<void, AppError>
+  /**
+   * The reason why the queue of the agent takes no new task: it holds 20 queued tasks (spec 005,
+   * "Queue"). Null when it has space.
+   */
+  queueFull(agentId: string): AppError | null
+  /** What a queued task of this computer waits behind (spec 005). Null for any other task. */
+  behindOf(taskId: string): RecentPlace | null
+  /** Calls `listener` with the agent when a queued task of that agent starts or ends. */
+  onQueueSpace(listener: (agentId: string) => void): void
   /**
    * Records how far the turn of a task went (spec 005). The progress only goes up: a lower value,
    * or the same one, changes nothing.
@@ -231,6 +263,11 @@ export interface TasksService {
   retryNoteForModel(task: Pick<Task, "retryOf">): string
   /** The depth of a task in a chain of messages between agents. 0 for an unknown task. */
   depthOf(taskId: string): number
+  /**
+   * Runs work that holds the agent as a task does, with no task: a manual compact (spec 003). No
+   * task of the agent starts until it ends.
+   */
+  holdAgent<A, E, R>(agentId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
   /** Adds a step of a task to the action log (spec 007). */
   recordStep(step: StepRecord): void
   /** The logged steps of a task, oldest first. */
@@ -255,7 +292,9 @@ export interface TasksService {
 const LIST_MAX = 500
 const RESULT_MAX = 4000
 
-const SELECT = `SELECT t.*, a.name AS agent_name FROM task t JOIN agent a ON a.id = t.agent_id`
+const SELECT = `SELECT t.*, a.name AS agent_name,
+  (SELECT m.thread_id FROM message m WHERE m.id = t.message_id) AS thread_id
+  FROM task t JOIN agent a ON a.id = t.agent_id`
 
 const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   id: row.id,
@@ -268,6 +307,7 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   parentId: row.parent_id,
   retryOf: row.retry_of,
   messageId: row.message_id,
+  ...(row.thread_id ? { threadId: row.thread_id } : {}),
   state: row.state,
   error: row.error_code ? { code: row.error_code, detail: row.error_detail ?? "" } : null,
   createdAt: row.created_at,
@@ -293,6 +333,24 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
 /** How often a task that waits for the other computer looks again. */
 const REMOTE_POLL_MS = 300
 
+/**
+ * One piece of work that waits for its agent and, for a task, for a slot (spec 005, "Queue").
+ * `id` is the id of the task, or of a hold of `holdAgent`.
+ */
+interface Waiter {
+  readonly id: string
+  readonly agentId: string
+  readonly source: TaskSource | null
+  /** A task that holds its agent already and needs a slot again: it goes first. */
+  readonly back: boolean
+  /** False for a hold of `holdAgent`: it needs the agent only. */
+  readonly slot: boolean
+  readonly order: number
+  readonly grant: () => void
+  /** Called when the waiter leaves without a grant, because its task ended. */
+  readonly drop?: () => void
+}
+
 export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Tasks") {
   static readonly layer = Layer.effect(
     Tasks,
@@ -302,13 +360,154 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const actionLog = yield* ActionLog
       const notifier = yield* Notifier
       const activity = yield* Activity
-      const slots = new Map<string, AgentGate>()
+      const settings = yield* SettingsStore
       const stops = new Map<string, Deferred.Deferred<void>>()
       const live = new Set<string>()
       const retryHandlers = new Map<TaskSource, RetryHandler>()
       const changesHandlers = new Map<TaskSource, ChangesHandler>()
       const endListeners: ((task: Task) => void)[] = []
+      const spaceListeners: ((agentId: string) => void)[] = []
       let remote: RemoteTasks | undefined
+
+      // --- The queue (spec 005, "Queue") ---------------------------------------------------------
+      // Each agent runs one task at a time, and at most `limit` tasks run at the same time. A task
+      // that waits for the user or for its children holds its agent but uses no slot.
+      let limit = (yield* settings.get).agentsAtOnce
+      const waiters: Waiter[] = []
+      /** The task or hold that has each agent now. */
+      const holders = new Map<string, string>()
+      /** The tasks that use a slot now. */
+      const slotted = new Set<string>()
+      /** The picks of "Run next", by task: a later pick has a higher number. */
+      const picks = new Map<string, number>()
+      /** The order in which the tasks were made, for "the oldest first". */
+      const made = new Map<string, number>()
+      /** Tasks that were told to stop: they never take a slot again. */
+      const stopping = new Set<string>()
+      /** The agents of tasks that wait for a slot only, to tell the window when that changes. */
+      let slotBound = new Set<string>()
+      let counter = 0
+      let remoteTimer: ReturnType<typeof setTimeout> | undefined
+
+      const rankOf = (w: Waiter) =>
+        w.back || !w.slot ? 0 : queueRank(w.source ?? "chat", picks.has(w.id))
+      const compare = (a: Waiter, b: Waiter) => {
+        const rank = rankOf(a) - rankOf(b)
+        if (rank !== 0) return rank
+        // The latest pick of "Run next" goes first; else the oldest first.
+        if (rankOf(a) === 1) return (picks.get(b.id) ?? 0) - (picks.get(a.id) ?? 0)
+        return (made.get(a.id) ?? a.order) - (made.get(b.id) ?? b.order)
+      }
+
+      /** Starts every waiter that can start now, in the order of the queue. */
+      const pump = () => {
+        let remoteWait = false
+        const bound = new Set<string>()
+        for (const w of [...waiters].sort(compare)) {
+          const holder = holders.get(w.agentId)
+          if (holder !== undefined && holder !== w.id) continue
+          // One task per agent across both computers (spec 019): while the other computer runs a
+          // task of this agent, this one stays queued.
+          if (!w.back && w.slot && remote?.busyOn(w.agentId)) {
+            remoteWait = true
+            continue
+          }
+          if (w.slot && slotted.size >= limit) {
+            bound.add(w.agentId)
+            continue
+          }
+          waiters.splice(waiters.indexOf(w), 1)
+          holders.set(w.agentId, w.id)
+          if (w.slot) slotted.add(w.id)
+          w.grant()
+        }
+        if (remoteWait && remoteTimer === undefined)
+          remoteTimer = setTimeout(() => {
+            remoteTimer = undefined
+            pump()
+          }, REMOTE_POLL_MS)
+        // The line "Waits for a free slot" comes and goes with the slots.
+        for (const agentId of new Set([...bound, ...slotBound]))
+          if (bound.has(agentId) !== slotBound.has(agentId)) changed(agentId)
+        slotBound = bound
+      }
+
+      /** Waits in the queue until the waiter starts. Leaves the queue when interrupted. */
+      const enter = (w: Omit<Waiter, "grant" | "order">): Effect.Effect<void> =>
+        Effect.callback<void>((resume) => {
+          const waiter: Waiter = { ...w, order: ++counter, grant: () => resume(Effect.void) }
+          waiters.push(waiter)
+          pump()
+          return Effect.sync(() => {
+            const at = waiters.indexOf(waiter)
+            if (at >= 0) waiters.splice(at, 1)
+            pump()
+          })
+        })
+
+      /** Frees the slot of a task. Its agent stays held. */
+      const freeSlot = (id: string) => {
+        if (slotted.delete(id)) pump()
+      }
+
+      /** Frees the slot and the agent of a task or a hold, and drops what it still waits for. */
+      const leave = (id: string, agentId: string) => {
+        slotted.delete(id)
+        if (holders.get(agentId) === id) holders.delete(agentId)
+        picks.delete(id)
+        made.delete(id)
+        stopping.delete(id)
+        for (const w of waiters.filter((x) => x.id === id)) {
+          waiters.splice(waiters.indexOf(w), 1)
+          w.drop?.()
+        }
+        pump()
+      }
+
+      /**
+       * A task that holds its agent and no slot needs a slot again (spec 005): it waits as queued
+       * at the front of the order. Resolves when it has one, or when the task ends.
+       */
+      const backToSlot = (id: string, agentId: string): Promise<void> =>
+        new Promise<void>((resolve) => {
+          if (slotted.has(id) || holders.get(agentId) !== id || stopping.has(id)) return resolve()
+          waiters.push({
+            id,
+            agentId,
+            source: null,
+            back: true,
+            slot: true,
+            order: ++counter,
+            grant: () => {
+              setRunState(id, "running")
+              resolve()
+            },
+            drop: resolve,
+          })
+          pump()
+          if (!slotted.has(id)) setRunState(id, "queued")
+        })
+
+      /** Sets the state of a task that has started and not ended. */
+      const setRunState = (id: string, state: "running" | "queued" | "waiting") => {
+        const current = row(id)
+        if (
+          current &&
+          current.state !== state &&
+          (current.state === "running" || current.state === "waiting" || current.state === "queued")
+        )
+          setState(id, current.agent_id, state)
+      }
+
+      // A new number applies at once to the tasks that wait (spec 005, 013).
+      bus.tap((event, payload) => {
+        if (event !== "settings.changed") return
+        const next = (payload as { agentsAtOnce?: number }).agentsAtOnce
+        if (typeof next === "number" && next !== limit) {
+          limit = next
+          pump()
+        }
+      })
 
       // A task that waits for an approval or a question can wait through a restart when it has no
       // parent task, is no part of a workflow run, and has no vendor runtime (spec 005). Its card
@@ -343,14 +542,6 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       )
 
       const row = (id: string) => db.get<TaskRow>(`${SELECT} WHERE t.id = ?`, id)
-      const slot = (agentId: string) => {
-        let s = slots.get(agentId)
-        if (!s) {
-          s = new AgentGate()
-          slots.set(agentId, s)
-        }
-        return s
-      }
       const changed = (agentId: string) => {
         const server = db.get<{ server_id: string }>(
           "SELECT server_id FROM agent WHERE id = ?",
@@ -419,6 +610,15 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             id,
           )
         changed(agentId)
+        // A queued task that starts or ends makes space in the queue of its agent.
+        if (state !== "queued")
+          for (const listener of spaceListeners) {
+            try {
+              listener(agentId)
+            } catch (e) {
+              console.error("queue space listener failed", e)
+            }
+          }
         if (isFinal(state)) {
           const ended = endListeners.length > 0 ? row(id) : undefined
           // A listener never stops the end of a task.
@@ -483,10 +683,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           const id = randomUUID()
           const now = Date.now()
           const depth = input.depth ?? depthOf(input.parentId ?? input.retryOf)
+          const failed = input.failed
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
-               message_id, state, created_at, asked_at, depth, progress, done_test)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, 'not_sent', ?)`,
+               message_id, state, created_at, asked_at, depth, progress, done_test, error_code,
+               error_detail, finished_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?)`,
             id,
             input.agentId,
             input.prompt,
@@ -496,12 +698,19 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             input.parentId ?? null,
             input.retryOf ?? null,
             input.messageId ?? null,
+            failed ? "failed" : "queued",
             now,
             input.askedAt == null ? null : Math.min(input.askedAt, now),
             depth,
             input.doneTest ?? null,
+            failed?.code ?? null,
+            failed?.detail ?? null,
+            failed ? now : null,
           )
-          stops.set(id, Deferred.makeUnsafe<void>())
+          if (!failed) {
+            stops.set(id, Deferred.makeUnsafe<void>())
+            made.set(id, ++counter)
+          }
           changed(input.agentId)
           if (input.source === "channel" && input.sourceId)
             bus.emit("channels.changed", { channelId: input.sourceId })
@@ -524,42 +733,34 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           "SELECT server_id FROM agent WHERE id = ?",
           agentId,
         )?.server_id
-        const source = db.get<{ source: TaskSource }>(
-          "SELECT source FROM task WHERE id = ?",
-          taskId,
-        )
-        // Tasks of the user and of other agents start before those of routines and workflows (spec
-        // 005, "Queue").
-        const rank = source ? rankOf(source.source) : 0
-        const guarded = slot(agentId).run(
-          rank,
-          Effect.gen(function* () {
-            // One task per agent across both computers (spec 019): while the other computer runs
-            // a task of this agent, this one stays queued.
-            let told = false
-            while (!options?.resumed && remote?.busyOn(agentId)) {
-              if (!told) changed(agentId)
-              told = true
-              yield* Effect.sleep(REMOTE_POLL_MS)
-            }
-            // A task that waited through a restart goes on waiting until its card is answered.
-            if (!options?.resumed) setState(taskId, agentId, "running")
-            if (serverId) activity.setWorking(agentId, serverId, true)
-            return yield* work.pipe(
-              Effect.ensuring(
-                Effect.sync(() => {
-                  if (serverId) activity.setWorking(agentId, serverId, false)
-                }),
-              ),
-            )
-          }),
-        )
+        const source = row(taskId)?.source ?? "chat"
+        const guarded = Effect.gen(function* () {
+          // A task that waited through a restart goes on waiting until its card is answered. It
+          // holds its agent and uses no slot until then (spec 005).
+          yield* enter({
+            id: taskId,
+            agentId,
+            source,
+            back: false,
+            slot: !options?.resumed,
+          })
+          if (!options?.resumed) setState(taskId, agentId, "running")
+          if (serverId) activity.setWorking(agentId, serverId, true)
+          return yield* work.pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                if (serverId) activity.setWorking(agentId, serverId, false)
+              }),
+            ),
+          )
+        })
         const stopped = Deferred.await(stopSignal).pipe(Effect.flatMap(() => Effect.interrupt))
         return Effect.raceFirst(guarded, stopped).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
               live.delete(taskId)
               stops.delete(taskId)
+              leave(taskId, agentId)
               if (Exit.isSuccess(exit)) {
                 let end: TurnEnd = { state: "done" }
                 // A reading that fails never stops the end of a task.
@@ -594,8 +795,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           // A task that has no run (for example one made but not started) ends at once.
           if (isActive(current.state)) {
             const signal = stops.get(taskId)
-            if (live.has(taskId) && signal) yield* Deferred.succeed(signal, undefined)
-            else setState(taskId, current.agent_id, "cancelled")
+            if (live.has(taskId) && signal) {
+              // Stop frees the slot at once (spec 005). The agent stays held until the turn ends.
+              stopping.add(taskId)
+              freeSlot(taskId)
+              yield* Deferred.succeed(signal, undefined)
+            } else setState(taskId, current.agent_id, "cancelled")
           }
           for (const child of childRows(taskId)) yield* stop(child.id)
         })
@@ -730,8 +935,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             const found = row(id)
             if (!found || found.origin !== null || isFinal(found.state)) continue
             const signal = stops.get(id)
-            if (live.has(id) && signal) yield* Deferred.succeed(signal, undefined)
-            else setState(id, found.agent_id, "cancelled")
+            if (live.has(id) && signal) {
+              stopping.add(id)
+              freeSlot(id)
+              yield* Deferred.succeed(signal, undefined)
+            } else setState(id, found.agent_id, "cancelled")
           }
         })
 
@@ -783,20 +991,43 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               }))
           : []
 
-      /** The place of the work that an agent runs now, as the name that a row shows. */
-      const placeOf = (agentId: string, exceptId: string): RecentPlace | null => {
-        const running = db.get<{ source: TaskSource; source_id: string | null }>(
-          `SELECT source, source_id FROM task
-           WHERE agent_id = ? AND id != ? AND state IN ('running', 'waiting') AND origin IS NULL
-           ORDER BY started_at DESC, rowid DESC LIMIT 1`,
+      /**
+       * What a queued task waits behind, as the name that a row shows: the work that its agent
+       * runs now and its place, or a free slot (spec 005, "Tasks page").
+       */
+      const placeOf = (queued: TaskRow): RecentPlace | null => {
+        const agentId = queued.agent_id
+        const running = db.get<{
+          source: TaskSource
+          source_id: string | null
+          thread_id: string | null
+        }>(
+          `SELECT t.source, t.source_id,
+             (SELECT m.thread_id FROM message m WHERE m.id = t.message_id) AS thread_id
+           FROM task t
+           WHERE t.agent_id = ? AND t.id != ? AND t.state IN ('running', 'waiting')
+             AND t.origin IS NULL
+           ORDER BY t.started_at DESC, t.rowid DESC LIMIT 1`,
           agentId,
-          exceptId,
+          queued.id,
         )
         if (!running) {
           // Both computers are online and the other one runs a task of this agent (spec 019).
           const other = remote?.busyOn(agentId)
-          return other ? { kind: "computer", name: other } : null
+          if (other) return { kind: "computer", name: other }
+          // The agent is free, and all slots are in use.
+          const waits = waiters.some((w) => w.id === queued.id)
+          return waits && !holders.has(agentId) && slotted.size >= limit
+            ? { kind: "slot", count: limit }
+            : null
         }
+        // The agent works in another thread of its chat (spec 003).
+        if (
+          running.source === "chat" &&
+          queued.source === "chat" &&
+          running.thread_id !== queued.thread_id
+        )
+          return { kind: "thread" }
         const name = (sql: string) =>
           running.source_id ? db.get<{ name: string }>(sql, running.source_id)?.name : undefined
         switch (running.source) {
@@ -821,6 +1052,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         }
       }
 
+      /** A task with what it waits behind, when it is queued on this computer. */
+      const withBehind = (r: TaskRow): Task => {
+        const task = toTask(r, remote)
+        return r.state === "queued" && r.origin === null ? { ...task, behind: placeOf(r) } : task
+      }
+
       const recent = (agentId: string): readonly RecentWorkRow[] => {
         const waiting = notifier.waitingRequests()
         return db
@@ -836,7 +1073,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             return {
               task,
               wait: task.state === "waiting" ? (request?.kind ?? "user") : null,
-              behind: task.state === "queued" && r.origin === null ? placeOf(agentId, r.id) : null,
+              behind: task.state === "queued" && r.origin === null ? placeOf(r) : null,
               changedAt: lastChange(task),
             }
           })
@@ -853,9 +1090,71 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           }),
         setWaiting: (taskId, waiting) => {
           const current = row(taskId)
-          if (current && (current.state === "running" || current.state === "waiting"))
-            setState(taskId, current.agent_id, waiting ? "waiting" : "running")
+          if (!current) return Promise.resolve()
+          if (waiting) {
+            // A task that waits for the user uses no slot (spec 005). Its agent stays held.
+            if (current.state === "running" || current.state === "waiting")
+              setState(taskId, current.agent_id, "waiting")
+            freeSlot(taskId)
+            return Promise.resolve()
+          }
+          if (live.has(taskId) && !slotted.has(taskId) && !stopping.has(taskId))
+            return backToSlot(taskId, current.agent_id)
+          if (current.state === "waiting") setState(taskId, current.agent_id, "running")
+          return Promise.resolve()
         },
+        withoutSlot: (taskId, work) =>
+          Effect.suspend(() => {
+            const agentId = row(taskId)?.agent_id
+            if (!agentId || !slotted.has(taskId)) return work
+            freeSlot(taskId)
+            // A stop ends the wait: the task never takes a slot again.
+            return work.pipe(
+              Effect.onExit((exit) =>
+                Exit.isSuccess(exit)
+                  ? Effect.promise(() => backToSlot(taskId, agentId))
+                  : Effect.void,
+              ),
+            )
+          }),
+        runNext: (taskId) =>
+          Effect.suspend(() => {
+            const current = row(taskId)
+            if (!current) return Effect.fail(new AppError({ code: "task_not_found" }))
+            // A pick does not sync: only the computer that made the task has it (spec 005, 019).
+            if (current.origin !== null)
+              return Effect.fail(
+                new AppError({
+                  code: "task_elsewhere",
+                  detail: remote?.nameOf(current.origin) ?? "",
+                }),
+              )
+            if (current.state !== "queued" || current.started_at !== null)
+              return Effect.fail(new AppError({ code: "task_not_queued" }))
+            picks.set(taskId, ++counter)
+            changed(current.agent_id)
+            pump()
+            return Effect.void
+          }),
+        behindOf: (taskId) => {
+          const r = row(taskId)
+          return r && r.state === "queued" && r.origin === null ? placeOf(r) : null
+        },
+        queueFull: (agentId) => {
+          const count =
+            db.get<{ n: number }>(
+              `SELECT COUNT(*) AS n FROM task
+               WHERE agent_id = ? AND state = 'queued' AND origin IS NULL AND started_at IS NULL`,
+              agentId,
+            )?.n ?? 0
+          if (count < TASKS_QUEUED_MAX) return null
+          const name = db.get<{ name: string }>(
+            "SELECT name FROM agent WHERE id = ?",
+            agentId,
+          )?.name
+          return new AppError({ code: "tasks_full", detail: name ?? "" })
+        },
+        onQueueSpace: (listener) => void spaceListeners.push(listener),
         setProgress: (taskId, progress) => {
           const current = row(taskId)
           // Only the computer that owns a task records its progress (spec 019).
@@ -931,6 +1230,14 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         endRequest,
         noteFor,
         depthOf,
+        holdAgent: (agentId, work) =>
+          Effect.suspend(() => {
+            const id = `hold:${randomUUID()}`
+            return enter({ id, agentId, source: null, back: false, slot: false }).pipe(
+              Effect.andThen(work),
+              Effect.ensuring(Effect.sync(() => leave(id, agentId))),
+            )
+          }),
         recordStep,
         steps,
         onRetry: (source, handler) => void retryHandlers.set(source, handler),
@@ -943,13 +1250,13 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
                 `${SELECT} WHERE a.server_id = ? ORDER BY t.created_at DESC, t.rowid DESC LIMIT ${LIST_MAX}`,
                 serverId,
               )
-              .map((r) => toTask(r, remote)),
+              .map(withBehind),
           ),
         get: (taskId) =>
           Effect.suspend(() => {
             const current = row(taskId)
             if (!current) return Effect.fail(new AppError({ code: "task_not_found" }))
-            const task = toTask(current, remote)
+            const task = withBehind(current)
             const children: Task[] = []
             const visit = (parentId: string) => {
               for (const child of childRows(parentId)) {
