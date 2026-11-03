@@ -301,7 +301,12 @@ const setIslandShape = (shape: IslandShape) => {
       },
     })
     island.setAlwaysOnTop(true, "screen-saver")
-    island.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    // By default this call turns the app into a background program on macOS. The app then loses
+    // its Dock icon and its place in the app switcher, and the user cannot quit it from the Dock.
+    island.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
+      skipTransformProcessType: true,
+    })
     const devUrl = process.env.ELECTRON_RENDERER_URL
     if (devUrl) void island.loadURL(`${devUrl}/island.html`)
     else void island.loadFile(joinPath(import.meta.dirname, "../renderer/island.html"))
