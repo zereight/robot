@@ -21,7 +21,12 @@ import { Presence } from "../ui/Presence.tsx"
 import { AgentActivity } from "./AgentActivity.tsx"
 import { AgentProfileDialog } from "./AgentDialogs.tsx"
 import styles from "./agents.module.css"
-import { BrowserPane } from "./BrowserPane.tsx"
+import {
+  BrowserCard,
+  BrowserHeaderButton,
+  BrowserLarge,
+  createBrowserView,
+} from "./BrowserPane.tsx"
 import { Face } from "./Face.tsx"
 import {
   closeTeachForm,
@@ -185,6 +190,8 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
   const ui = useUi()
   const [picking, setPicking] = createSignal(false)
   const teach = useTeach()
+  /** The browser of this agent: small in the activity panel, large over the conversation. */
+  const browser = createBrowserView(current.id, ui.linked)
   /** The draft skill card of this agent, while "Teach a task" has one (spec 017). */
   const draft = (agentId: string) => {
     const now = teach()
@@ -198,16 +205,23 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
         {(a) => <Header agent={a()} picking={picking()} setPicking={setPicking} />}
       </Show>
     ),
-    panel: <Show when={agent()}>{(a) => <AgentActivity agent={a()} />}</Show>,
+    headerActions: <BrowserHeaderButton view={browser} panelVisible={ui.activityPanelVisible} />,
+    panel: (
+      <Show when={agent()}>
+        {(a) => (
+          <>
+            <BrowserCard agentId={a().id} view={browser} />
+            <AgentActivity agent={a()} />
+          </>
+        )}
+      </Show>
+    ),
     body: (
       <Show when={agent()}>
         {(a) => (
           <div class={styles.split}>
-            {/* A linked server has no browser view in a client: the client has no control of it. */}
-            <Show when={!ui.linked()}>
-              <BrowserPane agentId={a().id} />
-            </Show>
-            <div class={styles.chatColumn}>
+            {/* The chat keeps its whole width. The large browser covers it only when the user asks. */}
+            <div class={styles.chatColumn} inert={browser.large()}>
               <PlaceMarksLine
                 place={{ kind: "agent", id: a().id }}
                 marks={{ sensitive: a().sensitive ?? null }}
@@ -225,6 +239,7 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
                 }
               />
             </div>
+            <BrowserLarge agentId={a().id} view={browser} />
             <Presence when={!ui.linked() && teachFormFor() === a().id}>
               {() => <TeachDialog agentId={a().id} onClose={closeTeachForm} />}
             </Presence>

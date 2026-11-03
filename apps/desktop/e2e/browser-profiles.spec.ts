@@ -65,7 +65,7 @@ test("browser profiles: make them, give them to agents, share a sign-in, delete 
   /** Opens a page in the browser of the open agent and reads it. */
   const visit = async (path: string, expected: string) => {
     await send(page, `TOOL browser_open ${JSON.stringify({ url: `${base}${path}` })}`)
-    await expect(page.getByTestId("browser-bar")).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByTestId("browser-card")).toBeVisible({ timeout: 15_000 })
     await send(page, "TOOL browser_read {}")
     await expect(page.getByTestId("message").last()).toContainText(expected, { timeout: 15_000 })
   }
@@ -102,7 +102,7 @@ test("browser profiles: make them, give them to agents, share a sign-in, delete 
   // Ada signs in. Bo, who shares the profile, is signed in too. Cy, who has its own data, is not.
   await rowNamed(page, "Ada").click()
   await send(page, `TOOL browser_open ${JSON.stringify({ url: `${base}/login?n=1` })}`)
-  await expect(page.getByTestId("browser-bar")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("browser-card")).toBeVisible({ timeout: 15_000 })
   await visit("/?n=2", "COOKIE[sid=abc] n=2")
   await rowNamed(page, "Bo").click()
   await visit("/?n=3", "COOKIE[sid=abc] n=3")
@@ -125,7 +125,7 @@ test("browser profiles: make them, give them to agents, share a sign-in, delete 
   await expect(page.getByTestId("agent-browser-profile")).toHaveValue(/.+/)
   await page.getByTestId("agent-browser-profile").selectOption({ label: "Only this agent" })
   await closeDialog(page, "agent-profile")
-  await expect(page.getByTestId("browser-bar")).toHaveCount(0)
+  await expect(page.getByTestId("browser-card")).toHaveCount(0)
   await visit("/?n=5", "COOKIE[none] n=5")
 
   // Delete "Work". Bo goes back to his own data, which has no sign-in.

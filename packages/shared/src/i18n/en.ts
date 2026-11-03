@@ -922,6 +922,8 @@ export const en = {
   "browser.takeOver": "Take control",
   "browser.giveBack": "Give back",
   "browser.close": "Close browser",
+  "browser.enlarge": "Enlarge browser",
+  "browser.shrink": "Shrink browser",
   "settings.section.browser": "Browser",
   "browserProfiles.title": "Browser profiles",
   "browserProfiles.hint":

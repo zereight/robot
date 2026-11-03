@@ -44,7 +44,7 @@ const clickPage = (app: ElectronApplication) =>
     return wc.getTitle()
   })
 
-test("browser: open a page in the same window, read it, take control, give back, stop closes it", async () => {
+test("browser: small in the activity panel, large on a click, take control, give back, stop closes it", async () => {
   test.setTimeout(90_000)
   const site = createServer((_, res) => {
     res.writeHead(200, { "content-type": "text/html" })
@@ -65,23 +65,34 @@ test("browser: open a page in the same window, read it, take control, give back,
   const before = await windows()
 
   await send(page, `TOOL browser_open ${JSON.stringify({ url })}`)
-  await expect(page.getByTestId("browser-bar")).toBeVisible({ timeout: 15_000 })
+  // The page opens small, in the activity panel. The chat is not split: no large bar shows.
+  await expect(page.getByTestId("browser-card")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("browser-bar")).toHaveCount(0)
   // The page opens inside the app window: no other window shows up, and the page sits in the box
-  // that the chat screen keeps for it.
+  // that the activity panel keeps for it.
   expect(await windows()).toBe(before)
   await expect
     .poll(async () => (await insideViews(app)).filter((v) => v.visible).length, { timeout: 5_000 })
     .toBe(1)
-  const box = await page.getByTestId("browser-view").boundingBox()
-  const [view] = await insideViews(app)
-  expect(box).not.toBeNull()
-  expect(view?.title).toBe("Hello page")
-  expect(Math.abs((view?.bounds.x ?? 0) - Math.round(box?.x ?? 0))).toBeLessThanOrEqual(1)
-  expect(Math.abs((view?.bounds.y ?? 0) - Math.round(box?.y ?? 0))).toBeLessThanOrEqual(1)
-  expect(Math.abs((view?.bounds.width ?? 0) - Math.round(box?.width ?? 0))).toBeLessThanOrEqual(1)
-  expect(Math.abs((view?.bounds.height ?? 0) - Math.round(box?.height ?? 0))).toBeLessThanOrEqual(1)
-  // The chat stays usable beside the page.
-  await expect(page.getByTestId("composer-input")).toBeVisible()
+  const sameAs = async (testId: string) => {
+    const box = await page.getByTestId(testId).boundingBox()
+    const [view] = await insideViews(app)
+    expect(box).not.toBeNull()
+    expect(view?.title).toBe("Hello page")
+    expect(Math.abs((view?.bounds.x ?? 0) - Math.round(box?.x ?? 0))).toBeLessThanOrEqual(1)
+    expect(Math.abs((view?.bounds.y ?? 0) - Math.round(box?.y ?? 0))).toBeLessThanOrEqual(1)
+    expect(Math.abs((view?.bounds.width ?? 0) - Math.round(box?.width ?? 0))).toBeLessThanOrEqual(1)
+    expect(Math.abs((view?.bounds.height ?? 0) - Math.round(box?.height ?? 0))).toBeLessThanOrEqual(
+      1,
+    )
+  }
+  await sameAs("browser-thumb")
+  // The chat keeps its full width beside the panel: the box of the message is as wide as the
+  // conversation area minus nothing for the page.
+  const chat = await page.getByTestId("conversation").boundingBox()
+  const composer = await page.getByTestId("composer-input").boundingBox()
+  expect(chat).not.toBeNull()
+  expect(composer?.width ?? 0).toBeGreaterThan((chat?.width ?? 0) * 0.6)
   await shot(page, "s11-01-browser-open")
 
   // A dialog draws under a page view, so the page hides while a dialog shows.
@@ -99,6 +110,23 @@ test("browser: open a page in the same window, read it, take control, give back,
     timeout: 15_000,
   })
 
+  // A click on the enlarge button makes the page fill the conversation area, under the header.
+  await page.getByTestId("browser-enlarge").click()
+  await expect(page.getByTestId("browser-bar")).toBeVisible()
+  await expect(page.getByTestId("browser-card")).toHaveCount(0)
+  await expect
+    .poll(async () => (await insideViews(app)).filter((v) => v.visible).length, { timeout: 5_000 })
+    .toBe(1)
+  await sameAs("browser-view")
+  await shot(page, "s11-02-browser-large")
+  // The button that makes it small puts it back in the panel.
+  await page.getByTestId("browser-shrink").click()
+  await expect(page.getByTestId("browser-card")).toBeVisible()
+  await expect(page.getByTestId("browser-bar")).toHaveCount(0)
+  await sameAs("browser-thumb")
+  await page.getByTestId("browser-enlarge").click()
+  await expect(page.getByTestId("browser-bar")).toBeVisible()
+
   // While the agent holds the page, a click of the user does not reach it.
   expect(await clickPage(app)).toBe("Hello page")
   await page.getByTestId("browser-control").click()
@@ -108,14 +136,18 @@ test("browser: open a page in the same window, read it, take control, give back,
   await page.getByTestId("browser-control").click()
   await expect(page.getByTestId("browser-bar")).toHaveAttribute("data-control", "false")
 
-  // Another chat hides the page. It stays open for the agent. The chat of the agent shows it again.
+  // Another chat hides the page. It stays open for the agent. The chat of the agent shows it again,
+  // small, as the user left it large only for that visit.
   await createAgent(page, "Bo")
   await expect(page.getByTestId("browser-bar")).toHaveCount(0)
+  await expect(page.getByTestId("browser-card")).toHaveCount(0)
   await expect
     .poll(async () => (await insideViews(app)).filter((v) => v.visible).length, { timeout: 5_000 })
     .toBe(0)
   expect((await insideViews(app)).length).toBe(1)
   await page.locator('[data-place-row][data-place-name="Ada"]').click()
+  await expect(page.getByTestId("browser-card")).toBeVisible()
+  await page.getByTestId("browser-enlarge").click()
   await expect(page.getByTestId("browser-bar")).toBeVisible()
   await expect
     .poll(async () => (await insideViews(app)).filter((v) => v.visible).length, { timeout: 5_000 })
@@ -124,17 +156,24 @@ test("browser: open a page in the same window, read it, take control, give back,
   // Close by the button.
   await page.getByTestId("browser-close").click()
   await expect(page.getByTestId("browser-bar")).toHaveCount(0)
+  await expect(page.getByTestId("browser-card")).toHaveCount(0)
   await expect.poll(async () => (await insideViews(app)).length).toBe(0)
   expect(await windows()).toBe(before)
 
   // Stop while the user holds the controls closes the window within 2 seconds.
   await send(page, `TOOL browser_open ${JSON.stringify({ url })}`)
-  await expect(page.getByTestId("browser-bar")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("browser-card")).toBeVisible({ timeout: 15_000 })
+  await page.getByTestId("browser-enlarge").click()
   await page.getByTestId("browser-control").click()
+  // The large page covers the chat, so the user makes it small to reach the box. The card still
+  // says that the user holds the page, and it can give it back.
+  await page.getByTestId("browser-shrink").click()
+  await expect(page.getByTestId("browser-card")).toHaveAttribute("data-control", "true")
+  await expect(page.getByTestId("browser-card-give-back")).toBeVisible()
   await send(page, "TOOL browser_read {}")
   await expect(page.getByTestId("composer-stop")).toBeVisible()
   await page.getByTestId("composer-stop").click()
-  await expect(page.getByTestId("browser-bar")).toHaveCount(0, { timeout: 2_000 })
+  await expect(page.getByTestId("browser-card")).toHaveCount(0, { timeout: 2_000 })
   await app.close()
   site.close()
 })
