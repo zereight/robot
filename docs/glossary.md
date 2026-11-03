@@ -52,7 +52,10 @@ A new word goes here in the same pull request as the spec that brings it.
 | Server | A computer that runs agents, as shown on the rail (000). | 서버 | environment, host |
 | Linked device | A phone or computer paired with a server (012). | 연결된 기기 | remote, client |
 | Direct chat | A conversation of the user and one agent (003). | 일대일 채팅 | DM, session |
-| Thread | A branch of a direct chat (003). | — | session |
+| Thread | A branch of a direct chat (003). | 스레드 (proposed) | session |
+| Compact | To replace the older part of a conversation with a summary, for the model (003). The chat keeps its rows and shows the line "Compacted". | 압축 (proposed) | delete, clear, trim |
+| Context meter | The ring in the chat header that shows how much of the context of the model a conversation uses (003). | 컨텍스트 사용량 (proposed) | token counter |
+| Run next | The action that moves a queued task to the front of the order (005). | 다음에 실행 (proposed) | priority, jump the queue |
 | Channel | A conversation of the user and several agents (004). | 채널 | room, group |
 | Lead | The agent that splits a channel job (004). | 리드 | foreman, manager |
 | Part | One piece of a channel job, for one member (004). | 부분 | subtask, ticket |

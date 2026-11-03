@@ -42,10 +42,12 @@ and workflows.
   prompt, with their times. For a part it also shows the done test and the verdict. It shows a
   list of moments too (see "Moments").
 - Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), accept or
-  request changes (in review; see "Review"), open source place.
+  request changes (in review; see "Review"), run next (queued; see "Queue"), open source place.
 - A task of a channel (see 004) also has "End the request", which cancels the whole request.
 - A queued task shows what it waits behind: the work that its agent runs now, with the place of
-  that work. If the agent is busy in its own chat, the line says so.
+  that work. If the agent is busy in its own chat, the line says so. If the agent is busy in
+  another thread, the line says so. A task that waits for a free place (see "Queue") says so and
+  shows the number of places.
 
 ## Usage of a task
 
@@ -244,10 +246,45 @@ stops the turn.
 - The quiet line is the same for an agent that uses the tools of the app and for an agent on a
   vendor runtime. For a vendor runtime, a sign of life is what the program reports to the app.
 
+## Queue
+
+- Each agent has one queue. A task joins it when the app makes the task. All threads of the agent
+  (003) share this queue.
+- The queue of an agent holds at most 20 waiting tasks. A task over the limit is not made. The
+  place that started it shows the reason "The queue of <name> is full (20)." A run of a routine
+  counts as a failed run (009). A workflow step and a part of a channel job fail with the same
+  reason.
+- **Order**: the tasks that wait start in this order. It holds for the queue of one agent and for
+  the places described below.
+  1. The tasks that the user picked with "Run next", the latest pick first.
+  2. The tasks of normal sources, the oldest first. These are a chat, a channel, another agent and
+     an outside program.
+  3. The tasks of background sources, the oldest first. These are a routine, a workflow and a
+     memory check.
+- A new task never stops a task that runs. It only takes its place in the order.
+- **Run next**: on a queued task, the user picks "Run next" on the Tasks page or on the line of the
+  queued task. The task goes to the front of the order. It does not stop the task that runs. It is
+  off for a task that is not queued. A linked computer and the phone do not have it in this
+  version (011, 012).
+- **Agents at once**: a setting in General (013), "Agents working at once". It is a whole number
+  from 1 to 8. The default is 4.
+  - At most that many tasks run at the same time in the open profile (022). Each task of a
+    different agent uses one place.
+  - A task that waits for the user (an approval or a question) uses no place. A task that waits
+    for a task that it gave out uses no place either. So a parent task and its child cannot hold
+    each other, also when the number is 1.
+  - A task that cannot start because all places are in use waits as queued. Its line says
+    "Waits for a free place". When a place is free, the waiting task that is first in the order
+    starts, if its agent is not busy.
+  - A new number applies at once to the tasks that wait. A task that runs is never stopped for it.
+    Stop of a task frees its place at once.
+  - The number is a setting of this computer (013). Two computers that sync (019) each use their own
+    number for the tasks they run.
+
 ## Rules
 
-- One agent runs one task at a time. Other tasks for it wait in its queue in order. When two
-  computers sync (019) and both are online, this holds across both computers.
+- One agent runs one task at a time. Other tasks for it wait in its queue, in the order of
+  "Queue". When two computers sync (019) and both are online, this holds across both computers.
 - A task waiting for the user (an approval or a question) does not block other agents.
 - Stopping a parent stops its children.
 - A parent task waits for the tasks it gave out. So the cancel of one child alone would leave the
@@ -277,6 +314,23 @@ stops the turn.
 ## Acceptance
 
 - Start two tasks for one agent: the second waits until the first ends.
+- An agent runs a long task. A routine task and then a chat task wait for the same agent. The chat
+  task starts first, although the routine task came first. Two routine tasks start in the order
+  they were made.
+- Three tasks wait for one agent. Pick "Run next" on the third: it starts first when the running
+  task ends. Pick it on the second afterwards: the second starts before the third.
+- The queue of an agent holds 20 waiting tasks. The 21st chat message is not made as a task and the
+  chat shows "The queue of <name> is full (20)." A routine run in the same state is a failed run
+  with that reason.
+- Set "Agents working at once" to 2 and give a task to each of three agents. Two tasks run. The
+  third shows "Waits for a free place". Stop one running task: the third starts at once. Raise the
+  number to 3 while one waits: it starts at once and the tasks that run go on.
+- A task waits for an approval, and the number is 1. A task of another agent starts and runs. The
+  first task still holds the place of its own agent.
+- The number is 1. Agent A gives a part to agent B and waits for its answer. B starts and A does not
+  hold the only place. The part ends and A goes on.
+- Two tasks of one agent in two threads: the second waits, and its thread shows "Waits for another
+  thread".
 - Restart during a task: it shows as failed with the restart reason and can be retried.
 - A fake provider waits 2 seconds, then streams a reply. The task shows a "First reply" time of
   2 seconds or a little more. A task that failed before any reply shows "—" for "First reply".
