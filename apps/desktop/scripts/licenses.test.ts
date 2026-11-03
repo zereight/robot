@@ -23,7 +23,9 @@ test("every package the app imports ships: it is a dependency or listed as bundl
   for (const file of new Bun.Glob("src/**/*.{ts,tsx}").scanSync(root)) {
     if (file.includes(".test.")) continue
     const source = readFileSync(join(root, file), "utf8")
-    for (const [, spec] of source.matchAll(/(?:from|import)\s*\(?\s*"([^".][^"]*)"/g)) {
+    // "from" and "import" must start a word. A test id such as "card-from" and a key such as
+    // "card.from" end in "from" and are not imports.
+    for (const [, spec] of source.matchAll(/(?<![\w.-])(?:from|import)\s*\(?\s*"([^".][^"]*)"/g)) {
       if (!spec || spec.startsWith("node:")) continue
       const parts = spec.split("/")
       imported.add(spec.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] ?? spec))
