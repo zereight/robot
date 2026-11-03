@@ -16,9 +16,9 @@ and linked devices. A phone that is paired with one profile sees that profile an
   agents.
 - **What a profile holds**: everything that 014 lists as local data: agents, channels, chats,
   tasks, the board, routines, workflows, memory, knowledge, skills, connections, saved secrets, permission
-  rules, the action log, usage numbers, settings, model accounts and their keys, browser sessions
-  of agents, the default folder for workspaces, linked devices and their keys, and the sync
-  pair.
+  rules, the Teams link and its sign-in (028), the action log, usage numbers, settings, model
+  accounts and their keys, browser sessions of agents, the default folder for workspaces, linked
+  devices and their keys, and the sync pair.
 - **What the computer holds for all profiles**: the list of profiles, which one is open, the
   settings "start at login" and "Show in the menu bar", the programs that the app downloaded for agent runtimes (006), and
   the permissions that the system gave to the app.

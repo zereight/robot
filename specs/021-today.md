@@ -35,6 +35,8 @@ it is empty, it shows the muted line "Nothing waits for you."
      routine has one row. The text names the last failure, and says "Paused" when the routine is
      paused. A paused routine keeps its row until the user resumes it, also from an earlier day.
      A click opens the routine.
+   - The Teams link, when it is signed out or paused (028). A click opens Settings, Teams. The row
+     stays until the state changes.
    - A model account with a problem (see "Model account problem"). A click opens Settings at
      that account.
 3. **Done today**: one row for each routine and each workflow that had at least one run end as

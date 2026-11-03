@@ -9,10 +9,10 @@ and workflows.
 
 - **Task**: who does it (agent), what (prompt), where it came from (chat, channel, routine,
   workflow, another agent, a memory check (008), a card of the board (024), an outside program
-  (023), or a handover (003)), its parent task if
+  (023), a message from Teams (028), or a handover (003)), its parent task if
   any, its state, start and end time, and its result or error.
-- **Depth**: a number. A task that the user, a routine, a workflow, a memory check, a handover or
-  an outside program starts has depth 0. See
+- **Depth**: a number. A task that the user, a routine, a workflow, a memory check, a handover,
+  an outside program or a message from Teams starts has depth 0. See
   "Limits of a task".
 - **States**: queued → running → (waiting for user ↔ running) → done | failed | blocked |
   cancelled. A part of a channel that asks for review has one more state, in review, before done
@@ -302,14 +302,15 @@ stops the turn.
   - A part of a channel job: the app makes the part in the state Failed, with the reason, so that
     the lead and Retry see it.
   - "Send message" (007) and an outside program (023): the call gets the reason. No task is made.
+  - A message from Teams (028): no task is made. Teams gets the line of 028 with the reason.
   - A reply that comes back (see "Limits of a task") always makes its task, also over the limit.
   - A memory check (008) is not added. The app adds it after the next turn that ends as done.
   - Retry, a nudge and a request for changes follow the rule of their source.
 - **Order**: the tasks that wait start in this order. It holds for the queue of one agent and for
   the slots described below.
   1. The tasks that the user picked with "Run next", the latest pick first.
-  2. The tasks of normal sources, the oldest first. These are a chat, a channel, another agent and
-     an outside program.
+  2. The tasks of normal sources, the oldest first. These are a chat, a channel, another agent, an
+     outside program and Teams.
   3. The tasks of background sources, the oldest first. These are a routine and a workflow.
   4. A memory check. It starts only when its agent has no other task that runs or waits (008).
 - A new task never stops a task that runs. It only takes its place in the order. A task of a

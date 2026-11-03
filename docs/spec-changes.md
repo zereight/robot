@@ -88,6 +88,9 @@ These are in the code today and the specs now say something else.
 | 001, 003, 011 | Sections are one level deep. A place can be marked as read only. There is no find in a chat. | Sections inside sections, pinned places, "Mark as unread", and Cmd+F in a chat. |
 | 011, 003 | The phone has no share target. Images of a message show one by one. | A share sheet target, a face in notices, a stack of images, a thinking sheet. Pasted images show a preview. |
 | 007, 008, 022, 023 | The tool "search chats" uses the first 6 words and needs every word. It gives hits newest first, each with a piece of 300 characters, and the agent cannot read more of a chat. | The tool takes 12 words and finds a message that holds at least half of them. Hits with the most matching words come first, and each hit has the count and a reference. A second tool, "read chat", gives up to 5 messages before and 5 after a message, and one line for each tool step between them, with its kind and result and no text. A message in its result follows the rules of outside content. Message search of the user (001) does not change. |
+| 028, 000, 014 | The app sends no conversation text to a chat service. | A Teams link, off at first, reads one Microsoft Teams chat in a Teams page where the user signed in by hand. It gives the calls of allowed senders to one agent or one channel, and writes the answers in the same chat. |
+| 028, 007, 003, 005 | Outside content comes from pages, connections, other agents, routines and outside programs. | A message from Teams is outside content and holds the program mark. It shows with "From Teams", makes a task with the source "Teams", never joins a running turn, and never answers a card. |
+| 028, 013, 015, 019, 021, 022, 002 | Settings have no part for a chat service. | A settings part "Teams", a notification "Teams link needs you", a Today row, and a link that belongs to one computer and one profile. It is not in sync or in an export. An agent cannot change it. |
 
 ## Slices
 
@@ -175,6 +178,11 @@ These are in the code today and the specs now say something else.
 | S98 | Place list extras: sections inside sections, pinned places, "Mark as unread" on a message and a place, and Cmd+F in a chat. | 001, 003, 011, 012, 019 |
 | S99 | Idle work: the unload of idle pages, the end of idle vendor programs, the reaction to low memory, and the end of the programs of a deleted agent. | 007 |
 | S100 | Busy provider and attachments: the three tries and the muted lines, the preview of a pasted image, and the progress and "Retry" of a chip on a linked server. | 006, 003 |
+| S101 | Teams link, set up: the settings part and its page text, the sign-in profile and its mark in Settings, Browser, "Sign in to Teams", "Use this chat", the form and its checks, the switch and its dialog, the states Off, Connecting, On, Signed out, Chat not found, Offline and Target missing, the header mark, "Show the Teams page", and what export, sync and profiles leave out. The link opens the chat and reads its title and the sign-in only. It reads no message. Needs the browser profiles. | 028, 013, 007, 002, 014, 019, 022 |
+| S102 | Calls from Teams: the read loop every 3 seconds, the baseline read and the gap of 2 minutes, "Who may call", the limit of 10 calls, the message with "From Teams", the task with the source "Teams", outside content and the program mark, direct chat and channel work, and the refusal of a tool of an agent. It writes nothing to Teams. Needs S101 and the program mark of S68. | 028, 003, 004, 005, 007, 002 |
+| S103 | Answers and the outbox: the answer for a direct chat, the lines in Teams (failed, stopped, waiting, files, no reply text, queue full, too many, gap), the marker, the redaction, the outbox with order, back-off, the split into messages, the rate of 20, the check of the chat title, the records list, and the link log. Needs S102. | 028, 005, 007, 014 |
+| S104 | Answers for a channel: the summary of the lead, the replies of the members that a mention chose, the waiting line for a failed part, a part in review and the request to pick a member, and the source of a retry. Needs S103. | 028, 004, 005 |
+| S105 | Pause and notices: the repeated failure, the state Paused and "Resume", the notification "Teams link needs you", and the row in Today. Needs S103. | 028, 015, 021 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -189,6 +197,8 @@ S74 and S75 do not depend on each other. S76 follows S75.
 S78 needs S46, S62 and S68, because it uses their search, outside content and program mark. S79 changes no code of the app. It follows S78 and S64, and its arms use their features.
 S80 to S84 do not depend on each other, except as listed. S80 and S81 close gaps in the defence against outside text, so they go first. S83 and S81 both touch the marks of a place, so do S81 first when both are open. S82 waits for S32 and S83 waits for S20, because the code has neither yet.
 S77 needs the task view of S61, and the compact of S20 for its third saving. "Set big results aside" and "Check with edit" do not need S20, so they can ship first. A vendor program gets only the part of "Set big results aside" for the tools of the app.
+
+S101 to S103 follow each other. S104 and S105 follow S103 and do not depend on each other. S101 needs the browser profiles of the code (see the spec questions of 007 and 028). The first pull request of S101 can use the stand-in Teams of 028 for all its tests. The real Teams page has no test in the shared test run.
 
 S86 and S93 both change the pickers of 006. S93 can go first. S87 needs a runtime that reports a list of steps, so it follows the work on the runtimes of 006 that exists today. S90 needs S20 only for the shared message box. S91 and S97 need the phone app. S95 follows S89 for the "take control" card. S86 to S100 do not depend on each other, except as listed. S86, S87 and S90 give the largest gain for the effort.
 
@@ -227,14 +237,19 @@ S86 and S93 both change the pickers of 006. S93 can go first. S87 needs a runtim
   not answer a question of the agent, and it tells the agent to ask with a question card. The app
   answers a question of the agent for the user in no case.
 - A trigger from a chat service (Discord, Slack and so on) for a workflow. Not in this version
-  (010). It needs a bot account and a link to the service. Open for a later change.
+  (010). It needs a bot account and a link to the service. Open for a later change. The Teams link
+  (028) is a different thing: it gives work to an agent or a channel, not to a workflow.
 - A saved card number, address or one-time code that an agent types into a page. Decided against on
   2026-11-04. The agent never types a card number or a code (007, 020). Saved logins (020) are
   the only sign-in data that the browser fills.
 - A palette file from another tool as a theme. Not in this version (013). ROBot has two themes and
   a text size.
-- Chat services, a hosted marketplace of agents and skills, and share links for it. Not in this
-  version. Agent files and workflow files (002, 010) are the way to share a setup.
+- Chat services other than Microsoft Teams (028), a hosted marketplace of agents and skills, and
+  share links for it. Not in this version. Agent files and workflow files (002, 010) are the way
+  to share a setup.
+- An approval, a question card or a command ("stop", "retry") answered from a chat service.
+  Decided against on 2026-11-04 (028). A message from Teams is outside content and holds the
+  program mark. The user answers a card in the app or on a linked device.
 - Search of tool output and of tool arguments in "search chats" and "read chat". Not in S78. Output
   and commands can hold secrets, web text and file text, and the action log (007) already keeps the
   kind, the target and the result of a step. S78 shows only the kind and the result of a step.

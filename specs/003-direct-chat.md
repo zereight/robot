@@ -169,8 +169,8 @@ the app can run it (see "Automatic compact").
   of its own thread only. When the agent works in another thread, the message starts its own task
   and waits. The thread shows the line of the queued task (see 005, "Tasks page"). When the agent
   works in another thread, the line reads "Waits for another thread".
-- Work that a routine, a workflow, another agent or an outside program sends to the chat of an
-  agent goes to the main thread.
+- Work that a routine, a workflow, another agent, an outside program or Teams (028) sends to the
+  chat of an agent goes to the main thread.
 - A fork made at a message after a "Compacted" line copies the summary and the turns after it. The
   model of the fork gets the same summary.
 - A linked computer and the phone show the main thread only in this version. They never get the
