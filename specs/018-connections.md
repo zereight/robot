@@ -147,8 +147,8 @@ it needs, and does not carry all of them.
 
 - **Count**: the tools that an agent may use, from all of its connections that are on. A tool that
   is off does not count. A held tool (see "Tool review") does not count. A connection that is down
-  does not count. The app counts at the start of each turn, when the connections start. The count does not change inside a turn: a change of the
-  user counts from the next turn.
+  does not count. The app counts at the start of each turn, when the connections start. The count
+  does not change inside a turn: a change of the user counts from the next turn.
 - Only tools of connections count. The tools of the app (files, shell, browser and the others)
   are not counted, and the agent always gets them.
 - With 20 tools or fewer, the agent gets every tool at the start of the turn.
@@ -173,6 +173,11 @@ it needs, and does not carry all of them.
   "Searched tools" with the words and the number of tools found.
 - The limit of 100 tools for one connection (see "Rules") applies before the count.
 - The phone and a linked computer show the card of this step as any other tool card.
+- There is no switch. The user keeps an agent at 20 tools or fewer by turning off tools or
+  connections, or by limiting the agents of a connection.
+- An agent on a vendor runtime has no connections (see "Rules"), so nothing changes for it.
+- The search and the found tools are not stored. A sync, an export and a file of agents hold
+  nothing of them.
 
 ## Out of scope
 
