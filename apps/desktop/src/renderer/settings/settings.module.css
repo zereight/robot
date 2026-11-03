@@ -231,6 +231,35 @@
 }
 
 /* The permission rules (spec 007). */
+
+/*
+ * A row of controls that wraps in a narrow window and does not run out of it. The text of a
+ * header takes the room that is left, and a control that is too wide goes to the next line.
+ */
+.rowWrap {
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.grow {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+/* A control that keeps its words on one line. In a very narrow window it scrolls inside its box. */
+.scrollRow {
+  white-space: nowrap;
+  max-width: 100%;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.rowWrap .select,
+.rowWrap .input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
 .logTag[data-decision="deny"] {
   color: var(--c-danger);
 }
@@ -267,12 +296,16 @@
   white-space: nowrap;
 }
 
-/* The row of the action log that a rule decided opens that rule: the link covers the row. */
-.logRow:has(.ruleLink) {
+/*
+ * A row of the action log is one link: the rule that decided it, or else the task of its step.
+ * The link covers the row. A small second link for the task stays above the cover.
+ */
+.logRow:has(.rowLink, .taskLink) {
   position: relative;
 }
 
-.ruleLink {
+.rowLink,
+.taskLink {
   all: unset;
   cursor: pointer;
   color: var(--c-text-muted);
@@ -281,15 +314,32 @@
   text-decoration: underline;
 }
 
-.ruleLink::after {
+.rowLink::after {
   content: "";
   position: absolute;
   inset: 0;
 }
 
-.ruleLink:focus-visible {
+.taskLink {
+  position: relative;
+  z-index: 1;
+  margin-inline-start: 12px;
+}
+
+.taskLink:focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
+}
+
+/* The link covers the row, so the row shows the focus. */
+.rowLink:focus-visible {
+  outline: none;
+}
+
+.rowLink:focus-visible::after {
+  outline: 2px solid var(--c-accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-s);
 }
 
 .ruleDeleted {

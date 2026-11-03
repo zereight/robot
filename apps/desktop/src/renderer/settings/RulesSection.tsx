@@ -265,8 +265,8 @@ export const RulesSection = () => {
 
   return (
     <div data-testid="rules">
-      <div class={styles.row}>
-        <div>
+      <div class={`${styles.row} ${styles.rowWrap}`}>
+        <div class={styles.grow}>
           <div class={styles.label}>{t("rules.title")}</div>
           <div class={`${styles.hint} ${styles.words}`}>{t("rules.hint")}</div>
         </div>
@@ -283,7 +283,7 @@ export const RulesSection = () => {
           {t("rules.add")}
         </Button>
       </div>
-      <div class={styles.row}>
+      <div class={`${styles.row} ${styles.rowWrap}`}>
         <select
           class={styles.select}
           aria-label={t("rules.filterAgent")}
@@ -291,9 +291,20 @@ export const RulesSection = () => {
           value={agentFilter()}
           onChange={(e) => setAgentFilter(e.currentTarget.value)}
         >
-          <option value={EVERY}>{t("rules.anyAgent")}</option>
-          <option value={ALL_AGENTS}>{t("rules.allAgents")}</option>
-          <For each={agents()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
+          <option value={EVERY} selected={agentFilter() === EVERY}>
+            {t("rules.anyAgent")}
+          </option>
+          <option value={ALL_AGENTS} selected={agentFilter() === ALL_AGENTS}>
+            {t("rules.allAgents")}
+          </option>
+          {/* The agents load after the page opens, so each option says if it is the chosen one. */}
+          <For each={agents()}>
+            {(a) => (
+              <option value={a.id} selected={agentFilter() === a.id}>
+                {a.name}
+              </option>
+            )}
+          </For>
         </select>
         <Segmented
           label={t("rules.filterDecision")}

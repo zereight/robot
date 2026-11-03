@@ -1975,6 +1975,13 @@ export const en = {
   "permissions.log.rule": "Rule: {text}",
   "permissions.log.ruleDeleted": "Deleted",
   "permissions.log.ruleOpen": "Show the rule: {text}",
+  "permissions.log.filterAgent": "Agent",
+  "permissions.log.anyAgent": "Any agent",
+  "permissions.log.filterKind": "Step",
+  "permissions.log.anyKind": "Any step",
+  "permissions.log.search": "Search the target",
+  "permissions.log.searchEmpty": "No step matches.",
+  "permissions.log.openTask": "Open the task of this step",
   "rules.title": "Rules",
   "rules.hint":
     "A rule is a decision that you keep. An Allow rule lets a step run with no question. A Deny rule stops a step at every permission level.",

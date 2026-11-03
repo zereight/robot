@@ -1961,6 +1961,13 @@ export const ko: Record<MessageKey, string> = {
   "permissions.log.rule": "규칙: {text}",
   "permissions.log.ruleDeleted": "삭제됨",
   "permissions.log.ruleOpen": "규칙 보기: {text}",
+  "permissions.log.filterAgent": "에이전트",
+  "permissions.log.anyAgent": "모든 에이전트",
+  "permissions.log.filterKind": "단계 종류",
+  "permissions.log.anyKind": "모든 종류",
+  "permissions.log.search": "대상 검색",
+  "permissions.log.searchEmpty": "맞는 기록이 없어요.",
+  "permissions.log.openTask": "이 단계의 작업 열기",
   "rules.title": "규칙",
   "rules.hint":
     "규칙은 내가 저장한 결정이에요. 허용 규칙은 묻지 않고 작업을 실행하고, 거부 규칙은 어떤 권한 수준에서도 작업을 막아요.",
