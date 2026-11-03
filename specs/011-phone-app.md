@@ -30,7 +30,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
    notification.
 5. **Needs you**: one list of what waits for the user on a server: approval cards, question cards,
    and failed channel parts. A failed part has "Retry" and "End the request", as on the computer
-   (see 004). A card for browser control that is no longer valid leaves the list.
+   (see 004). A question of a member that is with the lead (004) joins the list only when it
+   passes to the user. A card for browser control that is no longer valid leaves the list.
 6. **Workflows**: the workflows of a server. The user sees them as numbered step lists, runs one,
    reads the runs, edits steps, and asks the assistant, as on the computer (see 010). Running a
    workflow and reading its runs need only the link. Editing steps and asking the assistant need

@@ -15,6 +15,7 @@ import { Database } from "./services/Database.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { Host } from "./services/Host.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
@@ -30,6 +31,7 @@ import type { Secrets } from "./services/Secrets.ts"
 import { Sections } from "./services/Sections.ts"
 import { Servers } from "./services/Servers.ts"
 import { SettingsStore } from "./services/Settings.ts"
+import { SkillDrafts } from "./services/SkillDrafts.ts"
 import { Skills } from "./services/Skills.ts"
 import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
@@ -55,6 +57,8 @@ export interface AppLayerOptions {
   readonly nearbySocket?: OpenSocket
   /** The address of the decision model service. Only tests set it (spec 013). */
   readonly decisionUrl?: string
+  /** The host program. Unit tests that do not need it leave it out. */
+  readonly host?: Layer.Layer<Host>
 }
 
 /** Every main process service, wired together. */
@@ -64,6 +68,7 @@ export const appLayer = (options: AppLayerOptions) => {
     Database.layer(options.databaseFile ?? join(options.platform.dataDir, "robot.db")),
     EventBus.layer(options.emit),
     options.secrets,
+    options.host ?? Host.none,
   )
   const stores = Layer.mergeAll(
     SettingsStore.layer,
@@ -100,7 +105,7 @@ export const appLayer = (options: AppLayerOptions) => {
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const starters = Starters.layer.pipe(Layer.provideMerge(routines))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(starters))
-  const teach = Teach.layer.pipe(Layer.provideMerge(workflows))
+  const teach = Layer.mergeAll(Teach.layer, SkillDrafts.layer).pipe(Layer.provideMerge(workflows))
   const browserProfiles = BrowserProfiles.layer.pipe(Layer.provideMerge(teach))
   const places = Places.layer.pipe(Layer.provideMerge(browserProfiles))
   const today = Today.layer.pipe(Layer.provideMerge(places))

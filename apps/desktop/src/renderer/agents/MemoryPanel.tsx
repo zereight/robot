@@ -1,4 +1,5 @@
 import type { MemoryHistoryRow, MemoryMode, MemoryProposal, MessageKey } from "@robot/shared"
+import { Ellipsis } from "lucide-solid"
 import {
   createEffect,
   createResource,
@@ -11,10 +12,12 @@ import {
 import { formatDateTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { makeSkillFromWork } from "../skills/SkillForm.tsx"
 import { useApp } from "../state/app.tsx"
 import { clearMemoryTarget, type MemoryTab, memoryTarget } from "../state/memoryLink.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
+import { Menu } from "../ui/Menu.tsx"
 import styles from "./agents.module.css"
 
 /** A line that shows why a call failed. */
@@ -43,7 +46,7 @@ const guarded =
   }
 
 /** The memory items of one agent: search, add, edit and delete. */
-const Items = (props: { agentId: string }) => {
+const Items = (props: { agentId: string; own: boolean }) => {
   const { t } = useApp()
   const [query, setQuery] = createSignal("")
   const [draft, setDraft] = createSignal("")
@@ -118,6 +121,21 @@ const Items = (props: { agentId: string }) => {
                   >
                     {t("agents.memory.delete")}
                   </Button>
+                  {/* "Make a skill" is on the computer only (spec 008, 017). */}
+                  <Show when={props.own}>
+                    <Menu
+                      label={t("memory.item.menu")}
+                      icon={<Ellipsis size={16} />}
+                      testId="memory-item-menu"
+                      items={[
+                        {
+                          label: t("skills.make"),
+                          onSelect: () => makeSkillFromWork({ kind: "memory", id: item.id }),
+                          testId: "memory-make-skill",
+                        },
+                      ]}
+                    />
+                  </Show>
                 </>
               }
             >
@@ -422,7 +440,7 @@ export const MemoryPanel = (props: { agentId: string }) => {
         />
       </Show>
       <Show when={active() === "items"}>
-        <Items agentId={props.agentId} />
+        <Items agentId={props.agentId} own={own()} />
       </Show>
       <Show when={active() === "proposals"}>
         <Proposals proposals={proposals() ?? []} />

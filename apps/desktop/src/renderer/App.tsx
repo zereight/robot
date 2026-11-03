@@ -23,6 +23,8 @@ import { call } from "./lib/rpc.ts"
 import { NotificationsSection } from "./notifications/NotificationsSection.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
+import { closeSkillForm, SkillFormDialog, skillForm } from "./skills/SkillForm.tsx"
+import { SkillsSection } from "./skills/SkillsSection.tsx"
 import { useAgents } from "./state/agents.tsx"
 import { useApp } from "./state/app.tsx"
 import { useChannels } from "./state/channels.tsx"
@@ -173,6 +175,7 @@ export const App = () => {
           providers: () => <ProvidersSection />,
           devices: () => <DevicesSection />,
           notifications: () => <NotificationsSection />,
+          skills: () => <SkillsSection />,
         }}
       />
       <Presence when={newAgent()}>
@@ -195,6 +198,9 @@ export const App = () => {
         {() => <ChannelDialog onClose={() => setNewChannel(false)} />}
       </Presence>
       <Presence when={!app.settings.firstRunDone}>{() => <FirstRunDialog />}</Presence>
+      <Presence when={skillForm()}>
+        {(form) => <SkillFormDialog open={form} onClose={closeSkillForm} />}
+      </Presence>
       <JoinDialog />
       <SyncRequestDialog />
       <SyncGuardDialog />

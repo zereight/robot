@@ -3,6 +3,9 @@ import { Portal } from "solid-js/web"
 import styles from "../shell/shell.module.css"
 import { useClosing } from "./Presence.tsx"
 
+/** The boxes that are open, the newest last. Escape closes the newest one only. */
+const stack: symbol[] = []
+
 /** A modal box. Escape and a click outside close it, unless it is not dismissible. */
 export const Dialog = (
   props: ParentProps<{
@@ -18,6 +21,7 @@ export const Dialog = (
   let box: HTMLDivElement | undefined
   let previous: HTMLElement | null = null
   const closing = useClosing()
+  const token = Symbol("dialog")
   /**
    * Gives the focus back to what had it before the box opened. It leaves the focus alone when the
    * user moved it out of the box already, for example into the message box of a new chat.
@@ -33,12 +37,15 @@ export const Dialog = (
   })
   onMount(() => {
     previous = document.activeElement as HTMLElement | null
+    stack.push(token)
     // A field that asks for focus gets it. Else the first control does.
     const first =
       box?.querySelector<HTMLElement>("[autofocus]") ??
       box?.querySelector<HTMLElement>("button, input, textarea, select")
     first?.focus()
     const onKey = (event: KeyboardEvent) => {
+      // A box above this one handles Escape. This one waits.
+      if (stack.at(-1) !== token) return
       if (event.key === "Escape" && !closing() && props.dismissible !== false) {
         event.stopPropagation()
         props.onClose()
@@ -47,6 +54,8 @@ export const Dialog = (
     window.addEventListener("keydown", onKey, true)
     onCleanup(() => {
       window.removeEventListener("keydown", onKey, true)
+      const at = stack.indexOf(token)
+      if (at >= 0) stack.splice(at, 1)
       restoreFocus()
     })
   })

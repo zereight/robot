@@ -9,7 +9,8 @@ The user knows when an agent needs them or finishes, without watching the window
 - Kinds: reply in a direct chat while the window is not focused, mention in a channel, approval
   request, question, task failed, routine failed, part in review (see 004), and workflow notice (a
   notify step, see 010). A task that ends as Blocked (see 005) is a failed task for this list,
-  and a routine run that ends as Blocked is a failed run.
+  and a routine run that ends as Blocked is a failed run. A question of a member that is with the
+  lead (004) makes no notification. It makes one only when it passes to the user.
 - Each kind can be turned off. A server or a channel can be muted for 1 hour, 8 hours, 1 day, or
   until turned back on.
 - Clicking a notification opens the place and scrolls to the message.
@@ -173,6 +174,8 @@ The user knows when an agent needs them or finishes, without watching the window
 ## Rules
 
 - Do-not-disturb of the system is respected.
+- The pause of a turn for a compact (026) is not the end of a turn. It makes no notification,
+  no sound and no result card.
 - After an app restart, a task that still waits for an approval or a question (see 005) asks for
   attention again, in the same way as a new request. It asks once.
 - Motion in the island is short (under 300 ms) and follows reduce motion. With reduce motion on,

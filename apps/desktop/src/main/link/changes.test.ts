@@ -685,6 +685,19 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     ["sections.move", { id: "x", direction: "up" }],
     ["sections.delete", { id: "x" }],
     ["places.move", { kind: "agent", id: "x", sectionId: null }],
+    // Skills, and "Make a skill" from a task, an article or an item, are on the computer only
+    // (spec 012, 017).
+    ["skills.list", { serverId: "x" }],
+    ["skills.forAgent", { agentId: "x" }],
+    [
+      "skills.create",
+      { serverId: "x", name: "N", description: "", instructions: "i", agentIds: null },
+    ],
+    ["skills.setEnabled", { id: "x", enabled: false }],
+    ["skills.delete", { id: "x" }],
+    ["skills.draft", { requestId: "r", source: { kind: "task", id: "x" } }],
+    ["skills.draft", { requestId: "r", source: { kind: "memory", id: "x" } }],
+    ["skills.draftCancel", { requestId: "r" }],
     ["knowledge.list", { agentId: "x" }],
     ["knowledge.get", { agentId: "x", file: "a.md" }],
     ["knowledge.save", { agentId: "x", file: "a.md", text: "t" }],

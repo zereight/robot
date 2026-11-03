@@ -21,7 +21,8 @@ it is empty, it shows the muted line "Nothing waits for you."
 
 1. **Needs you**: the oldest row is first. A click opens the place at the card. It lists:
    - the items of "Needs you" on the phone (see 011): approval cards, question cards, and failed
-     channel parts;
+     channel parts. A question of a member that is with the lead (004) is not listed until it
+     passes to the user;
    - parts of a channel job that wait for the review of the user (004, 005);
    - the approvals and questions of tasks that run on the computer that this one syncs with (019).
      These rows show the name of that computer and have no "Always allow" (015).

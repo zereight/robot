@@ -44,7 +44,9 @@ and workflows.
 - A row opens the task: its prompt, its steps, its messages, its child tasks as a tree, and its
   three times. The messages that joined the task during its turn (see 003) are listed under the
   prompt, with their times. For a part it also shows the done test and the verdict. It shows a
-  list of moments too (see "Moments").
+  list of moments too (see "Moments"). For a part it also lists the questions of the part, with
+  who answered each one: the user, or the lead with its reason (004). For a part with an own copy
+  it shows the own copy line (025).
 - Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), accept or
   request changes (in review; see "Review"), run next (queued; see "Queue"), open source place,
   make a skill (done; see 017, "Make a skill from work"). "Make a skill" is on the computer only.

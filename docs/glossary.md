@@ -53,6 +53,12 @@ A new word goes here in the same pull request as the spec that brings it.
 | Handover | A new thread in the chat of another agent, with a brief of the first chat (003). | 인계 (proposed) | transfer, delegate |
 | Brief | The text of the handover card. The app writes it from the chat, with no model (003). | 인계 요약 (proposed) | summary (a summary belongs to a compact) |
 | Reviewed tools, held tool | The tools of a connection that the user accepted, and a tool that waits for the user because it is new or changed (018). | 검토한 도구, 검토 대기 도구 (proposed) | blocked tool, quarantined tool |
+| Token savings | The settings section with three switches that cut repeated work (026). | 토큰 절약 (proposed) | boost, turbo, optimizer |
+| Check with edit | A saving: a file change carries one shell command (026). | 편집과 함께 확인 (proposed) | fused action |
+| Set big results aside | A saving: the program keeps a copy of a big result and takes it out of the context (026). | 큰 결과 따로 보관 (proposed) | cache, archive, trim |
+| Compact at finished steps | A saving: the app compacts the context when the agent finishes a listed step (026). | 단계가 끝나면 압축 (proposed) | auto-compact |
+| Set-aside result | The whole text of a result that a saving took out of the context (026). | 따로 보관한 결과 (proposed) | cache, archive |
+| Savings line | The line in a task that counts how often the savings ran (026). | 절약 내역 (proposed) | saved tokens |
 
 ## Places and work
 
@@ -80,6 +86,11 @@ A new word goes here in the same pull request as the spec that brings it.
 | Turn | One request and the work of the agent that follows it, until the reply ends (003, 005). | — | message, session |
 | Blocked | A task that ended because the agent could not do the work (005). | 막힘 | failed (a blocked task did not fail) |
 | In review | A part that waits for the user to accept it (004, 005). | 검토 중 | pending, done |
+| Answered by the lead | The mark of a question of a member that the lead answered in place of the user (004). | 리드가 답함 (proposed) | auto answer, bot answer |
+| Shared folder | A workspace that two or more agents use (025). | 공유 폴더 (proposed) | shared workspace, project |
+| File claim | The mark that a task holds on a file that it changed in a shared folder (025). The interface says "in use by". | 사용 중 (proposed) | lock |
+| Own copy | A separate working copy of a Git repository that one part of a channel job uses (025). | 별도 사본 (proposed) | worktree, clone, fork (a fork is a chat copy, 003), sandbox |
+| Branch of a part | The new Git branch of an own copy (025). | 부분 브랜치 (proposed) | — |
 | Silent limit | How long a turn may show no sign of life before the app stops it (005). | 응답이 없는 작업을 멈추는 시간 (setting label) | timeout |
 | Quiet line | The line "No answer from <name> for <time>" for a turn that shows no sign of life (005). | "<name>에서 <time> 동안 응답이 없어요" (proposed) | stuck, frozen, error |
 | Routine | A task that runs on a schedule or a watch (009). | 루틴 | job, cron, automation |

@@ -26,7 +26,7 @@ service holds it.
 | Agents | Face, name, role line, instructions, the switch "Read the handbook", model choice, backup model choice, archive state. |
 | Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Channels | Name, topic, instructions, members, lead, the "Review parts" setting, picture, archive state. |
+| Channels | Name, topic, instructions, members, lead, the settings "Review parts", "The lead answers questions" and "Own copies for parts", picture, archive state. |
 | Messages | Direct chats with their threads, and channels, with tool cards, plan steps, reply chips and the rows "Compacted". |
 | Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent, with the channel of a channel note. |

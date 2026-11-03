@@ -95,6 +95,11 @@ The user can change the course of a turn without stopping it.
   the ring stays empty until the next reply, because no count is known.
 - Compact is off, with the reason in words, when the size is not known or when the provider
   compacts by itself.
+- An agent on an API account or on pi, with the saving "Compact at finished steps" (026), can
+  compact the context of one running turn at a finished step. This is not the compact of this
+  spec: the history of the chat does not change, and the chat shows the muted line "Compacted for
+  this turn", not the line "Compacted". The ring stays empty until the next reply, as after any
+  compact.
 
 ## Compact
 

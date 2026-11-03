@@ -30,6 +30,21 @@ An agent has:
 1. Create: the user clicks "New agent", types a name, optionally a role and instructions, and
    picks a model. A "Section" choice lists the agent sections and "No section". It starts at
    "No section". The app creates the workspace folder and opens the direct chat.
+   - **Effort** (see 006): the field shows when the model has levels. It offers "Default", which
+     lets the model use its own level, and the levels of the model. In this form the field starts
+     at "Medium" when the model offers it, and at "Default" when it does not. A lower level uses
+     fewer tokens, so a new agent starts at the middle level, and the user can raise it.
+   - The start counts only until the user picks a level or "Default" by hand. The pick of the user
+     stays when the user picks another model that offers the same level. When the new model does
+     not offer the level, the field goes to "Default", as before.
+   - The start is for the form of a new agent (this flow) and for a starter (flow 3) only. It
+     does not change the effort of an agent that exists, of a duplicate (flow 6), of an import
+     (flow 10), or of a chat header, a routine or a workflow step. A change from the chat (see
+     "Changes from the chat") changes the effort only when the user asks for it.
+   - The same form on a linked computer starts the same way. The phone makes no agent in this
+     version. The effort is the field that an agent has now, so a sync, an export and a file of
+     agents hold nothing new. An agent on a vendor runtime gets the level as before, when its model
+     has levels.
 2. Random name: the name box of a new agent starts with a random English first name. A button
    next to the box picks another name. The same button is in the agent profile. The list holds at
    least 80 first names. A pick skips names that agents on the server already use, ignoring case.
@@ -226,6 +241,16 @@ agent.
 
 - Create an agent, change its model, restart the app: the history is intact and the next reply
   uses the new model.
+- Open "New agent" and pick a model that offers "Medium": the field "Effort" shows "Medium". Pick a
+  stand-in model that offers only "Low" and "High": the field shows "Default". Choose "Default" by
+  hand, then pick a model that offers "Medium": the field keeps "Default".
+- In the form, pick a model, choose "High" by hand, then pick another model that offers "High": the
+  field keeps "High". Pick a model that does not offer "High": the field shows "Default".
+- Make an agent from a starter with a model that offers "Medium": the profile shows "Medium". Save
+  another one with "Default" chosen by hand: the profile shows "Default".
+- An agent that exists before the change has "Default": its profile and its chat header still show
+  "Default" after the update. Duplicate an agent that has "High": the copy has "High". In the dialog
+  of an import, the effort starts at "Default".
 - The new agent form opens with a first name. Press the name button: the name changes.
 - Duplicate an agent: the copy has a different random name and the same browser sign-ins.
 - Turn on "Main agent" for agent B while agent A has it: only B has it.
