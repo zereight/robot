@@ -72,7 +72,7 @@
   width: 4px;
   height: 60%;
   transform: translateY(-50%);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
   background: var(--c-text);
 }
 
@@ -129,7 +129,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  border-radius: 8px;
+  border-radius: var(--radius-m);
   background: var(--c-accent);
   color: var(--c-accent-text);
   font-size: 0.7rem;

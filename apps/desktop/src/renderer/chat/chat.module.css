@@ -756,7 +756,7 @@
 
 .outsideHint {
   color: var(--c-text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
 }
 
 /* The protected card of a saved secret: the origin shows in large text (spec 020). */

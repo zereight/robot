@@ -8,5 +8,6 @@ Read [CLEANROOM.md](CLEANROOM.md) first. It is the main rule of this repository.
 - Spec author: change only `specs/` and `docs/`. Describe behaviour, never implementation.
 - Write in ASD-STE100 Simplified Technical English. Be concise.
 - Interface text comes from translation keys in English and Korean, never literals.
+- Styles: use the tokens of `global.css` for text size, radius, motion time and easing, and a `--c-*` token for colour. `style-rules.test.ts` fails on a raw value. Add an exception to its list only with a reason in the pull request.
 - Run narrow checks only: the changed test file and lint for changed files.
 - Never add AI co-author trailers to commits.
