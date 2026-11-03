@@ -334,17 +334,18 @@ const ChangeList = () => {
               data-name={c.name}
             >
               <span class={styles.hint}>{time(c.at)}</span>
-              <span>
+              <span class={styles.changeText}>
                 {t(`sync.change.${c.action}` as MessageKey, {
                   kind: t(`sync.kind.${c.kind}` as MessageKey),
                   name: c.name,
                 })}
+                <Show when={c.detail}>
+                  {" "}
+                  <span class={styles.hint} data-testid="sync-change-detail">
+                    {t("sync.change.folder", { path: c.detail })}
+                  </span>
+                </Show>
               </span>
-              <Show when={c.detail}>
-                <span class={styles.hint} data-testid="sync-change-detail">
-                  {t("sync.change.folder", { path: c.detail })}
-                </span>
-              </Show>
             </li>
           )}
         </For>
