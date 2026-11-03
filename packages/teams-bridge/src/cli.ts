@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises"
 import { openProfile } from "./browser.ts"
 import { type Config, loadConfig } from "./config.ts"
-import { keyOf, RateLimiter, SeenKeys } from "./core.ts"
+import { keyOf, Outbox, RateLimiter, SeenKeys } from "./core.ts"
 import { describePage } from "./inspect.ts"
 import { processNew } from "./loop.ts"
 import { GUESSED } from "./selectors.ts"
@@ -45,6 +45,11 @@ async function run(cfg: Config, mode: "watch" | "echo"): Promise<void> {
       'echo needs EXPECT_TITLE, for example EXPECT_TITLE="(You)". It sends only to a chat with that title.',
     )
   }
+  if (mode === "echo" && cfg.allow.length === 0) {
+    throw new Error(
+      'echo needs ALLOW, for example ALLOW="Your Name". It answers only the senders on that list.',
+    )
+  }
   const { context, page } = await openProfile(cfg)
   let closed = false
   context.on("close", () => (closed = true))
@@ -65,7 +70,13 @@ async function run(cfg: Config, mode: "watch" | "echo"): Promise<void> {
     )
   }
 
+  if (mode === "echo") {
+    console.log(
+      `Answers: ${cfg.allow.join(", ")}. ${cfg.call === "" ? "Every message calls the bridge (direct chat)." : `A message must contain "${cfg.call}".`}`,
+    )
+  }
   const limiter = new RateLimiter(20, 60_000)
+  const outbox = new Outbox()
   while (!closed && !page.isClosed()) {
     await sleep(cfg.pollMs)
     try {
@@ -73,6 +84,8 @@ async function run(cfg: Config, mode: "watch" | "echo"): Promise<void> {
         teams,
         seen,
         limiter,
+        outbox,
+        admission: { allow: cfg.allow, bots: cfg.bots, call: cfg.call },
         mode,
         marker: cfg.marker,
         chunkMax: cfg.chunkMax,
