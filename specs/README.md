@@ -52,7 +52,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M13 | The changes to 000, 002, 004, 005, 008, 009, 016, 017 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S50 to S54: honest wording, verdicts in the check, work record, starters, skills that go with their agent |
 | M14 | The changes to 000, 001, 011, 012 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S55: the desktop app is for Macs with Apple silicon only; the phone app is for iOS and Android |
 | M15 | 022, and the changes to 000, 001, 011, 012, 013, 014, 015 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S57 and S58: profiles on one computer, and profiles with linked devices and sync |
-| M16 | The changes to 003, 004, 005 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md), and the phone plan of [docs/performance.md](../docs/performance.md) | Slices S59 and S60: the quiet line, and the measures of the phone app |
+| M16 | The changes to 003, 004, 005, 012 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md), and the phone plan of [docs/performance.md](../docs/performance.md) | Slices S59 and S60: the quiet line, and the measures of the phone app |
 
 ## Surfaces check
 

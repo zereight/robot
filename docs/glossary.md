@@ -4,7 +4,8 @@ The words that the user reads, in English and Korean. Specs and interface text u
 A new word goes here in the same pull request as the spec that brings it.
 
 - **Korean** is the word in the translation catalogue today. "—" means that no key holds the word
-  yet; the implementer picks one and adds it here.
+  yet. A spec author may then give a proposal, marked "(proposed)". The implementer adds the key
+  and updates this list.
 - **Avoid** lists words that mean something else in ROBot, or that break a rule of 000.
 
 ## Things the user owns
@@ -19,7 +20,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Memory | Short facts that an agent keeps between chats (008). | 메모리 | brain, learning |
 | Proposal | A fact that an agent suggests and the user has not accepted (008). | 제안 | memory (a proposal is not memory) |
 | Knowledge | Linked articles that an agent writes and reads again (016). | 지식 | memory, wiki |
-| Skill | Saved instructions that the user calls with a slash (017). The text of a skill is its "instructions" (지시 사항), apart from the instructions of an agent (지침). | — (title: 스킬 초안 for a draft) | plugin, tool |
+| Skill | Saved instructions that the user calls with a slash (017). The text of a skill is its "instructions" (지시 사항), apart from the instructions of an agent (지침). | 스킬 | plugin, tool |
 | Connection | An outside tool provider that speaks MCP (018). | 연결 | integration, app, plugin |
 | Saved secret | A key or password that an agent uses and the model never sees (020). | 저장된 비밀 값 | credential, token |
 | Model account | A provider or a vendor program that the user signed in to (006). | 모델 계정 | provider (in interface text), subscription |
@@ -33,21 +34,22 @@ A new word goes here in the same pull request as the spec that brings it.
 | --- | --- | --- | --- |
 | Server | A computer that runs agents, as shown on the rail (000). | 서버 | environment, host |
 | Linked device | A phone or computer paired with a server (012). | 연결된 기기 | remote, client |
-| Direct chat | A conversation of the user and one agent (003). | — | DM, session |
+| Direct chat | A conversation of the user and one agent (003). | 일대일 채팅 | DM, session |
 | Thread | A branch of a direct chat (003). | — | session |
 | Channel | A conversation of the user and several agents (004). | 채널 | room, group |
 | Lead | The agent that splits a channel job (004). | 리드 | foreman, manager |
-| Part | One piece of a channel job, for one member (004). | — | subtask, ticket |
+| Part | One piece of a channel job, for one member (004). | 부분 | subtask, ticket |
 | Done test | The check that the lead writes for a part (004). | 완료 기준 | acceptance criteria |
-| Verdict | "Met" or "Not met" for a done test (004). | — | score, grade |
+| Verdict | The judgement of the lead on a done test (004). | 판정 | score, grade |
+| Met, Not met | The two verdicts (004). | 충족, 미충족 | pass, fail |
 | Task | One piece of work of one agent (005). | 작업 | job, run (except for a routine run) |
 | Turn | One request and the work of the agent that follows it, until the reply ends (003, 005). | — | message, session |
 | Blocked | A task that ended because the agent could not do the work (005). | 막힘 | failed (a blocked task did not fail) |
 | In review | A part that waits for the user to accept it (004, 005). | 검토 중 | pending, done |
-| Silent limit | How long a turn may show no sign of life before the app stops it (005). | — | timeout |
-| Quiet line | The line that tells that a turn shows no sign of life (005). | — | stuck, frozen, error |
+| Silent limit | How long a turn may show no sign of life before the app stops it (005). | 응답이 없는 작업을 멈추는 시간 (setting label) | timeout |
+| Quiet line | The line "No answer from <name> for <time>" for a turn that shows no sign of life (005). | "<name>에서 <time> 동안 응답이 없어요" (proposed) | stuck, frozen, error |
 | Routine | A task that runs on a schedule or a watch (009). | 루틴 | job, cron, automation |
-| Workflow | Connected steps that run when a trigger fires (010). | 워크플로 | automation, pipeline |
+| Workflow | Connected steps that run when a trigger fires (010). | 워크플로, 워크플로우 (see "Open points") | automation, pipeline |
 | Today | The page of what waits, went wrong, ran and runs next (021). | 오늘 | inbox, dashboard |
 | Needs you | Items that wait for the user (011, 021). | 내 확인이 필요해요 | inbox |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
@@ -66,3 +68,9 @@ A new word goes here in the same pull request as the spec that brings it.
 
 - "연결" names a connection (018) and is part of "연결된 기기" (012). A user can confuse the two in
   Korean. A spec author decides which word changes.
+- The catalogue writes both "워크플로" (for example the page title) and "워크플로우" (for example
+  the tab and the list). One spelling should stay.
+- "Profile" (프로필) names the profile tab of an agent (002) and a profile of 022. One of the two
+  needs another word, in English and in Korean.
+- "작업 기록" (Action log) stands next to "작업" (Task) and "최근 작업" (Recent work), so a user can
+  read it as a record of tasks.

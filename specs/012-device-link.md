@@ -220,8 +220,9 @@ means a profile on a computer.
   requests and questions, unread counts, changes to the sections or to the section of a place,
   changes to workflows, and changes to the state of a run.
 - A server pushes the start and the end of a quiet turn (005, "Quiet line"), with the name and
-  the time when the quiet clock started at 0. The client counts the time by itself. It does not
-  get a push each second.
+  the seconds on the quiet clock at the time of the push. The client counts on from that value.
+  It does not get a push each second. A client that connects while a turn is quiet gets the quiet
+  state with the other state of the server.
 - Each message has a type, an id, and a version number. Both sides use one protocol version. A
   peer with another version gets a clear "Update the app" error.
 - A server answers each client by what that client may do (see above). A request for something

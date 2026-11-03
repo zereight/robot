@@ -49,7 +49,7 @@ These are in the code today and the specs now say something else.
 | 000, 001, 011, 012, 015 | The desktop app is built for macOS, Windows and Linux. Search opens with Cmd or Ctrl+K. | The desktop app is for Macs with Apple silicon only. Search opens with Cmd+K. The phone app is for iOS and Android. A phone with no such Mac cannot be used. |
 | 012, 010 | A computer client cannot open the workflows of a linked server. | It sees the workflows and their runs, runs and stops them, and answers approval steps. With the switch "Can create and change agents" it also edits them. The assistant and the workflow file stay on the server. |
 | 000, 001, 011, 012, 013, 014, 015, 019 | One computer holds one set of data, and it is one server. | A computer can hold up to 5 profiles. A profile has its own data, accounts, settings, linked devices and sync pair, and it is the server that a phone pairs with. The window shows one profile. The rail has a profile button when there are 2 or more. A profile that is not open keeps working, and makes no notice on the computer. The first profile is the data that exists today. |
-| 003, 004, 005, 015 | A quiet turn shows "Working…" until the silent limit stops it. | After 90 seconds with no sign of life (or half the silent limit, when shorter), every place that shows the turn reads "No answer from <name> for <time>". The turn goes on. |
+| 003, 004, 005, 012, 015 | A quiet turn shows "Working…" until the silent limit stops it. | After 90 seconds with no sign of life (or half the silent limit, when shorter), every place that shows the turn reads "No answer from <name> for <time>". The turn goes on. |
 
 ## Slices
 
