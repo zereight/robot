@@ -918,3 +918,34 @@
   color: var(--c-danger);
   font-size: var(--text-xs);
 }
+
+/* A picture from the web that the user did not load yet (spec 003, "Pictures from the web"). */
+.pictureBox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  max-width: min(100%, 480px);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+}
+
+.pictureAlt {
+  font-size: var(--text-s);
+  color: var(--c-text);
+  overflow-wrap: anywhere;
+}
+
+.pictureAddress {
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.pictureLoad {
+  margin-top: 2px;
+}

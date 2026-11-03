@@ -1175,7 +1175,10 @@ const FullMessageRow = (props: MessageRowProps) => {
               {(part, index) => (
                 <Switch>
                   <Match when={part.kind === "text"}>
-                    <Markdown text={(part as Extract<MessagePart, { kind: "text" }>).text} />
+                    <Markdown
+                      text={(part as Extract<MessagePart, { kind: "text" }>).text}
+                      scope={`message:${props.message.id}`}
+                    />
                   </Match>
                   <Match when={part.kind === "thinking"}>
                     <Thinking

@@ -1,14 +1,29 @@
+import { decidePicture, type PictureBox } from "@robot/shared/pictures"
 import { Check, Copy } from "lucide-solid"
 import type { Token, Tokens } from "marked"
-import { createMemo, createSignal, For, type JSX, Match, Show, Switch } from "solid-js"
+import {
+  createContext,
+  createMemo,
+  createSignal,
+  For,
+  type JSX,
+  Match,
+  Show,
+  Switch,
+  useContext,
+} from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { Button } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
 import { type Lexed, lexMarkdown } from "./lex.ts"
+import { isPictureLoaded, loadPicture } from "./pictures.ts"
 
 const safeLink = (href: string) => /^(https?:|mailto:)/i.test(href)
-const safeImage = (href: string) => /^(https:|data:image\/)/i.test(href)
+
+/** The message or article that the pictures of a Markdown text belong to. */
+const PictureScope = createContext<() => string>(() => "")
 
 const openLink = (event: MouseEvent, href: string) => {
   event.preventDefault()
@@ -44,6 +59,99 @@ const CodeBlock = (props: { code: string; lang?: string | undefined }) => {
         <code>{props.code}</code>
       </pre>
     </div>
+  )
+}
+
+/** The words of a box: the alt text and the address, each cut, with a mark where it was cut. */
+const PictureWords = (props: { box: PictureBox }) => {
+  const { t } = useApp()
+  return (
+    <>
+      <span class={styles.pictureAlt}>
+        <span data-testid="picture-alt">{props.box.alt || t("picture.alt.empty")}</span>
+        <Show when={props.box.altCut}>
+          <span aria-hidden="true">…</span>
+        </Show>
+      </span>
+      <span class={styles.pictureAddress}>
+        <span data-testid="picture-address">{props.box.address}</span>
+        <Show when={props.box.addressCut}>
+          <span aria-hidden="true">…</span>
+        </Show>
+      </span>
+    </>
+  )
+}
+
+/**
+ * A picture of a Markdown text. A picture from the web loads only when the user presses "Load
+ * image": an address can carry data, and a load sends it to the host of the address. An `https`
+ * picture is a box with a button, an `http` picture is a box with no button, and a `data:image`
+ * picture shows at once because it needs no network.
+ */
+const PictureView = (props: { image: Tokens.Image }) => {
+  const { t } = useApp()
+  const scope = useContext(PictureScope)
+  const picture = createMemo(() => decidePicture(props.image.href, props.image.text))
+  const inline = () => {
+    const p = picture()
+    return p.kind === "inline" ? p : undefined
+  }
+  const ask = () => {
+    const p = picture()
+    return p.kind === "ask" ? p : undefined
+  }
+  const blocked = () => {
+    const p = picture()
+    return p.kind === "blocked" ? p : undefined
+  }
+  return (
+    <>
+      <Show when={inline()}>
+        {(p) => (
+          <img class={styles.image} src={p().src} alt={p().alt} referrerpolicy="no-referrer" />
+        )}
+      </Show>
+      <Show when={ask()}>
+        {(p) => (
+          <Show
+            when={isPictureLoaded(scope(), p().src)}
+            fallback={
+              <span class={styles.pictureBox} data-testid="picture-box" data-picture="ask">
+                <PictureWords box={p().box} />
+                <Button
+                  class={styles.pictureLoad}
+                  data-testid="picture-load"
+                  onClick={(event) => {
+                    // A picture can sit inside a link. The press loads the picture and nothing else.
+                    event.preventDefault()
+                    event.stopPropagation()
+                    loadPicture(scope(), p().src)
+                  }}
+                >
+                  {t("picture.load")}
+                </Button>
+              </span>
+            }
+          >
+            <img
+              class={styles.image}
+              src={p().src}
+              alt={p().alt}
+              referrerpolicy="no-referrer"
+              data-testid="picture-image"
+            />
+          </Show>
+        )}
+      </Show>
+      <Show when={blocked()}>
+        {(p) => (
+          <span class={styles.pictureBox} data-testid="picture-box" data-picture="blocked">
+            <PictureWords box={p().box} />
+          </span>
+        )}
+      </Show>
+    </>
   )
 }
 
@@ -87,14 +195,7 @@ const Inline = (props: { tokens: readonly Token[] | undefined }): JSX.Element =>
           })()}
         </Match>
         <Match when={token.type === "image"}>
-          {(() => {
-            const image = token as Tokens.Image
-            return safeImage(image.href) ? (
-              <img class={styles.image} src={image.href} alt={image.text} />
-            ) : (
-              image.text
-            )
-          })()}
+          <PictureView image={token as Tokens.Image} />
         </Match>
         <Match when={token.type === "text" && "tokens" in token && token.tokens}>
           <Inline tokens={(token as Tokens.Text).tokens} />
@@ -207,15 +308,19 @@ const Blocks = (props: { tokens: readonly Token[] }): JSX.Element => (
 
 /**
  * Renders Markdown as elements, never as HTML. Raw HTML in the text shows as text.
- * Links open in the system browser.
+ * Links open in the system browser. A picture from the web shows as a box until the user loads
+ * it. `scope` names the message or article that holds the text: the choice to load a picture
+ * holds for one address in one scope.
  */
-export const Markdown = (props: { text: string }) => {
+export const Markdown = (props: { text: string; scope: string }) => {
   // A reply grows part by part. Each reading reuses the tokens of the blocks that are done, so
   // their elements stay and only the end of the reply is read and drawn again.
   const lexed = createMemo<Lexed>((previous) => lexMarkdown(props.text, previous))
   return (
-    <div class={styles.markdown}>
-      <Blocks tokens={lexed().tokens} />
-    </div>
+    <PictureScope.Provider value={() => props.scope}>
+      <div class={styles.markdown}>
+        <Blocks tokens={lexed().tokens} />
+      </div>
+    </PictureScope.Provider>
   )
 }

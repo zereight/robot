@@ -157,7 +157,7 @@ const Part = (props: {
   switch (part.kind) {
     case "text":
       return message.author === "agent" ? (
-        <Markdown source={part.text} />
+        <Markdown source={part.text} scope={`message:${message.id}`} />
       ) : (
         <Text selectable style={[styles.body, { color: palette.text }]}>
           {part.text}

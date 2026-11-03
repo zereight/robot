@@ -377,7 +377,7 @@ export const KnowledgePage = (props: { agent: Agent; onClose: () => void }) => {
                       {t("knowledge.updated", { time: time(a().updatedAt) })} ·{" "}
                       {t(`knowledge.editor.${a().editor}` as MessageKey)}
                     </span>
-                    <Markdown text={a().body} />
+                    <Markdown text={a().body} scope={`knowledge:${agentId()}:${a().file}`} />
                     <div class={styles.section}>
                       <span class={styles.sectionTitle}>{t("knowledge.links")}</span>
                       <Show

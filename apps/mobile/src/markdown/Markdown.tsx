@@ -1,22 +1,34 @@
+import type { Picture, PictureBox } from "@robot/shared/pictures"
 import * as Clipboard from "expo-clipboard"
-import { memo, useMemo, useState } from "react"
+import { createContext, memo, useContext, useMemo, useState } from "react"
 import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
+import { Button } from "../ui/kit.tsx"
+import { loadPicture, usePictureLoaded } from "./loaded.ts"
 import { type Block, type Inline, parseMarkdown } from "./parse.ts"
 
 const mono = "Menlo"
 
-/** The Markdown of a reply (spec 003), drawn with native views. See parse.ts for the rules. */
-export const Markdown = memo((props: { readonly source: string }) => {
+/** The message that the pictures of a Markdown text belong to. */
+const PictureScope = createContext("")
+
+/**
+ * The Markdown of a reply (spec 003), drawn with native views. See parse.ts for the rules. A
+ * picture from the web is a box until the user loads it. `scope` names the message: the choice
+ * to load a picture holds for one address in one scope.
+ */
+export const Markdown = memo((props: { readonly source: string; readonly scope: string }) => {
   const blocks = useMemo(() => parseMarkdown(props.source), [props.source])
   return (
-    <View style={styles.blocks}>
-      {blocks.map((block, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: blocks have no id; the order is stable.
-        <BlockView key={i} block={block} />
-      ))}
-    </View>
+    <PictureScope.Provider value={props.scope}>
+      <View style={styles.blocks}>
+        {blocks.map((block, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: blocks have no id; the order is stable.
+          <BlockView key={i} block={block} />
+        ))}
+      </View>
+    </PictureScope.Provider>
   )
 })
 
@@ -132,7 +144,7 @@ const Inlines = (props: {
           </Text>
         ) : (
           // biome-ignore lint/suspicious/noArrayIndexKey: images have no id.
-          <MarkdownImage key={i} src={group.src} alt={group.alt} />
+          <MarkdownPicture key={i} picture={group.picture} />
         ),
       )}
     </>
@@ -171,17 +183,80 @@ const InlineView = ({ inline }: { readonly inline: Inline }) => {
           ))}
         </Text>
       )
+    // An image in a run of text has no place for a box. The parser puts each image on its own line,
+    // so this holds only the words of the image, and nothing loads.
     case "image":
-      return <Text>{inline.alt}</Text>
+      return (
+        <Text>
+          {inline.picture.kind === "inline" ? inline.picture.alt : inline.picture.box.alt}
+        </Text>
+      )
   }
 }
 
-/** An image of a reply, only from https (parse.ts). Its size is not known, so it fits a box. */
-const MarkdownImage = (props: { readonly src: string; readonly alt: string }) => {
+/**
+ * A picture of a reply (spec 003, "Pictures from the web"). A `data:image` picture shows at once.
+ * An `https` picture is a box with the button "Load image", and the picture loads only after the
+ * press. Another address is a box with no button.
+ */
+const MarkdownPicture = (props: { readonly picture: Picture }) => {
+  const { picture } = props
+  if (picture.kind === "inline") return <PictureImage src={picture.src} alt={picture.alt} />
+  if (picture.kind === "ask") return <AskedPicture picture={picture} />
+  return <PictureBoxView box={picture.box} />
+}
+
+const AskedPicture = (props: { readonly picture: Extract<Picture, { kind: "ask" }> }) => {
+  const scope = useContext(PictureScope)
+  const { picture } = props
+  const loaded = usePictureLoaded(scope, picture.src)
+  if (loaded) return <PictureImage src={picture.src} alt={picture.alt} />
+  return <PictureBoxView box={picture.box} onLoad={() => loadPicture(scope, picture.src)} />
+}
+
+/** The box: the alt text, the address, and the button when the picture can load. */
+const PictureBoxView = (props: { readonly box: PictureBox; readonly onLoad?: () => void }) => {
+  const { t, palette } = useApp()
+  const { box } = props
+  return (
+    <View
+      testID="picture.box"
+      style={[styles.pictureBox, { borderColor: palette.border, backgroundColor: palette.surface }]}
+    >
+      <Text
+        testID="picture.alt"
+        selectable
+        style={{ color: palette.text, fontSize: text.s, lineHeight: 19 }}
+      >
+        {(box.alt || t("picture.alt.empty")) + (box.altCut ? "…" : "")}
+      </Text>
+      <Text
+        testID="picture.address"
+        selectable
+        style={{ color: palette.textMuted, fontSize: text.xs, lineHeight: 17, fontFamily: mono }}
+      >
+        {box.address + (box.addressCut ? "…" : "")}
+      </Text>
+      {props.onLoad ? (
+        <Button
+          testID="picture.load"
+          kind="secondary"
+          label={t("picture.load")}
+          onPress={props.onLoad}
+          style={styles.pictureLoad}
+        />
+      ) : null}
+    </View>
+  )
+}
+
+/** A picture that shows. Its size is not known, so it fits a box. */
+const PictureImage = (props: { readonly src: string; readonly alt: string }) => {
   const { palette } = useApp()
   const [ratio, setRatio] = useState(16 / 9)
   return (
     <Image
+      testID="picture.image"
       source={{ uri: props.src }}
       accessibilityLabel={props.alt}
       resizeMode="contain"
@@ -241,6 +316,8 @@ const styles = StyleSheet.create({
   },
   rule: { height: StyleSheet.hairlineWidth, marginVertical: space.s },
   image: { width: "100%", borderRadius: radius.m },
+  pictureBox: { borderWidth: 1, borderRadius: radius.m, padding: space.m, gap: space.xs },
+  pictureLoad: { alignSelf: "flex-start", marginTop: space.xs, minHeight: 44 },
   code: { borderWidth: 1, borderRadius: radius.m, padding: space.m, paddingTop: space.l + space.s },
   copy: { position: "absolute", top: space.s, right: space.m, zIndex: 1 },
   codeText: { fontFamily: mono, fontSize: text.s, lineHeight: 20 },

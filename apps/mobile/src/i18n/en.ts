@@ -109,6 +109,9 @@ export const en = {
   "needs.question": "Question",
   "needs.open": "Open",
 
+  "picture.load": "Load image",
+  "picture.alt.empty": "Image",
+
   "chat.empty": "This is the start of your chat.",
   "chat.empty.channel": "This is the start of #{name}.",
   "chat.bot": "BOT",
