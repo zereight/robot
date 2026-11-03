@@ -31,6 +31,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 021 | [Today: what waits for the user, what went wrong, what ran today, what runs next](021-today.md) | Draft |
 | 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
 | 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
+| 024 | [Board: one board for all agents, work of every agent as it runs, planned cards, start a card as a task, tools for agents](024-board.md) | Draft |
 
 ## Milestones
 
@@ -57,6 +58,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M17 | 023, and the changes to 000, 002, 004, 005, 007, 008, 009, 012, 013, 014, 017, 018 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S61 to S68: usage of a task and token limits, "Ask when unsure", read-only marks, memory check, channel notes, handbook and channel instructions, team file, outside programs |
 | M18 | The change to 010 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S69: the workflow starter "TLA+ check" |
 | M19 | The changes to 003, 005, 013 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md), with S20 | Slices S20, S70, S71 and S72: threads, context meter and compact, automatic compact, the order of the task queue with "Run next", and the number of slots ("Agents working at once") |
+| M20 | 024, and the changes to 001, 005, 007, 012, 014, 019 and 022 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S73: the board |
 
 ## Surfaces check
 

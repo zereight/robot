@@ -78,6 +78,11 @@ A new word goes here in the same pull request as the spec that brings it.
 | Starter | A ready setup for one job. It fills the new agent form (002) or makes a workflow (010). | — (proposed: 스타터) | template, preset |
 | Today | The page of what waits, went wrong, ran and runs next (021). | 오늘 | inbox, dashboard |
 | Needs you | Items that wait for the user (011, 021). | 내 확인이 필요해요 | inbox |
+| Board | The page of cards in four columns (024). | 보드 (proposed) | kanban (as a name in the interface), project |
+| Card | One piece of planned work on the board (024). | 카드 (proposed) | ticket, issue, task (a card is not a task) |
+| Work card | A card that the board makes by itself for a task that has no card (024). | 진행 중인 작업 카드 (proposed) | planned card, ticket |
+| Backlog, To do, Doing, Done | The four columns of the board (024). Agents leave "Backlog" alone. | 백로그, 할 일, 진행 중, 완료 (proposed) | In progress, Review |
+| Mine | The switch of a card that the user does alone. Agents do not see it (024). | 내가 할 일 (proposed) | Human, private |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
 

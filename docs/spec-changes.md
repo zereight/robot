@@ -122,6 +122,7 @@ These are in the code today and the specs now say something else.
 | S70 | Automatic compact: the setting, the 85 percent rule, the line "Compacting…", the new try after 5 turns. It follows S20, which builds the manual compact. | 003, 013 |
 | S71 | Queue: the order of waiting tasks, "Run next", the limit of 20 queued tasks and its reason for each source, the limit of 10 messages in the message queue of a thread, the rules for archive and delete of a thread, Fork after a "Compacted" line, the main thread only on the phone and a linked computer, the line "Waits for another thread". It follows S20 for the threads. | 005, 003 |
 | S72 | Agents at once: the setting, the slots, "Waits for a free slot", the rule that a task waiting for the user or for a child uses no slot. Follows S71. | 005, 013 |
+| S73 | Board: the page button and page, one board for all agents, four columns, work cards that the board makes by itself for every task (their column, marks, "Dismiss", the switch "Work of agents"), planned cards with number, comments and the switch "Mine", "Start" that makes a task with the source "Board", the rules by which a card follows its task, the five tools of agents (read the board, read a card, add a card, take a card, comment on a card), the mark of agent text as outside content, limits, sync and export of cards, and texts in English and Korean. The idea of a shared board for people and agents comes from the public description of the project Kanzo (read: its README only, no code; its license is AGPL-3.0 and ROBot takes nothing from it). | 024, 001, 005, 007, 012, 014, 019, 022 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -131,6 +132,7 @@ S55 does not depend on the other slices. It removes code, so it goes best when n
 S59 follows S47. S60 does not depend on the other slices.
 S61 to S68 do not depend on each other, except as listed. S66 and S61 give the largest gain for the effort.
 S69 does not depend on the other slices. It needs no change to 012: a linked client already needs the switch "Can create and change agents" to create a workflow.
+S73 does not depend on the other slices. It shows the queue marks of S71 and S72 when they exist, and needs neither. Do the page and the work cards first: they only read tasks, so they are the smallest part and show value at once. Then the planned cards and "Start". The tools of agents and the mark of outside content can follow in a third pull request of the same slice. The slice changes the list of page buttons (001), so it goes best when no other slice that changes that list is open.
 
 ## Decided against
 

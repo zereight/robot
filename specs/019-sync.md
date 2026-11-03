@@ -31,6 +31,7 @@ service holds it.
 | Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent, with the channel of a channel note. |
 | Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
+| Board (024) | The cards with their number, title, description, column, place, agent, Mine switch and writer, their comments, and their links to tasks. The card follows its newest task on both computers. |
 | Read state | The last place that the user read in each chat. |
 | The mark of outside content of a place (007) | The mark and its clear. A turn on either computer then asks in the same way. |
 
@@ -49,6 +50,7 @@ service holds it.
 | Memory history, memory proposals and memory switches (008) | The history tells what changed on one computer, like the action log. A proposal waits for the user of one computer. The switches are on or off, and save at once or ask first. They are choices of one computer. A memory item that arrives by sync makes no history row. |
 | Usage numbers | They count what ran on this computer. |
 | Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
+| The view of the board: the switch "Work of agents" and the dismissed work cards (024) | They are the layout of one computer, like settings. The board shows the tasks of both computers; a dismiss hides a card on one computer only. |
 | User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives in the default section. |
 | The decision model and the other settings of 013, except the handbook | Settings are local. The handbook is data of the agents (002). |
 | Linked devices and their keys | They are not data of the agents. |

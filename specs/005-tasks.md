@@ -8,7 +8,8 @@ and workflows.
 ## Concepts
 
 - **Task**: who does it (agent), what (prompt), where it came from (chat, channel, routine,
-  workflow, another agent, a memory check (008), or an outside program (023)), its parent task if
+  workflow, another agent, a memory check (008), a card of the board (024), or an outside program
+  (023)), its parent task if
   any, its state, start and end time, and its result or error.
 - **Depth**: a number. A task that the user, a routine, a workflow, a memory check or an outside
   program starts has depth 0. See
@@ -37,6 +38,9 @@ and workflows.
 
 - A table of tasks, newest first: agent face and name, label, source, state, duration.
 - Filters: state, agent, source. Search by label.
+- A task that the user starts from a card (024) has the source "Board" and the title of the card as
+  its label. Its view shows a link "Card #<number>" that opens the card, or the line "Card
+  removed." when the user deleted the card.
 - A row opens the task: its prompt, its steps, its messages, its child tasks as a tree, and its
   three times. The messages that joined the task during its turn (see 003) are listed under the
   prompt, with their times. For a part it also shows the done test and the verdict. It shows a

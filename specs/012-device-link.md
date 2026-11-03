@@ -101,7 +101,7 @@ client shows it and sends commands.
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
 
 A client sees the user sections of the server (001) and cannot make, rename, order or delete
-them, or move a place into another section. The Today and usage page buttons and pages, and the
+them, or move a place into another section. The Today, Board and usage page buttons and pages, and the
 other parts in the right column, show a muted line on a client: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
 card on a client has no "Always allow" choice. If a client sends one, the server takes it as one
