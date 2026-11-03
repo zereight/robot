@@ -84,7 +84,8 @@ With the access "Read and send work", also:
   (007), for example a change of settings or a save to memory, asks the user, also at "Full
   access". At "Read only", the steps that "Read only" refuses stay refused. The program mark goes
   to later turns of the same chat, to forks, to the parts of a job, and to a message that the
-  agent sends to another agent, until the user clears it (007, "The mark of a place").
+  agent sends to another agent, until the user clears it (007, "The mark of a place"). A hit of
+  "search chats" on a message of an outside program gives the program mark too.
 - A task of an outside program has depth 0 (005).
 - A job that an outside program sends to a channel holds outside content and the program mark in
   every part (007).

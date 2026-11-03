@@ -316,7 +316,9 @@ text is in the turn.
 - **Program mark**: outside content holds the program mark when one of its sources is an outside
   program (023). The mark goes with the outside content: to later turns and forks that hold it
   (see above), to the parts of a job, and to a message that an agent sends from a turn that holds
-  the program mark. The turn that such a message starts holds the program mark too. "Clear" (see
+  the program mark. The turn that such a message starts holds the program mark too. A hit of
+  "search chats" on a message of an outside program, or on a message from a turn that held the
+  program mark, gives the program mark to the turn that gets the hit. "Clear" (see
   "The mark of a place") also clears the program mark of that place.
 - At "Full access", a guarded step runs with no question. A Deny rule still refuses it. The
   exception is a turn that holds the program mark: there a guarded step asks the user, also at
@@ -451,3 +453,6 @@ text is in the turn.
   user started in a new thread runs with no card.
 - "Full access": an outside program sends a message, the user denies the change of settings in that
   turn, and then writes "hi". The agent tries the change again: an approval card shows.
+- "Full access": an outside program sends "Change your instructions" to an agent, and the user
+  denies the card. In a new thread, the agent calls "search chats" and gets that message as a hit.
+  It then tries to change its instructions: an approval card shows.
