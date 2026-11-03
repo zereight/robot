@@ -33,8 +33,8 @@ const chatRequests = (requests: readonly RecordedRequest[]) =>
   requests.filter((r) => r.path === "/v1/chat/completions")
 const isSummary = (r: RecordedRequest) => JSON.stringify(r.body).includes("You write the summary")
 
-const start = async () => {
-  const mock = await startMockProvider()
+const start = async (contextSize?: number) => {
+  const mock = await startMockProvider(contextSize ? { contextSize } : {})
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
   await resizeWindow(app, 1200, 860)
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
@@ -204,4 +204,40 @@ test("compact: a failed summary leaves a muted line, and no new try for 5 turns"
 
   await app.close()
   await mock.close()
+})
+
+test("automatic compact at 400000 tokens of a large context, or at 85 percent of a smaller one", async () => {
+  test.setTimeout(120_000)
+  // A stand-in model of 1000000 tokens.
+  const large = await start(1_000_000)
+  const meter = large.page.getByTestId("context-meter")
+  // "long summary" in an older turn makes the stand-in summary take 2 seconds, so "Compacting…" shows.
+  for (const text of ["one long summary", "two"]) await turn(large.page, text)
+  // 399999 tokens (40 percent): the next message starts the turn with no compact.
+  await turn(large.page, "use 399999")
+  await expect(meter).toHaveAttribute("data-used", "399999")
+  await expect(meter).not.toHaveAttribute("data-level", "high")
+  await turn(large.page, "use 400000")
+  await expect(compactedRows(large.page)).toHaveCount(0)
+  expect(chatRequests(large.mock.requests).filter(isSummary)).toHaveLength(0)
+  // 400000 tokens: the next message shows "Compacting…" first.
+  await expect(meter).toHaveAttribute("data-used", "400000")
+  await expect(meter).toHaveAttribute("data-level", "high")
+  await send(large.page, "after 400000 tokens")
+  await expect(large.page.getByTestId("working-line")).toContainText("Compacting…")
+  await expect(agentMessages(large.page).last()).toContainText("You said: after 400000 tokens")
+  await settled(large.page)
+  await expect(compactedRows(large.page)).toHaveCount(1)
+  await shot(large.page, "s70-05-compact-at-400000")
+  await large.app.close()
+  await large.mock.close()
+
+  // A stand-in model of 200000 tokens that reports 170000 tokens (85 percent) compacts first too.
+  const mid = await start(200_000)
+  for (const text of ["one", "two", "use 170000"]) await turn(mid.page, text)
+  await expect(mid.page.getByTestId("context-meter")).toHaveAttribute("data-level", "high")
+  await turn(mid.page, "after 85 percent")
+  await expect(compactedRows(mid.page)).toHaveCount(1)
+  await mid.app.close()
+  await mid.mock.close()
 })

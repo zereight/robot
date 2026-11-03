@@ -365,10 +365,15 @@ export interface SentPart {
 
 /** The context size of "mock-fast". "fill context" in a message reports 91 percent of it as used. */
 export const CONTEXT_SIZE = 100_000
-const usageOf = (body: ChatBody) =>
-  (body.messages.at(-1)?.content ?? "").split("\n").at(-1)?.includes("fill context")
+/** "use N" at the end of a message reports a use of N tokens in all. */
+const usageOf = (body: ChatBody) => {
+  const line = (body.messages.at(-1)?.content ?? "").split("\n").at(-1) ?? ""
+  const use = /use (\d+)$/.exec(line)?.[1]
+  if (use) return { prompt_tokens: Number(use) - 10, completion_tokens: 10 }
+  return line.includes("fill context")
     ? { prompt_tokens: 90_000, completion_tokens: 1_000 }
     : { prompt_tokens: 20, completion_tokens: 10 }
+}
 
 /**
  * A request for the summary of a compact (spec 003). The answer is "Summary of N messages". When a
@@ -532,7 +537,10 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
  * A local model provider for end-to-end tests. It speaks the OpenAI-compatible API under
  * `/v1` and the Anthropic API under `/anthropic/v1`.
  */
-export const startMockProvider = async () => {
+/**
+ * `contextSize` is the size of the context of "mock-fast" (spec 003). It is 100000 when not given.
+ */
+export const startMockProvider = async (options: { contextSize?: number } = {}) => {
   const requests: RecordedRequest[] = []
   const sent: SentPart[] = []
   /** The draft requests that the app closed before the answer came (spec 017). */
@@ -550,7 +558,10 @@ export const startMockProvider = async () => {
     if (url.pathname === "/v1/models") {
       // "mock-fast" tells the size of its context, for the context meter (spec 003).
       return json(res, 200, {
-        data: [{ id: "mock-fast", context_length: CONTEXT_SIZE }, { id: "o3-mini" }],
+        data: [
+          { id: "mock-fast", context_length: options.contextSize ?? CONTEXT_SIZE },
+          { id: "o3-mini" },
+        ],
       })
     }
     if (url.pathname === "/anthropic/v1/models") {

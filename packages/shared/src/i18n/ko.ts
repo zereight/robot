@@ -441,7 +441,7 @@ export const ko: Record<MessageKey, string> = {
   "threads.busy.messages": "이 스레드의 메시지가 메시지 대기열에서 기다리고 있어요.",
   "settings.autoCompact": "긴 채팅 자동 압축",
   "settings.autoCompact.hint":
-    "턴을 시작하기 전에 모델 컨텍스트의 85%를 쓰는 채팅은 앞부분을 요약으로 바꿔요.",
+    "턴을 시작하기 전에 모델 컨텍스트의 85% 또는 400000토큰을 쓰는 채팅은 앞부분을 요약으로 바꿔요.",
   "error.thread_limit":
     "에이전트는 스레드를 50개까지 가질 수 있어요. 하나를 삭제하고 새로 시작하세요.",
   "error.thread_not_found": "이 스레드는 더 이상 없어요.",

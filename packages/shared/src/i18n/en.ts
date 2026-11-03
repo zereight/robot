@@ -443,7 +443,7 @@ export const en = {
   "threads.busy.messages": "Messages of this thread wait in the message queue.",
   "settings.autoCompact": "Compact long chats automatically",
   "settings.autoCompact.hint":
-    "Before a turn, a chat that uses 85 percent of the context of the model gets a summary of its older part.",
+    "Before a turn, a chat that uses 85 percent of the context of the model, or 400000 tokens, gets a summary of its older part.",
   "error.thread_limit": "An agent has at most 50 threads. Delete one to start another.",
   "error.thread_not_found": "This thread no longer exists.",
   "error.thread_busy": "This thread has work that runs or waits. Wait for it to end.",
