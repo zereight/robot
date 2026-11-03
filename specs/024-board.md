@@ -145,9 +145,9 @@ card and write comments. So the user and the agents plan and watch in one place.
     leaves and the new task gets its own card.
 - Actions on a work card are the actions of the Tasks page (005): "Stop" for a live task, "Run
   next" for a queued task (see 005, "Queue"), and "Retry" for a failed, blocked or cancelled
-  task. A queued card shows the line of 005 that tells what the task waits behind. "Dismiss" shows on a failed, blocked or
-  cancelled card. It hides the card on this computer only. It does not change the task, and the
-  task stays on the Tasks page and on the Today page (021).
+  task. A queued card shows the line of 005 that tells what the task waits behind. "Dismiss"
+  shows on a failed, blocked or cancelled card. It hides the card on this computer only. It does
+  not change the task, and the task stays on the Tasks page and on the Today page (021).
 - A card that waits for the user ("Needs you") opens the task at the question or the approval,
   as a row of the Today page does. The board answers nothing by itself.
 - The tools for agents do not list work cards. The tool "list agents" (007) gives the state of
