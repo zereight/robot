@@ -29,7 +29,9 @@ export interface BrowserPage {
   place(bounds: PageBounds | undefined): void
   /**
    * Lets the input of the user (clicks, keys) reach the page, or keeps it out. The steps of the
-   * agent are not input of the user and do not depend on this.
+   * agent are not input of the user and do not depend on this. While the user does not hold the
+   * page, the page never keeps the keyboard focus: if a load, an address or a link takes it from
+   * the chat, it goes back (spec 007).
    */
   allowUserInput(allowed: boolean): void
   /** Closes the page at once. */
