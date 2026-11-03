@@ -1074,6 +1074,7 @@ export const ko: Record<MessageKey, string> = {
   "workflows.run": "실행",
   "workflows.stop": "실행 중지",
   "workflows.back": "뒤로",
+  "workflows.resize": "오른쪽 열 크기 조절",
   "workflows.untitled": "이름 없는 워크플로우",
   "workflows.name": "워크플로우 이름",
   "workflows.empty": "워크플로우가 아직 없습니다. 워크플로우는 단계를 정해진 순서로 연결합니다.",

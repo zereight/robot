@@ -37,6 +37,7 @@ import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
+import { SIDE_MAX, SIDE_MIN, setSideWidth, sideWidth } from "./sideWidth.ts"
 import styles from "./workflows.module.css"
 
 const NODE_W = 180
@@ -101,6 +102,7 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
   const [error, setError] = createSignal<ErrorText>()
   const [watched, setWatched] = createSignal<string>()
   let canvas: HTMLDivElement | undefined
+  let workspace: HTMLDivElement | undefined
 
   const [runs, { refetch: refetchRuns }] = createResource(
     () => saved()?.id,
@@ -202,6 +204,21 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
     }
     window.addEventListener("pointermove", move)
     window.addEventListener("pointerup", up)
+  }
+
+  /** The side column grows when the handle moves left, because the handle is on its left edge. */
+  const startSideResize = (event: PointerEvent) => {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = sideWidth()
+    track((e) => setSideWidth(startWidth + startX - e.clientX, workspace?.clientWidth))
+  }
+
+  const sideResizeByKey = (event: KeyboardEvent) => {
+    const step = event.key === "ArrowLeft" ? 20 : event.key === "ArrowRight" ? -20 : 0
+    if (!step) return
+    event.preventDefault()
+    setSideWidth(sideWidth() + step, workspace?.clientWidth)
   }
 
   const startPan = (event: PointerEvent) => {
@@ -638,7 +655,12 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
         )}
       </Show>
 
-      <div class={styles.workspace}>
+      <div
+        class={styles.workspace}
+        ref={workspace}
+        style={{ "--side-width": `${sideWidth()}px` }}
+        data-testid="wf-workspace"
+      >
         <div
           class={styles.canvas}
           ref={canvas}
@@ -776,468 +798,493 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
           </Show>
         </div>
 
-        <aside class={styles.panel} data-testid="wf-panel">
-          <Show
-            when={selectedStep()}
-            fallback={
-              <Show
-                when={selectedNote()}
-                fallback={
-                  <Show
-                    when={selected()?.kind === "edge"}
-                    fallback={<p class={styles.hint}>{t("workflows.panel.empty")}</p>}
-                  >
-                    <Show when={canEdit()}>
-                      <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
-                        {t("workflows.deleteEdge")}
-                      </Button>
-                    </Show>
-                  </Show>
-                }
-              >
-                {(n) => (
-                  <div class={styles.fields}>
-                    <label class={styles.field}>
-                      <span>{t("workflows.note.text")}</span>
-                      <textarea
-                        class={styles.input}
-                        rows={6}
-                        maxLength={NOTE_TEXT_MAX}
-                        disabled={readOnly()}
-                        value={n().text}
-                        placeholder={t("workflows.note.placeholder")}
-                        onInput={(e) => patchNote(n().id, { text: e.currentTarget.value })}
-                        data-testid="wf-note-text"
-                      />
-                    </label>
-                    <label class={styles.field}>
-                      <span>{t("workflows.note.tone")}</span>
-                      <select
-                        class={styles.input}
-                        disabled={readOnly()}
-                        value={n().tone}
-                        onChange={(e) =>
-                          patchNote(n().id, { tone: e.currentTarget.value as Note["tone"] })
-                        }
-                        data-testid="wf-note-tone"
-                      >
-                        <For each={NOTE_TONES}>
-                          {(tone) => (
-                            <option value={tone}>
-                              {t(`workflows.note.tone.${tone}` as MessageKey)}
-                            </option>
-                          )}
-                        </For>
-                      </select>
-                    </label>
-                    <span class={styles.hint}>{t("workflows.note.hint")}</span>
-                    <Show when={canEdit()}>
-                      <Button disabled={readOnly()} onClick={remove} data-testid="wf-note-delete">
-                        {t("workflows.note.delete")}
-                      </Button>
-                    </Show>
-                  </div>
-                )}
-              </Show>
-            }
-          >
-            {(s) => (
-              <div class={styles.fields}>
-                <label class={styles.field}>
-                  <span>{t("workflows.step.name")}</span>
-                  <input
-                    class={styles.input}
-                    disabled={readOnly()}
-                    value={s().name}
-                    onInput={(e) => patchStep(s().id, { name: e.currentTarget.value })}
-                    data-testid="wf-step-name"
-                  />
-                </label>
+        {/* biome-ignore lint/a11y/useSemanticElements: a focusable window splitter has no native element */}
+        <div
+          class={styles.resizer}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("workflows.resize")}
+          aria-valuemin={SIDE_MIN}
+          aria-valuemax={SIDE_MAX}
+          aria-valuenow={sideWidth()}
+          tabIndex={0}
+          onPointerDown={startSideResize}
+          onKeyDown={sideResizeByKey}
+          data-testid="wf-resizer"
+        />
+
+        <div class={styles.side}>
+          <aside class={styles.panel} data-testid="wf-panel">
+            <Show
+              when={selectedStep()}
+              fallback={
                 <Show
-                  when={
-                    s().kind === "agent" ? (s() as Extract<Step, { kind: "agent" }>) : undefined
-                  }
-                >
-                  {(a) => (
-                    <>
-                      <label class={styles.field}>
-                        <span>{t("routines.field.agent")}</span>
-                        <select
-                          class={styles.input}
-                          disabled={readOnly()}
-                          value={a().agentId}
-                          onChange={(e) => patchStep(a().id, { agentId: e.currentTarget.value })}
-                          data-testid="wf-step-agent"
-                        >
-                          <option value="" selected={a().agentId === ""}>
-                            {t("workflows.step.pickAgent")}
-                          </option>
-                          <For each={agents.agents()}>
-                            {(x) => (
-                              <option value={x.id} selected={x.id === a().agentId}>
-                                {x.name}
-                              </option>
-                            )}
-                          </For>
-                        </select>
-                      </label>
-                      <label class={styles.field}>
-                        <span>{t("workflows.step.effort")}</span>
-                        <select
-                          class={styles.input}
-                          disabled={readOnly()}
-                          value={a().effort ?? ""}
-                          onChange={(e) => {
-                            const level = e.currentTarget.value as StepEffort | ""
-                            // "Follow the agent" is the lack of a value, so the file stays small.
-                            if (level === "") clearStepField(a().id, "effort")
-                            else patchStep(a().id, { effort: level })
-                          }}
-                          data-testid="wf-step-effort"
-                        >
-                          <option value="" selected={a().effort === undefined}>
-                            {t("workflows.step.effort.follow")}
-                          </option>
-                          <For each={STEP_EFFORTS}>
-                            {(level) => (
-                              <option value={level} selected={a().effort === level}>
-                                {t(`workflows.step.effort.${level}` as MessageKey)}
-                              </option>
-                            )}
-                          </For>
-                        </select>
-                        <span class={styles.hint}>{t("workflows.step.effort.hint")}</span>
-                      </label>
-                      <label class={styles.field}>
-                        <span>{t("workflows.step.prompt")}</span>
-                        <textarea
-                          class={styles.input}
-                          rows={5}
-                          disabled={readOnly()}
-                          value={a().prompt}
-                          onInput={(e) => patchStep(a().id, { prompt: e.currentTarget.value })}
-                          data-testid="wf-step-prompt"
-                        />
-                        <span class={styles.hint}>{t("workflows.step.prompt.hint")}</span>
-                      </label>
-                      <label class={styles.inline}>
-                        <input
-                          type="checkbox"
-                          disabled={readOnly()}
-                          checked={a().continueOnFailure}
-                          onChange={(e) =>
-                            patchStep(a().id, { continueOnFailure: e.currentTarget.checked })
-                          }
-                          data-testid="wf-step-continue"
-                        />
-                        {t("workflows.step.continue")}
-                      </label>
-                    </>
-                  )}
-                </Show>
-                <Show
-                  when={
-                    s().kind === "condition"
-                      ? (s() as Extract<Step, { kind: "condition" }>)
-                      : undefined
-                  }
-                >
-                  {(c) => (
-                    <>
-                      <label class={styles.field}>
-                        <span>{t("workflows.step.mode")}</span>
-                        <select
-                          class={styles.input}
-                          disabled={readOnly()}
-                          value={conditionMode(c())}
-                          onChange={(e) =>
-                            patchStep(c().id, {
-                              mode: e.currentTarget.value as (typeof CONDITION_MODES)[number],
-                            })
-                          }
-                          data-testid="wf-step-mode"
-                        >
-                          <For each={CONDITION_MODES}>
-                            {(mode) => (
-                              <option value={mode} selected={conditionMode(c()) === mode}>
-                                {t(`workflows.step.mode.${mode}` as MessageKey)}
-                              </option>
-                            )}
-                          </For>
-                        </select>
-                      </label>
-                      <label class={styles.field}>
-                        <span>
-                          {conditionMode(c()) === "ask"
-                            ? t("workflows.step.question")
-                            : t("workflows.step.contains")}
-                        </span>
-                        <input
-                          class={styles.input}
-                          disabled={readOnly()}
-                          value={c().contains}
-                          onInput={(e) => patchStep(c().id, { contains: e.currentTarget.value })}
-                          data-testid="wf-step-contains"
-                        />
-                        <span class={styles.hint}>
-                          {conditionMode(c()) === "ask"
-                            ? t("workflows.step.question.hint")
-                            : t("workflows.step.contains.hint")}
-                        </span>
-                      </label>
-                      <Show when={conditionMode(c()) === "ask"}>
-                        <label class={styles.field}>
-                          <span>{t("workflows.step.provider")}</span>
-                          <select
-                            class={styles.input}
-                            disabled={readOnly()}
-                            value={c().provider ? "pick" : "auto"}
-                            onChange={(e) => {
-                              if (e.currentTarget.value === "pick")
-                                patchStep(c().id, { provider: { accountId: "", model: "" } })
-                              else clearStepField(c().id, "provider")
-                            }}
-                            data-testid="wf-step-provider-mode"
-                          >
-                            <option value="auto" selected={!c().provider}>
-                              {t("workflows.step.provider.auto")}
-                            </option>
-                            <option value="pick" selected={!!c().provider}>
-                              {t("workflows.step.provider")}…
-                            </option>
-                          </select>
-                        </label>
-                        <Show when={c().provider}>
-                          <ModelPicker
-                            value={
-                              c().provider?.accountId
-                                ? {
-                                    ...(c().provider as { accountId: string; model: string }),
-                                    effort: null,
-                                  }
-                                : null
-                            }
-                            onChange={(m) =>
-                              patchStep(c().id, {
-                                provider: m
-                                  ? { accountId: m.accountId, model: m.model }
-                                  : { accountId: "", model: "" },
-                              })
-                            }
-                          />
-                        </Show>
+                  when={selectedNote()}
+                  fallback={
+                    <Show
+                      when={selected()?.kind === "edge"}
+                      fallback={<p class={styles.hint}>{t("workflows.panel.empty")}</p>}
+                    >
+                      <Show when={canEdit()}>
+                        <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
+                          {t("workflows.deleteEdge")}
+                        </Button>
                       </Show>
-                    </>
-                  )}
-                </Show>
-                <Show
-                  when={
-                    s().kind === "notify" ? (s() as Extract<Step, { kind: "notify" }>) : undefined
+                    </Show>
                   }
                 >
                   {(n) => (
-                    <label class={styles.field}>
-                      <span>{t("workflows.step.title")}</span>
-                      <input
-                        class={styles.input}
-                        maxLength={NOTIFY_TITLE_MAX}
-                        disabled={readOnly()}
-                        value={n().title}
-                        onInput={(e) => patchStep(n().id, { title: e.currentTarget.value })}
-                        data-testid="wf-step-title"
-                      />
-                      <span class={styles.hint}>{t("workflows.step.notify.hint")}</span>
-                    </label>
-                  )}
-                </Show>
-                <Show
-                  when={
-                    s().kind === "approval"
-                      ? (s() as Extract<Step, { kind: "approval" }>)
-                      : undefined
-                  }
-                >
-                  {(a) => (
-                    <label class={styles.field}>
-                      <span>{t("workflows.step.message")}</span>
-                      <input
-                        class={styles.input}
-                        disabled={readOnly()}
-                        value={a().message}
-                        onInput={(e) => patchStep(a().id, { message: e.currentTarget.value })}
-                        data-testid="wf-step-message"
-                      />
-                    </label>
-                  )}
-                </Show>
-                <Show
-                  when={s().kind === "post" ? (s() as Extract<Step, { kind: "post" }>) : undefined}
-                >
-                  {(p) => (
-                    <>
+                    <div class={styles.fields}>
                       <label class={styles.field}>
-                        <span>{t("workflows.step.channel")}</span>
+                        <span>{t("workflows.note.text")}</span>
+                        <textarea
+                          class={styles.input}
+                          rows={6}
+                          maxLength={NOTE_TEXT_MAX}
+                          disabled={readOnly()}
+                          value={n().text}
+                          placeholder={t("workflows.note.placeholder")}
+                          onInput={(e) => patchNote(n().id, { text: e.currentTarget.value })}
+                          data-testid="wf-note-text"
+                        />
+                      </label>
+                      <label class={styles.field}>
+                        <span>{t("workflows.note.tone")}</span>
                         <select
                           class={styles.input}
                           disabled={readOnly()}
-                          value={p().channelId}
-                          onChange={(e) => patchStep(p().id, { channelId: e.currentTarget.value })}
-                          data-testid="wf-step-channel"
+                          value={n().tone}
+                          onChange={(e) =>
+                            patchNote(n().id, { tone: e.currentTarget.value as Note["tone"] })
+                          }
+                          data-testid="wf-note-tone"
                         >
-                          <option value="" selected={p().channelId === ""}>
-                            {t("workflows.step.pickPlace")}
-                          </option>
-                          <For each={channels.channels()}>
-                            {(c) => (
-                              <option value={c.id} selected={c.id === p().channelId}>
-                                {c.name}
+                          <For each={NOTE_TONES}>
+                            {(tone) => (
+                              <option value={tone}>
+                                {t(`workflows.note.tone.${tone}` as MessageKey)}
                               </option>
                             )}
                           </For>
                         </select>
                       </label>
+                      <span class={styles.hint}>{t("workflows.note.hint")}</span>
+                      <Show when={canEdit()}>
+                        <Button disabled={readOnly()} onClick={remove} data-testid="wf-note-delete">
+                          {t("workflows.note.delete")}
+                        </Button>
+                      </Show>
+                    </div>
+                  )}
+                </Show>
+              }
+            >
+              {(s) => (
+                <div class={styles.fields}>
+                  <label class={styles.field}>
+                    <span>{t("workflows.step.name")}</span>
+                    <input
+                      class={styles.input}
+                      disabled={readOnly()}
+                      value={s().name}
+                      onInput={(e) => patchStep(s().id, { name: e.currentTarget.value })}
+                      data-testid="wf-step-name"
+                    />
+                  </label>
+                  <Show
+                    when={
+                      s().kind === "agent" ? (s() as Extract<Step, { kind: "agent" }>) : undefined
+                    }
+                  >
+                    {(a) => (
+                      <>
+                        <label class={styles.field}>
+                          <span>{t("routines.field.agent")}</span>
+                          <select
+                            class={styles.input}
+                            disabled={readOnly()}
+                            value={a().agentId}
+                            onChange={(e) => patchStep(a().id, { agentId: e.currentTarget.value })}
+                            data-testid="wf-step-agent"
+                          >
+                            <option value="" selected={a().agentId === ""}>
+                              {t("workflows.step.pickAgent")}
+                            </option>
+                            <For each={agents.agents()}>
+                              {(x) => (
+                                <option value={x.id} selected={x.id === a().agentId}>
+                                  {x.name}
+                                </option>
+                              )}
+                            </For>
+                          </select>
+                        </label>
+                        <label class={styles.field}>
+                          <span>{t("workflows.step.effort")}</span>
+                          <select
+                            class={styles.input}
+                            disabled={readOnly()}
+                            value={a().effort ?? ""}
+                            onChange={(e) => {
+                              const level = e.currentTarget.value as StepEffort | ""
+                              // "Follow the agent" is the lack of a value, so the file stays small.
+                              if (level === "") clearStepField(a().id, "effort")
+                              else patchStep(a().id, { effort: level })
+                            }}
+                            data-testid="wf-step-effort"
+                          >
+                            <option value="" selected={a().effort === undefined}>
+                              {t("workflows.step.effort.follow")}
+                            </option>
+                            <For each={STEP_EFFORTS}>
+                              {(level) => (
+                                <option value={level} selected={a().effort === level}>
+                                  {t(`workflows.step.effort.${level}` as MessageKey)}
+                                </option>
+                              )}
+                            </For>
+                          </select>
+                          <span class={styles.hint}>{t("workflows.step.effort.hint")}</span>
+                        </label>
+                        <label class={styles.field}>
+                          <span>{t("workflows.step.prompt")}</span>
+                          <textarea
+                            class={styles.input}
+                            rows={5}
+                            disabled={readOnly()}
+                            value={a().prompt}
+                            onInput={(e) => patchStep(a().id, { prompt: e.currentTarget.value })}
+                            data-testid="wf-step-prompt"
+                          />
+                          <span class={styles.hint}>{t("workflows.step.prompt.hint")}</span>
+                        </label>
+                        <label class={styles.inline}>
+                          <input
+                            type="checkbox"
+                            disabled={readOnly()}
+                            checked={a().continueOnFailure}
+                            onChange={(e) =>
+                              patchStep(a().id, { continueOnFailure: e.currentTarget.checked })
+                            }
+                            data-testid="wf-step-continue"
+                          />
+                          {t("workflows.step.continue")}
+                        </label>
+                      </>
+                    )}
+                  </Show>
+                  <Show
+                    when={
+                      s().kind === "condition"
+                        ? (s() as Extract<Step, { kind: "condition" }>)
+                        : undefined
+                    }
+                  >
+                    {(c) => (
+                      <>
+                        <label class={styles.field}>
+                          <span>{t("workflows.step.mode")}</span>
+                          <select
+                            class={styles.input}
+                            disabled={readOnly()}
+                            value={conditionMode(c())}
+                            onChange={(e) =>
+                              patchStep(c().id, {
+                                mode: e.currentTarget.value as (typeof CONDITION_MODES)[number],
+                              })
+                            }
+                            data-testid="wf-step-mode"
+                          >
+                            <For each={CONDITION_MODES}>
+                              {(mode) => (
+                                <option value={mode} selected={conditionMode(c()) === mode}>
+                                  {t(`workflows.step.mode.${mode}` as MessageKey)}
+                                </option>
+                              )}
+                            </For>
+                          </select>
+                        </label>
+                        <label class={styles.field}>
+                          <span>
+                            {conditionMode(c()) === "ask"
+                              ? t("workflows.step.question")
+                              : t("workflows.step.contains")}
+                          </span>
+                          <input
+                            class={styles.input}
+                            disabled={readOnly()}
+                            value={c().contains}
+                            onInput={(e) => patchStep(c().id, { contains: e.currentTarget.value })}
+                            data-testid="wf-step-contains"
+                          />
+                          <span class={styles.hint}>
+                            {conditionMode(c()) === "ask"
+                              ? t("workflows.step.question.hint")
+                              : t("workflows.step.contains.hint")}
+                          </span>
+                        </label>
+                        <Show when={conditionMode(c()) === "ask"}>
+                          <label class={styles.field}>
+                            <span>{t("workflows.step.provider")}</span>
+                            <select
+                              class={styles.input}
+                              disabled={readOnly()}
+                              value={c().provider ? "pick" : "auto"}
+                              onChange={(e) => {
+                                if (e.currentTarget.value === "pick")
+                                  patchStep(c().id, { provider: { accountId: "", model: "" } })
+                                else clearStepField(c().id, "provider")
+                              }}
+                              data-testid="wf-step-provider-mode"
+                            >
+                              <option value="auto" selected={!c().provider}>
+                                {t("workflows.step.provider.auto")}
+                              </option>
+                              <option value="pick" selected={!!c().provider}>
+                                {t("workflows.step.provider")}…
+                              </option>
+                            </select>
+                          </label>
+                          <Show when={c().provider}>
+                            <ModelPicker
+                              value={
+                                c().provider?.accountId
+                                  ? {
+                                      ...(c().provider as { accountId: string; model: string }),
+                                      effort: null,
+                                    }
+                                  : null
+                              }
+                              onChange={(m) =>
+                                patchStep(c().id, {
+                                  provider: m
+                                    ? { accountId: m.accountId, model: m.model }
+                                    : { accountId: "", model: "" },
+                                })
+                              }
+                            />
+                          </Show>
+                        </Show>
+                      </>
+                    )}
+                  </Show>
+                  <Show
+                    when={
+                      s().kind === "notify" ? (s() as Extract<Step, { kind: "notify" }>) : undefined
+                    }
+                  >
+                    {(n) => (
                       <label class={styles.field}>
-                        <span>{t("workflows.step.text")}</span>
-                        <textarea
+                        <span>{t("workflows.step.title")}</span>
+                        <input
                           class={styles.input}
-                          rows={4}
+                          maxLength={NOTIFY_TITLE_MAX}
                           disabled={readOnly()}
-                          value={p().text}
-                          onInput={(e) => patchStep(p().id, { text: e.currentTarget.value })}
-                          data-testid="wf-step-text"
+                          value={n().title}
+                          onInput={(e) => patchStep(n().id, { title: e.currentTarget.value })}
+                          data-testid="wf-step-title"
+                        />
+                        <span class={styles.hint}>{t("workflows.step.notify.hint")}</span>
+                      </label>
+                    )}
+                  </Show>
+                  <Show
+                    when={
+                      s().kind === "approval"
+                        ? (s() as Extract<Step, { kind: "approval" }>)
+                        : undefined
+                    }
+                  >
+                    {(a) => (
+                      <label class={styles.field}>
+                        <span>{t("workflows.step.message")}</span>
+                        <input
+                          class={styles.input}
+                          disabled={readOnly()}
+                          value={a().message}
+                          onInput={(e) => patchStep(a().id, { message: e.currentTarget.value })}
+                          data-testid="wf-step-message"
                         />
                       </label>
-                    </>
-                  )}
-                </Show>
-                <Show when={live()?.steps.find((x) => x.stepId === s().id)}>
-                  {(r) => (
-                    <Show when={r().state === "waiting"}>
-                      <div class={styles.actions}>
-                        <Button
-                          variant="primary"
-                          onClick={() =>
-                            call("workflows.approve", {
-                              runId: live()?.run.id ?? "",
-                              stepId: s().id,
-                              approved: true,
-                            })
-                          }
-                          data-testid="wf-approve"
-                        >
-                          {t("workflows.approve")}
-                        </Button>
-                        <Button
-                          onClick={() =>
-                            call("workflows.approve", {
-                              runId: live()?.run.id ?? "",
-                              stepId: s().id,
-                              approved: false,
-                            })
-                          }
-                          data-testid="wf-reject"
-                        >
-                          {t("workflows.reject")}
-                        </Button>
-                      </div>
-                    </Show>
-                  )}
-                </Show>
-                <Show when={canEdit()}>
-                  <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
-                    {t("workflows.deleteStep")}
-                  </Button>
-                </Show>
-              </div>
-            )}
-          </Show>
-        </aside>
-      </div>
-
-      <section class={styles.history} data-testid="wf-history">
-        <h3 class={styles.historyTitle}>{t("workflows.history")}</h3>
-        <Show when={runs().length === 0}>
-          <p class={styles.hint}>{t("workflows.history.empty")}</p>
-        </Show>
-        <div class={styles.runList}>
-          <For each={runs()}>
-            {(r) => (
-              <button
-                type="button"
-                class={styles.runRow}
-                aria-pressed={watched() === r.id}
-                data-state={r.state}
-                data-testid="wf-run-row"
-                onClick={() => setWatched(r.id)}
-              >
-                <span>{new Date(r.startedAt).toLocaleString()}</span>
-                <span>{t(`workflows.trigger.${r.trigger}` as MessageKey)}</span>
-                <span class={styles.runState}>
-                  {t(`workflows.runState.${r.state}` as MessageKey)}
-                </span>
-                <Show when={r.startedBy}>
-                  {(name) => (
-                    <span class={styles.hint} data-testid="wf-run-started-by">
-                      {t("workflows.startedBy", { name: name() })}
-                    </span>
-                  )}
-                </Show>
-              </button>
-            )}
-          </For>
-        </div>
-        <Show when={live()}>
-          {(d) => (
-            <div class={styles.runDetail} data-testid="wf-run-detail">
-              <Show when={d().run.state === "recorded"}>
-                <p class={styles.hint} data-testid="wf-run-recorded">
-                  {t("workflows.recorded")}
-                </p>
-                <Show when={d().run.triggerText}>
-                  {(text) => <pre data-testid="wf-run-trigger-text">{text()}</pre>}
-                </Show>
-              </Show>
-              <For each={d().steps}>
-                {(s) => (
-                  <details class={styles.stepRun} data-state={s.state} data-testid="wf-run-step">
-                    <summary>
-                      <span>{s.name}</span>
-                      <span class={styles.runState}>
-                        {t(`workflows.stepState.${s.state}` as MessageKey)}
-                      </span>
-                    </summary>
-                    <Show when={s.input}>
-                      <div class={styles.hint}>{t("chat.tool.input")}</div>
-                      <pre data-testid="wf-step-input">{s.input}</pre>
-                    </Show>
-                    <Show when={s.result}>
-                      <div class={styles.hint}>{t("chat.tool.output")}</div>
-                      <pre data-testid="wf-step-result">{s.result}</pre>
-                    </Show>
-                    <Show when={s.decidedBy}>
-                      {(name) => (
-                        <div class={styles.hint} data-testid="wf-step-decided-by">
-                          {t(
-                            s.error === "rejected"
-                              ? "chat.decision.denied"
-                              : "chat.decision.allowed",
-                            { name: name() },
-                          )}
+                    )}
+                  </Show>
+                  <Show
+                    when={
+                      s().kind === "post" ? (s() as Extract<Step, { kind: "post" }>) : undefined
+                    }
+                  >
+                    {(p) => (
+                      <>
+                        <label class={styles.field}>
+                          <span>{t("workflows.step.channel")}</span>
+                          <select
+                            class={styles.input}
+                            disabled={readOnly()}
+                            value={p().channelId}
+                            onChange={(e) =>
+                              patchStep(p().id, { channelId: e.currentTarget.value })
+                            }
+                            data-testid="wf-step-channel"
+                          >
+                            <option value="" selected={p().channelId === ""}>
+                              {t("workflows.step.pickPlace")}
+                            </option>
+                            <For each={channels.channels()}>
+                              {(c) => (
+                                <option value={c.id} selected={c.id === p().channelId}>
+                                  {c.name}
+                                </option>
+                              )}
+                            </For>
+                          </select>
+                        </label>
+                        <label class={styles.field}>
+                          <span>{t("workflows.step.text")}</span>
+                          <textarea
+                            class={styles.input}
+                            rows={4}
+                            disabled={readOnly()}
+                            value={p().text}
+                            onInput={(e) => patchStep(p().id, { text: e.currentTarget.value })}
+                            data-testid="wf-step-text"
+                          />
+                        </label>
+                      </>
+                    )}
+                  </Show>
+                  <Show when={live()?.steps.find((x) => x.stepId === s().id)}>
+                    {(r) => (
+                      <Show when={r().state === "waiting"}>
+                        <div class={styles.actions}>
+                          <Button
+                            variant="primary"
+                            onClick={() =>
+                              call("workflows.approve", {
+                                runId: live()?.run.id ?? "",
+                                stepId: s().id,
+                                approved: true,
+                              })
+                            }
+                            data-testid="wf-approve"
+                          >
+                            {t("workflows.approve")}
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              call("workflows.approve", {
+                                runId: live()?.run.id ?? "",
+                                stepId: s().id,
+                                approved: false,
+                              })
+                            }
+                            data-testid="wf-reject"
+                          >
+                            {t("workflows.reject")}
+                          </Button>
                         </div>
+                      </Show>
+                    )}
+                  </Show>
+                  <Show when={canEdit()}>
+                    <Button disabled={readOnly()} onClick={remove} data-testid="wf-delete">
+                      {t("workflows.deleteStep")}
+                    </Button>
+                  </Show>
+                </div>
+              )}
+            </Show>
+          </aside>
+
+          <section class={styles.history} data-testid="wf-history">
+            <h3 class={styles.historyTitle}>{t("workflows.history")}</h3>
+            <Show when={runs().length === 0}>
+              <p class={styles.hint}>{t("workflows.history.empty")}</p>
+            </Show>
+            <div class={styles.runList}>
+              <For each={runs()}>
+                {(r) => (
+                  <button
+                    type="button"
+                    class={styles.runRow}
+                    aria-pressed={watched() === r.id}
+                    data-state={r.state}
+                    data-testid="wf-run-row"
+                    onClick={() => setWatched(r.id)}
+                  >
+                    <span>{new Date(r.startedAt).toLocaleString()}</span>
+                    <span>{t(`workflows.trigger.${r.trigger}` as MessageKey)}</span>
+                    <span class={styles.runState}>
+                      {t(`workflows.runState.${r.state}` as MessageKey)}
+                    </span>
+                    <Show when={r.startedBy}>
+                      {(name) => (
+                        <span class={styles.hint} data-testid="wf-run-started-by">
+                          {t("workflows.startedBy", { name: name() })}
+                        </span>
                       )}
                     </Show>
-                    <Show when={s.error}>
-                      <pre class={styles.error} data-testid="wf-step-error">
-                        {stepError(s.error)}
-                      </pre>
-                    </Show>
-                  </details>
+                  </button>
                 )}
               </For>
             </div>
-          )}
-        </Show>
-      </section>
+            <Show when={live()}>
+              {(d) => (
+                <div class={styles.runDetail} data-testid="wf-run-detail">
+                  <Show when={d().run.state === "recorded"}>
+                    <p class={styles.hint} data-testid="wf-run-recorded">
+                      {t("workflows.recorded")}
+                    </p>
+                    <Show when={d().run.triggerText}>
+                      {(text) => <pre data-testid="wf-run-trigger-text">{text()}</pre>}
+                    </Show>
+                  </Show>
+                  <For each={d().steps}>
+                    {(s) => (
+                      <details
+                        class={styles.stepRun}
+                        data-state={s.state}
+                        data-testid="wf-run-step"
+                      >
+                        <summary>
+                          <span>{s.name}</span>
+                          <span class={styles.runState}>
+                            {t(`workflows.stepState.${s.state}` as MessageKey)}
+                          </span>
+                        </summary>
+                        <Show when={s.input}>
+                          <div class={styles.hint}>{t("chat.tool.input")}</div>
+                          <pre data-testid="wf-step-input">{s.input}</pre>
+                        </Show>
+                        <Show when={s.result}>
+                          <div class={styles.hint}>{t("chat.tool.output")}</div>
+                          <pre data-testid="wf-step-result">{s.result}</pre>
+                        </Show>
+                        <Show when={s.decidedBy}>
+                          {(name) => (
+                            <div class={styles.hint} data-testid="wf-step-decided-by">
+                              {t(
+                                s.error === "rejected"
+                                  ? "chat.decision.denied"
+                                  : "chat.decision.allowed",
+                                { name: name() },
+                              )}
+                            </div>
+                          )}
+                        </Show>
+                        <Show when={s.error}>
+                          <pre class={styles.error} data-testid="wf-step-error">
+                            {stepError(s.error)}
+                          </pre>
+                        </Show>
+                      </details>
+                    )}
+                  </For>
+                </div>
+              )}
+            </Show>
+          </section>
+        </div>
+      </div>
     </div>
   )
 }
