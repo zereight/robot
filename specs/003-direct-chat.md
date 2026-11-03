@@ -105,12 +105,16 @@ and its role line. Nothing moves.
 
 ## States
 
-- Working: a quiet animated line under the last row, with elapsed time. The line reads
+- Working: a calm animated line under the last row, with elapsed time. The line reads
   "Working…", or, in about half of the turns, a short playful phrase that the app picks at
   random for the turn and keeps until the turn ends. At least 20 phrases exist in each language.
   The Korean phrases read as spoken Korean, not as a translation. For a turn started by a routine,
   the line names the routine. The stop button shows whenever this line shows, in every place
   where the agent works (chat, channel, routine, workflow).
+- Quiet: when the turn shows no sign of life for the quiet time, the working line reads "No
+  answer from <name> for <time>" (see 005, "Quiet line"). The stop button stays. The quiet line
+  does not animate. The elapsed time of the turn stays where it was. The quiet line replaces only
+  the text.
 - Failed: an error row with the reason in plain words and a Retry button. Retry shows the retry
   note (see 005) when the first try ran steps that may have changed things. The row also tells
   how far the turn went (see 005, "How far a turn went"). A turn that the app stopped because

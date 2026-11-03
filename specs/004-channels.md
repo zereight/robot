@@ -144,6 +144,8 @@ The user gives a job to a group of agents in one place and watches them divide a
 - When a member leads active work, its card lists the plan steps: up to 8 steps, labels cut at
   48 characters, each with a state icon: to do (empty circle), running (spinner), done (check),
   failed (cross), in review (eye), blocked (stop sign). Each icon has a text label for screen readers.
+- A running step whose turn is quiet (see 005, "Quiet line") keeps the spinner. Its text label and
+  its tooltip read the quiet line.
 - Cancelled parts do not show. When all work ends, the steps leave the card.
 
 ## Rules
