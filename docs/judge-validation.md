@@ -28,6 +28,10 @@ Measure two rates for one lead model at a time. A person marks each part Pass or
 
 Do not report plain accuracy. Most parts pass, so a lead that always says "Met" would look good.
 
+A call can fail, an answer can be unreadable, or an answer can give no verdict for a part. Count
+each of these as a miss for the label of that item. It lowers the Met rate for a Pass item and the
+Catch rate for a Fail item. Report the number of such answers apart.
+
 | Rate | Target | Lowest accepted |
 | --- | --- | --- |
 | Met rate | 90% | 80% |
@@ -97,6 +101,11 @@ A replay sends an item to the model again and reads the verdict.
 - A real check judges all parts of a job in one call and also chooses an action. For the baseline,
   replay the real groups of parts.
 - Run each item 3 times. Report the share of items whose verdict changes between runs.
+- Known limit: an item does not hold the state of the other parts of its job. The replay shows
+  every part as done, with no verdict. This equals a first check. It differs after a nudge, when a
+  real check also lists the earlier verdicts and the failed parts. That difference changes the
+  choice of an action more than it changes a verdict. When real checks after a nudge are in the
+  data, add the state of the other parts to the items.
 
 ## Runs
 
@@ -108,7 +117,7 @@ Fail the same in each set. Take example items for a prompt only from train.
 | V1 | Nothing. This is the check as it is. |
 | V2 | The lead writes its reason before the verdict, for both verdicts. The app still saves and shows a reason for "Not met" only. |
 | V3 | One part for each call. The verdict does not share a call with the choice of an action. |
-| V4 | The lead reads the start and the end of a long reply. This changes a number in spec 004. |
+| V4 | The lead reads the start and the end of a long reply. The total stays 1500 characters: half from the start and half from the end. This changes a number in spec 004. |
 
 - Compare the versions on dev. Change one thing at a time.
 - Run test once, at the end. Do not change a version after you see the test result.
@@ -132,6 +141,7 @@ Write a short report in `docs/` for each run. It holds:
 - The count of items by tag and by label.
 - Both rates with their intervals, for each version.
 - The share of items whose verdict changes between runs.
+- The number of answers that give no verdict.
 - The kinds of failure from the reason lines.
 
 The report holds no text of real items.
