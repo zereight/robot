@@ -25,9 +25,21 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   let { app, page } = await launch(userData, env)
   await resizeWindow(app, 1200, 800)
 
-  // Create from a starter.
+  // A blank form does not save, and it says why. The reason goes away when the name is filled.
   await page.getByTestId("new-agent").click()
+  await page.getByTestId("starter-blank").click()
+  await expect(page.getByTestId("agent-name")).toHaveValue("")
+  await expect(page.getByTestId("agent-name-error")).toBeHidden()
+  await page.getByTestId("agent-submit").click()
+  await expect(page.getByTestId("agent-name-error")).toHaveText("Give the agent a name.")
+  await expect(page.getByTestId("agent-name")).toHaveAttribute("aria-invalid", "true")
+  await expect(page.getByTestId("agent-name")).toBeFocused()
+  await shot(page, "s3-00-name-required")
+
+  // Create from a starter.
   await page.getByTestId("starter-assistant").click()
+  await expect(page.getByTestId("agent-name-error")).toBeHidden()
+  await expect(page.getByTestId("agent-name")).toHaveAttribute("aria-invalid", "false")
   await expect(page.getByTestId("agent-name")).toHaveValue("Assistant")
   await expect(page.getByTestId("agent-instructions")).not.toHaveValue("")
   await page.getByTestId("agent-name").fill("Ada")
@@ -67,9 +79,19 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   await expect(page.getByTestId("chat-start").locator("h2")).toHaveText("Ada copy 2")
   await page.getByTestId("place-search").fill("")
 
-  // Edit: a taken name is refused; a free name is saved; a picture replaces the drawn face.
+  // Edit: an empty name does not save, and the form says why. A taken name is refused; a free
+  // name is saved; a picture replaces the drawn face.
   await openProfile(page, "Ada copy 2")
+  await page.getByTestId("agent-name").fill("")
+  await page.getByTestId("agent-submit").click()
+  await expect(page.getByTestId("agent-name-error")).toHaveText("Give the agent a name.")
+  await expect(page.getByTestId("agent-profile")).toBeVisible()
+  await page.getByTestId("agent-name").fill("a".repeat(41))
+  await expect(page.getByTestId("agent-name-error")).toHaveText(
+    "The name can have at most 40 characters.",
+  )
   await page.getByTestId("agent-name").fill("ada")
+  await expect(page.getByTestId("agent-name-error")).toBeHidden()
   await page.getByTestId("agent-submit").click()
   await expect(page.getByTestId("agent-error")).toHaveText(
     "Another agent on this server has this name.",

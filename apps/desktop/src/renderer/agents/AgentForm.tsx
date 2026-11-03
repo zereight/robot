@@ -107,6 +107,8 @@ export const AgentForm = (props: AgentFormProps) => {
       ? PERMISSION_LEVELS.filter((level) => !isLooser(level, (props.agent as Agent).permission))
       : PERMISSION_LEVELS
   const nameId = createUniqueId()
+  const nameErrorId = createUniqueId()
+  const roleErrorId = createUniqueId()
   const [starter, setStarter] = createSignal<StarterId | "blank">("blank")
   /** The language of the interface when the user picked the starter (spec 002). */
   const [starterLocale, setStarterLocale] = createSignal<Locale>(app.locale())
@@ -176,11 +178,29 @@ export const AgentForm = (props: AgentFormProps) => {
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   let fileInput: HTMLInputElement | undefined
+  let nameInput: HTMLInputElement | undefined
+  let roleInput: HTMLInputElement | undefined
 
   const face = () => pickedFace() ?? faceFromName(name().trim() || "?")
   const nameLength = () => charLength(name().trim())
-  const valid = () =>
-    nameLength() >= 1 && nameLength() <= AGENT_NAME_MAX && charLength(role()) <= AGENT_ROLE_MAX
+  const nameProblem = (): ErrorText | undefined => {
+    if (nameLength() < 1) return { key: "agents.error.name_empty" }
+    if (nameLength() > AGENT_NAME_MAX)
+      return { key: "agents.error.name_long", params: { max: AGENT_NAME_MAX } }
+  }
+  const roleProblem = (): ErrorText | undefined =>
+    charLength(role()) > AGENT_ROLE_MAX
+      ? { key: "agents.error.role_long", params: { max: AGENT_ROLE_MAX } }
+      : undefined
+  const valid = () => !nameProblem() && !roleProblem()
+  /**
+   * Save stays on when a field is wrong, so that pressing it can say what is wrong. The reasons
+   * show after the first press, and they follow the fields from then on: a field that is fixed
+   * loses its reason at once.
+   */
+  const [tried, setTried] = createSignal(false)
+  const shownNameProblem = () => (tried() ? nameProblem() : undefined)
+  const shownRoleProblem = () => (tried() ? roleProblem() : undefined)
 
   /** A starter fills the name, the role line and the instructions. Blank clears them. */
   const pickStarter = (next: StarterId | "blank") => {
@@ -244,7 +264,16 @@ export const AgentForm = (props: AgentFormProps) => {
 
   const submit = async (event: SubmitEvent) => {
     event.preventDefault()
-    if (!valid() || busy()) return
+    if (busy()) return
+    if (!valid()) {
+      setTried(true)
+      // The focus goes to the first field that blocks Save. The field shows in the middle, so
+      // that its label and its reason stay in view.
+      const first = nameProblem() ? nameInput : roleInput
+      first?.focus({ preventScroll: true })
+      first?.scrollIntoView({ block: "center" })
+      return
+    }
     setBusy(true)
     setError(undefined)
     const extra = setup()
@@ -364,9 +393,12 @@ export const AgentForm = (props: AgentFormProps) => {
         <div class={styles.nameRow}>
           <input
             id={nameId}
+            ref={nameInput}
             class={`${styles.input} ${styles.grow}`}
             value={name()}
             onInput={(e) => setName(e.currentTarget.value)}
+            aria-invalid={shownNameProblem() !== undefined}
+            aria-describedby={shownNameProblem() ? nameErrorId : undefined}
             data-testid="agent-name"
             autofocus
           />
@@ -380,6 +412,18 @@ export const AgentForm = (props: AgentFormProps) => {
             </IconButton>
           </Show>
         </div>
+        <Show when={shownNameProblem()}>
+          {(problem) => (
+            <span
+              id={nameErrorId}
+              class={styles.fieldError}
+              role="alert"
+              data-testid="agent-name-error"
+            >
+              {t(problem().key, problem().params)}
+            </span>
+          )}
+        </Show>
       </div>
 
       <label class={styles.field}>
@@ -388,12 +432,27 @@ export const AgentForm = (props: AgentFormProps) => {
           <Counter used={charLength(role())} max={AGENT_ROLE_MAX} />
         </span>
         <input
+          ref={roleInput}
           class={styles.input}
           value={role()}
           onInput={(e) => setRole(e.currentTarget.value)}
+          aria-invalid={shownRoleProblem() !== undefined}
+          aria-describedby={shownRoleProblem() ? roleErrorId : undefined}
           data-testid="agent-role"
         />
         <span class={styles.hint}>{t("agents.field.role.hint")}</span>
+        <Show when={shownRoleProblem()}>
+          {(problem) => (
+            <span
+              id={roleErrorId}
+              class={styles.fieldError}
+              role="alert"
+              data-testid="agent-role-error"
+            >
+              {t(problem().key, problem().params)}
+            </span>
+          )}
+        </Show>
       </label>
 
       <label class={styles.field}>
@@ -577,12 +636,7 @@ export const AgentForm = (props: AgentFormProps) => {
 
       <div class={styles.actions}>
         <Button onClick={props.onCancel}>{t("agents.cancel")}</Button>
-        <Button
-          variant="primary"
-          type="submit"
-          disabled={!valid() || busy()}
-          data-testid="agent-submit"
-        >
+        <Button variant="primary" type="submit" disabled={busy()} data-testid="agent-submit">
           {props.agent ? t("agents.save") : t("agents.create.submit")}
         </Button>
       </div>
