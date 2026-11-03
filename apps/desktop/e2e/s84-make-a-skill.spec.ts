@@ -94,8 +94,11 @@ test("make a skill from a task: the form, the request, Save, the list and the sl
   )
   await settled(page)
   await expect(page.getByTestId("ask-card")).toHaveCount(0)
-  // A task that read a page from outside.
+  // A task that read a page from outside. The test page is on this computer, so the fetch of it
+  // asks first (007, "Addresses of a web page fetch"). Allow once lets the turn go on.
   await send(page, `Read the prices. TOOL fetch_url ${JSON.stringify({ url: testPage.url })}`)
+  await expect(page.getByTestId("ask-card")).toContainText(testPage.url, { timeout: 15_000 })
+  await page.getByTestId("ask-allow").click()
   await settled(page)
   await createAgent(page, "Bo")
 
