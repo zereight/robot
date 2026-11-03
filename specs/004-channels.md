@@ -8,8 +8,10 @@ The user gives a job to a group of agents in one place and watches them divide a
 
 - **Channel**: name (1 to 60 characters), topic (up to 200), instructions (up to 4000 characters,
   empty by default), members (agents), one optional lead agent, the setting "Review parts" (off by
-  default), and an optional section: a user section of the Channels list (see 001, "User
-  sections"). With no section, the channel shows in the Channels list itself.
+  default), the setting "The lead answers questions" (on by default, see "Questions of members"),
+  the setting "Own copies for parts" (off by default, see 025), and an optional section: a user
+  section of the Channels list (see 001, "User sections"). With no section, the channel shows in
+  the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
   parts and give each part to a member.
 - **Part**: a child task (see 005) given to one member, with a short label and, when the lead
@@ -29,6 +31,8 @@ The user gives a job to a group of agents in one place and watches them divide a
   model"). It is off by default.
 - **Check**: a look of the lead at a channel whose work has stopped. The lead gives its verdicts in
   this look.
+- **Answer of the lead**: the answer that the lead gives to a question of a member in a part, in
+  place of the user. See "Questions of members".
 
 ## Flows
 
@@ -86,6 +90,67 @@ The user gives a job to a group of agents in one place and watches them divide a
   the place of its member (005).
 - A part that the user decided on (Accept, or Request changes) gets no verdict. The decision of
   the user is final.
+
+## Questions of members
+
+A member asks a question in a part (007, flow 3). Often the lead can answer it from the job, the
+plan and the channel. Then the user does not need to stop for it.
+
+- **When the lead gets the question first**: all of these hold. Otherwise the question goes to the
+  user as before.
+  - The setting "The lead answers questions" is on.
+  - The question comes from a part. A reply to a mention or `@all`, a turn of the lead, and a
+    direct chat never go to the lead.
+  - The channel has a lead that is not archived and not blocked by a usage limit, and the lead is
+    not the member that asks.
+  - The turn of the member holds no outside content (007). Outside text can steer a question.
+  - The lead answered fewer than 3 questions of this part. The part of a nudge, of "Request
+    changes" or of a Retry counts as a new part.
+- An approval card never goes to the lead. Only the user answers an approval.
+- **With the lead**: the question card shows in the channel at once, with the line "<lead> looks
+  at it" and a spinner. The user can answer the card at any time. The answer of the user wins, and
+  the look of the lead stops. The card is not in "Needs you" (021) and makes no notification
+  (015) while it is with the lead. The card of the part on the board (024) shows the mark
+  "Working" in that time, not "Needs you".
+- **What the lead reads**: the question and its choices, the job message, the plan, the label and
+  done test of the part, the channel instructions, the topic, and the last 12 messages of the
+  channel, each cut to 600 characters. The lead treats all of that text as data, not as orders.
+- **What the lead does**: exactly one of two things.
+  1. Answer: the lead picks a choice or writes an answer of 1 to 2000 characters, and gives a
+     reason of up to 160 characters. The member goes on with the answer, as after an answer of the
+     user. The card shows the answer, "Answered by <lead>" and the reason. It has "Correct",
+     which starts a reply to the answer in the message box with a mention of the member (flow 2).
+  2. Pass: the lead gives a reason of up to 160 characters. The card becomes a normal question
+     for the user, with the line "<lead>: <reason>". It is in "Needs you" and makes the normal
+     notification of the kind "question" (015).
+- The lead is told to pass when the question asks for a choice of taste, money, a payment, a
+  message or a file that leaves the computer, a deletion, an account, a key or a secret, a fact
+  that the channel does not hold, or when it is not sure. It is told to answer the way the user
+  would, from what the user wrote.
+- **Time**: when the lead has not answered or passed 2 minutes after the question, the question
+  passes to the user with the line "<lead> did not answer in time." A lead that runs another turn
+  when the question comes uses the same 2 minutes. A failure of the lead passes the question at
+  once, with the line "<lead> could not answer."
+- The answer of the lead is not words of the user (007). A step that the member runs after it does
+  not go to the check of "Ask when unsure" because of the answer.
+- The look of the lead is a turn of the task of the lead for that job. It uses one slot (005)
+  while it runs. Its tokens count in the usage of that task.
+- Each look writes one line to the channel log (014): answered or passed, the reason kind (not
+  sure, user choice, late, failure), and the time taken. The line holds no question text and no
+  answer text.
+- **Ways in and out**: the setting is in channel settings. With no lead, the switch is off with the
+  muted line "The channel has no lead." Turning it off sends every later question of a part to the
+  user at once. A question that is with the lead at that moment passes to the user.
+- **Devices**: a linked computer (012) and the phone (011) show the card with its line and can
+  answer it while it is with the lead. A linked device changes the setting only with the switch
+  "Can create and change agents" (012).
+- **Runtimes**: the rule holds for every question card of a part, from any runtime of the member
+  and of the lead (006).
+- **Restart**: a part has a parent task, so it does not wait through a restart (005). A look of the
+  lead needs no rule for a restart.
+- **Data**: the answer, "Answered by <lead>" and the reason are part of the card in the channel
+  messages. They sync (019) and an export holds them (014). The setting syncs with the channel.
+  The task view (005) lists the questions of the part, with who answered each one.
 
 ## Fast pick
 
@@ -152,6 +217,7 @@ The user gives a job to a group of agents in one place and watches them divide a
 ## Rules
 
 - Agents in a channel see the channel messages; each agent keeps its own memory and workspace.
+  Two members can still have one folder as workspace. Then the rules of 025 apply.
 - **Channel instructions**: each member gets the instructions of the channel in every turn of
   that channel, after its own instructions (002, "Handbook"). The lead gets them too. The fast pick
   does not get them. The user edits them in channel settings. A change counts from the next turn. No
@@ -209,3 +275,16 @@ The user gives a job to a group of agents in one place and watches them divide a
   does not fail.
 - A channel with the instructions "Write the answer as a list." A member answers a job: its turn
   gets the instructions after its own. The same agent in its direct chat does not get them.
+- A member in a part asks "Use the EU sizes only?" and the job message says that the shop ships
+  to the EU only. The card shows "<lead> looks at it", then the answer with "Answered by <lead>"
+  and a reason. The member goes on. "Needs you" stays empty and no notification shows.
+- A member asks a question that the lead passes. The card shows the reason of the lead, the
+  question is in "Needs you", and one notification shows.
+- A question is with the lead. The user picks a choice on the card: the member goes on with that
+  choice, and the lead gives no answer.
+- The lead gives no answer for 2 minutes: the question passes to the user with the line about the
+  time.
+- A part asks a fourth question after 3 answers of the lead: it goes to the user at once.
+- A part whose turn holds outside content asks a question: it goes to the user at once.
+- Turn off "The lead answers questions": a question of a part goes to the user at once.
+- A member asks for an approval: the approval card goes to the user, never to the lead.

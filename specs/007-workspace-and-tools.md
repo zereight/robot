@@ -8,7 +8,7 @@ Each agent works in its own folder with real tools, and the user stays in contro
 
 - **Workspace**: a folder per agent, under a ROBot folder in the user's home by default
   (`~/ROBot Agents/<agent name>`). The user can point an agent at another folder, such as an
-  existing project.
+  existing project. When two agents use one folder, the rules of 025 apply.
 - **Tools**: read and write files, run shell commands, search, fetch web pages, drive a browser
   window, ask the user a question, message other agents, read and run workflows (see 010), search
   past chats (see "Searching past chats"), use the computer (see "Computer use"), use the tools of
@@ -102,8 +102,9 @@ the user gets a card only when the check is sure that the user asked for the ste
   before it made the part. For a new part after "Request changes" (004), the text of the request
   counts too. A message of another agent, of an outside program (023) or of a watch
   is not words of the user. The handover card (003) is not words of the user. The text that the
-  user typed in the dialog of the handover is. A step of a workflow has no words of the user, because the assistant
-  of a workflow can write the prompt of a step (010).
+  user typed in the dialog of the handover is. An answer of the lead to a question of a member
+  (004) and the shared folder note (025) are not words of the user. A step of a workflow has no
+  words of the user, because the assistant of a workflow can write the prompt of a step (010).
 - For a checked step, the app asks the decision model one question: does the user ask for this
   step? The two options are "The user asked for this" and "The user did not ask for this".
   - The step runs with no card when "The user asked for this" has a probability of 0.9 or more.
@@ -257,7 +258,8 @@ The action log lets the user see what the agents did, and why a step ran or did 
     cut at 200 characters. For a tool of a connection the target holds no arguments.
   - Who decided: the permission level, an Allow rule, a Deny rule, the check of "Ask when unsure"
     with its probability, the user on a card, "a rule that cannot be read" followed by the
-    user, or the app (for an address that is never allowed; see "Sensitive places").
+    user, the app (for an address that is never allowed; see "Sensitive places"), or "shared
+    folder" for a file step on a file that another task holds (025).
   - For a file step, whether the step read or wrote.
   - The result: Ran, Failed, Refused, or Stopped.
   - An entry that a rule decided names the rule. The row opens the rules page on that rule. A rule

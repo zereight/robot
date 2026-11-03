@@ -75,6 +75,11 @@ A new word goes here in the same pull request as the spec that brings it.
 | Turn | One request and the work of the agent that follows it, until the reply ends (003, 005). | — | message, session |
 | Blocked | A task that ended because the agent could not do the work (005). | 막힘 | failed (a blocked task did not fail) |
 | In review | A part that waits for the user to accept it (004, 005). | 검토 중 | pending, done |
+| Answered by the lead | The mark of a question of a member that the lead answered in place of the user (004). | 리드가 답함 (proposed) | auto answer, bot answer |
+| Shared folder | A workspace that two or more agents use (025). | 공유 폴더 (proposed) | shared workspace, project |
+| File claim | The mark that a task holds on a file that it changed in a shared folder (025). The interface says "in use by". | 사용 중 (proposed) | lock |
+| Own copy | A separate working copy of a Git repository that one part of a channel job uses (025). | 별도 사본 (proposed) | worktree, clone, fork (a fork is a chat copy, 003), sandbox |
+| Branch of a part | The new Git branch of an own copy (025). | 부분 브랜치 (proposed) | — |
 | Silent limit | How long a turn may show no sign of life before the app stops it (005). | 응답이 없는 작업을 멈추는 시간 (setting label) | timeout |
 | Quiet line | The line "No answer from <name> for <time>" for a turn that shows no sign of life (005). | "<name>에서 <time> 동안 응답이 없어요" (proposed) | stuck, frozen, error |
 | Routine | A task that runs on a schedule or a watch (009). | 루틴 | job, cron, automation |
