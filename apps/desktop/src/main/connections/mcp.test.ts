@@ -16,7 +16,7 @@ import {
 const SERVER = join(import.meta.dir, "../../../e2e/fakes/mcp-server.mjs")
 const work = mkdtempSync(join(tmpdir(), "robot-mcp-"))
 
-const program = (env: Record<string, string> = {}): McpSpec => ({
+const program = (env: Record<string, string> = {}): Extract<McpSpec, { kind: "program" }> => ({
   kind: "program",
   command: process.execPath,
   args: [SERVER],
