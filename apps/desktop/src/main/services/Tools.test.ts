@@ -578,6 +578,46 @@ describe("browser", () => {
     })
   })
 
+  test("the agent asks the user to look; the page stays open and hidden; the user can say no", async () => {
+    const s = await setup("full")
+    // With no page open there is nobody to look at.
+    await s.send(call("browser_ask_look", { reason: "Enter the code" }))
+    await s.finished()
+    expect((await s.toolPart())?.state).toBe("failed")
+
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    const suggestion = () =>
+      s.run(Tools.use((x) => Effect.succeed(x.browserSuggestion(s.agent.id))))
+    expect(await suggestion()).toBeNull()
+
+    await s.send(call("browser_ask_look", { reason: "Enter the code from your phone" }))
+    await s.finished()
+    expect((await s.toolPart())?.state).toBe("done")
+    expect(await suggestion()).toBe("Enter the code from your phone")
+    // The request puts nothing on the screen: the page has no place until the user shows it.
+    expect(s.t.browserPlaced).toEqual([])
+    expect(s.t.browserLog.some((l) => l.includes("close"))).toBe(false)
+
+    // "Not now" clears the request. The page stays open, and the agent still uses it.
+    await s.run(Tools.use((x) => Effect.sync(() => x.dismissBrowserSuggestion(s.agent.id))))
+    expect(await suggestion()).toBeNull()
+    expect(await s.run(Tools.use((x) => Effect.succeed(x.browserState(s.agent.id))))).toEqual({
+      open: true,
+      control: false,
+    })
+    await s.send(call("browser_read", {}))
+    await s.finished()
+    expect((await s.toolPart())?.output).toContain("Text of https://example.com/a")
+
+    // A page that closes takes the request with it.
+    await s.send(call("browser_ask_look", { reason: "Look" }))
+    await s.finished()
+    expect(await suggestion()).toBe("Look")
+    await s.run(Tools.use((x) => Effect.sync(() => x.closeBrowser(s.agent.id))))
+    expect(await suggestion()).toBeNull()
+  })
+
   test("a non-web address fails without opening", async () => {
     const s = await setup("full")
     await s.send(call("browser_open", { url: "file:///etc/passwd" }))
@@ -635,6 +675,7 @@ describe("browser for an agent runtime", () => {
       "browser_click",
       "browser_type",
       "browser_close",
+      "browser_ask_look",
     ])
   })
 
