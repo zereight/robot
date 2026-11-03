@@ -774,6 +774,29 @@ export const migrations: readonly string[] = [
   ALTER TABLE thread ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
   `,
   `
+  -- The Teams link (spec 028). One row at most: a profile has one link. The row exists after the
+  -- user presses "Set up". It belongs to this computer and this profile: sync (019) does not carry
+  -- it, and an export deletes it. The target has no foreign key: an agent that is deleted leaves
+  -- the link in the state "Target missing". The two lists are JSON arrays of names.
+  CREATE TABLE teams_link (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    target_kind TEXT,
+    target_id TEXT,
+    chat_title TEXT NOT NULL DEFAULT '',
+    chat_kind TEXT NOT NULL DEFAULT 'person',
+    allow_list TEXT NOT NULL DEFAULT '[]',
+    bot_list TEXT NOT NULL DEFAULT '[]',
+    call_text TEXT NOT NULL DEFAULT '',
+    marker TEXT NOT NULL DEFAULT '[ROBot]',
+    enabled INTEGER NOT NULL DEFAULT 0,
+    signed_in INTEGER NOT NULL DEFAULT 0,
+    last_read_at INTEGER
+  );
+  -- The sign-in profile of the link is a browser profile that the app makes. "purpose" is null for
+  -- a profile of the user and 'teams' for this one. No agent gets it, and it is not in the limit.
+  ALTER TABLE browser_profile ADD COLUMN purpose TEXT;
+  `,
+  `
   -- Permission rules (spec 007, "Permission rules"). A rule is for one agent (agent_id) or for all
   -- agents of the server (agent_id is NULL). The column kind is file, shell, web, connection or
   -- secret. The column match_text is the path, the command, the host, the connection or the

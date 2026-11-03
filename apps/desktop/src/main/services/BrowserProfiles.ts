@@ -16,7 +16,16 @@ interface ProfileRow {
   id: string
   name: string
   created_at: number
+  purpose: string | null
 }
+
+/** The `purpose` of the sign-in profile that the app makes for the Teams link (spec 028). */
+const TEAMS_PURPOSE = "teams"
+/**
+ * The name key of that profile. It starts with a control character, which a name typed in a form
+ * does not hold, so the profile does not clash with the name of a profile of the user.
+ */
+const TEAMS_NAME_KEY = "\u0001teams-link"
 
 export interface BrowserProfilesService {
   /** Every browser profile of this computer, by name, with the agents that use it. */
@@ -30,9 +39,20 @@ export interface BrowserProfilesService {
   remove(id: string): Effect.Effect<void, AppError>
   /**
    * Gives an agent a profile, or its own data again (`null`). An open page of the agent closes.
-   * It fails while the user holds the browser of the agent.
+   * It fails while the user holds the browser of the agent. It refuses the sign-in profile of the
+   * Teams link: no agent can get it (spec 028).
    */
   assign(agentId: string, profileId: string | null): Effect.Effect<void, AppError>
+  /**
+   * The sign-in profile of the Teams link (spec 028). The app makes it the first time it is needed.
+   * It has no agent, and it is not in the limit of profiles. The user cannot rename or delete it:
+   * "Remove link" does.
+   */
+  teamsProfile: Effect.Effect<BrowserProfile>
+  /** Deletes the saved sign-in of the Teams link. The profile stays. */
+  clearTeamsSignIn: Effect.Effect<void, AppError>
+  /** Deletes the sign-in profile and the saved data in it ("Remove link"). */
+  removeTeamsProfile: Effect.Effect<void, AppError>
 }
 
 /**
@@ -51,10 +71,12 @@ export class BrowserProfiles extends Context.Service<BrowserProfiles, BrowserPro
       const platform = yield* Platform
       const tools = yield* Tools
 
-      const rows = () =>
-        db.all<ProfileRow>(
-          "SELECT id, name, created_at FROM browser_profile ORDER BY name_key, created_at",
-        )
+      const SELECT = "SELECT id, name, created_at, purpose FROM browser_profile"
+      /** Every profile, with the sign-in profile of the Teams link. */
+      const rows = () => db.all<ProfileRow>(`${SELECT} ORDER BY name_key, created_at`)
+      /** The profiles that the user made. The sign-in profile of the Teams link is not one. */
+      const userRows = () => rows().filter((r) => r.purpose === null)
+      const teamsRow = () => db.get<ProfileRow>(`${SELECT} WHERE purpose = ?`, TEAMS_PURPOSE)
       const agentsOf = (id: string) =>
         db
           .all<{ agent_id: string }>(
@@ -66,14 +88,12 @@ export class BrowserProfiles extends Context.Service<BrowserProfiles, BrowserPro
         id: row.id,
         name: row.name,
         createdAt: row.created_at,
-        agentIds: agentsOf(row.id),
+        agentIds: row.purpose === null ? agentsOf(row.id) : [],
+        teamsLink: row.purpose === TEAMS_PURPOSE,
       })
       const find = (id: string) =>
         Effect.suspend(() => {
-          const row = db.get<ProfileRow>(
-            "SELECT id, name, created_at FROM browser_profile WHERE id = ?",
-            id,
-          )
+          const row = db.get<ProfileRow>(`${SELECT} WHERE id = ?`, id)
           return row
             ? Effect.succeed(row)
             : Effect.fail(new AppError({ code: "browser_profile_not_found" }))
@@ -82,7 +102,7 @@ export class BrowserProfiles extends Context.Service<BrowserProfiles, BrowserPro
 
       /** Checks a name against the other profiles. Returns the trimmed name. */
       const goodName = (name: string, exceptId: string) => {
-        const others = rows()
+        const others = userRows()
           .filter((r) => r.id !== exceptId)
           .map((r) => r.name)
         const problem = checkBrowserProfileName(name, others)
@@ -103,7 +123,7 @@ export class BrowserProfiles extends Context.Service<BrowserProfiles, BrowserPro
 
         create: Effect.fn("BrowserProfiles.create")(function* (name: string) {
           const next = yield* goodName(name, "")
-          if (browserProfilesFull(rows().length))
+          if (browserProfilesFull(userRows().length))
             return yield* new AppError({ code: "browser_profile_limit" })
           const id = randomUUID()
           db.run(
@@ -118,7 +138,8 @@ export class BrowserProfiles extends Context.Service<BrowserProfiles, BrowserPro
         }),
 
         rename: Effect.fn("BrowserProfiles.rename")(function* (id: string, name: string) {
-          yield* find(id)
+          const row = yield* find(id)
+          if (row.purpose !== null) return yield* new AppError({ code: "browser_profile_reserved" })
           const next = yield* goodName(name, id)
           db.run(
             "UPDATE browser_profile SET name = ?, name_key = ? WHERE id = ?",
@@ -131,7 +152,8 @@ export class BrowserProfiles extends Context.Service<BrowserProfiles, BrowserPro
         }),
 
         remove: Effect.fn("BrowserProfiles.remove")(function* (id: string) {
-          yield* find(id)
+          const row = yield* find(id)
+          if (row.purpose !== null) return yield* new AppError({ code: "browser_profile_reserved" })
           const users = agentsOf(id)
           // The user may hold the browser of an agent that uses the profile. Wait for that.
           if (users.some((agentId) => tools.browserState(agentId).control))
@@ -153,7 +175,12 @@ export class BrowserProfiles extends Context.Service<BrowserProfiles, BrowserPro
         ) {
           if (!db.get("SELECT 1 AS x FROM agent WHERE id = ?", agentId))
             return yield* new AppError({ code: "agent_not_found" })
-          if (profileId !== null) yield* find(profileId)
+          if (profileId !== null) {
+            const target = yield* find(profileId)
+            // The sign-in profile of the Teams link is for the link only (spec 028).
+            if (target.purpose !== null)
+              return yield* new AppError({ code: "browser_profile_reserved" })
+          }
           const before =
             db.get<{ profile_id: string }>(
               "SELECT profile_id FROM agent_browser WHERE agent_id = ?",
@@ -172,6 +199,41 @@ export class BrowserProfiles extends Context.Service<BrowserProfiles, BrowserPro
             )
           platform.setBrowserProfile(agentId, profileId ?? undefined)
           changed()
+        }),
+
+        teamsProfile: Effect.sync(() => {
+          const known = teamsRow()
+          if (known) return toProfile(known)
+          const id = randomUUID()
+          db.run(
+            "INSERT INTO browser_profile (id, name, name_key, created_at, purpose) VALUES (?, ?, ?, ?, ?)",
+            id,
+            "Teams link",
+            TEAMS_NAME_KEY,
+            Date.now(),
+            TEAMS_PURPOSE,
+          )
+          changed()
+          return toProfile(teamsRow() as ProfileRow)
+        }),
+
+        clearTeamsSignIn: Effect.suspend(() => {
+          const row = teamsRow()
+          if (!row) return Effect.void
+          return Effect.tryPromise({
+            try: () => platform.clearBrowserProfile(row.id),
+            catch: (e) => new AppError({ code: "browser_profile_clear_failed", detail: String(e) }),
+          })
+        }),
+
+        removeTeamsProfile: Effect.suspend(() => {
+          const row = teamsRow()
+          if (!row) return Effect.void
+          db.run("DELETE FROM browser_profile WHERE id = ?", row.id)
+          return Effect.tryPromise({
+            try: () => platform.clearBrowserProfile(row.id),
+            catch: (e) => new AppError({ code: "browser_profile_clear_failed", detail: String(e) }),
+          }).pipe(Effect.tap(() => Effect.sync(changed)))
         }),
       })
     }),

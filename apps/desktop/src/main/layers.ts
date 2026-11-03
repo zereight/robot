@@ -38,8 +38,10 @@ import { SkillDrafts } from "./services/SkillDrafts.ts"
 import { Skills } from "./services/Skills.ts"
 import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
+import type { Clock } from "./services/silence.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
+import { TeamsLink } from "./services/TeamsLink.ts"
 import { Today } from "./services/Today.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -64,6 +66,8 @@ export interface AppLayerOptions {
   readonly host?: Layer.Layer<Host>
   /** Hosts, besides the official one, that take the cache marker. Only tests set it (spec 006). */
   readonly cacheHosts?: readonly string[]
+  /** The clock of the Teams link (spec 028). Only tests set it, to move time by hand. */
+  readonly clock?: Clock
 }
 
 /** Every main process service, wired together. */
@@ -118,7 +122,10 @@ export const appLayer = (options: AppLayerOptions) => {
   const workflows = Workflows.layer.pipe(Layer.provideMerge(starters))
   const teach = Layer.mergeAll(Teach.layer, SkillDrafts.layer).pipe(Layer.provideMerge(workflows))
   const browserProfiles = BrowserProfiles.layer.pipe(Layer.provideMerge(teach))
-  const places = Places.layer.pipe(Layer.provideMerge(browserProfiles))
+  const teamsLink = TeamsLink.layer(options.clock ? { clock: options.clock } : {}).pipe(
+    Layer.provideMerge(browserProfiles),
+  )
+  const places = Places.layer.pipe(Layer.provideMerge(teamsLink))
   const today = Today.layer.pipe(Layer.provideMerge(places))
   const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(today))
   const workflowFiles = WorkflowFiles.layer.pipe(Layer.provideMerge(agentFiles))

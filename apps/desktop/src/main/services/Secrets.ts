@@ -1,5 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import { createRequire } from "node:module"
+import { execFileSync } from "node:child_process"
 import { Context, Layer } from "effect"
 
 export interface SecretsService {
@@ -8,25 +7,66 @@ export interface SecretsService {
   remove(key: string): void
 }
 
-const SERVICE_NAME = "ROBot"
+/** Exit code of `robot-host secrets get` when the store holds no value. */
+const NO_VALUE = 3
+
+const exitCode = (error: unknown) =>
+  typeof error === "object" && error !== null && "status" in error ? error.status : undefined
+
+/** The store of the host program, with the values that were read kept in memory. */
+export const hostStore = (command: string, file?: string): SecretsService => {
+  const known = new Map<string, string | null>()
+  const run = (args: string[], input?: string) =>
+    execFileSync(command, ["secrets", ...args, ...(file ? ["--file", file] : [])], {
+      encoding: "utf8",
+      // stderr holds the reason only, never a value.
+      stdio: ["pipe", "pipe", "pipe"],
+      ...(input !== undefined ? { input } : {}),
+    })
+  return {
+    get: (key) => {
+      if (known.has(key)) return known.get(key) ?? null
+      let value: string | null
+      try {
+        value = run(["get", key])
+      } catch (error) {
+        if (exitCode(error) !== NO_VALUE) throw new Error("The keychain could not be read")
+        value = null
+      }
+      known.set(key, value)
+      return value
+    },
+    set: (key, value) => {
+      known.delete(key)
+      try {
+        run(["set", key], value)
+      } catch {
+        throw new Error("The keychain could not be written")
+      }
+      known.set(key, value)
+    },
+    remove: (key) => {
+      known.delete(key)
+      try {
+        run(["remove", key])
+      } catch {
+        throw new Error("The keychain could not be written")
+      }
+      known.set(key, null)
+    },
+  }
+}
 
 /** Keys and tokens. They live in the system keychain and nowhere else. */
 export class Secrets extends Context.Service<Secrets, SecretsService>()("robot/main/Secrets") {
-  /** The system keychain. */
-  static readonly keychain = Layer.sync(Secrets, () => {
-    // Loaded here so tests that use another store never load the native module.
-    const { Entry } = createRequire(import.meta.url)(
-      "@napi-rs/keyring",
-    ) as typeof import("@napi-rs/keyring")
-    const entry = (key: string) => new Entry(SERVICE_NAME, key)
-    return Secrets.of({
-      get: (key) => entry(key).getPassword(),
-      set: (key, value) => entry(key).setPassword(value),
-      remove: (key) => {
-        entry(key).deletePassword()
-      },
-    })
-  })
+  /**
+   * The store of the host program (`host/src/secrets.rs`): the system keychain, or with `file`
+   * the file store of end-to-end tests. Each read or write is one short run of the host that the
+   * main process waits for, so the calls stay synchronous. Values that were read once are kept in
+   * memory: only this app writes them.
+   */
+  static readonly host = (command: string, file?: string) =>
+    Layer.sync(Secrets, () => Secrets.of(hostStore(command, file)))
 
   /** Keeps secrets in memory. For unit tests. */
   static readonly memory = Layer.sync(Secrets, () => {
@@ -37,23 +77,4 @@ export class Secrets extends Context.Service<Secrets, SecretsService>()("robot/m
       remove: (key) => void store.delete(key),
     })
   })
-
-  /**
-   * Keeps secrets in one file outside the data folder. For end-to-end tests on machines
-   * without a usable keychain; never used by a normal run.
-   */
-  static readonly file = (path: string) =>
-    Layer.sync(Secrets, () => {
-      const read = (): Record<string, string> =>
-        existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {}
-      const write = (data: Record<string, string>) => writeFileSync(path, JSON.stringify(data))
-      return Secrets.of({
-        get: (key) => read()[key] ?? null,
-        set: (key, value) => write({ ...read(), [key]: value }),
-        remove: (key) => {
-          const { [key]: _, ...rest } = read()
-          write(rest)
-        },
-      })
-    })
 }

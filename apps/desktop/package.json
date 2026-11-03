@@ -14,9 +14,7 @@
     "licenses": "bun scripts/licenses.ts",
     "dist": "bun run build && electron-builder --publish never"
   },
-  "dependencies": {
-    "@napi-rs/keyring": "^2.1.2"
-  },
+  "dependencies": {},
   "bundled": [
     "@robot/link",
     "@robot/shared",

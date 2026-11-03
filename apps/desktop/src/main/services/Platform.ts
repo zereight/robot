@@ -1,5 +1,6 @@
 import type { IslandShape, TeachEvent } from "@robot/shared"
 import { Context } from "effect"
+import type { TeamsSurface } from "../teams/surface.ts"
 import type { Resolver } from "../web/fetch.ts"
 
 /**
@@ -26,6 +27,11 @@ export interface BrowserPage {
   read(): Promise<{ url: string; title: string; text: string }>
   click(selector: string): Promise<void>
   type(selector: string, text: string): Promise<void>
+  /**
+   * Runs a script in the page and gives back its result. Only the app's own pages use it (the
+   * Teams page, spec 028). No tool of an agent passes text of a model to it.
+   */
+  evaluate<T>(code: string): Promise<T>
   /**
    * Shows the page in a place of the app window, or hides it when the place is `undefined`.
    * A hidden page keeps running, so the agent can go on with it. The size of the page does not
@@ -110,6 +116,16 @@ export interface PlatformService {
   setBrowserProfile(agentId: string, profileId: string | undefined): void
   /** Deletes the saved data of a browser profile: cookies, sign-ins and the rest. */
   clearBrowserProfile(profileId: string): Promise<void>
+  /**
+   * The Teams page of the Teams link (spec 028). It is hidden until the user shows it. The same
+   * call always gives the same surface.
+   */
+  teams(): TeamsSurface
+  /**
+   * Sets the browser profile that holds the sign-in of the Teams page, or `undefined` for none. An
+   * open Teams page closes when this changes the data it uses.
+   */
+  setTeamsProfile(profileId: string | undefined): void
 }
 
 export class Platform extends Context.Service<Platform, PlatformService>()("robot/main/Platform") {}

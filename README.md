@@ -196,7 +196,7 @@ have no transparency. Remove the alpha channel after the export, for example wit
 └──────────────┴──────────────┴──────────────┘
                 │ one JSON line per request and per answer (stdin / stdout)
 ┌───────────────┴──────────── host (Rust) ───┐
-│ the methods that moved: app.licenses       │
+│ app.licenses · keychain (secrets)          │
 └────────────────────────────────────────────┘
 ```
 
@@ -204,6 +204,9 @@ have no transparency. Remove the alpha channel after the export, for example wit
   method at a time, until the main process only keeps the windows. The main process starts the
   host at the first call, sends it the methods in its list of host methods, and restarts it after
   a stop. The host ends when its input closes, so it never outlives the app.
+- **Keys.** API keys and tokens live in the system keychain, and only the host reads and writes
+  it (`robot-host secrets get|set|remove`). The main process runs this short command and waits
+  for it, and keeps the values that it read in memory.
 
 - **Main process.** Each area is an [Effect](https://effect.website) service with a layer. A test
   runtime swaps the platform, secrets and network for fakes, so unit tests cover the real

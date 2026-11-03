@@ -277,3 +277,81 @@ describe("after a restart", () => {
     await second.dispose()
   })
 })
+
+describe("the sign-in profile of the Teams link (spec 028)", () => {
+  const teams = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.run(BrowserProfiles.use((b) => b.teamsProfile))
+
+  test("the app makes it once; it is listed, flagged, and has no agent", async () => {
+    const t = await setup()
+    const first = await teams(t)
+    const again = await teams(t)
+    expect(again.id).toBe(first.id)
+    expect(first.teamsLink).toBe(true)
+    expect(first.agentIds).toEqual([])
+    const list = await t.list()
+    expect(list).toHaveLength(1)
+    expect(list[0]?.teamsLink).toBe(true)
+    // A profile of the user is not flagged.
+    expect((await t.profile("Work")).teamsLink).toBe(false)
+    await t.runtime.dispose()
+  })
+
+  test("no agent can get it: a request to give it is refused, and the agent keeps its data", async () => {
+    const t = await setup()
+    const ada = await t.agent("Ada")
+    const sign = await teams(t)
+    expect(failCode(await t.exit(BrowserProfiles.use((b) => b.assign(ada.id, sign.id))))).toBe(
+      "browser_profile_reserved",
+    )
+    expect(t.browserProfiles.has(ada.id)).toBe(false)
+    expect((await t.list()).find((p) => p.id === sign.id)?.agentIds).toEqual([])
+    await t.runtime.dispose()
+  })
+
+  test("the user can neither rename nor delete it", async () => {
+    const t = await setup()
+    const sign = await teams(t)
+    expect(failCode(await t.exit(BrowserProfiles.use((b) => b.rename(sign.id, "Mine"))))).toBe(
+      "browser_profile_reserved",
+    )
+    expect(failCode(await t.exit(BrowserProfiles.use((b) => b.remove(sign.id))))).toBe(
+      "browser_profile_reserved",
+    )
+    expect(t.clearedProfiles).toEqual([])
+    expect((await t.list()).map((p) => p.id)).toEqual([sign.id])
+    await t.runtime.dispose()
+  })
+
+  test("it does not count in the limit of 20, and its name never clashes", async () => {
+    const t = await setup()
+    await teams(t)
+    for (let i = 0; i < BROWSER_PROFILES_MAX; i++) await t.profile(`Profile ${i}`)
+    expect(await t.list()).toHaveLength(BROWSER_PROFILES_MAX + 1)
+    expect(failCode(await t.exit(BrowserProfiles.use((b) => b.create("One more"))))).toBe(
+      "browser_profile_limit",
+    )
+    // A profile of the user may have the name that the app gave the sign-in profile.
+    const t2 = await setup()
+    await teams(t2)
+    expect((await t2.profile("Teams link")).name).toBe("Teams link")
+    await t.runtime.dispose()
+    await t2.runtime.dispose()
+  })
+
+  test("the app deletes the saved sign-in, and the profile with it", async () => {
+    const t = await setup()
+    const sign = await teams(t)
+    await t.run(BrowserProfiles.use((b) => b.clearTeamsSignIn))
+    expect(t.clearedProfiles).toEqual([sign.id])
+    expect(await t.list()).toHaveLength(1)
+    await t.run(BrowserProfiles.use((b) => b.removeTeamsProfile))
+    expect(t.clearedProfiles).toEqual([sign.id, sign.id])
+    expect(await t.list()).toEqual([])
+    // With none, both are quiet.
+    await t.run(BrowserProfiles.use((b) => b.removeTeamsProfile))
+    await t.run(BrowserProfiles.use((b) => b.clearTeamsSignIn))
+    expect(t.clearedProfiles).toHaveLength(2)
+    await t.runtime.dispose()
+  })
+})

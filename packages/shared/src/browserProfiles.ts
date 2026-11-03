@@ -15,8 +15,14 @@ export interface BrowserProfile {
   readonly id: string
   readonly name: string
   readonly createdAt: number
-  /** The agents that use this profile now. */
+  /** The agents that use this profile now. The sign-in profile of the Teams link has none. */
   readonly agentIds: readonly string[]
+  /**
+   * The app made this profile for the Teams link (spec 028) and it holds the sign-in of the Teams
+   * page. No agent can get it, the user cannot rename or delete it, and it does not count in the
+   * limit of profiles.
+   */
+  readonly teamsLink: boolean
 }
 
 export const BrowserProfileCreate = Schema.Struct({
@@ -43,5 +49,8 @@ export const checkBrowserProfileName = (
   return others.some((other) => nameKey(other) === key) ? "taken" : null
 }
 
-/** True when the computer already holds the most browser profiles that it can. */
+/**
+ * True when the computer already holds the most browser profiles that it can. The count is the
+ * count of the profiles that the user made: the sign-in profile of the Teams link is not in it.
+ */
 export const browserProfilesFull = (count: number) => count >= BROWSER_PROFILES_MAX

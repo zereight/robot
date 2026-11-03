@@ -30,6 +30,7 @@ import { call } from "../lib/rpc.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
 import { useEndRequest, useReview } from "../review/Review.tsx"
 import review from "../review/review.module.css"
+import { TeamsMark } from "../settings/TeamsMark.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
@@ -83,6 +84,7 @@ export const ChannelHeader = (props: { channel: Channel }) => {
           {props.channel.topic}
         </span>
       </Show>
+      <TeamsMark kind="channel" id={props.channel.id} />
       <Show when={ui.canChange()}>
         <IconButton
           label={t("channels.settings")}

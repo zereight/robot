@@ -33,6 +33,7 @@ import {
   SettingsPatch,
   SIGN_IN_ID,
   SYNC_MODES,
+  TeamsPatch,
   UiStatePatch,
   USAGE_RANGES,
   WorkflowInput,
@@ -81,6 +82,7 @@ import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
+import { TeamsLink } from "./services/TeamsLink.ts"
 import { Today } from "./services/Today.ts"
 import { Tools } from "./services/Tools.ts"
 import { UiStore } from "./services/UiStore.ts"
@@ -436,6 +438,37 @@ export const handlers: Handlers = {
       Effect.flatMap(({ id }) => Sections.use((s) => s.remove(id))),
       done,
     ),
+  "teams.get": () => TeamsLink.use((t) => t.view),
+  "teams.setup": () => TeamsLink.use((t) => t.setup),
+  "teams.update": (input) =>
+    decode(TeamsPatch)(input).pipe(
+      Effect.flatMap((patch) => TeamsLink.use((t) => t.update(patch))),
+    ),
+  "teams.setEnabled": (input) =>
+    decode(Schema.Struct({ enabled: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ enabled }) => TeamsLink.use((t) => t.setEnabled(enabled))),
+    ),
+  "teams.showPage": () => TeamsLink.use((t) => t.showPage),
+  "teams.hidePage": () => TeamsLink.use((t) => t.hidePage),
+  "teams.place": (input) =>
+    decode(
+      Schema.Struct({
+        bounds: Schema.NullOr(
+          Schema.Struct({
+            x: Schema.Number,
+            y: Schema.Number,
+            width: Schema.Number,
+            height: Schema.Number,
+          }),
+        ),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ bounds }) => TeamsLink.use((t) => t.place(bounds ?? undefined))),
+      done,
+    ),
+  "teams.useChat": () => TeamsLink.use((t) => t.useChat),
+  "teams.signOut": () => TeamsLink.use((t) => t.signOut),
+  "teams.remove": () => TeamsLink.use((t) => t.remove),
   "browserProfiles.list": () => BrowserProfiles.use((b) => b.list),
   "browserProfiles.create": (input) =>
     decode(BrowserProfileCreate)(input).pipe(

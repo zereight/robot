@@ -183,6 +183,17 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     "browserProfiles.rename",
     "browserProfiles.delete",
     "browserProfiles.assign",
+    // The Teams link belongs to this computer: no linked device sees or changes it (spec 028).
+    "teams.get",
+    "teams.setup",
+    "teams.update",
+    "teams.setEnabled",
+    "teams.showPage",
+    "teams.hidePage",
+    "teams.place",
+    "teams.useChat",
+    "teams.signOut",
+    "teams.remove",
     "places.move",
     "knowledge.list",
     "knowledge.get",
@@ -210,7 +221,9 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     }
     // Nothing that starts like them is on the list either.
     for (const method of CLIENT_METHODS) {
-      expect(method).not.toMatch(/^(sections|browserProfiles|knowledge|agentFile|workflowFile)\./)
+      expect(method).not.toMatch(
+        /^(sections|browserProfiles|teams|knowledge|agentFile|workflowFile)\./,
+      )
     }
   })
 
