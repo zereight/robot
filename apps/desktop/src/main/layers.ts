@@ -15,6 +15,7 @@ import { Database } from "./services/Database.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { Host } from "./services/Host.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
@@ -56,6 +57,8 @@ export interface AppLayerOptions {
   readonly nearbySocket?: OpenSocket
   /** The address of the decision model service. Only tests set it (spec 013). */
   readonly decisionUrl?: string
+  /** The host program. Unit tests that do not need it leave it out. */
+  readonly host?: Layer.Layer<Host>
 }
 
 /** Every main process service, wired together. */
@@ -65,6 +68,7 @@ export const appLayer = (options: AppLayerOptions) => {
     Database.layer(options.databaseFile ?? join(options.platform.dataDir, "robot.db")),
     EventBus.layer(options.emit),
     options.secrets,
+    options.host ?? Host.none,
   )
   const stores = Layer.mergeAll(
     SettingsStore.layer,

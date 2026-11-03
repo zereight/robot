@@ -73,6 +73,10 @@ jobs:
           key: package-macos-arm64-${{ hashFiles('bun.lock') }}
           restore-keys: package-macos-arm64-
       - run: bun install --frozen-lockfile
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: host
+      # "bun run build" builds the host first; electron-builder puts it in the bundle.
       - name: Build and package
         working-directory: apps/desktop
         run: |

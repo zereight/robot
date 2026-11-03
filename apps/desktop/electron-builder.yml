@@ -19,6 +19,12 @@ extraMetadata:
   name: robot
 publish: null
 
+# The host program (host/), built by "bun run build:host". It sits beside the app code in
+# Contents/Resources.
+extraResources:
+  - from: ../../host/target/release/robot-host
+    to: robot-host
+
 mac:
   target:
     - target: dmg

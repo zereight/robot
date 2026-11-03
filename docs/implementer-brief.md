@@ -13,8 +13,10 @@ Rules:
   apps or data. If you know of them, do not use that knowledge.
 - Build from `specs/` and public documentation only. If a spec is unclear, write the question in
   `docs/spec-questions.md` and continue with other work.
-- Stack: Electron, SolidJS, Effect 4, Bun, SQLite for desktop; Expo for mobile. Choose your own
-  structure and names.
+- Stack: Electron and SolidJS for the windows of the desktop app; Rust for the host, the
+  separate program that does the work of the app (`host/`); SQLite for data; Expo for mobile.
+  Work that is still in the main process (Effect 4, Bun) moves to the host one method at a time.
+  New work goes to the host. Choose your own structure and names.
 - MIT-compatible dependencies only.
 - Start with milestone M1. Open one pull request per vertical slice, with an end-to-end test
   that drives the real app and writes a report or screenshot.
