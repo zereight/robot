@@ -54,7 +54,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   looks like a secret when it equals a stored key, or holds a key or token of a known form: for
   example a long string that starts with "sk-", "ghp_" or "xox", or a block from "-----BEGIN" to
   "PRIVATE KEY-----". The keys of device links are secrets. A linked device never receives
-  provider keys. The values of saved secrets (020) are in the keychain too.
+  provider keys. The values of saved secrets (020), and the user names and passwords of saved logins, are in the
+  keychain too.
 - A service that an agent has a saved secret for (020) gets what the agent writes in a request
   with that secret. The app sends it nothing else.
 - A watch routine on a tool of a connection (009) calls that tool at each check, with the

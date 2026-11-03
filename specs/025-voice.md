@@ -20,7 +20,7 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
    - The text shows in the box at the place of the cursor while the user speaks. The part that is
      not final shows muted and can change.
    - The app sends nothing. The user can edit the text and then sends it as any message.
-   - On the computer a key shortcut starts and stops dictation. The help page lists it (001).
+   - On the computer the key Cmd+Shift+D starts and stops dictation. The help page lists it (001).
    - Dictation stops when the user presses the button, when the box loses the focus, when the user
      sends the message, and after 10 seconds of silence. After 10 seconds of silence a muted line
      says that nothing was heard.
@@ -43,7 +43,9 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
       answers by touch. Then listening goes on.
    6. End closes the screen. Reading stops. Nothing else changes.
    - The screen stays awake while voice chat runs. When the app leaves the screen, voice chat ends.
-   - Voice chat is for a direct chat and for a thread. It is not in a channel in this version.
+   - "Mute" turns the microphone off. The state reads "Muted", the agent goes on, and its reply
+     is still read. A second press turns listening on again.
+   - Voice chat is for a direct chat. It is not in a channel in this version.
 4. Settings: Settings → General (013) has "Dictation language" (the language of the interface by
    default, or a language that the recogniser of the device offers) and "Reading speed" (slow,
    normal, fast). The phone has the same two settings in its Settings.
@@ -53,7 +55,7 @@ The user speaks to an agent and hears the answer, on the computer and on the pho
 - Recognition runs on the device. No sound leaves the device, the app stores no sound, and an
   export holds none (014). The recognised text is a message like any typed message once it is
   sent.
-- If the device has no recogniser on the device for the language, the microphone button is off and
+- If the device has no recogniser of its own for the language, the microphone button is off and
   says why in words, with where to add the language in the settings of the system. The app never
   falls back to a recogniser that sends the sound to a service.
 - The first press asks the system for the microphone, and for speech recognition where the system
@@ -125,3 +127,15 @@ All checks use a stand-in recogniser and a stand-in speaker.
   "Waiting for you", and Allow by touch lets the turn go on.
 - Send the app to the background in voice chat: voice chat ends.
 - A database file, a log and an export hold no sound.
+- Press Cmd+Shift+D on the computer: dictation starts. Press it again: it stops. Press the button
+  once, then once again: the same. Dictation stops when the box loses the focus, and when the user
+  sends the message.
+- Set the reading speed to "fast": the stand-in speaker gets the fast rate. Set the dictation
+  language to Korean: the stand-in recogniser gets Korean.
+- A stand-in call or alarm takes the audio: reading and voice chat end.
+- Press "Mute" in voice chat while a reply streams: the state reads "Muted", the reply is still
+  read, and the stand-in recogniser gets no sound. Press it again: listening goes on.
+- The stand-in speaker has no voice for the language of a message: "Read aloud" is off with the
+  reason.
+- Dictate in a chat of a linked server whose link is offline: the text shows in the box, and
+  sending waits.

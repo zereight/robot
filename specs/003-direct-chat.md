@@ -210,8 +210,9 @@ and its role line. Nothing moves.
   how far the turn went (see 005, "How far a turn went"). A turn that the app stopped because
   it was silent (see 005) fails in this way too.
 - Provider not connected: the message box is disabled with a button to connect it.
-- Busy provider and backup model: a muted line tells that the model is busy and the app tries
-  again, or that the backup model goes on (006). Neither line is an error row.
+- Busy provider, backup model and Keep going: a muted line tells that the model is busy and the
+  app tries again (006), that the backup model goes on (006), or that the agent was asked to go
+  on (005). None of these lines is an error row.
 - Interrupted by a restart: see "Rules".
 
 ## Rules
@@ -296,6 +297,6 @@ and its role line. Nothing moves.
   "Retry", and the other files go.
 - Open a chat of 30 messages that holds the word "budget" in four of them. Press Cmd+F and type
   "budget": the bar says "1 of 4". Enter goes to 2 of 4. Escape closes the bar and the marks go.
-- Mark the third message of an agent as unread in a chat of eight messages with five from agents:
-  the place shows the count of the messages from the third message on. Open the chat: it opens at
-  that message. Scroll to the end: the count goes.
+- A chat has eight messages. The messages 2, 4, 5, 7 and 8 are from an agent. Mark message 5 as
+  unread: the place shows the count 3 (messages 5, 7 and 8). Open the chat: it opens at message
+  5. Scroll to the end: the count goes.

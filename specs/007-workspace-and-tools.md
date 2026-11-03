@@ -217,11 +217,13 @@ These rules hold for the browser tools of every agent that has the browser, on e
 - **Secure fields in frames.** When the agent needs a password, a code or a card field, the card
   "take control" names the place of the field: the page itself, or a frame, with the site of the
   frame.
-- **Unclear target.** When the name that the agent gives fits more than one control, the call
-  fails with a list of up to 5 candidates, each with its role, its label and its place on the
-  page. The agent picks one by its number in that list.
-- **Focus.** A page that loads, or goes to a new address, in the browser of an agent never takes
-  the keyboard focus from the message box or from another place where the user types.
+- **Unclear target.** The name that the agent gives can fit more than one control. Then the call
+  fails. It returns a list of up to 5 candidates. Each has its role, its label and its place on
+  the page. The agent picks one by its number in that list.
+- **Focus.** The page of an agent never takes the keyboard focus from a place where the user
+  types. This holds while the page loads and when it goes to a new address.
+- **Saved logins.** The tool "sign in with a login" (020) is a browser step. It follows the
+  permission rules like any other browser step.
 
 ## Idle work
 
@@ -230,8 +232,10 @@ The app runs for days, so it must not keep what nobody uses.
 - A page of the browser of an agent that neither the agent nor the user used for 10 minutes is
   unloaded. Its tab stays in the tab list. The page loads again when the agent or the user uses
   the tab. A tab that plays sound, or that the user holds, is not unloaded.
-- A vendor program (006) that has no turn, no waiting card and no queued task for 15 minutes ends.
-  The next turn starts it again with the history of the chat, as after a switch of model (006).
+- A vendor program (006) that is idle for 15 minutes ends. It is idle when it has no turn, no
+  waiting card and no queued task. The next turn starts it again with the history of the chat,
+  as after a switch of model (006).
+- An unloaded tab shows a muted mark in the tab list. Idle work has no setting in this version.
 - When the system says that memory is low, the app ends idle vendor programs and unloads idle
   pages at once, without waiting for the times above.
 - When the user deletes an agent, the app ends the programs of that agent and closes its browser
@@ -519,3 +523,7 @@ text is in the turn.
   the list. Use the tab: the page loads. Leave a stand-in vendor program idle for 15 minutes: it
   ends. The next message starts it again and the reply comes. A program with a waiting approval
   card is not ended.
+- A dialog that nobody answers: after 30 seconds it is dismissed, and the next call of the agent
+  returns the note that it was dismissed. With a stand-in system that reports low memory, an idle
+  tab unloads and an idle stand-in program ends at once. A tab that plays a stand-in sound stays
+  loaded. Delete the agent: its program ends and its browser closes at once.

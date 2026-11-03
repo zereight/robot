@@ -138,13 +138,13 @@ These are in the code today and the specs now say something else.
 | S72 | Agents at once: the setting, the slots, "Waits for a free slot", the rule that a task waiting for the user or for a child uses no slot. Follows S71. | 005, 013 |
 | S73 | Board: the page button and page, one board for all agents, four columns, work cards that the board makes by itself for every task (their column, marks, "Dismiss", the switch "Work of agents"), planned cards with number, comments and the switch "Mine", "Start" that makes a task with the source "Board", the rules by which a card follows its task, the five tools of agents (read the board, read a card, add a card, take a card, comment on a card), the mark of agent text as outside content, limits, sync and export of cards, and texts in English and Korean. The idea of a shared board for people and agents comes from the public description of the project Kanzo (read: its README only, no code; its license is AGPL-3.0 and ROBot takes nothing from it). | 024, 001, 005, 007, 012, 014, 019, 022 |
 | S74 | Backup model: the field in the agent form and profile, the limit reasons, the hold until the reset time, the turn that goes on (from the start, or with a go-on message), the line in the chat, the header text and the button "Use <main model> now", the rules for routines, workflows and channels, what syncs and what does not, and the view on a linked device. | 006, 002, 003, 009, 010, 012, 019 |
-| S75 | Keep going on open steps: the setting, the go-on message, the muted line "Kept going", the limit of 8, the stop when the open steps do not change, and the rule that the app never reads the reply text. Needs a runtime that reports a list of steps. | 005, 003, 013 |
+| S75 | Keep going on open steps: the setting, the go-on message, the muted line "Kept going", the limit of 8, the stop when the open steps do not change, and the rule that it decides from the list and never from the reply text. Needs a runtime that reports a list of steps. | 005, 003, 006, 013 |
 | S76 | Channel turns and picture: the order of the text of a member, the quarter of the context for the newest messages, the reminder of the assignment, the picture of a channel with its limits, and its sync. | 004, 001, 011, 012, 019 |
 | S77 | Browser details: short results, page dialogs, file choosers, the frame named on the "take control" card, unclear targets with candidates, and focus. Needs the browser of S11. | 007 |
 | S78 | Voice: the microphone button, dictation with a recogniser on the device, read aloud, voice chat on the phone, the two settings, the permission steps, and the states without recogniser, voice or permission. | 025, 003, 011, 013, 014 |
 | S79 | Phone notices while the user works: the setting, the 30 seconds, the held notices, the data that still arrives. Needs M5b. | 015, 012, 011 |
 | S80 | Web hook: the trigger form, the address on this computer, the secret, the proof, the preset "GitHub", the preset "Any service", the limits, the busy rule, the run label, and what the file and the sync leave out. | 010, 014, 019, 012 |
-| S81 | Effort levels and model list: None, Minimal and Ultra, the nearest level after a model change, the order of the picker, "Older models", the "New" tag, the part "Models", and the context size and output limit of a custom model. | 006, 002, 009, 010, 013 |
+| S81 | Effort levels and model list: None, Minimal and Ultra, the nearest level after a model change, the order of the picker, "Older models", the "New" tag, the part "Models", and the context size and output limit of a custom model. | 006, 009, 010 |
 | S82 | ACP programs: "Add a program", its form and its check, the presets, how an agent uses it, attachments, and what a linked client sees. | 006, 007, 012 |
 | S83 | Saved logins: the tools "ask for a login" and "sign in with a login", the origin rules, the redaction, the approval card, the second list in Permissions, and export and sync. Needs S11. | 020, 007, 014, 019 |
 | S84 | Menu bar item, quit and sound: the setting, the icon states, the menu, the quit note of Cmd+Q, and the choice of sound. | 015, 001, 013 |
@@ -164,6 +164,7 @@ S69 does not depend on the other slices. It needs no change to 012: a linked cli
 S73 does not depend on the other slices. It shows the queue marks of S71 and S72 when they exist, and needs neither. Do the page and the work cards first: they only read tasks, so they are the smallest part and show value at once. Then the planned cards and "Start". The tools of agents and the mark of outside content can follow in a third pull request of the same slice. The slice changes the list of page buttons (001), so it goes best when no other slice that changes that list is open.
 
 S74 and S81 both change the pickers of 006. S81 can go first. S75 needs a runtime that reports a list of steps, so it follows the work on the runtimes of 006 that exists today. S78 needs S20 only for the shared message box. S79 and S85 need the phone app. S83 follows S77 for the "take control" card. S74 to S88 do not depend on each other, except as listed. S74, S75 and S78 give the largest gain for the effort.
+
 ## Decided against
 
 - Temporary helpers: an agent that gives parts of a request to short-lived helpers and joins their
@@ -184,9 +185,10 @@ S74 and S81 both change the pickers of 006. S81 can go first. S75 needs a runtim
   no rule for a part that waits for the lead.
 - A coaching card, with which an agent proposes a change of its own instructions after the user
   corrects it, is not in this list. It is open for a later change.
-- Auto-answers to the question of an agent. Decided against on 2026-11-04. "Keep going" (005) never
-  reads the text of a reply. A question to the user waits for the user. The app answers a question
-  of the agent for the user in no case.
+- Auto-answers to the question of an agent. Decided against on 2026-11-04. "Keep going" (005) decides
+  from the list of steps of the runtime and never from the words of a reply. The go-on message does
+  not answer a question of the agent, and it tells the agent to ask with a question card. The app
+  answers a question of the agent for the user in no case.
 - A trigger from a chat service (Discord, Slack and so on) for a workflow. Not in this version
   (010). It needs a bot account and a link to the service. Open for a later change.
 - A saved card number, address or one-time code that an agent types into a page. Decided against on

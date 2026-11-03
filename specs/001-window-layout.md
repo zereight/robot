@@ -106,8 +106,10 @@ The Channels section holds channel sections. The Agents section holds agent sect
   a section among the sections of its own level. "Move to section" on a place lists the user
   sections of its kind as a tree. A section cannot move into itself or into a section inside
   itself.
-- A collapsed section shows the sum of the unread counts of its places and of the places of the
-  sections inside it, and the working dot when one of them works.
+- A collapsed section shows one sum of the unread counts. The sum covers its places and the places
+  of the sections inside it. The working dot shows when one of these places works.
+- Each profile (022) has its own sections. An export of a profile holds them with the layout
+  (014).
 - Delete of a section that holds places or sections asks to confirm. The text says that the places
   and the sections inside move up one level and that nothing else is deleted. For a section of the
   first level, they move to the built-in section.
@@ -126,8 +128,9 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - The group has a header that the user can collapse. A collapsed header shows the sum of the
   unread counts and the working dot, as other collapsed headers do.
 - The filter of places looks at pinned places too.
-- Pins belong to the server. The phone and a linked computer show the same pins. They can change
-  pins only when the server lets that device create and change agents (012), as for sections.
+- Pins belong to the server. The phone and a linked computer show the same group. They cannot pin
+  or unpin: the menu of a place there has no "Pin" and no "Unpin" (011, 012).
+- Each profile (022) has its own pins. An export of a profile holds them with the layout (014).
 - Two computers that sync (019) do not sync pins. They are part of the layout of one computer.
 
 ## Message search
@@ -146,7 +149,7 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - Hits come newest first, 20 at a time. While more hits exist, the last row of the group is
   "Show more". The app finds at most 200 hits. If more messages match, the group ends with a line
   that asks the user to type more words.
-- A hit row shows the face or the `#` mark and the name of the place, the time, and a short
+- A hit row shows the face, the picture or the `#` mark and the name of the place, the time, and a short
   piece of the message around the first matching word, at most 120 characters, with "…" at a cut
   end. The matching words are marked. The piece is plain text. The app does not read Markdown or HTML in it.
 - A click on a hit opens the place, and the thread that holds the message. The chat scrolls to
@@ -161,7 +164,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 ## Place rows
 
-- One line, 34 px high: a 24 px face for an agent, or a `#` mark for a channel, then the name.
+- One line, 34 px high: a 24 px face for an agent, or the picture or the `#` mark for a channel,
+  then the name.
 - Names are muted. They are full contrast when the row is selected, hovered, or has unread
   messages.
 - An unread count shows as a small badge at the right end.
@@ -193,13 +197,16 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - The rail leaves room for the window buttons at the top left.
 - The rail, the place list, the pages and the selection belong to the open profile. A switch of
   profile changes all of them, and each profile keeps its own selection (022).
-- Keyboard: Cmd+K focuses search. Cmd+F finds in the open chat (003). Up and down move through
-  places. Enter opens one.
+- Keyboard: Cmd+K focuses search. Cmd+F finds in the open chat (003); on a page that is not a
+  chat it does nothing. Cmd+Shift+D starts and stops dictation (025). Up and down move through
+  places. Enter opens one. The help button opens a page that lists these keys.
 - **Quit**: Cmd+Q, and "Quit" in the menu of the menu bar item (015), quit the app. When no agent
   works and no task waits for the user, the app quits at once. When an agent works or a task
   waits, the first press shows a short note over the window: "Press Cmd+Q again to quit. N tasks
-  are running." A second press within 3 seconds quits. Holding the keys down quits too. A quit
-  stops the running tasks as a restart of the app does (005). Closing the window is not a quit.
+  are running." A second press within 3 seconds quits. Holding the keys down for 1 second quits
+  too. A quit stops the running tasks as a restart of the app does (005).
+- **Closing the window**: it does not quit the app. The agents go on working. The user opens the
+  window again from the Dock icon or from the menu bar item (015).
 
 ## Acceptance
 
@@ -237,3 +244,11 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - Open the menu of a place and pick "Mark as unread": the place shows the count 1.
 - Press Cmd+Q while a stand-in agent works: the note shows and the app stays. Press it again
   within 3 seconds: the app quits. With nothing running, the first press quits.
+- A section "Research" holds a section "Papers". Try to move "Research" into "Papers": the app
+  refuses. Make 20 sections across all levels: the 21st is refused.
+- Pin an agent and archive it: it leaves the group. Type part of the name of a pinned agent in the
+  search field: the agent shows in the filtered list.
+- On a stand-in phone and a stand-in linked computer, the menu of a place has no "Pin".
+- Press Cmd+F on the Today page: nothing happens. Hold Cmd+Q for 1 second while an agent works: the
+  app quits. Close the window while an agent works: the agent goes on, and the Dock icon opens the
+  window again.

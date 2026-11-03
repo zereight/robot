@@ -103,10 +103,12 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 ## Rules
 
 - Every visible string comes from a translation catalogue with English and Korean. Korean uses
-  polite informal speech.
+  polite informal speech. A text that holds a number, a name or a time, for example "Kept going
+  (1 of 8)", "Trying again (1 of 3)" or "Backup until <time>", is one text with parameters, so
+  Korean can set the order of the words.
 - Changes apply at once, without a restart.
 - Settings belong to the open profile (022) and are local to the computer. The section Profiles
-  and the setting "start at login" are for the computer. A linked device never changes them.
+  and the settings "start at login" and "Show in the menu bar" are for the computer. A linked device never changes them.
 
 ## Acceptance
 

@@ -124,9 +124,15 @@ The user knows when an agent needs them or finishes, without watching the window
   keyboard or mouse input within the last 30 seconds, in any app. The app reads the time since the
   last input from the system. That value stays on the computer. It is never sent to a phone or to
   a linked computer.
-- The server holds the notice back. When the computer has had no input for 30 seconds, the server
-  sends the held notices, except those whose cause the user already saw or answered on the
-  computer, for example an answered card or a place that was read.
+- The server holds the notice back.
+- When the computer has had no input for 30 seconds, the server sends the held notices.
+- It does not send a held notice whose cause the user already saw or answered on the computer,
+  for example an answered card or a place that was read.
+- While the server holds notices, Settings → Notifications shows the muted line "Notices to
+  phones are held while you work here."
+- Held notices are not stored. After a restart of the app they are gone, and the data still
+  reaches the phone.
+- The setting belongs to this computer and does not sync (019).
 - A computer that sleeps or is locked counts as no input.
 - The phone still gets the data. Messages, counts and lists show when the app opens. Only the
   notice is held.
@@ -144,15 +150,21 @@ The user knows when an agent needs them or finishes, without watching the window
   you", which opens the Today page (021), and the items "Open ROBot", "Settings" and "Quit".
   "Quit" follows the rule of 001.
 - The menu shows no command, path or file content, as the detail card does not.
-- Only the open profile shows here (022).
+- Only the open profile shows here (022). The menu shows no work of a linked server, as the island
+  does not.
+- When the window is closed, "Open ROBot" opens it again.
 
 ## Sound
 
 - Settings → Notifications has "Sound when a task ends". The user picks one of four sounds that
   the app brings, or "None". The first sound is the default. Each sound plays when the user picks
   it in the list.
-- The sound plays when a task ends (done, failed or blocked) in a place whose notification is on
-  and not muted. When several tasks end within one second, the sound plays once.
+- The sound plays when a result card would show (see "Result card"): the kind is reply, task
+  failed or routine failed, the kind is on, the place is not muted, and no window of the app has
+  the focus. It plays in every mode of the island. When several results come within one second,
+  the sound plays once.
+- It plays on this computer for the work of this computer. A phone uses its own sound of the
+  system.
 - The system notice has no sound of its own while the app plays this sound. Do-not-disturb of the
   system, and the mute of a server or a channel, silence it. The quiet line makes no sound (005).
 - The sounds are new files made for ROBot.

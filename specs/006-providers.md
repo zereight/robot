@@ -105,16 +105,23 @@ limit is spent.
   3. The chat shows a muted line: "<main model> reached its limit. <backup model> goes on." The
      line gives the reset time when it is known.
 - While the hold lasts, every turn of the agent uses the backup model: a chat, a part of a channel
-  job, a routine, a message of another agent, and a workflow step that has no model of its own. A
-  workflow step that sets its own model keeps it and gets no backup.
+  job, a message of another agent, a routine and a workflow step that have no model of their own.
+  A routine or a workflow step that sets its own model (009, 010) keeps it and gets no backup.
 - The header of the chat shows the backup model and "Backup until <time>". A button "Use <main
   model> now" ends the hold. The next turn then tries the main model. If that turn fails with a
   limit reason again, the hold starts again and the chat shows no second line.
 - When the hold time has passed, the next turn uses the main model again, and the header shows the
   main model again.
-- A turn on the backup model that fails with a limit reason too, and a backup that is not ready,
-  end as the rule in "Rules" says, with the reason of the backup. An agent with no backup model
-  follows that rule too.
+- A turn on the backup model that fails with a limit reason too fails with that reason, as a turn
+  with no backup does (see "Rules"). A backup that is not ready does not take the turn. The
+  backup is ready when this computer has its account, and the account is connected and, for a
+  runtime, Ready. A synced backup that names an account that this computer lacks is not ready,
+  and the form shows a muted line that says so.
+- A vendor program or a program with ACP reports a limit in its own way. The app reads the
+  reports that it knows: the plan limit, the credit or the quota is spent. When it cannot tell
+  what the program reports, the turn fails as a turn with no backup does.
+- The app stores the hold with its end time on this computer. It stays after a restart and ends
+  at its time or with the button.
 - A turn goes to the backup for a limit reason only. It does not go for a sign-in or key that is
   not valid, for a model that does not exist, or for a request that the provider refuses.
 - The usage page counts the tokens for the model that made them.
@@ -133,8 +140,8 @@ limit is spent.
 - None and Minimal sit below Low. Ultra sits above Max. They show for a model only when the model
   lists them.
 - When the model of an agent changes and the new model does not list the level of the agent, the
-  agent uses the nearest level that the new model lists. The same holds for a routine and for a
-  workflow step that names a level (009, 010).
+  agent uses the nearest level that the new model lists. When two levels are equally near, it uses
+  the lower one. A routine follows 009 and a workflow step follows 010 for their own levels.
 
 ## Model list
 
@@ -178,6 +185,10 @@ limit is spent.
 - The dialog also lists presets for these programs: Gemini CLI, Kimi Code and Hermes Agent. A
   preset fills the name and the command, and the user can change both. The check decides if the
   installed program works with ACP. If it does not, the row shows "Needs repair" and says why.
+- The row has "Edit" and "Remove". After "Remove", an agent that used the program shows "Provider
+  not connected" and the button "Providers" (003).
+- Each profile (022) has its own programs. An export (014) holds the name, the command, the
+  arguments and the names of the rows. It holds no secret value of a row.
 - A client of a linked server sees the row and its state, and has no buttons on it (012). A
   program does not sync (019), like the other runtimes.
 
@@ -201,6 +212,9 @@ limit is spent.
   of the chat shows them (see 003).
 - A runtime that can report the size of the context at the end of a turn does so, so the context
   meter works (see 003).
+- A runtime that reports its list of steps (a plan) to the app does so in each turn. The app uses
+  the list for "Keep going" (005). A program with ACP reports its plan as the protocol says. A
+  runtime that reports no list gives nothing to keep going on.
 - When a provider says a usage limit is reached, the turn fails with that reason and the time it
   resets, if known. An agent with a backup model that is ready goes on with it first (see "Backup
   model"). When a provider says the sign-in or key is not valid, the turn fails with that
@@ -257,3 +271,24 @@ limit is spent.
   that exits at start shows "Needs repair".
 - A stand-in provider answers "busy" twice and then works: two muted lines show, and the reply
   comes. It answers "busy" four times: the turn fails after the third try with the reason.
+- A stand-in model names no reset time with its limit: the hold lasts 15 minutes by a fake clock,
+  and the next turn after that goes to the main model. End the app while the hold lasts and start
+  it again: the hold is still there.
+- The form refuses a backup with the same account, model and effort as the main choice. A backup
+  on an account that this computer lacks counts as not ready: the turn fails with the limit
+  reason.
+- A stand-in vendor program reports a spent plan limit in its own form: the turn goes to the
+  backup. It reports something that the app cannot read: the turn fails.
+- An agent is on its backup model and has a routine with its own model: the routine keeps its
+  model.
+- The picker shows "New" for a model that appears on the second fetch, and with a fake clock the
+  tag goes after 7 days. The first fetch of an account tags no model. "Hide all" removes every
+  model from the picker, and "Reset" brings them back.
+- A custom model with an output limit of 2,000 sends 2,000 as the most tokens to write. The field
+  refuses 0 and 10,000,001.
+- Two levels are equally near after a model change: the lower one is used.
+- A stand-in provider says "busy" at once and then works: the first wait is 2 seconds by a fake
+  clock. Stop during the wait ends the turn.
+- Remove an ACP program: its agents show "Provider not connected" and the button "Providers".
+  An export holds the name, the command, the arguments and the names of the rows, not their
+  secret values.

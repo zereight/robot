@@ -176,3 +176,8 @@ All checks use a small test web service, written for the test.
   rule stops it at every level.
 - Export and import into an empty app: the login shows "Value missing", and the call fails with
   that reason until the user replaces the values.
+- Save a login, duplicate the agent: the copy has no login. Delete the agent: the keychain holds
+  no value of it. Ask for a login with the same name and another origin: the app refuses it. Press
+  Cancel on the card: the agent gets "Cancelled". Ask for 51 logins for one agent: the 51st is
+  refused. The user has no way to add a login in Settings in this version; the list only shows,
+  replaces and deletes.

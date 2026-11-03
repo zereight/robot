@@ -164,14 +164,18 @@ The user gives a job to a group of agents in one place and watches them divide a
   channel shows this as one line under the part.
 - When the older messages are too long for the context of a member, the app replaces them with a
   short summary that the lead's model writes at the lowest effort the model offers. If the
-  summary cannot be written, the part starts with the newest messages instead of failing. If even
-  those do not fit, the part fails with a clear reason.
-- **What a member reads**: a turn of a member in a channel gets its text in this order: the
-  assignment of its part, the instructions (the member's own, then the channel's), the messages
-  that asked it, and then the newest messages of the channel. The newest messages fill at most one
-  quarter of the context of the model of the member. Older messages become the short summary above.
-  When the text of the channel is long, the assignment comes once more, as a short reminder at the
-  end.
+  summary cannot be written, the part starts with the newest messages instead of failing. If the
+  assignment and the instructions alone do not fit, the part fails with a clear reason. The older
+  messages of this rule are those that do not fit in the part for the newest messages (see below).
+- **What a member reads**: a turn of a member in a channel gets its text in this order.
+  1. The assignment of its part.
+  2. The instructions: the member's own first, then the channel's.
+  3. The messages that asked it.
+  4. The short summary of the older messages, when one exists (see above).
+  5. The newest messages of the channel. They fill at most one quarter of the context of the
+     model of the member. When the app does not know the size of the context, it takes the last
+     20 messages.
+  6. A short reminder of the assignment, when the newest messages number more than 10.
 - **Picture**: a channel can have a picture, as an agent has a face (002). In the settings of the
   channel the user picks an image. The app cuts it to a square of 256 px as a PNG of at most 1 MB.
   The picture shows in the place row and in the header in place of the `#` mark, and also on the

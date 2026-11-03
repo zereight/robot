@@ -111,7 +111,11 @@ Agents do repeat work on a schedule without the user starting it.
   time zone, with the prompt. So the agent knows that it runs late and can adapt, for example
   when the prompt says "this morning".
 - A run uses the model and effort of the routine. When the account of that model is not
-  connected, the run fails with that reason. It does not use another model.
+  connected, the run fails with that reason. It does not use another model. When the model does
+  not list the effort of the routine, the run uses the effort of the agent, as a workflow step
+  does (010).
+- A routine with its own model keeps it while the agent is on its backup model. A routine that
+  follows the agent uses the backup model (006, "Backup model").
 - A run does not start while the previous run of the same routine is still going; it is marked
   "Skipped".
 - When two computers sync (019), a routine runs on one computer only. The other computer shows

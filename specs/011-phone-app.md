@@ -22,7 +22,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
    as on desktop. This includes the user sections, with the same order and the same badge on a
    collapsed header. The user can open and close a section on the phone. The phone remembers
    this for itself. In this version the phone cannot make, rename, order or delete a section, and
-   it cannot move a place to a section. The user does this on the computer. The phone shows the group "Pinned" and the sections inside sections (001).
+   it cannot move a place to a section, and it cannot pin or unpin a place. The user does this on
+   the computer. The phone shows the group "Pinned" and the sections inside sections (001).
 3. **Conversation**: message rows as on desktop, Markdown, tool cards (tap for details), the
    message box with attach (photos, files), stop, and reply.
 4. **Approvals**: approval and question cards can be answered in the conversation or from a
@@ -75,9 +76,10 @@ shows works.
 
 The phone follows the computer in these points: the `@all` mention in channels (004), the random
 name button and the role list for agents (002, 013), the word "archived" for channels (004), the
-context meter (003), the command list (003),
+context meter (003), "Mark as unread" (003), the command list (003),
 the main agent switch (002), the end of a request (004), the search of messages (001), and the
-line that tells how far a failed turn went, with the button "Send again" (003, 005). The phone
+line that tells how far a failed turn went, with the button "Send again" (003, 005), and the
+picture of a channel (004). The phone
 shows no marketplace. In this version the phone shows the main thread of a direct chat only. It
 has no Compact control, no fork and no "Run next" (003, 005).
 
@@ -87,7 +89,8 @@ has no Compact control, no fork and no "Run next" (003, 005).
   shares text, a link, an image or a file from another app. A small sheet opens. It lists the
   paired servers and their agents, with the agent used last first, and has a box for a message and
   "Send". The app does not open its full screens. It sends the shared item to that agent as text or
-  as an attachment, with the message. The limits of 003 apply. If the server is offline, the sheet
+  as an attachment, with the message. The limits of 003 apply. "Cancel" closes the sheet and
+  sends nothing. The phone keeps no copy of the shared item. If the server is offline, the sheet
   says so and sends nothing.
 - **Face in a notice**: a notice of a reply, a mention, an approval or a failed task shows the face
   or the picture of the agent when the system allows an image in a notice. If not, it shows the

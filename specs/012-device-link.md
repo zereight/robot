@@ -100,8 +100,10 @@ client shows it and sends commands.
 | See the workflow list, open a canvas, see run history, run details and live run state; run and stop a workflow; answer an approval step of a run | The workflow assistant panel; export and import of workflow files; the workflows log (014) |
 | Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
 
-A client sees the user sections of the server (001) and cannot make, rename, order or delete
-them, or move a place into another section. The Today, Board and usage page buttons and pages, and the
+A client sees the user sections and the pinned places of the server (001). It cannot make,
+rename, order or delete a section, move a place into another section, or pin or unpin a place.
+A client can mark a place or a message as read or as unread (001, 003). The read state follows
+the server. The Today, Board and usage page buttons and pages, and the
 other parts in the right column, show a muted line on a client: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
 card on a client has no "Always allow" choice. If a client sends one, the server takes it as one
@@ -117,8 +119,8 @@ agents and channels of the server in the same screens as on the server (002, 004
 button on a section, the agent profile, the channel settings, the memory list.
 
 - **Fields a client can set:** name, face (shape and hue; no uploaded image), role line,
-  instructions, model, effort and the switch "Read the handbook". The section of an agent is not
-  offered. For a channel: name, topic, instructions, members and lead. A client can also read and
+  instructions, model, effort, backup model and the switch "Read the handbook". The section of an agent is not
+  offered. For a channel: name, topic, instructions, picture, members and lead. A client can also read and
   change the handbook (002), and turn the memory check of an agent on or off (008). A client does
   not archive, delete or restore channels.
 - **Outside content:** a client shows the line "Holds outside content" in the header of a place
@@ -164,6 +166,8 @@ A client opens the Workflows page of the server (010) in the same screens as on 
 - **Server things:** an agent step picks from the agents of the server that are not archived. A
   model step and a condition in "Ask a model" mode pick from the model accounts of the server. A
   post step picks a place of the server. A client never sees a key or a path.
+- **Web hook:** a client sees the kind of trigger and, for a web hook, the name of the computer
+  that listens. It sees neither the address nor the secret (010).
 - **On the server only:** the assistant panel, because it can change many things at once, and
   export and import of workflow files. The panel shows the muted line "Open this on <server
   name>." on a client. The phone keeps its own assistant rule (011).

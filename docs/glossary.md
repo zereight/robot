@@ -98,6 +98,14 @@ A new word goes here in the same pull request as the spec that brings it.
 | Read aloud | The app speaks a finished message of an agent (025). | 소리 내어 읽기 (proposed) | narrate, TTS |
 | Voice chat | A spoken talk with one agent on the phone (025). | 음성 대화 (proposed) | call |
 | Menu bar item | The small icon of the app in the menu bar of the Mac (015). | 메뉴 막대 항목 (proposed) | tray, widget |
+| Recogniser | The speech recognition of the system of a device. It must run on the device (025). | 음성 인식기 (proposed) | speech service |
+| Limit reason | The plan limit, the credit or the quota is spent. It moves an agent to its backup model (006). | 한도 소진 (proposed) | error |
+| Image stack | The stack of cards that shows more than one image of a message on the phone (011). | 이미지 묶음 (proposed) | gallery |
+| Thinking sheet | The sheet on the phone that lists all thoughts of a turn (011). | 생각 보기 (proposed) | log |
+| Share to an agent | The target of the share sheet of the phone that sends an item to an agent (011). | 에이전트에게 공유 (proposed) | export |
+| Find in the chat | The bar of Cmd+F that finds text in the chat that is open (003). | 대화에서 찾기 (proposed) | search (search is Cmd+K, 001) |
+| Sound when a task ends | The setting for the sound of a result (015). | 작업이 끝날 때 소리 (proposed) | alert |
+| Keep phones quiet | The setting that holds notices to phones while the user works at the computer (015). | 일하는 동안 폰 알림 보류 (proposed) | focus mode |
 
 ## Words that ROBot does not use
 

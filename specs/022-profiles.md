@@ -104,8 +104,8 @@ apart").
 - No screen, search, tool or agent of one profile reads or changes the data of another profile.
   The tools "list agents", "send message" and "search chats" (007) see only the agents and chats
   of their own profile. The board tools (024) use only the board of their own profile.
-- All settings belong to the profile, except the list of profiles and "start at login", which
-  belong to the computer.
+- All settings belong to the profile, except the list of profiles, "start at login" and "Show in
+  the menu bar", which belong to the computer. The menu bar item shows the open profile (015).
 - A new profile has no model account. The keys and tokens of each profile are in the keychain,
   apart from the others (014). A separate sign-in of an agent runtime (006) belongs to the
   profile where the user made it.
