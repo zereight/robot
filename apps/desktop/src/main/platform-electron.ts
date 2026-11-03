@@ -22,6 +22,7 @@ import {
 } from "electron"
 import type { BrowserPage, PageBounds, PlatformService } from "./services/Platform.ts"
 import { type Resolver, systemResolver } from "./web/fetch.ts"
+import { pageUserAgent } from "./web/userAgent.ts"
 
 /** True when an end-to-end test runs the app. The app then leaves system settings alone. */
 export const isTestRun = Boolean(process.env.ROBOT_USER_DATA)
@@ -152,6 +153,10 @@ const electronBrowser = (agentId: string): BrowserPage => {
         const h = mainWindow
         if (!h || h.isDestroyed())
           throw new Error("The app window is not open, so the browser has no place to show.")
+        // Set before the page exists: a session applies its user agent to new pages only. Sites
+        // such as Teams turn away the `Electron/` token that Electron adds.
+        const data = session.fromPartition(partitionOf(agentId))
+        data.setUserAgent(pageUserAgent(data.getUserAgent(), app.getName()))
         const created = new WebContentsView({
           webPreferences: {
             partition: partitionOf(agentId),
