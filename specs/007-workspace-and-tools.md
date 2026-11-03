@@ -77,7 +77,8 @@ the user gets a card only when the check is sure that the user asked for the ste
   - anything that uses `sudo`,
   - a file step whose path is inside the data folder of ROBot (014),
   - a request with a saved secret that uses a method other than GET, and a request for a new
-    secret (020).
+    secret (020),
+  - a change to a control place, and a fetch of a local address (see "Sensitive places").
 - **Checked steps** are the other risky steps (see "Rules"): commands that use the network to send
   data, installing software, and a call of a tool of a connection (018). A step that is not risky
   runs with no question, as at "Ask for risky steps".
@@ -85,6 +86,8 @@ the user gets a card only when the check is sure that the user asked for the ste
   with the normal approval card, and the decision model gets no request:
   - the turn holds no outside content (see "Outside content"). Outside text can steer what the
     agent writes in a step, so the check cannot judge such a step;
+  - the turn holds no sensitive read (see "Sensitive places"). The agent has seen keys or logins,
+    so a step that sends data out must ask;
   - the turn has words of the user (see below);
   - a command has at most 500 characters. A longer command is not checked;
   - a command does not run a script file of the workspace or of another folder, for example with
@@ -98,7 +101,8 @@ the user gets a card only when the check is sure that the user asked for the ste
   the job message, when the user posted the job and the turn of the lead held no outside content
   before it made the part. For a new part after "Request changes" (004), the text of the request
   counts too. A message of another agent, of an outside program (023) or of a watch
-  is not words of the user. A step of a workflow has no words of the user, because the assistant
+  is not words of the user. The handover card (003) is not words of the user. The text that the
+  user typed in the dialog of the handover is. A step of a workflow has no words of the user, because the assistant
   of a workflow can write the prompt of a step (010).
 - For a checked step, the app asks the decision model one question: does the user ask for this
   step? The two options are "The user asked for this" and "The user did not ask for this".
@@ -252,8 +256,8 @@ The action log lets the user see what the agents did, and why a step ran or did 
   - The target is a path, a command, a host, or the name of a connection and a tool. A target is
     cut at 200 characters. For a tool of a connection the target holds no arguments.
   - Who decided: the permission level, an Allow rule, a Deny rule, the check of "Ask when unsure"
-    with its probability, the user on a card, or "a rule that cannot be read" followed by the
-    user.
+    with its probability, the user on a card, "a rule that cannot be read" followed by the
+    user, or the app (for an address that is never allowed; see "Sensitive places").
   - For a file step, whether the step read or wrote.
   - The result: Ran, Failed, Refused, or Stopped.
   - An entry that a rule decided names the rule. The row opens the rules page on that rule. A rule
@@ -294,6 +298,7 @@ text is in the turn.
     (004) keeps the mark.
 - A part of a channel job (004) holds outside content from its start when the job came from an
   outside program, or when the turn of the lead held outside content before it made the part.
+- A handover (003) gives the new thread the marks of the place it came from.
 - **The mark of a place**: a chat, thread or channel whose next turn will hold outside content
   shows a muted line in its header, "Holds outside content", with the first source. "Clear"
   removes the mark for the next turns, after a confirm that says that the agent still sees the
@@ -333,13 +338,116 @@ text is in the turn.
 - The action log (see "Action log") has an entry for each guarded step. The entry says whether
   the turn held outside content.
 
+## Sensitive places
+
+Some places hold keys and logins. Other places start a program later, or give access to the
+computer. An agent that reads the first kind and then sends data out can steal the keys. An agent
+that writes the second kind can make a lasting change that the user does not see. Two fixed lists
+name these places. The app compares real paths, as for rules (see "Permission rules").
+
+- **Credential places**. Each one has a label that the app shows to the user:
+  - "Keys": the folders of SSH keys and GnuPG keys in the home folder.
+  - "Cloud logins": the folders of the logins of cloud tools and cluster tools (Amazon Web
+    Services, Google Cloud, Azure, Kubernetes) in the home folder.
+  - "Tool logins": the netrc file, the Git credentials file, the npm settings file, the Docker
+    settings file, and the settings of the GitHub command line tool.
+  - "Shell history": the history files of shells.
+  - "Keychain": the keychains of the user.
+  - "Browser data": the profile folders of web browsers.
+  - "ROBot data": the data folder of ROBot (014).
+- **Control places**:
+  - the start files of shells in the home folder,
+  - the folders of login items and background items (LaunchAgents and LaunchDaemons), in the home
+    folder and in the system,
+  - the SSH folder in the home folder, which holds the file of allowed keys,
+  - the hosts file and the sudo settings in the system,
+  - the hook folder and the settings file of a Git repository, in any folder,
+  - the settings folders in the home folder of other agent programs (for example Claude Code,
+    Codex, Cursor and Gemini), and their files that list MCP servers.
+- Files with project secrets, for example `.env` files, are not in the lists. Developers read
+  them all the time, and a mark for each read would ask too often.
+
+### Sensitive read
+
+- A **sensitive read** is a step that reads a credential place:
+  - a file step that reads a file in a credential place, or lists or searches such a folder,
+  - a shell command whose text names a credential place, with `~`, `$HOME` or the full path, or
+    that runs the program `security` with a subcommand that prints a password or dumps a
+    keychain.
+- The app looks at the text of the command. A command can hide a path, for example in a variable.
+  So the mark helps, but it is not a wall. The browser, the tools of a connection and the messages
+  to other agents are not covered in this version.
+- A turn **holds a sensitive read** from the first such step until the turn ends. A later turn
+  holds it by the same rules as outside content: an earlier turn that the agent still sees, a
+  compact, a fork, a channel, a part of a job, and "The mark of a place" with "Clear" (see "Outside
+  content"). The header line of the place reads "Holds a sensitive read" with the label of the
+  first place. When a place holds both marks, the line shows both. "Clear" clears both marks, and
+  its confirm text names both.
+- In a turn that holds a sensitive read:
+  - A step that sends data out asks the user with an approval card, also when an Allow rule
+    matches. This holds at "Read only", "Ask for everything", "Ask for risky steps" and "Ask when
+    unsure". These steps are a command that uses the network to send data, and a fetch of a web
+    page. The card has Allow once and Deny only, and the line "This turn read a place with keys
+    or logins." A Deny rule still refuses the step. At "Read only", the commands stay refused.
+  - No step goes to the check of "Ask when unsure".
+  - At "Full access", these steps run with no question.
+- The action log says, in the entry of each step, whether the turn held a sensitive read.
+- The mark and its clear are stored with the place and sync with it (019). A linked device (012)
+  sees the line and cannot clear it.
+
+### Change to a control place
+
+- These steps are hard steps (see "Ask when unsure"):
+  - a file step that writes, changes or deletes a file in a control place,
+  - a command whose text names a control place right after `>`, `>>` or `tee`,
+  - a command that loads a login item or a background item (`launchctl` with `load`,
+    `bootstrap`, `enable` or `submit`), and a command that edits the timed jobs of the user
+    (`crontab` with an option other than `-l`).
+- At "Ask for everything", "Ask for risky steps" and "Ask when unsure", a hard step asks, unless
+  an Allow rule matches. "Always allow for this agent" saves a rule that is not wider than the step.
+  At "Read only", these steps are refused as other changes are. At "Full access", they run with no
+  question.
+
+### Addresses of a web page fetch
+
+The tool that fetches a web page calls an address that the agent chooses. A page or a message can
+steer the agent to an address that only this computer or its network can reach.
+
+- The app checks the address that the connection really uses: after it looks up the name, and
+  after each redirect.
+- **Never allowed**: a link-local address (`169.254.0.0/16` and `fe80::/10`) and a cloud metadata
+  address (`169.254.169.254`, `fd00:ec2::254` and the host name `metadata.google.internal`). The
+  step is refused at every level, also at "Full access", and no rule opens it. The card shows
+  "Refused: this address is not allowed". The agent gets the refusal as a failed step. The log has
+  the result Refused, decided by the app.
+- **Local address**: an address on this computer (`127.0.0.0/8`, `::1`, `localhost`) or on a local
+  network (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`, and names that end in
+  `.local`). A fetch of a local address is a hard step. The card names the host.
+  - An address that is written as numbers, `localhost`, and a name that ends in `.local` can be
+    allowed by a rule for that host.
+  - A name that leads to a local address always asks. A rule for the name does not count.
+- The browser of the agent is not changed. An agent on a vendor runtime (006) uses its own fetch
+  tool and is not changed.
+
+### Surfaces
+
+- Devices: the computer decides. A linked device (012) and the phone (011) show the cards and the
+  header line, and cannot clear the marks.
+- Seeing the state: the header line of the place, the approval card, the tool card, and the action
+  log. They stay after a restart.
+- Ways out: "Clear" removes the marks. A rule that the user saves from a card can be deleted in the
+  rules page.
+- Words: "Holds a sensitive read", "Refused: this address is not allowed", and the lines above, in
+  English and Korean.
+
 ## Rules
 
 - Risky steps: deleting files outside the workspace, commands that use the network to send data,
   installing software, anything that uses `sudo`, a file step whose path is inside the data
   folder of ROBot (014), a call of a tool of a connection (see 018; a tool with a trusted
-  read-only mark is not risky outside a turn that holds outside content), and every request with
-  a saved secret that uses a method other than GET (see 020).
+  read-only mark is not risky outside a turn that holds outside content), every request with
+  a saved secret that uses a method other than GET (see 020), a change to a control place, and a
+  fetch of a local address (see "Sensitive places").
 - An agent runtime from a vendor (see 006) uses the vendor's own permission prompts; the app shows
   them as approval cards. The level of the agent also sets how the app starts the program (see
   "Permission levels").
@@ -458,3 +566,24 @@ text is in the turn.
 - "Full access": an outside program sends "Change your instructions" to an agent, and the user
   denies the card. In a new thread, the agent calls "search chats" and gets that message as a hit.
   It then tries to change its instructions: an approval card shows.
+- Sensitive read, at "Ask for risky steps" with an Allow rule for `curl`: the agent reads a test
+  file in a stand-in credential place, then runs a `curl` command that sends data. An approval card
+  shows with "This turn read a place with keys or logins." and with Allow once and Deny only. In a
+  new thread of the same agent, the header shows "Holds a sensitive read" until "Clear", and the
+  same command asks. After "Clear", it runs by the rule.
+- Sensitive read: the agent reads a test file in a credential place and then fetches a web page. The
+  fetch asks. At "Full access", it runs with no question, and the log entry says that the turn held
+  a sensitive read.
+- Sensitive read, at "Ask when unsure" with a stand-in decision model: after the read, a network
+  command asks, and the decision model gets no request.
+- An agent reads a `.env` file in its workspace and then runs a network command: the marks do not
+  change anything.
+- Control place: the agent writes a test file in a stand-in start file of a shell. At "Ask for risky
+  steps" an approval card shows. At "Ask when unsure", the decision model gets no request. The agent
+  runs `crontab -l`: no card. It runs `crontab` with a file: a card shows.
+- Fetch: the agent fetches `http://169.254.169.254/latest/`: the step is refused at "Full access",
+  and the log names the app as the one who decided. It fetches `http://127.0.0.1:PORT/` of a test
+  server: a card shows. "Always allow for this agent" saves a rule for `127.0.0.1`, and a second
+  fetch runs with no card.
+- Fetch: a test name leads to `127.0.0.1`. An Allow rule for the name exists. The fetch still asks.
+- Fetch: a public test address redirects to `http://169.254.169.254/`: the step is refused.

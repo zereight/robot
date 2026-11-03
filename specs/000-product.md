@@ -66,6 +66,8 @@ tag, so the user reads their work as they read messages from colleagues.
   014), and the connections that the user adds on purpose (see 018 and 014). Both are off until
   the user sets them up. An outside program on this computer that the user adds (023) can read
   what ROBot gives it and send it on by itself. It is off until the user turns it on.
+- A picture from the web in a Markdown text does not load by itself. The user presses "Load image"
+  for each picture (see 003, "Pictures from the web"). A picture can carry data in its address.
 - The app sends no analytics and no failure reports.
 - Secrets never appear in logs, exports or diagnostics.
 - ROBot does not train or change a model. An agent gets better at its job only through things that

@@ -87,6 +87,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   secret is replaced with "[redacted]".
 - Import of a ROBot export into an empty profile (022) restores everything except secrets. Every
   connection comes back turned off (see 018), so an import never starts a program or sends data.
+  It comes back with no reviewed tools, so the user reviews its tools again (018). The archive
+  holds a handover (003) as messages.
 
 ## Review before an import
 
