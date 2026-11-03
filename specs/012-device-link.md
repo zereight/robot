@@ -121,6 +121,8 @@ button on a section, the agent profile, the channel settings, the memory list.
   offered. For a channel: name, topic, instructions, members and lead. A client can also read and
   change the handbook (002), and turn the memory check of an agent on or off (008). A client does
   not archive, delete or restore channels.
+- **Outside content:** a client shows the line "Holds outside content" in the header of a place
+  (007). It cannot clear the mark.
 - **Memory:** a client does the same four things as the profile of an agent on the server (008):
   list and search, add, edit and delete items. It has no switch for memory on or off.
 - **Model:** the client picks from the model accounts that are connected on the server. It cannot

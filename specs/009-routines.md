@@ -11,6 +11,9 @@ Agents do repeat work on a schedule without the user starting it.
   The user can pick another model and effort for the routine only, for example a cheaper model
   for a simple check. A routine can also have a token limit for each run (see "Limits and
   safeguards").
+- A routine from an agent file (002) shows the muted line "Checked steps of this routine ask until
+  you save it once." in its form, until the user saves the form (007, "Ask when unsure"). This
+  state syncs with the routine (019).
 - **Trigger**: a schedule, or a watch. A routine has one trigger, never both.
 - **Schedule**: once at a time; every N minutes or hours; daily at times; weekly on days at a time;
   or a cron expression for advanced users. All in the user's time zone.

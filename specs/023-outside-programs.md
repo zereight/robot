@@ -80,9 +80,9 @@ With the access "Read and send work", also:
 - A turn that a message of an outside program starts holds outside content from its start (007,
   "Outside content"). The source is the name of the program. So guarded steps ask, and at "Ask
   when unsure" every checked step asks.
-- In such a turn, a change of the agent's own settings or instructions, and a change of the
-  settings of the app (002, "Changes from the chat"), ask the user at every level, "Full access"
-  too.
+- In such a turn, every guarded step (007), for example a change of settings or a save to memory,
+  asks the user at every level, "Full access" too. Later turns of the same chat keep the mark of
+  outside content until the user clears it (007, "The mark of a place").
 - A task of an outside program has depth 0 (005).
 - A job that an outside program sends to a channel holds outside content in every part (007). Its
   parts ask before a change of settings at every level, as its own turn does.

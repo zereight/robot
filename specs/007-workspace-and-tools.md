@@ -85,17 +85,17 @@ the user gets a card only when the check is sure that the user asked for the ste
   with the normal approval card, and the decision model gets no request:
   - the turn holds no outside content (see "Outside content"). Outside text can steer what the
     agent writes in a step, so the check cannot judge such a step;
-  - no earlier turn that the agent still sees in this chat, thread or channel held outside content.
-    A compact (003) keeps this mark. A new thread or a fork clears it;
   - the turn has words of the user (see below);
   - a command has at most 500 characters. A longer command is not checked;
-  - a command does not run a file that the agent wrote or changed with a file step in this chat,
-    thread or channel. A short command can start a long script.
+  - a command does not run a script file of the workspace or of another folder, for example with
+    an interpreter or with a path to the file. A short command can start a long script that any
+    turn wrote, by a file step or by a command.
 - **Words of the user**: the messages of the user that started the turn or joined it (003), or the
   prompt of a routine (009). The prompt of a routine from an agent file (002) counts only after the
   user saves the routine form once. For a part of a channel job (004), the words of the user are
   the job message, when the user posted the job and the turn of the lead held no outside content
-  before it made the part. A message of another agent, of an outside program (023) or of a watch
+  before it made the part. For a new part after "Request changes" (004), the text of the request
+  counts too. A message of another agent, of an outside program (023) or of a watch
   is not words of the user. A step of a workflow has no words of the user, because the assistant
   of a workflow can write the prompt of a step (010).
 - For a checked step, the app asks the decision model one question: does the user ask for this
@@ -282,11 +282,24 @@ text is in the turn.
   until the turn ends. A turn that a watch routine, a message from another agent or a message of
   an outside program starts holds outside content from its start. A message of an outside program
   never joins a running turn (023).
-- A part of a channel job (004) holds outside content from its start when the job came from
-  another agent or an outside program, or when the turn of the lead held outside content before it
-  made the part.
+- A turn also holds outside content from its start when an earlier turn that the agent still sees
+  held it, because the outside text is still in front of the agent:
+  - in a direct chat or thread: an earlier turn of that chat or thread. A compact (003) keeps the
+    mark. A new thread starts with no mark. A fork keeps the mark when its copy holds a turn with
+    outside content.
+  - in a channel: an earlier turn of any agent in that channel. The summary of older messages
+    (004) keeps the mark.
+- A part of a channel job (004) holds outside content from its start when the job came from an
+  outside program, or when the turn of the lead held outside content before it made the part.
+- **The mark of a place**: a chat, thread or channel whose next turn will hold outside content
+  shows a muted line in its header, "Holds outside content", with the first source. "Clear"
+  removes the mark for the next turns, after a confirm that says that the agent still sees the
+  text and that guarded and checked steps will no longer ask because of it. A new outside source
+  sets the mark again. The mark and its clear are stored with the place. They sync with it (019),
+  and a linked device sees the line but cannot clear it (012).
 - **Guarded steps** are:
   - a change of the agent's own settings or instructions (see 002, "Changes from the chat"),
+  - a change of the settings of the app (see 002, "Changes from the chat"),
   - a save to memory (see 008),
   - a request with a saved secret that uses a method other than GET, and a request for a new
     secret (see 020).
@@ -416,8 +429,14 @@ text is in the turn.
   and the line under its level says that it works as "Ask for risky steps".
 - "Ask when unsure": the agent fetches a page in one turn. In the next turn of the same chat, the
   user asks for an install. The step asks the user, and the decision model gets no request. In a
-  new thread, the same request goes to the check.
-- "Ask when unsure": the agent writes a script with a file step, then runs it with a short command.
-  The step asks the user.
+  new thread, the same request goes to the check. In a fork made after the page turn, it asks.
+- An outside program sends a message to a direct chat, and the user denies the card of that turn.
+  The user then writes "hi", and the agent saves a fact with "Save at once": an approval card shows
+  with "This turn holds outside content". The header of the chat shows "Holds outside content".
+  After "Clear" and its confirm, the next save runs with no card.
+- In a channel, a member fetches a page in its part. In the next job, the lead changes its own
+  instructions: an approval card shows.
+- "Ask when unsure": the agent writes a script with a command, then runs it with a short command.
+  The step asks the user, and the decision model gets no request.
 - An outside program posts a job in a channel with a lead. A member saves a fact to memory with
   "Save at once" in its part: an approval card shows with "This turn holds outside content".

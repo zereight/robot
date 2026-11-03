@@ -32,6 +32,7 @@ service holds it.
 | Memory | The items of each agent, with the channel of a channel note. |
 | Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
 | Read state | The last place that the user read in each chat. |
+| The mark of outside content of a place (007) | The mark and its clear. A turn on either computer then asks in the same way. |
 
 ### Does not sync
 
