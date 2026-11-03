@@ -2,7 +2,11 @@ import type { IslandShape, TeachEvent } from "@robot/shared"
 import { Context } from "effect"
 import type { Resolver } from "../web/fetch.ts"
 
-/** A place in the app window, in px from the top left corner of the window content. */
+/**
+ * A place in the app window, in px from the top left corner of the window content. The page of an
+ * agent browser fits into its place: it keeps its own size and ratio and is drawn smaller or
+ * larger, so the place does not change the layout of the page.
+ */
 export interface PageBounds {
   readonly x: number
   readonly y: number
@@ -24,7 +28,8 @@ export interface BrowserPage {
   type(selector: string, text: string): Promise<void>
   /**
    * Shows the page in a place of the app window, or hides it when the place is `undefined`.
-   * A hidden page keeps running, so the agent can go on with it.
+   * A hidden page keeps running, so the agent can go on with it. The size of the page does not
+   * depend on the place, shown or hidden: only the scale of the picture does.
    */
   place(bounds: PageBounds | undefined): void
   /**
