@@ -15,6 +15,9 @@ The user sets the app up the way they like in one place.
   (see 003, "Automatic compact"). "Agents working at once" is a whole number from 1 to 8; the
   default is 4 (see 005, "Queue"). Both belong to the open profile and are local to the computer,
   as the other settings.
+  More settings are here. "Keep going on open steps" is on or off; the default is on (see 005,
+  "Keep going"). "Dictation language" and "Reading speed" are in 025. "Show in the menu bar" is
+  on or off; the default is off (see 015, "Menu bar item").
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.
@@ -124,3 +127,6 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   two agents. Rename it to the role line of a third agent: all three agents have one role.
 - Remove a role: its agents have an empty role line and keep their chats.
 - The settings list shows Permissions, Skills and Connections. Each opens its own page.
+- Turn off "Keep going on open steps": a stand-in runtime that ends with open steps ends its task.
+  Turn it on: the same turn goes on.
+- Turn on "Show in the menu bar": the icon shows. Turn it off: the icon goes.

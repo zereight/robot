@@ -166,6 +166,17 @@ The user gives a job to a group of agents in one place and watches them divide a
   short summary that the lead's model writes at the lowest effort the model offers. If the
   summary cannot be written, the part starts with the newest messages instead of failing. If even
   those do not fit, the part fails with a clear reason.
+- **What a member reads**: a turn of a member in a channel gets its text in this order: the
+  assignment of its part, the instructions (the member's own, then the channel's), the messages
+  that asked it, and then the newest messages of the channel. The newest messages fill at most one
+  quarter of the context of the model of the member. Older messages become the short summary above.
+  When the text of the channel is long, the assignment comes once more, as a short reminder at the
+  end.
+- **Picture**: a channel can have a picture, as an agent has a face (002). In the settings of the
+  channel the user picks an image. The app cuts it to a square of 256 px as a PNG of at most 1 MB.
+  The picture shows in the place row and in the header in place of the `#` mark, and also on the
+  phone and on a linked computer. The user can remove it. It syncs with the channel (019). A
+  linked device changes it only with the switch "Can create and change agents" (012).
 - A part never stays in "working" after its turn has ended. This holds also when the link between
   the conversation of the member and the channel is lost. The chat of the member then stops
   saying that it works in the channel.
@@ -209,3 +220,9 @@ The user gives a job to a group of agents in one place and watches them divide a
   does not fail.
 - A channel with the instructions "Write the answer as a list." A member answers a job: its turn
   gets the instructions after its own. The same agent in its direct chat does not get them.
+- A channel job has a long history. A stand-in provider records the request of a member: the
+  assignment comes first, then the instructions, then the newest messages, and the messages that
+  fill the context part stay under one quarter of the context of the stand-in model. The reminder
+  of the assignment is the last part of the text.
+- Set a picture for a channel: the place row and the header show it. Remove it: the `#` mark comes
+  back. After a restart the picture is still there.

@@ -14,11 +14,14 @@ The user connects the model accounts they already have, and each agent uses one 
     same agent folder as pi. It has its own row, so its models list under its own name and not
     under pi. The app finds Pi-Bolt by a path variable or on the PATH of the computer. It has no
     download. It runs only on this computer.
+    Any program that speaks the Agent Client Protocol (ACP, an open standard) can be added as an
+    agent runtime too. See "Programs with ACP".
   - **API providers**: an HTTPS model API with a key (OpenAI-compatible, Anthropic, and a custom
     base URL).
 - **Account**: one sign-in or key. A provider can have more than one account; the user names them.
 - **Model list**: fetched from the provider when possible, with an effort level for models that
   support it.
+- **Backup model**: a second choice of account, model and effort for an agent. See "Backup model".
 - **Readiness**: the state of an agent runtime on this computer. See "Readiness of an agent
   runtime".
 
@@ -80,6 +83,115 @@ The row of each agent runtime shows one state, as a tag with text. Colour alone 
 - A client of a linked server sees the state and has no buttons on the row (012). Sync does not
   carry the state (019). Each computer has its own programs.
 
+## Backup model
+
+An agent can have a backup model. The app uses it when the main model cannot answer because its
+limit is spent.
+
+- The choice "Backup model" is under "Model" in the agent form and in the agent profile (002). It
+  starts as "None". The user picks an account, a model and an effort from the same lists as for the
+  main model. The backup may use another account or another provider. The form refuses the same
+  account, model and effort as the main choice, and says why.
+- A **limit reason** is one of these: the plan limit is reached, the credit is spent, or the quota
+  is spent. The provider says which.
+- When a turn of the agent fails with a limit reason, and the agent has a backup model that is
+  ready, the app does this:
+  1. It holds the main model for this agent until the reset time that the provider names. If the
+     provider names no time, the hold lasts 15 minutes.
+  2. The turn goes on with the backup model, in the same task. If the failed try ran no step (its
+     progress is "Not sent" or "Sent", see 005), the backup runs the turn from the start. If the
+     failed try ran steps ("Started"), the backup gets a short new message that asks it to go on,
+     as "Continue" does (003). The app does not send the request again, so no side effect repeats.
+  3. The chat shows a muted line: "<main model> reached its limit. <backup model> goes on." The
+     line gives the reset time when it is known.
+- While the hold lasts, every turn of the agent uses the backup model: a chat, a part of a channel
+  job, a routine, a message of another agent, and a workflow step that has no model of its own. A
+  workflow step that sets its own model keeps it and gets no backup.
+- The header of the chat shows the backup model and "Backup until <time>". A button "Use <main
+  model> now" ends the hold. The next turn then tries the main model. If that turn fails with a
+  limit reason again, the hold starts again and the chat shows no second line.
+- When the hold time has passed, the next turn uses the main model again, and the header shows the
+  main model again.
+- A turn on the backup model that fails with a limit reason too, and a backup that is not ready,
+  end as the rule in "Rules" says, with the reason of the backup. An agent with no backup model
+  follows that rule too.
+- A turn goes to the backup for a limit reason only. It does not go for a sign-in or key that is
+  not valid, for a model that does not exist, or for a request that the provider refuses.
+- The usage page counts the tokens for the model that made them.
+- The hold is a state of this computer. It does not sync (019), and an export does not hold it.
+  The choice of the backup model is a setting of the agent, so it syncs with the agent (019). An
+  agent file holds no model, so it holds no backup model (002).
+- The tool with which an agent changes itself (002) does not change the backup model in this
+  version.
+- A linked device shows the header text of the hold, which its server tells it (012). It shows
+  the button only when the server lets it create and change agents.
+
+## Effort levels
+
+- A model lists the effort levels that it takes. The picker shows only those levels. A level that
+  a model does not list is never sent to it.
+- None and Minimal sit below Low. Ultra sits above Max. They show for a model only when the model
+  lists them.
+- When the model of an agent changes and the new model does not list the level of the agent, the
+  agent uses the nearest level that the new model lists. The same holds for a routine and for a
+  workflow step that names a level (009, 010).
+
+## Model list
+
+- The picker shows the models of an account with the newest first. The order comes from the dates
+  or versions that the provider gives. When the provider gives neither, the picker keeps the order
+  of the provider and has no group "Older models".
+- A model is older when the provider also lists a newer model of the same family. Older models
+  are in a folded group "Older models" at the end of the list. The group opens when the user types
+  in the search box of the picker, and when the model of the agent is in it.
+- A model that the app sees for the first time on a later fetch shows the tag "New" for 7 days.
+  The first fetch of an account tags nothing.
+- The page of an account has a part "Models". It lists the models with one switch each. All are on
+  at first. The user can turn a model off, use "Hide all", and use "Reset". A model that is off is
+  missing from the picker and from its search. An agent that already uses it keeps it and works;
+  the picker shows it as "Hidden" for that agent. The choice belongs to this computer and does not
+  sync.
+- A custom model (an API provider with a custom base URL, or a model ID that the user types) has
+  two optional fields: "Context size" and "Output limit", whole numbers of tokens from 1 to
+  10,000,000. The context meter and the compact (003) use the context size. Each request sends the
+  output limit as the most tokens to write. A model with no context size has no meter, as 003
+  says.
+
+## Programs with ACP
+
+- The page of the agent runtimes has a button "Add a program". The user gives a name, a command,
+  arguments, and, if wanted, a list of environment rows. The rows work as the rows for Claude Code
+  in "Flows", step 5. The program must speak ACP on its standard input and output.
+- The app starts the program on this computer only. It never downloads it and it never signs in
+  for it. The program runs only on this computer.
+- The row of the program has the states of "Readiness of an agent runtime". The check starts the
+  program and makes the ACP handshake. It makes no model turn. If the program says that it needs
+  a sign-in, the state is "Needs sign-in", and the row shows what the program says about it.
+- An agent uses the program as it uses a vendor runtime. The program works with files and
+  commands itself. The app shows its steps, its thinking, its list of steps and its requests for
+  permission as cards (003, 007). The level of the agent works as for a vendor runtime (007).
+- The model list of such an agent is the list that the program reports. When it reports none, the
+  model box shows the name of the program.
+- The message box offers an attachment as a picture or as sound only when the program says that it
+  takes that kind. For any other kind, the app copies the file into the workspace and tells the
+  agent the path, as for any file (003).
+- The dialog also lists presets for these programs: Gemini CLI, Kimi Code and Hermes Agent. A
+  preset fills the name and the command, and the user can change both. The check decides if the
+  installed program works with ACP. If it does not, the row shows "Needs repair" and says why.
+- A client of a linked server sees the row and its state, and has no buttons on it (012). A
+  program does not sync (019), like the other runtimes.
+
+## Busy provider
+
+- When a provider says that it is busy, or that it gets too many requests, the app tries the
+  request again, up to 3 times, after 2, 4 and 8 seconds. This holds for a request that has made
+  no output yet, for an agent that uses the tools of the app.
+- Each wait shows a muted line in the chat: "The model is busy. Trying again (1 of 3)." The wait
+  and each new try count as a sign of life (005). Stop ends the wait. After the third try the turn
+  fails with the reason of the provider.
+- A usage limit is not a busy provider. See "Backup model" and "Rules". A vendor runtime shows
+  what its program reports.
+
 ## Rules
 
 - Keys and tokens are stored in the system keychain, never in the database or logs.
@@ -90,7 +202,8 @@ The row of each agent runtime shows one state, as a tag with text. Colour alone 
 - A runtime that can report the size of the context at the end of a turn does so, so the context
   meter works (see 003).
 - When a provider says a usage limit is reached, the turn fails with that reason and the time it
-  resets, if known. When a provider says the sign-in or key is not valid, the turn fails with that
+  resets, if known. An agent with a backup model that is ready goes on with it first (see "Backup
+  model"). When a provider says the sign-in or key is not valid, the turn fails with that
   reason. The page Today (021) uses these two reasons.
 - **Leftover programs**: when the app starts, it ends the vendor programs that it started in an
   earlier run and that still run, for example after a crash. It ends only programs that it
@@ -119,3 +232,28 @@ The row of each agent runtime shows one state, as a tag with text. Colour alone 
   still runs.
 - A stand-in runtime never answers its check. A chat with an agent on an API account, opened at
   that time, answers with no delay.
+- An agent has a backup model. The main stand-in model answers with a plan limit that resets in 2
+  hours, before it runs a step: the turn runs again on the backup model. The chat shows the line
+  with both model names and the reset time, and the header shows "Backup until". The next message
+  goes to the backup model at once.
+- The main stand-in model fails with the same limit after 2 tool steps: the backup model gets a
+  short message that asks it to go on, and it does not get the first request again. The task is
+  one task and ends once.
+- "Use the main model now": the next turn goes to the main model. It fails with the limit again:
+  the hold starts again and the chat shows no second line.
+- The main stand-in model fails with an invalid key: no switch happens. Both models fail with a
+  limit: the turn fails with the reason of the backup model.
+- With a fake clock, move the time past the reset time: the next turn goes to the main model.
+- A stand-in model lists "minimal" and "ultra": the picker shows them. A model that lists neither
+  shows neither. Change an agent from the first model to the second at "ultra": the agent uses the
+  nearest level of the second model.
+- A stand-in provider lists six models, two of one family with different versions: the older one
+  is in "Older models". Type its name in the search box: the group opens. Turn a model off in the
+  part "Models": it leaves the picker, and an agent that uses it still answers.
+- A custom model with a context size of 32,000: the context meter shows, and an automatic compact
+  starts at 85 percent of it.
+- Add a stand-in program that speaks ACP: the row shows Ready, an agent on it answers, and its
+  steps show as cards. A stand-in program that asks for a sign-in shows "Needs sign-in". A program
+  that exits at start shows "Needs repair".
+- A stand-in provider answers "busy" twice and then works: two muted lines show, and the reply
+  comes. It answers "busy" four times: the turn fails after the third try with the reason.

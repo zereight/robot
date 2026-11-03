@@ -7,7 +7,8 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 ## Concepts
 
 - **Workflow**: a name, a trigger, and a graph of steps on a canvas.
-- **Trigger**: manual, schedule (as in 009), or a message in a chosen channel that matches text.
+- **Trigger**: manual, schedule (as in 009), a message in a chosen channel that matches text, or
+  a web hook (see "Web hook").
 - **Step kinds**: agent step (an agent and a prompt that can use earlier results), model step (a
   prompt for a model with no tools and no chat), condition (if/else on a result), wait for
   approval, post message, and notify.
@@ -20,7 +21,7 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
   asks a model a yes or no question about the input.
 - **Node number**: every step on the canvas shows its number. The numbers are in the order of the
   graph and stay with the step.
-- **Effort of a step**: an agent step can set its own reasoning effort, from low to max, or it can
+- **Effort of a step**: an agent step can set its own reasoning effort, at a level that its model lists (006), or it can
   follow the effort of its agent (the default).
 - **Version**: the graph as it was before a change that the assistant saved (see "Assistant").
 - **Run**: one execution, with the state and result of each step.
@@ -151,6 +152,53 @@ agent, that the workflow downloads nothing, and that a pass says only that the m
   any workflow. It runs on this computer.
 - **Words**: "Starter" is in the glossary.
 
+## Web hook
+
+A web hook lets an outside service start a workflow, for example a code host that tells ROBot about
+a new issue. ROBot runs no service on the internet for this (000).
+
+- **Setting up**: in the trigger of the workflow the user picks "Web hook". The form shows an
+  address on this computer and a secret. The secret is hidden. It has "Copy" and "Make a new
+  secret". The trigger works only while the workflow is on.
+- **Who can reach it**: the app listens on this computer only, on the loopback address. An outside
+  service reaches the address only when the user makes it reachable, for example with a tunnel or
+  a VPN that the user sets up. ROBot sets up no tunnel and uses no relay.
+- **Proof**: a call must show that it knows the secret. It does this with a signature of the body
+  that uses the secret (HMAC SHA-256 in the header "X-Hub-Signature-256", as the public documents
+  of GitHub describe it), or with the secret itself as a bearer token. A call without valid proof
+  gets the answer 401 and starts nothing. The app compares the proof in constant time.
+- **Presets**: the user picks one.
+  - "GitHub": the user ticks the events: issue opened, issue closed, issue labeled, pull request
+    opened, pull request updated, review requested, review submitted, checks failed, pull request
+    merged, comment added, and a mention of a name that the user types. Two filters exist: the
+    repository (a list of names) and "Author is not a bot". The app reads the kind of event from
+    the header "X-GitHub-Event" and the fields from the body, as the public documents describe.
+    The first step gets a short text: the kind, the repository, the title, the author, the link,
+    and the text of the issue, comment or review cut at 4,000 characters.
+  - "Any service": every call with valid proof starts the workflow. An optional filter "contains
+    text" looks at the body. The first step gets the body cut at 20,000 characters.
+- **Outside content**: the text that comes with a call is outside content (007). The agent steps
+  of the run hold the mark.
+- **Limits**: a body over 1 MB gets the answer 413. A workflow starts at most 30 times in a minute.
+  More calls get 429 and start nothing.
+- **Busy**: a call that comes while a run of the same workflow goes is skipped, as a schedule
+  skips an occurrence (009). It gets 202, and the workflows log (014) gets one line.
+- **Answer**: the app answers 202 at once when it starts a run. It does not wait for the run.
+- **No reply to the sender**: the workflow answers the outside service by its steps, for example
+  an agent step that uses a connection to the code host (018). No step kind exists for it.
+- **When the address cannot open**: the form shows the reason, and the user can pick another port.
+  The workflow does not start by call until it opens.
+- **Run history**: a run that a call started shows "Started by web hook" in its list.
+- **Not synced**: the secret is in the keychain (014) and does not sync (019). A synced workflow
+  arrives with the trigger "Web hook, not set up on this computer". It starts from no call until
+  the user makes a secret on this computer. The workflow runs on one computer (see "Rules"), and
+  the calls go to that computer.
+- **Linked client**: it sees the kind of trigger and the name of the computer. It sees neither
+  the address nor the secret (012).
+- **File**: the workflow file writes a web hook as the trigger "manual", with no secret, as for a
+  message trigger (`docs/workflow-file-format.md`).
+- A trigger from a chat service (Discord, Slack and so on) is not in this version.
+
 ## Assistant
 
 - The agent has tools to read and to change the open workflow, and tools to list workflows,
@@ -219,6 +267,16 @@ agent, that the workflow downloads nothing, and that a pass says only that the m
   agent, and the step shows "Pick an agent".
 - Run a workflow with a notify step and the window hidden: a notification shows the title, and the
   run view holds the whole input.
+- Pick the trigger "Web hook" with the preset "GitHub", and turn the workflow on. A stand-in sender
+  posts "issue opened" with a valid signature: one run starts, the first step gets the short text,
+  the run list says "Started by web hook", and the agent steps hold the mark of outside content.
+  The same call with a wrong signature gets 401 and starts nothing. A body of 2 MB gets 413.
+  A call while the run goes gets 202 and starts no second run. 31 valid calls in a minute: the
+  31st gets 429. Switch off "Author is not a bot" and send an event from a bot: it starts a run
+  only then.
+- Export a workflow with a web hook and import it into an empty app: the workflow has the
+  trigger "manual" and the file holds no secret. Sync it to a second computer: it shows "Web hook,
+  not set up on this computer".
 - A model step fails on the first try and works on the second: the run goes on, and the log holds
   one retry line.
 - An agent step with effort "low" runs with low effort. The next chat turn of that agent uses

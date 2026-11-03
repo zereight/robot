@@ -82,7 +82,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - A section name has 1 to 40 characters, after spaces at both ends are removed. In one built-in
   section, no two user sections have one name, ignoring case. A channel section and an agent
   section may have one name.
-- One built-in section holds at most 20 user sections.
+- One built-in section holds at most 20 user sections, at all levels (see "Sections inside
+  sections").
 - A place is in at most one section. A place with no section shows in the built-in section.
 - Delete of a section moves its places to "No section". It deletes no place.
 - The order of the places inside a section does not change.
@@ -95,6 +96,39 @@ The Channels section holds channel sections. The Agents section holds agent sect
   opens, also when it is collapsed.
 - Up and down in the list move through the places that show, in the order shown. A collapsed
   section has no places that show.
+
+### Sections inside sections
+
+- A user section can hold user sections of the same kind. The depth is at most 3 levels of user
+  sections.
+- A header, and the places under it, sit 12 px further in for each level.
+- The menu of a user section header also has "New section inside". "Move up" and "Move down" order
+  a section among the sections of its own level. "Move to section" on a place lists the user
+  sections of its kind as a tree. A section cannot move into itself or into a section inside
+  itself.
+- A collapsed section shows the sum of the unread counts of its places and of the places of the
+  sections inside it, and the working dot when one of them works.
+- Delete of a section that holds places or sections asks to confirm. The text says that the places
+  and the sections inside move up one level and that nothing else is deleted. For a section of the
+  first level, they move to the built-in section.
+- The rule for names holds across all levels of one built-in section. The limit of 20 counts all
+  levels.
+- The phone shows the tree and cannot change it, as for sections (011).
+
+## Pinned places
+
+- "Pin" in the menu of a place (right click, or a long press) puts the place in a group "Pinned"
+  at the top of the place list, above Channels. "Unpin" is in the same menu. A pinned place shows
+  in this group and not in its section. After "Unpin" it shows in its section again.
+- The group holds agents and channels, in the order of pinning, the oldest first. It holds at most
+  10 places. At 10, "Pin" is off, with the reason in words. A place that is archived or deleted
+  leaves the group.
+- The group has a header that the user can collapse. A collapsed header shows the sum of the
+  unread counts and the working dot, as other collapsed headers do.
+- The filter of places looks at pinned places too.
+- Pins belong to the server. The phone and a linked computer show the same pins. They can change
+  pins only when the server lets that device create and change agents (012), as for sections.
+- Two computers that sync (019) do not sync pins. They are part of the layout of one computer.
 
 ## Message search
 
@@ -137,7 +171,9 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - A place that waits for the user stays in its own section and keeps its badge. There is no
   separate group for places that need the user.
 - Right click (or a long press) on a place opens a menu. "Mark as read" clears the unread count of
-  that place only, not of other places. The same menu has "Move to section" (see "User sections").
+  that place only, not of other places. "Mark as unread" marks the latest message of an agent as
+  unread (see 003). The same menu has "Pin" or "Unpin" (see "Pinned places") and "Move to
+  section" (see "User sections").
 
 ## Header
 
@@ -157,7 +193,13 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - The rail leaves room for the window buttons at the top left.
 - The rail, the place list, the pages and the selection belong to the open profile. A switch of
   profile changes all of them, and each profile keeps its own selection (022).
-- Keyboard: Cmd+K focuses search. Up and down move through places. Enter opens one.
+- Keyboard: Cmd+K focuses search. Cmd+F finds in the open chat (003). Up and down move through
+  places. Enter opens one.
+- **Quit**: Cmd+Q, and "Quit" in the menu of the menu bar item (015), quit the app. When no agent
+  works and no task waits for the user, the app quits at once. When an agent works or a task
+  waits, the first press shows a short note over the window: "Press Cmd+Q again to quit. N tasks
+  are running." A second press within 3 seconds quits. Holding the keys down quits too. A quit
+  stops the running tasks as a restart of the app does (005). Closing the window is not a quit.
 
 ## Acceptance
 
@@ -185,3 +227,13 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - Archive the agent: its messages do not match any more. Restore it: they match again.
 - Cut the link to a linked server and search: only cached messages match, and a muted line says
   this.
+- Make a section "Research" and a section "Papers" inside it, and move an agent into "Papers": the
+  agent shows under "Papers", 24 px in. Collapse "Research": its header shows the unread count of
+  the agent. Delete "Papers" and confirm: the agent shows under "Research". A fourth level is
+  refused: "New section inside" is off on a section of the third level, with the reason.
+- Pin an agent and a channel: the group "Pinned" shows both above Channels, oldest pin first, and
+  neither shows in its section. Pin the 11th place: "Pin" is off with the reason. Unpin the agent:
+  it shows in its section again. The phone shows the same group.
+- Open the menu of a place and pick "Mark as unread": the place shows the count 1.
+- Press Cmd+Q while a stand-in agent works: the note shows and the app stays. Press it again
+  within 3 seconds: the app quits. With nothing running, the first press quits.

@@ -16,7 +16,8 @@ The user gives an agent work in plain language and sees what the agent does whil
   (read a file, ran a command, opened a page), and its result state. A click opens the details.
 - Thinking, when the model gives it, folds into one muted line that the user can open.
 - Hover on a row shows actions: reply, copy, fork (see "Threads"), and for the user's own last
-  message, edit.
+  message, edit. On a finished message of an agent it also shows "Read aloud" (025) and "Mark as
+  unread" (see "Mark as unread").
 
 ## Flows
 
@@ -26,7 +27,10 @@ The user gives an agent work in plain language and sees what the agent does whil
    partial reply stays and is marked as stopped.
 3. Send while the agent works: see "Messages during a turn".
 4. Attach: the user drops or picks files and images. They show as chips in the message box and
-   are copied into the agent's workspace when sent.
+   are copied into the agent's workspace when sent. A pasted or dropped image also shows as a
+   small preview in the box, and above the sent message in the chat. While a file goes to a
+   linked server (012), its chip shows the progress, and it shows "Retry" when the transfer
+   fails. A failed file does not stop the other files.
 5. Reply: the user picks "reply" on a message. A quote line shows above the box. The sent message
    links back; clicking the link scrolls to the quoted message and flashes it, and a "Back"
    control returns to where the user was. A hit of message search (001) uses the same jump.
@@ -43,6 +47,13 @@ The user gives an agent work in plain language and sees what the agent does whil
    summary, to free room in the context. A failure shows in the normal error line above the box.
    See "Compact". The app can also do this by itself (see "Automatic compact").
 9. Continue after a restart: see "Rules".
+10. Find in the chat: Cmd+F opens a find bar over the chat that is open (a direct chat, a thread or
+    a channel). The user types a text. The bar shows "n of m" and the buttons Previous and Next.
+    Enter goes to the next match and Shift+Enter to the previous one. The chat scrolls to the
+    match and marks it. Escape closes the bar and takes the marks away. The find looks at the text
+    of the messages of that chat only, not at tool cards or thinking. It ignores letter case.
+    Cmd+K (001) searches all places and stays as it is. The phone has no find bar in this version.
+11. Dictate: the microphone button of the message box turns speech into text in the box (025).
 
 ## Messages during a turn
 
@@ -167,6 +178,16 @@ the app can run it (see "Automatic compact").
 - A fork keeps a link to its source thread and message. Deleting the source does not change the
   fork.
 
+## Mark as unread
+
+- On a finished message of an agent, the action "Mark as unread" makes that message and the later
+  messages of agents count as unread again. The place shows the new count (001).
+- The next time the user opens the chat, it opens at that message. The count clears when the chat
+  shows its latest message, as for any chat.
+- The menu of a place has "Mark as unread" too (001). It marks the latest message of an agent.
+- A thread keeps its own count (see "Threads"). The mark works inside a thread.
+- The read state follows the unread count (012, 019).
+
 ## Empty state
 
 A new chat shows the agent's large face, its name, the line "This is the start of your chat.",
@@ -189,6 +210,8 @@ and its role line. Nothing moves.
   how far the turn went (see 005, "How far a turn went"). A turn that the app stopped because
   it was silent (see 005) fails in this way too.
 - Provider not connected: the message box is disabled with a button to connect it.
+- Busy provider and backup model: a muted line tells that the model is busy and the app tries
+  again, or that the backup model goes on (006). Neither line is an error row.
 - Interrupted by a restart: see "Rules".
 
 ## Rules
@@ -268,3 +291,11 @@ and its role line. Nothing moves.
 - On a linked computer and on the phone, an agent with 3 threads shows the main thread only. A
   task of thread 2 waits for an approval: the card shows in "Needs you" and can be answered there.
   The search of messages finds no message of thread 2.
+- Paste an image into the box: a small preview shows in the box, and above the message after it is
+  sent. Send a file to a linked server with a stand-in link that fails once: the chip shows
+  "Retry", and the other files go.
+- Open a chat of 30 messages that holds the word "budget" in four of them. Press Cmd+F and type
+  "budget": the bar says "1 of 4". Enter goes to 2 of 4. Escape closes the bar and the marks go.
+- Mark the third message of an agent as unread in a chat of eight messages with five from agents:
+  the place shows the count of the messages from the third message on. Open the chat: it opens at
+  that message. Scroll to the end: the count goes.

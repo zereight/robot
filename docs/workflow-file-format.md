@@ -49,8 +49,9 @@ A field that this document does not define is ignored. A field that is marked "n
 | `"manual"` | none | The user starts the workflow. |
 | `"schedule"` | `schedule`: schedule object (required) | The workflow starts at the times of the schedule, while the workflow is on. |
 
-A workflow that starts by a message in a channel has no form in the file. ROBot writes such a
-workflow with the trigger `"manual"`. A file with another `kind` is refused.
+A workflow that starts by a message in a channel, or by a web hook (spec 010), has no form in
+the file. ROBot writes such a workflow with the trigger `"manual"`, and the secret of a web hook
+stays out of the file. A file with another `kind` is refused.
 
 ### Schedule object
 

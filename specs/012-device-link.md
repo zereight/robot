@@ -265,6 +265,10 @@ accept connections, this is the same computer.
   The cache lives on the client, is deleted with the link, and is never part of an export
   (014).
 - A server needs a running app to answer. A sleeping or closed computer is offline.
+- A server holds back the notices to its phones while its computer is in use (015, "Phone notices
+  while the user works"). The data still reaches the phone.
+- A server tells its linked devices when an agent is on its backup model, and until when (006).
+  The device shows this in the header of the chat. The hold is not data to sync.
 
 ## Out of scope
 
@@ -322,3 +326,8 @@ accept connections, this is the same computer.
 - With both devices in one VPN: pair on the same Wi-Fi, then switch the phone to mobile data.
   It reconnects and works. Turn the VPN off on the phone: the server shows Offline. Turn it on:
   the server comes back without a new pairing.
+- The computer has had keyboard input 10 seconds ago: a stand-in phone gets the data of a new
+  reply, and no notice. After 30 seconds without input the notice arrives, unless the user has
+  already read the place on the computer.
+- An agent is on its backup model: a stand-in phone shows "Backup until" in the header. It shows
+  no button "Use the main model now" when the switch "Can create and change agents" is off.

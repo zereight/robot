@@ -47,6 +47,55 @@ The user types the value once, in a protected field, and the app adds it to each
    date it was last used. The user can filter by agent, replace a value (a hidden field), and
    delete a secret after a confirm. The page never shows a value.
 
+## Saved logins
+
+A saved login lets an agent sign in to a site in its browser (007) while the model never sees the
+user name or the password.
+
+- **Saved login**: a name, the agent, the origin of the site (scheme, host and port), a user name
+  and a password. Both values are in the system keychain (014), never in the database. The name
+  follows the rule of a saved secret: 1 to 40 characters, unique for its agent, ignoring case. An
+  agent can have more than one login for one site, under different names, for example for two
+  accounts.
+- Ask: the agent calls the tool "ask for a login" with a name, a short label, the reason and the
+  origin. The chat shows a protected card with the reason, the origin in large text, a field for
+  the user name, a hidden field for the password, Save and Cancel.
+  - Save puts both values in the keychain. The fields are cleared when the save starts. The card
+    then shows "Saved". The agent gets the name, never a value.
+  - Cancel: the card shows "Cancelled", and the agent gets that answer.
+  - When a login with the same name and the same origin exists, no card shows, and the agent gets
+    the name. A login with the same name and another origin is refused.
+- Use: the agent calls the tool "sign in with a login" with a name, while its browser shows a page
+  of that origin. The app finds the sign-in form: a password field and the field for the user name
+  before it. It writes both values into the fields itself. The agent presses the sign-in button
+  with its normal browser tools. The values do not pass through the model.
+  - The answer to the agent is "Filled", with the names of the fields, or the reason in words:
+    no form found, more than one form (the answer lists them by number), the page is not of this
+    origin, or the field is in a frame of another site.
+  - The app fills a form only when the page has exactly the origin of the login. It refuses a form
+    whose action sends the values to another origin. It fills a frame only when the frame has the
+    same origin.
+  - The page text that the agent reads shows the filled fields as hidden. The app replaces the
+    values with `[redacted]` in any text that goes back to the agent: texts of the screen, errors
+    of the page and addresses.
+- The approval rules of 007 apply. Filling a login is a browser step. The approval card shows the
+  name and the origin, and says that the login will be filled. A rule can match the name of the
+  login. A Deny rule wins.
+- Manage: the part "Saved secrets" in Settings → Permissions has a second list, "Saved logins". A
+  row shows the face and name of the agent, the name, the origin, the user name, the date it was
+  saved and the date it was last used. It never shows a password. The user can replace the values
+  and delete a login after a confirm.
+- A login belongs to the agent that asked for it. A duplicate of the agent (002) gets no logins.
+  Deleting an agent deletes its logins. An agent holds at most 50 logins.
+- An export holds the name, the agent and the origin of each login, not the values. After an
+  import each login shows "Value missing". Logins do not sync (019).
+- On a linked device (012), the protected card shows "Answer this on NAME". A value never goes
+  over a device link.
+- These tools are for agents whose model comes from an API provider (see 006), as the other tools
+  of this spec are.
+- The agent never types a card number, an address for payment, or a one-time code. These are not
+  saved logins and are not in this version.
+
 ## States
 
 - No saved secrets: the part shows one muted line that says what a saved secret is.
@@ -89,7 +138,8 @@ The user types the value once, in a protected field, and the app adds it to each
 
 ## Out of scope
 
-- A sign-in through a browser window, and tokens that the app must refresh.
+- A sign-in through a browser window for a request with a saved secret (the browser tool has
+  saved logins, see above), and tokens that the app must refresh.
 - Requests that must be signed, or that need more than one secret.
 - A secret in a shell command or in an environment value.
 
@@ -114,3 +164,15 @@ All checks use a small test web service, written for the test.
 - Delete the secret in settings: the next request fails, and the keychain no longer holds it.
 - Export, then import into an empty app: the secret shows "Value missing".
 - A test service that waits 40 seconds: the request fails after 30 seconds.
+- A test page has a sign-in form at `https://127.0.0.1:PORT`. The agent asks for the login
+  `test_user`. The card shows the origin. Save a user name and a password: the database file, the
+  logs, the chat and an export hold no clear text of them. The agent calls "sign in with a login":
+  the page fields hold the values, the answer says "Filled", and the model request holds neither
+  value. The test page echoes the user name in an error text: the agent gets `[redacted]`.
+- A page of another port: the call is refused with the reason. A form that sends to another origin
+  is refused. A page with two forms: the answer lists them by number.
+- At "Ask for risky steps", filling shows an approval card with the name and the origin.
+  "Always allow for this agent" saves a rule, and the next fill runs with no question. A Deny
+  rule stops it at every level.
+- Export and import into an empty app: the login shows "Value missing", and the call fails with
+  that reason until the user replaces the values.
