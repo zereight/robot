@@ -140,7 +140,7 @@
 
 .entry {
   padding: 1px 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-s);
   background: var(--c-selected);
   margin-bottom: 2px;
 }
