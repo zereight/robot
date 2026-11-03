@@ -121,8 +121,8 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
       const platform = yield* Platform
       const env: MatchEnv = {
         real: realOf,
-        // macOS and Windows disks do not tell "A" from "a": a Deny rule must not miss a path
-        // because of the case of a letter.
+        // macOS and Windows disks do not tell a capital letter from a small one: a Deny rule must
+        // not miss a path because of the case of a letter.
         fold: process.platform !== "linux",
       }
       const changed = () => bus.emit("rules.changed", {})

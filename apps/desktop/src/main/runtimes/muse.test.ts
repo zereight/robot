@@ -278,6 +278,8 @@ describe("muse session host", () => {
       risky: true,
       key: "run_command:touch /Users/me/a.txt",
       summary: "touch /Users/me/a.txt",
+      // The step as the permission rules see it (spec 007).
+      step: { kind: "shell", command: "touch /Users/me/a.txt" },
     })
     // A yes for one command is not a yes for the next command of the same program.
     expect(shell("touch /Users/me/a.txt").key).not.toBe(shell("touch /etc/hosts").key)
@@ -304,6 +306,8 @@ describe("muse session host", () => {
       risky: true,
       key: "write_file:notes.md",
       summary: "write_file: notes.md",
+      // The step as the permission rules see it (spec 007).
+      step: { kind: "file", path: "notes.md" },
     })
     expect(file("/etc/hosts", "write").key).toBe("write_file:/etc/hosts")
     expect(file("/etc/hosts", "read").key).toBe("read_file:/etc/hosts")
