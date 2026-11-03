@@ -12,6 +12,7 @@ import {
   RETRY_NOTE_STEPS,
   remoteRetryNote,
   retryNote,
+  retryNoteForModel,
   STEP_LIMIT_DEFAULT,
   STEP_LIMIT_MAX,
   STEP_LIMIT_MIN,
@@ -153,6 +154,19 @@ describe("retry note", () => {
   })
   test("when the steps are on another computer, the note has no list and names it", () => {
     expect(remoteRetryNote("MacBook 2")).toEqual({ computer: "MacBook 2", steps: [], more: 0 })
+  })
+  test("the agent of the new try reads the same list, and is told to check before it does a step again", () => {
+    const steps = Array.from({ length: 7 }, (_, i) =>
+      step({ kind: "shell", access: null, target: `git push ${i}`, at: i }),
+    )
+    const text = retryNoteForModel(retryNote(steps) as NonNullable<ReturnType<typeof retryNote>>)
+    expect(text).toContain("- shell: git push 6 (ran)")
+    expect(text).not.toContain("git push 1")
+    expect(text).toContain("- and 2 more")
+    expect(text).toContain("Check the current state before you do one of these steps again")
+    const away = retryNoteForModel(remoteRetryNote("MacBook 2"))
+    expect(away).toContain("MacBook 2")
+    expect(away).not.toContain("newest first")
   })
 })
 

@@ -277,7 +277,8 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       })
 
       /** Starts a run. `text` is the prompt with what the run gets with it. */
-      const start = (r: Row, text: string, outside?: OutsideSource) => {
+      /** `retryOf`: the task that this run tries again, so that its agent reads the retry note (spec 005). */
+      const start = (r: Row, text: string, outside?: OutsideSource, retryOf?: string) => {
         const model = modelOf(r)
         return r.channel_id
           ? channels.runRoutine(r.channel_id, r.agent_id, text, r.id, {
@@ -292,6 +293,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                   sourceId: r.id,
                   ...(model ? { model } : {}),
                   ...(outside ? { outside } : {}),
+                  ...(retryOf ? { retryOf } : {}),
                 },
               )
               .pipe(Effect.asVoid)
@@ -414,18 +416,18 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       // A retry of a task of the other computer runs here, whatever computer the routine runs on.
       tasks.onRetry("routine", (task) =>
         task.sourceId
-          ? runNow(task.sourceId, true)
+          ? runNow(task.sourceId, true, task.id)
           : Effect.fail(new AppError({ code: "invalid_input" })),
       )
 
-      const runNow = (id: string, force = false): Effect.Effect<void, AppError> =>
+      const runNow = (id: string, force = false, retryOf?: string): Effect.Effect<void, AppError> =>
         Effect.gen(function* () {
           const r = row(id)
           if (!r) return yield* new AppError({ code: "routine_not_found" })
           if (r.runs_on !== null && !force)
             return yield* new AppError({ code: "routine_elsewhere" })
           if (active(id)) return yield* new AppError({ code: "routine_running" })
-          yield* start(r, r.prompt)
+          yield* start(r, r.prompt, undefined, retryOf)
           changed(r.server_id)
         })
 

@@ -830,7 +830,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               tools: true,
               turn,
               // A part of a plan, a routine or a workflow can say that it was blocked (spec 005).
-              system: channelSystem(channel, agent, toldAboutBlocked(task) ? BLOCKED_RULE : ""),
+              // A new try reads which steps of the earlier try may have changed things (spec 005).
+              system: channelSystem(
+                channel,
+                agent,
+                [toldAboutBlocked(task) ? BLOCKED_RULE : "", tasks.retryNoteForModel(task)]
+                  .filter(Boolean)
+                  .join("\n\n"),
+              ),
               turns,
             })
           }),

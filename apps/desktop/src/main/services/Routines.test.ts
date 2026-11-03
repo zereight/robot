@@ -470,6 +470,25 @@ describe("late runs and the model of a routine", () => {
     }
   })
 
+  test("Retry of a blocked run starts a new run that links to the old task (spec 005)", async () => {
+    blockReplies = true
+    try {
+      const s = await setup()
+      const routine = await s.create("BLOCKME in the folder", 2)
+      await s.tick(routine.createdAt + 2 * MIN + 1000)
+      await s.idle()
+      const [blocked] = await s.tasks()
+      expect(blocked?.state).toBe("blocked")
+      const result = await s.run(Tasks.use((t) => t.retry(blocked?.id ?? "", { confirmed: true })))
+      expect(result.started).toBe(true)
+      await until(async () => (await s.tasks()).length === 2)
+      await s.idle()
+      expect((await s.tasks()).find((t) => t.id !== blocked?.id)?.retryOf).toBe(blocked?.id)
+    } finally {
+      blockReplies = false
+    }
+  })
+
   test("a blocked run counts as a failed run: a Done run in between sets the count to 0", async () => {
     const s = await setup()
     const routine = await s.create("BLOCKME in the folder", 2)

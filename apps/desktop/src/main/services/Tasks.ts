@@ -21,6 +21,7 @@ import {
   raiseProgress,
   remoteRetryNote,
   retryNote,
+  retryNoteForModel,
   type Task,
   type TaskDetail,
   type TaskProgress,
@@ -220,6 +221,11 @@ export interface TasksService {
   retry(taskId: string, options?: RetryOptions): Effect.Effect<RetryResult, AppError>
   /** The note for a retry of this task, or null when the retry starts at once. */
   noteFor(taskId: string, options?: Pick<RetryOptions, "awayFrom">): RetryNote | null
+  /**
+   * The note that the agent of a new try reads before its prompt, or "" when the task is no retry,
+   * or the earlier try ran no step that may have changed things (spec 005, "Retry note").
+   */
+  retryNoteForModel(task: Pick<Task, "retryOf">): string
   /** The depth of a task in a chain of messages between agents. 0 for an unknown task. */
   depthOf(taskId: string): number
   /** Adds a step of a task to the action log (spec 007). */
@@ -911,6 +917,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         },
         computerName: (originId) => remote?.nameOf(originId) ?? "",
         retry,
+        retryNoteForModel: (task) => {
+          if (!task.retryOf) return ""
+          const note = noteFor(task.retryOf)
+          return note ? retryNoteForModel(note) : ""
+        },
         accept,
         requestChanges,
         endRequest,
