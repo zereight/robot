@@ -2,7 +2,7 @@
   "name": "@robot/desktop",
   "private": true,
   "type": "module",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
