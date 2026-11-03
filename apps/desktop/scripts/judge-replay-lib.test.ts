@@ -780,8 +780,10 @@ describe("the whole replay against a scripted service", () => {
 
 describe("the script", () => {
   const script = resolve(import.meta.dirname, "judge-replay.ts")
+  // The same Bun as the one that runs the tests, not the first "bun" on the PATH. Each test that
+  // starts a child process has a timeout of 30 s: on a busy machine the start of a process is slow.
   const run = async (cwd: string, args: string[], env: Record<string, string>) => {
-    const child = Bun.spawn(["bun", script, ...args], {
+    const child = Bun.spawn([process.execPath, script, ...args], {
       cwd,
       env: { ...process.env, JUDGE_BASE_URL: "", JUDGE_MODEL: "", JUDGE_API_KEY: "", ...env },
       stdout: "pipe",
@@ -836,7 +838,7 @@ describe("the script", () => {
     }
     expect((JSON.parse(json) as { runs: number }).runs).toBe(2)
     expect(result.err).toContain("Sending the text of 10 items")
-  })
+  }, 30_000)
 
   test("a file with faults, or no folder, writes nothing and shows no value", async () => {
     const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
@@ -856,7 +858,7 @@ describe("the script", () => {
     expect(noOut.code).toBe(1)
     expect(noOut.err).toContain("--out")
     expect(readdirSync(dir).sort()).toEqual(["bad.jsonl", "ok.jsonl"])
-  })
+  }, 30_000)
 
   test("an item with no label stops a run with its line and field, and counts reports the number", async () => {
     flips.clear()
@@ -903,7 +905,7 @@ describe("the script", () => {
     )
     expect(stop.code).toBe(1)
     expect(stop.err).toContain('line 1: "human" is missing')
-  })
+  }, 30_000)
 
   test("counts shows the counts and the split and calls no service", async () => {
     const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
@@ -913,5 +915,5 @@ describe("the script", () => {
     const counts = JSON.parse(result.out) as { total: number; skipped: number }
     expect(counts).toMatchObject({ total: 9, skipped: 1 })
     expect(result.out).not.toContain("LBL-")
-  })
+  }, 30_000)
 })

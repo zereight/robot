@@ -1680,7 +1680,7 @@ describe("the command", () => {
     const after = fileState(db)
     expect(after.mtimeMs).toBe(before.mtimeMs)
     expect(Buffer.compare(after.bytes, before.bytes)).toBe(0)
-  })
+  }, 30_000)
 
   test("--gap-seconds changes the groups that the command writes", async () => {
     const w = base()
@@ -1720,7 +1720,7 @@ describe("the command", () => {
     expect(bad.err).not.toContain("soon")
     expect(bad.out).toBe("")
     expect(existsSync(third)).toBe(false)
-  })
+  }, 30_000)
 
   test("--out inside the repository is refused and nothing is written there", async () => {
     const db = dbFile()
@@ -1731,7 +1731,7 @@ describe("the command", () => {
     expect(result.err).not.toContain(root)
     expect(result.out).toBe("")
     expect(existsSync(out)).toBe(false)
-  })
+  }, 30_000)
 
   test("an existing --out is refused, then replaced with --force, and the old file is kept at the refusal", async () => {
     const db = dbFile()
@@ -1745,7 +1745,7 @@ describe("the command", () => {
     expect(forced.code).toBe(0)
     expect(readFileSync(out, "utf8")).toContain('"id":"real-0001"')
     expect(statSync(out).mode & 0o777).toBe(0o600)
-  })
+  }, 30_000)
 
   test("a database that lacks a column gives a clear message and writes no file", async () => {
     const index = migrations.findIndex((sql) => sql.includes("ADD COLUMN done_test"))
@@ -1760,7 +1760,7 @@ describe("the command", () => {
     expect(result.err).toContain("task.done_test")
     expect(result.err).not.toMatch(/\n\s+at /)
     expect(existsSync(out)).toBe(false)
-  })
+  }, 30_000)
 
   test("the private temporary folder is gone after a normal run and after a failing run", async () => {
     // A folder with a space and symbols in its name: the second copy is opened by its plain path.
@@ -1820,7 +1820,7 @@ describe("the command", () => {
     expect(result.out).toContain("Items written: 0")
     expect(result.err).toContain("Nothing was written")
     expect(existsSync(out)).toBe(false)
-  })
+  }, 30_000)
 
   test("the script of the repository passes the arguments after --, and --help shows the usage", async () => {
     const db = dbFile()
@@ -1842,5 +1842,5 @@ describe("the command", () => {
     const none = await exec([])
     expect(none.code).toBe(1)
     expect(none.err).toContain("--db")
-  })
+  }, 30_000)
 })
