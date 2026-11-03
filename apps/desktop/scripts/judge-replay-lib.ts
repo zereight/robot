@@ -12,7 +12,10 @@
 //   doneTest  text, required. What the finished part must hold (spec 004, 005).
 //   reply     text, required. The FULL reply of the member. The replay cuts it as the app does.
 //   human     "pass", "fail" or "skip", required. The label of a person. A skip item is in no
-//             count (it stays in the text of its group, as the lead saw it).
+//             count (it stays in the text of its group, as the lead saw it). The export of
+//             judge-items-lib.ts leaves this field out: an item with no "human" is not labeled
+//             yet. The replay refuses to run on it, and "counts" reports how many there are. An
+//             item with no label never counts as skip or as anything else.
 //   split     "train", "dev" or "test", optional. A given set is kept. The others are split by
 //             the seed.
 //   member    text, optional. The member that wrote the reply. Default "Member".
@@ -84,12 +87,26 @@ export interface ParsedItems {
   readonly items: readonly ReplayItem[]
   /** One line for each fault: the line and the field. Never a value. */
   readonly problems: readonly string[]
+  /**
+   * The items that have no "human" yet. They are not in `items`. Without `allowUnlabeled` each one
+   * is a fault in `problems` too, and this number is 0.
+   */
+  readonly unlabeled: number
+}
+
+export interface ParseOptions {
+  /**
+   * Counts an item with no "human" instead of making it a fault. Only "counts" uses it: a run must
+   * never go on with an item that has no label.
+   */
+  readonly allowUnlabeled?: boolean
 }
 
 /** Reads the JSONL text of the items. A line that is empty is skipped. */
-export const parseItems = (jsonl: string): ParsedItems => {
+export const parseItems = (jsonl: string, options: ParseOptions = {}): ParsedItems => {
   const items: ReplayItem[] = []
   const problems: string[] = []
+  let unlabeled = 0
   const ids = new Set<string>()
   const lines = jsonl.replace(/^\uFEFF/, "").split(/\r?\n/)
   for (const [index, line] of lines.entries()) {
@@ -123,7 +140,11 @@ export const parseItems = (jsonl: string): ParsedItems => {
     const tag = data.tag
     const human = data.human
     if (!isOneOf(TAGS, tag)) faults.push(`${at}: "tag" must be ${TAGS.join(" or ")}`)
-    if (!isOneOf(HUMANS, human)) faults.push(`${at}: "human" must be ${HUMANS.join(", ")}`)
+    const notLabeled = human === undefined
+    if (notLabeled) {
+      if (!options.allowUnlabeled)
+        faults.push(`${at}: "human" is missing, the item is not labeled yet`)
+    } else if (!isOneOf(HUMANS, human)) faults.push(`${at}: "human" must be ${HUMANS.join(", ")}`)
     const split = data.split
     if (split !== undefined && !isOneOf(SETS, split))
       faults.push(`${at}: "split" must be ${SETS.join(", ")} or left out`)
@@ -162,6 +183,10 @@ export const parseItems = (jsonl: string): ParsedItems => {
       continue
     }
     ids.add(id)
+    if (notLabeled) {
+      unlabeled++
+      continue
+    }
     items.push({
       id,
       group,
@@ -178,7 +203,7 @@ export const parseItems = (jsonl: string): ParsedItems => {
       ...(messages === undefined ? {} : { messages }),
     })
   }
-  return { items, problems }
+  return { items, problems, unlabeled }
 }
 
 // -------------------------------------------------------------------------------- numbers
@@ -278,9 +303,15 @@ export interface Counts {
   readonly bySet: Readonly<Record<SetName, Count>>
   /** The items marked "skip". They are in no other count. */
   readonly skipped: number
+  /** The items that have no "human" yet. They are in no other count, and not in "skipped". */
+  readonly unlabeled: number
 }
 
-export const countItems = (items: readonly ReplayItem[], sets: ReadonlyMap<string, SetName>) => {
+export const countItems = (
+  items: readonly ReplayItem[],
+  sets: ReadonlyMap<string, SetName>,
+  unlabeled = 0,
+) => {
   const byTag: Record<Tag, { pass: number; fail: number }> = {
     real: { pass: 0, fail: 0 },
     synthetic: { pass: 0, fail: 0 },
@@ -302,7 +333,7 @@ export const countItems = (items: readonly ReplayItem[], sets: ReadonlyMap<strin
     const set = sets.get(item.id)
     if (set) bySet[set][item.human]++
   }
-  return { total, byTag, bySet, skipped } satisfies Counts
+  return { total, byTag, bySet, skipped, unlabeled } satisfies Counts
 }
 
 // ---------------------------------------------------------------------------------- measures
