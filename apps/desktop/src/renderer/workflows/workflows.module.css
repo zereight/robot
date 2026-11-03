@@ -6,6 +6,17 @@
   gap: 12px;
 }
 
+/* The page fills the height of the window, so the canvas can use it. */
+.page {
+  flex: 1;
+  min-height: 0;
+}
+
+/* The editor never gets shorter than its content: a small window scrolls the page. */
+.editor {
+  flex: 1 0 auto;
+}
+
 .bar,
 .toolbar,
 .triggerRow,
@@ -81,17 +92,27 @@
   margin: 0;
 }
 
+/*
+ * Canvas, drag handle, side column. The workspace takes all the height that is left in the window.
+ * The side column is at least 240px. It leaves 240px to the canvas, when the window has room. The
+ * limits are the same as in sideWidth.ts.
+ */
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 6px clamp(
+      240px,
+      var(--side-width, 340px),
+      calc(100% - 246px)
+    );
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1 1 420px;
   min-height: 420px;
 }
 
 .canvas {
   position: relative;
   overflow: hidden;
-  min-height: 420px;
+  min-height: 0;
   border: 1px solid var(--c-border);
   border-radius: var(--radius-s);
   background-color: var(--c-main);
@@ -228,7 +249,31 @@
   pointer-events: none;
 }
 
+/* The handle sits between the canvas and the side column. It is wider to grab than to see. */
+.resizer {
+  cursor: col-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.resizer:hover,
+.resizer:focus-visible {
+  background: var(--c-focus);
+  outline: none;
+}
+
+/* The panel of a node on top, the runs below. Each one scrolls inside its own box. */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+
 .panel {
+  flex: 0 1 auto;
+  max-height: 60%;
   padding: 10px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius-s);
@@ -248,8 +293,14 @@
 
 .history {
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
+  padding: 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  overflow: auto;
 }
 
 .historyTitle {
@@ -258,6 +309,7 @@
 }
 
 .runList {
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -267,7 +319,8 @@
 
 .runRow {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding: 4px 8px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius-s);

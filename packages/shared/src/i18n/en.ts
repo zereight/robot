@@ -1082,6 +1082,7 @@ export const en = {
   "workflows.run": "Run",
   "workflows.stop": "Stop run",
   "workflows.back": "Back",
+  "workflows.resize": "Resize side column",
   "workflows.untitled": "Untitled workflow",
   "workflows.name": "Workflow name",
   "workflows.empty": "No workflows yet. A workflow joins steps in a fixed order.",
