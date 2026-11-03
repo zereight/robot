@@ -1,108 +1,70 @@
-import type { Face as FaceValue } from "@robot/shared"
-import { createEffect, type JSX, Match, on, onMount, Show, Switch } from "solid-js"
+import {
+  type FaceLayer,
+  type FacePart,
+  type Face as FaceValue,
+  faceLayers,
+  facePaint,
+  faceParts,
+  faceTones,
+} from "@robot/shared"
+import { createEffect, For, Index, on, onMount, Show } from "solid-js"
+import { Dynamic } from "solid-js/web"
 import { motionMs } from "../ui/Presence.tsx"
 import styles from "./face.module.css"
 import { bornRecently, type Reaction, reactions } from "./reactions.ts"
 
-const ink = "#1b1d23"
+/** The colour of the light of a hue, for a swatch in the agent form. */
+export const faceColour = (hue: number) => faceTones(hue).glow
 
-/** Background colour of a face: ten hues, light enough for dark features. */
-export const faceColour = (hue: number) => `hsl(${hue * 36} 58% 64%)`
+const kebab = (name: string) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 
-/** The features of one shape. The eyes are one group, so a blink can close them. */
-const Features = (props: { shape: number }): JSX.Element => (
-  <Switch>
-    <Match when={props.shape === 0}>
-      <g class={styles.eyes} data-part="eyes">
-        <circle cx="24" cy="28" r="4" fill={ink} />
-        <circle cx="40" cy="28" r="4" fill={ink} />
-      </g>
-      <path
-        d="M23 39 Q32 47 41 39"
-        stroke={ink}
-        stroke-width="3"
-        fill="none"
-        stroke-linecap="round"
-      />
-    </Match>
-    <Match when={props.shape === 1}>
-      <g class={styles.eyes} data-part="eyes">
-        <ellipse cx="24" cy="28" rx="3" ry="5.5" fill={ink} />
-        <ellipse cx="40" cy="28" rx="3" ry="5.5" fill={ink} />
-      </g>
-      <path d="M26 42 H38" stroke={ink} stroke-width="3" stroke-linecap="round" />
-    </Match>
-    <Match when={props.shape === 2}>
-      <g class={styles.eyes} data-part="eyes">
-        <rect x="15" y="22" width="34" height="12" rx="6" fill={ink} />
-        <circle cx="24" cy="28" r="2.5" fill="#fff" />
-        <circle cx="40" cy="28" r="2.5" fill="#fff" />
-      </g>
-      <path d="M28 43 H36" stroke={ink} stroke-width="3" stroke-linecap="round" />
-    </Match>
-    <Match when={props.shape === 3}>
-      <g class={styles.eyes} data-part="eyes">
-        <circle cx="32" cy="29" r="8" fill={ink} />
-        <circle cx="34.5" cy="26.5" r="2.5" fill="#fff" />
-      </g>
-      <path
-        d="M26 43 Q32 47 38 43"
-        stroke={ink}
-        stroke-width="3"
-        fill="none"
-        stroke-linecap="round"
-      />
-    </Match>
-    <Match when={props.shape === 4}>
-      {/* These eyes are already closed, so this shape does not blink. */}
-      <path
-        d="M19 30 Q24 25 29 30"
-        stroke={ink}
-        stroke-width="3"
-        fill="none"
-        stroke-linecap="round"
-      />
-      <path
-        d="M35 30 Q40 25 45 30"
-        stroke={ink}
-        stroke-width="3"
-        fill="none"
-        stroke-linecap="round"
-      />
-      <circle cx="32" cy="42" r="3" fill={ink} />
-    </Match>
-    <Match when={true}>
-      <path d="M32 6 V14" stroke={ink} stroke-width="3" stroke-linecap="round" />
-      <circle cx="32" cy="7" r="3" fill={ink} />
-      <g class={styles.eyes} data-part="eyes">
-        <rect x="20" y="25" width="7" height="7" rx="1.5" fill={ink} />
-        <rect x="37" y="25" width="7" height="7" rx="1.5" fill={ink} />
-      </g>
-      <path
-        d="M24 41 Q32 46 40 41"
-        stroke={ink}
-        stroke-width="3"
-        fill="none"
-        stroke-linecap="round"
-      />
-    </Match>
-  </Switch>
-)
+/** One part of the features, painted for one layer. The colour comes from the layer. */
+const Part = (props: { part: FacePart; layer: FaceLayer }) => {
+  const paint = () =>
+    Object.fromEntries(
+      Object.entries(facePaint(props.part, { ...props.layer, colour: "currentColor" })).map(
+        ([name, value]) => [kebab(name), value],
+      ),
+    )
+  return <Dynamic component={props.part.tag} {...props.part.geometry} {...paint()} />
+}
+
+/**
+ * One layer of the light of a face. The colour is `color` of the group, so a new hue is one
+ * change for each layer, and the colour can change softly. The eyes are one group, so that a blink
+ * can close them.
+ */
+const Layer = (props: { shape: number; layer: FaceLayer }) => {
+  const eyes = () => faceParts(props.shape).filter((part) => part.eyes)
+  const rest = () => faceParts(props.shape).filter((part) => !part.eyes)
+  return (
+    <g class={styles.layer} style={{ color: props.layer.colour }}>
+      <Show when={eyes().length > 0}>
+        <g class={styles.eyes} data-part="eyes">
+          <For each={eyes()}>{(part) => <Part part={part} layer={props.layer} />}</For>
+        </g>
+      </Show>
+      <For each={rest()}>{(part) => <Part part={part} layer={props.layer} />}</For>
+    </g>
+  )
+}
 
 const OUT = "cubic-bezier(0.23, 1, 0.32, 1)"
 const IN_OUT = "cubic-bezier(0.77, 0, 0.175, 1)"
 
 /** One blink: the lids close in 100 ms and open slower, 170 ms. */
 const blink = (root: Element, delay = 0) => {
-  const eyes = root.querySelector("[data-part=eyes]")
-  eyes?.animate(
-    [
-      { transform: "scaleY(1)", easing: IN_OUT },
-      { transform: "scaleY(0.1)", offset: 0.37, easing: OUT },
-      { transform: "scaleY(1)" },
-    ],
-    { duration: 270, delay },
-  )
+  // The glow and the core are two drawings of the same eyes, so both must close.
+  for (const eyes of root.querySelectorAll("[data-part=eyes]")) {
+    eyes.animate(
+      [
+        { transform: "scaleY(1)", easing: IN_OUT },
+        { transform: "scaleY(0.1)", offset: 0.37, easing: OUT },
+        { transform: "scaleY(1)" },
+      ],
+      { duration: 270, delay },
+    )
+  }
 }
 
 /**
@@ -147,7 +109,8 @@ const play = (root: Element, kind: Reaction | "land") => {
 }
 
 /**
- * A round agent face: an uploaded picture, or a drawn character in one of ten hues.
+ * A round agent face: an uploaded picture, or a drawn character that glows in the dark in one of
+ * ten hues, like the app mark.
  * With `agentId` the face reacts once when that agent ends a reply, fails, or asks the user.
  * With `swap` a new shape comes in softly (for the preview in the agent form).
  */
@@ -160,6 +123,7 @@ export const Face = (props: {
   swap?: boolean
 }) => {
   let root: Element | undefined
+  const tones = () => faceTones(props.face.hue)
   const mark = (el: Element) => {
     root = el
   }
@@ -197,36 +161,40 @@ export const Face = (props: {
           data-face-shape={props.face.shape}
           data-face-hue={props.face.hue}
         >
+          <circle class={styles.skin} cx="32" cy="32" r="32" style={{ fill: tones().tile }} />
+          {/* A thin rim of light, so that the dark tile keeps its shape on a dark surface. */}
           <circle
-            class={styles.skin}
+            class={styles.rim}
             cx="32"
             cy="32"
-            r="32"
-            style={{ fill: faceColour(props.face.hue) }}
+            r="31.25"
+            fill="none"
+            stroke-width="1.5"
+            style={{ stroke: tones().ring }}
           />
-          <Show when={props.face.shape} keyed>
+          {/* One entry for each shape: a new shape comes in anew, a new hue only changes the colours.
+              (A `Show` on the shape would drop shape 0, because 0 is false.) */}
+          <For each={[props.face.shape]}>
             {(shape) => (
               <g class={props.swap ? styles.swap : undefined}>
-                <Features shape={shape} />
+                <Index each={faceLayers(props.face.hue, props.size)}>
+                  {(layer) => <Layer shape={shape} layer={layer()} />}
+                </Index>
               </g>
             )}
-          </Show>
+          </For>
         </svg>
       }
     >
       {(image) => (
         <img
           ref={mark}
+          class={styles.picture}
           src={image()}
           width={props.size}
           height={props.size}
           alt={props.label ?? ""}
-          style={{
-            "border-radius": "50%",
-            "object-fit": "cover",
-            "flex-shrink": 0,
-            display: "block",
-          }}
+          style={{ "outline-color": tones().ring }}
         />
       )}
     </Show>

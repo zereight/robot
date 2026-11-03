@@ -101,6 +101,9 @@ start a handover (003) and does not make a skill from work (017). It shows the m
   as an attachment, with the message. The limits of 003 apply. "Cancel" closes the sheet and
   sends nothing. The phone keeps no copy of the shared item. If the server is offline, the sheet
   says so and sends nothing.
+- **Avatars**: the phone draws the avatars of 002 (faces, pictures, the mark of the user and the
+  mark of a channel) with the same drawing and colours as the desktop. A long list of messages
+  stays smooth.
 - **Face in a notice**: a notice of a reply, a mention, an approval or a failed task shows the face
   or the picture of the agent when the system allows an image in a notice. If not, it shows the
   mark of the app.

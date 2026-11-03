@@ -13,6 +13,31 @@
   transition: fill var(--motion-medium) var(--ease-out);
 }
 
+/* A thin rim of light, so that the dark tile keeps its shape on a dark surface. */
+.rim {
+  transition: stroke var(--motion-medium) var(--ease-out);
+}
+
+/*
+ * Each layer of the light has one colour (its `color`). The glow is a stack of wider, fainter
+ * copies of the features under the sharp ones. There is no blur filter: a filter costs one extra
+ * pass of drawing for each face, and a chat holds many faces. A new hue lights up softly.
+ */
+.layer {
+  transition: color var(--motion-medium) var(--ease-out);
+}
+
+/* An uploaded picture is round and has the same rim of light as a drawn face. */
+.picture {
+  display: block;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  outline: 1.5px solid;
+  outline-offset: -1.5px;
+  transition: outline-color var(--motion-medium) var(--ease-out);
+}
+
 /* A new shape comes in softly. The blur hides the moment where two drawings would overlap. */
 .swap {
   transform-box: view-box;

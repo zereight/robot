@@ -247,7 +247,8 @@ plan and the channel. Then the user does not need to stop for it.
 - **Picture**: a channel can have a picture, as an agent has a face (002). In the settings of the
   channel the user picks an image. The app cuts it to a square of 256 px as a PNG of at most 1 MB.
   The picture shows in the place row and in the header in place of the `#` mark, and also on the
-  phone and on a linked computer. The user can remove it. It syncs with the channel (019). A
+  phone and on a linked computer. It has the thin rim of light of an avatar (002). The user can
+  remove it. It syncs with the channel (019). A
   linked device changes it only with the switch "Can create and change agents" (012).
 - A part never stays in "working" after its turn has ended. This holds also when the link between
   the conversation of the member and the channel is lost. The chat of the member then stops

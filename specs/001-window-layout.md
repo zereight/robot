@@ -164,13 +164,13 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 ## Place rows
 
-- One line, 34 px high: a 24 px face for an agent, or the picture or the `#` mark for a channel,
-  then the name.
+- One line, 34 px high: a 24 px avatar (see 002, "Avatars"): the face for an agent, or the
+  picture or the `#` mark for a channel, then the name.
 - Names are muted. They are full contrast when the row is selected, hovered, or has unread
   messages.
 - An unread count shows as a small badge at the right end.
-- A working agent has a small success-colour dot on its face. A channel with work running has the
-  same dot on its `#` mark.
+- A working agent has a small success-colour dot on its face, with a thin soft ring of the same
+  colour. A channel with work running has the same dot on its `#` mark.
 - The row's accessible name includes the last message, but the row does not show it.
 - A place that waits for the user stays in its own section and keeps its badge. There is no
   separate group for places that need the user.
