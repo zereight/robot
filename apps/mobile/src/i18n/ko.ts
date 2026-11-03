@@ -110,6 +110,9 @@ export const ko: Record<MessageKey, string> = {
   "needs.question": "질문",
   "needs.open": "열기",
 
+  "picture.load": "이미지 불러오기",
+  "picture.alt.empty": "이미지",
+
   "chat.empty": "대화가 여기서 시작돼요.",
   "chat.empty.channel": "#{name} 채널이 여기서 시작돼요.",
   "chat.bot": "BOT",

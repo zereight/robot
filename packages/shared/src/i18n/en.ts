@@ -377,6 +377,8 @@ export const en = {
   "chat.copy": "Copy",
   "chat.copied": "Copied",
   "chat.copyCode": "Copy code",
+  "picture.load": "Load image",
+  "picture.alt.empty": "Image",
   "chat.edit": "Edit",
   "chat.edited": "(edited)",
   "chat.save": "Save",

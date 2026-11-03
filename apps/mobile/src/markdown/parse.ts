@@ -1,8 +1,9 @@
+import { decidePicture, type Picture } from "@robot/shared/pictures"
 import { marked, type Token, type Tokens } from "marked"
 
 // Markdown of a reply as a small, safe tree that the screen draws with native views (spec 003).
 // Rules (docs/spec-questions.md, 003): raw HTML shows as plain text, a link opens only for http,
-// https and mailto, and an image loads only from an https address.
+// https and mailto, and a picture from the web is a box until the user loads it (decidePicture).
 
 export interface Style {
   readonly bold?: boolean
@@ -14,7 +15,7 @@ export interface Style {
 export type Inline =
   | { readonly kind: "text"; readonly text: string; readonly style: Style }
   | { readonly kind: "link"; readonly href: string; readonly children: readonly Inline[] }
-  | { readonly kind: "image"; readonly src: string; readonly alt: string }
+  | { readonly kind: "image"; readonly picture: Picture }
   | { readonly kind: "break" }
 
 export type Block =
@@ -41,12 +42,6 @@ export const safeLink = (href: string): string | null => {
   return /^(https?:\/\/|mailto:)/i.test(value) ? value : null
 }
 
-/** An image address that the phone may load: https only. */
-export const safeImage = (src: string): string | null => {
-  const value = src.trim()
-  return /^https:\/\//i.test(value) ? value : null
-}
-
 const plain = (text: string, style: Style): Inline => ({ kind: "text", text, style })
 
 const inlines = (tokens: readonly Token[] | undefined, style: Style = {}): Inline[] =>
@@ -66,12 +61,19 @@ const inlines = (tokens: readonly Token[] | undefined, style: Style = {}): Inlin
         const t = token as Tokens.Link
         const href = safeLink(t.href)
         const children = inlines(t.tokens, style)
-        return href ? [{ kind: "link", href, children }] : children
+        if (!href) return children
+        // A picture in a link stands on its own line, as a box, so that the user can load it.
+        // The link keeps its text.
+        const pictures = children.filter((child) => child.kind === "image")
+        const words = children.filter((child) => child.kind !== "image")
+        return [
+          ...(words.length > 0 ? [{ kind: "link" as const, href, children: words }] : []),
+          ...pictures,
+        ]
       }
       case "image": {
         const t = token as Tokens.Image
-        const src = safeImage(t.href)
-        return src ? [{ kind: "image", src, alt: t.text }] : [plain(t.text, style)]
+        return [{ kind: "image", picture: decidePicture(t.href, t.text) }]
       }
       case "text": {
         const t = token as Tokens.Text
