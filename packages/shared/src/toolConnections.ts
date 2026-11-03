@@ -369,7 +369,7 @@ export interface SearchableTool {
 }
 
 /** The words of a search, without empty ones, at most 20, each cut at 100 characters. */
-export const searchWords = (query: string): string[] =>
+export const toolSearchWords = (query: string): string[] =>
   [
     ...new Set(
       query
@@ -389,7 +389,7 @@ export const searchTools = (
   tools: readonly SearchableTool[],
   query: string,
 ): readonly SearchableTool[] => {
-  const words = searchWords(query)
+  const words = toolSearchWords(query)
   if (words.length === 0) return []
   return tools
     .map((tool) => {

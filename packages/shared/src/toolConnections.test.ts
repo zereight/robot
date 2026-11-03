@@ -18,10 +18,10 @@ import {
   type SearchableTool,
   searchResultText,
   searchTools,
-  searchWords,
   TOOL_SEARCH_RESULTS_MAX,
   type ToolConnectionInput,
   toolAliases,
+  toolSearchWords,
 } from "./toolConnections.ts"
 
 const program: ToolConnectionInput = {
@@ -265,7 +265,7 @@ describe("tool search", () => {
   })
 
   test("the words are split at spaces and commas, with no repeats", () => {
-    expect(searchWords("Weather, weather  city;x")).toEqual(["weather", "city", "x"])
+    expect(toolSearchWords("Weather, weather  city;x")).toEqual(["weather", "city", "x"])
   })
 
   test("the answer names the call name, the connection and the tool", () => {
