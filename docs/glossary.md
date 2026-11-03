@@ -40,6 +40,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Trust read-only marks | The switch of a connection that lets marked tools run with no card (018). | 읽기 전용 표시 믿기 (proposed) | safe mode |
 | Read the handbook | The switch of an agent that gives it the handbook (002). | 핸드북 읽기 (proposed) | — |
 | Cached share | Cached input divided by all input, in percent (005). | 캐시 비율 (proposed) | cache hit rate |
+| Holds outside content | The mark of a chat, thread or channel whose turns still see outside text (007). | 바깥 내용 포함 (proposed) | tainted, unsafe |
+| Program mark | The part of that mark that says the text came from an outside program (007, 023). Not shown as a word in the interface. | — | — |
 | Action log | The list of tool steps and who decided them (007). | 작업 기록 | history, audit |
 | Profile | A separate space on one computer (022). | 프로필 | account, user, workspace |
 
