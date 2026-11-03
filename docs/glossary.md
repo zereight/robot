@@ -125,6 +125,12 @@ A new word goes here in the same pull request as the spec that brings it.
 | Keep phones quiet | The setting that holds notices to phones while the user works at the computer (015). | 일하는 동안 폰 알림 보류 (proposed) | focus mode |
 | Sensitive read | A step that reads a place with keys or logins. The turn then holds a mark (007). | 민감한 정보 읽기 | leak, breach |
 | Control place | A place that starts a program later or gives access to the computer. A change there is a hard step (007). | 제어 위치 (proposed) | system folder |
+| Teams link | The link between one Microsoft Teams chat and one agent or one channel. It is off at first (028). | Teams 연동 (proposed) | bridge, bot, connection (that is 018), integration |
+| Allowed senders | The names of the people in a Teams chat whose messages the app answers (028). | 허용된 보낸 사람 (proposed) | allowlist, whitelist, users |
+| Call text | The text that a message of a Teams chat must hold to call the app, for example "@ROBot" (028). | 호출 문구 (proposed) | trigger, keyword, prefix |
+| Marker | The text at the start of every message that the app writes in Teams. The app never reads a message with it (028). | 표시 문구 (proposed) | tag, signature |
+| From Teams | The mark of a message that came from a Teams chat. The source of its task is "Teams" (028, 005). | Teams에서 보냄 (proposed) | Sent by (that is 023) |
+| Browser profile | A named set of saved sign-ins on this computer, which agents can share. The interface says "Browser profile" or "Browser", and the texts say "sign-ins" (spec questions of 007, 002, 022). | 브라우저 프로필 | account, session |
 
 ## Words that ROBot does not use
 

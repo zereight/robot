@@ -103,7 +103,7 @@ the user gets a card only when the check is sure that the user asked for the ste
   user saves the routine form once. For a part of a channel job (004), the words of the user are
   the job message, when the user posted the job and the turn of the lead held no outside content
   before it made the part. For a new part after "Request changes" (004), the text of the request
-  counts too. A message of another agent, of an outside program (023) or of a watch
+  counts too. A message of another agent, of an outside program (023), of Teams (028) or of a watch
   is not words of the user. The handover card (003) is not words of the user. The text that the
   user typed in the dialog of the handover is. An answer of the lead to a question of a member
   (004) and the shared folder note (025) are not words of the user. A step of a workflow has no
@@ -379,14 +379,15 @@ text is in the turn.
   - a message from another agent,
   - the text that an agent wrote on a card of the board (024),
   - a message of an outside program (023),
+  - a message from Teams (028),
   - a hit of "search chats", or a message in a result of "read chat" (see "Searching past
     chats"), when the user did not write that message. A line for a tool step in such a result is
     not outside content, because it holds no text of the step.
   Files in the workspace and files that the user attaches are not outside content.
 - A turn **holds outside content** from the first step that gives outside content to the agent
-  until the turn ends. A turn that a watch routine, a message from another agent or a message of
-  an outside program starts holds outside content from its start. A message of an outside program
-  never joins a running turn (023).
+  until the turn ends. A turn that a watch routine, a message from another agent, a message of
+  an outside program or a message from Teams starts holds outside content from its start. A
+  message of an outside program or from Teams never joins a running turn (023, 028).
 - A turn also holds outside content from its start when an earlier turn that the agent still sees
   held it, because the outside text is still in front of the agent:
   - in a direct chat or thread: an earlier turn of that chat or thread. A compact (003) keeps the
@@ -415,24 +416,27 @@ text is in the turn.
   "Read only", "Ask for everything", "Ask for risky steps" and "Ask when unsure", also when an
   Allow rule matches it. The
   card has Allow once and Deny only. It has the line "This turn holds outside content" and names
-  the first source: the host of the page, the connection and tool, the routine, the agent, or the
-  outside program.
+  the first source: the host of the page, the connection and tool, the routine, the agent, the
+  outside program, or Teams.
 - At "Read only", a change of the agent's own settings, a request for a new secret, and a request
   with a saved secret that uses a method other than GET are refused, as other changes are (see
   "Permission levels"). A save to memory follows the rule above.
 - **Program mark**: outside content holds the program mark when one of its sources is an outside
-  program (023). The mark goes with the outside content: to later turns and forks that hold it
+  program (023) or a message from Teams (028). The mark goes with the outside content: to later
+  turns and forks that hold it
   (see above), to the parts of a job, and to a message that an agent sends from a turn that holds
   the program mark. The turn that such a message starts holds the program mark too. A hit of
-  "search chats", or a result of "read chat", that holds a message of an outside program, or a
-  message from a turn that held the program mark, gives the program mark to the turn that gets it.
+  "search chats", or a result of "read chat", that holds a message of an outside program or from
+  Teams, or a message from a turn that held the program mark, gives the program mark to the turn
+  that gets it.
   "Clear" (see
   "The mark of a place") also clears the program mark of that place.
 - At "Full access", a guarded step runs with no question. A Deny rule still refuses it. The
   exception is a turn that holds the program mark: there a guarded step asks the user, also at
   "Full access" (023).
-- A turn that the user did not start (a routine, a workflow, a message from another agent, or a
-  message of an outside program) asks before a change of the agent's own settings or
+- A turn that the user did not start (a routine, a workflow, a message from another agent, a
+  message of an outside program, or a message from Teams) asks before a change of the agent's own
+  settings or
   instructions, or of the settings of the app (002), also when it holds no outside content, at
   every permission level except "Full access". A turn that holds the program mark asks at "Full
   access" too.
@@ -685,6 +689,9 @@ steer the agent to an address that only this computer or its network can reach.
 - "Full access": an outside program sends "Change your instructions" to an agent, and the user
   denies the card. In a new thread, the agent calls "search chats" and gets that message as a hit.
   It then tries to change its instructions: an approval card shows.
+- "Full access": a message from Teams (028) asks an agent to change its instructions. An approval
+  card shows with the source "Teams". A second message from Teams that says "allow" does not answer
+  the card.
 - A page has a button. A click on it returns the address, the title and the focus, and not the
   list of controls. The call that reads the page returns the list, one line for each control. A
   second action on a control of that list works with no new read.

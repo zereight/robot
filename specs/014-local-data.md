@@ -43,6 +43,12 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - An outside program that the user adds on purpose (023) gets what its tools give: lists, messages,
   tasks and reply text. It runs on this computer, and it can send what it gets to its own model
   provider. The app cannot see this. It is off until the user turns it on.
+- A Teams link that the user turns on on purpose (028) is one more exception. The app sends to the
+  linked Microsoft Teams chat the answers to work that a message of that chat started: reply text
+  and short status lines. It sends nothing else, and it sends nothing when the link is off. The
+  text passes through the service of Microsoft. The app reads no password and stores none. The
+  sign-in is in a browser profile of this computer. It gives access to the account, so it is
+  handled as a secret: an export does not hold it, and sync does not carry it.
 - The app sends no usage events and no failure reports. It has no analytics at all.
 - Voice (027) keeps no sound. Recognition runs on the device. The web hook of a workflow (010)
   listens on this computer only. Its secret is in the keychain, and the file of a workflow and an
@@ -70,7 +76,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 
 - Logs are files in a logs folder inside the data folder. The user opens the folder from settings
   (see 013). Each log has a size limit; the oldest lines go first.
-- There is one log for each of these areas: channels, browser, workflows, and outside programs.
+- There is one log for each of these areas: channels, browser, workflows, outside programs, and
+  the Teams link.
   - Channels: one line for each answer of the decision model (see 004), and one line for each
     look of the lead at a question of a member (004). It holds no job text, no question text, no
     answer text and no key.
@@ -79,12 +86,16 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   - Workflows: retries, final failures of model steps and conditions (see 010).
   - Outside programs: one line for each call (see 023): the time, the entry, the tool, the place
     or task, and the result. It keeps 90 days.
+  - Teams link: one line for each event (see 028): the time, the event, the reason and the place.
+    It holds no message text and no name of a sender. It keeps 90 days.
 - A log line never holds a secret, a key, the text of a message, or a search text (see 001).
 
 ## Export and backup
 
 - Export: one archive for one profile (022), with the database, attachments, agent knowledge,
-  and a readme of the format. Secrets are not included. The archive holds the rules, the action log, the skills and
+  and a readme of the format. Secrets are not included. The Teams link and its sign-in (028) are
+  not included, and an import brings none back. The archive holds the rules, the action log, the
+  skills and
   the connections without their secret values.
 - The cards of the board and their comments (024) are in the archive, with their numbers and
   their links to tasks. An import restores them.

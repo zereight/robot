@@ -61,6 +61,7 @@ service holds it.
 | Linked devices and their keys | They are not data of the agents. |
 | The memory check: its switch and its count (008) | The switch is a choice of one computer, like the other memory switches. Each computer counts its own turns. |
 | Outside programs and their keys (023) | A key reaches one computer only. |
+| The Teams link, its lists and its sign-in (028) | The link reads one chat from one computer, and the sign-in is a secret. Messages from Teams and their mark sync with the messages. |
 
 ## Flows
 

@@ -97,7 +97,8 @@ The user can ask an agent in plain words to change itself, for example "use a fa
   rules (007), the workspace folder, computer use, the main agent switch, the memory switch, the
   connections and skills that it may use, saved secrets (020), sync, devices, archive and delete,
   the fields of other agents, the handbook, the switch "Read the handbook", the memory check
-  (008), and the instructions of a channel (004). When the user asks for one of these, the agent
+  (008), the instructions of a channel (004), and the Teams link (028). When the user asks for one
+  of these, the agent
   says where in the profile or in settings the user can change it.
 - The agent changes a setting only when the user asks for it. A question such as "which model
   are you?" reads the settings and changes nothing.

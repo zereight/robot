@@ -32,6 +32,7 @@ The user sets the app up the way they like in one place.
 - **Skills**: the saved instructions that the user calls with a slash. See 017.
 - **Connections**: the outside tools that agents can use. See 018.
 - **Outside programs**: programs on this computer that may read and send work in ROBot. See 023.
+- **Teams**: the link to one Microsoft Teams chat, off at first. See 028.
 - **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
   that can open this computer, with the switch "Can create and change agents" for each, and the
   computers this computer can open, see 012. Each linked computer has a sync row, see 019.
@@ -110,6 +111,7 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Changes apply at once, without a restart.
 - Settings belong to the open profile (022) and are local to the computer. The section Profiles
   and the settings "start at login" and "Show in the menu bar" are for the computer. A linked device never changes them.
+  The section Teams is shown on the computer only (028).
 
 ## Acceptance
 
