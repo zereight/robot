@@ -15,6 +15,7 @@ import {
   Notification,
   nativeTheme,
   screen,
+  session,
   shell,
   WebContentsView,
 } from "electron"
@@ -26,6 +27,14 @@ export const isTestRun = Boolean(process.env.ROBOT_USER_DATA)
 const PAGE_TEXT_MAX = 20_000
 
 const browsers = new Map<string, BrowserPage>()
+/** The browser profile that each agent uses. An agent that is not here uses its own data. */
+const browserProfiles = new Map<string, string>()
+
+/** The name of the saved data that the browser of an agent uses. */
+const partitionOf = (agentId: string) => {
+  const profile = browserProfiles.get(agentId)
+  return profile ? `persist:browser-${profile}` : `persist:agent-${agentId}`
+}
 
 let mainWindow: BrowserWindow | undefined
 /**
@@ -46,7 +55,7 @@ export const setMainWindow = (win: BrowserWindow) => {
 
 /**
  * One page per agent, inside the main window. Its session is kept on disk, so logins stay between
- * runs. The screen of the chat says where the page shows. Until it does, the page is hidden.
+ * runs. The session is the one of the browser profile of the agent, or its own. The screen of the chat says where the page shows. Until it does, the page is hidden.
  */
 const electronBrowser = (agentId: string): BrowserPage => {
   let view: WebContentsView | undefined
@@ -108,7 +117,7 @@ const electronBrowser = (agentId: string): BrowserPage => {
           throw new Error("The app window is not open, so the browser has no place to show.")
         const created = new WebContentsView({
           webPreferences: {
-            partition: `persist:agent-${agentId}`,
+            partition: partitionOf(agentId),
             sandbox: true,
             contextIsolation: true,
             nodeIntegration: false,
@@ -509,6 +518,19 @@ export const electronPlatform = (): PlatformService => {
       const page = electronBrowser(agentId)
       browsers.set(agentId, page)
       return page
+    },
+    setBrowserProfile: (agentId, profileId) => {
+      const before = partitionOf(agentId)
+      if (profileId === undefined) browserProfiles.delete(agentId)
+      else browserProfiles.set(agentId, profileId)
+      // The page that is open keeps the data it began with, so it closes. The next page of the
+      // agent opens on the new data.
+      if (partitionOf(agentId) !== before) browsers.get(agentId)?.close()
+    },
+    clearBrowserProfile: async (profileId) => {
+      const data = session.fromPartition(`persist:browser-${profileId}`)
+      await data.clearStorageData()
+      await data.clearCache()
     },
   }
 }

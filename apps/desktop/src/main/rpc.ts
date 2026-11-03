@@ -3,6 +3,7 @@ import {
   AgentModel,
   AgentPatch,
   AgentStarterCreate,
+  BrowserProfileCreate,
   ChannelCreate,
   ChannelPatch,
   ChatSend,
@@ -47,6 +48,7 @@ import { AgentSettings } from "./services/AgentSettings.ts"
 import { Agents } from "./services/Agents.ts"
 import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
+import { BrowserProfiles } from "./services/BrowserProfiles.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
@@ -409,6 +411,29 @@ export const handlers: Handlers = {
   "sections.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Sections.use((s) => s.remove(id))),
+      done,
+    ),
+  "browserProfiles.list": () => BrowserProfiles.use((b) => b.list),
+  "browserProfiles.create": (input) =>
+    decode(BrowserProfileCreate)(input).pipe(
+      Effect.flatMap(({ name }) => BrowserProfiles.use((b) => b.create(name))),
+    ),
+  "browserProfiles.rename": (input) =>
+    decode(Schema.Struct({ id: Schema.String, name: Schema.String }))(input).pipe(
+      Effect.flatMap(({ id, name }) => BrowserProfiles.use((b) => b.rename(id, name))),
+    ),
+  "browserProfiles.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => BrowserProfiles.use((b) => b.remove(id))),
+      done,
+    ),
+  "browserProfiles.assign": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, profileId: Schema.NullOr(Schema.String) }))(
+      input,
+    ).pipe(
+      Effect.flatMap(({ agentId, profileId }) =>
+        BrowserProfiles.use((b) => b.assign(agentId, profileId)),
+      ),
       done,
     ),
   "ui.get": () => UiStore.use((s) => s.get),

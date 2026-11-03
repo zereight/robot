@@ -11,6 +11,7 @@ import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
 import styles from "./agents.module.css"
+import { BrowserProfileField } from "./BrowserProfileField.tsx"
 import { createAgent } from "./createAgent.ts"
 import { Face } from "./Face.tsx"
 import { RecentWork } from "./RecentWork.tsx"
@@ -193,6 +194,10 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
                   },
                 })}
           />
+        </Show>
+        {/* The browser belongs to the computer that runs the agent: a client has no field for it. */}
+        <Show when={!ui.linked()}>
+          <BrowserProfileField agent={props.agent} />
         </Show>
         <div class={styles.spread}>
           <Show

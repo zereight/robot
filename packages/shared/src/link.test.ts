@@ -169,6 +169,11 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     "sections.rename",
     "sections.move",
     "sections.delete",
+    "browserProfiles.list",
+    "browserProfiles.create",
+    "browserProfiles.rename",
+    "browserProfiles.delete",
+    "browserProfiles.assign",
     "places.move",
     "knowledge.list",
     "knowledge.get",
@@ -196,7 +201,7 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     }
     // Nothing that starts like them is on the list either.
     for (const method of CLIENT_METHODS) {
-      expect(method).not.toMatch(/^(sections|knowledge|agentFile|workflowFile)\./)
+      expect(method).not.toMatch(/^(sections|browserProfiles|knowledge|agentFile|workflowFile)\./)
     }
   })
 

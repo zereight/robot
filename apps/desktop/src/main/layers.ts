@@ -6,6 +6,7 @@ import { Activity } from "./services/Activity.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
 import { AgentSettings } from "./services/AgentSettings.ts"
 import { Agents } from "./services/Agents.ts"
+import { BrowserProfiles } from "./services/BrowserProfiles.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
@@ -100,7 +101,8 @@ export const appLayer = (options: AppLayerOptions) => {
   const starters = Starters.layer.pipe(Layer.provideMerge(routines))
   const workflows = Workflows.layer.pipe(Layer.provideMerge(starters))
   const teach = Teach.layer.pipe(Layer.provideMerge(workflows))
-  const places = Places.layer.pipe(Layer.provideMerge(teach))
+  const browserProfiles = BrowserProfiles.layer.pipe(Layer.provideMerge(teach))
+  const places = Places.layer.pipe(Layer.provideMerge(browserProfiles))
   const today = Today.layer.pipe(Layer.provideMerge(places))
   const agentFiles = AgentFiles.layer.pipe(Layer.provideMerge(today))
   const workflowFiles = WorkflowFiles.layer.pipe(Layer.provideMerge(agentFiles))

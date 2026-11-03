@@ -6,6 +6,7 @@ import { Effect, ManagedRuntime } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
+import { BrowserProfiles } from "./BrowserProfiles.ts"
 import { copyAttachments } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
@@ -110,6 +111,9 @@ describe("export and import", () => {
     )
     mkdirSync(join(agent.workspace, "attachments"), { recursive: true })
     writeFileSync(join(agent.workspace, "attachments", "note.txt"), "hello file")
+    // Browser profiles stay on this computer, as the browser data does.
+    const profile = await a.run(BrowserProfiles.use((b) => b.create("Secret Profile")))
+    await a.run(BrowserProfiles.use((b) => b.assign(agent.id, profile.id)))
 
     const result = await a.run(Data.use((d) => d.export()))
     expect(result).toEqual({ path: out, files: 1 })
@@ -132,6 +136,8 @@ describe("export and import", () => {
         )
         .all(),
     ).toEqual([])
+    expect(inArchive.prepare("SELECT 1 FROM browser_profile").all()).toEqual([])
+    expect(inArchive.prepare("SELECT 1 FROM agent_browser").all()).toEqual([])
     inArchive.close()
 
     const b = app({ open: out })

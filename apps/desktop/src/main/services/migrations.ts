@@ -703,4 +703,21 @@ export const migrations: readonly string[] = [
   ALTER TABLE task ADD COLUMN decision TEXT;
   ALTER TABLE task ADD COLUMN decision_text TEXT;
   `,
+  `
+  -- Browser profiles: named sets of saved browser data (cookies, sign-ins) on this computer, and
+  -- which agent uses which. An agent with no row here uses its own data. Both tables stay on this
+  -- computer: sync (019) does not carry them, and neither does an export, as browser sessions do
+  -- not. A profile that is deleted frees its agents, and an agent that is deleted leaves its row.
+  CREATE TABLE browser_profile (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE agent_browser (
+    agent_id TEXT PRIMARY KEY REFERENCES agent (id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL REFERENCES browser_profile (id) ON DELETE CASCADE
+  );
+  CREATE INDEX agent_browser_profile ON agent_browser (profile_id);
+  `,
 ]

@@ -11,7 +11,8 @@ export interface PageBounds {
 
 /**
  * The browser page of one agent. It shows inside the app window, in the place that the chat
- * screen gives it. Cookies and logins stay with the agent, on this computer.
+ * screen gives it. Cookies and logins stay on this computer, with the browser profile of the agent
+ * or with the agent when it has none.
  */
 export interface BrowserPage {
   isOpen(): boolean
@@ -86,6 +87,14 @@ export interface PlatformService {
   fitIsland(size: { width: number; height: number }): void
   /** The browser page of an agent. The same agent always gets the same page object. */
   browser(agentId: string): BrowserPage
+  /**
+   * Sets the browser profile whose saved data the browser of an agent uses, or `undefined` for the
+   * own data of the agent. A page that is open for the agent closes when this changes the data it
+   * uses. It does not open a page.
+   */
+  setBrowserProfile(agentId: string, profileId: string | undefined): void
+  /** Deletes the saved data of a browser profile: cookies, sign-ins and the rest. */
+  clearBrowserProfile(profileId: string): Promise<void>
 }
 
 export class Platform extends Context.Service<Platform, PlatformService>()("robot/main/Platform") {}

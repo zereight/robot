@@ -139,6 +139,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
             out.exec("DROP TABLE IF EXISTS message_fts; DROP TABLE IF EXISTS message_text")
             // The links of this computer stay on it: an export holds no device keys or addresses.
             out.exec("DELETE FROM device_link")
+            // Browser profiles and the choice of an agent stay too, as the browser data does.
+            out.exec("DELETE FROM agent_browser; DELETE FROM browser_profile")
             // A saved secret keeps its name, agent, origin and way to send, never its value or the
             // name of the value in the keychain of this computer (spec 020).
             out.exec("UPDATE saved_secret SET value_ref = NULL; DELETE FROM saved_secret_drop")

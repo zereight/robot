@@ -27,6 +27,7 @@ import { useApp } from "../state/app.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { useClosing } from "../ui/Presence.tsx"
 import { ActionLogSection } from "./ActionLogSection.tsx"
+import { BrowserProfilesSection } from "./BrowserProfilesSection.tsx"
 import { DecisionSection } from "./DecisionSection.tsx"
 import { SavedSecretsSection } from "./SavedSecretsSection.tsx"
 import styles from "./settings.module.css"
@@ -39,6 +40,7 @@ export const sections = [
   "devices",
   "notifications",
   "archive",
+  "browser",
   "permissions",
   "data",
   "about",
@@ -389,6 +391,9 @@ export const SettingsPage = (props: {
           </Match>
           <Match when={section() === "decision"}>
             <DecisionSection />
+          </Match>
+          <Match when={section() === "browser"}>
+            <BrowserProfilesSection />
           </Match>
           <Match when={section() === "permissions"}>
             <SavedSecretsSection />

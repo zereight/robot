@@ -370,7 +370,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           const name = copyName(row.name, suffix, (candidate) =>
             nameTaken(row.server_id, candidate),
           )
-          return yield* insert({
+          const copy = yield* insert({
             serverId: row.server_id,
             name,
             role: row.role,
@@ -387,6 +387,21 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
             // The copy joins the section of the original.
             sectionId: row.place_section_id,
           })
+          // The copy uses the browser profile of the original: it has the same sign-ins (spec 002).
+          const profile = db.get<{ profile_id: string }>(
+            "SELECT profile_id FROM agent_browser WHERE agent_id = ?",
+            id,
+          )?.profile_id
+          if (profile) {
+            db.run(
+              "INSERT INTO agent_browser (agent_id, profile_id) VALUES (?, ?)",
+              copy.id,
+              profile,
+            )
+            platform.setBrowserProfile(copy.id, profile)
+            bus.emit("browserProfiles.changed", {})
+          }
+          return copy
         }),
         archive: setArchived(true),
         restore: setArchived(false),
