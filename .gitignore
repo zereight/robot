@@ -9,3 +9,6 @@ TASKS.md
 build/
 test-results/
 playwright-report/
+
+# Rust builds of the host.
+target/

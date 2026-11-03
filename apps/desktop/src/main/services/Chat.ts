@@ -1003,6 +1003,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 // Changes from the chat are for agents of an API provider (spec 002).
                 settings: !isRuntime,
               }),
+              // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
+              // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
+              // message of another agent) keeps the short one.
+              cache: task.source === "chat" ? "long" : "short",
               signal: controller.signal,
               workspace: agent.workspace,
               permission: agent.permission,

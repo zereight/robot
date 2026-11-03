@@ -147,7 +147,12 @@ export const testPlatform = () => {
 
 /** The full app layer on an in-memory database, with recorded events. */
 export const testRuntime = (
-  options: { name?: string; network?: MemoryNetwork; decisionUrl?: string } = {},
+  options: {
+    name?: string
+    network?: MemoryNetwork
+    decisionUrl?: string
+    cacheHosts?: readonly string[]
+  } = {},
 ) => {
   const {
     platform,
@@ -173,6 +178,7 @@ export const testRuntime = (
         events.push(server === undefined ? { event, payload } : { event, payload, server }),
       secrets: Secrets.memory,
       ...(options.decisionUrl ? { decisionUrl: options.decisionUrl } : {}),
+      ...(options.cacheHosts ? { cacheHosts: options.cacheHosts } : {}),
     }),
   )
   // The requests of linked devices run the real handlers, as in the app.

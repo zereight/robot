@@ -1,5 +1,5 @@
 import { hostname } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { EVENT_CHANNEL } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
 import { app, BrowserWindow } from "electron"
@@ -8,6 +8,7 @@ import { electronPlatform, isTestRun, setMainWindow } from "./platform-electron.
 import { registerRpc } from "./register-rpc.ts"
 import { importLoginPath } from "./runtimes/login-path.ts"
 import { Database } from "./services/Database.ts"
+import { Host } from "./services/Host.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Platform } from "./services/Platform.ts"
 import { Secrets } from "./services/Secrets.ts"
@@ -58,10 +59,23 @@ const broadcast = (event: string, payload: unknown, server?: string) => {
     win.webContents.send(EVENT_CHANNEL, event, payload, server)
 }
 
-const makeRuntime = () =>
-  ManagedRuntime.make(
+/**
+ * The host program: in the bundle of a packaged app, and the release build of `host/` in a
+ * development or test run ("bun run build:host").
+ */
+const hostCommand = (dataDir: string) => ({
+  command: app.isPackaged
+    ? join(process.resourcesPath, "robot-host")
+    : resolve(app.getAppPath(), "../../host/target/release/robot-host"),
+  args: ["--data", dataDir],
+})
+
+const makeRuntime = () => {
+  const platform = electronPlatform()
+  return ManagedRuntime.make(
     appLayer({
-      platform: electronPlatform(),
+      platform,
+      host: Host.process(hostCommand(platform.dataDir)),
       localServerName: hostname().replace(/\.local$/, ""),
       emit: broadcast,
       secrets: process.env.ROBOT_TEST_SECRETS
@@ -71,8 +85,13 @@ const makeRuntime = () =>
       ...(isTestRun && process.env.ROBOT_TEST_DECISION_URL
         ? { decisionUrl: process.env.ROBOT_TEST_DECISION_URL }
         : {}),
+      // Only a test run may name another host that takes the cache marker (spec 006).
+      ...(isTestRun && process.env.ROBOT_TEST_CACHE_HOST
+        ? { cacheHosts: [process.env.ROBOT_TEST_CACHE_HOST] }
+        : {}),
     }),
   )
+}
 
 const createWindow = () => {
   const win = new BrowserWindow({

@@ -39,7 +39,6 @@ import {
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import type { AppServices } from "./layers.ts"
-import licenses from "./licenses.json"
 import { modelChoices } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { ActionLog } from "./services/ActionLog.ts"
@@ -57,6 +56,7 @@ import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
+import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
@@ -90,7 +90,8 @@ type Handler<M extends RpcMethod> = (
   input: RpcInput<M>,
 ) => Effect.Effect<RpcOutput<M>, AppError, Services>
 
-type Handlers = { [M in RpcMethod]: Handler<M> }
+/** Every window call has a handler here, except the calls that the host program answers. */
+type Handlers = { [M in Exclude<RpcMethod, HostMethod>]: Handler<M> }
 
 /** Checks untrusted input from the renderer against a schema. */
 const decode =
@@ -171,7 +172,6 @@ export const handlers: Handlers = {
         defaultWorkspaceRoot: p.defaultWorkspaceRoot,
       }
     }),
-  "app.licenses": () => Effect.succeed(licenses),
   "app.copy": (input) =>
     decode(Schema.Struct({ text: Schema.String }))(input).pipe(
       Effect.flatMap(({ text }) => Platform.use((p) => Effect.sync(() => p.copyText(text)))),
@@ -1232,6 +1232,9 @@ export const runRequest = async (
   // this function forgets to check, so a method that is not listed never gets to a window handler.
   if (actor && !isClientMethod(method)) {
     return { ok: false, error: { code: "not_allowed", message: "Not allowed" } }
+  }
+  if (isHostMethod(method)) {
+    return runtime.runPromise(Host.use((h) => Effect.promise(() => h.call(method, input, actor))))
   }
   const handler =
     (actor ? linkHandlers[method] : undefined) ??
