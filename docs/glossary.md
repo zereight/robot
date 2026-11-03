@@ -67,6 +67,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Quiet line | The line "No answer from <name> for <time>" for a turn that shows no sign of life (005). | "<name>에서 <time> 동안 응답이 없어요" (proposed) | stuck, frozen, error |
 | Routine | A task that runs on a schedule or a watch (009). | 루틴 | job, cron, automation |
 | Workflow | Connected steps that run when a trigger fires (010). | 워크플로, 워크플로우 (see "Open points") | automation, pipeline |
+| Starter | A ready setup for one job. It fills the new agent form (002) or makes a workflow (010). | — (proposed: 스타터) | template, preset |
 | Today | The page of what waits, went wrong, ran and runs next (021). | 오늘 | inbox, dashboard |
 | Needs you | Items that wait for the user (011, 021). | 내 확인이 필요해요 | inbox |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |

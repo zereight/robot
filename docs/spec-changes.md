@@ -58,6 +58,7 @@ These are in the code today and the specs now say something else.
 | 002, 014, 017 | An agent file holds agents and routines. | It can also hold channels, skills (made off) and the handbook (not ticked on import). |
 | 023, 000, 005, 013, 014 | No program on the computer can talk to ROBot. | An outside program that the user adds can read, send work, wait and stop through a helper over MCP. It cannot answer approvals or change anything else. |
 | 007 | A turn holds outside content only from its own steps, and the mark ends with the turn. A hit of "search chats" is not outside content. | A turn also holds it when an earlier turn that the agent still sees held it (chat, thread, fork copy, or any agent in a channel). A part holds it when the job came from an outside program or the lead read outside content first. A hit of "search chats" on a message that the user did not write is outside content. The header of the place shows "Holds outside content" with "Clear". A change of the app settings is a guarded step. Belongs to S62. |
+| 010 | The user makes a workflow on the canvas or imports a file. | The menu of the Workflows page also has "New from a starter". The one starter, "TLA+ check", makes a workflow of six steps: an agent writes a TLA+ model of a spec, runs TLC on it, and explains what TLC finds. It needs Java and the TLA+ tools program in the workspace of the agent, and it downloads nothing. |
 
 ## Slices
 
@@ -113,6 +114,7 @@ These are in the code today and the specs now say something else.
 | S66 | Handbook and channel instructions: the settings page with the history and restore, the switch "Read the handbook", the order of the texts, the refusal of secrets, the channel field, what a linked device can change. | 002, 004, 013, 012, 019, 014 |
 | S67 | Team file: the three tick boxes of the export, channels, skills and the handbook in the file, their limits, the review screen and the import rules. Update `docs/agent-file-format.md` to version 2, and keep reading version 1. Needs S44 and S66. | 002, 014, 017 |
 | S68 | Outside programs: the settings part, entries and keys, the helper, the tools for "Read" and "Read and send work", the mark "Sent by", a message that never joins a running turn, outside content from the start, the program mark that follows the outside content (later turns, forks, parts, messages of agents) and makes guarded steps ask at "Full access", the limits, the log, the profile of an entry. Needs S39. | 023, 000, 005, 013, 014 |
+| S69 | Workflow starters: the menu choice "New from a starter", the dialog with the field "Agent", the starter "TLA+ check" with six steps, one note and the lines `TLC_RESULT:` and `Blocked:`, texts in English and Korean. | 010 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -121,6 +123,7 @@ S57 does not depend on S55, but both change the same packaging and data code, so
 S55 does not depend on the other slices. It removes code, so it goes best when no other slice is open on the same files.
 S59 follows S47. S60 does not depend on the other slices.
 S61 to S68 do not depend on each other, except as listed. S66 and S61 give the largest gain for the effort.
+S69 does not depend on the other slices. It needs no change to 012: a linked client already needs the switch "Can create and change agents" to create a workflow.
 
 ## Decided against
 

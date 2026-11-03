@@ -24,6 +24,8 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
   follow the effort of its agent (the default).
 - **Version**: the graph as it was before a change that the assistant saved (see "Assistant").
 - **Run**: one execution, with the state and result of each step.
+- **Starter**: a ready graph for one job. The user adds it from the menu of the Workflows page (see
+  "Starters").
 
 ## Flows
 
@@ -41,6 +43,9 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
    name. The app writes one file. Import workflows: the user picks such a file. The app shows the
    review screen (see 014, "Review before an import"), with the agent names that it cannot find,
    and asks to confirm.
+7. Start from a starter: from the menu of the Workflows page, the user picks "New from a starter",
+   picks a starter and an agent, and presses Create. The app makes a new workflow (see
+   "Starters").
 
 ## Workflow file
 
@@ -68,6 +73,83 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
   exist, a condition without both branches, or more steps than the limit), the app refuses the
   whole file and names the workflow and the place of the fault.
 - Notes in the file keep their text, tone and place.
+
+## Starters
+
+A **workflow starter** is a ready graph for one job. It is like an agent starter (see 002), but it
+makes a workflow. This version has one starter: **TLA+ check**.
+
+TLA+ is a public language that describes how a system behaves. TLC is a public program that tries
+every order of the steps of a TLA+ model and reports a state that breaks a rule. The starter lets
+an agent write a model of a spec, run TLC on it, and explain what TLC finds.
+
+### Way in
+
+- The menu of the Workflows page has the choice "New from a starter". It opens a dialog that lists
+  the starters. Each row shows the name, one line that says what the workflow does, and a muted
+  line that says what it needs.
+- The dialog has the field "Agent". It lists the agents that are not archived. The default is the
+  main agent (see 002), or, when there is none, the first agent of the list. Every agent step of
+  the new workflow uses this agent.
+- The choice is off, with the reason, when no agent exists ("Make an agent first."), and for a
+  linked client that has no switch "Can create and change agents" (see 012).
+- Create makes one workflow in the open profile (see 022). Its name is the name of the starter, in
+  the language of the interface at that moment. A name that is taken gets a number, as for an
+  import. The trigger is "manual". The app opens the canvas of the new workflow.
+- The workflow is an ordinary workflow from then on. The user can edit, run, export, sync and
+  delete it. The user cannot make or edit starters in this version. The assistant of the Workflows
+  page has no tool for starters.
+
+### The graph of TLA+ check
+
+| Node | Kind | Name | What it does |
+| --- | --- | --- | --- |
+| 1 | Agent step | Write model | Asks the user, with the tool "ask the user" (see 007), which spec to check: a path in the workspace, or pasted text. Reads the spec. Writes a TLA+ model and its settings file in a folder of the workspace, from the text of the spec only. The model must check at least one property. A choice that the spec does not make is an assumption, written as a comment in the model. The reply lists the properties and the assumptions. If the step cannot write the model, its reply ends with a "Blocked:" line (see 005). |
+| 2 | Agent step | Run TLC | Runs TLC on the model with a shell command. Copies the last 30 lines of the TLC output without change. The last line of the reply is `TLC_RESULT: PASS` when TLC says that it found no error, and `TLC_RESULT: FAIL` when TLC reports an error. If Java or the TLA+ tools program is missing, or if TLC cannot read the model after one fix, the reply ends with a "Blocked:" line. The step downloads nothing. |
+| 3 | Condition | TLC passed? | Mode "contains text", with the text `TLC_RESULT: PASS`. Branch "yes" goes to node 4. Branch "no" goes to node 5. |
+| 4 | Notify | No error found | The title is "TLA+ check: no error found". |
+| 5 | Agent step | Explain the finding | Explains the output of node 2 in at most 12 lines: the steps of the trace in order, the rule of the spec that each step comes from, and the assumptions that the trace needs. Says if the trace follows from the text of the spec alone. Writes the result as a question to the author of the spec, not as a defect. |
+| 6 | Notify | Possible gap | The title is "TLA+ check: possible gap". The run view holds the whole explanation. |
+
+The connections are 1 to 2, 2 to 3, 3 to 4 (yes), 3 to 5 (no), and 5 to 6.
+
+The canvas also holds one yellow note. The note says that the workflow needs Java 17 or later and
+the TLA+ tools program (the file `tla2tools.jar`) in the folder `tools` of the workspace of the
+agent, that the workflow downloads nothing, and that a pass says only that the model has no error.
+
+### Rules of the starter
+
+- The agent steps run shell commands and write files under the permission level of the agent (see
+  007). At "Read only", a shell command and a file write are refused. The steps tell the agent to
+  end its reply with a "Blocked:" line when a step is refused, so the step ends as Blocked.
+- An agent on a vendor runtime (see 006) uses the tools of that runtime. If it cannot run a shell
+  command, node 2 ends as Blocked.
+- The lines `TLC_RESULT:` and `Blocked:` are the same in English and Korean, because the app reads
+  them. All other texts of the starter (names, prompts, titles and the note) have an English and a
+  Korean version, and follow the language of the interface when the user presses Create.
+- No text of the starter says that a spec is proven, verified or correct. A pass says "no error
+  found", and it speaks about the model, not about the spec.
+- The spec text and the model go to the model provider of the agent, as in any agent step (see 000
+  and 014). TLC runs on this computer. The starter sends nothing else out.
+- The graph follows the rules of the graph and of the file format. The file that the app writes
+  for this workflow imports with nothing in "Not imported".
+
+### Surfaces
+
+- **Ways in**: the menu of the Workflows page only. Not in this version: the search field, a key,
+  a setting, a command of the message box.
+- **Devices**: a linked computer (see 012) has the same dialog, and it needs the switch "Can
+  create and change agents". The phone (see 011) cannot add a starter in this version. It shows
+  and runs the new workflow like any workflow. A second profile has its own list, and the new
+  workflow goes to the open profile only.
+- **Runtimes**: see "Rules of the starter".
+- **Ways out**: the user deletes the workflow, as any workflow. Creating one changes nothing else,
+  so no confirm is needed.
+- **Seeing the state**: the list and the run view of any workflow. A question at node 1 shows as a
+  question of a task (see 005). A Blocked step shows its reason.
+- **Data**: the new workflow syncs (see 019), exports (see 014) and goes into a workflow file like
+  any workflow. It runs on this computer.
+- **Words**: "Starter" is in the glossary.
 
 ## Assistant
 
@@ -141,3 +223,22 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
   one retry line.
 - An agent step with effort "low" runs with low effort. The next chat turn of that agent uses
   the effort that the agent had before.
+- Pick "New from a starter", pick "TLA+ check" and the agent "Reviewer", and press Create: one new
+  workflow named "TLA+ check" exists, with the trigger "manual", six steps with the nodes, kinds
+  and connections of "The graph of TLA+ check", and one note. Every agent step names "Reviewer".
+  Do it again: the second workflow has the same name with a number.
+- Export the new workflow, and import the file into an empty app that has an agent with the same
+  name: the review screen lists nothing under "Not imported", and the workflow has the same steps.
+- Run it with a stand-in agent. Node 1 asks which spec. The reply of node 2 ends with `TLC_RESULT:
+  PASS`: node 4 shows its notification, and nodes 5 and 6 do not run.
+- Run it again. The reply of node 2 ends with `TLC_RESULT: FAIL`: node 5 runs, node 6 shows its
+  notification, and node 4 does not run. The run view holds the whole explanation.
+- Run it again. The reply of node 2 ends with "Blocked: Java is missing": the run fails at node 2
+  with the reason, and nodes 3 to 6 do not run.
+- Set the agent to "Read only" and run it: the shell command of node 2 shows "Refused: read only".
+- Set the language to Korean and press Create: the name, the step names, the titles and the note
+  are Korean. The lines `TLC_RESULT:` and `Blocked:` stay English.
+- With no agent, "New from a starter" is off and says "Make an agent first." On a linked client
+  with the switch off, it is off and says why.
+- Search all texts of the starter, in English and Korean, for "proven", "verified" and "correct"
+  and for their Korean words ("증명", "검증됨", "정확"): none appear.
