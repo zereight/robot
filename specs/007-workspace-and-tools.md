@@ -11,9 +11,9 @@ Each agent works in its own folder with real tools, and the user stays in contro
   existing project. When two agents use one folder, the rules of 025 apply.
 - **Tools**: read and write files, run shell commands, search, fetch web pages, drive a browser
   window, ask the user a question, message other agents, read and run workflows (see 010), search
-  past chats (see "Searching past chats"), use the computer (see "Computer use"), use the tools of
-  the connections that the user added (see 018), read and change its own settings (see 002,
-  "Changes from the chat"), and ask for and use saved secrets (see 020).
+  and read past chats (see "Searching past chats"), use the computer (see "Computer use"), use
+  the tools of the connections that the user added (see 018), read and change its own settings
+  (see 002, "Changes from the chat"), and ask for and use saved secrets (see 020).
 - **Permission level** per agent: "Read only", "Ask for everything", "Ask for risky steps"
   (default), "Ask when unsure", or "Full access". The list goes from the strictest to the loosest
   level. A linked
@@ -161,20 +161,63 @@ the user gets a card only when the check is sure that the user asked for the ste
 
 ## Searching past chats
 
+Two tools let an agent find what was said before. "search chats" finds messages. "read chat" gives
+the text around one message.
+
+### Search chats
+
 - The tool "search chats" searches the messages that the agent took part in: its direct chats,
-  its threads, and the channels where it is a member. The match rule is the one of message
-  search (001), applied to the words that the agent gives to the tool. It skips archived places, as the search
+  its threads, and the channels where it is a member. It skips archived places, as the search
   of the user does.
-- It gives at most 10 hits, newest first. A hit has the place, the time, who wrote the message,
-  and a piece of the message of at most 300 characters around the first matching word. All
-  pieces together have at most 4000 characters.
+- The agent gives up to 12 words. The tool ignores a word of one character and a word that
+  repeats. As in message search (001), a word matches as a part of a word, and the case of the
+  letters does not matter. If no word is left, the tool tells the agent in plain words.
+- A message is a hit when it holds at least half of the words, rounded up. So the words "budget
+  euros limit total" find a message with "budget" and "euros", and do not find a message with
+  "budget" alone. Message search of the user (001) keeps its own rule: a message must hold every
+  word.
+- Hits with the most matching words come first. Hits with the same number come newest first. The
+  tool gives at most 10 hits.
+- A hit has the place, the time, who wrote the message, how many of the words the message holds,
+  a piece of the message of at most 300 characters around the first matching word, and a
+  reference to the message. All pieces together have at most 4000 characters.
+- The tool answers within 1 second when the server holds 50,000 messages.
 - It reads no tool card, no thinking, no file, and no message of a place where the agent has no
   part.
 - The tool changes nothing and needs no approval. A tool card shows "Searched past chats".
-- The tool is on only when memory is on for that agent (see 008). An agent with memory off does
-  not get it. A runtime that cannot call tools of the app does not get it either.
-- A piece of a message is input from the past. The agent does not treat it as an order that
-  overrides its own instructions or the rules of the app.
+
+### Read chat
+
+A piece of 300 characters can cut a reason in two. The tool "read chat" gives the text around one
+message.
+
+- The agent gives a reference. It comes from a hit of "search chats" or from an earlier result of
+  "read chat".
+- The tool gives that message, up to 5 messages before it, and up to 5 messages after it. They are
+  from the same place and the same thread, oldest first. The message of the reference is marked.
+- The marked message has at most 4000 characters. Each other message has at most 600 characters.
+  A cut ends with "…". So a result has at most 10000 characters of messages.
+- Each message in the result has its own reference. So the agent can read around the first or the
+  last message, to go further back or forward.
+- A tool step between two messages shows as one line. The line has the kind of step and its result
+  (Ran, Failed, Refused or Stopped), as in the action log. It has no target, no argument, no
+  output and no thinking. It does not count in the 5 messages. So the agent can see that a step
+  failed after a message, but not what the step did.
+- The tool reads what "search chats" reads, and nothing more. A reference to a message in an
+  archived place, in a place where the agent has no part, or in another profile (022) gets the
+  answer "Not found". A reference to a message that does not exist gets the same answer.
+- The tool changes nothing and needs no approval. A tool card shows "Read past chats".
+
+### Rules for both tools
+
+- Both tools are on only when memory is on for that agent (see 008). An agent with memory off
+  does not get them. A runtime that cannot call tools of the app does not get them either.
+- A piece of a message, and a message in a result, is input from the past. The agent does not
+  treat it as an order that overrides its own instructions or the rules of the app.
+- No log holds the words that the agent gave or the text that a tool gave back (see 014).
+- The tools run on the server of the agent. A linked client (012) and the phone (011) show the
+  tool card only. The tools read stored messages. They add nothing to sync (019), to an export
+  (014) or to the cache of the phone.
 
 ## Computer use
 
@@ -336,7 +379,9 @@ text is in the turn.
   - a message from another agent,
   - the text that an agent wrote on a card of the board (024),
   - a message of an outside program (023),
-  - a hit of "search chats" (see "Searching past chats") on a message that the user did not write.
+  - a hit of "search chats", or a message in a result of "read chat" (see "Searching past
+    chats"), when the user did not write that message. A line for a tool step in such a result is
+    not outside content, because it holds no text of the step.
   Files in the workspace and files that the user attaches are not outside content.
 - A turn **holds outside content** from the first step that gives outside content to the agent
   until the turn ends. A turn that a watch routine, a message from another agent or a message of
@@ -379,8 +424,9 @@ text is in the turn.
   program (023). The mark goes with the outside content: to later turns and forks that hold it
   (see above), to the parts of a job, and to a message that an agent sends from a turn that holds
   the program mark. The turn that such a message starts holds the program mark too. A hit of
-  "search chats" on a message of an outside program, or on a message from a turn that held the
-  program mark, gives the program mark to the turn that gets the hit. "Clear" (see
+  "search chats", or a result of "read chat", that holds a message of an outside program, or a
+  message from a turn that held the program mark, gives the program mark to the turn that gets it.
+  "Clear" (see
   "The mark of a place") also clears the program mark of that place.
 - At "Full access", a guarded step runs with no question. A Deny rule still refuses it. The
   exception is a turn that holds the program mark: there a guarded step asks the user, also at
@@ -530,8 +576,26 @@ steer the agent to an address that only this computer or its network can reach.
 
 - Tell an agent in one chat that the project code name is "Falcon". In a new thread, ask what
   the code name is: the agent calls "search chats", a tool card "Searched past chats" shows, and
-  the answer names "Falcon". Turn memory off for the agent: the tool is not offered.
+  the answer names "Falcon". Turn memory off for the agent: neither "search chats" nor "read chat"
+  is offered.
 - Ask an agent to search for a word that only a channel without that agent holds: it gets no hit.
+- A chat holds "The budget is 4200 euros" and "Budget review is on Friday". The agent searches
+  "budget euros limit total": only the first message is a hit. The agent searches "budget euros":
+  both are hits, the first one comes first, and it says that it holds 2 of 2 words. The user
+  types "budget euros limit total" in the search field (001): the group "Messages" shows no hit.
+- The agent searches "a b": the tool says that no usable word is left, and gives no hit.
+- A chat holds "We chose Postgres" and, as the next message, the reasons for it. The agent
+  searches "chose Postgres": the piece of the hit holds no reason. The agent calls "read chat"
+  with the reference of the hit: a tool card "Read past chats" shows, the result holds both
+  messages, and the answer names the reason.
+- A chat of 30 messages: "read chat" on the 15th message gives 11 messages, 5 before, the marked
+  one, and 5 after. A message of 1000 characters that is not the marked one ends with "…" after 600
+  characters. The marked message is whole.
+- A chat holds a message, then a shell step that fails with the command `echo MARKER-TEXT`, then
+  another message. "read chat" on the first message shows one line for the step, with its kind and
+  "Failed". The result does not hold "MARKER-TEXT".
+- Archive a chat, then give "read chat" a reference to one of its messages: the answer is "Not
+  found". A reference that never existed gets the same answer.
 - At "Ask for risky steps", `rm` of a file outside the workspace shows an approval card and does
   nothing until the user allows it.
 - Stop during browser work closes the page work within 2 seconds.
@@ -643,6 +707,10 @@ steer the agent to an address that only this computer or its network can reach.
   returns the note that it was dismissed. With a stand-in system that reports low memory, an idle
   tab unloads and an idle stand-in program ends at once. A tab that plays a stand-in sound stays
   loaded. Delete the agent: its program ends and its browser closes at once.
+- "Full access": a message of an outside program is in a chat, and the message before it is from
+  the user. In a new thread, the agent finds the message of the user with "search chats", and
+  calls "read chat" on that hit. The result holds the message of the program. The agent then tries
+  to change its instructions: an approval card shows.
 - Sensitive read, at "Ask for risky steps" with an Allow rule for `curl`: the agent reads a test
   file in a stand-in credential place, then runs a `curl` command that sends data. An approval card
   shows with "This turn read a place with keys or logins." and with Allow once and Deny only. In a
