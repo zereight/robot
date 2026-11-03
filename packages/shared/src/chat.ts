@@ -108,6 +108,8 @@ export type MessagePart =
        * with the level as the one who decided.
        */
       readonly refused?: RefusalReason
+      /** Set when an Allow rule let the step run with no question: the card says so (spec 007). */
+      readonly ruleAllowed?: true
       /**
        * Set when the app refused or failed the step for a reason of its own (spec 005): a code
        * that the card translates, for example the limit of the chain of messages.
@@ -134,6 +136,11 @@ export type ToolAsk =
        * names the label of the first place. Such a card always has `once`.
        */
       readonly sensitive?: SensitiveLabel
+      /**
+       * Set when the card asks because a rule that the app cannot read meets the step (spec 007,
+       * "Permission rules"). The card says so. Such a card always has `once`.
+       */
+      readonly unreadable?: true
     }
   | {
       readonly kind: "question"

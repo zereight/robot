@@ -461,7 +461,14 @@ describe("the guard that later slices use", () => {
               .guarded(context, "g1", {
                 step: o.step ?? "settings",
                 target: "name: Ada → Bob",
-                denied: o.denied === true,
+                ...(o.denied === true
+                  ? {
+                      rule: {
+                        kind: "deny" as const,
+                        rule: { id: "r1", kind: "file" as const, text: "/x", detail: null },
+                      },
+                    }
+                  : {}),
                 work: async () => {
                   ran++
                   return "changed"

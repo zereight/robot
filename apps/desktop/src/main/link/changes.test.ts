@@ -295,7 +295,7 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       expect(codeOf(await p.ask("agents.update", { id: created.id, patch }))).toBe("invalid_input")
     }
     const db = await p.server.runtime.runPromise(Database.use((d) => Effect.succeed(d)))
-    expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM agent_allow")?.n).toBe(0)
+    expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM permission_rule")?.n).toBe(0)
   })
 
   test("a model that the server does not offer is refused; an offered one works", async () => {

@@ -31,6 +31,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | ACP program | A program that speaks the Agent Client Protocol and that the user adds as an agent runtime (006). | ACP 프로그램 (proposed) | plugin, integration |
 | Older models | The folded group of the model picker for models that have a newer version (006). | 이전 모델 (proposed) | legacy, deprecated |
 | Permission level | How much an agent may do before it asks (007). | 권한 수준 | mode, autonomy |
+| Rule | A decision that the user keeps, so the app does not ask again (Allow) or does not run a step (Deny) (007). | 규칙 | policy, filter, preset |
 | Ask when unsure | The level at which the decision model checks a risky step against the words of the user (007). | 확실하지 않을 때만 확인 (proposed) | auto mode, autopilot |
 | Permission checks | The switch that lets the decision model check steps (013). | 권한 판단 (proposed) | classifier, guard |
 | Read-only mark | The mark of a connection that a tool changes nothing (018). | 읽기 전용 표시 (proposed) | safe tool |

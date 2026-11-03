@@ -1,8 +1,8 @@
 import { mkdirSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { isAbsolute, join, resolve } from "node:path"
 import { createInterface } from "node:readline"
-import { insideWorkspace, type RuntimeLimit, riskyReason } from "@robot/shared"
+import { hostOf, insideWorkspace, type RuntimeLimit, riskyReason } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
 import { bridgeToolName, stage } from "./bridge.ts"
@@ -445,6 +445,7 @@ export const describeRequest = (
       risky: reason !== null,
       key: `run_command:${reason ?? firstWord(command)}`,
       summary: command,
+      step: { kind: "shell", command },
     }
   }
   if (FILE_READ.has(tool) || FILE_WRITE.has(tool)) {
@@ -456,10 +457,17 @@ export const describeRequest = (
       risky: !inside,
       key: `${base}${inside ? "" : ":outside"}`,
       summary: `${tool}: ${path}`,
+      step: { kind: "file", path: isAbsolute(path) ? path : resolve(workspace, path) },
     }
   }
   if (tool === "WebFetch")
-    return { callId, risky: false, key: "fetch_url", summary: str(input.url) || tool }
+    return {
+      callId,
+      risky: false,
+      key: "fetch_url",
+      summary: str(input.url) || tool,
+      ...(hostOf(str(input.url)) ? { step: { kind: "web", host: hostOf(str(input.url)) } } : {}),
+    }
   if (tool === "WebSearch")
     return { callId, risky: false, key: "web_search", summary: str(input.query) || tool }
   const detail = JSON.stringify(input).slice(0, 200)

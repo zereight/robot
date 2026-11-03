@@ -43,6 +43,7 @@ import type {
   RuntimeTarget,
 } from "./providers.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
+import type { PermissionRule, RuleDecision, RuleInput } from "./rules.ts"
 import type { SearchPage } from "./search.ts"
 import type { SavedSecret } from "./secrets.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
@@ -387,6 +388,20 @@ export interface RpcMethods {
     output: readonly ActionLogEntry[]
   }
   /**
+   * The permission rules of this computer, newest first (spec 007). The rules page is for the
+   * computer only: none of the rules methods is offered to a linked device (spec 012).
+   */
+  "rules.list": {
+    input: { agentId?: string | null; decision?: RuleDecision }
+    output: readonly PermissionRule[]
+  }
+  /** Adds a rule from the rules list. A rule that equals one that exists is refused. */
+  "rules.add": { input: RuleInput; output: PermissionRule }
+  /** Changes a rule. The result is the rule as kept. */
+  "rules.update": { input: { id: string; rule: RuleInput }; output: PermissionRule }
+  /** Deletes a rule. A rule that was deleted already is not an error. */
+  "rules.delete": { input: { id: string }; output: undefined }
+  /**
    * The saved secrets of this computer (spec 020), never a value. Not offered to a linked device,
    * and a value never goes over a link.
    */
@@ -652,6 +667,8 @@ export interface RpcEvents {
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
   "actionLog.changed": Record<string, never>
+  /** A permission rule was added, changed or deleted, or an agent with rules was deleted. */
+  "rules.changed": Record<string, never>
   /** A saved secret was added, used, replaced or deleted. */
   "secrets.changed": Record<string, never>
   /** An article, a source or the change list of an agent changed. */

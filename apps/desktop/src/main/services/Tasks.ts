@@ -19,6 +19,7 @@ import {
   type RecentWorkRow,
   type RetryNote,
   type RetryResult,
+  type RuleRef,
   raiseProgress,
   remoteRetryNote,
   retryNote,
@@ -114,6 +115,8 @@ export interface StepRecord extends Omit<LoggedStep, "at"> {
   readonly taskId: string
   /** Who decided that the step ran or did not run. */
   readonly decidedBy: ActionDecider
+  /** The rule that decided the step, or that could not be read (spec 007). */
+  readonly rule?: RuleRef | null
   /** The first source of outside content of the turn, or null. */
   readonly outside: OutsideSource | null
   /** The label of the first credential place that the turn read, or null (spec 007). */
@@ -950,6 +953,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           access: step.access,
           target: step.target,
           decidedBy: step.decidedBy,
+          ...(step.rule ? { rule: step.rule } : {}),
           result: step.result,
           taskId: step.taskId,
           outside: step.outside,

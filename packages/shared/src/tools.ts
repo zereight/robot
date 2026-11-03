@@ -149,7 +149,7 @@ export const readOnlyRefusesKey = (level: PermissionLevel, key: string) =>
   !/^(?:read_file|list_files|fetch_url|web_search|network)(?::|$)/.test(key)
 
 /**
- * Why a step did not run: the level "Read only", or an address that is never allowed (spec 007,
- * "Sensitive places"). Rules come with their own reasons.
+ * Why a step did not run: the level "Read only", an address that is never allowed (spec 007,
+ * "Sensitive places"), or a Deny rule (spec 007, "Permission rules").
  */
-export type RefusalReason = "read_only" | "address"
+export type RefusalReason = "read_only" | "address" | "rule"

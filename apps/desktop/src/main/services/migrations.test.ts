@@ -694,3 +694,141 @@ describe("the step of the moments of a task", () => {
     expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([{ kind: "task", id: "t" }])
   })
 })
+
+describe("the step of permission rules (S30)", () => {
+  const RULES = migrations.findIndex((sql) => sql.includes("CREATE TABLE permission_rule"))
+  const before = () => {
+    const db = upTo(RULES)
+    db.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, knowledge_enabled, created_at, updated_at)
+        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 0, 1, 1);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, knowledge_enabled, created_at, updated_at)
+        VALUES ('b', 's', 'Bo', 'bo', '', '', 0, 0, '/w2', 'agents', 0, 1, 1);
+    `)
+    return db
+  }
+  const allow = (db: DatabaseSync, agent: string, key: string) =>
+    db.prepare("INSERT INTO agent_allow (agent_id, key) VALUES (?, ?)").run(agent, key)
+  const rules = (db: DatabaseSync) =>
+    db
+      .prepare(
+        "SELECT agent_id AS agent, kind, match_text AS text, detail, decision, source FROM permission_rule ORDER BY kind, match_text, detail",
+      )
+      .all()
+
+  test("it comes after the table of the log and no trigger of sync watches the rules", () => {
+    expect(RULES).toBeGreaterThan(
+      migrations.findIndex((sql) => sql.includes("CREATE TABLE action_log")),
+    )
+    const db = new DatabaseSync(":memory:")
+    for (const sql of migrations) db.exec(sql)
+    const triggers = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'permission_rule'",
+      )
+      .all()
+    expect(triggers).toEqual([])
+    const columns = db.prepare("PRAGMA table_info(action_log)").all() as { name: string }[]
+    expect(columns.map((c) => c.name)).toEqual(
+      expect.arrayContaining(["rule_id", "rule_kind", "rule_text", "rule_detail"]),
+    )
+  })
+
+  test("the keys that name a step become Allow rules from a card, and the old table goes", () => {
+    const db = before()
+    allow(db, "a", "run_command:git status")
+    allow(db, "a", "run_command:control:echo x >> ~/.zshrc")
+    allow(db, "a", "write_file:control:/home/u/.zshrc")
+    allow(db, "a", "write_file:/data/out.txt")
+    allow(db, "b", "read_file:/data/in.txt")
+    allow(db, "a", "list_files:/data/dir")
+    allow(db, "a", "fetch_url:local:127.0.0.1")
+    allow(db, "b", "network:Example.COM")
+    allow(db, "a", "secret_request:stripe:POST")
+    allow(db, "a", "secret_request:my:odd:name:*")
+    db.exec(migrations[RULES] as string)
+    const card = { decision: "allow", source: "card", detail: null }
+    expect(rules(db)).toEqual([
+      { agent: "a", kind: "file", text: "/data/dir", ...card },
+      { agent: "b", kind: "file", text: "/data/in.txt", ...card },
+      { agent: "a", kind: "file", text: "/data/out.txt", ...card },
+      { agent: "a", kind: "file", text: "/home/u/.zshrc", ...card },
+      { agent: "a", kind: "secret", text: "my:odd:name", ...card },
+      { agent: "a", kind: "secret", text: "stripe", ...card, detail: "POST" },
+      { agent: "a", kind: "shell", text: "echo x >> ~/.zshrc", ...card },
+      { agent: "a", kind: "shell", text: "git status", ...card },
+      { agent: "a", kind: "web", text: "127.0.0.1", ...card },
+      { agent: "b", kind: "web", text: "example.com", ...card },
+    ])
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'agent_allow'").all()).toEqual(
+      [],
+    )
+  })
+
+  test("a key for a whole class of steps is dropped: a rule is never wider than the key was", () => {
+    const db = before()
+    for (const key of [
+      "run_command:install",
+      "run_command:network",
+      "run_command:sudo",
+      "run_command:shell_pipe",
+      "run_command:delete_outside",
+      "run_command:",
+      "read_file",
+      "read_file:outside",
+      "write_file",
+      "write_file:outside",
+      "list_files",
+      "list_files:outside",
+      "fetch_url",
+      "web_search",
+      "browser_open",
+      "browser_act",
+      "forget_secret",
+      "tool:Skill",
+      "mcp:server:tool:{}",
+    ])
+      allow(db, "a", key)
+    db.exec(migrations[RULES] as string)
+    expect(rules(db)).toEqual([])
+  })
+
+  test("a key of text over 500 characters is dropped, and two equal keys make one rule", () => {
+    const db = before()
+    allow(db, "a", `run_command:${"x".repeat(501)}`)
+    allow(db, "a", "run_command:ls")
+    allow(db, "a", "run_command:control:ls")
+    db.exec(migrations[RULES] as string)
+    expect(rules(db)).toEqual([
+      { agent: "a", kind: "shell", text: "ls", detail: null, decision: "allow", source: "card" },
+    ])
+  })
+
+  test("deleting an agent deletes its rules, and a rule for all agents stays", () => {
+    const db = before()
+    db.exec("PRAGMA foreign_keys = ON")
+    db.exec(migrations[RULES] as string)
+    db.exec(`
+      INSERT INTO permission_rule (id, server_id, agent_id, kind, match_text, detail, decision, source, created_at)
+        VALUES ('r1', 's', 'a', 'shell', 'ls', NULL, 'allow', 'list', 1),
+               ('r2', 's', NULL, 'shell', 'pwd', NULL, 'deny', 'list', 2);
+      DELETE FROM agent WHERE id = 'a';
+    `)
+    expect(db.prepare("SELECT id FROM permission_rule").all()).toEqual([{ id: "r2" }])
+  })
+
+  test("a log entry from before keeps its row, with no rule", () => {
+    const db = upTo(RULES)
+    db.exec(`
+      INSERT INTO action_log (id, at, agent_id, agent_name, kind, target, decided_by, result)
+        VALUES ('e', 1, 'a', 'Ada', 'shell', 'ls', 'level', 'ran');
+    `)
+    db.exec(migrations[RULES] as string)
+    expect(db.prepare("SELECT id, rule_id, rule_text FROM action_log").all()).toEqual([
+      { id: "e", rule_id: null, rule_text: null },
+    ])
+  })
+})

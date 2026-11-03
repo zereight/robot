@@ -405,7 +405,13 @@ export const describeMuseApproval = (params: unknown): ApprovalRequest => {
   const kind = str(subject.kind)
   if (kind === "shell") {
     const command = str(subject.command)
-    return { callId, risky: true, key: `run_command:${command.trim()}`, summary: command }
+    return {
+      callId,
+      risky: true,
+      key: `run_command:${command.trim()}`,
+      summary: command,
+      step: { kind: "shell", command },
+    }
   }
   if (kind === "fileAccess") {
     const path = str(subject.path) || "."
@@ -415,6 +421,7 @@ export const describeMuseApproval = (params: unknown): ApprovalRequest => {
       risky: true,
       key: `${base}:${path}`,
       summary: `${str(request.toolName) || base}: ${path}`,
+      step: { kind: "file", path },
     }
   }
   const host = str(subject.host)
@@ -427,6 +434,7 @@ export const describeMuseApproval = (params: unknown): ApprovalRequest => {
       risky: true,
       key: `network:${host}`,
       summary: `${protocol ? `${protocol}://` : ""}${host}${port}`,
+      step: { kind: "web", host },
     }
   }
   const args = str(request.rawArgs)
