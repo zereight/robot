@@ -22,7 +22,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
    as on desktop. This includes the user sections, with the same order and the same badge on a
    collapsed header. The user can open and close a section on the phone. The phone remembers
    this for itself. In this version the phone cannot make, rename, order or delete a section, and
-   it cannot move a place to a section. The user does this on the computer.
+   it cannot move a place to a section, and it cannot pin or unpin a place. The user does this on
+   the computer. The phone shows the group "Pinned" and the sections inside sections (001).
 3. **Conversation**: message rows as on desktop, Markdown, tool cards (tap for details), the
    message box with attach (photos, files), stop, and reply.
 4. **Approvals**: approval and question cards can be answered in the conversation or from a
@@ -67,6 +68,7 @@ camera.
 | --- | --- |
 | Phone 1 | First start, pairing, Servers, Places, Conversation (read, streamed replies, send, stop, reply, attach photos and files, open files), approval and question cards in the conversation, Needs you (approvals and questions only), offline cache, notifications while the app is open, Settings. |
 | Phone 2 | Needs you with failed channel parts, Workflows, and the list in "Same as the computer". |
+| Phone 3 | The group "Pinned" and sections inside sections, the list in "More on the phone", and voice (027). |
 
 Until a screen comes, the phone does not show it. Phone 1 is a complete app: every screen it
 shows works.
@@ -75,14 +77,35 @@ shows works.
 
 The phone follows the computer in these points: the `@all` mention in channels (004), the random
 name button and the role list for agents (002, 013), the word "archived" for channels (004), the
-context meter (003), the command list (003),
+context meter (003), "Mark as unread" (003), the command list (003),
 the main agent switch (002), the end of a request (004), the search of messages (001), and the
-line that tells how far a failed turn went, with the button "Send again" (003, 005), and the box
-and the button "Load image" for a picture from the web (003). The phone shows no marketplace. In
-this version the phone shows the main thread of a direct chat only. It has no Compact control, no
-fork and no "Run next" (003, 005). It does not start a handover (003) and does not make a skill from
-work (017). It shows the muted line "Handed over to <name>" in a main thread, and it does not review
-the tools of a connection (018).
+line that tells how far a failed turn went, with the button "Send again" (003, 005), the box
+and the button "Load image" for a picture from the web (003), and the picture of a channel
+(004). The phone shows no marketplace. In this version the phone shows the main thread of a
+direct chat only. It has no Compact control, no fork and no "Run next" (003, 005). It does not
+start a handover (003) and does not make a skill from work (017). It shows the muted line
+"Handed over to <name>" in a main thread, and it does not review the tools of a connection
+(018).
+
+## More on the phone
+
+- **Share to an agent**: the share sheet of iOS and the share menu of Android list ROBot. The user
+  shares text, a link, an image or a file from another app. A small sheet opens. It lists the
+  paired servers and their agents, with the agent used last first, and has a box for a message and
+  "Send". The app does not open its full screens. It sends the shared item to that agent as text or
+  as an attachment, with the message. The limits of 003 apply. "Cancel" closes the sheet and
+  sends nothing. The phone keeps no copy of the shared item. If the server is offline, the sheet
+  says so and sends nothing.
+- **Face in a notice**: a notice of a reply, a mention, an approval or a failed task shows the face
+  or the picture of the agent when the system allows an image in a notice. If not, it shows the
+  mark of the app.
+- **Thinking sheet**: the row of thinking in a reply opens a sheet that lists all thoughts of that
+  turn in order. Opening it starts nothing.
+- **Image stack**: a message with more than one image shows the images as a stack of cards, also
+  while the message is still being sent. A tap opens a viewer where the user swipes through them.
+- **Icon**: the Android app icon has a layer for the themed icons of the system.
+- **Voice**: dictate, read aloud and voice chat. See 027.
+- **Quiet notices**: the computer holds a notice back while the user works at it. See 015.
 
 ## Rules
 
@@ -128,3 +151,9 @@ the tools of a connection (018).
   again" for that computer.
 - Put the app in the background for one minute, then open it: the server goes back online
   without a new pairing, and a reply that ended in the meantime shows.
+- Share a link from another app on a stand-in phone: the sheet lists the paired servers, the user
+  picks an agent and presses Send, and the agent gets a message that holds the link. With the
+  server offline, the sheet says so and nothing is sent.
+- A message with three images shows a stack. A tap opens the viewer, and a swipe goes to the next
+  image.
+- Open the thinking row of a reply: the sheet lists every thought of the turn.

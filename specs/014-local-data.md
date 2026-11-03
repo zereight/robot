@@ -44,6 +44,9 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   tasks and reply text. It runs on this computer, and it can send what it gets to its own model
   provider. The app cannot see this. It is off until the user turns it on.
 - The app sends no usage events and no failure reports. It has no analytics at all.
+- Voice (027) keeps no sound. Recognition runs on the device. The web hook of a workflow (010)
+  listens on this computer only. Its secret is in the keychain, and the file of a workflow and an
+  export hold none.
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up or to a page that an agent visits.
 - Secrets (keys, tokens, secret values of environment variables, secret values of a connection)
@@ -51,7 +54,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   looks like a secret when it equals a stored key, or holds a key or token of a known form: for
   example a long string that starts with "sk-", "ghp_" or "xox", or a block from "-----BEGIN" to
   "PRIVATE KEY-----". The keys of device links are secrets. A linked device never receives
-  provider keys. The values of saved secrets (020) are in the keychain too.
+  provider keys. The values of saved secrets (020), and the user names and passwords of saved logins, are in the
+  keychain too.
 - A service that an agent has a saved secret for (020) gets what the agent writes in a request
   with that secret. The app sends it nothing else.
 - A watch routine on a tool of a connection (009) calls that tool at each check, with the

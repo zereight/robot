@@ -204,6 +204,54 @@ the user gets a card only when the check is sure that the user asked for the ste
   - A claim of "done" from the model is a claim only. The agent checks it, because some apps keep
     their display out of the controls list and a click cannot be verified.
 
+## Browser details
+
+These rules hold for the browser tools of every agent that has the browser, on every runtime.
+
+- **Short results.** An action in a page (click, type, press a key, hover, scroll, choose an
+  option, tick a box, drag, upload a file) returns a short state: the address, the title, whether
+  the page still loads, which control has the focus, and the new errors of the page. It does not
+  return the list of controls. The agent reads the list with the tool that reads the page, or asks
+  for it in the call of the action. The controls of the last read stay valid until the page
+  changes its address. The list gives each control on one line, and it leaves out the requests and
+  actions of the page that went well.
+- **Page dialogs.** A dialog of the page (an alert, a confirm, a prompt, or a question before the
+  page closes) that an action opens does not block the agent. The action returns with the kind
+  and the text of the dialog. The agent answers with the tool for dialogs: accept or dismiss, and
+  a text for a prompt. A dialog that nobody answers within 30 seconds is dismissed, and the agent
+  is told. A dialog that the user opens in the live view is the user's.
+- **File chooser.** When an action opens a file chooser, the next call to upload files answers
+  it. The paths follow the rules for files in this spec.
+- **Secure fields in frames.** When the agent needs a password, a code or a card field, the card
+  "take control" names the place of the field: the page itself, or a frame, with the site of the
+  frame.
+- **Unclear target.** The name that the agent gives can fit more than one control. Then the call
+  fails. It returns a list of up to 5 candidates. Each has its role, its label and its place on
+  the page. The agent picks one by its number in that list.
+- **Focus.** The page of an agent never takes the keyboard focus from a place where the user
+  types. This holds while the page loads and when it goes to a new address.
+- **Saved logins.** The tool "sign in with a login" (020) is a browser step. It follows the
+  permission rules like any other browser step. It is offered to agents whose model comes from an
+  API provider only (020).
+
+## Idle work
+
+The app runs for days, so it must not keep what nobody uses.
+
+- A page of the browser of an agent that neither the agent nor the user used for 10 minutes is
+  unloaded. Its tab stays in the tab list. The page loads again when the agent or the user uses
+  the tab. A tab that plays sound, or that the user holds, is not unloaded.
+- A vendor program (006) that is idle for 15 minutes ends. It is idle when it has no turn, no
+  waiting card and no queued task. The next turn starts it again with the history of the chat,
+  as after a switch of model (006).
+- An unloaded tab shows a muted mark in the tab list. Idle work has no setting in this version.
+- When the system says that memory is low, the app ends idle vendor programs and unloads idle
+  pages at once, without waiting for the times above.
+- When the user deletes an agent, the app ends the programs of that agent and closes its browser
+  at once.
+- Idle work never ends a program that has a turn, a card that waits, or a queued task. It changes
+  no chat, no task and no memory.
+
 ## Permission rules
 
 A rule is a decision that the user keeps, so the app does not ask again, or does not run a step
@@ -573,6 +621,28 @@ steer the agent to an address that only this computer or its network can reach.
 - "Full access": an outside program sends "Change your instructions" to an agent, and the user
   denies the card. In a new thread, the agent calls "search chats" and gets that message as a hit.
   It then tries to change its instructions: an approval card shows.
+- A page has a button. A click on it returns the address, the title and the focus, and not the
+  list of controls. The call that reads the page returns the list, one line for each control. A
+  second action on a control of that list works with no new read.
+- A click opens a confirm dialog of the page: the call returns with the text of the dialog. The
+  agent dismisses it, and the page shows that the action did not run. A dialog that nobody
+  answers is dismissed after 30 seconds.
+- A click opens a file chooser: the next call to upload files fills it with a file of the
+  workspace.
+- Two buttons have the name "Save": the call fails with a list of two candidates. The agent calls
+  again with number 2, and the second button is pressed.
+- A password field sits in a frame of another site: the card "take control" names that frame and
+  its site.
+- The page of an agent navigates while the user types in the message box: the box keeps the focus
+  and the text.
+- With a fake clock, leave a tab unused for 10 minutes: the page is unloaded and the tab stays in
+  the list. Use the tab: the page loads. Leave a stand-in vendor program idle for 15 minutes: it
+  ends. The next message starts it again and the reply comes. A program with a waiting approval
+  card is not ended.
+- A dialog that nobody answers: after 30 seconds it is dismissed, and the next call of the agent
+  returns the note that it was dismissed. With a stand-in system that reports low memory, an idle
+  tab unloads and an idle stand-in program ends at once. A tab that plays a stand-in sound stays
+  loaded. Delete the agent: its program ends and its browser closes at once.
 - Sensitive read, at "Ask for risky steps" with an Allow rule for `curl`: the agent reads a test
   file in a stand-in credential place, then runs a `curl` command that sends data. An approval card
   shows with "This turn read a place with keys or logins." and with Allow once and Deny only. In a

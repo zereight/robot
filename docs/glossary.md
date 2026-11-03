@@ -24,7 +24,12 @@ A new word goes here in the same pull request as the spec that brings it.
 | Connection | An outside tool provider that speaks MCP (018). | 연결 | integration, app, plugin |
 | Tool search | The step "Search tools", with which an agent finds the tools of its connections when it may use more than 20 (018). | 도구 검색 (proposed) | lookup, discover, browse |
 | Saved secret | A key or password that an agent uses and the model never sees (020). | 저장된 비밀 값 | credential, token |
+| Saved login | A user name and a password for a site, which the browser of an agent fills in. The model never sees them (020). | 저장된 로그인 (proposed) | credential, account |
 | Model account | A provider or a vendor program that the user signed in to (006). | 모델 계정 | provider (in interface text), subscription |
+| Backup model | The model that an agent uses while its main model is held (006). | 백업 모델 (proposed) | fallback, failover |
+| Held model | A main model that the app does not use until a reset time, because its limit is spent (006). | 보류된 모델 (proposed) | blocked, banned |
+| ACP program | A program that speaks the Agent Client Protocol and that the user adds as an agent runtime (006). | ACP 프로그램 (proposed) | plugin, integration |
+| Older models | The folded group of the model picker for models that have a newer version (006). | 이전 모델 (proposed) | legacy, deprecated |
 | Permission level | How much an agent may do before it asks (007). | 권한 수준 | mode, autonomy |
 | Ask when unsure | The level at which the decision model checks a risky step against the words of the user (007). | 확실하지 않을 때만 확인 (proposed) | auto mode, autopilot |
 | Permission checks | The switch that lets the decision model check steps (013). | 권한 판단 (proposed) | classifier, guard |
@@ -102,6 +107,22 @@ A new word goes here in the same pull request as the spec that brings it.
 | Mine | The switch of a card that the user does alone. Agents do not see it (024). | 내가 할 일 (proposed) | Human, private |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
+| Keep going | The app asks an agent to go on when a turn ends with open steps (005). | 이어서 진행 (proposed) | autopilot, auto-run |
+| Web hook | A trigger of a workflow: an address on this computer that an outside service calls (010). | 웹훅 (proposed) | endpoint, API |
+| Pinned | A place that the user keeps at the top of the place list (001). | 고정됨 (proposed) | favourite, starred |
+| Mark as unread | The action that makes a message and the later messages of agents count as unread again (003). | 읽지 않음으로 표시 (proposed) | flag |
+| Dictate | Speech that becomes text in the message box (027). | 받아쓰기 (proposed) | transcribe |
+| Read aloud | The app speaks a finished message of an agent (027). | 소리 내어 읽기 (proposed) | narrate, TTS |
+| Voice chat | A spoken talk with one agent on the phone (027). | 음성 대화 (proposed) | call |
+| Menu bar item | The small icon of the app in the menu bar of the Mac (015). | 메뉴 막대 항목 (proposed) | tray, widget |
+| Recogniser | The speech recognition of the system of a device. It must run on the device (027). | 음성 인식기 (proposed) | speech service |
+| Limit reason | The plan limit, the credit or the quota is spent. It moves an agent to its backup model (006). | 한도 소진 (proposed) | error |
+| Image stack | The stack of cards that shows more than one image of a message on the phone (011). | 이미지 묶음 (proposed) | gallery |
+| Thinking sheet | The sheet on the phone that lists all thoughts of a turn (011). | 생각 보기 (proposed) | log |
+| Share to an agent | The target of the share sheet of the phone that sends an item to an agent (011). | 에이전트에게 공유 (proposed) | export |
+| Find in the chat | The bar of Cmd+F that finds text in the chat that is open (003). | 대화에서 찾기 (proposed) | search (search is Cmd+K, 001) |
+| Sound when a task ends | The setting for the sound of a result (015). | 작업이 끝날 때 소리 (proposed) | alert |
+| Keep phones quiet | The setting that holds notices to phones while the user works at the computer (015). | 일하는 동안 폰 알림 보류 (proposed) | focus mode |
 | Sensitive read | A step that reads a place with keys or logins. The turn then holds a mark (007). | 민감한 정보 읽기 (proposed) | leak, breach |
 | Control place | A place that starts a program later or gives access to the computer. A change there is a hard step (007). | 제어 위치 (proposed) | system folder |
 

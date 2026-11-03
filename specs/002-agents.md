@@ -17,6 +17,8 @@ An agent has:
 - **Instructions**: free text that the agent always follows.
 - **Read the handbook**: a switch, on by default. See "Handbook".
 - **Model**: the provider and model it uses (see 006), and an effort level when the model has one.
+- **Backup model**: optional. The model that takes the turns of the agent while its main model is
+  held because a limit is spent (see 006, "Backup model"). It starts as "None".
 - **Workspace**: a folder on the computer that belongs to this agent (see 007).
 - **Section**: the user section of the Agents list that it shows in, or none. With none, the agent
   shows in the Agents list itself (see 001, "User sections").

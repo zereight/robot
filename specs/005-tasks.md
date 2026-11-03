@@ -147,6 +147,40 @@ A channel can ask for the review of its parts (004, "Review of parts").
 - A task in review stays in review after an app restart. It has no time limit.
 - "End the request" cancels a task in review. "Stop" does not change it.
 
+## Keep going
+
+An agent can end a turn before its work is done and leave steps open. The app can ask it to go on,
+so the user does not need to sit by it.
+
+- A setting in General (013), "Keep going on open steps", is on by default.
+- This holds for an agent whose program or runtime reports a list of steps (a plan) to the app
+  (006). An agent that reports no list has no step that can be open, so nothing goes on by itself.
+- The app decides from the list, not from the words of a reply. The only line of a reply that the
+  app reads is the last line "Blocked:" (see "Blocked").
+- A turn goes on when it ends with no error, no Stop, no "Blocked:" line and no waiting card, and
+  the last list holds at least one step that is not done. The app sends one short message. It asks
+  the agent to go on with the open steps, and to ask the user with a question card when it needs
+  a decision. It is not a message of the user. The chat shows a muted line, "Kept going (1 of
+  8)", and no row of the user.
+- It is the same task. The steps add to the step limit and to the usage of the task. The silent
+  limit, Stop and "Messages during a turn" (003) work as before. A message of the user during a
+  continuation joins the turn.
+- A request can go on at most 8 times. A request is the message, the run of a routine, the
+  workflow step or the part that made the task.
+- The continuations stop earlier when the open steps are the same as before the last
+  continuation: the same count and the same labels. The task then ends as it does without Keep
+  going: Done, when the last turn ended with no error (In review for a part of a channel that asks
+  for review). The chat shows no line for this stop.
+- A question card is a wait, not an end, so no continuation starts while it shows. A question
+  in the plain text of a reply makes no card. The go-on message does not answer it. The app
+  never answers a question of the agent for the user.
+- A turn that a continuation follows makes no notification, no result card and no sound for its
+  end (015). They come when the task ends.
+- A task that is cancelled, failed or blocked does not go on. A part of a channel job goes on
+  before it is done, so the check of the lead (004) starts only after the last continuation.
+- The muted line is stored with the chat and syncs with the messages (019). A linked device and
+  the phone show it. The setting is local to the computer (013).
+
 ## Retry note
 
 A step that may change things is a file write, a shell command, or a tool of a connection (007)
@@ -421,3 +455,16 @@ stops the turn.
   Judged, and the done test still shows.
 - A task of a direct chat ends: its view shows Given, Started, Ended and Closed. It shows no done
   test, no verdict, no Decided and no Judged.
+- A stand-in runtime ends its turn with a list of two open steps: the app sends the short message,
+  the chat shows "Kept going (1 of 8)", and no row of the user. The stand-in closes both steps and
+  ends: one task, ended Done once, with the usage of both turns.
+- A stand-in runtime never changes its list of open steps: the app asks once, sees the same list,
+  and the task ends. A stand-in runtime that opens a new step at each end: the app asks 8 times and
+  the task ends.
+- Turn "Keep going on open steps" off: the first end of the turn ends the task.
+- A reply ends with the text "Shall I continue?" and the list has no open step: the task ends and
+  nothing is sent. The same reply with one open step: the go-on message is sent, and it tells the
+  agent to use a question card. The app sends no "yes". An agent that reports no list: nothing is
+  sent.
+- A stand-in runtime ends with open steps and a last line "Blocked: no access": the task ends as
+  Blocked and nothing is sent.

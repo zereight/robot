@@ -73,6 +73,20 @@ These are in the code today and the specs now say something else.
 | 025, 004, 007 | Two agents can use one folder, and nothing stops one from writing over the other. | A file that a task changed in a shared folder is claimed until the task ends or is in review. A file step of another agent on it is refused with the name of the holder. Each turn in a shared folder gets a note with the claims of the others. |
 | 025, 004, 005, 019 | A part always works in the workspace of its member. | With the channel setting "Own copies for parts" on, the lead can give a part its own copy of a Git repository on a new branch. The app commits the changes to the branch at the end of the part, removes the copy at the end of the request, and never merges or pushes. |
 | 013, 026, 003, 006, 007, 015 | Nothing cuts the repeated work of an agent. | A settings section "Token savings" with three switches, off at first: "Check with edit", "Set big results aside", "Compact at finished steps". A table in 026 says which agents each one reaches: all three for an API account, all three for pi (the first at "Full access" only), and only the big results of the tools of the app for Claude Code, Codex, opencode and Muse Code. A task shows a savings line. A compact in the middle of a turn is not the end of the turn. A set-aside result keeps the mark of outside content. A short context is never compacted by a saving, and the tokens of a compact count in the task. |
+| 006, 002 | A turn that meets a usage limit fails with the reason and the reset time. | An agent can have a backup model. A turn that meets a limit goes on with it, and the main model is held until the reset time. |
+| 005, 003, 013 | A turn that ends with open steps ends the task. | With "Keep going on open steps" on (the default), an agent whose runtime reports a list of steps is asked to go on, up to 8 times for one request. |
+| 006, 002, 010 | Effort levels are Low to Max. | None, Minimal and Ultra appear for a model that lists them. |
+| 006 | The picker lists the models as the provider gives them. | Newest first, older models in a fold, a "New" tag for 7 days, models that the user can hide, and a context size and an output limit for a custom model. |
+| 006 | Agent runtimes are the vendor programs and pi. | Any program that speaks ACP can be added. |
+| 006, 003 | A busy provider fails the turn. | The app tries again 3 times and shows a muted line. |
+| 004 | A member gets the job and the channel messages. | A fixed order of text, a quarter of the context for the newest messages, a reminder of the assignment. A channel can have a picture. |
+| 007 | A browser action returns what the page now shows. | It returns a short state. Page dialogs, file choosers, frames, unclear targets and focus have rules. Idle pages unload and idle vendor programs end. |
+| 010, 014 | Triggers are manual, schedule and a channel message. | A fourth trigger: a web hook, with a preset for GitHub. It listens on this computer only. |
+| 020, 007 | A saved secret is for web requests. | Saved logins also exist, for the browser of an agent. The model never sees them. |
+| 027, 003, 011, 013 | The user types every message. | Dictate in the message box, read aloud, and voice chat on the phone. Recognition runs on the device. |
+| 015, 012, 013 | A linked phone gets a notice at once. | The server holds notices back while the user works at the computer. A menu bar item, a choice of sound, and a quit that asks while work runs. |
+| 001, 003, 011 | Sections are one level deep. A place can be marked as read only. There is no find in a chat. | Sections inside sections, pinned places, "Mark as unread", and Cmd+F in a chat. |
+| 011, 003 | The phone has no share target. Images of a message show one by one. | A share sheet target, a face in notices, a stack of images, a thinking sheet. Pasted images show a preview. |
 
 ## Slices
 
@@ -143,6 +157,21 @@ These are in the code today and the specs now say something else.
 | S83 | Handover of a chat: the menu choice, the dialog, the brief and its limits, the card, the new thread and its title, the muted lines and links, the marks that go with it, the source "Handover", the rule that the card is not the words of the user. The computer only. Needs S39 and S62. | 003, 005, 007, 012, 011, 019, 014 |
 | S84 | Make a skill from work: "Make a skill" in the task view, in the article view and in the menu of a memory item; the draft request and what it holds; the form with the draft; the line for work that read outside content; the failure case. The computer only. Needs S45 and S31. | 017, 005, 008, 016, 012, 011 |
 | S85 | Effort of a new agent: the field starts at "Medium" in the form of a new agent and in a starter, when the model offers it, and stays where the user puts it. No data change, and no change for an agent that exists. | 002, 006 |
+| S86 | Backup model: the field in the agent form and profile, the limit reasons, the hold until the reset time, the turn that goes on (from the start, or with a go-on message), the line in the chat, the header text and the button "Use <main model> now", the rules for routines, workflows and channels, what syncs and what does not, and the view on a linked device. | 006, 002, 003, 009, 010, 012, 019 |
+| S87 | Keep going on open steps: the setting, the go-on message, the muted line "Kept going", the limit of 8, the stop when the open steps do not change, and the rule that it decides from the list of steps and not from the words of a reply. Needs a runtime that reports a list of steps. | 005, 003, 006, 013 |
+| S88 | Channel turns and picture: the order of the text of a member, the quarter of the context for the newest messages, the reminder of the assignment, the picture of a channel with its limits, and its sync. | 004, 001, 011, 012, 019 |
+| S89 | Browser details: short results, page dialogs, file choosers, the frame named on the "take control" card, unclear targets with candidates, and focus. Needs the browser of S11. | 007 |
+| S90 | Voice: the microphone button, dictation with a recogniser on the device, read aloud, voice chat on the phone, the two settings, the permission steps, and the states without recogniser, voice or permission. | 027, 003, 011, 013, 014 |
+| S91 | Phone notices while the user works: the setting, the 30 seconds, the held notices, the data that still arrives. Needs M5b. | 015, 012, 011 |
+| S92 | Web hook: the trigger form, the address on this computer, the secret, the proof, the preset "GitHub", the preset "Any service", the limits, the busy rule, the run label, and what the file and the sync leave out. | 010, 014, 019, 012 |
+| S93 | Effort levels and model list: None, Minimal and Ultra, the nearest level after a model change, the order of the picker, "Older models", the "New" tag, the part "Models", and the context size and output limit of a custom model. | 006, 009, 010 |
+| S94 | ACP programs: "Add a program", its form and its check, the presets, how an agent uses it, attachments, and what a linked client sees. | 006, 007, 012 |
+| S95 | Saved logins: the tools "ask for a login" and "sign in with a login", the origin rules, the redaction, the approval card, the second list in Permissions, and export and sync. Needs S11. | 020, 007, 014, 019 |
+| S96 | Menu bar item, quit and sound: the setting, the icon states, the menu, the quit note of Cmd+Q, and the choice of sound. | 015, 001, 013 |
+| S97 | Phone extras: the share sheet target, the face in notices, the thinking sheet, the stack of images, and the Android icon. Needs M5b. | 011 |
+| S98 | Place list extras: sections inside sections, pinned places, "Mark as unread" on a message and a place, and Cmd+F in a chat. | 001, 003, 011, 012, 019 |
+| S99 | Idle work: the unload of idle pages, the end of idle vendor programs, the reaction to low memory, and the end of the programs of a deleted agent. | 007 |
+| S100 | Busy provider and attachments: the three tries and the muted lines, the preview of a pasted image, and the progress and "Retry" of a chip on a linked server. | 006, 003 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -156,6 +185,8 @@ S73 does not depend on the other slices. It shows the queue marks of S71 and S72
 S74 and S75 do not depend on each other. S76 follows S75.
 S80 to S84 do not depend on each other, except as listed. S80 and S81 close gaps in the defence against outside text, so they go first. S83 and S81 both touch the marks of a place, so do S81 first when both are open.
 S77 needs the task view of S61, and the compact of S20 for its third saving. "Set big results aside" and "Check with edit" do not need S20, so they can ship first. A vendor program gets only the part of "Set big results aside" for the tools of the app.
+
+S86 and S93 both change the pickers of 006. S93 can go first. S87 needs a runtime that reports a list of steps, so it follows the work on the runtimes of 006 that exists today. S90 needs S20 only for the shared message box. S91 and S97 need the phone app. S95 follows S89 for the "take control" card. S86 to S100 do not depend on each other, except as listed. S86, S87 and S90 give the largest gain for the effort.
 
 ## Decided against
 
@@ -187,3 +218,16 @@ S77 needs the task view of S61, and the compact of S20 for its third saving. "Se
   no rule for a part that waits for the lead.
 - A coaching card, with which an agent proposes a change of its own instructions after the user
   corrects it, is not in this list. It is open for a later change.
+- Auto-answers to the question of an agent. Decided against on 2026-11-04. "Keep going" (005) decides
+  from the list of steps of the runtime and never from the words of a reply. The go-on message does
+  not answer a question of the agent, and it tells the agent to ask with a question card. The app
+  answers a question of the agent for the user in no case.
+- A trigger from a chat service (Discord, Slack and so on) for a workflow. Not in this version
+  (010). It needs a bot account and a link to the service. Open for a later change.
+- A saved card number, address or one-time code that an agent types into a page. Decided against on
+  2026-11-04. The agent never types a card number or a code (007, 020). Saved logins (020) are
+  the only sign-in data that the browser fills.
+- A palette file from another tool as a theme. Not in this version (013). ROBot has two themes and
+  a text size.
+- Chat services, a hosted marketplace of agents and skills, and share links for it. Not in this
+  version. Agent files and workflow files (002, 010) are the way to share a setup.

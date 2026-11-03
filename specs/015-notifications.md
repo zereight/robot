@@ -117,6 +117,60 @@ The user knows when an agent needs them or finishes, without watching the window
 - In the modes "only for attention" and "off", there is no result card. The system notification
   is the same in all modes.
 
+## Phone notices while the user works
+
+- A setting in Settings → Notifications, "Keep phones quiet while I work at this computer", is on
+  by default.
+- With it on, the server sends no notice to a linked phone (011) while this computer has had
+  keyboard or mouse input within the last 30 seconds, in any app. The app reads the time since the
+  last input from the system. That value stays on the computer. It is never sent to a phone or to
+  a linked computer.
+- The server holds the notice back.
+- When the computer has had no input for 30 seconds, the server sends the held notices.
+- It does not send a held notice whose cause the user already saw or answered on the computer,
+  for example an answered card or a place that was read.
+- While the server holds notices, Settings → Notifications shows the muted line "Notices to
+  phones are held while you work here."
+- Held notices are not stored. After a restart of the app they are gone, and the data still
+  reaches the phone.
+- The setting belongs to this computer and does not sync (019).
+- A computer that sleeps or is locked counts as no input.
+- The phone still gets the data. Messages, counts and lists show when the app opens. Only the
+  notice is held.
+- A computer that opens a linked server has its own rule for its own notices ("Do-not-disturb"
+  below). This rule is for phones only.
+
+## Menu bar item
+
+- A setting of the computer in General (013), "Show in the menu bar", is off by default. With it on, a small icon
+  of the app shows in the menu bar of the Mac, also when the window is closed. It shows a still
+  dot when nothing works, a moving dot while an agent works (still with reduce motion), and a
+  badge when something waits for the user.
+- A click opens a menu. It has one row for each working agent (face, name, place, and the time, as
+  in the detail card), at most 5, and a last line for the rest. It has the line "N waiting for
+  you", which opens the Today page (021), and the items "Open ROBot", "Settings" and "Quit".
+  "Quit" follows the rule of 001.
+- The menu shows no command, path or file content, as the detail card does not.
+- Only the open profile shows here (022). The menu shows no work of a linked server, as the island
+  does not.
+- When the window is closed, "Open ROBot" opens it again.
+
+## Sound
+
+- Settings → Notifications has "Sound when a task ends". The user picks one of four sounds that
+  the app brings, or "None". The first sound is the default. Each sound plays when the user picks
+  it in the list.
+- The sound plays when a result card would show (see "Result card"): the kind is reply, task
+  failed or routine failed, the kind is on, the place is not muted, and no window of the app has
+  the focus. It plays in every mode of the island. When several results come within one second,
+  the sound plays once. A result that comes while a request waits makes no card and no sound. A
+  turn that a continuation follows (005, "Keep going") makes none of them.
+- It plays on this computer for the work of this computer. A phone uses its own sound of the
+  system.
+- The system notice has no sound of its own while the app plays this sound. Do-not-disturb of the
+  system, and the mute of a server or a channel, silence it. The quiet line makes no sound (005).
+- The sounds are new files made for ROBot.
+
 ## Rules
 
 - Do-not-disturb of the system is respected.
@@ -159,3 +213,11 @@ The user knows when an agent needs them or finishes, without watching the window
 - No agent works. The user points at the island: nothing opens.
 - The island is open and the user changes the language to Korean: the text of the island
   changes at once.
+- Stand-in input arrives on the computer 5 seconds ago, and a stand-in phone is linked. An agent
+  replies: the phone gets the data and no notice. The input stops. After 30 seconds the notice
+  comes. Read the place on the computer first: the notice does not come. Turn the setting off: the
+  notice comes at once.
+- Turn on the menu bar item. Two stand-in agents work: the menu lists both with their places and
+  times, and shows no command text. "Quit" while an agent works shows the note of 001.
+- Pick the second sound, and end three tasks within one second: the sound plays once. Pick "None":
+  it is silent.
