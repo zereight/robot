@@ -437,10 +437,19 @@ export interface RpcMethods {
     input: { agentId: string; callId: string; answer: ApprovalAnswer | string }
     output: undefined
   }
-  "browser.state": { input: { agentId: string }; output: { open: boolean; control: boolean } }
+  /**
+   * `suggest` is the reason that the agent gave when it asked the user to look at the browser, or
+   * null. The browser stays hidden until the user chooses to see it.
+   */
+  "browser.state": {
+    input: { agentId: string }
+    output: { open: boolean; control: boolean; suggest: string | null }
+  }
   /** The user takes the controls of the agent's browser, or gives them back. */
   "browser.control": { input: { agentId: string; control: boolean }; output: undefined }
   "browser.close": { input: { agentId: string }; output: undefined }
+  /** The user shows the browser, or says "Not now": the request of the agent to look goes away. */
+  "browser.dismissSuggest": { input: { agentId: string }; output: undefined }
   /**
    * The chat screen says where the browser of the agent shows, in CSS px of the app window. `null`
    * hides it, for example when the screen shows another chat or a dialog covers the place.

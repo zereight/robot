@@ -19,6 +19,7 @@ export const BROWSER_TOOL_NAMES = [
   "browser_click",
   "browser_type",
   "browser_close",
+  "browser_ask_look",
 ] as const
 
 /**

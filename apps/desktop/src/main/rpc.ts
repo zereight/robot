@@ -897,7 +897,18 @@ export const handlers: Handlers = {
     ),
   "browser.state": (input) =>
     decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
-      Effect.flatMap(({ agentId }) => Tools.use((t) => Effect.succeed(t.browserState(agentId)))),
+      Effect.flatMap(({ agentId }) =>
+        Tools.use((t) =>
+          Effect.succeed({ ...t.browserState(agentId), suggest: t.browserSuggestion(agentId) }),
+        ),
+      ),
+    ),
+  "browser.dismissSuggest": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) =>
+        Tools.use((t) => Effect.sync(() => t.dismissBrowserSuggestion(agentId))),
+      ),
+      done,
     ),
   "browser.control": (input) =>
     decode(Schema.Struct({ agentId: Schema.String, control: Schema.Boolean }))(input).pipe(

@@ -422,7 +422,10 @@
   flex-direction: column;
 }
 
-/* The small browser in the activity panel. The page is a native view above the thumb. */
+/*
+ * The browser in the activity panel. It is one quiet line until the user shows the page. The page
+ * is a native view above the thumb.
+ */
 .browserCard {
   margin: 12px 12px 0;
   display: flex;
@@ -441,9 +444,46 @@
   align-items: center;
   gap: 6px;
   padding: 4px 4px 4px 10px;
-  border-bottom: 1px solid var(--c-border);
   color: var(--c-text-muted);
   font-size: var(--text-xs);
+}
+
+.browserCard[data-watching="true"] .browserCardBar {
+  border-bottom: 1px solid var(--c-border);
+}
+
+/* The agent asks the user to look. The page stays hidden until the user says yes. */
+.browserAsk {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--c-border);
+  background: var(--c-selected);
+  font-size: var(--text-xs);
+}
+
+.browserAskText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.browserAskReason {
+  color: var(--c-text-muted);
+}
+
+.browserAskActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* The header button of the browser, while the agent asks the user to look. */
+.browserAsking,
+.browserAsking:hover {
+  color: var(--c-accent);
 }
 
 .browserCard[data-control="true"] .browserCardBar {
