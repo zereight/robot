@@ -11,7 +11,8 @@ The user gives an agent work in plain language and sees what the agent does whil
 - Day changes show as a centred date line.
 - Agent replies render Markdown: headings, lists, tables, code blocks with copy buttons, links,
   and images. The app adds no automatic image preview below a reply. An image shows only where the
-  Markdown of the reply puts it.
+  Markdown of the reply puts it. A picture from the web shows as a box until the user loads it
+  (see "Pictures from the web").
 - Tool use shows as a compact card inside the reply: an icon, a short label of what the agent did
   (read a file, ran a command, opened a page), and its result state. A click opens the details.
 - Thinking, when the model gives it, folds into one muted line that the user can open.
@@ -187,6 +188,107 @@ the app can run it (see "Automatic compact").
 - The menu of a place has "Mark as unread" too (001). It marks the latest message of an agent.
 - A thread keeps its own count (see "Threads"). The mark works inside a thread.
 - The read state follows the unread count (012, 019).
+## Pictures from the web
+
+A picture in a Markdown text can take its data from an address on the web. That address can carry
+data: an agent that read a secret, or that obeyed an order in a web page, can write the data into
+the address. A device that loads the picture then sends the data to the host of the address, and
+the user does not click. So a picture from the web loads only when the user asks.
+
+- This holds for every Markdown text that the app shows: messages in direct chats, threads and
+  channels, and articles of knowledge (016).
+- An image with an address that starts with `https` shows as a box. The box shows the alt text
+  (cut at 80 characters, or the word "Image" when the alt text is empty), the address (cut at 100
+  characters), and the button "Load image".
+- The button loads that one image, and the image takes the place of the box. The choice holds
+  while the app runs, for that address in that message. It is not saved. After a restart the box
+  shows again.
+- An image with an address that starts with `http` does not load, and the box has no button. The
+  alt text shows in its place.
+- An image that is a part of the Markdown text itself (a `data:image` address) shows at once,
+  because it needs no network.
+- The device of the user loads the picture. No ROBot server loads it for a linked device or for
+  the phone.
+- The phone (011) and a linked device (012) follow the same rule.
+
+## Hand over
+
+The user can pass a chat to another agent. The new agent gets a short brief, and the user says what
+it must do next. This helps when the first agent cannot go on, for example at the limit of its
+plan, or when another agent fits the work better.
+
+### Concepts
+
+- **Handover**: a new thread in the direct chat of another agent. It holds the handover card and
+  the words of the user.
+- **Brief**: the text of the handover card. The app writes it from the stored chat. It uses no
+  model.
+
+### Flows
+
+1. Start: the menu of the chat header of a direct chat or a thread has "Hand over". It is off, with
+   the reason in words, when the chat has no message of the user, when a turn of this chat or
+   thread runs, or when no other agent exists that is not archived.
+2. The dialog has:
+   - the field "Agent": a list of the other agents that are not archived, with face, name and role
+     line. An agent that has 50 threads is off in the list, with the reason in words,
+   - the field "What should <name> do next?", from 1 to 2000 characters, and required,
+   - a fold "Show the brief" that shows the brief. The user cannot edit it,
+   - the buttons "Hand over" and "Cancel".
+3. "Hand over" makes a thread in the direct chat of the chosen agent. Its title is "Handover from
+   <name of the first agent>", cut at 60 characters. The rule of the first message does not apply,
+   and the user can rename the thread. The thread holds the handover card, then the text of the
+   field as a message of the user. A turn of the new agent starts at once, as for any message of
+   the user (005, source "Handover"). When that agent works in another thread, the task waits, as
+   for any message in a thread. The window opens the new thread.
+4. The chat that the user left shows a muted line, "Handed over to <name>", with a link to the new
+   thread. The card shows "From <name>" with a link to the first chat or thread. When the other
+   side is deleted, the link becomes plain text.
+
+### The brief
+
+The app writes the brief when the dialog opens, and stores that same text when the user presses
+"Hand over". The brief holds these parts, in this order. A part with nothing in it is left out.
+
+1. The name of the first agent, the title of the chat or thread, and the time of its last message.
+2. The folder of the first agent (007), so that the new agent can read the files by name when its
+   permission level allows it.
+3. The first request: the first message of the user in the chat or thread, cut at 1500
+   characters.
+4. The latest request: the last message of the user, cut at 1500 characters. It is left out when
+   it is the first request.
+5. The last reply of the first agent, cut at 3000 characters.
+6. The files that the first agent wrote, changed or deleted in this chat or thread: paths, newest
+   first, at most 50.
+7. The commands that the first agent ran: the last 10, each cut at 300 characters, with the result
+   Ran or Failed.
+
+The brief holds no thinking, no content of a file, no output of a tool, no web page, no memory, no
+knowledge and no content of an attachment (only its name). Text that looks like a secret (014)
+shows as `[redacted]`. The brief has at most 24000 characters. When it is longer, the app drops
+commands and then files, oldest first, and then it cuts the last reply.
+
+### Rules
+
+- The card is not the words of the user (007). Only the text of the field counts as the words of
+  the user. So a brief cannot allow a step at "Ask when unsure".
+- The new agent reads the brief as information from a colleague. It does not treat the brief as
+  an order that overrides its own instructions or the rules of the app.
+- The new thread holds the marks that the first place held when the user pressed "Hand over":
+  outside content, the program mark and a sensitive read (007). The header line of the new thread
+  shows them.
+- The new task has depth 0 and the source "Handover" (005). It waits in the queue of the new agent
+  as other tasks do.
+- "Hand over" changes nothing in the first chat. It does not stop the first agent, and it does not
+  tell the first agent.
+- An agent on a vendor runtime (006) gets the card and the message as any other message.
+- The card, the message, the muted line and the links are stored as messages. They sync with the
+  threads (019), and an export holds them (014). An agent file (002) holds none of them.
+- Only the computer that runs both agents shows "Hand over". A linked device (012) and the phone
+  (011) do not show it in this version. They show the main thread only (see "Threads"), so they
+  show the muted line "Handed over to <name>" when the first chat is a main thread, and they do
+  not show the new thread or its card.
+- Hand over works for a direct chat and for its threads. It does not work for a channel.
 
 ## Empty state
 
@@ -300,3 +402,23 @@ and its role line. Nothing moves.
 - A chat has eight messages. The messages 2, 4, 5, 7 and 8 are from an agent. Mark message 5 as
   unread: the place shows the count 3 (messages 5, 7 and 8). Open the chat: it opens at message
   5. Scroll to the end: the count goes.
+- A reply holds the Markdown `![chart](https://host.test/a.png?d=1)`, and a test server listens at
+  `host.test`. The chat shows a box with the text "chart", the address and the button "Load
+  image". The test server has had no request. Press the button: one request arrives, and the image
+  shows. Restart the app and open the chat: the box shows again, and the test server has had no
+  new request.
+- A reply holds an image with an `http` address, and an image with a `data:image` address. The first
+  one shows its alt text and has no button. The second one shows at once.
+- Agent A wrote two files and ran two commands in a chat of four messages, and one command holds a
+  text that looks like a key. The user hands the chat over to agent B with the text "Finish the
+  tests". A thread "Handover from A" opens in the chat of B. The card lists the two files and the
+  two commands, and the key shows as `[redacted]`. The first request to the model of B holds the
+  card and "Finish the tests", and holds no output of the tools. The chat of A shows "Handed over
+  to B".
+- "Hand over" is off while a turn runs in the chat, with the reason in words. It is off for a
+  chat with no message of the user.
+- The first chat holds outside content. The new thread shows the line "Holds outside content".
+- At "Ask when unsure", a stand-in decision model checks a step of B after a handover. The request
+  to the decision model holds the text of the field and does not hold the brief.
+- Delete the first chat. The card of the new thread still shows "From A" as plain text.
+- The Tasks page (005) lists the task of B with the source "Handover".

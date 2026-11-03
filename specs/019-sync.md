@@ -33,7 +33,8 @@ service holds it.
 | Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
 | Board (024) | The cards with their number, title, description, column, place, agent, Mine switch and writer, their comments, and their links to tasks. The card follows its newest task on both computers. |
 | Read state | The last place that the user read in each chat. |
-| The mark of outside content of a place (007) | The mark and its clear. A turn on either computer then asks in the same way. |
+| The mark of outside content and the mark of a sensitive read of a place (007) | The marks and their clear. A turn on either computer then asks in the same way. |
+| A handover (003) | The new thread, the card, the message of the user, and the muted lines. The links between the two threads sync by id. |
 
 ### Does not sync
 
@@ -41,7 +42,7 @@ service holds it.
 | --- | --- |
 | Keys, tokens and the sign-in of vendor programs | Secrets stay on their computer (014). |
 | Permission levels, permission rules (allow and deny) and the action log (007) | A change on one computer must not give another computer more power over its files. The log tells what ran on one computer. |
-| Connections (018) | A connection can start a program on a computer. A computer must never put a program on the other one. The secret values stay in the keychain (014). |
+| Connections (018) and the reviewed tools of a connection | A connection can start a program on a computer. A computer must never put a program on the other one. The secret values stay in the keychain (014). Each computer reviews the tools of its own connections. |
 | Skills (017) | Not in this version. A skill is saved on one computer, and the user makes it again on the other one. A message that used a skill keeps its chip and its copy of the instructions, and syncs with the message. |
 | Workspace folders and the files in them | They are large and belong to a computer. Use git or a file service. |
 | Browser windows and their sessions | They belong to a computer. |

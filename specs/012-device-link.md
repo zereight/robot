@@ -92,7 +92,7 @@ client shows it and sends commands.
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
 | See places in the sections of the server, unread counts, working dots | Delete or restore agents and channels |
-| Read messages, search places and messages | Change model accounts, skills, connections and settings |
+| Read messages, search places and messages | Change model accounts, skills, connections and settings. Review the tools of a connection (018). Make a skill from work (017). Hand over a chat (003) |
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
 | Answer approval cards and questions | Routines, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |

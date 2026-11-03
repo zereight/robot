@@ -78,10 +78,13 @@ The phone follows the computer in these points: the `@all` mention in channels (
 name button and the role list for agents (002, 013), the word "archived" for channels (004), the
 context meter (003), "Mark as unread" (003), the command list (003),
 the main agent switch (002), the end of a request (004), the search of messages (001), and the
-line that tells how far a failed turn went, with the button "Send again" (003, 005), and the
-picture of a channel (004). The phone
-shows no marketplace. In this version the phone shows the main thread of a direct chat only. It
-has no Compact control, no fork and no "Run next" (003, 005).
+line that tells how far a failed turn went, with the button "Send again" (003, 005), the box
+and the button "Load image" for a picture from the web (003), and the picture of a channel
+(004). The phone shows no marketplace. In this version the phone shows the main thread of a
+direct chat only. It has no Compact control, no fork and no "Run next" (003, 005). It does not
+start a handover (003) and does not make a skill from work (017). It shows the muted line
+"Handed over to <name>" in a main thread, and it does not review the tools of a connection
+(018).
 
 ## More on the phone
 

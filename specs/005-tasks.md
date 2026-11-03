@@ -8,11 +8,11 @@ and workflows.
 ## Concepts
 
 - **Task**: who does it (agent), what (prompt), where it came from (chat, channel, routine,
-  workflow, another agent, a memory check (008), a card of the board (024), or an outside program
-  (023)), its parent task if
+  workflow, another agent, a memory check (008), a card of the board (024), an outside program
+  (023), or a handover (003)), its parent task if
   any, its state, start and end time, and its result or error.
-- **Depth**: a number. A task that the user, a routine, a workflow, a memory check or an outside
-  program starts has depth 0. See
+- **Depth**: a number. A task that the user, a routine, a workflow, a memory check, a handover or
+  an outside program starts has depth 0. See
   "Limits of a task".
 - **States**: queued → running → (waiting for user ↔ running) → done | failed | blocked |
   cancelled. A part of a channel that asks for review has one more state, in review, before done
@@ -46,7 +46,8 @@ and workflows.
   prompt, with their times. For a part it also shows the done test and the verdict. It shows a
   list of moments too (see "Moments").
 - Actions: stop (queued, running or waiting), retry (failed, blocked or cancelled), accept or
-  request changes (in review; see "Review"), run next (queued; see "Queue"), open source place.
+  request changes (in review; see "Review"), run next (queued; see "Queue"), open source place,
+  make a skill (done; see 017, "Make a skill from work"). "Make a skill" is on the computer only.
 - A task of a channel (see 004) also has "End the request", which cancels the whole request.
 - A queued task shows what it waits behind: the work that its agent runs now, with the place of
   that work. If the agent is busy in its own chat, the line says so. If the agent is busy in
