@@ -32,6 +32,8 @@ as tools. Every use goes through the same approval and rule system as the built-
 - **Read-only mark**: a connection can mark a tool as one that only reads and changes nothing. MCP
   calls this a hint. The test list shows the mark beside the tool.
 - **Trust read-only marks**: a switch of each connection, off by default. See "Rules".
+- **Tool search**: the way an agent finds the tools of its connections when it may use many of
+  them. The agent gets one step, "Search tools", and not the tools. See "Many tools".
 
 ## Flows
 
@@ -44,9 +46,10 @@ as tools. Every use goes through the same approval and rule system as the built-
    reason of the failure: program not found, program ended, no answer in 20 seconds, address
    refused, sign-in refused, or an answer that is not valid. When the user saves the form after a
    Test of that same form worked, the tools that the Test showed are the reviewed tools.
-3. Use: an agent that may use the connection sees its tools in the next turn. When the agent
-   calls one, a tool card shows in the chat with the connection name and the tool name (see 003).
-   The approval rules of 007 apply (see "Rules").
+3. Use: an agent that may use the connection gets its tools in the next turn: all of them, or the
+   step "Search tools" when it may use many (see "Many tools"). When the agent calls one, a tool
+   card shows in the chat with the connection name and the tool name (see 003). The approval
+   rules of 007 apply (see "Rules").
 4. Turn off: a switch on the row. The connection stops, and its tools leave every agent from the
    next turn.
 5. Edit: the user changes any field. A saved secret stays until the user types a new value or
@@ -136,6 +139,41 @@ as tools. Every use goes through the same approval and rule system as the built-
 - Only the computer shows the review. A linked device (012) and the phone (011) cannot review.
   Connections do not sync (019).
 
+## Many tools
+
+The model reads the definition of each tool at every request, also when the agent does not use the
+tool. One connection can offer dozens of tools. So an agent that may use many tools finds the ones
+it needs, and does not carry all of them.
+
+- **Count**: the tools that an agent may use, from all of its connections that are on. A tool that
+  is off does not count. A held tool (see "Tool review") does not count. A connection that is down
+  does not count. The app counts at the start of each turn, when the connections start. The count does not change inside a turn: a change of the
+  user counts from the next turn.
+- Only tools of connections count. The tools of the app (files, shell, browser and the others)
+  are not counted, and the agent always gets them.
+- With 20 tools or fewer, the agent gets every tool at the start of the turn.
+- With more than 20 tools, the agent gets no tool of a connection at the start of the turn. It
+  gets one more step, "Search tools". The agent writes some words, and the step gives back the
+  tools that match.
+  - A tool matches when one of the words is in its name or in its description. The check ignores
+    case. A tool that is off or held never matches.
+  - The step gives at most 10 tools. The tools that match the most words come first. Tools with
+    the same number of matches come in the order of the connection name, and then the tool name.
+  - For each tool, the step gives the connection name, the tool name and the description.
+  - When no tool matches, the step says "No tool found."
+  - The text that tells the agent what the step does also says how many tools it may use and the
+    names of its connections.
+- A tool that the agent found is open to the agent for the rest of that turn. The next turn starts
+  with none, and the agent searches again. A call of a tool that the agent did not find in this
+  turn fails with "Unknown tool. Search for it first."
+- A found tool is a tool as any other. The permission levels, the rules, the approval card, "Trust
+  read-only marks", the action log and the limits of "Rules" apply with no change.
+- The step "Search tools" changes nothing and sends nothing to a connection. It needs no approval,
+  makes no entry in the action log, and gives no outside content (see 007). Its tool card reads
+  "Searched tools" with the words and the number of tools found.
+- The limit of 100 tools for one connection (see "Rules") applies before the count.
+- The phone and a linked computer show the card of this step as any other tool card.
+
 ## Out of scope
 
 - A row on the Today page (021) or a notice for held tools.
@@ -186,3 +224,22 @@ All checks use a small test program as the connection, written for the test.
   until the user accepts it.
 - Export, then import into an empty app, then turn the connection on: the connection has no
   reviewed tools, and all its tools are held at the first start.
+- An agent has one connection of 20 tools: its first request holds all 20 tools and no step
+  "Search tools". Add a 21st tool to the test program and start a new turn: the first request holds
+  none of the 21 tools and holds the step "Search tools". Turn off one tool: the next turn holds all
+  20 again.
+- With 25 tools, the agent searches "weather": the step gives the tools that have the word in the
+  name or the description, at most 10, with the most matches first. The agent calls one of them: an
+  approval card shows at "Ask for risky steps" as for any tool, and the log has one entry for the
+  call and none for the search.
+- The agent searches words that match no tool: the step says "No tool found." The agent calls a tool
+  that it did not find: the step fails with "Unknown tool. Search for it first." and the connection
+  gets no call.
+- The agent finds a tool in one turn. In the next turn the agent calls it without a search: the
+  call fails with the same text.
+- Two connections have 15 tools each, and one of them is turned off: the agent gets all 15 tools of
+  the other connection and no search step.
+- A Deny rule for "any tool" of the connection: a found tool is refused with "Denied by a rule".
+- An agent has 21 tools and one of them is held for review: the count is 20, so the agent gets all
+  20 tools and no search step. Accept the held tool: the next turn holds the step "Search tools"
+  and none of the 21 tools. The search never finds a held tool.

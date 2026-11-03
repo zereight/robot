@@ -86,7 +86,7 @@ These are in the code today and the specs now say something else.
 | S29 | Routine limits: 50 routines, the runs-per-day note, pause after 3 failed runs in a row, the paused text, the one notification. | 009 |
 | S30 | Permission rules and action log: saved Allow and Deny rules, the decision order, the Permissions page with rules and log, 90-day clean-up. | 007, 013, 014 |
 | S31 | Skills: the Skills page, the chip in the message box, the copy stored with the message, the command list order. | 017, 003, 013, 014 |
-| S32 | Connections: the Connections page, test, tool cards, risky-step rule, rules for connection tools, time and size limits, import turns them off. Needs S30. | 018, 007, 013, 014, 000 |
+| S32 | Connections: the Connections page, test, tool cards, risky-step rule, rules for connection tools, time and size limits, import turns them off, and the step "Search tools" for an agent that may use more than 20 tools. Needs S30. | 018, 007, 013, 014, 000 |
 | S33 | Status island detail: the detail card of working agents, the richer attention card with "1 of N", the result card in the mode "always". | 015 |
 | S34 | Waiting tasks survive a restart: a task with no parent that waits for an approval or a question still waits after the app starts again, its card shows again, the island and the notification ask once, and Allow lets it go on. Other work that was running or queued is still marked failed with the restart reason. | 005, 007, 015 |
 | S35 | Limits of a task: message chain depth, step limit and its setting, refusal of repeated reads. The retry note in chat, channel and Tasks page, with the read or write mark of file steps in the action log that the note reads. | 005, 007, 003, 004, 013, 019 |
