@@ -5,13 +5,14 @@ import {
   type ChatMessage,
   catalogues,
   type MessageKey,
+  messageText,
   type PartChip,
   type PartInfo,
   type PlaceRef,
   sameDay,
   startsGroup,
 } from "@robot/shared"
-import { Eye, OctagonX, Settings2, Square } from "lucide-solid"
+import { Eye, OctagonX, Settings2, Square, X } from "lucide-solid"
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import chat from "../chat/chat.module.css"
@@ -205,6 +206,8 @@ export const ChannelView = (props: { channel: Channel }) => {
   )
   const retry = useRetry()
   const [text, setText] = createSignal("")
+  /** The message of a part that the user answers. The answer goes to the member of the part. */
+  const [replyTo, setReplyTo] = createSignal<ChannelMessage>()
   const [error, setError] = createSignal<ErrorText>()
   const reviewing = useReview(setError)
   const ending = useEndRequest(setError)
@@ -300,8 +303,13 @@ export const ChannelView = (props: { channel: Channel }) => {
     const value = text().trim()
     if (!value) return
     void act(async () => {
-      await call("channels.send", { channelId: props.channel.id, text: value })
+      await call("channels.send", {
+        channelId: props.channel.id,
+        text: value,
+        replyTo: replyTo()?.id ?? null,
+      })
       setText("")
+      setReplyTo(undefined)
       if (input) input.style.height = "auto"
       setAtBottom(true)
       queueMicrotask(scrollToBottom)
@@ -370,7 +378,10 @@ export const ChannelView = (props: { channel: Channel }) => {
                       enter={message.createdAt >= openedAt}
                       quoted={undefined}
                       onReply={() => {
-                        setText((v) => `${v}@${agentFor(message).name} `)
+                        // A reply to a part goes to its member as a new part. A reply to another
+                        // message mentions its author.
+                        if (message.part) setReplyTo(message)
+                        else setText((v) => `${v}@${agentFor(message).name} `)
                         input?.focus()
                       }}
                       onJumpTo={jump}
@@ -466,6 +477,20 @@ export const ChannelView = (props: { channel: Channel }) => {
         <Show when={error()}>
           {(err) => <div class={chat.composerError}>{t(err().key, err().params)}</div>}
         </Show>
+        <Show when={replyTo()}>
+          {(quoted) => (
+            <div class={chat.quote} data-testid="channel-reply-quote">
+              <span class={chat.quoteText}>
+                {t("chat.replyingTo", { name: agentFor(quoted()).name })}
+                {": "}
+                {messageText(asChat(quoted())).slice(0, 80)}
+              </span>
+              <IconButton label={t("chat.cancelReply")} onClick={() => setReplyTo(undefined)}>
+                <X size={14} />
+              </IconButton>
+            </div>
+          )}
+        </Show>
         <div class={chat.box}>
           <textarea
             ref={input}
@@ -485,6 +510,9 @@ export const ChannelView = (props: { channel: Channel }) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
                 send()
+              } else if (e.key === "Escape" && replyTo()) {
+                e.preventDefault()
+                setReplyTo(undefined)
               }
             }}
             data-testid="channel-input"

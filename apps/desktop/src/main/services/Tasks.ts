@@ -21,6 +21,7 @@ import {
   raiseProgress,
   remoteRetryNote,
   retryNote,
+  retryNoteForModel,
   type Task,
   type TaskDetail,
   type TaskProgress,
@@ -31,10 +32,11 @@ import {
   type Verdict,
   validChanges,
 } from "@robot/shared"
-import { Cause, Context, Deferred, Effect, Exit, Layer, Semaphore } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Layer } from "effect"
 import { resumeOf } from "../providers/resume.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { Activity } from "./Activity.ts"
+import { AgentGate, rankOf } from "./agentGate.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -143,7 +145,8 @@ export interface TasksService {
   /** Makes a queued task. */
   create(input: TaskInput): Effect.Effect<Task>
   /**
-   * Runs `work` for a task. An agent runs one task at a time: others wait, in order. The task
+   * Runs `work` for a task. An agent runs one task at a time: others wait, in the order of spec
+   * 005 ("Queue"): tasks of the user and of other agents first, then routines and workflows. The task
    * is running while `work` runs, then done, failed or cancelled by how `work` ends.
    */
   run<A, E, R>(
@@ -218,6 +221,11 @@ export interface TasksService {
   retry(taskId: string, options?: RetryOptions): Effect.Effect<RetryResult, AppError>
   /** The note for a retry of this task, or null when the retry starts at once. */
   noteFor(taskId: string, options?: Pick<RetryOptions, "awayFrom">): RetryNote | null
+  /**
+   * The note that the agent of a new try reads before its prompt, or "" when the task is no retry,
+   * or the earlier try ran no step that may have changed things (spec 005, "Retry note").
+   */
+  retryNoteForModel(task: Pick<Task, "retryOf">): string
   /** The depth of a task in a chain of messages between agents. 0 for an unknown task. */
   depthOf(taskId: string): number
   /** Adds a step of a task to the action log (spec 007). */
@@ -291,7 +299,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const actionLog = yield* ActionLog
       const notifier = yield* Notifier
       const activity = yield* Activity
-      const slots = new Map<string, Semaphore.Semaphore>()
+      const slots = new Map<string, AgentGate>()
       const stops = new Map<string, Deferred.Deferred<void>>()
       const live = new Set<string>()
       const retryHandlers = new Map<TaskSource, RetryHandler>()
@@ -335,7 +343,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const slot = (agentId: string) => {
         let s = slots.get(agentId)
         if (!s) {
-          s = Semaphore.makeUnsafe(1)
+          s = new AgentGate()
           slots.set(agentId, s)
         }
         return s
@@ -513,7 +521,15 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           "SELECT server_id FROM agent WHERE id = ?",
           agentId,
         )?.server_id
-        const guarded = slot(agentId).withPermits(1)(
+        const source = db.get<{ source: TaskSource }>(
+          "SELECT source FROM task WHERE id = ?",
+          taskId,
+        )
+        // Tasks of the user and of other agents start before those of routines and workflows (spec
+        // 005, "Queue").
+        const rank = source ? rankOf(source.source) : 0
+        const guarded = slot(agentId).run(
+          rank,
           Effect.gen(function* () {
             // One task per agent across both computers (spec 019): while the other computer runs
             // a task of this agent, this one stays queued.
@@ -901,6 +917,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         },
         computerName: (originId) => remote?.nameOf(originId) ?? "",
         retry,
+        retryNoteForModel: (task) => {
+          if (!task.retryOf) return ""
+          const note = noteFor(task.retryOf)
+          return note ? retryNoteForModel(note) : ""
+        },
         accept,
         requestChanges,
         endRequest,

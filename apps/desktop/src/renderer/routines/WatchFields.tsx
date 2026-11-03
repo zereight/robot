@@ -45,6 +45,7 @@ export const WatchFields = (props: {
   const [tool, setTool] = createSignal(target?.kind === "tool" ? target.tool : "")
   const [args, setArgs] = createSignal(target?.kind === "tool" ? target.args : "{}")
   const [postUnchanged, setPostUnchanged] = createSignal(initial?.postUnchanged ?? false)
+  const [recordOnly, setRecordOnly] = createSignal(initial?.recordOnly ?? false)
 
   const watch = createMemo((): Watch => {
     const k = kind()
@@ -54,7 +55,12 @@ export const WatchFields = (props: {
         : k === "command"
           ? { kind: "command", command: command() }
           : { kind: "tool", connection: connection().trim(), tool: tool().trim(), args: args() }
-    return { minutes: minutes(), target: what, postUnchanged: postUnchanged() }
+    return {
+      minutes: minutes(),
+      target: what,
+      postUnchanged: postUnchanged(),
+      ...(recordOnly() ? { recordOnly: true } : {}),
+    }
   })
   createEffect(() => props.onChange(watch(), validWatch(watch())))
 
@@ -160,6 +166,16 @@ export const WatchFields = (props: {
         />
         <span>{t("routines.watch.postUnchanged")}</span>
       </div>
+      <div class={styles.inline}>
+        <Switch
+          label={t("routines.watch.recordOnly")}
+          checked={recordOnly()}
+          onChange={setRecordOnly}
+          testId="routine-watch-record-only"
+        />
+        <span>{t("routines.watch.recordOnly")}</span>
+      </div>
+      <span class={styles.hint}>{t("routines.watch.recordOnlyHint")}</span>
       <span class={styles.hint}>{t("routines.watch.first")}</span>
     </>
   )

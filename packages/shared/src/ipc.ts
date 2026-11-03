@@ -338,7 +338,10 @@ export interface RpcMethods {
   "channels.delete": { input: { id: string }; output: undefined }
   "channels.history": { input: { channelId: string }; output: readonly ChannelMessage[] }
   /** Posts a job. `awaiting` is true when the user has to pick the member who takes it. */
-  "channels.send": { input: { channelId: string; text: string }; output: { awaiting: boolean } }
+  "channels.send": {
+    input: { channelId: string; text: string; replyTo?: string | null }
+    output: { awaiting: boolean }
+  }
   "channels.assign": {
     input: { channelId: string; messageId: string; agentId: string }
     output: undefined

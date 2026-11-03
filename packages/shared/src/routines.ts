@@ -98,6 +98,8 @@ export interface RoutineEntry {
   readonly taskId: string | null
   /** For a failed check or a run that could not start: why. */
   readonly reason?: RoutineFailure | null
+  /** For a run "Recorded" of a watch with "Record only": the change that it saw. */
+  readonly change?: string
 }
 
 /** Why a run or a check failed: an error code and a detail. */

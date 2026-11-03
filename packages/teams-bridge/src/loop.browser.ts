@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import type { Browser, Page } from "playwright-core"
-import { keyOf, RateLimiter, SeenKeys } from "./core.ts"
+import { keyOf, Outbox, RateLimiter, SeenKeys } from "./core.ts"
 import { fakeChatHtml } from "./fake-chat.ts"
 import { describePage } from "./inspect.ts"
 import { type LoopOptions, processNew } from "./loop.ts"
@@ -31,6 +31,8 @@ suite("polling loop on the fake page", () => {
       teams,
       seen,
       limiter: new RateLimiter(20, 60_000),
+      outbox: new Outbox(),
+      admission: { allow: ["Me"], bots: [], call: "" },
       mode,
       marker: "[ROBot]",
       chunkMax: 4000,
@@ -88,7 +90,21 @@ suite("polling loop on the fake page", () => {
     await userSays("10", "ping")
     expect(await processNew(opts)).toBe(0)
     expect((await teams.readMessages()).length).toBe(3)
-    expect(lines.some((l) => l.startsWith("send failed: Refusing to send"))).toBe(true)
+    expect(lines.some((l) => l.startsWith("dropped: the answer for id:10: Refusing to send"))).toBe(
+      true,
+    )
+    // The dropped answer is never sent again.
+    expect(await processNew(opts)).toBe(0)
+    expect(opts.outbox.waiting).toEqual([])
+  })
+
+  test("does not answer a sender who is not on the list", async () => {
+    const { teams, opts, lines } = await start("echo")
+    opts.admission = { allow: ["Someone Else"], bots: [], call: "" }
+    await userSays("10", "ping")
+    expect(await processNew(opts)).toBe(0)
+    expect((await teams.readMessages()).length).toBe(3)
+    expect(lines).toContain("not answered: the sender is not on the list")
   })
 
   test("stops echoing at the rate limit", async () => {

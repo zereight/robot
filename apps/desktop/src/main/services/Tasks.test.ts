@@ -74,6 +74,47 @@ describe("Tasks", () => {
     expect(await state(second.id)).toBe("done")
   })
 
+  test("a chat task starts before a routine task that was made first (spec 005, Queue)", async () => {
+    const { run, agent, make } = await setup()
+    const ada = await agent("Ada")
+    const long = await make(ada.id, "long")
+    const routine = await run(
+      Tasks.use((t) =>
+        t.create({ agentId: ada.id, prompt: "routine", source: "routine", sourceId: "r1" }),
+      ),
+    )
+    const chat = await make(ada.id, "chat")
+    const gate = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const job = (id: string, name: string) =>
+      run(
+        Tasks.use((t) =>
+          t.run(
+            id,
+            ada.id,
+            Effect.sync(() => order.push(name)),
+          ),
+        ),
+      )
+    const one = run(
+      Tasks.use((t) =>
+        t.run(
+          long.id,
+          ada.id,
+          Deferred.await(gate).pipe(Effect.tap(() => Effect.sync(() => order.push("long")))),
+        ),
+      ),
+    )
+    await sleep(20)
+    const two = job(routine.id, "routine")
+    await sleep(20)
+    const three = job(chat.id, "chat")
+    await sleep(20)
+    await run(Deferred.succeed(gate, undefined))
+    await Promise.all([one, two, three])
+    expect(order).toEqual(["long", "chat", "routine"])
+  })
+
   test("another agent is not blocked", async () => {
     const { run, agent, make, state } = await setup()
     const ada = await agent("Ada")

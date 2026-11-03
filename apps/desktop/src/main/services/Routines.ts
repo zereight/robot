@@ -105,6 +105,9 @@ const modelOf = (row: Row): AgentModel | null =>
     ? { accountId: row.model_account_id, model: row.model_name, effort: row.model_effort }
     : null
 
+/** The most characters of the change that a run "Recorded" keeps. Sync carries at most this many. */
+const RECORDED_MAX = 2000
+
 const parseFailure = (text: string | null): RoutineFailure | null => {
   if (!text) return null
   try {
@@ -223,7 +226,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       const skip = (
         routineId: string,
         at: number,
-        kind: "missed" | "skipped" | "failed",
+        kind: "missed" | "skipped" | "failed" | "recorded",
         reason: RoutineFailure | null = null,
       ) =>
         db.run(
@@ -277,7 +280,8 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       })
 
       /** Starts a run. `text` is the prompt with what the run gets with it. */
-      const start = (r: Row, text: string, outside?: OutsideSource) => {
+      /** `retryOf`: the task that this run tries again, so that its agent reads the retry note (spec 005). */
+      const start = (r: Row, text: string, outside?: OutsideSource, retryOf?: string) => {
         const model = modelOf(r)
         return r.channel_id
           ? channels.runRoutine(r.channel_id, r.agent_id, text, r.id, {
@@ -292,6 +296,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                   sourceId: r.id,
                   ...(model ? { model } : {}),
                   ...(outside ? { outside } : {}),
+                  ...(retryOf ? { retryOf } : {}),
                 },
               )
               .pipe(Effect.asVoid)
@@ -363,7 +368,19 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           }
           if (before !== outcome.result) {
             const path = watch.target.kind === "path" ? watch.target.path : ""
-            const text = watchRunText(r.prompt, changeText(before, outcome.result, path))
+            const change = changeText(before, outcome.result, path)
+            // "Record only": the change shows in the calendar. No task starts and no model is
+            // called. It counts for no failure and no token limit.
+            if (watch.recordOnly) {
+              skip(r.id, now, "recorded", {
+                code: "recorded",
+                detail:
+                  change.length > RECORDED_MAX ? `${change.slice(0, RECORDED_MAX - 1)}…` : change,
+              })
+              changed(r.server_id)
+              return
+            }
+            const text = watchRunText(r.prompt, change)
             yield* startOrFail(current, now, text, { kind: "routine", name: r.name })
             changed(r.server_id)
             return
@@ -414,18 +431,18 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       // A retry of a task of the other computer runs here, whatever computer the routine runs on.
       tasks.onRetry("routine", (task) =>
         task.sourceId
-          ? runNow(task.sourceId, true)
+          ? runNow(task.sourceId, true, task.id)
           : Effect.fail(new AppError({ code: "invalid_input" })),
       )
 
-      const runNow = (id: string, force = false): Effect.Effect<void, AppError> =>
+      const runNow = (id: string, force = false, retryOf?: string): Effect.Effect<void, AppError> =>
         Effect.gen(function* () {
           const r = row(id)
           if (!r) return yield* new AppError({ code: "routine_not_found" })
           if (r.runs_on !== null && !force)
             return yield* new AppError({ code: "routine_elsewhere" })
           if (active(id)) return yield* new AppError({ code: "routine_running" })
-          yield* start(r, r.prompt)
+          yield* start(r, r.prompt, undefined, retryOf)
           changed(r.server_id)
         })
 
@@ -604,7 +621,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                 })
               for (const s of db.all<{
                 at: number
-                kind: "missed" | "skipped" | "failed"
+                kind: "missed" | "skipped" | "failed" | "recorded"
                 reason: string | null
               }>(
                 "SELECT at, kind, reason FROM routine_skip WHERE routine_id = ? AND at BETWEEN ? AND ?",
@@ -618,7 +635,9 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                   at: s.at,
                   state: s.kind,
                   taskId: null,
-                  reason: parseFailure(s.reason),
+                  ...(s.kind === "recorded"
+                    ? { reason: null, change: parseFailure(s.reason)?.detail ?? "" }
+                    : { reason: parseFailure(s.reason) }),
                 })
               // A watch has no future runs in the calendar (spec 009).
               const schedule = scheduleOf(r)

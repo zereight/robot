@@ -186,6 +186,7 @@ export type RoutineEntryState =
   | "cancelled"
   | "missed"
   | "skipped"
+  | "recorded"
 
 /**
  * What to do on a check, given the runs that came due since the last check. Only the newest run

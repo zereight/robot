@@ -841,3 +841,84 @@ describe("the level Read only (spec 007)", () => {
     expect((await s.toolPart())?.refused).toBeUndefined()
   })
 })
+
+describe("a long shell command goes on in the background (spec question of 003, 007)", () => {
+  const contextOf = (s: Awaited<ReturnType<typeof setup>>, signal: AbortSignal): ToolContext => ({
+    agentId: s.agent.id,
+    workspace: s.agent.workspace,
+    permission: "full",
+    signal,
+    onWaiting: () => {},
+    onMemory: () => {},
+    onKnowledge: () => {},
+    knowledgeChanges: { count: 0 },
+    turn: newTurnMark("user"),
+    taskId: null,
+  })
+  const exec = (
+    s: Awaited<ReturnType<typeof setup>>,
+    ctx: ToolContext,
+    name: string,
+    args: object,
+  ) =>
+    s.run(
+      Tools.use((x) =>
+        Effect.promise(() => x.execute(ctx, { id: name, name, input: JSON.stringify(args) })),
+      ),
+    )
+
+  test("the step ends with a job number; job_output reads it; the next step tells that it ended", async () => {
+    process.env.ROBOT_TEST_COMMAND_BACKGROUND_MS = "150"
+    try {
+      const s = await setup("full")
+      const turn = new AbortController()
+      const ctx = contextOf(s, turn.signal)
+      // A short command still ends in the step.
+      const quick = await exec(s, ctx, "run_command", { command: "echo fast" })
+      expect(quick.output).toContain("fast")
+      expect(quick.output).toContain("[exit code 0]")
+      // A long one goes to the background with its output so far.
+      const slow = await exec(s, ctx, "run_command", {
+        command: "echo start; sleep 0.6; echo finish",
+      })
+      expect(slow.output).toContain("still runs in the background as job 1")
+      expect(slow.output).toContain("start")
+      expect(slow.output).not.toContain("finish")
+      const running = await exec(s, ctx, "job_output", { job: 1 })
+      expect(running.output).toContain("[job 1 still runs]")
+      // A wait ends with the job.
+      const ended = await exec(s, ctx, "job_output", { job: 1, wait_seconds: 5 })
+      expect(ended.output).toContain("finish")
+      expect(ended.output).toContain("[exit code 0]")
+      // A second job ends while the agent does other steps: the next step tells it once.
+      await exec(s, ctx, "run_command", { command: "sleep 0.3; echo second" })
+      await Bun.sleep(400)
+      const next = await exec(s, ctx, "list_files", { path: "." })
+      expect(next.output).toContain("Job 2 (sleep 0.3; echo second) ended [exit code 0]")
+      expect(next.output).toContain("second")
+      const again = await exec(s, ctx, "list_files", { path: "." })
+      expect(again.output).not.toContain("Job 2")
+      // Another turn has its own jobs.
+      const other = contextOf(s, new AbortController().signal)
+      expect((await exec(s, other, "job_output", { job: 1 })).failed).toBe(true)
+    } finally {
+      delete process.env.ROBOT_TEST_COMMAND_BACKGROUND_MS
+    }
+  })
+
+  test("the end of the turn ends a job that still runs", async () => {
+    process.env.ROBOT_TEST_COMMAND_BACKGROUND_MS = "100"
+    try {
+      const s = await setup("full")
+      const turn = new AbortController()
+      const ctx = contextOf(s, turn.signal)
+      const marker = join(s.agent.workspace, "late.txt")
+      await exec(s, ctx, "run_command", { command: `sleep 0.5; echo late > "${marker}"` })
+      turn.abort()
+      await Bun.sleep(800)
+      expect(existsSync(marker)).toBe(false)
+    } finally {
+      delete process.env.ROBOT_TEST_COMMAND_BACKGROUND_MS
+    }
+  })
+})

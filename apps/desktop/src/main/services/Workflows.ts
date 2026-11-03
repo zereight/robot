@@ -568,6 +568,32 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         if (wf) changed(wf.server_id)
       }
 
+      /**
+       * A trigger with "Record only" fired: a run "Recorded" with the text of the trigger, and no
+       * step. No model is called.
+       */
+      const record = (wf: Workflow, trigger: string, triggerText: string) =>
+        Effect.sync(() => {
+          const now = Date.now()
+          const runId = randomUUID()
+          db.run(
+            "INSERT INTO workflow_run (id, workflow_id, state, trigger, trigger_text, started_at, finished_at, started_by) VALUES (?, ?, 'recorded', ?, ?, ?, ?, NULL)",
+            runId,
+            wf.id,
+            trigger,
+            triggerText,
+            now,
+            now,
+          )
+          runChanged(runId)
+          changed(wf.serverId)
+        })
+
+      const fire = (wf: Workflow, trigger: "schedule" | "channel", triggerText: string) =>
+        wf.trigger.kind !== "manual" && wf.trigger.recordOnly
+          ? record(wf, trigger, triggerText)
+          : start(wf, trigger, triggerText).pipe(Effect.asVoid)
+
       const start = (
         wf: Workflow,
         trigger: string,
@@ -623,7 +649,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             if (wf.trigger.kind !== "schedule") continue
             const { start: at } = dueRuns(wf.trigger.schedule as Schedule, r.last_checked_at, now)
             db.run("UPDATE workflow SET last_checked_at = ? WHERE id = ?", now, r.id)
-            if (at !== null && !wf.running) yield* start(wf, "schedule", "").pipe(Effect.ignore)
+            if (at !== null && !wf.running) yield* fire(wf, "schedule", "").pipe(Effect.ignore)
           }
         })
 
@@ -640,7 +666,7 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
             text.toLowerCase().includes(t.contains.toLowerCase()) &&
             !wf.running
           )
-            Effect.runFork(start(wf, "channel", text).pipe(Effect.ignore))
+            Effect.runFork(fire(wf, "channel", text).pipe(Effect.ignore))
         }
       })
 
