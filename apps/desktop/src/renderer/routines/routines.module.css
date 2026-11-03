@@ -154,6 +154,11 @@
   background: color-mix(in srgb, var(--c-danger) 20%, transparent);
 }
 
+.entry[data-state="recorded"] {
+  background: transparent;
+  border: 1px solid var(--c-border);
+}
+
 .entry[data-state="planned"] {
   background: transparent;
   border: 1px dashed var(--c-border);
@@ -175,6 +180,20 @@
 
 .entryReason {
   color: var(--c-text-muted);
+}
+
+/* The change that a run "Recorded" saw (spec question of 009). */
+.entryChange {
+  color: var(--c-text-muted);
+}
+
+.entryChange pre {
+  max-height: 160px;
+  overflow: auto;
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--text-xs);
 }
 
 .confirm {

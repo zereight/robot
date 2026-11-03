@@ -968,6 +968,8 @@ export const ko: Record<MessageKey, string> = {
   "routines.state.cancelled": "중지됨",
   "routines.state.missed": "놓침",
   "routines.state.skipped": "건너뜀",
+  "routines.state.recorded": "기록됨",
+  "routines.recorded.change": "변경 내용",
   "error.invalid_schedule": "일정이 올바르지 않습니다.",
   "error.routine_not_found": "이 루틴이 더 이상 없습니다.",
   "error.routine_running": "이 루틴이 아직 실행 중입니다.",
@@ -989,6 +991,10 @@ export const ko: Record<MessageKey, string> = {
   "workflows.trigger.schedule": "일정",
   "workflows.trigger.channel": "채널 메시지",
   "workflows.trigger.contains": "메시지에 포함된 글",
+  "workflows.trigger.recordOnly": "기록만 하기",
+  "workflows.trigger.recordOnlyHint":
+    "켜 두면 트리거가 단계를 실행하지 않고 모델도 부르지 않아요. 트리거가 작동할 때마다 실행 기록에 기록됨으로 남아요. 지금 실행은 그대로 워크플로를 실행해요.",
+  "workflows.recorded": "트리거가 작동했어요. 기록만 하는 트리거라서 실행된 단계는 없어요.",
   "workflows.step.agent": "에이전트 단계",
   "workflows.step.condition": "조건",
   "workflows.step.approval": "승인 대기",
@@ -1022,6 +1028,7 @@ export const ko: Record<MessageKey, string> = {
   "workflows.runState.done": "완료",
   "workflows.runState.failed": "실패",
   "workflows.runState.cancelled": "중지됨",
+  "workflows.runState.recorded": "기록됨",
   "workflows.stepState.pending": "대기",
   "workflows.stepState.running": "실행 중",
   "workflows.stepState.waiting": "승인 대기",
@@ -1643,6 +1650,9 @@ export const ko: Record<MessageKey, string> = {
   "routines.watch.args": "인수 (JSON 객체)",
   "routines.watch.args.invalid": "인수는 JSON 객체여야 해요.",
   "routines.watch.postUnchanged": "바뀐 것이 없어도 게시",
+  "routines.watch.recordOnly": "기록만 하기",
+  "routines.watch.recordOnlyHint":
+    "켜 두면 바뀐 것이 있어도 작업을 시작하지 않고 모델도 부르지 않아요. 달력에 변경 내용을 기록됨으로 보여 줘요. 변경이 맞게 잡히면 끄세요.",
   "routines.watch.first":
     "첫 확인은 결과를 저장만 하고 루틴을 실행하지 않아요. 이후 확인에서 결과가 바뀌면 실행해요.",
   "routines.watch.often": "하루에 약 {n}번 확인해요.",

@@ -2,6 +2,7 @@ import type { PermissionLevel } from "@robot/shared"
 import type { BridgeHandler } from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import type { ToolOutcome } from "./agent.ts"
+import type { CacheLifetime } from "./cache.ts"
 import type { ToolCall, ToolDef, Turn } from "./chat.ts"
 import type { Resume } from "./resume.ts"
 
@@ -35,6 +36,12 @@ export interface TurnInput {
   readonly permission: PermissionLevel
   /** The tools of the app, for an API account. */
   readonly tools?: readonly ToolDef[]
+  /**
+   * How long an Anthropic account keeps the start of the request ready: "long" for a turn that a
+   * person starts in the chat. Absent means "short". It has no effect where the endpoint takes no
+   * cache marker. API accounts only.
+   */
+  readonly cache?: CacheLifetime
   /** False when the turn may only answer in text. */
   readonly useTools: boolean
   /** Set when the turn goes on after a restart, at a card that waits (spec 005). API accounts only. */

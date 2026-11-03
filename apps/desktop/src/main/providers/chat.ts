@@ -1,4 +1,5 @@
 import { takesAdaptiveThinking, takesThinkingBudget } from "@robot/shared"
+import { type CacheLifetime, type CacheMarker, cacheMarker } from "./cache.ts"
 import {
   type Connection,
   failureFrom,
@@ -55,6 +56,11 @@ export interface ChatRequest {
   readonly system: string
   readonly turns: readonly Turn[]
   readonly tools?: readonly ToolDef[]
+  /**
+   * Asks Anthropic to keep the start of the request ready for the next one, for this long. Absent
+   * means no marker. The caller sets it only for an endpoint that takes it (`takesCacheMarker`).
+   */
+  readonly cache?: CacheLifetime
   readonly signal: AbortSignal
 }
 
@@ -292,6 +298,8 @@ export interface AnthropicBody {
   readonly model: string
   readonly max_tokens: number
   readonly stream: true
+  /** One marker for the whole request. The provider puts the breakpoint on the last block. */
+  readonly cache_control?: CacheMarker
   readonly system?: string
   readonly messages: { role: string; content: unknown }[]
   readonly tools?: { name: string; description: string; input_schema: Record<string, unknown> }[]
@@ -314,6 +322,7 @@ export const anthropicBody = (req: ChatRequest): AnthropicBody => {
     model: req.model,
     max_tokens: maxTokens,
     stream: true,
+    ...(req.cache ? { cache_control: cacheMarker(req.cache) } : {}),
     ...(req.system.trim() ? { system: req.system } : {}),
     messages: anthropicMessages(normaliseTurns(req.turns)),
     ...(req.tools?.length
@@ -369,9 +378,44 @@ export const replyBlocks = (drafts: readonly Draft[]): ReplyBlock[] | null => {
   return thinks ? blocks : null
 }
 
+/** The counts of tokens in the `usage` of an Anthropic reply. Every field can be absent. */
+export interface AnthropicUsage {
+  readonly input_tokens?: number
+  readonly output_tokens?: number
+  readonly cache_creation_input_tokens?: number
+  readonly cache_read_input_tokens?: number
+}
+
+/**
+ * Counts all the input of one Anthropic reply. With caching on, `input_tokens` leaves out the
+ * parts that were written to the cache or read from it, so all input is the three fields together
+ * (specs 005 and 009: cached input counts as input). The counts come at the start of the stream
+ * and can come again, as running totals, at the end. A field keeps its last value, so an event that
+ * names only some of the fields never lowers the total. Gives the total when an event changes a
+ * field, and nothing when it names none of them.
+ */
+export const inputCounter = () => {
+  const seen = { fresh: 0, written: 0, read: 0 }
+  // A field that a proxy sends as null counts as absent.
+  const count = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) ? value : undefined
+  return (usage: AnthropicUsage | undefined): number | undefined => {
+    if (!usage) return undefined
+    const fresh = count(usage.input_tokens)
+    const written = count(usage.cache_creation_input_tokens)
+    const read = count(usage.cache_read_input_tokens)
+    if (fresh === undefined && written === undefined && read === undefined) return undefined
+    seen.fresh = fresh ?? seen.fresh
+    seen.written = written ?? seen.written
+    seen.read = read ?? seen.read
+    return seen.fresh + seen.written + seen.read
+  }
+}
+
 async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | ReplyEvent> {
   const body = await post(req, anthropicBody(req))
   const drafts = new Map<number, Draft>()
+  const countInput = inputCounter()
   for await (const event of readSse(body)) {
     const data = JSON.parse(event.data) as {
       type: string
@@ -385,7 +429,7 @@ async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | 
         signature?: string
         data?: string
       }
-      message?: { usage?: { input_tokens?: number; output_tokens?: number } }
+      message?: { usage?: AnthropicUsage }
       delta?: {
         type?: string
         text?: string
@@ -393,16 +437,16 @@ async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | 
         signature?: string
         partial_json?: string
       }
-      usage?: { output_tokens?: number }
+      usage?: AnthropicUsage
       error?: { type?: string; message?: string }
     }
     const index = data.index ?? 0
     switch (data.type) {
-      case "message_start":
-        if (data.message?.usage?.input_tokens !== undefined) {
-          yield { type: "usage", input: data.message.usage.input_tokens }
-        }
+      case "message_start": {
+        const input = countInput(data.message?.usage)
+        if (input !== undefined) yield { type: "usage", input }
         break
+      }
       case "content_block_start": {
         const block = data.content_block
         if (block?.type === "tool_use")
@@ -456,10 +500,19 @@ async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | 
           block.signature += data.delta.signature ?? ""
         break
       }
-      case "message_delta":
-        if (data.usage?.output_tokens !== undefined)
-          yield { type: "usage", output: data.usage.output_tokens }
+      case "message_delta": {
+        // The counts of this event are running totals, so they replace the ones of the start.
+        const input = countInput(data.usage)
+        const output =
+          typeof data.usage?.output_tokens === "number" ? data.usage.output_tokens : undefined
+        if (input !== undefined || output !== undefined)
+          yield {
+            type: "usage",
+            ...(input !== undefined ? { input } : {}),
+            ...(output !== undefined ? { output } : {}),
+          }
         break
+      }
       case "error":
         throw new ProviderFailure(
           data.error?.type === "rate_limit_error"

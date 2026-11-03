@@ -11,6 +11,19 @@ export interface Config {
   chunkMax: number
   /** Send only when the open chat title contains this text. Empty means: never send. */
   expectTitle: string
+  /** Senders that may make the bridge answer. Empty means: nobody. */
+  allow: string[]
+  /** Senders that are bots. They never make the bridge answer. */
+  bots: string[]
+  /** Text that calls the bridge. Empty means: a direct chat, so every message calls it. */
+  call: string
+}
+
+function names(name: string): string[] {
+  return (process.env[name] ?? "")
+    .split(",")
+    .map((n) => n.trim())
+    .filter((n) => n !== "")
 }
 
 function int(name: string, fallback: number, min: number): number {
@@ -34,5 +47,8 @@ export function loadConfig(): Config {
     pollMs: int("POLL_MS", 3000, 500),
     chunkMax: int("CHUNK_MAX", 4000, 100),
     expectTitle: process.env.EXPECT_TITLE ?? "",
+    allow: names("ALLOW"),
+    bots: names("BOTS"),
+    call: (process.env.CALL ?? "").trim(),
   }
 }

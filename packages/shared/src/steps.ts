@@ -228,3 +228,19 @@ export const createReadGuard = () => {
   }
 }
 export type ReadGuard = ReturnType<typeof createReadGuard>
+
+/**
+ * The note that the agent of a new try reads before its prompt (spec 005, "Retry note"). It is text
+ * for the model, not interface text. It lists the same steps as the note of the user.
+ */
+export const retryNoteForModel = (note: RetryNote): string => {
+  const head =
+    "This task is a new try of an earlier task that did not end well. The earlier try ran steps that may have changed things. Failed, Blocked and Cancelled do not undo them."
+  const ask =
+    "Check the current state before you do one of these steps again, so that you do not do a thing twice, for example push a change or send a message again."
+  if (note.computer !== null)
+    return `${head} It ran on the computer ${note.computer}, so the list of its steps is not here.\n${ask}`
+  const lines = note.steps.map((s) => `- ${s.kind}: ${s.target} (${s.result})`)
+  if (note.more > 0) lines.push(`- and ${note.more} more`)
+  return `${head} The steps, newest first:\n${lines.join("\n")}\n${ask}`
+}

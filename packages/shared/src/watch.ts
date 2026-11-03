@@ -46,6 +46,11 @@ export const WatchSchema = Schema.Struct({
   target: WatchTarget,
   /** "Post when nothing changed": a check with no change posts one muted line. */
   postUnchanged: Schema.Boolean,
+  /**
+   * "Record only": a change starts no task and calls no model. The calendar shows a run "Recorded"
+   * with the change text. Off when it is not there (a watch saved before the switch existed).
+   */
+  recordOnly: Schema.optionalKey(Schema.Boolean),
 })
 export type Watch = typeof WatchSchema.Type
 

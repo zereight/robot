@@ -35,7 +35,7 @@ import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
-import { Button } from "../ui/controls.tsx"
+import { Button, Switch } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
 import styles from "./workflows.module.css"
 
@@ -579,10 +579,34 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
                 : {})}
               onChange={(schedule, ok) => {
                 setScheduleOk(ok)
-                if (trigger().kind === "schedule") setTrigger({ kind: "schedule", schedule })
+                const current = trigger()
+                if (current.kind === "schedule") setTrigger({ ...current, schedule })
               }}
             />
           </div>
+        </Show>
+        <Show
+          when={(() => {
+            const tr = trigger()
+            return tr.kind === "manual" ? undefined : tr
+          })()}
+        >
+          {(tr) => (
+            <div class={styles.inline}>
+              <Switch
+                label={t("workflows.trigger.recordOnly")}
+                checked={tr().recordOnly === true}
+                disabled={readOnly()}
+                onChange={(on) => {
+                  const { recordOnly: _drop, ...rest } = tr()
+                  setTrigger(on ? { ...rest, recordOnly: true } : rest)
+                }}
+                testId="wf-trigger-record-only"
+              />
+              <span>{t("workflows.trigger.recordOnly")}</span>
+              <span class={styles.hint}>{t("workflows.trigger.recordOnlyHint")}</span>
+            </div>
+          )}
         </Show>
       </div>
 
@@ -1162,6 +1186,14 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
         <Show when={live()}>
           {(d) => (
             <div class={styles.runDetail} data-testid="wf-run-detail">
+              <Show when={d().run.state === "recorded"}>
+                <p class={styles.hint} data-testid="wf-run-recorded">
+                  {t("workflows.recorded")}
+                </p>
+                <Show when={d().run.triggerText}>
+                  {(text) => <pre data-testid="wf-run-trigger-text">{text()}</pre>}
+                </Show>
+              </Show>
               <For each={d().steps}>
                 {(s) => (
                   <details class={styles.stepRun} data-state={s.state} data-testid="wf-run-step">

@@ -152,6 +152,8 @@ export interface TaskOrigin {
   readonly prompt?: string
   /** The agent that asked. The reply of this task goes back to it as a new message (spec 007). */
   readonly requester?: string
+  /** The task that this one tries again (a Retry of a routine run). */
+  readonly retryOf?: string
 }
 
 export interface ChatService {
@@ -726,7 +728,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             source,
             sourceId: origin?.sourceId ?? agentId,
             messageId: reply.id,
-            retryOf: retryLinks.get(agentId) ?? null,
+            retryOf: retryLinks.get(agentId) ?? origin?.retryOf ?? null,
             // A routine or a workflow starts its task with no message of the user (spec 005).
             askedAt: source === "chat" && !retryLinks.has(agentId) ? (askedAt ?? null) : null,
             ...(origin?.depth !== undefined ? { depth: origin.depth } : {}),
@@ -905,6 +907,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             CHAIN_LIMIT_RULE,
             // A task of a routine, a workflow or another agent can say that it was blocked.
             toldAboutBlocked(task) ? BLOCKED_RULE : "",
+            // A new try reads which steps of the earlier try may have changed things (spec 005).
+            tasks.retryNoteForModel(task),
             withNotes ? "" : notes,
             known ?? "",
           ]
@@ -999,6 +1003,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 // Changes from the chat are for agents of an API provider (spec 002).
                 settings: !isRuntime,
               }),
+              // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
+              // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
+              // message of another agent) keeps the short one.
+              cache: task.source === "chat" ? "long" : "short",
               signal: controller.signal,
               workspace: agent.workspace,
               permission: agent.permission,

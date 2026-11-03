@@ -77,6 +77,8 @@ const text = (content: string) =>
   ])
 
 const failedOnce = new Set<string>()
+/** The system text of each request, in order. */
+const systems: string[] = []
 
 const server = Bun.serve({
   port: 0,
@@ -86,6 +88,7 @@ const server = Bun.serve({
     const body = (await req.json()) as {
       messages: { role: string; content: string | null }[]
     }
+    systems.push(String(body.messages.find((m) => m.role === "system")?.content ?? ""))
     const users = body.messages.filter((m) => m.role === "user")
     const first = String(users[0]?.content ?? "")
     const last = body.messages.at(-1)
@@ -334,6 +337,11 @@ describe("retry note (spec 005)", () => {
     const all = await s.tasks()
     expect(all).toHaveLength(2)
     expect(all.find((t) => t.retryOf === failed?.id)?.state).toBe("done")
+    // The agent of the new try reads the same steps, and is told to check first.
+    const again = systems.filter((x) => x.includes("This task is a new try"))
+    expect(again.length).toBeGreaterThan(0)
+    expect(again[0]).toContain("out.txt")
+    expect(again[0]).toContain("Check the current state")
   })
 
   test("a task that only read files starts at once on retry", async () => {
@@ -344,10 +352,13 @@ describe("retry note (spec 005)", () => {
     const [failed] = await s.tasks()
     expect(failed?.state).toBe("failed")
     expect(await s.run(Tasks.use((t) => Effect.succeed(t.noteFor(failed?.id ?? ""))))).toBeNull()
+    systems.length = 0
     const started = await s.run(Tasks.use((t) => t.retry(failed?.id ?? "")))
     expect(started.started).toBe(true)
     await s.quiet()
     expect(await s.tasks()).toHaveLength(2)
+    // Nothing may have changed, so the new try gets no note.
+    expect(systems.some((x) => x.includes("This task is a new try"))).toBe(false)
   })
 
   test("the retry of a failed reply in a chat asks first, then deletes the reply and tries again", async () => {
