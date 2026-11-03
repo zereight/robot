@@ -176,7 +176,10 @@ export const Composer = (props: {
                   { backgroundColor: pressed ? palette.pressed : "transparent" },
                 ]}
               >
-                {entry.kind === "all" ? null : (
+                {entry.kind === "all" ? (
+                  // The place of a face, so that the names stand in one column.
+                  <View style={[styles.everyone, { backgroundColor: palette.pressed }]} />
+                ) : (
                   <Face face={entry.member.face} image={entry.member.faceImage} size={24} />
                 )}
                 <Text style={[styles.mentionName, { color: palette.text }]}>@{name}</Text>
@@ -296,6 +299,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.m,
   },
   mentionName: { fontSize: text.m, fontWeight: "600" },
+  everyone: { width: 24, height: 24, borderRadius: 12 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space.xs },
   chip: {
     flexDirection: "row",
