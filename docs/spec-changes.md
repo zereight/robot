@@ -57,6 +57,7 @@ These are in the code today and the specs now say something else.
 | 002, 004, 013 | Each agent has only its own instructions. | A handbook for every agent of a server, and instructions for each channel. |
 | 002, 014, 017 | An agent file holds agents and routines. | It can also hold channels, skills (made off) and the handbook (not ticked on import). |
 | 023, 000, 005, 013, 014 | No program on the computer can talk to ROBot. | An outside program that the user adds can read, send work, wait and stop through a helper over MCP. It cannot answer approvals or change anything else. |
+| 007 | A part of a channel job and a hit of "search chats" are not outside content. | A part holds outside content from its start when the job came from another agent or an outside program, or when the lead read outside content before it made the part. A hit of "search chats" on a message that the user did not write is outside content. Belongs to S62. |
 
 ## Slices
 
