@@ -30,6 +30,7 @@ import { formatSeconds } from "../lib/seconds.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
 import { useEndRequest, useReview } from "../review/Review.tsx"
 import shell from "../shell/shell.module.css"
+import { makeSkillFromWork } from "../skills/SkillForm.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
@@ -370,6 +371,15 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
               >
                 <Button onClick={() => ending.start(d().task.id)} data-testid="task-end-request">
                   {t("tasks.endRequest")}
+                </Button>
+              </Show>
+              {/* "Make a skill" needs the model account of this computer: a client has none (spec 017). */}
+              <Show when={!ui.linked() && d().task.state === "done"}>
+                <Button
+                  onClick={() => makeSkillFromWork({ kind: "task", id: d().task.id })}
+                  data-testid="task-make-skill"
+                >
+                  {t("skills.make")}
                 </Button>
               </Show>
               <Show when={d().task.sourceId && ["chat", "channel"].includes(d().task.source)}>
