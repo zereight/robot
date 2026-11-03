@@ -9,6 +9,7 @@ import { Agents } from "./Agents.ts"
 import { copyAttachments } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
+import { Decision } from "./Decision.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Places } from "./Places.ts"
@@ -58,6 +59,30 @@ describe("attachments", () => {
 })
 
 describe("export and import", () => {
+  test("the key of the decision model is not in the archive, in whatever form a text holds it", async () => {
+    const out = join(testPlatform().dataDir, "decision-export.zip")
+    const a = app({ save: out })
+    // A key that has no known shape: only the stored value tells that it is a key.
+    const key = "plain-decision-key-0123456789"
+    await a.run(Decision.use((d) => d.keys({ openrouter: key })))
+    const local = await a.run(Servers.use((s) => s.local))
+    const agent = await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    db.run(
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at, finished_at)
+       VALUES ('m1', ?, 'user', ?, 'done', 1, 1)`,
+      agent.id,
+      JSON.stringify([{ kind: "text", text: `the decision key is ${key}` }]),
+    )
+    await a.run(Data.use((d) => d.export()))
+    for (const data of Object.values(unzipSync(readFileSync(out))))
+      expect(Buffer.from(data).includes(key)).toBe(false)
+  })
+
   test("the archive has no key; a fresh app restores agents, chats and files", async () => {
     const out = join(testPlatform().dataDir, "export.zip")
     const a = app({ save: out })

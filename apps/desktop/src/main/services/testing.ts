@@ -122,7 +122,9 @@ export const testPlatform = () => {
 }
 
 /** The full app layer on an in-memory database, with recorded events. */
-export const testRuntime = (options: { name?: string; network?: MemoryNetwork } = {}) => {
+export const testRuntime = (
+  options: { name?: string; network?: MemoryNetwork; decisionUrl?: string } = {},
+) => {
   const { platform, dataDir, trashed, browserLog, browserPlaced, browserInput, recorders, shell } =
     testPlatform()
   const events: { event: string; payload: unknown; server?: string }[] = []
@@ -136,6 +138,7 @@ export const testRuntime = (options: { name?: string; network?: MemoryNetwork } 
       emit: (event, payload, server) =>
         events.push(server === undefined ? { event, payload } : { event, payload, server }),
       secrets: Secrets.memory,
+      ...(options.decisionUrl ? { decisionUrl: options.decisionUrl } : {}),
     }),
   )
   // The requests of linked devices run the real handlers, as in the app.

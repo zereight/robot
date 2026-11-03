@@ -11,6 +11,7 @@ import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
 import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
+import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Knowledge } from "./services/Knowledge.ts"
@@ -51,6 +52,8 @@ export interface AppLayerOptions {
   readonly linkPort?: number
   /** Opens the socket that finds and announces computers near. Tests give a network in memory. */
   readonly nearbySocket?: OpenSocket
+  /** The address of the decision model service. Only tests set it (spec 013). */
+  readonly decisionUrl?: string
 }
 
 /** Every main process service, wired together. */
@@ -83,6 +86,7 @@ export const appLayer = (options: AppLayerOptions) => {
     ActionLog.layer,
     Search.layer,
     SavedSecrets.layer,
+    Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),
     Agents.layer,
   ).pipe(Layer.provideMerge(notifier))
   // The settings tool changes agents, so agents come before the tools (spec 002).

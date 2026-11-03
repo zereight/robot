@@ -61,6 +61,10 @@ const makeRuntime = () =>
       secrets: process.env.ROBOT_TEST_SECRETS
         ? Secrets.file(process.env.ROBOT_TEST_SECRETS)
         : Secrets.keychain,
+      // Only a test run may send the decision model to another address (spec 013).
+      ...(isTestRun && process.env.ROBOT_TEST_DECISION_URL
+        ? { decisionUrl: process.env.ROBOT_TEST_DECISION_URL }
+        : {}),
     }),
   )
 

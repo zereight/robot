@@ -48,6 +48,8 @@ import {
   type PartChip,
   type PartInfo,
   type PermissionLevel,
+  PICK_RECENT_MAX,
+  type PickInput,
   PLAN_STEPS_MAX,
   parseCheck,
   parseMentions,
@@ -77,9 +79,11 @@ import { Agents } from "./Agents.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
 import { applyEvent } from "./Chat.ts"
 import { Database } from "./Database.ts"
+import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { appendLog } from "./logs.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
@@ -230,6 +234,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const sections = yield* Sections
       const settings = yield* SettingsStore
       const platform = yield* Platform
+      const decision = yield* Decision
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
       // A part that streams from the other computer (spec 019) is not ours to end.
@@ -259,6 +264,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           `SELECT 1 AS x FROM task WHERE source = 'channel' AND source_id = ? AND state IN ${ACTIVE}`,
           channelId,
         ) !== undefined
+
+      /** A job or a part that is still open: a new message may continue that work (spec 004). */
+      const hasOpenWork = (channelId: string) =>
+        db.get(
+          `SELECT 1 AS x FROM task WHERE source = 'channel' AND source_id = ?
+           AND state IN ('queued', 'running', 'waiting', 'review')`,
+          channelId,
+        ) !== undefined
+      /** The members that can take a job, with their role lines: those that are not archived. */
+      const availableMembers = (channelId: string) =>
+        db.all<{ id: string; name: string; role: string }>(
+          `SELECT a.id, a.name, a.role FROM channel_member m JOIN agent a ON a.id = m.agent_id
+           WHERE m.channel_id = ? AND a.archived_at IS NULL ORDER BY m.position`,
+          channelId,
+        )
 
       const toChannel = (row: ChannelRow): Channel => {
         const memberIds = memberRows(row.id).map((m) => m.id)
@@ -1599,6 +1619,72 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           return Effect.void
         })
 
+      /** What the decision model reads for a job: the channel, its last messages, the job, the options. */
+      const pickInput = (
+        channel: ChannelRow,
+        jobId: string,
+        job: string,
+        members: readonly { id: string; name: string; role: string }[],
+      ): PickInput => {
+        const names = new Map(memberRows(channel.id).map((m) => [m.id, m.name]))
+        const recent = db
+          .all<MessageRow>(
+            `SELECT * FROM channel_message WHERE channel_id = ? AND id != ? AND status IN ('done', 'stopped')
+             ORDER BY created_at DESC, rowid DESC LIMIT ${PICK_RECENT_MAX}`,
+            channel.id,
+            jobId,
+          )
+          .reverse()
+          .map((row) => ({
+            from: row.author === "user" ? "user" : (names.get(row.agent_id ?? "") ?? "agent"),
+            text: messageText(toMessage(row)).trim(),
+          }))
+          .filter((m) => m.text)
+        return {
+          channelName: channel.name,
+          topic: channel.topic,
+          recent,
+          job,
+          members: members.map((m) => ({ name: m.name, role: m.role })),
+        }
+      }
+
+      /**
+       * The fast pick (spec 004). The model chooses one member, and that member answers as if it
+       * had a mention. With no pick for any reason, the job goes the normal way: to the lead, or
+       * to the user when there is no lead. Nothing shows to the user except that flow. Each
+       * answer writes one line to the log of channels: no job text and no key.
+       */
+      const fastPick = (
+        channel: ChannelRow,
+        jobId: string,
+        job: string,
+        members: readonly { id: string; name: string; role: string }[],
+        leadId: string | null,
+      ) =>
+        Effect.gen(function* () {
+          const result = yield* decision.pick(pickInput(channel, jobId, job, members))
+          const chosen = result.index === null ? undefined : members[result.index]
+          // The member may have been archived while the model thought.
+          const taker = chosen && agentRow(chosen.id)?.archived_at === null ? chosen : undefined
+          const reason =
+            result.index === null ? result.reason : taker ? undefined : "unknown_option"
+          appendLog(platform.dataDir, "channels", {
+            event: "fast_pick",
+            chosen: taker !== undefined,
+            ...(reason ? { reason } : {}),
+            ...(result.code !== undefined ? { code: result.code } : {}),
+            probability: result.probability,
+            ms: result.ms,
+          })
+          if (taker) return yield* startDirect(channel, taker.id, job)
+          const leadAgent = leadId ? agentRow(leadId) : undefined
+          if (leadAgent) return yield* startLead(channel, leadAgent, job)
+          // No lead: the user picks. The job waits, and the row shows the member buttons.
+          db.run("UPDATE channel_message SET awaiting = 1 WHERE id = ?", jobId)
+          emitMessage(jobId)
+        })
+
       const send = Effect.fn("Channels.send")(function* (channelId: string, text: string) {
         const sender = yield* CurrentActor
         const channel = channelRow(channelId)
@@ -1613,8 +1699,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           members.map((m) => m.name),
         )
         const lead = toChannel(channel).leadId
-        const awaiting = mentioned.length === 0 && lead === null
-        insertUserMessage(channelId, value, awaiting, sender)
+        // The fast pick runs for a job that names no member, when no other job or part is open and
+        // at least two members can take it (spec 004).
+        const candidates = mentioned.length === 0 ? availableMembers(channelId) : []
+        const picking = candidates.length >= 2 && !hasOpenWork(channelId) && (yield* decision.ready)
+        const awaiting = mentioned.length === 0 && lead === null && !picking
+        const jobId = insertUserMessage(channelId, value, awaiting, sender)
         placesChanged(channel.server_id)
         for (const handler of messageHandlers) handler(channelId, value)
         if (awaiting) return { awaiting: true }
@@ -1623,6 +1713,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             const member = members.find((m) => m.name === name)
             if (member) yield* startDirect(channel, member.id, value)
           }
+        } else if (picking) {
+          // The answer takes up to 3 seconds. The message shows at once, and the send does not wait.
+          yield* background(fastPick(channel, jobId, value, candidates, lead))
         } else {
           const leadAgent = agentRow(lead as string)
           if (leadAgent) yield* startLead(channel, leadAgent, value)

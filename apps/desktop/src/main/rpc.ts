@@ -7,6 +7,7 @@ import {
   ChannelPatch,
   ChatSend,
   DEVICE_NAME_MAX,
+  DecisionKeys,
   isClientMethod,
   MEMORY_MODES,
   MESSAGE_MAX,
@@ -50,6 +51,7 @@ import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
 import { Data } from "./services/Data.ts"
+import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
@@ -694,6 +696,12 @@ export const handlers: Handlers = {
         ),
       ),
     ),
+  // The key of the decision model goes from the window to the keychain only (spec 013). The page
+  // learns whether a key is saved, never the key.
+  "decision.status": () => Decision.use((d) => d.status),
+  "decision.keys": (input) =>
+    decode(DecisionKeys)(input).pipe(Effect.flatMap((keys) => Decision.use((d) => d.keys(keys)))),
+  "decision.test": () => Decision.use((d) => d.test),
   "secrets.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => SavedSecrets.use((s) => Effect.sync(() => s.remove(id)))),

@@ -105,6 +105,13 @@
   color: var(--c-text-muted);
 }
 
+/* A sentence under a row. Unlike .hint, it breaks lines between words. */
+.note {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  margin-top: 10px;
+}
+
 .actions {
   display: flex;
   gap: 8px;
