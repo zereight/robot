@@ -111,13 +111,24 @@ export const EdgeSchema = Schema.Struct({
 })
 export type Edge = typeof EdgeSchema.Type
 
+/**
+ * "Record only" on a schedule or a message trigger: when it fires, no step runs and no model is
+ * called. The run history shows a run "Recorded". Run now still runs the workflow.
+ */
+const RecordOnly = Schema.optionalKey(Schema.Boolean)
+
 export const TriggerSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("manual") }),
-  Schema.Struct({ kind: Schema.Literal("schedule"), schedule: ScheduleSchema }),
+  Schema.Struct({
+    kind: Schema.Literal("schedule"),
+    schedule: ScheduleSchema,
+    recordOnly: RecordOnly,
+  }),
   Schema.Struct({
     kind: Schema.Literal("channel"),
     channelId: Schema.String,
     contains: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+    recordOnly: RecordOnly,
   }),
 ])
 export type Trigger = typeof TriggerSchema.Type
@@ -161,7 +172,7 @@ export interface Workflow {
   readonly runsOn: string | null
 }
 
-export const RUN_STATES = ["running", "done", "failed", "cancelled"] as const
+export const RUN_STATES = ["running", "done", "failed", "cancelled", "recorded"] as const
 export type RunState = (typeof RUN_STATES)[number]
 export const STEP_STATES = ["pending", "running", "waiting", "done", "failed", "skipped"] as const
 export type StepState = (typeof STEP_STATES)[number]

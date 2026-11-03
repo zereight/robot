@@ -977,6 +977,8 @@ export const en = {
   "routines.state.cancelled": "Stopped",
   "routines.state.missed": "Missed",
   "routines.state.skipped": "Skipped",
+  "routines.state.recorded": "Recorded",
+  "routines.recorded.change": "Change",
   "error.invalid_schedule": "The schedule is not valid.",
   "error.routine_not_found": "This routine does not exist any more.",
   "error.routine_running": "This routine is still running.",
@@ -998,6 +1000,10 @@ export const en = {
   "workflows.trigger.schedule": "Schedule",
   "workflows.trigger.channel": "Channel message",
   "workflows.trigger.contains": "Message contains",
+  "workflows.trigger.recordOnly": "Record only",
+  "workflows.trigger.recordOnlyHint":
+    "While this is on, the trigger runs no step and asks no model. The run history shows each time it fired as Recorded. Run now still runs the workflow.",
+  "workflows.recorded": "The trigger fired. No step ran, because the trigger records only.",
   "workflows.step.agent": "Agent step",
   "workflows.step.condition": "Condition",
   "workflows.step.approval": "Approval",
@@ -1031,6 +1037,7 @@ export const en = {
   "workflows.runState.done": "Done",
   "workflows.runState.failed": "Failed",
   "workflows.runState.cancelled": "Stopped",
+  "workflows.runState.recorded": "Recorded",
   "workflows.stepState.pending": "Pending",
   "workflows.stepState.running": "Running",
   "workflows.stepState.waiting": "Waiting",
@@ -1659,6 +1666,9 @@ export const en = {
   "routines.watch.args": "Arguments (a JSON object)",
   "routines.watch.args.invalid": "The arguments must be a JSON object.",
   "routines.watch.postUnchanged": "Post when nothing changed",
+  "routines.watch.recordOnly": "Record only",
+  "routines.watch.recordOnlyHint":
+    "While this is on, a change starts no task and asks no model. The calendar shows the change as Recorded. Turn it off when the changes look right.",
   "routines.watch.first":
     "The first check keeps the result and does not run the routine. A later check runs it when the result changed.",
   "routines.watch.often": "This checks about {n} times a day.",

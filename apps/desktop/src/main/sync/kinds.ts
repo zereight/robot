@@ -1555,7 +1555,7 @@ const rskip: KindDef = {
   fields: {
     routineId: { check: str(100, 1) },
     at: { check: int },
-    kind: { check: oneOf(["missed", "skipped", "failed"]) },
+    kind: { check: oneOf(["missed", "skipped", "failed", "recorded"]) },
     // Why a check failed or a run could not start.
     reason: {
       check: nullable(

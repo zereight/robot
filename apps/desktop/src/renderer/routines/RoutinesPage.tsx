@@ -413,6 +413,14 @@ const Calendar = (props: {
                       </span>
                     )}
                   </Show>
+                  <Show when={e.change}>
+                    {(change) => (
+                      <details class={styles.entryChange} data-testid="calendar-change">
+                        <summary>{t("routines.recorded.change")}</summary>
+                        <pre>{change()}</pre>
+                      </details>
+                    )}
+                  </Show>
                 </div>
               )}
             </For>

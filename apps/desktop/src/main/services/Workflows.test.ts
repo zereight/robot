@@ -7,6 +7,9 @@ import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
+/** The last message of each request that the model got. */
+const asked: string[] = []
+
 const server = Bun.serve({
   port: 0,
   async fetch(req) {
@@ -14,6 +17,7 @@ const server = Bun.serve({
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
     const body = (await req.json()) as { messages: { content: string }[] }
     const last = body.messages.at(-1)?.content ?? ""
+    asked.push(last)
     if (last.includes("FAIL")) return Response.json({ error: { message: "boom" } }, { status: 500 })
     // A reply that ends with a Blocked line (spec 005).
     if (last.includes("BLOCKME"))
@@ -241,6 +245,30 @@ describe("workflows", () => {
     await s.run(Channels.use((c) => c.send(s.channel.id, "@Ada hello")))
     await Bun.sleep(100)
     expect(await s.run(Workflows.use((w) => w.runs(wf.id)))).toHaveLength(1)
+  })
+
+  test('"Record only": a message trigger records the run, runs no step and asks no model; Run now still runs', async () => {
+    const s = await setup()
+    asked.length = 0
+    const wf = await s.create([s.agentStep("a", s.ada.id, "Handle: {{trigger}}")], [], {
+      kind: "channel",
+      channelId: s.channel.id,
+      contains: "deploy",
+      recordOnly: true,
+    })
+    await s.run(Channels.use((c) => c.send(s.channel.id, "@Ada please deploy now")))
+    await until(async () => (await s.run(Workflows.use((w) => w.runs(wf.id)))).length === 1)
+    const [recorded] = await s.run(Workflows.use((w) => w.runs(wf.id)))
+    expect(recorded?.state).toBe("recorded")
+    expect(recorded?.triggerText).toBe("@Ada please deploy now")
+    expect(recorded?.finishedAt).not.toBeNull()
+    const detail = await s.run(Workflows.use((w) => w.runDetail(recorded?.id ?? "")))
+    expect(detail.steps).toEqual([])
+    expect(asked.some((m) => m.includes("Handle:"))).toBe(false)
+    // A recorded run is not a running one: Run now works and runs the steps.
+    const now = await s.finished((await s.start(wf.id, "by hand")).id)
+    expect(now.run.state).toBe("done")
+    expect(now.steps[0]?.result).toContain("Handle: by hand")
   })
 
   test("a schedule trigger fires on the tick", async () => {

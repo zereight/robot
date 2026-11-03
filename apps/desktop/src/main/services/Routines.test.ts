@@ -305,6 +305,40 @@ describe("watch routines", () => {
     expect(entries.map((e) => e.state)).toEqual(["done"])
   })
 
+  test('"Record only": a change starts no task and calls no model; the calendar shows it as Recorded', async () => {
+    const s = await setup()
+    const dir = mkdtempSync(join(folders, "record-"))
+    writeFileSync(join(dir, "old.txt"), "old")
+    const r = await s.watch({ kind: "path", path: dir }, { recordOnly: true })
+    expect(r.watch?.recordOnly).toBe(true)
+    const t0 = Date.now()
+    await s.tick(t0)
+    writeFileSync(join(dir, "new-report.txt"), "new")
+    const asked = requests.length
+    await s.tick(t0 + 5 * MIN)
+    expect(await s.tasks()).toHaveLength(0)
+    expect(requests.length).toBe(asked)
+    const entries = await s.calendar()
+    expect(entries.map((e) => e.state)).toEqual(["recorded"])
+    expect(entries[0]?.change).toContain("Added: new-report.txt")
+    expect(entries[0]?.reason ?? null).toBeNull()
+    // A recorded run is no failure: the routine stays on.
+    expect((await s.routine(r.id))?.enabled).toBe(true)
+    expect((await s.routine(r.id))?.pausedAfterFailures ?? null).toBeNull()
+    // The switch off again: the next change runs the routine.
+    await s.run(
+      Routines.use((x) =>
+        x.update(r.id, {
+          watch: { minutes: 5, target: { kind: "path", path: dir }, postUnchanged: false },
+        }),
+      ),
+    )
+    writeFileSync(join(dir, "third.txt"), "3")
+    await s.tick(t0 + 10 * MIN)
+    await s.idle()
+    expect((await s.tasks()).filter((t) => t.source === "routine")).toHaveLength(1)
+  })
+
   test('"Post when nothing changed" posts one muted line with no task', async () => {
     const s = await setup()
     const dir = mkdtempSync(join(folders, "same-"))
