@@ -26,7 +26,8 @@ The user connects the model accounts they already have, and each agent uses one 
 
 1. Connect: in settings, the user picks a provider and signs in or pastes a key. The app checks it
    with one small request and shows "Connected" or the error.
-2. Choose: in the agent profile or the chat header, the user picks account, model and effort.
+2. Choose: in the agent profile or the chat header, the user picks account, model and effort. In
+   the form of a new agent, the effort starts as 002 says (flow 1).
 3. Switch: the user changes the model of an agent mid-history. The next turn uses it; the earlier
    turns stay.
 4. Disconnect: removes the stored secret. Agents that used it show "Provider not connected".

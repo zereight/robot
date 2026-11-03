@@ -62,6 +62,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M20 | 024, and the changes to 001, 005, 007, 012, 014, 019 and 022 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S73: the board |
 | M21 | 025, and the changes to 004, 005, 007, 011, 014, 015, 019, 021 and 024 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S74 to S76: the lead answers questions of members, file claims in shared folders, own copies for parts |
 | M25 | The changes to 000, 003, 005, 007, 008, 011, 012, 014, 016, 017, 018 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S80 to S84: pictures from the web, sensitive places, review of connection tools, handover of a chat, make a skill from work |
+| M26 | The changes to 002 and 006 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S85: the effort of a new agent |
 
 ## Surfaces check
 
