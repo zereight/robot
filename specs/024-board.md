@@ -118,6 +118,8 @@ card and write comments. So the user and the agents plan and watch in one place.
 | Cancelled | Doing | Stopped |
 
 - The mark leaves when the card has no task, or when the card is in "Done".
+- A part whose question is with the lead (004) shows "Working". It shows "Needs you" only when
+  the question passes to the user.
 - The card shows no copy of the reply. The task shows the reply (005).
 - A user can drag a card out of "Done" or any other column after the task ended. This starts no
   task and does not change the task.

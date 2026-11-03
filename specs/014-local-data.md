@@ -67,8 +67,9 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - Logs are files in a logs folder inside the data folder. The user opens the folder from settings
   (see 013). Each log has a size limit; the oldest lines go first.
 - There is one log for each of these areas: channels, browser, workflows, and outside programs.
-  - Channels: one line for each answer of the decision model (see 004). It holds no job text and
-    no key.
+  - Channels: one line for each answer of the decision model (see 004), and one line for each
+    look of the lead at a question of a member (004). It holds no job text, no question text, no
+    answer text and no key.
   - Browser: failed tool calls, Stop requests with their result, warnings, and live view input
     that the app dropped or refused (see 007).
   - Workflows: retries, final failures of model steps and conditions (see 010).

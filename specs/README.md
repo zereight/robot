@@ -32,6 +32,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 022 | [Profiles: separate spaces on one computer, switch, background work, what is apart and what is shared](022-profiles.md) | Draft |
 | 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
 | 024 | [Board: one board for all agents, work of every agent as it runs, planned cards, start a card as a task, tools for agents](024-board.md) | Draft |
+| 025 | [Shared folders: file claims between agents in one folder, own copies of a Git repository for parts](025-shared-folders.md) | Draft |
 
 ## Milestones
 
@@ -59,6 +60,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M18 | The change to 010 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S69: the workflow starter "TLA+ check" |
 | M19 | The changes to 003, 005, 013 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md), with S20 | Slices S20, S70, S71 and S72: threads, context meter and compact, automatic compact, the order of the task queue with "Run next", and the number of slots ("Agents working at once") |
 | M20 | 024, and the changes to 001, 005, 007, 012, 014, 019 and 022 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S73: the board |
+| M21 | 025, and the changes to 004, 005, 007, 011, 014, 015, 019, 021 and 024 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S74 to S76: the lead answers questions of members, file claims in shared folders, own copies for parts |
 | M25 | The changes to 000, 003, 005, 007, 008, 011, 012, 014, 016, 017, 018 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S80 to S84: pictures from the web, sensitive places, review of connection tools, handover of a chat, make a skill from work |
 
 ## Surfaces check
