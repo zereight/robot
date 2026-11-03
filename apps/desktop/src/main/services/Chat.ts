@@ -898,11 +898,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const fresh = resumed ? undefined : origin
         // The turn also holds a sensitive read from its start when the chat does (spec 007,
         // "Sensitive places"): an earlier turn read a credential place, and no one cleared it.
-        const place: PlaceRef = { kind: "agent", id: agentId }
+        const markPlace: PlaceRef = { kind: "agent", id: agentId }
         const mark = newTurnMark(
           fresh?.starter ?? starterOf(task.source),
           fresh?.outside ?? null,
-          placeMarks.get(place).sensitive,
+          placeMarks.get(markPlace).sensitive,
         )
         if (kept) holdOutside(mark, outsideOfParts(parts))
         const counted = kept
@@ -1156,7 +1156,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             guard: createReadGuard(),
             onReason: (callId, reason) => changePart(callId, (p) => ({ ...p, reason })),
             // The chat holds the mark from the first read, so the next turns hold it too.
-            onSensitive: (label) => placeMarks.holdSensitive(place, label),
+            onSensitive: (label) => placeMarks.holdSensitive(markPlace, label),
           }
           // A step of a workflow can ask for its own effort for this one turn. It is read for each
           // turn, so a retry decides again from the step and the model, not from the first try.
