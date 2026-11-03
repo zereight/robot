@@ -1,3 +1,4 @@
+import type { Database } from "bun:sqlite"
 import { afterAll, describe, expect, test } from "bun:test"
 import {
   chmodSync,
@@ -14,7 +15,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, relative, resolve } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 import { DatabaseSync, type SQLInputValue } from "node:sqlite"
 import { checkStateText } from "@robot/shared"
 import { migrate } from "../src/main/services/Database.ts"
@@ -27,11 +28,11 @@ import {
   ItemsError,
   itemsToJsonl,
   type JudgeItem,
-  openCopy,
   readCli,
   repositoryRoots,
   summaryText,
   USAGE,
+  withCopy,
   writeItems,
 } from "./judge-items-lib.ts"
 import { callsFor, groupState, parseItems } from "./judge-replay-lib.ts"
@@ -174,7 +175,13 @@ const world = (file = join(tempDir(), "copy.db")) => {
         m.at,
         m.at,
       ),
-    close: () => db.close(),
+    close: () => {
+      // Bun 1.4.2 does not move the content of the -wal file into the database file when the
+      // connection closes (Bun 1.4.4 does), so a copy of the database file alone would be empty.
+      // Do it here, so that the file holds all rows on every version of Bun.
+      db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+      db.close()
+    },
   }
   return made
 }
@@ -987,45 +994,281 @@ describe("the database", () => {
     expect(() => run(dir)).toThrow("--db")
   })
 
-  test("the file of the database is not changed: same bytes, same time, no new file", () => {
-    const w = sample()
-    w.close()
-    const old = new Date("2026-01-02T03:04:05Z")
-    utimesSync(w.file, old, old)
-    const before = fileState(w.file)
-    const listing = readdirSync(join(w.file, ".."))
-    const { items } = run(w.file)
-    expect(items).toHaveLength(2)
-    const after = fileState(w.file)
-    expect(after.mtimeMs).toBe(before.mtimeMs)
-    expect(Buffer.compare(after.bytes, before.bytes)).toBe(0)
-    expect(readdirSync(join(w.file, ".."))).toEqual(listing)
-  })
+  // ---- the copy of the user is only read
 
-  test("a copy with a -wal file next to it is read with that file, and its database file is not changed", () => {
+  const OLD = new Date("2026-01-02T03:04:05Z")
+  const isRoot = process.getuid?.() === 0
+
+  /**
+   * A copy of the database, as a user makes it from a database of the app that is closed. Part one
+   * is in the database file. With `wal`, part two lives in the -wal file only, and the -wal file
+   * stands next to the copy (and the -shm file too, with `shm`). The files get an old time.
+   */
+  const userCopy = (wal: boolean, shm = wal) => {
     const w = base()
     w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
     partOf(w, "TASKID-one", "JOBID-1", { created: at(1000) })
-    // Part one is in the database file; part two lives in the -wal file only.
     w.db.exec("PRAGMA wal_checkpoint(TRUNCATE)")
     partOf(w, "TASKID-two", "JOBID-1", { created: at(1100) })
-    const dir = tempDir()
-    const copy = join(dir, "copy.db")
+    const copy = join(tempDir(), "copy.db")
     copyFileSync(w.file, copy)
-    copyFileSync(`${w.file}-wal`, `${copy}-wal`)
+    if (wal) copyFileSync(`${w.file}-wal`, `${copy}-wal`)
+    if (shm) copyFileSync(`${w.file}-shm`, `${copy}-shm`)
     w.close()
-    const old = new Date("2026-01-02T03:04:05Z")
-    utimesSync(copy, old, old)
-    const before = fileState(copy)
-    const { items } = run(copy)
-    expect(items.map((i) => i.label)).toEqual(["LBL-one", "LBL-two"])
-    const after = fileState(copy)
-    expect(after.mtimeMs).toBe(before.mtimeMs)
-    expect(Buffer.compare(after.bytes, before.bytes)).toBe(0)
+    for (const file of [copy, `${copy}-wal`, `${copy}-shm`])
+      if (existsSync(file)) utimesSync(file, OLD, OLD)
+    return { copy, labels: wal ? ["LBL-one", "LBL-two"] : ["LBL-one"] }
+  }
+
+  /** Every file of a folder: its bytes, its modification time and its mode. */
+  const folderState = (dir: string) =>
+    Object.fromEntries(
+      readdirSync(dir)
+        .sort()
+        .map((name) => {
+          const info = statSync(join(dir, name))
+          return [
+            name,
+            {
+              bytes: readFileSync(join(dir, name)).toString("hex"),
+              mtimeMs: info.mtimeMs,
+              mode: info.mode & 0o777,
+            },
+          ]
+        }),
+    )
+
+  const labelsOf = (db: Database) =>
+    (
+      db.query("SELECT label FROM task WHERE parent_id IS NOT NULL ORDER BY created_at").all() as {
+        label: string
+      }[]
+    ).map((row) => row.label)
+
+  test("the copy of the user is only read: same bytes, same time, same files, also while the export runs", () => {
+    for (const [wal, shm] of [
+      [false, false],
+      [true, false],
+      [true, true],
+    ] as const) {
+      const { copy, labels } = userCopy(wal, shm)
+      const folder = dirname(copy)
+      const before = folderState(folder)
+      expect(Object.keys(before)).toEqual(
+        ["copy.db", ...(wal ? ["copy.db-wal"] : []), ...(shm ? ["copy.db-shm"] : [])].sort(),
+      )
+      // While the export runs, SQLite holds the second copy and not this file: nothing is added next
+      // to it (SQLite makes a -wal file and a -shm file when it opens a database in WAL mode).
+      const during = withCopy(copy, (db) => ({
+        state: folderState(folder),
+        filename: db.filename,
+        labels: labelsOf(db),
+      }))
+      expect(during.state).toEqual(before)
+      expect(dirname(during.filename)).not.toBe(folder)
+      expect(basename(dirname(during.filename)).startsWith("judge-items-")).toBe(true)
+      expect(during.labels).toEqual(labels)
+      // After the export: the same files, the same bytes, the same times.
+      expect(run(copy).items.map((i) => i.label)).toEqual(labels)
+      expect(folderState(folder)).toEqual(before)
+      expect(statSync(copy).mtimeMs).toBe(OLD.getTime())
+    }
+  })
+
+  test.skipIf(isRoot)(
+    "a copy in a read-only file and a read-only folder is read, and nothing is written next to it",
+    () => {
+      for (const wal of [false, true]) {
+        const { copy, labels } = userCopy(wal)
+        const folder = dirname(copy)
+        const files = readdirSync(folder).map((name) => join(folder, name))
+        const before = folderState(folder)
+        const modes = new Map([folder, ...files].map((path) => [path, statSync(path).mode & 0o777]))
+        for (const file of files) chmodSync(file, 0o444)
+        chmodSync(folder, 0o555)
+        try {
+          expect(run(copy).items.map((i) => i.label)).toEqual(labels)
+        } finally {
+          for (const [path, mode] of [...modes].reverse()) chmodSync(path, mode)
+        }
+        expect(folderState(folder)).toEqual(before)
+      }
+    },
+  )
+
+  test("the rows that live only in the -wal file are read, with a -shm file next to it or without one", () => {
+    for (const shm of [false, true]) {
+      const { copy } = userCopy(true, shm)
+      expect(run(copy).items.map((i) => i.label)).toEqual(["LBL-one", "LBL-two"])
+    }
     // Without the -wal file the copy has only part one.
-    const plain = join(tempDir(), "plain.db")
-    copyFileSync(copy, plain)
-    expect(run(plain).items.map((i) => i.label)).toEqual(["LBL-one"])
+    const { copy } = userCopy(false)
+    expect(run(copy).items.map((i) => i.label)).toEqual(["LBL-one"])
+  })
+
+  test("a link to the database is read, with the -wal file that stands next to the real file", () => {
+    const { copy } = userCopy(true)
+    const link = join(tempDir(), "link.db")
+    symlinkSync(copy, link)
+    const before = folderState(dirname(copy))
+    expect(run(link).items.map((i) => i.label)).toEqual(["LBL-one", "LBL-two"])
+    expect(folderState(dirname(copy))).toEqual(before)
+  })
+
+  test("a statement that would write fails on the copy", () => {
+    for (const wal of [false, true]) {
+      const { copy } = userCopy(wal)
+      const folder = dirname(copy)
+      const before = folderState(folder)
+      withCopy(copy, (db) => {
+        const rows = labelsOf(db)
+        expect(() => db.run("DELETE FROM task")).toThrow()
+        expect(() => db.run("CREATE TABLE x (a)")).toThrow()
+        expect(labelsOf(db)).toEqual(rows)
+      })
+      expect(folderState(folder)).toEqual(before)
+    }
+  })
+
+  // ---- the private temporary folder
+
+  /** The new folder of `parent`, as it is while the export runs. */
+  const peek = (parent: string) => {
+    const names = readdirSync(parent)
+    const folder = join(parent, names[0] ?? "")
+    return {
+      names,
+      mode: statSync(folder).mode & 0o777,
+      files: Object.fromEntries(
+        readdirSync(folder).map((name) => [name, statSync(join(folder, name)).mode & 0o777]),
+      ),
+    }
+  }
+
+  test("the second copy is made in a new folder with mode 0700 and files with mode 0600, whatever the umask", () => {
+    for (const umask of [0o022, 0o000, 0o277]) {
+      for (const wal of [false, true]) {
+        const { copy, labels } = userCopy(wal)
+        const parent = tempDir()
+        const before = process.umask(umask)
+        try {
+          const seen = withCopy(copy, (db) => ({ ...peek(parent), labels: labelsOf(db) }), {
+            parent,
+          })
+          expect(seen.names).toHaveLength(1)
+          expect(seen.names[0]?.startsWith("judge-items-")).toBe(true)
+          expect(seen.mode).toBe(0o700)
+          expect(Object.keys(seen.files)).toContain("copy.db")
+          for (const mode of Object.values(seen.files)) expect(mode).toBe(0o600)
+          expect(seen.labels).toEqual(labels)
+          // The whole export works under this umask too, and leaves nothing behind.
+          expect(exportItems(copy, { since: null, limit: null }, { parent }).items).toHaveLength(
+            labels.length,
+          )
+        } finally {
+          process.umask(before)
+        }
+        expect(readdirSync(parent)).toEqual([])
+      }
+    }
+  })
+
+  test("each run makes a new folder: two runs never share a name", () => {
+    const { copy } = userCopy(false)
+    const parent = tempDir()
+    const names = [1, 2].map(() => withCopy(copy, () => peek(parent).names[0], { parent }))
+    expect(names[0]).toBeDefined()
+    expect(names[0]).not.toBe(names[1])
+  })
+
+  test("the folder is gone after a normal run", () => {
+    const { copy } = userCopy(true)
+    const parent = tempDir()
+    expect(exportItems(copy, { since: null, limit: null }, { parent }).items).toHaveLength(2)
+    expect(readdirSync(parent)).toEqual([])
+  })
+
+  test("the folder is gone after a run that fails, and the fault is the one of the run", () => {
+    const parent = tempDir()
+    const place = { parent }
+    // A fault in the body of the run that nobody expected.
+    const { copy } = userCopy(true)
+    expect(() =>
+      withCopy(
+        copy,
+        () => {
+          throw new RangeError("boom")
+        },
+        place,
+      ),
+    ).toThrow(RangeError)
+    expect(readdirSync(parent)).toEqual([])
+    // A database that lacks a column.
+    const index = migrations.findIndex((sql) => sql.includes("ADD COLUMN done_test"))
+    const old = join(tempDir(), "old.db")
+    const db = new DatabaseSync(old)
+    for (const sql of migrations.slice(0, index)) db.exec(sql)
+    db.close()
+    expect(() => exportItems(old, { since: null, limit: null }, place)).toThrow("task.done_test")
+    expect(readdirSync(parent)).toEqual([])
+    // A file that is not a database.
+    const text = join(tempDir(), "text.db")
+    writeFileSync(text, "this is SECRET text and not a database ".repeat(200))
+    expect(() => exportItems(text, { since: null, limit: null }, place)).toThrow("--db")
+    expect(readdirSync(parent)).toEqual([])
+    // A missing file and a folder make no folder at all.
+    expect(() =>
+      exportItems(join(tempDir(), "none.db"), { since: null, limit: null }, place),
+    ).toThrow("does not exist")
+    expect(() => exportItems(tempDir(), { since: null, limit: null }, place)).toThrow("--db")
+    expect(readdirSync(parent)).toEqual([])
+  })
+
+  test("a folder that cannot be removed is told in one line with its path and no data, and the run fails", () => {
+    const parent = tempDir()
+    const { copy } = userCopy(true)
+    const stuck = [
+      // The removal fails with a fault.
+      () => {
+        throw new Error("denied SECRET")
+      },
+      // The removal says nothing and does nothing.
+      () => undefined,
+    ]
+    for (const remove of stuck) {
+      let message = ""
+      try {
+        exportItems(copy, { since: null, limit: null }, { parent, remove })
+      } catch (e) {
+        expect(e).toBeInstanceOf(ItemsError)
+        message = (e as Error).message
+      }
+      const names = readdirSync(parent)
+      expect(names).toHaveLength(1)
+      const folder = join(parent, names[0] ?? "")
+      expect(message).toContain(folder)
+      expect(message.split("\n")).toHaveLength(1)
+      expect(message).not.toMatch(/LBL|DONE|REPLY|MSG|SECRET|Launch|Lia|TASKID/)
+      expect(message).not.toContain(copy)
+      rmSync(folder, { recursive: true, force: true })
+    }
+    // When the run failed first, its message stays, and the line about the folder follows it.
+    const index = migrations.findIndex((sql) => sql.includes("ADD COLUMN done_test"))
+    const old = join(tempDir(), "old.db")
+    const db = new DatabaseSync(old)
+    for (const sql of migrations.slice(0, index)) db.exec(sql)
+    db.close()
+    let message = ""
+    try {
+      exportItems(old, { since: null, limit: null }, { parent, remove: () => undefined })
+    } catch (e) {
+      message = (e as Error).message
+    }
+    const [name] = readdirSync(parent)
+    expect(message).toContain("task.done_test")
+    expect(message).toContain(join(parent, name ?? ""))
+    expect(message.split("\n")).toHaveLength(1)
+    rmSync(join(parent, name ?? ""), { recursive: true, force: true })
   })
 
   test("a path with a space and a symbol in it opens", () => {
@@ -1036,27 +1279,6 @@ describe("the database", () => {
     const copy = join(dir, "my copy?.db")
     copyFileSync(w.file, copy)
     expect(run(copy).items).toHaveLength(2)
-  })
-
-  test("a statement that would write fails on the copy", () => {
-    const w = sample()
-    w.close()
-    for (const wal of [false, true]) {
-      const copy = join(tempDir(), "copy.db")
-      copyFileSync(w.file, copy)
-      // With a -wal file next to it the copy is opened the other way: both ways refuse a write.
-      if (wal) writeFileSync(`${copy}-wal`, "")
-      const before = fileState(copy)
-      let db: ReturnType<typeof openCopy> | undefined
-      try {
-        db = openCopy(copy)
-        expect(() => db?.run("DELETE FROM task")).toThrow()
-        expect(() => db?.run("CREATE TABLE x (a)")).toThrow()
-      } finally {
-        db?.close()
-      }
-      expect(Buffer.compare(fileState(copy).bytes, before.bytes)).toBe(0)
-    }
   })
 })
 
@@ -1171,6 +1393,10 @@ describe("the output file", () => {
     )
     expect(() => checkOutPath(dir, db, true)).toThrow("not a folder")
     expect(() => checkOutPath(db, db, true)).toThrow("same file as --db")
+    // A link to the database is the same file too, and the database is not replaced through it.
+    const link = join(dir, "link.jsonl")
+    symlinkSync(db, link)
+    expect(() => checkOutPath(link, db, true)).toThrow("same file as --db")
     // The database is still there.
     expect(existsSync(db)).toBe(true)
   })
@@ -1398,8 +1624,19 @@ describe("the round trip with the replay", () => {
 describe("the command", () => {
   const script = resolve(import.meta.dirname, "judge-items.ts")
   const [root] = repositoryRoots() as [string]
-  const exec = async (args: string[], cwd = tempDir(), command: string[] = ["bun", script]) => {
-    const child = Bun.spawn([...command, ...args], { cwd, stdout: "pipe", stderr: "pipe" })
+  // The same Bun as the one that runs the tests, not the first "bun" on the PATH.
+  const exec = async (
+    args: string[],
+    cwd = tempDir(),
+    command: string[] = [process.execPath, script],
+    env: Record<string, string> = {},
+  ) => {
+    const child = Bun.spawn([...command, ...args], {
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, ...env },
+    })
     const [out, err] = await Promise.all([
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
@@ -1525,6 +1762,53 @@ describe("the command", () => {
     expect(existsSync(out)).toBe(false)
   })
 
+  test("the private temporary folder is gone after a normal run and after a failing run", async () => {
+    // A folder with a space and symbols in its name: the second copy is opened by its plain path.
+    const parent = join(tempDir(), "tmp dir #1 100%")
+    mkdirSync(parent)
+    const env = { TMPDIR: parent, TMP: parent, TEMP: parent }
+    const db = dbFile()
+    const ok = await exec(
+      ["--db", db, "--out", join(tempDir(), "items.jsonl")],
+      tempDir(),
+      undefined,
+      env,
+    )
+    expect(ok.code).toBe(0)
+    expect(readdirSync(parent)).toEqual([])
+    // A database that lacks a column: the command fails after it made the second copy.
+    const index = migrations.findIndex((sql) => sql.includes("ADD COLUMN done_test"))
+    const dir = tempDir()
+    const old = join(dir, "old.db")
+    const handle = new DatabaseSync(old)
+    for (const sql of migrations.slice(0, index)) handle.exec(sql)
+    handle.close()
+    const bad = await exec(
+      ["--db", old, "--out", join(dir, "items.jsonl")],
+      tempDir(),
+      undefined,
+      env,
+    )
+    expect(bad.code).toBe(1)
+    expect(bad.err).toContain("task.done_test")
+    expect(readdirSync(parent)).toEqual([])
+    // A copy with no qualifying part: the command fails after the export, and the folder is gone.
+    const w = base()
+    w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
+    partOf(w, "TASKID-none", "JOBID-1", { created: at(1000), doneTest: null })
+    w.close()
+    const none = await exec(
+      ["--db", w.file, "--out", join(dir, "none.jsonl")],
+      tempDir(),
+      undefined,
+      env,
+    )
+    expect(none.code).toBe(1)
+    expect(readdirSync(parent)).toEqual([])
+    for (const printed of [ok.out, ok.err, bad.out, bad.err, none.out, none.err])
+      expect(printed).not.toContain(parent)
+  }, 30_000)
+
   test("a copy with no qualifying part writes no file, and says so", async () => {
     const w = base()
     w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
@@ -1544,7 +1828,7 @@ describe("the command", () => {
     const result = await exec(
       ["judge-items", "--", "--db", db, "--out", out, "--limit", "1"],
       root,
-      ["bun", "run"],
+      [process.execPath, "run"],
     )
     expect(result.code).toBe(0)
     expect(result.out).toContain("Items written: 1, from 1 job")
@@ -1552,7 +1836,8 @@ describe("the command", () => {
     const help = await exec(["--help"])
     expect(help.code).toBe(0)
     expect(help.out).toContain("COPY of the database")
-    expect(help.out).toContain("read-only")
+    expect(help.out).toContain("private temporary folder")
+    expect(help.out).not.toContain("read-only")
     expect(help.out).toContain("0600")
     const none = await exec([])
     expect(none.code).toBe(1)

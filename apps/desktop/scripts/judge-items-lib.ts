@@ -56,24 +56,41 @@
 // select those columns. The state of a channel at the time of a check is not saved, so "members"
 // are the members now and "messages" are rebuilt: this is close and not equal.
 //
-// SAFETY: the database is opened read-only, and the file is never changed. The user makes a copy
-// of the database first. The output holds the conversations of the user, so it must stay outside
-// the repository, it is created with mode 0600, and an existing file is not replaced unless the
-// user says so. The command prints counts only. An error names a table, a column or an option,
-// never a value.
+// SAFETY: the user makes a copy of the database first, and the command never changes it. SQLite
+// does not even open it: the command makes a plain file copy of it, and of the files with the
+// endings -wal and -shm when they stand next to it, in a NEW private temporary folder (made with
+// mkdtemp, mode 0700, files 0600), and SQLite opens that second copy with a plain open. So the
+// export needs no URI name, no flag and no build option of SQLite, and it works the same on every
+// platform and Bun version. Rows that live only in the -wal file are read. The folder is removed
+// at the end, also when the export fails. If it cannot be removed, the command says so on stderr,
+// with the path of the folder, and ends with an error. A kill signal, or a Ctrl-C while the export
+// runs, can leave the folder behind (the export runs in one step, and a signal handler would not
+// run): its name starts with "judge-items-", and it holds a copy of the database.
+// The output holds the conversations of the user, so it must stay outside the repository, it is
+// created with mode 0600, and an existing file is not replaced unless the user says so. The
+// command prints counts only. An error names a table, a column or an option, never a value. The
+// one exception is the line about a folder that could not be removed: it holds the path of that
+// folder, which is not data.
 import { Database } from "bun:sqlite"
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  fchmodSync,
   lstatSync,
+  mkdtempSync,
+  openSync,
   readFileSync,
+  readSync,
   realpathSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs"
+import { tmpdir } from "node:os"
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
-import { pathToFileURL } from "node:url"
 import {
   CHECK_MESSAGES,
   type CheckMember,
@@ -206,30 +223,139 @@ const missingFrom = (db: Database): string[] => {
   return missing
 }
 
+/** The start of the name of the private temporary folder. */
+const FOLDER_PREFIX = "judge-items-"
+/** The name of the second copy inside the private folder. The folder is new, so a fixed name is safe. */
+const COPY_NAME = "copy.db"
+const CHUNK = 1 << 20
+
 /**
- * Opens the copy read-only. The app keeps its database in WAL mode, so a copy of a closed database
- * still says "WAL" in its header, and a plain read-only open of it fails when no "-wal" file
- * stands next to it. Two ways, and neither one writes to the file:
- *  - A "-wal" file stands next to the copy: open it read-only. The committed rows in the "-wal"
- *    file are read too. SQLite may add a "-shm" file next to the copy.
- *  - No "-wal" file: open it as "immutable". The file is read as it is, with no lock, no side file.
+ * Copies the bytes of a file into a NEW file with mode 0600. The mode is set with fchmod, so the
+ * umask of the process cannot make it narrower than 0600 or wider, and the mode of the source is
+ * not taken over. The source is only read.
  */
-export const openCopy = (path: string): Database => {
-  const file = resolve(path)
+const copyPrivate = (from: string, to: string) => {
+  const input = openSync(from, "r")
+  try {
+    const output = openSync(to, "wx", 0o600)
+    try {
+      fchmodSync(output, 0o600)
+      const buffer = Buffer.allocUnsafe(CHUNK)
+      for (;;) {
+        const read = readSync(input, buffer, 0, CHUNK, null)
+        if (read === 0) break
+        for (let done = 0; done < read; ) done += writeSync(output, buffer, done, read - done)
+      }
+    } finally {
+      closeSync(output)
+    }
+  } finally {
+    closeSync(input)
+  }
+}
+
+/** Where the private folder is made, and how it is removed. Only the tests set these. */
+export interface CopyPlace {
+  /** The folder that holds the new private folder. Default: the temporary folder of the system. */
+  readonly parent?: string
+  /** Removes the private folder. Default: remove it with all its content. */
+  readonly remove?: (folder: string) => void
+}
+
+const removeFolder = (folder: string) => rmSync(folder, { recursive: true, force: true })
+
+/** Null when the folder is gone. Otherwise the line for the user: the path, and no data. */
+const discard = (folder: string, remove: (folder: string) => void): string | null => {
+  try {
+    remove(folder)
+  } catch {
+    // The check below decides.
+  }
+  return existsSync(folder)
+    ? `The temporary folder ${folder} could not be removed. It holds a copy of the database: remove it by hand.`
+    : null
+}
+
+/** A fault of SQLite becomes an ItemsError that names the code and no value. */
+const readable = (error: unknown): unknown => {
+  if (error instanceof ItemsError) return error
+  const code = sqliteFault(error)
+  return code ? new ItemsError(`The file of --db cannot be read as a database (${code}).`) : error
+}
+
+/**
+ * Runs `body` on a private second copy of the database, and removes that copy at the end.
+ *  1. The file of --db, and the files with the endings -wal and -shm when they stand next to it,
+ *     are COPIED (a plain read of the bytes) into a new folder made with mkdtemp: mode 0700, the
+ *     files 0600. SQLite never opens the file of the user, so that file, and the folder it stands
+ *     in, cannot change.
+ *  2. SQLite opens the copy with a plain `new Database(path)`: no URI name and no flag. The copy
+ *     may say "WAL" in its header, and a "-wal" file next to it is replayed: the committed rows in
+ *     it are read. A second lock on writes (`query_only`) makes any statement that would write fail.
+ *  3. The folder is ALWAYS removed, also when the copy, the open or `body` fails. When it cannot
+ *     be removed, an ItemsError with one line is thrown (it names the folder, no data). Its text is
+ *     added after the message of a fault that came first.
+ * Throws an ItemsError for a fault; its message names an option, a table or a column.
+ */
+export const withCopy = <T>(path: string, body: (db: Database) => T, place: CopyPlace = {}): T => {
+  // A link is followed, and the files with the endings -wal and -shm are looked for next to the
+  // real file, as SQLite itself looks for them.
+  let file: string
   let info: ReturnType<typeof statSync>
   try {
+    file = realpathSync.native(resolve(path))
     info = statSync(file)
   } catch {
     throw new ItemsError("The file of --db does not exist.")
   }
   if (!info.isFile()) throw new ItemsError("--db must name a file.")
-  const target = existsSync(`${file}-wal`)
-    ? file
-    : `${pathToFileURL(file).href}?mode=ro&immutable=1`
-  const db = new Database(target, { readonly: true })
-  // A second lock on writes: any statement that would write fails.
-  db.run("PRAGMA query_only = ON")
-  return db
+
+  let folder: string
+  try {
+    folder = mkdtempSync(join(place.parent ?? tmpdir(), FOLDER_PREFIX))
+  } catch {
+    throw new ItemsError("A private temporary folder cannot be made.")
+  }
+  let db: Database | undefined
+  let failed = false
+  let failure: unknown
+  let value: T | undefined
+  let left: string | null = null
+  try {
+    // mkdtemp gives 0700 less the umask: a strict umask can leave a folder that SQLite cannot write.
+    chmodSync(folder, 0o700)
+    const target = join(folder, COPY_NAME)
+    try {
+      copyPrivate(file, target)
+    } catch {
+      throw new ItemsError("The file of --db cannot be read.")
+    }
+    for (const ending of ["-wal", "-shm"]) {
+      if (!existsSync(`${file}${ending}`)) continue
+      try {
+        copyPrivate(`${file}${ending}`, `${target}${ending}`)
+      } catch {
+        throw new ItemsError(`The file next to --db with the ending ${ending} cannot be read.`)
+      }
+    }
+    db = new Database(target)
+    db.run("PRAGMA query_only = ON")
+    value = body(db)
+  } catch (error) {
+    failed = true
+    failure = readable(error)
+  } finally {
+    try {
+      db?.close()
+    } catch {
+      // The copy is removed next. A fault of the close says nothing about the user's file.
+    }
+    left = discard(folder, place.remove ?? removeFolder)
+  }
+  if (left !== null)
+    throw new ItemsError(failure instanceof ItemsError ? `${failure.message} ${left}` : left)
+  if (failed) throw failure
+  return value as T
 }
 
 const sqliteFault = (error: unknown) => {
@@ -471,23 +597,12 @@ const build = (db: Database, options: ExportOptions) => {
 }
 
 /**
- * Reads the finished parts of channel jobs from a COPY of the database. Opens it read-only and
- * closes it. Throws an ItemsError for a fault; its message names a table, a column or an option.
+ * Reads the finished parts of channel jobs from a COPY of the database. It works on a second copy
+ * in a private temporary folder and removes that folder (see `withCopy`). Throws an ItemsError for
+ * a fault; its message names a table, a column or an option.
  */
-export const exportItems = (path: string, options: ExportOptions) => {
-  let db: Database | undefined
-  try {
-    db = openCopy(path)
-    return build(db, options)
-  } catch (error) {
-    if (error instanceof ItemsError) throw error
-    const code = sqliteFault(error)
-    if (code) throw new ItemsError(`The file of --db cannot be read as a database (${code}).`)
-    throw error
-  } finally {
-    db?.close()
-  }
-}
+export const exportItems = (path: string, options: ExportOptions, place?: CopyPlace) =>
+  withCopy(path, (db) => build(db, options), place)
 
 /** The text of the file: one JSON object on each line. */
 export const itemsToJsonl = (items: readonly JudgeItem[]) =>
@@ -645,8 +760,9 @@ export const USAGE = [
   "",
   "--db     A COPY of the database of the app. Make the copy first, while ROBot is closed. If a",
   "         file with the ending -wal stands next to the database, copy it too, with the same name",
-  "         and that ending. The command opens the copy read-only and never changes it. It reads",
-  "         no other file of the data folder.",
+  "         and that ending. The command never opens or changes these files. It makes a second",
+  "         copy of them in a new private temporary folder, reads that second copy, and removes",
+  "         the folder at the end. It reads no other file of the data folder.",
   "--out    The new file. It must be outside this repository: the items hold the conversations of",
   "         the user. It is made with mode 0600. An existing file is not replaced unless --force.",
   "--since  Only parts made on this date or later (UTC), for example 2026-10-01.",

@@ -1,11 +1,13 @@
 // The export command of docs/judge-validation.md ("Data").
 //   bun run judge-items -- --db <copy of the database> --out <file.jsonl> [--since <date>] [--limit N]
 //                          [--gap-seconds <n>]
-// It reads a COPY of the database of the app, read-only, and writes the finished parts of channel
-// jobs that have a done test as the items that judge-replay.ts reads. The fields of an item are at
-// the top of judge-items-lib.ts. The items have no verdict, no decision and no "human": a person
-// adds "human" to each one. The command prints counts only, never the text of an item. It writes
-// only the file of --out, and only to a place outside this repository.
+// It reads a COPY of the database of the app and writes the finished parts of channel jobs that
+// have a done test as the items that judge-replay.ts reads. It never opens the copy of the user: it
+// makes a second copy in a private temporary folder, reads that one, and removes the folder at the
+// end. The fields of an item are at the top of judge-items-lib.ts. The items have no verdict, no
+// decision and no "human": a person adds "human" to each one. The command prints counts only,
+// never the text of an item (one line names the temporary folder when it cannot be removed). It
+// writes only the file of --out, and only to a place outside this repository.
 import {
   checkOutPath,
   exportItems,
