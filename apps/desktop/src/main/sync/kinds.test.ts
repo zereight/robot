@@ -681,6 +681,139 @@ describe("the note of a starter syncs with its message (spec 002, 019)", () => {
   })
 })
 
+describe("a handover syncs as messages and a thread do (spec 003, 007, 019)", () => {
+  const card = {
+    kind: "handover",
+    brief: "Handover from Ada\n\nFirst request:\nFix it",
+    fromName: "Ada",
+    fromAgentId: "agent-ada",
+    fromThreadId: null,
+  }
+  const line = {
+    kind: "note",
+    note: "handed_over",
+    toName: "Bo",
+    toAgentId: "agent-bo",
+    toThreadId: "th-handover",
+  }
+
+  const opOf = (fields: Fields, parts: unknown) =>
+    parseOp(
+      {
+        k: "message",
+        i: "msg-card",
+        o: "dev-a",
+        f: Object.fromEntries(
+          Object.entries({ ...fields, parts }).map(([n, v]) => [n, { v, s: stamp }]),
+        ),
+      },
+      NOW,
+    )
+
+  test("the card and the muted line pass the strict check, and a changed one does not", async () => {
+    const a = await source()
+    a.db.run(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('msg-card', ?, 'user', ?, 'done', ?)",
+      a.ada.id,
+      JSON.stringify([card]),
+      NOW,
+    )
+    const dir = join(testRuntime().dataDir, "kinds")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.message.read(ctxA, "msg-card")?.fields) as Fields
+    expect(opOf(fields, [card])).toBeDefined()
+    expect(opOf(fields, [{ ...card, fromThreadId: "th-1" }])).toBeDefined()
+    expect(opOf(fields, [line])).toBeDefined()
+    for (const bad of [
+      { ...card, brief: 5 },
+      { ...card, fromName: "" },
+      { ...card, fromAgentId: "" },
+      { ...card, fromThreadId: 7 },
+      { ...card, extra: "x" },
+      { kind: "handover", brief: "x", fromName: "Ada", fromAgentId: "a" },
+      { ...line, toThreadId: "" },
+      { ...line, toName: "x".repeat(300) },
+      { ...line, extra: "x" },
+      { kind: "note", note: "handed_over", toName: "Bo" },
+    ])
+      expect(opOf(fields, [bad]), JSON.stringify(bad)).toBeUndefined()
+  })
+
+  test("the card, the line and the thread with its mark arrive and read back the same", async () => {
+    const a = await source()
+    a.db.run(
+      "INSERT INTO thread (id, agent_id, title, titled, created_at, sensitive_mark, updated_at) VALUES ('th-handover', ?, 'Handover from Ada', 1, ?, 'keys', ?)",
+      a.ada.id,
+      NOW,
+      NOW + 5,
+    )
+    a.db.run(
+      "INSERT INTO message (id, agent_id, thread_id, author, parts, status, created_at) VALUES ('msg-card', ?, 'th-handover', 'user', ?, 'done', ?)",
+      a.ada.id,
+      JSON.stringify([card]),
+      NOW,
+    )
+    a.db.run(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('msg-line', ?, 'agent', ?, 'done', ?)",
+      a.ada.id,
+      JSON.stringify([line]),
+      NOW,
+    )
+    const dir = join(testRuntime().dataDir, "kinds")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const b = target(openDatabase(":memory:"), dir)
+    expect(
+      KINDS.agent.create(b, a.ada.id, copy(KINDS.agent.read(ctxA, a.ada.id)?.fields) as Fields),
+    ).toBe(true)
+    const thread = KINDS.thread.read(ctxA, "th-handover")
+    // A mark that changes moves the time of the thread, so sync stamps the change as new.
+    expect(thread?.wall).toBe(NOW + 5)
+    expect(thread?.fields.sensitive).toBe("keys")
+    expect(KINDS.thread.create(b, "th-handover", copy(thread?.fields) as Fields)).toBe(true)
+    expect(KINDS.thread.read(b, "th-handover")?.fields.sensitive).toBe("keys")
+    for (const id of ["msg-card", "msg-line"])
+      expect(
+        KINDS.message.create(b, id, copy(KINDS.message.read(ctxA, id)?.fields) as Fields),
+      ).toBe(true)
+    expect(KINDS.message.read(b, "msg-card")?.fields.parts).toEqual([card])
+    expect(KINDS.message.read(b, "msg-card")?.fields.threadId).toBe("th-handover")
+    expect(KINDS.message.read(b, "msg-line")?.fields.parts).toEqual([line])
+    // A later clear of the mark on one computer writes through the thread.
+    KINDS.thread.write(b, "th-handover", { sensitive: null })
+    expect(KINDS.thread.read(b, "th-handover")?.fields.sensitive).toBeNull()
+    // A thread from a computer of an older step has no mark field: it makes a thread with none.
+    const { sensitive: _drop, ...older } = copy(thread?.fields) as Fields
+    expect(KINDS.thread.create(b, "th-old", older)).toBe(true)
+    expect(KINDS.thread.read(b, "th-old")?.fields.sensitive).toBeNull()
+  })
+
+  test("the thread takes only a known label as its mark", () => {
+    const op = (sensitive: unknown) =>
+      parseOp(
+        {
+          k: "thread",
+          i: "th-1",
+          o: "dev-a",
+          f: Object.fromEntries(
+            Object.entries({
+              agentId: "a",
+              title: "T",
+              titled: true,
+              createdAt: NOW,
+              archivedAt: null,
+              sensitive,
+            }).map(([n, v]) => [n, { v, s: stamp }]),
+          ),
+        },
+        NOW,
+      )
+    expect(op("keys")).toBeDefined()
+    expect(op(null)).toBeDefined()
+    expect(op("passwords")).toBeUndefined()
+    expect(op(3)).toBeUndefined()
+  })
+})
+
 describe("one item of every kind is made from its first copy", () => {
   test("each kind passes the strict check, satisfies every column that must have a value, and reads back the same", async () => {
     const a = await source()

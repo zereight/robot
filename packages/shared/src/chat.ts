@@ -54,6 +54,30 @@ export type MessagePart =
    * 003, "Automatic compact"). `code` is the error code; the window writes the words.
    */
   | { readonly kind: "note"; readonly note: "compact_failed"; readonly code: string }
+  /**
+   * The muted line "Handed over to <name>" in the chat that the user left (spec 003, "Hand over").
+   * It links to the new thread. `toName` is the name that the other agent had then. The model
+   * never reads it.
+   */
+  | {
+      readonly kind: "note"
+      readonly note: "handed_over"
+      readonly toName: string
+      readonly toAgentId: string
+      readonly toThreadId: string
+    }
+  /**
+   * The handover card (spec 003, "Hand over"): the brief that the app wrote, and the place it
+   * came from. The card is no words of the user (spec 007). `fromThreadId` is null for a main
+   * thread. The model gets the brief as information from a colleague.
+   */
+  | {
+      readonly kind: "handover"
+      readonly brief: string
+      readonly fromName: string
+      readonly fromAgentId: string
+      readonly fromThreadId: string | null
+    }
   | {
       readonly kind: "tool"
       readonly id: string
@@ -268,6 +292,7 @@ export const GROUP_WINDOW_MS = 5 * 60 * 1000
 /** True when `message` starts a new header group after `previous`. */
 export const startsGroup = (previous: ChatMessage | undefined, message: ChatMessage) =>
   !previous ||
+  handoverOf(previous) !== undefined ||
   previous.author !== message.author ||
   message.createdAt - previous.createdAt > GROUP_WINDOW_MS ||
   !sameDay(previous.createdAt, message.createdAt) ||
@@ -282,6 +307,30 @@ export const sameDay = (a: number, b: number) => {
     x.getDate() === y.getDate()
   )
 }
+
+/** The handover card of a message, if it is one (spec 003, "Hand over"). */
+export const handoverOf = (message: Pick<ChatMessage, "parts">) =>
+  message.parts.find((p): p is Extract<MessagePart, { kind: "handover" }> => p.kind === "handover")
+
+/** The muted line "Handed over to <name>" of a message, if it is one. */
+export const handedOverOf = (message: Pick<ChatMessage, "parts">) =>
+  message.parts.find(
+    (p): p is Extract<MessagePart, { kind: "note"; note: "handed_over" }> =>
+      p.kind === "note" && p.note === "handed_over",
+  )
+
+/**
+ * The words of the user in a chat (spec 007): the text of the messages that the user wrote. A
+ * handover card has the author "user" in the chat, but it is no words of the user: only the text
+ * that the user typed in the dialog is (spec 003, "Hand over"). Files, skill chips and cards add
+ * no words. A check of a step at the level "Ask when unsure" reads the words from here.
+ */
+export const userWords = (messages: readonly Pick<ChatMessage, "author" | "parts">[]): string[] =>
+  messages.flatMap((m) =>
+    m.author === "user" && handoverOf(m) === undefined && messageText(m).trim() !== ""
+      ? [messageText(m)]
+      : [],
+  )
 
 /** The skill chip of a message, if it has one. */
 export const messageSkill = (message: Pick<ChatMessage, "parts">) =>

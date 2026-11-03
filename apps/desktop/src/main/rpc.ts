@@ -56,6 +56,7 @@ import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
+import { Handover } from "./services/Handover.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
@@ -716,7 +717,7 @@ export const handlers: Handlers = {
     decode(
       Schema.Struct({
         place: Schema.Struct({
-          kind: Schema.Literals(["agent", "channel"]),
+          kind: Schema.Literals(["agent", "channel", "thread"]),
           id: Schema.String,
         }),
       }),
@@ -1297,6 +1298,32 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String, threadId: Schema.String }))(input).pipe(
       Effect.flatMap(({ agentId, threadId }) => Chat.use((c) => c.deleteThread(agentId, threadId))),
       done,
+    ),
+  // Hand over is for the window of this computer: these methods are not on the list of a linked
+  // device, so the phone and a linked computer get "not allowed" (spec 003, 012).
+  "chat.handover.state": (input) =>
+    decode(ByThread)(input).pipe(Effect.flatMap((i) => Handover.use((h) => h.state(placeOf(i))))),
+  "chat.handover.open": (input) =>
+    decode(ByThread)(input).pipe(Effect.flatMap((i) => Handover.use((h) => h.open(placeOf(i))))),
+  "chat.handover.start": (input) =>
+    decode(
+      Schema.Struct({
+        ...ByThread.fields,
+        toAgentId: Schema.String,
+        text: Schema.String.check(Schema.isMaxLength(10_000)),
+        briefId: Schema.String,
+      }),
+    )(input).pipe(
+      Effect.flatMap((i) =>
+        Handover.use((h) =>
+          h.start({
+            place: placeOf(i),
+            toAgentId: i.toAgentId,
+            text: i.text,
+            briefId: i.briefId,
+          }),
+        ),
+      ),
     ),
 }
 

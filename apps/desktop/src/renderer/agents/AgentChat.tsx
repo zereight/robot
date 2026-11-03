@@ -1,11 +1,12 @@
-import { type Agent, type AgentModel, runtimeModel } from "@robot/shared"
+import { type Agent, type AgentModel, type MarkPlace, NO_MARKS, runtimeModel } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
 import { createEffect, createSignal, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
 import { ContextMeter } from "../chat/ContextMeter.tsx"
+import { createHandoverState, HandoverDialog, offKey } from "../chat/Handover.tsx"
 import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
 import { ThreadList } from "../chat/ThreadList.tsx"
-import { openThreadOf } from "../chat/threads.ts"
+import { createThreads, openThreadOf } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
@@ -48,6 +49,12 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
     if (memoryTarget()?.agentId === props.agent.id) setOpen(true)
   })
   const teach = useTeach()
+  // "Hand over" is off with a reason in words (spec 003, "Hand over"). This computer only.
+  const handover = createHandoverState(
+    () => props.agent.id,
+    () => openThreadOf(props.agent.id),
+  )
+  const [handingOver, setHandingOver] = createSignal(false)
   // A runtime model shows with its version. An API model shows its id, which has the version.
   const modelName = () => {
     const model = props.agent.model
@@ -124,8 +131,36 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
                   ]
                 : []
             })(),
+            {
+              label: t("handover.menu"),
+              onSelect: () => setHandingOver(true),
+              disabled: handover()?.off !== null,
+              testId: "chat-menu-handover",
+            },
+            ...(() => {
+              const off = handover()?.off
+              return off
+                ? [
+                    {
+                      label: t(offKey(off)),
+                      onSelect: () => {},
+                      heading: true,
+                      testId: "chat-menu-handover-reason",
+                    },
+                  ]
+                : []
+            })(),
           ]}
         />
+        <Presence when={handingOver()}>
+          {() => (
+            <HandoverDialog
+              agentId={props.agent.id}
+              threadId={openThreadOf(props.agent.id)}
+              onClose={() => setHandingOver(false)}
+            />
+          )}
+        </Presence>
       </Show>
       <Presence when={open()}>
         {() => <AgentProfileDialog agent={props.agent} onClose={() => setOpen(false)} />}
@@ -167,6 +202,27 @@ const ModelDialog = (props: { agent: Agent; onClose: () => void }) => {
       </div>
     </Dialog>
   )
+}
+
+/**
+ * The header line of the marks of the open chat or thread (spec 007). The main thread holds the
+ * marks of the agent. A thread is a place of its own and holds its own marks. A linked computer
+ * and the phone show the main thread only.
+ */
+const AgentMarksLine = (props: { agent: Agent }) => {
+  const ui = useUi()
+  const threads = createThreads(() => props.agent.id)
+  const threadId = () => (ui.linked() ? null : openThreadOf(props.agent.id))
+  const place = (): MarkPlace => {
+    const id = threadId()
+    return id ? { kind: "thread", id } : { kind: "agent", id: props.agent.id }
+  }
+  const marks = () => {
+    const id = threadId()
+    if (!id) return { sensitive: props.agent.sensitive ?? null }
+    return threads.list.threads.find((x) => x.id === id)?.marks ?? NO_MARKS
+  }
+  return <PlaceMarksLine place={place()} marks={marks()} />
 }
 
 /** The first screen of a chat: a large face, the name and the role. Nothing moves. */
@@ -222,10 +278,7 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
           <div class={styles.split}>
             {/* The chat keeps its whole width. The large browser covers it only when the user asks. */}
             <div class={styles.chatColumn} inert={browser.large()}>
-              <PlaceMarksLine
-                place={{ kind: "agent", id: a().id }}
-                marks={{ sensitive: a().sensitive ?? null }}
-              />
+              <AgentMarksLine agent={a()} />
               <ChatView
                 agent={a()}
                 threadId={ui.linked() ? null : openThreadOf(a().id)}

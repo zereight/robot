@@ -88,6 +88,9 @@ const BehindLine = (props: { task: Task; testid: string; class: string | undefin
   )
 }
 
+/** The sources of a task whose place the button "Open source place" opens. */
+const OPENS_PLACE: readonly Task["source"][] = ["chat", "channel", "handover"]
+
 /** A request has parts that may still be open, so "End the request" is offered (spec 004, 005). */
 const OPEN_REQUEST = new Set<Task["state"]>([
   "queued",
@@ -198,11 +201,13 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
     }
   }
   const openSource = (task: Task) => {
-    if (!task.sourceId || (task.source !== "chat" && task.source !== "channel")) return
+    if (!task.sourceId || !OPENS_PLACE.includes(task.source)) return
     // A linked device has the main thread only (spec 003, 012): the button is off for a thread.
     if (ui.linked() && task.threadId) return
-    if (task.source === "chat") openThread(task.sourceId, task.threadId)
-    ui.selectPlace({ kind: task.source === "chat" ? "agent" : "channel", id: task.sourceId })
+    // A handover is a message in a thread of the agent that runs it (spec 003, 005).
+    const inChat = task.source === "chat" || task.source === "handover"
+    if (inChat) openThread(task.sourceId, task.threadId)
+    ui.selectPlace({ kind: inChat ? "agent" : "channel", id: task.sourceId })
     props.onClose()
   }
   return (
@@ -421,7 +426,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                   {t("skills.make")}
                 </Button>
               </Show>
-              <Show when={d().task.sourceId && ["chat", "channel"].includes(d().task.source)}>
+              <Show when={d().task.sourceId && OPENS_PLACE.includes(d().task.source)}>
                 <Button
                   onClick={() => openSource(d().task)}
                   disabled={ui.linked() && d().task.threadId !== undefined}

@@ -11,6 +11,7 @@ import type {
 } from "./channels.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
+import type { HandoverOpen, HandoverState } from "./handover.ts"
 import type { AgentPick, ImportChecklist } from "./importReview.ts"
 import type {
   KnowledgeArticle,
@@ -31,7 +32,7 @@ import type {
 import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryProposal } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { ActionLogEntry, ActionResult } from "./outside.ts"
-import type { PlaceMarks } from "./placeMarks.ts"
+import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
 import type {
   ModelInfo,
   ProviderAccount,
@@ -63,7 +64,7 @@ import type { TeachState } from "./teach.ts"
 import type { ChatMeter, ChatThread, ChatThreads } from "./threads.ts"
 import type { TodaySnapshot } from "./today.ts"
 import type { ApprovalAnswer } from "./tools.ts"
-import type { PlaceKind, PlaceRef, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
+import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
 import type { RecentWorkRow } from "./work.ts"
 import type { WorkflowFileImported, WorkflowFilePreview } from "./workflowFile.ts"
@@ -379,7 +380,7 @@ export interface RpcMethods {
    * (spec 007, "The mark of a place"). It gives back the marks that it removed. A linked device
    * and the phone cannot call it.
    */
-  "placeMarks.clear": { input: { place: PlaceRef }; output: PlaceMarks }
+  "placeMarks.clear": { input: { place: MarkPlace }; output: PlaceMarks }
   /** The action log of this computer, newest first (spec 007). It is not offered to a linked device. */
   "actionLog.list": {
     input: { agentId?: string; result?: ActionResult }
@@ -597,6 +598,18 @@ export interface RpcMethods {
     output: undefined
   }
   "chat.thread.delete": { input: { agentId: string; threadId: string }; output: undefined }
+  /** Whether "Hand over" is on for a chat or thread, and why not (spec 003). This computer only. */
+  "chat.handover.state": { input: ThreadRef; output: HandoverState }
+  /** Writes the brief and lists the agents for the dialog of "Hand over" (spec 003). */
+  "chat.handover.open": { input: ThreadRef; output: HandoverOpen }
+  /**
+   * Hands the chat over: a new thread in the chat of `toAgentId` with the card and the text (spec
+   * 003). It stores the brief that `open` wrote under `briefId`. It gives the new thread.
+   */
+  "chat.handover.start": {
+    input: ThreadRef & { toAgentId: string; text: string; briefId: string }
+    output: { agentId: string; threadId: string }
+  }
 }
 
 /** A thread of an agent. `threadId` none or null is the main thread. */

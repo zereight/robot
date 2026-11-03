@@ -11,6 +11,7 @@ import {
   ENDED_AS,
   FACE_HUES,
   FACE_SHAPES,
+  HANDOVER_LIMITS,
   INSTRUCTION_SOURCES,
   isOutsideSource,
   isSensitiveLabel,
@@ -326,6 +327,14 @@ const partCheck = (v: unknown): boolean => {
       // A note travels as a code with its names. The window writes the words (spec 002, 009).
       if (v.note === "compact_failed")
         return shape(["kind", "note", "code"])(v) && str(100, 1)(v.code)
+      // The muted line "Handed over to <name>" travels with the ids of the new thread (spec 003, 019).
+      if (v.note === "handed_over")
+        return (
+          shape(["kind", "note", "toName", "toAgentId", "toThreadId"])(v) &&
+          str(AGENT_NAME_MAX * 4, 1)(v.toName) &&
+          str(100, 1)(v.toAgentId) &&
+          str(100, 1)(v.toThreadId)
+        )
       if (v.note === "starter_not_made")
         return (
           shape(["kind", "note", "what", "name", "why"])(v) &&
@@ -338,6 +347,15 @@ const partCheck = (v: unknown): boolean => {
         shape(["kind", "note", "routine"])(v) &&
         oneOf(["watch_unchanged"])(v.note) &&
         str(ROUTINE_NAME_MAX)(v.routine)
+      )
+    // The handover card syncs with the brief and the ids of the place it came from (spec 003, 019).
+    case "handover":
+      return (
+        shape(["kind", "brief", "fromName", "fromAgentId", "fromThreadId"])(v) &&
+        str(HANDOVER_LIMITS.brief * 2)(v.brief) &&
+        str(AGENT_NAME_MAX * 4, 1)(v.fromName) &&
+        str(100, 1)(v.fromAgentId) &&
+        nullable(str(100, 1))(v.fromThreadId)
       )
     case "file":
       return (
@@ -1127,6 +1145,8 @@ interface ThreadRow {
   archived_at: number | null
   fork_thread_id: string | null
   fork_message_id: string | null
+  sensitive_mark: string | null
+  updated_at: number
 }
 
 /**
@@ -1144,6 +1164,9 @@ const thread: KindDef = {
     archivedAt: { check: nullable(int) },
     forkThreadId: { check: nullable(str(100, 1)) },
     forkMessageId: { check: nullable(str(100, 1)) },
+    // The marks of the thread: a thread is a place of its own (spec 007, 019). A computer of an
+    // older step has none.
+    sensitive: { check: nullable(isSensitiveLabel) },
   },
   required: ["agentId", "title", "titled", "createdAt", "archivedAt"],
   fixed: ["agentId", "createdAt", "forkThreadId", "forkMessageId"],
@@ -1161,9 +1184,10 @@ const thread: KindDef = {
         archivedAt: r.archived_at,
         forkThreadId: r.fork_thread_id,
         forkMessageId: r.fork_message_id,
+        sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
       },
       parent: { kind: "agent", id: r.agent_id },
-      wall: Math.max(r.created_at, r.archived_at ?? 0),
+      wall: Math.max(r.created_at, r.archived_at ?? 0, r.updated_at),
     }
   },
   create: (ctx, id, f) => {
@@ -1177,6 +1201,8 @@ const thread: KindDef = {
       archived_at: f.archivedAt,
       fork_thread_id: f.forkThreadId ?? null,
       fork_message_id: f.forkMessageId ?? null,
+      sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
+      updated_at: f.createdAt,
     })
     return true
   },
@@ -1185,6 +1211,12 @@ const thread: KindDef = {
       ...(f.title !== undefined ? { title: f.title } : {}),
       ...(f.titled !== undefined ? { titled: f.titled ? 1 : 0 } : {}),
       ...(f.archivedAt !== undefined ? { archived_at: f.archivedAt } : {}),
+      ...(f.sensitive !== undefined
+        ? {
+            sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
+            updated_at: ctx.now(),
+          }
+        : {}),
     }),
   remove: (ctx, id) => ctx.db.run("DELETE FROM thread WHERE id = ?", id),
   label: (f) => (typeof f.title === "string" ? f.title : ""),

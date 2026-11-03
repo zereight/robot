@@ -1021,10 +1021,12 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             ? { kind: "slot", count: limit }
             : null
         }
-        // The agent works in another thread of its chat (spec 003).
+        // The agent works in another thread of its chat (spec 003). A handover is a message in a
+        // thread, so it counts as a chat here (spec 005).
+        const inChat = (source: TaskSource) => source === "chat" || source === "handover"
         if (
-          running.source === "chat" &&
-          queued.source === "chat" &&
+          inChat(running.source) &&
+          inChat(queued.source) &&
           running.thread_id !== queued.thread_id
         )
           return { kind: "thread" }
@@ -1046,6 +1048,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             return found ? { kind: "workflow", name: found } : null
           }
           case "chat":
+          case "handover":
             return { kind: "chat" }
           case "agent":
             return { kind: "agent" }

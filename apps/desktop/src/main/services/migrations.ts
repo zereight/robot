@@ -765,4 +765,12 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (agent_id, thread_id)
   );
   `,
+  `
+  -- The marks of a thread (spec 007, "The mark of a place"). A thread is a place of its own: a new
+  -- thread starts with no mark, and a handover (spec 003) gives it the marks of the place it came
+  -- from. The mark syncs with the thread (spec 019); \`updated_at\` moves when a mark changes, so
+  -- sync stamps the change as new. The dirty trigger of the thread already watches every column.
+  ALTER TABLE thread ADD COLUMN sensitive_mark TEXT;
+  ALTER TABLE thread ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+  `,
 ]

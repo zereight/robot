@@ -1,4 +1,4 @@
-import { markKinds, type PlaceMarks, type PlaceRef } from "@robot/shared"
+import { type MarkPlace, markKinds, type PlaceMarks } from "@robot/shared"
 import { createSignal, For, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -16,7 +16,7 @@ import styles from "./marks.module.css"
  * the marks for the next turns, after a confirm that names each mark. A linked device sees the
  * line and cannot clear it (spec 012). A place with no mark shows nothing.
  */
-export const PlaceMarksLine = (props: { place: PlaceRef; marks: PlaceMarks }) => {
+export const PlaceMarksLine = (props: { place: MarkPlace; marks: PlaceMarks }) => {
   const { t } = useApp()
   const ui = useUi()
   const [confirming, setConfirming] = createSignal(false)

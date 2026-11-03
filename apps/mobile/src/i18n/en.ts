@@ -151,6 +151,7 @@ export const en = {
   "chat.edited": "edited",
   "chat.note.compact_failed": "The compact failed: {reason} The turn went on without it.",
   "chat.note.watch": "{routine}: no change.",
+  "chat.note.handed_over": "Handed over to {name}",
   "chat.note.starter.routine.limit":
     "Not made: the routine “{name}”. The server has no room for more routines.",
   "chat.note.starter.routine.error": "Not made: the routine “{name}”. An error stopped it.",
