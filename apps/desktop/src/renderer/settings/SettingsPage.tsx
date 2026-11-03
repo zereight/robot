@@ -34,12 +34,14 @@ import { BrowserProfilesSection } from "./BrowserProfilesSection.tsx"
 import { DecisionSection } from "./DecisionSection.tsx"
 import { SavedSecretsSection } from "./SavedSecretsSection.tsx"
 import styles from "./settings.module.css"
+import { TeamsSection } from "./TeamsSection.tsx"
 
 export const sections = [
   "general",
   "appearance",
   "providers",
   "decision",
+  "teams",
   "devices",
   "notifications",
   "archive",
@@ -449,6 +451,9 @@ export const SettingsPage = (props: {
           </Match>
           <Match when={section() === "browser"}>
             <BrowserProfilesSection />
+          </Match>
+          <Match when={section() === "teams"}>
+            <TeamsSection />
           </Match>
           <Match when={section() === "permissions"}>
             <SavedSecretsSection />
