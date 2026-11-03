@@ -1,4 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img">
+  <title>ROBot</title>
   <!-- Android themed icon: the eyes of icon-foreground.svg in one colour, with no glow. -->
   <g transform="translate(512 512) scale(0.8) translate(-512 -496.5)">
     <g fill="#ffffff">
