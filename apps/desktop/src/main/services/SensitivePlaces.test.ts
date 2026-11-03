@@ -429,6 +429,7 @@ describe("what the mark changes", () => {
     const place = { kind: "channel", id: channelId } as const
     await s.run(PlaceMarks.use((m) => Effect.sync(() => m.holdSensitive(place, "cloud"))))
     expect(await s.run(PlaceMarks.use((m) => Effect.succeed(m.get(place))))).toEqual({
+      outside: null,
       sensitive: "cloud",
     })
     // The first label stays, and the chat of the agent is another place with no mark.

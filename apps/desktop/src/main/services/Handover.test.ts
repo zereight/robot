@@ -586,7 +586,7 @@ describe("the marks of a handover", () => {
     await t.settled(t.ben.id, made.threadId)
     const marks = (id: string) =>
       t.run(PlaceMarks.use((m) => Effect.succeed(m.get({ kind: "thread", id }))))
-    expect(await marks(made.threadId)).toEqual({ sensitive: "keys" })
+    expect(await marks(made.threadId)).toEqual({ outside: null, sensitive: "keys" })
     // The main thread of Ben and a thread that Ben starts later hold none.
     expect(
       await t.run(PlaceMarks.use((m) => Effect.succeed(m.get({ kind: "agent", id: t.ben.id })))),
@@ -595,13 +595,16 @@ describe("the marks of a handover", () => {
     expect(await marks(other.id)).toEqual(NO_MARKS)
     // The list of threads shows the marks, for the header line of the new thread.
     const listed = (await t.threads(t.ben.id)).threads
-    expect(listed.find((x) => x.id === made.threadId)?.marks).toEqual({ sensitive: "keys" })
+    expect(listed.find((x) => x.id === made.threadId)?.marks).toEqual({
+      outside: null,
+      sensitive: "keys",
+    })
     expect(listed.find((x) => x.id === other.id)?.marks).toEqual(NO_MARKS)
     // Clear works on the thread and only on the thread.
     const cleared = await runRequest(t.runtime, "placeMarks.clear", {
       place: { kind: "thread", id: made.threadId },
     })
-    expect(cleared).toEqual({ ok: true, value: { sensitive: "keys" } })
+    expect(cleared).toEqual({ ok: true, value: { outside: null, sensitive: "keys" } })
     expect(await marks(made.threadId)).toEqual(NO_MARKS)
     expect(
       (await t.run(PlaceMarks.use((m) => Effect.succeed(m.get({ kind: "agent", id: t.ada.id })))))
@@ -641,7 +644,7 @@ describe("the marks of a handover", () => {
       await t.run(
         PlaceMarks.use((m) => Effect.succeed(m.get({ kind: "thread", id: made.threadId }))),
       ),
-    ).toEqual({ sensitive: "browser" })
+    ).toEqual({ outside: null, sensitive: "browser" })
     // The agent Ada itself holds none.
     expect(
       await t.run(PlaceMarks.use((m) => Effect.succeed(m.get({ kind: "agent", id: t.ada.id })))),
@@ -661,7 +664,7 @@ describe("the marks of a handover", () => {
     const forked = await t.run(
       Chat.use((c) => c.fork(t.place(t.ada.id, thread.id), messages[1]?.id as string)),
     )
-    expect(forked.marks).toEqual({ sensitive: "keys" })
+    expect(forked.marks).toEqual({ outside: null, sensitive: "keys" })
     // A new thread starts with no mark.
     const fresh = await t.run(Chat.use((c) => c.createThread(t.ada.id)))
     expect(fresh.marks).toEqual(NO_MARKS)
@@ -762,7 +765,7 @@ describe("export and agent files", () => {
     const back = await b.run(
       PlaceMarks.use((m) => Effect.succeed(m.get({ kind: "thread", id: "th1" }))),
     )
-    expect(back).toEqual({ sensitive: "keys" })
+    expect(back).toEqual({ outside: null, sensitive: "keys" })
     const text =
       bDb.get<{ parts: string }>("SELECT parts FROM message WHERE id = 'c1'")?.parts ?? ""
     expect(text).toContain("[redacted]")

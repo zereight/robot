@@ -1395,3 +1395,168 @@ describe("review of parts and blocked tasks cross with their task and channel (s
     expect(row?.error).toEqual({ code: "blocked", detail: "no access to the repository" })
   })
 })
+
+describe("the outside mark of a place and the program mark of a message sync (spec 007, 019)", () => {
+  const mark = { source: { kind: "teams" }, program: true }
+  const op = (kind: string, id: string, fields: Record<string, unknown>) =>
+    parseOp(
+      {
+        k: kind,
+        i: id,
+        o: "dev-a",
+        f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+      },
+      NOW,
+    )
+
+  test("the mark of a chat, a thread and a channel is read, arrives with the place, and a clear follows", async () => {
+    const a = await source()
+    const channelId = KINDS.channel.ids(a.db, "", 10)[0] ?? ""
+    a.db.run("UPDATE agent SET outside_mark = ?", JSON.stringify(mark))
+    a.db.run("UPDATE channel SET outside_mark = ?", JSON.stringify(mark))
+    a.db.run(
+      "INSERT INTO thread (id, agent_id, title, titled, created_at, outside_mark, updated_at) VALUES ('th-outside', ?, 'T', 1, ?, ?, ?)",
+      a.ada.id,
+      NOW,
+      JSON.stringify({ source: { kind: "agent", name: "Bo" }, program: true }),
+      NOW + 5,
+    )
+    const dir = join(testRuntime().dataDir, "kinds-outside")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const b = target(openDatabase(":memory:"), dir)
+
+    const agent = copy(KINDS.agent.read(ctxA, a.ada.id)?.fields) as Fields
+    expect(agent.outside).toEqual(mark)
+    expect(KINDS.agent.create(b, a.ada.id, agent)).toBe(true)
+    expect(KINDS.agent.read(b, a.ada.id)?.fields.outside).toEqual(mark)
+
+    const thread = copy(KINDS.thread.read(ctxA, "th-outside")?.fields) as Fields
+    expect(thread.outside).toEqual({ source: { kind: "agent", name: "Bo" }, program: true })
+    expect(KINDS.thread.create(b, "th-outside", thread)).toBe(true)
+    expect(KINDS.thread.read(b, "th-outside")?.fields.outside).toEqual(thread.outside)
+
+    const channel = copy(KINDS.channel.read(ctxA, channelId)?.fields) as Fields
+    expect(channel.outside).toEqual(mark)
+    for (const member of channel.members as string[])
+      if (member !== a.ada.id)
+        KINDS.agent.create(b, member, copy(KINDS.agent.read(ctxA, member)?.fields) as Fields)
+    expect(KINDS.channel.create(b, channelId, channel)).toBe(true)
+    expect(KINDS.channel.read(b, channelId)?.fields.outside).toEqual(mark)
+
+    // "Clear" on one computer writes through each place, and the thread time moves.
+    KINDS.agent.write(b, a.ada.id, { outside: null })
+    KINDS.channel.write(b, channelId, { outside: null })
+    KINDS.thread.write(b, "th-outside", { outside: null })
+    expect(KINDS.agent.read(b, a.ada.id)?.fields.outside).toBeNull()
+    expect(KINDS.channel.read(b, channelId)?.fields.outside).toBeNull()
+    expect(KINDS.thread.read(b, "th-outside")?.fields.outside).toBeNull()
+    // A mark that changes moves the time of the thread, so sync stamps the change as new.
+    expect(KINDS.thread.read(ctxA, "th-outside")?.wall).toBe(NOW + 5)
+    // A new mark follows the same way.
+    KINDS.agent.write(b, a.ada.id, { outside: mark })
+    expect(KINDS.agent.read(b, a.ada.id)?.fields.outside).toEqual(mark)
+  })
+
+  test("a place from a computer of an older step has no mark field and makes a place with none", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-outside-old")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const b = target(openDatabase(":memory:"), dir)
+    const { outside: _drop, ...older } = copy(KINDS.agent.read(ctxA, a.ada.id)?.fields) as Fields
+    expect(KINDS.agent.create(b, a.ada.id, older)).toBe(true)
+    expect(KINDS.agent.read(b, a.ada.id)?.fields.outside).toBeNull()
+    // A write that does not name the mark keeps it.
+    KINDS.agent.write(b, a.ada.id, { outside: mark })
+    KINDS.agent.write(b, a.ada.id, { role: "New role" })
+    expect(KINDS.agent.read(b, a.ada.id)?.fields.outside).toEqual(mark)
+  })
+
+  test("the strict check takes only a source and a flag as the mark of a place", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-outside-check")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.agent.read(ctxA, a.ada.id)?.fields) as Fields
+    expect(op("agent", a.ada.id, { ...fields, outside: mark })).toBeDefined()
+    expect(op("agent", a.ada.id, { ...fields, outside: null })).toBeDefined()
+    for (const bad of [
+      { source: { kind: "teams" } },
+      { source: { kind: "teams" }, program: "yes" },
+      { source: { kind: "teams", name: "x" }, program: true },
+      { source: { kind: "other" }, program: true },
+      { source: { kind: "teams" }, program: true, extra: 1 },
+      "teams",
+      5,
+    ])
+      expect(
+        op("agent", a.ada.id, { ...fields, outside: bad }),
+        JSON.stringify(bad),
+      ).toBeUndefined()
+  })
+
+  test("the program mark of a message and of a channel message is read, arrives, and follows a write", async () => {
+    const a = await source()
+    const channelId = KINDS.channel.ids(a.db, "", 10)[0] ?? ""
+    a.db.run(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at, program_mark) VALUES ('m-1', ?, 'user', ?, 'done', ?, ?)",
+      a.ada.id,
+      JSON.stringify([{ kind: "text", text: "From the program" }]),
+      NOW,
+      JSON.stringify({ kind: "teams" }),
+    )
+    a.db.run(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('m-2', ?, 'user', ?, 'done', ?)",
+      a.ada.id,
+      JSON.stringify([{ kind: "text", text: "By the user" }]),
+      NOW,
+    )
+    a.db.run(
+      "INSERT INTO channel_message (id, channel_id, author, kind, parts, status, created_at, program_mark) VALUES ('c-1', ?, 'user', 'text', ?, 'done', ?, ?)",
+      channelId,
+      JSON.stringify([{ kind: "text", text: "A job" }]),
+      NOW,
+      JSON.stringify({ kind: "teams" }),
+    )
+    const dir = join(testRuntime().dataDir, "kinds-program-mark")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const b = target(openDatabase(":memory:"), dir)
+    KINDS.agent.create(b, a.ada.id, copy(KINDS.agent.read(ctxA, a.ada.id)?.fields) as Fields)
+    const channel = copy(KINDS.channel.read(ctxA, channelId)?.fields) as Fields
+    for (const member of channel.members as string[])
+      if (member !== a.ada.id)
+        KINDS.agent.create(b, member, copy(KINDS.agent.read(ctxA, member)?.fields) as Fields)
+    KINDS.channel.create(b, channelId, channel)
+
+    const marked = copy(KINDS.message.read(ctxA, "m-1")?.fields) as Fields
+    const plain = copy(KINDS.message.read(ctxA, "m-2")?.fields) as Fields
+    expect(marked.programMark).toEqual({ kind: "teams" })
+    expect(plain.programMark).toBeNull()
+    expect(op("message", "m-1", marked)).toBeDefined()
+    expect(KINDS.message.create(b, "m-1", marked)).toBe(true)
+    expect(KINDS.message.create(b, "m-2", plain)).toBe(true)
+    expect(KINDS.message.read(b, "m-1")?.fields.programMark).toEqual({ kind: "teams" })
+    expect(KINDS.message.read(b, "m-2")?.fields.programMark).toBeNull()
+
+    const job = copy(KINDS.cmessage.read(ctxA, "c-1")?.fields) as Fields
+    expect(job.programMark).toEqual({ kind: "teams" })
+    expect(op("cmessage", "c-1", job)).toBeDefined()
+    expect(KINDS.cmessage.create(b, "c-1", job)).toBe(true)
+    expect(KINDS.cmessage.read(b, "c-1")?.fields.programMark).toEqual({ kind: "teams" })
+
+    // The mark that a later write brings (the reply gets it when the turn starts).
+    KINDS.message.write(b, "m-2", { programMark: { kind: "agent", name: "Bo" } })
+    expect(KINDS.message.read(b, "m-2")?.fields.programMark).toEqual({ kind: "agent", name: "Bo" })
+    KINDS.message.write(b, "m-2", { programMark: null })
+    expect(KINDS.message.read(b, "m-2")?.fields.programMark).toBeNull()
+
+    // A message from a computer of an older step has no field and makes a message with no mark.
+    const { programMark: _drop, ...older } = marked
+    expect(KINDS.message.create(b, "m-old", older)).toBe(true)
+    expect(KINDS.message.read(b, "m-old")?.fields.programMark).toBeNull()
+    // The strict check takes a source only.
+    for (const bad of [{ kind: "other" }, "teams", { kind: "teams", name: "x" }, 5])
+      expect(
+        op("message", "m-1", { ...marked, programMark: bad }),
+        JSON.stringify(bad),
+      ).toBeUndefined()
+  })
+})

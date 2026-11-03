@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { PlaceOutside } from "./placeMarks.ts"
 import type { RuntimeProblem } from "./providers.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
 import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
@@ -80,6 +81,11 @@ export interface Agent {
    * and a linked device cannot clear it. A client of an older step has none.
    */
   readonly sensitive?: SensitiveLabel | null
+  /**
+   * The outside content that the next turns of the chat hold, with the program mark (spec 007,
+   * "The mark of a place"). It is stored with the agent and syncs. A client of an older step has none.
+   */
+  readonly outside?: PlaceOutside | null
 }
 
 export const AgentCreate = Schema.Struct({

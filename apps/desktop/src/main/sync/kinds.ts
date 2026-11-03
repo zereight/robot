@@ -14,11 +14,15 @@ import {
   HANDOVER_LIMITS,
   INSTRUCTION_SOURCES,
   isOutsideSource,
+  isPlaceOutside,
   isSensitiveLabel,
   KNOWLEDGE_TITLE_MAX,
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
+  parseOutsideSource,
+  parsePlaceOutside,
+  placeOutsideText,
   REVIEW_CHANGES_MAX,
   ROUTINE_NAME_MAX,
   ROUTINE_PROMPT_MAX,
@@ -574,6 +578,7 @@ interface AgentRow {
   updated_at: number
   last_read_at: number
   sensitive_mark: string | null
+  outside_mark: string | null
 }
 
 const readFace = (ctx: Ctx, file: string | null) => {
@@ -647,6 +652,9 @@ const agent: KindDef = {
     archived: { check: bool },
     // The mark of a sensitive read of the chat (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
+    // The outside content that the next turns of the chat hold, with the program mark (spec 007).
+    // A computer of an older step has none.
+    outside: { check: nullable(isPlaceOutside) },
     readAt: { check: int, merge: "max" },
     createdAt: { check: int },
   },
@@ -670,6 +678,7 @@ const agent: KindDef = {
             : null,
         archived: r.archived_at !== null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
+        outside: parsePlaceOutside(r.outside_mark),
         readAt: r.last_read_at,
         createdAt: r.created_at,
       },
@@ -700,6 +709,7 @@ const agent: KindDef = {
       memory_enabled: 1,
       archived_at: f.archived === true ? now : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
+      outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
       created_at: f.createdAt,
       updated_at: now,
       last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
@@ -736,6 +746,8 @@ const agent: KindDef = {
     }
     if (f.sensitive !== undefined)
       columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
+    if (f.outside !== undefined)
+      columns.outside_mark = placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null)
     if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
     columns.updated_at = now
     update(ctx.db, "agent", "id = ?", [id], columns)
@@ -762,6 +774,7 @@ interface ChannelRow {
   lead_agent_id: string | null
   review_parts: number
   sensitive_mark: string | null
+  outside_mark: string | null
   created_at: number
   updated_at: number
   last_read_at: number
@@ -798,6 +811,9 @@ const channel: KindDef = {
     reviewParts: { check: (v) => typeof v === "boolean" },
     // The mark of a sensitive read of the channel (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
+    // The outside content that the next turns of the channel hold, with the program mark (spec 007).
+    // A computer of an older step has none.
+    outside: { check: nullable(isPlaceOutside) },
     members: {
       check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
     },
@@ -818,6 +834,7 @@ const channel: KindDef = {
         lead: r.lead_agent_id,
         reviewParts: r.review_parts === 1,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
+        outside: parsePlaceOutside(r.outside_mark),
         members: ctx.db
           .all<{ agent_id: string }>(
             "SELECT agent_id FROM channel_member WHERE channel_id = ? ORDER BY position",
@@ -842,6 +859,7 @@ const channel: KindDef = {
       lead_agent_id: f.lead,
       review_parts: f.reviewParts === true ? 1 : 0,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
+      outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
       created_at: f.createdAt,
       updated_at: now,
       last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
@@ -862,6 +880,8 @@ const channel: KindDef = {
     if (typeof f.reviewParts === "boolean") columns.review_parts = f.reviewParts ? 1 : 0
     if (f.sensitive !== undefined)
       columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
+    if (f.outside !== undefined)
+      columns.outside_mark = placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null)
     if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
     columns.updated_at = ctx.now()
     update(ctx.db, "channel", "id = ?", [id], columns)
@@ -1006,6 +1026,7 @@ interface MessageRow {
   from_name: string | null
   origin: string | null
   thread_id: string | null
+  program_mark: string | null
 }
 
 const errorOf = (r: {
@@ -1026,6 +1047,10 @@ const errorColumns = (error: unknown) => {
   }
 }
 
+/** The program mark of a message as the column stores it: JSON text of a source, or null. */
+const markColumn = (value: unknown): string | null =>
+  isOutsideSource(value) ? JSON.stringify(value) : null
+
 const message: KindDef = {
   kind: "message",
   rank: 3,
@@ -1045,6 +1070,9 @@ const message: KindDef = {
     // The thread of the message (spec 003). Null for the main thread. A computer that does not
     // send it has the main thread only.
     threadId: { check: nullable(str(100, 1)) },
+    // The first source of the turn that started or made the message, when that turn holds the
+    // program mark (spec 007). A computer of an older step has none.
+    programMark: { check: nullable(isOutsideSource) },
   },
   required: [
     "agentId",
@@ -1081,6 +1109,7 @@ const message: KindDef = {
         sender: r.from_name,
         origin: r.origin ?? ctx.self,
         threadId: r.thread_id,
+        programMark: parseOutsideSource(r.program_mark),
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: Math.max(r.created_at, r.finished_at ?? 0, r.edited_at ?? 0),
@@ -1119,11 +1148,13 @@ const message: KindDef = {
       from_device: peer?.id ?? null,
       from_name: (f.sender as string | null) ?? peer?.name ?? null,
       origin: originColumn(ctx, f.origin),
+      program_mark: markColumn(f.programMark),
     })
     return true
   },
   write: (ctx, id, f) =>
     update(ctx.db, "message", "id = ?", [id], {
+      ...(f.programMark !== undefined ? { program_mark: markColumn(f.programMark) } : {}),
       ...(f.parts !== undefined ? { parts: JSON.stringify(f.parts) } : {}),
       ...(f.status !== undefined ? { status: f.status } : {}),
       ...(f.error !== undefined ? errorColumns(f.error) : {}),
@@ -1146,6 +1177,7 @@ interface ThreadRow {
   fork_thread_id: string | null
   fork_message_id: string | null
   sensitive_mark: string | null
+  outside_mark: string | null
   updated_at: number
 }
 
@@ -1167,6 +1199,7 @@ const thread: KindDef = {
     // The marks of the thread: a thread is a place of its own (spec 007, 019). A computer of an
     // older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
+    outside: { check: nullable(isPlaceOutside) },
   },
   required: ["agentId", "title", "titled", "createdAt", "archivedAt"],
   fixed: ["agentId", "createdAt", "forkThreadId", "forkMessageId"],
@@ -1185,6 +1218,7 @@ const thread: KindDef = {
         forkThreadId: r.fork_thread_id,
         forkMessageId: r.fork_message_id,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
+        outside: parsePlaceOutside(r.outside_mark),
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: Math.max(r.created_at, r.archived_at ?? 0, r.updated_at),
@@ -1202,6 +1236,7 @@ const thread: KindDef = {
       fork_thread_id: f.forkThreadId ?? null,
       fork_message_id: f.forkMessageId ?? null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
+      outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
       updated_at: f.createdAt,
     })
     return true
@@ -1214,6 +1249,12 @@ const thread: KindDef = {
       ...(f.sensitive !== undefined
         ? {
             sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
+            updated_at: ctx.now(),
+          }
+        : {}),
+      ...(f.outside !== undefined
+        ? {
+            outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
             updated_at: ctx.now(),
           }
         : {}),
@@ -1240,6 +1281,7 @@ interface ChannelMessageRow {
   finished_at: number | null
   from_name: string | null
   origin: string | null
+  program_mark: string | null
 }
 
 const cmessage: KindDef = {
@@ -1260,6 +1302,8 @@ const cmessage: KindDef = {
     finishedAt: { check: nullable(int) },
     sender: { check: nullable(str(100)) },
     origin: { check: str(64, 1) },
+    // As for a message of a chat: the first source of a turn that holds the program mark.
+    programMark: { check: nullable(isOutsideSource) },
   },
   required: [
     "channelId",
@@ -1299,6 +1343,7 @@ const cmessage: KindDef = {
         finishedAt: r.finished_at,
         sender: r.from_name,
         origin: r.origin ?? ctx.self,
+        programMark: parseOutsideSource(r.program_mark),
       },
       parent: { kind: "channel", id: r.channel_id },
       wall: Math.max(r.created_at, r.finished_at ?? 0),
@@ -1326,11 +1371,13 @@ const cmessage: KindDef = {
       from_device: peer?.id ?? null,
       from_name: (f.sender as string | null) ?? peer?.name ?? null,
       origin: originColumn(ctx, f.origin),
+      program_mark: markColumn(f.programMark),
     })
     return true
   },
   write: (ctx, id, f) =>
     update(ctx.db, "channel_message", "id = ?", [id], {
+      ...(f.programMark !== undefined ? { program_mark: markColumn(f.programMark) } : {}),
       ...(f.kind !== undefined ? { kind: f.kind } : {}),
       ...(f.parts !== undefined ? { parts: JSON.stringify(f.parts) } : {}),
       ...(f.status !== undefined ? { status: f.status } : {}),

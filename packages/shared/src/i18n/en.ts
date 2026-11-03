@@ -708,6 +708,8 @@ export const en = {
   "outside.source.secret": "the answer of a request with {name}",
   "outside.source.routine": "the routine {name}",
   "outside.source.agent": "a message from {name}",
+  "outside.source.teams": "Teams",
+  "outside.placeHeld": "Holds outside content",
   "sensitive.held": "Holds a sensitive read",
   "sensitive.first": "First place: {label}",
   "sensitive.askLine": "This turn read a place with keys or logins.",
@@ -720,6 +722,8 @@ export const en = {
   "sensitive.label.robot": "ROBot data",
   "marks.clear": "Clear",
   "marks.clearTitle": 'Clear "{marks}"?',
+  "marks.clearOutside":
+    "The agent still sees the outside text. After you clear the mark, guarded and checked steps do not ask because of it.",
   "marks.clearSensitive":
     "The agent still sees what it read. After you clear the mark, a step that sends data out does not ask because of it.",
   "marks.cancel": "Cancel",

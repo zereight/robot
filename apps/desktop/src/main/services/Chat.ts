@@ -20,6 +20,7 @@ import {
   type CompactOff,
   type CutNotice,
   canAddThread,
+  carriesProgramMark,
   compactCut,
   compactDue,
   createReadGuard,
@@ -31,6 +32,7 @@ import {
   handoverOffReason,
   hasVisibleReply,
   holdOutside,
+  holdProgram,
   isNoteOnly,
   isTaskProgress,
   type MarkPlace,
@@ -46,6 +48,7 @@ import {
   outsideOfCall,
   outsideOfParts,
   type PermissionLevel,
+  parseOutsideSource,
   QUEUE_MAX,
   type QueuedLine,
   type QueuedMessage,
@@ -123,6 +126,8 @@ interface MessageRow {
   read_at: number | null
   /** The thread of the message (spec 003). Null for the main thread. */
   thread_id: string | null
+  /** The first source of the turn that started or made the message, when it holds the program mark. */
+  program_mark?: string | null
   input_tokens: number | null
   output_tokens: number | null
   finished_at: number | null
@@ -156,6 +161,12 @@ export interface TaskOrigin {
    * that starts a watch routine. This is its source.
    */
   readonly outside?: OutsideSource
+  /**
+   * The turn holds the program mark from its start by a later rule, though `outside` does not
+   * carry it (spec 007, "Program mark"): the message came from a turn that holds the mark. A
+   * source that carries the mark (Teams) gives it with no flag.
+   */
+  readonly program?: boolean
   /** Called when the task of the message starts, with its id. */
   readonly onStart?: (taskId: string) => void
   /**
@@ -311,6 +322,7 @@ interface ThreadRow {
   fork_thread_id: string | null
   fork_message_id: string | null
   sensitive_mark: string | null
+  outside_mark: string | null
   updated_at: number
 }
 
@@ -822,6 +834,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         task: Task,
         replyId: string,
         askerId: string,
+        program = false,
       ): Effect.Effect<void> =>
         Effect.gen(function* () {
           const ended = db.get<{ state: string; error_code: string | null }>(
@@ -842,6 +855,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               sourceId: replier.id,
               starter: "agent",
               outside: { kind: "agent", name: replier.name },
+              // A reply from a turn that holds the program mark is a message from such a turn.
+              ...(program ? { program: true } : {}),
               depth: taskDepth({ kind: "message", depth: tasks.depthOf(task.id) }),
               prompt: text,
               returning: true,
@@ -942,12 +957,38 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // The turn also holds a sensitive read from its start when the chat does (spec 007,
         // "Sensitive places"): an earlier turn read a credential place, and no one cleared it.
         const markPlace = markPlaceOf(place)
+        const held = placeMarks.get(markPlace)
         const mark = newTurnMark(
           fresh?.starter ?? starterOf(task.source),
           fresh?.outside ?? null,
-          placeMarks.get(markPlace).sensitive,
+          held.sensitive,
+          fresh?.program ? true : undefined,
         )
         if (kept) holdOutside(mark, outsideOfParts(parts))
+        // The turn also holds outside content with the program mark from its start when the chat
+        // does: an earlier turn held the mark, and no one cleared it (spec 007, "Program mark").
+        if (held.outside?.program) holdProgram(mark, held.outside.source)
+        /**
+         * The turn holds the program mark: the chat holds it for the next turns, and the messages
+         * of the turn say so. The message that started the turn, the reply, and the messages that
+         * other turns send from here use it.
+         */
+        const markProgram = () => {
+          if (!mark.program || !mark.source) return
+          placeMarks.holdProgram(markPlace, mark.source)
+          const stamp = (id: string) => {
+            db.run(
+              "UPDATE message SET program_mark = ? WHERE id = ?",
+              JSON.stringify(mark.source),
+              id,
+            )
+          }
+          stamp(reply.id)
+          // The message of an outside program or of Teams, or of an agent whose turn held the
+          // mark, is a message of such a turn too.
+          if (lastUser && (fresh?.program || carriesProgramMark(fresh?.outside))) stamp(lastUser.id)
+        }
+        markProgram()
         const counted = kept
           ? db.get<{ input_tokens: number | null; output_tokens: number | null }>(
               "SELECT input_tokens, output_tokens FROM message WHERE id = ?",
@@ -1200,6 +1241,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             onReason: (callId, reason) => changePart(callId, (p) => ({ ...p, reason })),
             // The chat holds the mark from the first read, so the next turns hold it too.
             onSensitive: (label) => placeMarks.holdSensitive(markPlace, label),
+            // The turn got the program mark in a step (a hit of "search chats").
+            onProgram: markProgram,
           }
           // A step of a workflow can ask for its own effort for this one turn. It is read for each
           // turn, so a retry decides again from the step and the model, not from the first try.
@@ -1369,7 +1412,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           Effect.ignore,
         )
         // The reply of a task that another agent asked for goes back to that agent (spec 007).
-        if (origin?.requester) yield* returnReply(agent, task, reply.id, origin.requester)
+        if (origin?.requester)
+          yield* returnReply(agent, task, reply.id, origin.requester, mark.program)
       })
 
       /** Answers the last message, then each queued message in order. */
@@ -2214,8 +2258,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             db.run(
               `INSERT INTO message (id, agent_id, author, parts, status, error_code, error_detail,
                  error_resets_at, reply_to, model, created_at, edited_at, from_device, from_name,
-                 context, joined_to, read_at, thread_id, input_tokens, output_tokens, finished_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+                 context, joined_to, read_at, thread_id, input_tokens, output_tokens, finished_at,
+                 program_mark)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
               ids.get(r.id) as string,
               r.agent_id,
               r.author,
@@ -2235,12 +2280,19 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               r.read_at,
               made.id,
               r.finished_at,
+              r.program_mark ?? null,
             )
           // The copied replies are no news.
           db.run("INSERT INTO thread_read (thread_id, at) VALUES (?, ?)", made.id, Date.now())
           // A thread is a place of its own and starts with no mark, but a fork keeps what the
           // conversation it copied held (spec 007): the model of the fork reads the same text.
-          placeMarks.carry(markPlaceOf(place), { kind: "thread", id: made.id })
+          // The outside mark goes only when the copy holds a turn with the program mark.
+          const to: MarkPlace = { kind: "thread", id: made.id }
+          placeMarks.carry(markPlaceOf(place), to, ["sensitive"])
+          const programSource = copied
+            .map((r) => parseOutsideSource(r.program_mark))
+            .find((source) => source !== null)
+          if (programSource) placeMarks.holdProgram(to, programSource)
           return made
         })
         threadsChanged(place.agentId)
@@ -2480,6 +2532,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 sourceId: from.agentId,
                 starter: "agent",
                 outside: { kind: "agent", name: sender?.name ?? "" },
+                // A message from a turn that holds the program mark starts a turn that holds it
+                // too (spec 007, "Program mark").
+                ...(from.program ? { program: true } : {}),
                 depth: taskDepth({ kind: "message", depth: from.depth }),
                 prompt: text,
                 requester: from.agentId,

@@ -7,6 +7,9 @@ import {
   type PlaceMarks as Marks,
   mergedMarks,
   NO_MARKS,
+  type OutsideSource,
+  parsePlaceOutside,
+  placeOutsideText,
   type SensitiveLabel,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
@@ -22,6 +25,11 @@ export interface PlaceMarksService {
    */
   holdSensitive(place: MarkPlace, label: SensitiveLabel): void
   /**
+   * A turn of the place holds the program mark (spec 007, "Program mark"). The next turns of the
+   * place hold outside content with the program mark, until "Clear". The first source stays.
+   */
+  holdProgram(place: MarkPlace, source: OutsideSource): void
+  /**
    * "Clear": removes every mark of the place for the next turns (spec 007, "The mark of a place").
    * It gives back the marks that it removed. A running turn keeps its own marks.
    */
@@ -29,9 +37,9 @@ export interface PlaceMarksService {
   /**
    * Copies every mark of one place to another place, which holds them from now on. A handover
    * (spec 003) gives the new thread the marks of the place it came from. A mark that the target
-   * holds already stays.
+   * holds already stays. With `only`, it copies these mark fields and no other.
    */
-  carry(from: MarkPlace, to: MarkPlace): void
+  carry(from: MarkPlace, to: MarkPlace, only?: readonly (keyof Marks)[]): void
 }
 
 const TABLE: Readonly<Record<MarkPlace["kind"], string>> = {
@@ -44,7 +52,14 @@ const TABLE: Readonly<Record<MarkPlace["kind"], string>> = {
  * The column of each mark field. A new field of the marks fails to compile until it has a column
  * here, so the store, the clear and the carry cover it with no other change.
  */
-const COLUMN = { sensitive: "sensitive_mark" } as const satisfies Record<keyof Marks, string>
+const COLUMN = {
+  outside: "outside_mark",
+  sensitive: "sensitive_mark",
+} as const satisfies Record<keyof Marks, string>
+
+/** The value of one mark field as the column stores it. */
+const stored = (marks: Marks, field: keyof Marks): string | null =>
+  field === "outside" ? placeOutsideText(marks.outside) : marks[field]
 
 /**
  * The marks of a place (spec 007): the one place in the code where a mark is read, set, cleared
@@ -66,14 +81,17 @@ export class PlaceMarks extends Context.Service<PlaceMarks, PlaceMarksService>()
         )
         if (!row) return NO_MARKS
         const sensitive = row[COLUMN.sensitive]
-        return { sensitive: isSensitiveLabel(sensitive) ? sensitive : null } satisfies Marks
+        return {
+          outside: parsePlaceOutside(row[COLUMN.outside]),
+          sensitive: isSensitiveLabel(sensitive) ? sensitive : null,
+        } satisfies Marks
       }
 
       /** Writes the marks. The time of the place moves, so sync stamps the change as new. */
       const write = (place: MarkPlace, marks: Marks) => {
         db.run(
           `UPDATE ${TABLE[place.kind]} SET ${MARK_FIELDS.map((f) => `${COLUMN[f]} = ?`).join(", ")}, updated_at = ? WHERE id = ?`,
-          ...MARK_FIELDS.map((f) => marks[f]),
+          ...MARK_FIELDS.map((f) => stored(marks, f)),
           Date.now(),
           place.id,
         )
@@ -97,17 +115,35 @@ export class PlaceMarks extends Context.Service<PlaceMarks, PlaceMarksService>()
       return PlaceMarks.of({
         get: read,
         holdSensitive: (place, label) => {
-          if (read(place).sensitive !== null) return
-          write(place, { sensitive: label })
+          const here = read(place)
+          if (here.sensitive !== null) return
+          write(place, { ...here, sensitive: label })
+        },
+        holdProgram: (place, source) => {
+          const here = read(place)
+          if (here.outside?.program) return
+          write(place, {
+            ...here,
+            outside: { source: here.outside?.source ?? source, program: true },
+          })
         },
         clear: (place) => {
           const before = read(place)
           if (holdsMarks(before)) write(place, NO_MARKS)
           return before
         },
-        carry: (from, to) => {
+        carry: (from, to, only) => {
           const here = read(to)
-          const next = mergedMarks(here, carriedMarks(read(from)))
+          const source = carriedMarks(read(from))
+          const next = mergedMarks(
+            here,
+            only
+              ? ({
+                  outside: only.includes("outside") ? source.outside : null,
+                  sensitive: only.includes("sensitive") ? source.sensitive : null,
+                } satisfies Marks)
+              : source,
+          )
           if (MARK_FIELDS.some((f) => next[f] !== here[f])) write(to, next)
         },
       })
