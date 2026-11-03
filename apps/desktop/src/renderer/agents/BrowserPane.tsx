@@ -1,5 +1,5 @@
 import type { TeachState } from "@robot/shared"
-import { Maximize2, Minimize2 } from "lucide-solid"
+import { Eye, EyeOff, Maximize2, Minimize2 } from "lucide-solid"
 import {
   type Accessor,
   createEffect,
@@ -64,19 +64,34 @@ const useBrowserPlace = (
 }
 
 /**
- * The browser of one agent, as the chat screen sees it. The page shows in one of two places: a
- * small box in the activity panel, or the whole conversation area when the user enlarges it. The
- * chat is never split. Make it once for each open agent chat.
+ * The browser of one agent, as the chat screen sees it. The page works in the background and stays
+ * hidden. The user shows it when they want to look: small in the activity panel, or large over the
+ * whole conversation area. The agent can ask the user to look, and the user can say no. Hiding the
+ * view never closes the page, so the agent goes on. The chat is never split. Make it once for each
+ * open agent chat.
  */
 export interface BrowserView {
-  /** The agent has a page open, or the user teaches a task in it. */
-  readonly shown: Accessor<boolean>
+  /** The agent has a page open, or the user teaches a task in it. The view may still be hidden. */
+  readonly available: Accessor<boolean>
+  /** The user looks at the page, small or large. */
+  readonly watching: Accessor<boolean>
   /** The user holds the page. */
   readonly control: Accessor<boolean>
   readonly teaching: Accessor<Extract<TeachState, { phase: "recording" }> | undefined>
   /** The page fills the conversation area. It does so while the user teaches a task. */
   readonly large: Accessor<boolean>
-  readonly setEnlarged: (on: boolean) => void
+  /** Why the agent asks the user to look, or null. */
+  readonly suggest: Accessor<string | null>
+  /** Shows the page small, in the activity panel. */
+  readonly show: () => void
+  /** Shows the page large. */
+  readonly enlarge: () => void
+  /** Makes a large page small again. */
+  readonly shrink: () => void
+  /** Hides the page. It stays open for the agent. */
+  readonly hide: () => void
+  /** The user does not want to look now: the request of the agent goes away. */
+  readonly dismissSuggest: () => void
   readonly setSmallBox: (el: HTMLElement | undefined) => void
   readonly setLargeBox: (el: HTMLElement | undefined) => void
 }
@@ -97,22 +112,55 @@ export const createBrowserView = (agentId: string, linked: Accessor<boolean>): B
     return now.phase === "recording" && now.agentId === agentId ? now : undefined
   }
   // A linked server has no browser view in a client: the client has no control of it (spec 012).
-  const shown = () => !linked() && Boolean(state()?.open || teaching())
+  const available = () => !linked() && Boolean(state()?.open || teaching())
+  const [watching, setWatching] = createSignal(false)
   const [enlarged, setEnlarged] = createSignal(false)
-  const large = () => shown() && (enlarged() || teaching() !== undefined)
-  // A page that closes leaves the next page small again.
+  const large = () => available() && watching() && (enlarged() || teaching() !== undefined)
+  const suggest = () => (available() ? (state()?.suggest ?? null) : null)
+  const dismissSuggest = () => {
+    void call("browser.dismissSuggest", { agentId }).catch(() => {})
+  }
+  // A page that closes leaves the next page hidden again.
   createEffect(() => {
-    if (!shown()) setEnlarged(false)
+    if (!available()) {
+      setWatching(false)
+      setEnlarged(false)
+    }
+  })
+  const hide = () => {
+    setEnlarged(false)
+    setWatching(false)
+  }
+  // The user teaches a task in the page, so the page must show: this is the user's own request.
+  // When the teaching ends, the page hides again.
+  createEffect((was: boolean) => {
+    const now = teaching() !== undefined
+    if (now) setWatching(true)
+    else if (was) hide()
+    return now
+  }, false)
+  // The user looks already: a request to look has nothing left to ask.
+  createEffect(() => {
+    if (watching() && suggest() !== null) dismissSuggest()
   })
   const [smallBox, setSmallBox] = createSignal<HTMLElement>()
   const [largeBox, setLargeBox] = createSignal<HTMLElement>()
-  useBrowserPlace(agentId, shown, () => (large() ? largeBox() : smallBox()))
+  useBrowserPlace(agentId, available, () => (large() ? largeBox() : smallBox()))
   return {
-    shown,
+    available,
+    watching,
     control: () => state()?.control ?? false,
     teaching,
     large,
-    setEnlarged,
+    suggest,
+    show: () => setWatching(true),
+    enlarge: () => {
+      setWatching(true)
+      setEnlarged(true)
+    },
+    shrink: () => setEnlarged(false),
+    hide,
+    dismissSuggest,
     setSmallBox,
     setLargeBox,
   }
@@ -125,19 +173,21 @@ const boxRef = (set: (el: HTMLElement | undefined) => void) => (el: HTMLElement)
 }
 
 /**
- * The small browser in the activity panel: a live view of the page, its state, and a button that
- * makes it large. While the user holds the page, "Give back" is here too, so the agent never waits
- * on a control that the user forgot.
+ * The browser in the activity panel. By default it is one quiet line: who uses the page, and a
+ * button that shows it. The page itself shows only when the user asks, or says yes to a request of
+ * the agent. While the user holds the page, "Give back" is here too, so the agent never waits on a
+ * control that the user forgot.
  */
 export const BrowserCard = (props: { agentId: string; view: BrowserView }) => {
   const { t } = useApp()
   return (
-    <Show when={props.view.shown() && !props.view.large()}>
+    <Show when={props.view.available() && !props.view.large()}>
       <section
         class={styles.browserCard}
         aria-label={t("browser.title")}
         data-testid="browser-card"
         data-control={props.view.control()}
+        data-watching={props.view.watching()}
       >
         <div class={styles.browserCardBar}>
           <span class={styles.browserStatus}>
@@ -151,19 +201,59 @@ export const BrowserCard = (props: { agentId: string; view: BrowserView }) => {
               {t("browser.giveBack")}
             </Button>
           </Show>
-          <IconButton
-            label={t("browser.enlarge")}
-            onClick={() => props.view.setEnlarged(true)}
-            data-testid="browser-enlarge"
+          <Show
+            when={props.view.watching()}
+            fallback={
+              <IconButton
+                label={t("browser.show")}
+                onClick={props.view.show}
+                data-testid="browser-show"
+              >
+                <Eye size={14} />
+              </IconButton>
+            }
           >
-            <Maximize2 size={14} />
-          </IconButton>
+            <IconButton
+              label={t("browser.enlarge")}
+              onClick={props.view.enlarge}
+              data-testid="browser-enlarge"
+            >
+              <Maximize2 size={14} />
+            </IconButton>
+            <IconButton
+              label={t("browser.hide")}
+              onClick={props.view.hide}
+              data-testid="browser-hide"
+            >
+              <EyeOff size={14} />
+            </IconButton>
+          </Show>
         </div>
-        <div
-          ref={boxRef(props.view.setSmallBox)}
-          class={styles.browserThumb}
-          data-testid="browser-thumb"
-        />
+        <Show when={!props.view.watching() ? props.view.suggest() : null}>
+          {(reason) => (
+            <div class={styles.browserAsk} role="status" data-testid="browser-ask">
+              <span class={styles.browserAskText}>
+                {t("browser.asks")}
+                <span class={styles.browserAskReason}>{reason()}</span>
+              </span>
+              <div class={styles.browserAskActions}>
+                <Button variant="primary" onClick={props.view.show} data-testid="browser-ask-show">
+                  {t("browser.show")}
+                </Button>
+                <Button onClick={props.view.dismissSuggest} data-testid="browser-ask-no">
+                  {t("browser.notNow")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Show>
+        <Show when={props.view.watching()}>
+          <div
+            ref={boxRef(props.view.setSmallBox)}
+            class={styles.browserThumb}
+            data-testid="browser-thumb"
+          />
+        </Show>
       </section>
     </Show>
   )
@@ -171,8 +261,9 @@ export const BrowserCard = (props: { agentId: string; view: BrowserView }) => {
 
 /**
  * The large browser: it covers the conversation area, under the header. The bar has the state,
- * "Take control" or "Give back", the button that makes it small, and "Close browser". While the
- * user teaches a task, the teaching bar takes the place of this bar.
+ * "Take control" or "Give back", the button that makes it small, and "Hide browser". Hide does not
+ * close the page: the agent goes on with it. While the user teaches a task, the teaching bar takes
+ * the place of this bar.
  */
 export const BrowserLarge = (props: { agentId: string; view: BrowserView }) => {
   const { t } = useApp()
@@ -208,16 +299,13 @@ export const BrowserLarge = (props: { agentId: string; view: BrowserView }) => {
               </Button>
               <IconButton
                 label={t("browser.shrink")}
-                onClick={() => props.view.setEnlarged(false)}
+                onClick={props.view.shrink}
                 data-testid="browser-shrink"
               >
                 <Minimize2 size={14} />
               </IconButton>
-              <Button
-                onClick={() => call("browser.close", { agentId: props.agentId })}
-                data-testid="browser-close"
-              >
-                {t("browser.close")}
+              <Button onClick={props.view.hide} data-testid="browser-hide">
+                {t("browser.hide")}
               </Button>
             </div>
           }
@@ -235,8 +323,9 @@ export const BrowserLarge = (props: { agentId: string; view: BrowserView }) => {
 }
 
 /**
- * A button in the header that makes the page large. It shows only when the activity panel is
- * closed, because then the page has no small place and this is the way to reach it.
+ * A button in the header that shows the page large. It shows only when the activity panel is
+ * closed, because then the page has no small place and this is the way to reach it. When the agent
+ * asks the user to look, the button is marked and its name tells the reason.
  */
 export const BrowserHeaderButton = (props: {
   view: BrowserView
@@ -244,13 +333,19 @@ export const BrowserHeaderButton = (props: {
 }) => {
   const { t } = useApp()
   return (
-    <Show when={props.view.shown() && !props.view.large() && !props.panelVisible()}>
+    <Show when={props.view.available() && !props.view.large() && !props.panelVisible()}>
       <IconButton
-        label={t("browser.enlarge")}
-        onClick={() => props.view.setEnlarged(true)}
+        label={
+          props.view.suggest() !== null
+            ? `${t("browser.asks")} ${props.view.suggest()}`
+            : t("browser.show")
+        }
+        onClick={props.view.enlarge}
+        class={props.view.suggest() !== null ? styles.browserAsking : ""}
         data-testid="browser-open-large"
+        data-asking={props.view.suggest() !== null}
       >
-        <Maximize2 size={18} />
+        <Eye size={18} />
       </IconButton>
     </Show>
   )

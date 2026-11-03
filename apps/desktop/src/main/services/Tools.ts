@@ -218,6 +218,13 @@ export interface ToolsService {
   setTeaching(agentId: string, teaching: boolean): void
   closeBrowser(agentId: string): void
   /**
+   * The reason that the agent gave when it asked the user to look at the browser (tool
+   * `browser_ask_look`), or null. The browser stays hidden until the user chooses to see it.
+   */
+  browserSuggestion(agentId: string): string | null
+  /** The user showed the browser or said "Not now": the asking line goes away. */
+  dismissBrowserSuggestion(agentId: string): void
+  /**
    * Where the browser of an agent shows in the app window. `undefined` hides it. The chat screen
    * calls this each time its place changes.
    */
@@ -331,7 +338,7 @@ const DEFS: Record<string, ToolDef> = {
   browser_open: {
     name: "browser_open",
     description:
-      "Open a web page in a browser that the user can watch in the app window. Logins stay between runs.",
+      "Open a web page in the browser of the app. The page works in the background and the user does not see it unless they choose to. Use browser_ask_look when the user must look, for example for a code or a check that only a person can do. Logins stay between runs.",
     schema: object({ url: str("An http or https address.") }, ["url"]),
   },
   browser_read: {
@@ -356,6 +363,12 @@ const DEFS: Record<string, ToolDef> = {
     name: "browser_close",
     description: "Close the browser.",
     schema: object({}, []),
+  },
+  browser_ask_look: {
+    name: "browser_ask_look",
+    description:
+      "Ask the user to look at the browser. The browser stays hidden until the user agrees, and they may not. Give a short reason. Then go on with other work, or ask the user a question and wait.",
+    schema: object({ reason: str("Why the user should look. One short sentence.") }, ["reason"]),
   },
   search_chats: {
     name: SEARCH_TOOL_NAME,
@@ -627,6 +640,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       /** Agents whose browser the user holds to teach a task. */
       const teaching = new Set<string>()
       const holds = (agentId: string) => control.has(agentId) || teaching.has(agentId)
+      /** The agents that asked the user to look at the browser, with the reason. */
+      const lookAsks = new Map<string, string>()
       const wired = new Set<string>()
       let messenger: Messenger | undefined
       /** The calls that the user answered on a card, until the action log has read them. */
@@ -640,6 +655,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           wired.add(agentId)
           page.onClosed(() => {
             control.delete(agentId)
+            lookAsks.delete(agentId)
             page.allowUserInput(false)
             browserChanged(agentId)
           })
@@ -1113,6 +1129,19 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           if (call.name === "browser_close") {
             page.close()
             return { output: "Closed.", failed: false }
+          }
+          if (call.name === "browser_ask_look") {
+            // This asks a person. It does nothing in the page, so it needs no approval.
+            if (!page.isOpen())
+              return { output: "The browser is not open. Open a page first.", failed: true }
+            const reason = text(args, "reason").trim().slice(0, 200)
+            lookAsks.set(ctx.agentId, reason || "-")
+            browserChanged(ctx.agentId)
+            return {
+              output:
+                "The user can see your request. They may look now, later, or not at all. Go on with other work, or ask the user a question and wait for the answer.",
+              failed: false,
+            }
           }
           if (call.name === "browser_open") {
             const url = text(args, "url")
@@ -1823,6 +1852,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           case "browser_click":
           case "browser_type":
           case "browser_close":
+          case "browser_ask_look":
             return await browserTool(ctx, call)
           case "search_chats": {
             // A call that arrives with memory off is refused, also from a program that kept a
@@ -1963,6 +1993,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           browserChanged(agentId)
         },
         closeBrowser: (agentId) => platform.browser(agentId).close(),
+        browserSuggestion: (agentId) => lookAsks.get(agentId) ?? null,
+        dismissBrowserSuggestion: (agentId) => {
+          if (lookAsks.delete(agentId)) browserChanged(agentId)
+        },
         isWaiting: (agentId, callId) => waiting.has(`${agentId}:${callId}`),
         placeBrowser: (agentId, bounds) => platform.browser(agentId).place(bounds),
         respond: (agentId, callId, answer) =>

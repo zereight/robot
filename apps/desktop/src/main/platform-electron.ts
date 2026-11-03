@@ -10,6 +10,7 @@ import {
 } from "@robot/shared"
 import {
   app,
+  BaseWindow,
   BrowserWindow,
   clipboard,
   dialog,
@@ -28,6 +29,8 @@ import { pageUserAgent } from "./web/userAgent.ts"
 export const isTestRun = Boolean(process.env.ROBOT_USER_DATA)
 
 const PAGE_TEXT_MAX = 20_000
+/** The size of a page that the user does not see. It lays out like a page in a normal window. */
+const PAGE_VIEWPORT = { width: 1280, height: 800 }
 
 /**
  * A test run can give a table of host names and the addresses they lead to, as JSON in
@@ -56,16 +59,54 @@ const partitionOf = (agentId: string) => {
 
 let mainWindow: BrowserWindow | undefined
 /**
+ * Moves the page of an agent to another window. Each page has one. A page that the user holds
+ * does not move: it closes, because the user cannot hold a page that has no view.
+ */
+const rehomers = new Map<string, (to: () => BaseWindow) => void>()
+
+/** True from the start of a quit. Pages do not move then: the app ends and takes them along. */
+let quitting = false
+app.on("before-quit", () => {
+  quitting = true
+})
+
+/** The window that holds the pages while the app has no main window. Nobody sees it. */
+let shelf: BaseWindow | undefined
+const shelfWindow = () => {
+  if (!shelf || shelf.isDestroyed()) {
+    // A page that works needs a size like the one of a real window, also while nobody sees it.
+    shelf = new BaseWindow({
+      show: false,
+      width: PAGE_VIEWPORT.width,
+      height: PAGE_VIEWPORT.height,
+    })
+  }
+  return shelf
+}
+/** Where a page sits: in the main window, or on the shelf while the app has no main window. */
+const hostWindow = (): BaseWindow =>
+  mainWindow && !mainWindow.isDestroyed() ? mainWindow : shelfWindow()
+
+/**
  * The window that holds the app. Notifications and the island bring it to the front, and the
- * pages of the agent browsers show inside it.
+ * pages of the agent browsers show inside it. On macOS the app goes on when the user closes the
+ * window, and the agents go on with their pages: the pages wait on a window that nobody sees, and
+ * come back to the next main window. Other systems quit with the window, so the pages close.
  */
 export const setMainWindow = (win: BrowserWindow) => {
   mainWindow = win
-  // A page has no place to show once the window is gone. A new load of the app screen starts with
-  // no place for any page: the screen gives the places again when it draws.
-  win.once("closed", () => {
-    for (const page of browsers.values()) page.close()
+  for (const move of rehomers.values()) move(() => win)
+  win.on("close", () => {
+    if (process.platform !== "darwin" || quitting) return
+    // The shelf opens only when a page needs it.
+    for (const move of rehomers.values()) move(shelfWindow)
   })
+  // A page has no place to show once the window is gone.
+  win.once("closed", () => {
+    if (process.platform !== "darwin") for (const page of browsers.values()) page.close()
+  })
+  // A new load of the app screen starts with no place for any page: the screen gives the places
+  // again when it draws.
   win.webContents.on("did-start-loading", () => {
     for (const page of browsers.values()) page.place(undefined)
   })
@@ -77,8 +118,10 @@ export const setMainWindow = (win: BrowserWindow) => {
  */
 const electronBrowser = (agentId: string): BrowserPage => {
   let view: WebContentsView | undefined
-  let host: BrowserWindow | undefined
+  let host: BaseWindow | undefined
   let bounds: PageBounds | undefined
+  /** The view was visible once, so its page has a size. */
+  let sized = false
   let userInput = false
   const listeners: (() => void)[] = []
   /** The recorder of "Teach a task" (spec 017), while it runs. */
@@ -95,15 +138,28 @@ const electronBrowser = (agentId: string): BrowserPage => {
     return v.webContents
   }
   const run = async <T>(code: string): Promise<T> => need().executeJavaScript(code, true)
+  /** The app screen, when the page sits in the main window. The shelf has none. */
+  const screenOf = () =>
+    host && host === mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined
   const apply = () => {
     const v = live()
     if (!v) return
-    if (!bounds || !host || host.isDestroyed()) {
+    const screenContents = screenOf()
+    if (!bounds || !screenContents) {
+      // A page that nobody sees keeps the size of a normal window, so it lays out the same way.
+      // A view that was never visible reports a size of 0 by 0 whatever its bounds are, so it is
+      // visible for one turn of the loop before it hides, and no frame draws in between.
+      v.setBounds({ x: 0, y: 0, ...PAGE_VIEWPORT })
+      if (!sized) {
+        v.setVisible(true)
+        sized = true
+      }
       v.setVisible(false)
       return
     }
+    sized = true
     // The screen measures in CSS px. The window measures in px after the page zoom.
-    const zoom = host.webContents.getZoomFactor()
+    const zoom = screenContents.getZoomFactor()
     v.setBounds({
       x: Math.round(bounds.x * zoom),
       y: Math.round(bounds.y * zoom),
@@ -122,8 +178,10 @@ const electronBrowser = (agentId: string): BrowserPage => {
    */
   const returnFocus = () => {
     const v = live()
-    if (!v || userInput || !host || host.isDestroyed() || !host.isFocused()) return
-    if (v.webContents.isFocused()) host.webContents.focus()
+    const screenContents = screenOf()
+    if (!v || userInput || !host || host.isDestroyed() || !host.isFocused() || !screenContents)
+      return
+    if (v.webContents.isFocused()) screenContents.focus()
   }
   /** Waits one turn, so the move of the focus is over when the check runs. */
   const returnFocusSoon = () => {
@@ -141,18 +199,46 @@ const electronBrowser = (agentId: string): BrowserPage => {
     if (h && !h.isDestroyed()) {
       h.removeListener("focus", returnFocusSoon)
       h.contentView.removeChildView(v)
+      // The shelf has no use once its last page is gone.
+      if (h === shelf && h.contentView.children.length === 0) h.destroy()
     }
     if (!v.webContents.isDestroyed()) v.webContents.close()
     for (const l of listeners) l()
   }
+  /**
+   * Moves the page to another window, hidden. The agent goes on with it. A page that the user
+   * holds closes instead (see `rehomers`).
+   */
+  const rehome = (target: () => BaseWindow) => {
+    const v = live()
+    if (!v) return
+    if (userInput) {
+      release()
+      return
+    }
+    const to = target()
+    if (host === to || to.isDestroyed()) return
+    const from = host
+    if (from && !from.isDestroyed()) {
+      from.removeListener("focus", returnFocusSoon)
+      from.contentView.removeChildView(v)
+    }
+    bounds = undefined
+    host = to
+    to.on("focus", returnFocusSoon)
+    to.contentView.addChildView(v)
+    apply()
+    if (from && from === shelf && !from.isDestroyed() && from.contentView.children.length === 0)
+      from.destroy()
+  }
+  rehomers.set(agentId, rehome)
   return {
     isOpen: () => live() !== undefined,
     open: async (url) => {
       let v = live()
       if (!v) {
-        const h = mainWindow
-        if (!h || h.isDestroyed())
-          throw new Error("The app window is not open, so the browser has no place to show.")
+        // With no main window the page opens on the shelf: the agent goes on, and nobody sees it.
+        const h = hostWindow()
         // Set before the page exists: a session applies its user agent to new pages only. Sites
         // such as Teams turn away the `Electron/` token that Electron adds.
         const data = session.fromPartition(partitionOf(agentId))
@@ -257,7 +343,7 @@ const electronBrowser = (agentId: string): BrowserPage => {
       // The keys go where the control is: into the page, or back to the chat.
       const v = live()
       if (allowed) v?.webContents.focus()
-      else if (host && !host.isDestroyed()) host.webContents.focus()
+      else screenOf()?.focus()
     },
     close: release,
     onClosed: (l) => {

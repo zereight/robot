@@ -124,7 +124,14 @@ describe("outside content of a tool call", () => {
   })
 
   test("files, commands, clicks, a source from a file and memory are not outside content", () => {
-    for (const name of ["read_file", "write_file", "run_command", "save_memory", "browser_click"])
+    for (const name of [
+      "read_file",
+      "write_file",
+      "run_command",
+      "save_memory",
+      "browser_click",
+      "browser_ask_look",
+    ])
       expect(outsideOfCall(name, input({ path: "a.txt", url: "https://x.test" }))).toBeNull()
     expect(outsideOfCall("add_source", input({ path: "notes.txt" }))).toBeNull()
   })

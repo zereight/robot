@@ -185,7 +185,13 @@ export const outsideOfCall = (name: string, input: string): OutsideSource | null
   // The answer of a request with a saved secret (spec 020).
   if (name === "secret_request")
     return typeof args.name === "string" ? { kind: "secret", name: args.name } : null
-  if (name === "browser_close" || name === "browser_click" || name === "browser_type") return null
+  if (
+    name === "browser_close" ||
+    name === "browser_click" ||
+    name === "browser_type" ||
+    name === "browser_ask_look"
+  )
+    return null
   const kind = toolStepKind(name)
   if (kind === "web" || kind === "browser") return { kind: "page", host: hostOf(url) }
   if (kind === "connection") return { kind: "connection", ...connectionOf(name) }
