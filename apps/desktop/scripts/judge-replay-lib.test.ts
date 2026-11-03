@@ -113,6 +113,67 @@ describe("the items", () => {
   })
 })
 
+describe("an item that is not labeled yet", () => {
+  const line = (extra: object = {}) =>
+    JSON.stringify({
+      id: "a",
+      group: "g",
+      tag: "real",
+      label: "L",
+      doneTest: "D",
+      reply: "R",
+      ...extra,
+    })
+  const text = [
+    line({ id: "a", reply: "SECRET-REPLY" }),
+    line({ id: "b", human: "pass" }),
+    line({ id: "c", human: "skip" }),
+    line({ id: "d" }),
+  ].join("\n")
+
+  test("is a fault that names the line and the field, says it is not labeled, and shows no value", () => {
+    const { items, problems, unlabeled } = parseItems(text)
+    expect(problems).toEqual([
+      'line 1: "human" is missing, the item is not labeled yet',
+      'line 4: "human" is missing, the item is not labeled yet',
+    ])
+    expect(problems.join("\n")).not.toContain("SECRET-REPLY")
+    // The labeled items are read, and the unlabeled ones are in no list of items.
+    expect(items.map((i) => i.id)).toEqual(["b", "c"])
+    expect(unlabeled).toBe(0)
+  })
+
+  test("a wrong label is another fault from a missing label", () => {
+    const { problems } = parseItems(line({ human: "maybe" }))
+    expect(problems).toEqual(['line 1: "human" must be pass, fail, skip'])
+    expect(parseItems(line({ human: null })).problems).toHaveLength(1)
+    expect(parseItems(line({ human: "" })).problems[0]).toContain('"human" must be')
+  })
+
+  test("is counted, and never counted as skip, when the reader is told to allow it", () => {
+    const parsed = parseItems(text, { allowUnlabeled: true })
+    expect(parsed.problems).toEqual([])
+    expect(parsed.items.map((i) => i.id)).toEqual(["b", "c"])
+    expect(parsed.unlabeled).toBe(2)
+    const counts = countItems(parsed.items, splitItems(parsed.items, 1), parsed.unlabeled)
+    expect(counts).toMatchObject({ total: 1, skipped: 1, unlabeled: 2 })
+    // Without the number the count is 0, and the other counts do not move.
+    expect(countItems(parsed.items, splitItems(parsed.items, 1)).unlabeled).toBe(0)
+  })
+
+  test("other faults of an unlabeled item still show when the reader allows it", () => {
+    const parsed = parseItems(line({ tag: "SECRET-VALUE" }), { allowUnlabeled: true })
+    expect(parsed.unlabeled).toBe(0)
+    expect(parsed.problems).toHaveLength(1)
+    expect(parsed.problems[0]).toContain('"tag"')
+    expect(parsed.problems[0]).not.toContain("SECRET-VALUE")
+    // An id that is used twice is a fault, also for items with no label.
+    expect(parseItems([line(), line()].join("\n"), { allowUnlabeled: true }).problems).toEqual([
+      'line 2: "id" is not unique',
+    ])
+  })
+})
+
 // ------------------------------------------------------------------------------------ split
 
 describe("the split", () => {
@@ -719,8 +780,10 @@ describe("the whole replay against a scripted service", () => {
 
 describe("the script", () => {
   const script = resolve(import.meta.dirname, "judge-replay.ts")
+  // The same Bun as the one that runs the tests, not the first "bun" on the PATH. Each test that
+  // starts a child process has a timeout of 30 s: on a busy machine the start of a process is slow.
   const run = async (cwd: string, args: string[], env: Record<string, string>) => {
-    const child = Bun.spawn(["bun", script, ...args], {
+    const child = Bun.spawn([process.execPath, script, ...args], {
       cwd,
       env: { ...process.env, JUDGE_BASE_URL: "", JUDGE_MODEL: "", JUDGE_API_KEY: "", ...env },
       stdout: "pipe",
@@ -775,7 +838,7 @@ describe("the script", () => {
     }
     expect((JSON.parse(json) as { runs: number }).runs).toBe(2)
     expect(result.err).toContain("Sending the text of 10 items")
-  })
+  }, 30_000)
 
   test("a file with faults, or no folder, writes nothing and shows no value", async () => {
     const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
@@ -795,7 +858,54 @@ describe("the script", () => {
     expect(noOut.code).toBe(1)
     expect(noOut.err).toContain("--out")
     expect(readdirSync(dir).sort()).toEqual(["bad.jsonl", "ok.jsonl"])
-  })
+  }, 30_000)
+
+  test("an item with no label stops a run with its line and field, and counts reports the number", async () => {
+    flips.clear()
+    const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
+    const rows = ITEMS.map((i) => JSON.stringify(i))
+    // Two items lose their label: lines 2 and 5.
+    for (const index of [1, 4]) {
+      const { human: _human, ...rest } = ITEMS[index] as ReplayItem
+      rows[index] = JSON.stringify(rest)
+    }
+    writeFileSync(join(dir, "mixed.jsonl"), rows.join("\n"))
+    const env = { JUDGE_BASE_URL: endpoint.baseUrl, JUDGE_MODEL: "m" }
+    const refused = await run(
+      dir,
+      ["run", "--items", join(dir, "mixed.jsonl"), "--out", join(dir, "o")],
+      env,
+    )
+    expect(refused.code).toBe(1)
+    expect(refused.err).toContain('line 2: "human" is missing, the item is not labeled yet')
+    expect(refused.err).toContain('line 5: "human" is missing, the item is not labeled yet')
+    expect(refused.err).not.toMatch(/LBL-|DONE-|REPLY-/)
+    expect(existsSync(join(dir, "o"))).toBe(false)
+    expect(flips.size).toBe(0)
+
+    const counted = await run(dir, ["counts", "--items", join(dir, "mixed.jsonl")], {})
+    expect(counted.code).toBe(0)
+    const counts = JSON.parse(counted.out) as { total: number; skipped: number; unlabeled: number }
+    // The two unlabeled items are in no other count: not as skip, not as Pass, not as Fail.
+    expect(counts).toMatchObject({ total: 7, skipped: 1, unlabeled: 2 })
+
+    // A file where no item has a label: counts works and reports them all, and run refuses.
+    const bare = ITEMS.map((i) => {
+      const { human: _human, ...rest } = i
+      return JSON.stringify(rest)
+    }).join("\n")
+    writeFileSync(join(dir, "bare.jsonl"), bare)
+    const none = await run(dir, ["counts", "--items", join(dir, "bare.jsonl")], {})
+    expect(none.code).toBe(0)
+    expect(JSON.parse(none.out)).toMatchObject({ total: 0, skipped: 0, unlabeled: 10 })
+    const stop = await run(
+      dir,
+      ["run", "--items", join(dir, "bare.jsonl"), "--out", join(dir, "o")],
+      env,
+    )
+    expect(stop.code).toBe(1)
+    expect(stop.err).toContain('line 1: "human" is missing')
+  }, 30_000)
 
   test("counts shows the counts and the split and calls no service", async () => {
     const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
@@ -805,5 +915,5 @@ describe("the script", () => {
     const counts = JSON.parse(result.out) as { total: number; skipped: number }
     expect(counts).toMatchObject({ total: 9, skipped: 1 })
     expect(result.out).not.toContain("LBL-")
-  })
+  }, 30_000)
 })

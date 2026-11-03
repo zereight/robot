@@ -37,17 +37,18 @@ const source = ((): string => {
     return fail("The file of the items cannot be read.")
   }
 })()
-const parsed = parseItems(source)
+// Only "counts" may read an item that has no label yet, and it reports how many there are.
+const parsed = parseItems(source, { allowUnlabeled: cli.command === "counts" })
 if (parsed.problems.length > 0) {
   for (const problem of parsed.problems.slice(0, 20)) console.error(problem)
   if (parsed.problems.length > 20) console.error(`... and ${parsed.problems.length - 20} more.`)
   fail("The file of the items has faults.")
 }
-if (parsed.items.length === 0) fail("The file has no items.")
+if (parsed.items.length === 0 && parsed.unlabeled === 0) fail("The file has no items.")
 
 if (cli.command === "counts") {
   const sets = splitItems(parsed.items, cli.options.seed)
-  const counts = countItems(parsed.items, sets)
+  const counts = countItems(parsed.items, sets, parsed.unlabeled)
   console.log(JSON.stringify(counts, null, 2))
   process.exit(0)
 }
