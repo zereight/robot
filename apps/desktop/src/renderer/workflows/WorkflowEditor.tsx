@@ -2,6 +2,7 @@ import {
   ANSWER_ERROR,
   CONDITION_MODES,
   catalogues,
+  clampWorkflowSideWidth,
   conditionMode,
   type Edge,
   type MessageKey,
@@ -19,6 +20,8 @@ import {
   type StepKind,
   type Trigger,
   WORKFLOW_NOTES_MAX,
+  WORKFLOW_SIDE_MAX,
+  WORKFLOW_SIDE_MIN,
   type Workflow,
   type WorkflowRun,
   type WorkflowRunDetail,
@@ -37,7 +40,6 @@ import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
-import { SIDE_MAX, SIDE_MIN, setSideWidth, sideWidth } from "./sideWidth.ts"
 import styles from "./workflows.module.css"
 
 const NODE_W = 180
@@ -210,15 +212,24 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
   const startSideResize = (event: PointerEvent) => {
     event.preventDefault()
     const startX = event.clientX
-    const startWidth = sideWidth()
-    track((e) => setSideWidth(startWidth + startX - e.clientX, workspace?.clientWidth))
+    const startWidth = ui.ui.workflowSideWidth
+    track(
+      (e) =>
+        ui.previewWorkflowSideWidth(
+          clampWorkflowSideWidth(startWidth + startX - e.clientX, workspace?.clientWidth),
+        ),
+      () => ui.saveWorkflowSideWidth(),
+    )
   }
 
   const sideResizeByKey = (event: KeyboardEvent) => {
     const step = event.key === "ArrowLeft" ? 20 : event.key === "ArrowRight" ? -20 : 0
     if (!step) return
     event.preventDefault()
-    setSideWidth(sideWidth() + step, workspace?.clientWidth)
+    ui.previewWorkflowSideWidth(
+      clampWorkflowSideWidth(ui.ui.workflowSideWidth + step, workspace?.clientWidth),
+    )
+    ui.saveWorkflowSideWidth()
   }
 
   const startPan = (event: PointerEvent) => {
@@ -658,7 +669,7 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
       <div
         class={styles.workspace}
         ref={workspace}
-        style={{ "--side-width": `${sideWidth()}px` }}
+        style={{ "--side-width": `${ui.ui.workflowSideWidth}px` }}
         data-testid="wf-workspace"
       >
         <div
@@ -804,9 +815,9 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
           role="separator"
           aria-orientation="vertical"
           aria-label={t("workflows.resize")}
-          aria-valuemin={SIDE_MIN}
-          aria-valuemax={SIDE_MAX}
-          aria-valuenow={sideWidth()}
+          aria-valuemin={WORKFLOW_SIDE_MIN}
+          aria-valuemax={WORKFLOW_SIDE_MAX}
+          aria-valuenow={ui.ui.workflowSideWidth}
           tabIndex={0}
           onPointerDown={startSideResize}
           onKeyDown={sideResizeByKey}
