@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 100 824 824" width="1024" height="1024" role="img">
+  <title>ROBot</title>
+  <!-- ROBot app mark for the phone: the desktop mark without the tile. Full bleed, the system applies the mask. -->
+  <defs>
+    <radialGradient id="night" cx="0.5" cy="0.48" r="0.6">
+      <stop offset="0" stop-color="#2a1f5c"/>
+      <stop offset="1" stop-color="#0a0817"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-100%" width="200%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="49" result="blur"/>
+      <feFlood flood-color="#7affd4"/>
+      <feComposite in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" fill="url(#night)"/>
+  <g fill="#eafff8" filter="url(#glow)">
+    <path d="M204.6 569 A145 145 0 0 1 494.6 569 A43.5 43.5 0 0 1 407.6 569 A58 58 0 0 0 291.6 569 A43.5 43.5 0 0 1 204.6 569 Z"/>
+    <path d="M529.4 569 A145 145 0 0 1 819.4 569 A43.5 43.5 0 0 1 732.4 569 A58 58 0 0 0 616.4 569 A43.5 43.5 0 0 1 529.4 569 Z"/>
+  </g>
+</svg>

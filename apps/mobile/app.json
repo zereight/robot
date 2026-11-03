@@ -33,6 +33,11 @@
     },
     "android": {
       "package": "com.zereight.robot",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon-foreground.png",
+        "backgroundImage": "./assets/icon-background.png",
+        "monochromeImage": "./assets/icon-monochrome.png"
+      },
       "permissions": ["android.permission.CAMERA", "android.permission.POST_NOTIFICATIONS"]
     },
     "plugins": [
