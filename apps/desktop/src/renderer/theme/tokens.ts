@@ -14,6 +14,10 @@ export interface Palette {
   success: string
   danger: string
   focus: string
+  /** The app mark, as a small badge. The same in both themes: the badge has its own dark tile. */
+  markTile: string
+  markEyes: string
+  markGlow: string
 }
 
 export const palettes: Record<"dark" | "light", Palette> = {
@@ -32,6 +36,9 @@ export const palettes: Record<"dark" | "light", Palette> = {
     success: "#3bb27a",
     danger: "#e8625a",
     focus: "#8ea0ff",
+    markTile: "#0a0817",
+    markEyes: "#eafff8",
+    markGlow: "#7affd4",
   },
   light: {
     rail: "#e9e9eb",
@@ -48,6 +55,9 @@ export const palettes: Record<"dark" | "light", Palette> = {
     success: "#1d8a57",
     danger: "#c43c34",
     focus: "#3953c8",
+    markTile: "#0a0817",
+    markEyes: "#eafff8",
+    markGlow: "#7affd4",
   },
 }
 
