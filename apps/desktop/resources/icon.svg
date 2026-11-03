@@ -1,11 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img">
   <title>ROBot</title>
-  <!-- ROBot app mark: a flat robot face on the accent colour. 824 px tile, 100 px margin. -->
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="#4f66d9"/>
-  <path d="M512 252 V318" stroke="#ffffff" stroke-width="34" stroke-linecap="round"/>
-  <circle cx="512" cy="236" r="30" fill="#ffffff"/>
-  <rect x="252" y="318" width="520" height="440" rx="150" fill="#ffffff"/>
-  <rect x="370" y="466" width="64" height="88" rx="22" fill="#1b1d23"/>
-  <rect x="590" y="466" width="64" height="88" rx="22" fill="#1b1d23"/>
-  <path d="M424 632 Q512 690 600 632" stroke="#1b1d23" stroke-width="34" fill="none" stroke-linecap="round"/>
+  <!-- ROBot app mark: two smiling eyes that glow in the dark. 824 px tile, 100 px margin. -->
+  <defs>
+    <radialGradient id="night" cx="0.5" cy="0.48" r="0.6">
+      <stop offset="0" stop-color="#2a1f5c"/>
+      <stop offset="1" stop-color="#0a0817"/>
+    </radialGradient>
+    <filter id="glow" x="-50%" y="-100%" width="200%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="49" result="blur"/>
+      <feFlood flood-color="#7affd4"/>
+      <feComposite in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#0a0817" filter="url(#shadow)"/>
+  <g clip-path="url(#tile)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#night)"/>
+    <g fill="#eafff8" filter="url(#glow)">
+    <path d="M204.6 569 A145 145 0 0 1 494.6 569 A43.5 43.5 0 0 1 407.6 569 A58 58 0 0 0 291.6 569 A43.5 43.5 0 0 1 204.6 569 Z"/>
+    <path d="M529.4 569 A145 145 0 0 1 819.4 569 A43.5 43.5 0 0 1 732.4 569 A58 58 0 0 0 616.4 569 A43.5 43.5 0 0 1 529.4 569 Z"/>
+    </g>
+  </g>
 </svg>
