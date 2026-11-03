@@ -37,9 +37,9 @@ export interface PlaceMarksService {
   /**
    * Copies every mark of one place to another place, which holds them from now on. A handover
    * (spec 003) gives the new thread the marks of the place it came from. A mark that the target
-   * holds already stays.
+   * holds already stays. With `only`, it copies these mark fields and no other.
    */
-  carry(from: MarkPlace, to: MarkPlace): void
+  carry(from: MarkPlace, to: MarkPlace, only?: readonly (keyof Marks)[]): void
 }
 
 const TABLE: Readonly<Record<MarkPlace["kind"], string>> = {
@@ -132,9 +132,18 @@ export class PlaceMarks extends Context.Service<PlaceMarks, PlaceMarksService>()
           if (holdsMarks(before)) write(place, NO_MARKS)
           return before
         },
-        carry: (from, to) => {
+        carry: (from, to, only) => {
           const here = read(to)
-          const next = mergedMarks(here, carriedMarks(read(from)))
+          const source = carriedMarks(read(from))
+          const next = mergedMarks(
+            here,
+            only
+              ? ({
+                  outside: only.includes("outside") ? source.outside : null,
+                  sensitive: only.includes("sensitive") ? source.sensitive : null,
+                } satisfies Marks)
+              : source,
+          )
           if (MARK_FIELDS.some((f) => next[f] !== here[f])) write(to, next)
         },
       })
