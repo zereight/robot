@@ -3,8 +3,7 @@
   flex-direction: column;
   gap: 14px;
   width: min(520px, 80vw);
-  max-height: 80vh;
-  overflow-y: auto;
+  /* No scroll here. The dialog around the form scrolls, so there is one scroll bar only. */
   padding: 2px;
 }
 
