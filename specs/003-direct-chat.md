@@ -112,8 +112,14 @@ the app can run it (see "Automatic compact").
 
 - A setting in General (see 013), "Compact long chats automatically", is on by default.
 - Before a turn of a direct chat or a thread starts, the app reads the last known use of the
-  context. At 85 percent or more, the app compacts first, and then the turn goes on. The working
-  line reads "Compacting…" first. The line "Compacted" shows afterwards.
+  context. At 85 percent or more of the context, or at 400000 tokens or more, whichever comes
+  first, the app compacts first, and then the turn goes on. The working line reads "Compacting…"
+  first. The line "Compacted" shows afterwards.
+- The limit of 400000 tokens is for a model with a large context. For a model whose context is
+  larger than about 470000 tokens, 400000 tokens come before 85 percent. A long context costs more
+  at each request, so the app does not wait for 85 percent there. For a smaller model, the 85
+  percent rule comes first and the limit has no effect. The limit is not a setting. The setting
+  "Compact long chats automatically" (013) turns both rules on and off.
 - It does not run when the size of the context is not known, or when the provider compacts by
   itself (see "Context meter"). It does not run in a channel, which has its own rule (004).
 - After a compact the use is not known until the next reply (see "Context meter"). So a second
@@ -122,8 +128,8 @@ the app can run it (see "Automatic compact").
   and to the token limit of a run of a routine (009).
 - When the compact fails, the turn goes on without it. A muted line gives the reason. The app does
   not try again for this conversation until 5 more turns of it have ended. The same holds when the
-  first reply after a compact reports 85 percent or more. The count of 5 turns stays after a
-  restart.
+  first reply after a compact reports a use that the rule above would compact again. The count of
+  5 turns stays after a restart.
 - Stop during the compact ends the task as Cancelled. The message of the user stays. What the
   model gets does not change.
 - A linked computer and the phone show the result only. They do not start a compact in this
@@ -351,6 +357,10 @@ and its role line. Nothing moves.
 - Automatic compact is on. A stand-in provider reports 90 percent use after a reply. The user
   sends a message: the line "Compacting…" shows, then the turn goes on. The ring is empty until the
   reply. Turn the setting off: the same message starts the turn at once.
+- Automatic compact is on, and a stand-in model has a context of 1000000 tokens. It reports 399999
+  tokens (40 percent) after a reply: the next message starts the turn with no compact. It reports
+  400000 tokens: the next message shows "Compacting…" first. With a stand-in model of 200000 tokens
+  that reports 170000 tokens (85 percent), the next message compacts first as well.
 - The stand-in provider fails the summary call: the turn goes on, a muted line gives the reason, and
   the next turns start with no new try until 5 turns have ended.
 - Start a thread and send a message in it: the list in the header shows the main thread and the new
