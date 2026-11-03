@@ -9,7 +9,11 @@ Agents do repeat work on a schedule without the user starting it.
 - **Routine**: agent, prompt, one trigger, on/off, the place where results post (the agent's chat
   or a channel), and a model and effort. The model and effort are "Same as the agent" by default.
   The user can pick another model and effort for the routine only, for example a cheaper model
-  for a simple check.
+  for a simple check. A routine can also have a token limit for each run (see "Limits and
+  safeguards").
+- A routine from an agent file (002) shows the muted line "Checked steps of this routine ask until
+  you save it once." in its form, until the user saves the form (007, "Ask when unsure"). This
+  state syncs with the routine (019).
 - **Trigger**: a schedule, or a watch. A routine has one trigger, never both.
 - **Schedule**: once at a time; every N minutes or hours; daily at times; weekly on days at a time;
   or a cron expression for advanced users. All in the user's time zone.
@@ -68,6 +72,18 @@ Agents do repeat work on a schedule without the user starting it.
 - The smallest step of a schedule is one minute. A schedule that has less than 15 minutes between
   two runs shows a note under the next run times: "This runs about N times a day." N is the
   count for a full day. The note does not stop the save.
+- **Token limit**: a routine can have a token limit for each run. It is off by default. The user
+  sets a whole number from 1000 to 10000000 in the routine form. It counts the input and output
+  tokens of all tasks of the run (005, "Usage of a task"). Cached input counts as input.
+  - When a run reaches 80 percent of the limit, the run details show the muted line "80% of the
+    token limit is used." It makes no notification.
+  - When a run reaches the limit, the app stops the run in the same way as a Stop of the user. The
+    run fails with the reason "Token limit reached (N)." It counts as a failed run for "Repeated
+    failure".
+  - A runtime that reports usage only at the end of a turn (006) is checked then. So a run can go
+    over the limit by the size of one turn. The routine form says this for such an agent.
+  - A runtime that reports no usage cannot use the limit. The field is off in the form for its
+    agent, with the muted line "<program> does not report tokens."
 - **Repeated failure**: a routine that fails 3 runs in a row pauses itself.
   - A run that ends as Done sets the count of failed runs to 0. A run that ends as Failed or
     Blocked adds 1. Cancelled, Skipped and Missed runs do not change the count.
@@ -125,3 +141,9 @@ Agents do repeat work on a schedule without the user starting it.
 - The computer sleeps through a planned run and wakes 40 minutes later: the run gets the planned
   time and the start time.
 - A routine with its own model uses that model, while its agent uses another.
+- A routine with a token limit of 5000. The stand-in provider reports 4100 tokens after the first
+  call: the run details show "80% of the token limit is used." It reports 5200 after the next
+  call: the run stops and fails with "Token limit reached (5000)." Three such runs in a row pause
+  the routine.
+- An agent on a stand-in runtime that reports no usage: the token limit field is off in the
+  routine form, with the muted line "<program> does not report tokens."

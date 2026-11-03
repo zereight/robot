@@ -23,14 +23,16 @@ service holds it.
 
 | Item | Notes |
 | --- | --- |
-| Agents | Face, name, role line, instructions, model choice, archive state. |
+| Agents | Face, name, role line, instructions, the switch "Read the handbook", model choice, archive state. |
+| Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Channels | Name, topic, members, lead, the "Review parts" setting, archive state. |
+| Channels | Name, topic, instructions, members, lead, the "Review parts" setting, archive state. |
 | Messages | Direct chats and channels, with tool cards, plan steps and reply chips. |
-| Tasks | State (also in review and blocked), reason and result, and how far a failed turn went (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
-| Memory | The items of each agent. |
-| Routines and workflows | The definition (for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
+| Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
+| Memory | The items of each agent, with the channel of a channel note. |
+| Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
 | Read state | The last place that the user read in each chat. |
+| The mark of outside content of a place (007) | The mark and its clear. A turn on either computer then asks in the same way. |
 
 ### Does not sync
 
@@ -48,8 +50,10 @@ service holds it.
 | Usage numbers | They count what ran on this computer. |
 | Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
 | User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives in the default section. |
-| The decision model and the other settings of 013 | Settings are local. |
+| The decision model and the other settings of 013, except the handbook | Settings are local. The handbook is data of the agents (002). |
 | Linked devices and their keys | They are not data of the agents. |
+| The memory check: its switch and its count (008) | The switch is a choice of one computer, like the other memory switches. Each computer counts its own turns. |
+| Outside programs and their keys (023) | A key reaches one computer only. |
 
 ## Flows
 

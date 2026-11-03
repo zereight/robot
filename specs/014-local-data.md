@@ -29,6 +29,10 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   - For the fast path of computer use (see 007), when the user turns it on, the app sends the goal
     that the agent wrote and the role, label and value of each control of one window. It sends no
     screenshot. It sends no value of a secret control.
+  - For permission checks (see 007, "Ask when unsure"), when the user turns them on, the app sends
+    the words of the user in the turn (at most 2000 characters), the kind of the step, and the
+    full command, the host, or the name of a connection and a tool. A command of more than 500
+    characters is not sent, and the step asks.
   - A local server on this computer is the only choice that sends nothing off the computer.
   - There is one more exception: a connection that the user adds on purpose (see 018). The app
     sends data to it only when an agent calls one of its tools. The data is what the agent wrote
@@ -36,6 +40,9 @@ The user owns their data. It lives on their computer, it is easy to back up, and
     conversation text to it. A connection of the kind
     "program on this computer" starts a program on this computer. That program can use the network
     by itself, and the app cannot see this.
+- An outside program that the user adds on purpose (023) gets what its tools give: lists, messages,
+  tasks and reply text. It runs on this computer, and it can send what it gets to its own model
+  provider. The app cannot see this. It is off until the user turns it on.
 - The app sends no usage events and no failure reports. It has no analytics at all.
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
   the user set up or to a page that an agent visits.
@@ -59,12 +66,14 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 
 - Logs are files in a logs folder inside the data folder. The user opens the folder from settings
   (see 013). Each log has a size limit; the oldest lines go first.
-- There is one log for each of these areas: channels, browser, and workflows.
+- There is one log for each of these areas: channels, browser, workflows, and outside programs.
   - Channels: one line for each answer of the decision model (see 004). It holds no job text and
     no key.
   - Browser: failed tool calls, Stop requests with their result, warnings, and live view input
     that the app dropped or refused (see 007).
   - Workflows: retries, final failures of model steps and conditions (see 010).
+  - Outside programs: one line for each call (see 023): the time, the entry, the tool, the place
+    or task, and the result. It keeps 90 days.
 - A log line never holds a secret, a key, the text of a message, or a search text (see 001).
 
 ## Export and backup
@@ -91,6 +100,10 @@ anything. The user sees each part that the file holds and picks what to keep.
     starts paused.
   - A part whose text had a secret that the app hid (see "Secrets in text" in the file formats)
     is not ticked. It shows the mark "A secret was removed".
+- An agent file can also hold channels, skills and a handbook (002). The screen lists them after
+  the agents, each with a tick box. Channels and skills are ticked, and they say which agents they
+  need. The handbook is not ticked, and the screen says that it replaces the handbook of this
+  server. Skills are made off.
 - An agent that is not ticked takes its instructions and routines with it. Instructions that are
   not ticked leave the new agent with empty instructions.
 - The screen has a part "Not imported". It lists what the file holds that ROBot does not make,

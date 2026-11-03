@@ -8,9 +8,10 @@ and workflows.
 ## Concepts
 
 - **Task**: who does it (agent), what (prompt), where it came from (chat, channel, routine,
-  workflow, or another agent), its parent task if any, its state, start and end time, and its
-  result or error.
-- **Depth**: a number. A task that the user, a routine or a workflow starts has depth 0. See
+  workflow, another agent, a memory check (008), or an outside program (023)), its parent task if
+  any, its state, start and end time, and its result or error.
+- **Depth**: a number. A task that the user, a routine, a workflow, a memory check or an outside
+  program starts has depth 0. See
   "Limits of a task".
 - **States**: queued → running → (waiting for user ↔ running) → done | failed | blocked |
   cancelled. A part of a channel that asks for review has one more state, in review, before done
@@ -26,6 +27,8 @@ and workflows.
   - A time that is not known is shown as "—", never as 0. A restart keeps the times that are
     known. Retry makes a new task with its own times.
 - **Progress**: how far the turn of a task went. See "How far a turn went".
+- **Usage**: the tokens that the turns of the task used, as the provider reports them. See "Usage
+  of a task".
 - **Done test** and **verdict**: a part of a channel (see 004) can have a done test. After the
   check of the lead it can have a verdict, "Met" or "Not met" with a reason. Both are fields of
   the task. The verdict is not a state: a part with a verdict is still Done.
@@ -43,6 +46,27 @@ and workflows.
 - A task of a channel (see 004) also has "End the request", which cancels the whole request.
 - A queued task shows what it waits behind: the work that its agent runs now, with the place of
   that work. If the agent is busy in its own chat, the line says so.
+
+## Usage of a task
+
+The usage page (006) shows usage per agent and day. A job of a channel or a run of a routine can
+use many agents. The user must see what one piece of work used.
+
+- Each task keeps the tokens that its turns used, as the provider reports them: input, output, and
+  cached input when the provider reports it. When the provider reports a cost, the task keeps the
+  cost too. A number that the provider does not report shows as "—", never as 0.
+- The task view shows the usage of the task. A task with child tasks also shows the total of the
+  whole tree, and one line for each agent in the tree with its share. The lines are in the order of
+  the largest total first.
+- The cached share is cached input divided by all input, in percent. It shows only when the
+  provider reports cached input.
+- In a channel, the card of the lead in the activity panel (004) shows the total tokens of the job
+  that runs. It changes when a turn of the job ends.
+- A run of a routine (009) shows the total tokens of its tasks in the run details.
+- An agent on a vendor runtime (006) reports usage at the end of each turn. Its share changes only
+  then. A runtime that reports no usage adds nothing, and its line shows "—".
+- The numbers hold no message text. They sync with the task (019) and an export holds them (014).
+  The phone and a linked device show them in the task view (011, 012).
 
 ## Moments
 
@@ -267,6 +291,15 @@ stops the turn.
 - A stand-in provider makes agent A send a message to agent B, and B send one back, without end.
   The send of the task at depth 8 fails with the reason of the chain limit and the step shows it.
   No more task starts from a send. The reply that was due still comes back.
+- A channel job with two parts. The stand-in providers report 1000 input and 200 output tokens for
+  the lead, and 3000 and 500 for each part. The task view of the job shows a total of 7000 input
+  and 1200 output tokens, with one line for each of the three agents, largest first. The card of
+  the lead in the activity panel shows the same total.
+- A channel job with three parts, where the third member uses a stand-in that reports no usage:
+  its line shows "—", and the total counts the other agents only.
+- A stand-in reports 8000 input tokens with 6000 of them cached: the task view shows a cached
+  share of 75%. A stand-in that reports no cached input shows no cached share.
+- A routine run with two tasks shows the total tokens of both in its run details.
 - Set the step limit to 20. A stand-in provider calls a tool in every turn without end. The task
   ends as Failed at step 20 with the reason "Step limit reached (20)." The streamed reply stays.
 - A stand-in provider reads the same unchanged file three times in one turn. The third step
@@ -282,9 +315,9 @@ stops the turn.
 - The silent limit is 1 minute. A turn waits for an approval for 2 minutes: it does not fail. The
   user allows the step, the stand-in model then sends nothing for 90 seconds: the turn fails.
 - The silent limit is 10 minutes. A stand-in model sends one reply part, then nothing for 100
-  seconds, then the rest of the reply. 90 seconds after the first part, the working line of the chat reads "No answer
-  from <account name> for 1:30", and the Tasks page row and the island detail card show the same
-  text. No notification shows. When the next part arrives, the working line shows again, and the
+  seconds, then the rest of the reply. 90 seconds after the first part, the working line of the
+  chat reads "No answer from <account name> for 1:30", and the Tasks page row and the island
+  detail card show the same text. No notification shows. When the next part arrives, the working line shows again, and the
   turn ends as done.
 - The silent limit is 1 minute. A stand-in model sends nothing: the quiet line shows at about 30
   seconds, and the turn fails at about 60 seconds.
