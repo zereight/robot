@@ -64,11 +64,6 @@
   transition-duration: var(--motion-fast);
 }
 
-/* A new message rises in. Rows loaded from history do not move. */
-.row[data-enter="true"] {
-  animation: row-in var(--motion-medium) var(--ease-out);
-}
-
 /* The quoted message lights up for a moment after a reply jump, then fades back. */
 .row[data-flash="true"] {
   background: var(--c-selected);
@@ -83,6 +78,12 @@
   place-items: center;
   background: var(--c-selected);
   color: var(--c-text-muted);
+}
+
+/* Holds the face of an agent, so that the face can come in as one part. */
+.avatarSlot {
+  width: 40px;
+  height: 40px;
 }
 
 .gutterTime {
@@ -103,6 +104,29 @@
   align-items: baseline;
   gap: 6px;
   min-width: 0;
+}
+
+/*
+ * A new message comes in part by part: the face first, then the name line, then the words. Each
+ * part starts one step after the one before (the first part has no delay). "backwards" keeps a
+ * part hidden until its turn. A part that a reply adds later (a tool card, more text) starts at
+ * once. Rows loaded from history do not move.
+ */
+.row[data-enter="true"] .avatar,
+.row[data-enter="true"] .avatarSlot {
+  animation: avatar-in var(--motion-medium) var(--ease-out) backwards;
+}
+
+.row[data-enter="true"] .content > * {
+  animation: row-in var(--motion-medium) var(--ease-out) backwards;
+}
+
+.row[data-enter="true"] .content > .head {
+  animation-delay: var(--motion-stagger);
+}
+
+.row[data-enter="true"] .content > .head + * {
+  animation-delay: calc(var(--motion-stagger) * 2);
 }
 
 .name {
@@ -325,26 +349,14 @@
   text-decoration: underline;
 }
 
-.pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--c-success);
-  animation: pulse 1.4s ease-in-out infinite;
+/* The words of the line come in after the badge, one after the other. */
+.workingText {
+  animation: row-in var(--motion-medium) var(--ease-out) backwards;
+  animation-delay: var(--motion-stagger);
 }
 
-:root[data-reduce-motion="true"] .pulse {
-  animation: none;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 1;
-  }
+.workingText + .workingText {
+  animation-delay: calc(var(--motion-stagger) * 2);
 }
 
 .floating {
@@ -694,6 +706,14 @@
   from {
     opacity: 0;
     transform: translateY(6px);
+  }
+}
+
+/* The face grows from a little smaller, so it seems to settle into its place. */
+@keyframes avatar-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
   }
 }
 
