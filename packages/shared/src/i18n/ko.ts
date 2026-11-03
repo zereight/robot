@@ -917,6 +917,8 @@ export const ko: Record<MessageKey, string> = {
   "browser.takeOver": "직접 조작",
   "browser.giveBack": "돌려주기",
   "browser.close": "브라우저 닫기",
+  "browser.enlarge": "브라우저 크게 보기",
+  "browser.shrink": "브라우저 작게 보기",
   "settings.section.browser": "브라우저",
   "browserProfiles.title": "브라우저 프로필",
   "browserProfiles.hint":

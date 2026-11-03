@@ -21,6 +21,8 @@ import styles from "./shell.module.css"
 
 export interface PlaceView {
   readonly header: JSX.Element
+  /** Buttons at the end of the header, before the button of the activity panel. */
+  readonly headerActions?: JSX.Element
   readonly body: JSX.Element
   readonly panel?: JSX.Element
 }
@@ -126,6 +128,7 @@ export const Shell = (props: ShellProps) => {
               <header class={styles.header} data-testid="conversation-header">
                 {view()?.header}
                 <span class={styles.headerSpacer} />
+                {view()?.headerActions}
                 <PanelToggle />
               </header>
               <div class={styles.body}>
