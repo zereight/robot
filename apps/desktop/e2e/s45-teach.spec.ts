@@ -88,6 +88,9 @@ test("teach a task: record steps in the agent browser, hide the password, draft,
   await expect(bar).toContainText("Teaching")
   await expect(bar).toContainText("Make the test page say hello")
   await expect(page.getByTestId("browser-bar")).toHaveCount(0)
+  // The user works in the page, so it is large while the user teaches.
+  await expect(page.getByTestId("browser-card")).toHaveCount(0)
+  await expect(page.getByTestId("browser-view")).toBeVisible()
   await expect(page.getByTestId("teach-steps")).toHaveText("Steps: 0")
 
   // The user opens the test page from the bar: the page is the first step.
