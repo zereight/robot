@@ -208,6 +208,25 @@ export interface ToolsService {
 const READ_MAX = 100_000
 const OUTPUT_MAX = 20_000
 const COMMAND_TIMEOUT_MS = 120_000
+/**
+ * A shell command that runs longer than this goes on in the background, so that the agent reads
+ * new messages at its next step (spec question of 003 and 007). A test run can make it shorter.
+ */
+const backgroundAfterMs = () => Number(process.env.ROBOT_TEST_COMMAND_BACKGROUND_MS) || 10_000
+/** The longest wait that `job_output` allows, in seconds. */
+const JOB_WAIT_MAX_S = 30
+/** The most characters of the output of an ended job that the note at the next step carries. */
+const JOB_NOTE_MAX = 2_000
+
+/** A shell command that went on in the background. It ends at its time limit, at Stop, or with the turn. */
+interface Job {
+  readonly id: number
+  readonly command: string
+  readonly state: { out: string; done: boolean; code: number | null; signal: string | null }
+  /** True when the agent was told that the job ended. */
+  told: boolean
+  readonly ended: Promise<void>
+}
 const FETCH_TIMEOUT_MS = 20_000
 const FETCH_MAX = 50_000
 const LIST_MAX = 200
@@ -247,8 +266,22 @@ const DEFS: Record<string, ToolDef> = {
   },
   run_command: {
     name: "run_command",
-    description: "Run a shell command in your workspace and return its output.",
+    description:
+      "Run a shell command in your workspace and return its output. A command that runs longer than a few seconds goes on in the background as a job: you get its number and its output so far, and you can read new messages of the user. Read the job with job_output.",
     schema: object({ command: str("The command line.") }, ["command"]),
+  },
+  job_output: {
+    name: "job_output",
+    description:
+      "Read the output of a shell command that went on in the background, by its job number. With wait_seconds (at most 30), wait until it ends or the time is over. A job ends at the time limit of 2 minutes, at Stop, or when your turn ends.",
+    schema: {
+      type: "object",
+      properties: {
+        job: { type: "number", description: "The job number that run_command gave." },
+        wait_seconds: { type: "number", description: "Seconds to wait for the end, 0 to 30." },
+      },
+      required: ["job"],
+    },
   },
   fetch_url: {
     name: "fetch_url",
@@ -740,6 +773,19 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         return null
       }
 
+      /** The jobs of each turn, by the signal of the turn. They go with the turn. */
+      const jobs = new WeakMap<AbortSignal, Job[]>()
+      const jobsOf = (ctx: ToolContext) => {
+        let list = jobs.get(ctx.signal)
+        if (!list) {
+          list = []
+          jobs.set(ctx.signal, list)
+        }
+        return list
+      }
+      const endText = (state: Job["state"]) =>
+        state.signal ? `[ended by ${state.signal}]` : `[exit code ${state.code}]`
+
       const runCommand = (ctx: ToolContext, command: string) =>
         new Promise<ToolOutcome>((done) => {
           const child = spawn(command, {
@@ -748,9 +794,11 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             stdio: ["ignore", "pipe", "pipe"],
             detached: process.platform !== "win32",
           })
-          let out = ""
+          const state: Job["state"] = { out: "", done: false, code: null, signal: null }
+          let job: Job | undefined
+          let endJob = () => {}
           const take = (chunk: Buffer) => {
-            if (out.length < OUTPUT_MAX * 2) out += chunk.toString()
+            if (state.out.length < OUTPUT_MAX * 2) state.out += chunk.toString()
           }
           child.stdout.on("data", take)
           child.stderr.on("data", take)
@@ -762,20 +810,81 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
           const timer = setTimeout(kill, COMMAND_TIMEOUT_MS)
           ctx.signal.addEventListener("abort", kill, { once: true })
+          // A long command goes on in the background, and the step ends now.
+          const later = setTimeout(() => {
+            const list = jobsOf(ctx)
+            const ended = new Promise<void>((resolve) => {
+              endJob = resolve
+            })
+            job = { id: list.length + 1, command, state, told: false, ended }
+            list.push(job)
+            done({
+              output: `The command still runs in the background as job ${job.id}. Its output so far:\n${cut(state.out, OUTPUT_MAX)}\nYou can read new messages now. Read the job with job_output.`,
+              failed: false,
+            })
+          }, backgroundAfterMs())
           child.on("error", (e) => {
             clearTimeout(timer)
-            done({ output: String(e.message), failed: true })
+            clearTimeout(later)
+            state.out += String(e.message)
+            state.done = true
+            if (job) endJob()
+            else done({ output: String(e.message), failed: true })
           })
           child.on("close", (code, signal) => {
             clearTimeout(timer)
+            clearTimeout(later)
             ctx.signal.removeEventListener("abort", kill)
-            const body = cut(out, OUTPUT_MAX)
+            state.done = true
+            state.code = code
+            state.signal = signal
+            if (job) return endJob()
             done({
-              output: signal ? `${body}\n[ended by ${signal}]` : `${body}\n[exit code ${code}]`,
+              output: `${cut(state.out, OUTPUT_MAX)}\n${endText(state)}`,
               failed: code !== 0,
             })
           })
         })
+
+      /** The output of a job, after a wait of at most `waitSeconds` for its end. */
+      const jobOutput = async (ctx: ToolContext, id: number, waitSeconds: number) => {
+        const job = jobsOf(ctx).find((j) => j.id === id)
+        if (!job) return { output: "No job has this number in this turn.", failed: true }
+        const wait = Math.min(Math.max(0, waitSeconds), JOB_WAIT_MAX_S)
+        if (!job.state.done && wait > 0) {
+          let stopWait = () => {}
+          await Promise.race([
+            job.ended,
+            new Promise<void>((resolve) => {
+              const t = setTimeout(resolve, wait * 1000)
+              const abort = () => resolve()
+              ctx.signal.addEventListener("abort", abort, { once: true })
+              stopWait = () => {
+                clearTimeout(t)
+                ctx.signal.removeEventListener("abort", abort)
+              }
+            }),
+          ])
+          stopWait()
+        }
+        if (job.state.done) job.told = true
+        const body = cut(job.state.out, OUTPUT_MAX)
+        return job.state.done
+          ? { output: `${body}\n${endText(job.state)}`, failed: job.state.code !== 0 }
+          : { output: `${body}\n[job ${job.id} still runs]`, failed: false }
+      }
+
+      /** One line for each job of the turn that ended since the agent last heard of it. */
+      const endedJobsNote = (ctx: ToolContext): string => {
+        const ended = (jobs.get(ctx.signal) ?? []).filter((j) => j.state.done && !j.told)
+        for (const j of ended) j.told = true
+        return ended
+          .map(
+            (j) =>
+              `Job ${j.id} (${j.command}) ended ${endText(j.state)}. Its output:\n${cut(j.state.out, JOB_NOTE_MAX)}`,
+          )
+          .join("\n\n")
+      }
 
       const searchFiles = (root: string, query: string, skip: (dir: string) => boolean) => {
         const hits: string[] = []
@@ -1494,6 +1603,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             await approve(ctx, call, reason !== null, `run_command:${reason ?? first}`, command)
             return await runCommand(ctx, command)
           }
+          case "job_output":
+            return await jobOutput(ctx, Number(args.job), Number(args.wait_seconds) || 0)
           case "fetch_url": {
             const url = text(args, "url")
             await approve(ctx, call, false, "fetch_url", url)
@@ -1553,7 +1664,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         if (readOnlyRefuses(ctx.permission, call.name))
           return { output: READ_ONLY_MESSAGE, failed: true, refused: "read_only" }
         try {
-          return await run(ctx, call)
+          const outcome = await run(ctx, call)
+          // A job that ended since the last step: the agent reads it at this step.
+          const note = endedJobsNote(ctx)
+          return note ? { ...outcome, output: `${outcome.output}\n\n${note}` } : outcome
         } catch (error) {
           if (error instanceof Denied)
             return { output: "The user denied this step.", failed: true, notRun: true }
