@@ -1,0 +1,201 @@
+/* The field "Role" of the form of an agent (spec 002, "Role label"). */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The role line as a chip. A role wider than the chip is cut with an ellipsis. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  /* A chip in a column of fields keeps the width of its text. */
+  align-self: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  background: var(--c-main);
+  color: var(--c-text);
+  font-size: var(--text-s);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+
+.chip:hover {
+  border-color: var(--c-text-muted);
+}
+
+/* The focus ring goes round the whole chip, not round the button inside it. */
+.chip:has(:focus-visible) {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+.chip :focus-visible {
+  outline: none;
+}
+
+/* A role that is too long for Save shows the same danger colour as the other fields. */
+.chip[data-invalid="true"] {
+  border-color: var(--c-danger);
+}
+
+.chipButton {
+  min-width: 0;
+  padding: 4px 4px 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+}
+
+.chipText {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A chip with no button: the profile of a device that may not change agents. */
+.chipPlain {
+  padding: 4px 12px;
+}
+
+/* The button that takes out the role is small, so the chip stays slim. */
+.chip .chipRemove {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-inline-end: 3px;
+  border-radius: 50%;
+}
+
+/* No role yet: a muted button in the place of the chip. */
+.choose {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 12px;
+  border: 1px dashed var(--c-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.choose:hover,
+.choose[aria-expanded="true"] {
+  background: var(--c-hover);
+  color: var(--c-text);
+  border-color: var(--c-text-muted);
+}
+
+.choose[aria-invalid="true"] {
+  border-color: var(--c-danger);
+}
+
+/* The list stays in the flow of the form, so the box around the form can scroll it into view. */
+.panel {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-main);
+}
+
+.filter {
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: calc(var(--radius-m) - 4px);
+  background: var(--c-main);
+  color: var(--c-text);
+  user-select: text;
+}
+
+.filter:focus-visible {
+  outline: none;
+  border-color: var(--c-focus);
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 11rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: calc(var(--radius-m) - 4px);
+  background: transparent;
+  color: var(--c-text);
+  font-size: var(--text-s);
+  text-align: start;
+  cursor: pointer;
+}
+
+.option[aria-selected="true"] {
+  background: var(--c-hover);
+}
+
+/* "Add" when the text is too long: it shows, but it does nothing. */
+.option[data-off="true"] {
+  color: var(--c-text-muted);
+  cursor: default;
+}
+
+.optionCheck {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  color: var(--c-accent);
+}
+
+.optionText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The choice "Add" has no check column, so its text starts at the edge. */
+.option[data-kind="add"] .optionText {
+  padding-inline-start: 22px;
+}
+
+.optionCount {
+  flex: none;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  padding: 4px 8px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}

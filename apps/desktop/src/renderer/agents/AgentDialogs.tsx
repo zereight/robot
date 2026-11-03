@@ -15,6 +15,7 @@ import { BrowserProfileField } from "./BrowserProfileField.tsx"
 import { createAgent } from "./createAgent.ts"
 import { Face } from "./Face.tsx"
 import { RecentWork } from "./RecentWork.tsx"
+import { RoleChip } from "./RoleField.tsx"
 import { markBorn } from "./reactions.ts"
 import { openTeachForm, teachBlocked, useTeach } from "./Teach.tsx"
 
@@ -76,7 +77,15 @@ const AgentProfileView = (props: { agent: Agent; onClose: () => void }) => {
         <Face face={props.agent.face} image={props.agent.faceImage} size={64} />
       </div>
       {line("agents.field.name", props.agent.name, "agent-view-name")}
-      {line("agents.field.role", props.agent.role, "agent-view-role")}
+      {/* A role line shows as a chip with no "Remove" and no list. No role line, no field. */}
+      <Show when={props.agent.role.trim()}>
+        {(role) => (
+          <div class={styles.field}>
+            <span class={styles.label}>{t("agents.field.role")}</span>
+            <RoleChip role={role()} testId="agent-view-role" />
+          </div>
+        )}
+      </Show>
       {line("agents.field.instructions", props.agent.instructions, "agent-view-instructions")}
       {line(
         "agents.field.model",

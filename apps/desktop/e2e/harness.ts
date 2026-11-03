@@ -129,6 +129,19 @@ export const connectMock = async (page: Page, baseUrl: string, apiKey: string, n
   await page.getByTestId("settings-close").click()
 }
 
+/**
+ * Sets the role line of the open agent form through the role field (spec 002, "Role label"): opens
+ * the list, types the role, and presses Enter on the marked choice. A role that a listed role
+ * equals (ignoring case) gets the spelling of the list. The list closes at the end.
+ */
+export const pickRole = async (page: Page, role: string) => {
+  await page.getByTestId("agent-role-open").or(page.getByTestId("agent-role-chip")).click()
+  const filter = page.getByTestId("agent-role-filter")
+  await filter.fill(role)
+  await filter.press("Enter")
+  await page.getByTestId("agent-role-list").waitFor({ state: "detached" })
+}
+
 /** Creates an agent with the first model of the first account. */
 export const createAgent = async (page: Page, name: string) => {
   await page.getByTestId("new-agent").click()

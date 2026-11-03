@@ -825,4 +825,51 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     expect(crew?.name).toBe("Crew")
     expect(crew?.places.map((x) => x.id).sort()).toEqual([ada.id, bob.id].sort())
   }, 30_000)
+
+  test("the list of places carries the role line of each agent; a change of it is pushed (spec 012)", async () => {
+    const p = await pair(false)
+    const ada = value<Agent>(
+      await p.onServer("agents.create", make(p.serverId, "Ada", { role: "Designer" })),
+    )
+    const bob = value<Agent>(await p.onServer("agents.create", make(p.serverId, "Bob")))
+    const channel = value<{ id: string }>(
+      await p.onServer("channels.create", {
+        serverId: p.serverId,
+        name: "launch",
+        topic: "",
+        memberIds: [ada.id, bob.id],
+        leadId: null,
+      }),
+    )
+    const roleOf = async (id: string) => {
+      const list = value<PlaceSection[]>(await p.ask("places.list", { serverId: p.serverId }))
+      const place = list.flatMap((s) => [...s.places, ...s.sections.flatMap((u) => u.places)])
+      return place.find((x) => x.id === id)
+    }
+
+    // The answer holds the role line of an agent. An agent with none, and a channel, send none.
+    expect((await roleOf(ada.id))?.role).toBe("Designer")
+    expect(await roleOf(bob.id)).not.toHaveProperty("role")
+    expect(await roleOf(channel.id)).not.toHaveProperty("role")
+
+    // A change of the role line is pushed, and the next answer holds it.
+    const pushes = () => p.client.events.filter((e) => e.event === "places.changed").length
+    const before = pushes()
+    await p.onServer("agents.update", { id: ada.id, patch: { role: "Writer" } })
+    await waitFor(pushes, (n) => n > before)
+    expect(pushes()).toBeGreaterThan(before)
+    expect((await roleOf(ada.id))?.role).toBe("Writer")
+
+    // A change of the name is pushed too.
+    const next = pushes()
+    await p.onServer("agents.update", { id: ada.id, patch: { name: "Ada L" } })
+    await waitFor(pushes, (n) => n > next)
+    expect((await roleOf(ada.id))?.name).toBe("Ada L")
+
+    // Removing the role line removes the field, so the badge leaves.
+    const last = pushes()
+    await p.onServer("agents.update", { id: ada.id, patch: { role: "" } })
+    await waitFor(pushes, (n) => n > last)
+    expect(await roleOf(ada.id)).not.toHaveProperty("role")
+  }, 30_000)
 })
