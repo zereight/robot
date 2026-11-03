@@ -1155,7 +1155,9 @@ const FullMessageRow = (props: MessageRowProps) => {
             </span>
           }
         >
-          <Face face={props.agent.face} image={props.agent.faceImage} size={40} />
+          <span class={styles.avatarSlot}>
+            <Face face={props.agent.face} image={props.agent.faceImage} size={40} />
+          </span>
         </Show>
       </Show>
       <div class={styles.content}>

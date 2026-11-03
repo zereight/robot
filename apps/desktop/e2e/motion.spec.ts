@@ -99,7 +99,7 @@ test("motion: short, calm, and off with reduce motion", async () => {
   await expect(page.locator("[data-closing=true]")).toHaveCount(1)
   await expect(page.locator("[role=dialog]")).toHaveCount(0)
 
-  // A new message rises in; the working line pulses quietly.
+  // A new message comes in part by part (face, then words); the working badge opens its eyes and its glow pulses quietly.
   await sendMessage(page, "please go slow")
   const row = page.locator("[data-testid=message][data-enter=true]").first()
   await expect(row).toBeVisible()
@@ -124,7 +124,16 @@ test("motion: short, calm, and off with reduce motion", async () => {
   // Spec 000: every motion is under 300 ms. Only the "Working…" line loops (spec 003).
   const seen = await seenMotion(page)
   const names = new Set(seen.map((m) => m.name))
-  for (const expected of ["dialog-in", "dialog-out", "row-in", "panel-out", "section-close"]) {
+  for (const expected of [
+    "dialog-in",
+    "dialog-out",
+    "avatar-in",
+    "row-in",
+    "mark-in",
+    "mark-open",
+    "panel-out",
+    "section-close",
+  ]) {
     expect(
       [...names].some((n) => n.includes(expected)),
       expected,

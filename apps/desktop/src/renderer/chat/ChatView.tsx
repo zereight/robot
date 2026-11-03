@@ -27,6 +27,7 @@ import { useApp } from "../state/app.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
 import { useUi } from "../state/ui.tsx"
 import { showToast } from "../ui/toast.ts"
+import { WorkMark } from "../ui/WorkMark.tsx"
 import { Composer } from "./Composer.tsx"
 import styles from "./chat.module.css"
 import { formatDay, formatElapsed } from "./format.ts"
@@ -57,9 +58,11 @@ const WorkingLine = (props: { since: number; compacting: boolean }) => {
   onCleanup(() => clearInterval(timer))
   return (
     <div class={styles.working} data-testid="working-line" aria-live="polite">
-      <span class={styles.pulse} />
-      <span>{props.compacting ? t("chat.compacting") : t("chat.working")}</span>
-      <span>{formatElapsed(now() - props.since)}</span>
+      <WorkMark />
+      <span class={styles.workingText}>
+        {props.compacting ? t("chat.compacting") : t("chat.working")}
+      </span>
+      <span class={styles.workingText}>{formatElapsed(now() - props.since)}</span>
     </div>
   )
 }
