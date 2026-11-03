@@ -60,6 +60,9 @@ Each agent works in its own folder with real tools, and the user stays in contro
   program has no such mode, "Read only" is off in the picker for agents on that program, with the
   muted line "<program> has no read-only mode." At "Read only", the browser of the app is
   refused for these agents too.
+- Token savings (026) never widen the level. The command that an edit can carry meets the level
+  and the rules as a shell step does. For an agent on pi it needs "Full access", where pi may run
+  shell commands.
 - The profile shows one line under the level. It tells in words how the level applies to the
   runtime of that agent, for example which mode of the program the app sets. For an agent that
   uses the tools of the app, it tells that the app decides each step.
@@ -301,6 +304,8 @@ text is in the turn.
 - A part of a channel job (004) holds outside content from its start when the job came from an
   outside program, or when the turn of the lead held outside content before it made the part.
 - A handover (003) gives the new thread the marks of the place it came from.
+- A result that a token saving set aside (026) keeps its mark. When the agent reads it again,
+  the turn holds outside content.
 - **The mark of a place**: a chat, thread or channel whose next turn will hold outside content
   shows a muted line in its header, "Holds outside content", with the first source. "Clear"
   removes the mark for the next turns, after a confirm that says that the agent still sees the

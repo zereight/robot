@@ -120,6 +120,8 @@ The user knows when an agent needs them or finishes, without watching the window
 ## Rules
 
 - Do-not-disturb of the system is respected.
+- The pause of a turn for a compact (026) is not the end of a turn. It makes no notification,
+  no sound and no result card.
 - After an app restart, a task that still waits for an approval or a question (see 005) asks for
   attention again, in the same way as a new request. It asks once.
 - Motion in the island is short (under 300 ms) and follows reduce motion. With reduce motion on,

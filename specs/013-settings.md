@@ -20,6 +20,7 @@ The user sets the app up the way they like in one place.
 - **Providers**: see 006.
 - **Decision model**: the fast model for channel picks, computer use and permission checks. See
   "Decision model".
+- **Token savings**: three switches that cut repeated work in long runs, off at first. See 026.
 - **Handbook**: one text that every agent reads. See 002, "Handbook".
 - **Roles**: the role lines of all agents. See "Roles".
 - **Permissions**: the rules that allow or deny steps, the action log (see 007), the saved

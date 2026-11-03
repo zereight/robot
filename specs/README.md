@@ -33,6 +33,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 023 | [Outside programs: read and send work from another program on this computer, through MCP](023-outside-programs.md) | Draft |
 | 024 | [Board: one board for all agents, work of every agent as it runs, planned cards, start a card as a task, tools for agents](024-board.md) | Draft |
 | 025 | [Shared folders: file claims between agents in one folder, own copies of a Git repository for parts](025-shared-folders.md) | Draft |
+| 026 | [Token savings: three switches, check with edit, big results aside, compact at finished steps, and which agents each one reaches](026-token-savings.md) | Draft |
 
 ## Milestones
 
@@ -63,6 +64,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M21 | 025, and the changes to 004, 005, 007, 011, 014, 015, 019, 021 and 024 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S74 to S76: the lead answers questions of members, file claims in shared folders, own copies for parts |
 | M25 | The changes to 000, 003, 005, 007, 008, 011, 012, 014, 016, 017, 018 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S80 to S84: pictures from the web, sensitive places, review of connection tools, handover of a chat, make a skill from work |
 | M26 | The changes to 002 and 006 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S85: the effort of a new agent |
+| M27 | 026, and the changes to 003, 006, 007, 013 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S77: token savings |
 
 ## Surfaces check
 
