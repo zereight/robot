@@ -98,6 +98,8 @@ describe("client requests", () => {
       // A client does not move a workflow of another computer here (spec 012, "Workflows").
       "workflows.runHere",
       "usage.summary",
+      // A linked device sees the line "Holds a sensitive read" and cannot clear it (spec 007, 012).
+      "placeMarks.clear",
       "browser.control",
       "data.export",
       "data.restore",

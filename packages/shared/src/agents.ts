@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 import type { RuntimeProblem } from "./providers.ts"
+import type { SensitiveLabel } from "./sensitive.ts"
 import { PERMISSION_LEVELS, type PermissionLevel } from "./tools.ts"
 
 export const AGENT_NAME_MAX = 40
@@ -73,6 +74,12 @@ export interface Agent {
   readonly createdAt: number
   /** Set when a linked device made the last change. The user of this computer clears it. */
   readonly changedBy: AgentChange | null
+  /**
+   * The label of the first credential place that a turn of the chat read, while the next turn
+   * holds that sensitive read (spec 007, "Sensitive places"). It is stored with the agent, syncs,
+   * and a linked device cannot clear it. A client of an older step has none.
+   */
+  readonly sensitive?: SensitiveLabel | null
 }
 
 export const AgentCreate = Schema.Struct({

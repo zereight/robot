@@ -31,6 +31,7 @@ import type {
 import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryProposal } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { ActionLogEntry, ActionResult } from "./outside.ts"
+import type { PlaceMarks } from "./placeMarks.ts"
 import type {
   ModelInfo,
   ProviderAccount,
@@ -61,7 +62,7 @@ import type { Task, TaskDetail } from "./task.ts"
 import type { TeachState } from "./teach.ts"
 import type { TodaySnapshot } from "./today.ts"
 import type { ApprovalAnswer } from "./tools.ts"
-import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
+import type { PlaceKind, PlaceRef, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
 import type { RecentWorkRow } from "./work.ts"
 import type { WorkflowFileImported, WorkflowFilePreview } from "./workflowFile.ts"
@@ -367,6 +368,12 @@ export interface RpcMethods {
   /** One row, for the line in the chat. Undefined when retention removed it. */
   "memory.history.get": { input: { id: string }; output: MemoryHistoryRow | undefined }
   "memory.undo": { input: { id: string }; output: undefined }
+  /**
+   * "Clear" on the header line of a place: removes the marks of the place for the next turns
+   * (spec 007, "The mark of a place"). It gives back the marks that it removed. A linked device
+   * and the phone cannot call it.
+   */
+  "placeMarks.clear": { input: { place: PlaceRef }; output: PlaceMarks }
   /** The action log of this computer, newest first (spec 007). It is not offered to a linked device. */
   "actionLog.list": {
     input: { agentId?: string; result?: ActionResult }

@@ -55,6 +55,13 @@ const isInside = (path: string, workspace: string) => {
 export const insideWorkspace = isInside
 
 /**
+ * True when a command uses the network to send data: `curl`, `wget` or `http` with a data option,
+ * or a program such as `scp` or `rsync`. Spec 007, "Rules".
+ */
+export const sendsData = (command: string): boolean =>
+  NETWORK_SEND.test(command) || NETWORK_TOOLS.test(command)
+
+/**
  * Why a shell command is risky, or null. Risky: `sudo`, installing software, sending data over
  * the network, piping into a shell, and deleting outside the workspace.
  */
@@ -141,5 +148,8 @@ export const readOnlyRefusesKey = (level: PermissionLevel, key: string) =>
   level === "read_only" &&
   !/^(?:read_file|list_files|fetch_url|web_search|network)(?::|$)/.test(key)
 
-/** Why a step did not run. Only "read_only" exists now; rules come with their own reasons. */
-export type RefusalReason = "read_only"
+/**
+ * Why a step did not run: the level "Read only", or an address that is never allowed (spec 007,
+ * "Sensitive places"). Rules come with their own reasons.
+ */
+export type RefusalReason = "read_only" | "address"

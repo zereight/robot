@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import type { ChatMessage, MessagePart } from "./chat.ts"
 import { cleanDoneTest } from "./check.ts"
+import type { SensitiveLabel } from "./sensitive.ts"
 import type { TaskState } from "./task.ts"
 
 export const CHANNEL_NAME_MAX = 60
@@ -23,6 +24,8 @@ export interface Channel {
   readonly reviewParts: boolean
   readonly unread: number
   readonly working: boolean
+  /** The label of the first credential place that a turn of the channel read (spec 007). */
+  readonly sensitive?: SensitiveLabel | null
 }
 
 export const ChannelCreate = Schema.Struct({
