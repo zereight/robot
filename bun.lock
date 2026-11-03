@@ -97,6 +97,12 @@
         "effect": "^4.1.1",
       },
     },
+    "packages/teams-bridge": {
+      "name": "@robot/teams-bridge",
+      "dependencies": {
+        "playwright-core": "^1.64.1",
+      },
+    },
   },
   "packages": {
     "2g": ["2g@1.0.1", "", { "peerDependencies": { "typescript": ">=5.8.0" }, "optionalPeers": ["typescript"], "bin": { "2g": "bin/cli.js" } }, "sha512-+uViadKOS/wwR4pFu5g8TPn3QHpKqoX19JHCnp8k/3cLpImdcXozwvZA6Q/5PeW3AcU8neL8faaMidBcv7o8CA=="],
@@ -516,6 +522,8 @@
     "@robot/phone": ["@robot/phone@workspace:packages/phone"],
 
     "@robot/shared": ["@robot/shared@workspace:packages/shared"],
+
+    "@robot/teams-bridge": ["@robot/teams-bridge@workspace:packages/teams-bridge"],
 
     "@rolldown/binding-android-arm-eabi": ["@rolldown/binding-android-arm-eabi@1.2.16", "", { "os": "android", "cpu": "arm" }, "sha512-ia3DwAs0OsMGS7+IConptSiyk9pEXkOx/AbJ2n/lAGxH3QkWQus1t8d7gnAT38FCU2sQu8lUbeR6AiZFv4JxaA=="],
 
