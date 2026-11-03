@@ -32,6 +32,8 @@ const json = (res: ServerResponse, status: number, body: unknown) => {
 interface ChatBody {
   messages: { role: string; content: string }[]
   tools?: { function?: { name?: string } }[]
+  /** The cache marker of an Anthropic request. */
+  cache_control?: unknown
 }
 
 export const MARKDOWN_REPLY = [
@@ -455,7 +457,16 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
   res.writeHead(200, { "content-type": "text/event-stream" })
   const send = (event: string, data: unknown) =>
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-  send("message_start", { type: "message_start", message: { usage: { input_tokens: 20 } } })
+  // As the real API does when the request has the cache marker: `input_tokens` leaves out the part
+  // that is written to the cache and the part that is read from it. The three make 20 in all.
+  send("message_start", {
+    type: "message_start",
+    message: {
+      usage: body.cache_control
+        ? { input_tokens: 4, cache_creation_input_tokens: 6, cache_read_input_tokens: 10 }
+        : { input_tokens: 20 },
+    },
+  })
   if (p.pause) await sleep(p.pause)
   if (p.thinking) {
     send("content_block_start", {

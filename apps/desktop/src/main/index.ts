@@ -85,6 +85,10 @@ const makeRuntime = () => {
       ...(isTestRun && process.env.ROBOT_TEST_DECISION_URL
         ? { decisionUrl: process.env.ROBOT_TEST_DECISION_URL }
         : {}),
+      // Only a test run may name another host that takes the cache marker (spec 006).
+      ...(isTestRun && process.env.ROBOT_TEST_CACHE_HOST
+        ? { cacheHosts: [process.env.ROBOT_TEST_CACHE_HOST] }
+        : {}),
     }),
   )
 }

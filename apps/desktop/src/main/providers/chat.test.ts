@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { runAgent } from "./agent.ts"
-import { anthropicBody, normaliseTurns, replyBlocks, streamChat } from "./chat.ts"
+import { anthropicBody, inputCounter, normaliseTurns, replyBlocks, streamChat } from "./chat.ts"
 
 describe("normaliseTurns", () => {
   test("joins turns of one role and drops empty ones", () => {
@@ -389,5 +389,237 @@ describe("a reply with thinking that calls a tool", () => {
       inboxOf([]),
     ));
     expect(calls).toBe(1)
+  })
+})
+
+describe("the cache marker in the body of an Anthropic request", () => {
+  const base = {
+    connection: { kind: "anthropic" as const, baseUrl: "http://x", apiKey: "k" },
+    model: "claude-sonnet-5-5",
+    effort: null,
+    system: "Be brief.",
+    turns: [{ role: "user" as const, content: "hi" }],
+    signal: new AbortController().signal,
+  }
+
+  test("with no lifetime the body has no marker", () => {
+    expect("cache_control" in anthropicBody(base)).toBe(false)
+  })
+
+  test("the short lifetime puts one marker on the top level, with the default lifetime", () => {
+    const body = anthropicBody({ ...base, cache: "short" })
+    expect(body.cache_control).toEqual({ type: "ephemeral" })
+    // One marker for the whole request: none on a block of the system text or the messages.
+    expect(JSON.stringify({ ...body, cache_control: undefined })).not.toContain("cache_control")
+  })
+
+  test("the long lifetime asks for 1 hour", () => {
+    expect(anthropicBody({ ...base, cache: "long" }).cache_control).toEqual({
+      type: "ephemeral",
+      ttl: "1h",
+    })
+  })
+
+  test("the marker leaves the rest of the body as it is", () => {
+    const { cache_control: _, ...marked } = anthropicBody({ ...base, cache: "long" })
+    expect(marked).toEqual(anthropicBody(base))
+  })
+
+  test("the marker is the same for the requests of one turn, so a tool step reads the cache", () => {
+    const first = anthropicBody({ ...base, cache: "long", effort: "high" })
+    const next = anthropicBody({
+      ...base,
+      cache: "long",
+      effort: "high",
+      turns: [...base.turns, { role: "assistant", content: "ok" }, { role: "user", content: "go" }],
+    })
+    expect(next.cache_control).toEqual(first.cache_control)
+    expect(next.output_config).toEqual(first.output_config)
+    expect(next.thinking).toEqual(first.thinking)
+  })
+
+  test("every request of a turn with a tool step carries the same marker", async () => {
+    const realFetch = globalThis.fetch
+    const bodies: Record<string, unknown>[] = []
+    const event = (type: string, data: object) =>
+      `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)))
+      return new Response(
+        bodies.length === 1
+          ? [
+              event("content_block_start", {
+                index: 0,
+                content_block: { type: "tool_use", id: "t1", name: "read", input: {} },
+              }),
+              event("content_block_delta", {
+                index: 0,
+                delta: { type: "input_json_delta", partial_json: "{}" },
+              }),
+              event("content_block_stop", { index: 0 }),
+              event("message_stop", {}),
+            ].join("")
+          : [
+              event("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+              event("content_block_delta", {
+                index: 0,
+                delta: { type: "text_delta", text: "Done." },
+              }),
+              event("message_stop", {}),
+            ].join(""),
+      )
+    }) as unknown as typeof fetch
+    try {
+      for await (const _ of runAgent(
+        {
+          ...base,
+          cache: "long",
+          tools: [{ name: "read", description: "Reads", schema: { type: "object" } }],
+        },
+        async () => ({ output: "text", failed: false }),
+      ));
+      expect(bodies).toHaveLength(2)
+      for (const body of bodies)
+        expect(body.cache_control).toEqual({ type: "ephemeral", ttl: "1h" })
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+
+  test("the request that goes out carries the marker; a request of an OpenAI account never does", async () => {
+    const realFetch = globalThis.fetch
+    const bodies: Record<string, unknown>[] = []
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)))
+      return String(url).endsWith("/v1/messages")
+        ? new Response(`event: message_stop\ndata: {"type":"message_stop"}\n\n`)
+        : new Response("data: [DONE]\n\n")
+    }) as unknown as typeof fetch
+    const drain = async (req: Parameters<typeof streamChat>[0]) => {
+      for await (const _ of streamChat(req));
+    }
+    try {
+      await drain({ ...base, cache: "long" })
+      await drain({
+        ...base,
+        connection: { kind: "openai", baseUrl: "http://x/v1", apiKey: "k" },
+        cache: "long",
+      })
+      expect(bodies[0]?.cache_control).toEqual({ type: "ephemeral", ttl: "1h" })
+      expect("cache_control" in (bodies[1] ?? {})).toBe(false)
+    } finally {
+      globalThis.fetch = realFetch
+    }
+  })
+})
+
+describe("the input tokens of an Anthropic reply", () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+
+  const event = (type: string, data: object) =>
+    `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`
+
+  /** The usage events that the stream of one reply gives, with the usage of its two events. */
+  const usageOf = async (start: object | undefined, end: object | undefined) => {
+    globalThis.fetch = (async () =>
+      new Response(
+        [
+          event("message_start", start ? { message: { usage: start } } : { message: {} }),
+          event("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+          event("content_block_delta", { index: 0, delta: { type: "text_delta", text: "Hi." } }),
+          event("content_block_stop", { index: 0 }),
+          event("message_delta", end ? { usage: end } : {}),
+          event("message_stop", {}),
+        ].join(""),
+      )) as unknown as typeof fetch
+    const usage = []
+    for await (const e of streamChat({
+      connection: { kind: "anthropic", baseUrl: "http://x", apiKey: "k" },
+      model: "claude-sonnet-5-5",
+      effort: null,
+      system: "",
+      turns: [{ role: "user", content: "hi" }],
+      signal: new AbortController().signal,
+    }))
+      if (e.type === "usage") usage.push({ input: e.input, output: e.output })
+    return usage
+  }
+
+  test("a reply with no cache fields counts as before", async () => {
+    expect(await usageOf({ input_tokens: 20 }, { output_tokens: 10 })).toEqual([
+      { input: 20, output: undefined },
+      { input: undefined, output: 10 },
+    ])
+  })
+
+  test("the cached parts count as input, so the total is all three fields", async () => {
+    const usage = await usageOf(
+      { input_tokens: 4, cache_creation_input_tokens: 6, cache_read_input_tokens: 10 },
+      { output_tokens: 10 },
+    )
+    expect(usage[0]).toEqual({ input: 20, output: undefined })
+    expect(usage[1]).toEqual({ input: undefined, output: 10 })
+  })
+
+  test("a reply that reads the whole prompt from the cache counts it", async () => {
+    const usage = await usageOf(
+      { input_tokens: 3, cache_creation_input_tokens: 0, cache_read_input_tokens: 8000 },
+      { output_tokens: 5 },
+    )
+    expect(usage[0]?.input).toBe(8003)
+  })
+
+  test("a field that is null counts as zero", async () => {
+    const usage = await usageOf(
+      { input_tokens: 7, cache_creation_input_tokens: null, cache_read_input_tokens: null },
+      { output_tokens: 2 },
+    )
+    expect(usage[0]?.input).toBe(7)
+  })
+
+  test("running totals in the last event replace the first ones", async () => {
+    const usage = await usageOf(
+      { input_tokens: 4, cache_creation_input_tokens: 6, cache_read_input_tokens: 10 },
+      {
+        input_tokens: 4,
+        cache_creation_input_tokens: 6,
+        cache_read_input_tokens: 10,
+        output_tokens: 9,
+      },
+    )
+    expect(usage.at(-1)).toEqual({ input: 20, output: 9 })
+  })
+
+  test("a last event that names only some fields never lowers the total", async () => {
+    const usage = await usageOf(
+      { input_tokens: 4, cache_creation_input_tokens: 6, cache_read_input_tokens: 10 },
+      { input_tokens: 5, output_tokens: 9 },
+    )
+    // The input field rose to 5; the two cache fields keep what the start told.
+    expect(usage.at(-1)).toEqual({ input: 21, output: 9 })
+  })
+
+  test("a reply with no usage at all gives no usage event", async () => {
+    expect(await usageOf(undefined, undefined)).toEqual([])
+  })
+})
+
+describe("inputCounter", () => {
+  test("gives nothing until an event names a field of the input", () => {
+    const count = inputCounter()
+    expect(count(undefined)).toBeUndefined()
+    expect(count({})).toBeUndefined()
+    expect(count({ output_tokens: 3 })).toBeUndefined()
+    expect(count({ cache_read_input_tokens: 9 })).toBe(9)
+  })
+
+  test("adds the three fields and keeps the last value of each", () => {
+    const count = inputCounter()
+    expect(count({ input_tokens: 1, cache_creation_input_tokens: 2 })).toBe(3)
+    expect(count({ cache_read_input_tokens: 10 })).toBe(13)
+    expect(count({ input_tokens: 5 })).toBe(17)
   })
 })
