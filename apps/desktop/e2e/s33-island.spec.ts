@@ -158,6 +158,7 @@ test("island detail card: rows, place, what the agent does, time, size, closing,
 
   // Idle: no card, even when the pointer is on the island.
   await expect(island.getByTestId("island-idle")).toBeVisible({ timeout: 15_000 })
+  await expect(island.getByTestId("island-bar").getByTestId("app-mark")).toBeVisible()
   await island.getByTestId("island-bar").hover()
   await expect(island.getByTestId("island-detail")).toHaveCount(0)
   await expect(island.getByTestId("island-bar")).toHaveAttribute("aria-label", "ROBot")

@@ -13,7 +13,7 @@ import {
   resolveLocale,
   translate,
 } from "@robot/shared"
-import { Bot, ChevronLeft, ChevronRight } from "lucide-solid"
+import { ChevronLeft, ChevronRight } from "lucide-solid"
 import {
   createEffect,
   createMemo,
@@ -28,6 +28,7 @@ import {
 import { render } from "solid-js/web"
 import { Face } from "../agents/Face.tsx"
 import { call } from "../lib/rpc.ts"
+import { AppMark } from "../ui/AppMark.tsx"
 import "./island.css"
 
 const [initialSettings, info] = await Promise.all([call("settings.get"), call("app.info")])
@@ -226,7 +227,7 @@ const Island = () => {
           }
           onClick={toggle}
         >
-          <Bot size={16} aria-hidden="true" />
+          <AppMark size={28} />
           <span class="spacer" />
           <Show when={state().count > 0} fallback={<span class="dot" data-testid="island-idle" />}>
             <span class="faces" data-testid="island-working">

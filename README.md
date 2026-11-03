@@ -134,12 +134,33 @@ apps/desktop/
   src/preload/       The narrow bridge the window can call
   src/renderer/      SolidJS interface: shell, chat, agents, providers, settings
   e2e/               Playwright tests, mock model provider, harness
-  resources/         App icon
+  resources/         App icon: icon.svg is the source of icon.png
   electron-builder.yml
+apps/mobile/
+  app/               Expo Router screens
+  src/               State, chat, Markdown, theme and interface parts
+  assets/            Phone icons: each .svg is the source of the .png of the same name
 packages/shared/     Types, schemas, en and ko catalogues, shared rules
 specs/               Behaviour specs: the only source for implementation
 docs/                Spec questions, provenance, release process
 ```
+
+### App icon
+
+The app mark is two smiling eyes that glow in the dark. The SVG files are the source. After a
+change, export the PNG files again, for example with [resvg](https://github.com/linebender/resvg):
+
+```sh
+resvg -w 1024 -h 1024 apps/desktop/resources/icon.svg apps/desktop/resources/icon.png
+resvg -w 256 -h 256 apps/desktop/resources/icon.svg .github/assets/icon.png
+for f in icon icon-foreground icon-background icon-monochrome; do
+  resvg -w 1024 -h 1024 apps/mobile/assets/$f.svg apps/mobile/assets/$f.png
+done
+```
+
+The phone icon (`icon.png`) and the back layer of the Android icon (`icon-background.png`) must
+have no transparency. Remove the alpha channel after the export, for example with
+`magick <file> -alpha off <file>`.
 
 ## Architecture
 

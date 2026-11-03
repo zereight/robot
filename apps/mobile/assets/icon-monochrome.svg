@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Android themed icon: the eyes of icon-foreground.svg in one colour, with no glow. -->
+  <g transform="translate(512 512) scale(0.8) translate(-512 -496.5)">
+    <g fill="#ffffff">
+      <path d="M204.6 569 A145 145 0 0 1 494.6 569 A43.5 43.5 0 0 1 407.6 569 A58 58 0 0 0 291.6 569 A43.5 43.5 0 0 1 204.6 569 Z"/>
+      <path d="M529.4 569 A145 145 0 0 1 819.4 569 A43.5 43.5 0 0 1 732.4 569 A58 58 0 0 0 616.4 569 A43.5 43.5 0 0 1 529.4 569 Z"/>
+    </g>
+  </g>
+</svg>

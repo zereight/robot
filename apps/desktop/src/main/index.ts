@@ -107,6 +107,10 @@ app.whenReady().then(async () => {
   // A test run on macOS is a background program: no Dock icon and no place in Stage Manager.
   // So a window that opens does not move the windows of the user.
   if (isTestRun && process.platform === "darwin") app.setActivationPolicy("accessory")
+  // A packaged app takes its icon from the bundle. In development the Dock would show the
+  // Electron icon, so show the app mark instead.
+  else if (!app.isPackaged && process.platform === "darwin")
+    app.dock?.setIcon(join(app.getAppPath(), "resources/icon.png"))
   const runtime = makeRuntime()
   // Keep native menus and dialogs in the chosen theme.
   await runtime.runPromise(
