@@ -140,14 +140,16 @@ export const ChatView = (props: ChatViewProps) => {
   const byId = createMemo(() => new Map(chat.messages.map((m) => [m.id, m])))
   const streaming = () => chat.messages.find((m) => m.status === "streaming")
   const retry = useRetry()
-  const working = () => {
+  // A memo, so that a new list of threads or a new meter with the same answer does not count as new
+  // content and scroll the chat away from a message that the user jumped to.
+  const working = createMemo(() => {
     if (compacting()) return true
     // A task that waits in the queue has an empty reply already: it shows its queued line.
     if (busy() === "queued") return false
     if (streaming() !== undefined) return true
     const now = busy()
     return now === undefined ? props.agent.state === "working" : now === "turn"
-  }
+  })
   /** Fork at a finished message (spec 003, "Fork"). The new thread opens. */
   const fork = async (message: ChatMessage) => {
     try {
@@ -211,6 +213,8 @@ export const ChatView = (props: ChatViewProps) => {
     if (!row || !scroller) return false
     // A hit of message search from another place goes back to that place, not to a scroll spot.
     if (!fromSearch) setBackTo(scroller.scrollTop)
+    // The chat no longer follows new content; the scroll event sets this again.
+    setAtBottom(false)
     row.scrollIntoView({
       block: "center",
       behavior: document.documentElement.dataset.reduceMotion === "true" ? "auto" : "smooth",
