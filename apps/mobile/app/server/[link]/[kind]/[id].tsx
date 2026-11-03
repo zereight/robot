@@ -274,6 +274,7 @@ export default function Conversation() {
               : t("chat.placeholder.channel", { name: channel?.name ?? "" })
           }
           canAttach={kind === "agent"}
+          mentions={kind === "channel" ? members.filter((a) => !a.archived) : undefined}
           working={!!working}
           blocked={blocked}
           reply={reply ? { name: nameOf(reply), text: quoteText(reply) } : null}

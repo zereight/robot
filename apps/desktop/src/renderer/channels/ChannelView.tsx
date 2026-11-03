@@ -4,8 +4,13 @@ import {
   type ChannelMessage,
   type ChatMessage,
   catalogues,
+  EVERYONE_MENTION,
+  insertMention,
+  type MentionEntry,
   type MessageKey,
+  mentionEntries,
   messageText,
+  openMention,
   type PartChip,
   type PartInfo,
   type PlaceRef,
@@ -13,7 +18,7 @@ import {
   startsGroup,
 } from "@robot/shared"
 import { Eye, OctagonX, Settings2, Square, X } from "lucide-solid"
-import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import chat from "../chat/chat.module.css"
 import { formatDay } from "../chat/format.ts"
@@ -33,6 +38,7 @@ import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ChannelDialog } from "./ChannelDialog.tsx"
 import styles from "./channels.module.css"
+import { MentionList } from "./MentionList.tsx"
 import { createChannelChat } from "./state.ts"
 
 const NEAR_BOTTOM_PX = 48
@@ -224,6 +230,52 @@ export const ChannelView = (props: { channel: Channel }) => {
       const a = agents.byId(id)
       return a ? [a] : []
     })
+  // The `@` list (spec 004, "Mention"): an `@` before the caret opens a list of the members that
+  // can take a job. The list narrows as the user types. Enter or Tab puts `@Name` in the box.
+  const [caret, setCaret] = createSignal(0)
+  const [highlight, setHighlight] = createSignal(0)
+  const [dismissed, setDismissed] = createSignal(false)
+  const mention = createMemo(() => openMention(text(), caret()))
+  const mentionable = createMemo(() => {
+    const open = mention()
+    if (!open) return []
+    const available = members().filter((a) => !a.archived)
+    // `@all` is offered when two or more members can answer (spec 004, "Everyone mention").
+    return mentionEntries(available, open.query, available.length >= 2)
+  })
+  const listOpen = () => !dismissed() && !ui.serverOffline() && mentionable().length > 0
+  // A new query starts at the top of the list. Escape holds until the query changes.
+  createEffect(
+    on(
+      () => {
+        const open = mention()
+        return open ? `${open.start}:${open.query}` : ""
+      },
+      () => {
+        setHighlight(0)
+        setDismissed(false)
+      },
+      { defer: true },
+    ),
+  )
+  const grow = () => {
+    if (!input) return
+    input.style.height = "auto"
+    input.style.height = `${input.scrollHeight}px`
+  }
+  const pickMention = (entry: MentionEntry<Agent>) => {
+    const open = mention()
+    if (!open) return
+    const name = entry.kind === "all" ? EVERYONE_MENTION : entry.member.name
+    const next = insertMention(text(), open, caret(), name)
+    setText(next.text)
+    setCaret(next.caret)
+    queueMicrotask(() => {
+      grow()
+      input?.focus()
+      input?.setSelectionRange(next.caret, next.caret)
+    })
+  }
   const agentFor = (message: ChannelMessage): Agent =>
     (message.agentId ? agents.byId(message.agentId) : undefined) ??
     removedAgent(t("channels.removedAgent"))
@@ -310,6 +362,7 @@ export const ChannelView = (props: { channel: Channel }) => {
         replyTo: replyTo()?.id ?? null,
       })
       setText("")
+      setCaret(0)
       setReplyTo(undefined)
       if (input) input.style.height = "auto"
       setAtBottom(true)
@@ -387,6 +440,7 @@ export const ChannelView = (props: { channel: Channel }) => {
                         // message mentions its author.
                         if (message.part) setReplyTo(message)
                         else setText((v) => `${v}@${agentFor(message).name} `)
+                        setCaret(text().length)
                         input?.focus()
                       }}
                       onJumpTo={jump}
@@ -496,6 +550,14 @@ export const ChannelView = (props: { channel: Channel }) => {
             </div>
           )}
         </Show>
+        <Show when={listOpen()}>
+          <MentionList
+            label={t("channels.mentions")}
+            entries={mentionable()}
+            highlight={highlight()}
+            onPick={pickMention}
+          />
+        </Show>
         <div class={chat.box}>
           <textarea
             ref={input}
@@ -507,11 +569,33 @@ export const ChannelView = (props: { channel: Channel }) => {
             aria-label={t("channels.placeholder", { name: props.channel.name })}
             onInput={(e) => {
               setText(e.currentTarget.value)
-              e.currentTarget.style.height = "auto"
-              e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`
+              setCaret(e.currentTarget.selectionStart)
+              grow()
             }}
+            onKeyUp={(e) => setCaret(e.currentTarget.selectionStart)}
+            onClick={(e) => setCaret(e.currentTarget.selectionStart)}
             onKeyDown={(e) => {
               if (e.isComposing || e.keyCode === 229) return
+              if (listOpen()) {
+                const list = mentionable()
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault()
+                  const step = e.key === "ArrowDown" ? 1 : -1
+                  setHighlight((highlight() + step + list.length) % list.length)
+                  return
+                }
+                if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+                  e.preventDefault()
+                  const chosen = list[highlight()]
+                  if (chosen) pickMention(chosen)
+                  return
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault()
+                  setDismissed(true)
+                  return
+                }
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault()
                 send()

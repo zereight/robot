@@ -317,6 +317,59 @@ describe("channel jobs", () => {
     expect((await s.tasks()).map((t) => t.agentId)).toEqual([s.bo.id])
   })
 
+  test("@all gives every member its own task, and the lead does not read it first", async () => {
+    const s = await setup()
+    await s.send("@all say hi")
+    await s.idle()
+    const list = await s.history()
+    // The lead is a member too: it answers as a member, and it makes no plan.
+    expect(kinds(list)).toEqual(["user:text", "agent:text", "agent:text", "agent:text"])
+    expect(
+      list
+        .slice(1)
+        .map((m) => m.agentId)
+        .sort(),
+    ).toEqual([s.lead.id, s.bo.id, s.cy.id].sort())
+    const tasks = await s.tasks()
+    expect(tasks).toHaveLength(3)
+    expect(tasks.every((t) => t.source === "channel" && t.parentId === null)).toBe(true)
+  })
+
+  test("@all wins over a name, and it works with no lead and in any letter case", async () => {
+    const s = await setup({ lead: false })
+    expect(await s.send("hey @ALL, and @bo too")).toEqual({ awaiting: false })
+    await s.idle()
+    // Bo is named and called by @all: it gets one task, not two.
+    expect((await s.tasks()).map((t) => t.agentId).sort()).toEqual(
+      [s.lead.id, s.bo.id, s.cy.id].sort(),
+    )
+    expect((await s.history()).filter((m) => m.author === "agent")).toHaveLength(3)
+  })
+
+  test("@all skips an archived member, and a word that only starts with @all is no mention", async () => {
+    const s = await setup()
+    await s.run(Agents.use((a) => a.archive(s.cy.id)))
+    await s.send("@all say hi")
+    await s.idle()
+    expect((await s.tasks()).map((t) => t.agentId).sort()).toEqual([s.lead.id, s.bo.id].sort())
+
+    // "@allan" is plain text: the lead reads the job, as for any job with no mention.
+    await s.send("@allan please")
+    await until(async () => (await s.tasks()).length === 3)
+    await s.idle()
+    expect((await s.tasks()).filter((t) => t.agentId === s.lead.id)).toHaveLength(2)
+  })
+
+  test("@all with no member that can answer fails, and the message stays out", async () => {
+    const s = await setup()
+    for (const agent of [s.lead, s.bo, s.cy]) await s.run(Agents.use((a) => a.archive(agent.id)))
+    const failure = await s.run(
+      Channels.use((c) => c.send(s.channel.id, "@all hi")).pipe(Effect.flip),
+    )
+    expect(failure.code).toBe("channel_empty")
+    expect(await s.history()).toHaveLength(0)
+  })
+
   test("without a lead and a mention, the user picks who takes the job", async () => {
     const s = await setup({ lead: false })
     expect(await s.send("who does this")).toEqual({ awaiting: true })

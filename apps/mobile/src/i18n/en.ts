@@ -126,6 +126,8 @@ export const en = {
   "chat.working": "Working…",
   "chat.placeholder": "Message {name}",
   "chat.placeholder.channel": "Message #{name}",
+  "chat.mentions": "Members",
+  "chat.mentionAll": "Every member answers",
   "chat.send": "Send",
   "chat.stop": "Stop",
   "chat.attach": "Attach",

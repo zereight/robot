@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseMentions, parsePlan, planText, stepLabel } from "./channels.ts"
+import { mentionsEveryone, parseMentions, parsePlan, planText, stepLabel } from "./channels.ts"
 
 describe("mentions", () => {
   const names = ["Ada", "Ada Lovelace", "Bo"]
@@ -16,6 +16,25 @@ describe("mentions", () => {
   test("works with Korean names", () => {
     expect(parseMentions("@민지 부탁해", ["민지", "철수"])).toEqual(["민지"])
     expect(parseMentions("@민지야 부탁해", ["민지"])).toEqual([])
+  })
+})
+
+describe("everyone mention", () => {
+  test("finds @all, ignoring case, at the start or after a space or a mark", () => {
+    expect(mentionsEveryone("@all please look")).toBe(true)
+    expect(mentionsEveryone("hey @ALL, look")).toBe(true)
+    expect(mentionsEveryone("look\n@All")).toBe(true)
+    expect(mentionsEveryone("(@all)")).toBe(true)
+  })
+  test("ignores @all inside a word, a longer word and a word with no @", () => {
+    expect(mentionsEveryone("mail me@all.com")).toBe(false)
+    expect(mentionsEveryone("@allan please")).toBe(false)
+    expect(mentionsEveryone("@all_hands")).toBe(false)
+    expect(mentionsEveryone("all of you")).toBe(false)
+  })
+  test("works after Korean text", () => {
+    expect(mentionsEveryone("다들 @all 봐줘")).toBe(true)
+    expect(mentionsEveryone("다들@all 봐줘")).toBe(false)
   })
 })
 
