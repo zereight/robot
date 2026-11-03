@@ -294,6 +294,17 @@ export const isOutsideSource = (v: unknown): v is OutsideSource => {
   }
 }
 
+/** The source as a column stores it (JSON text), or null. Text that is no source reads as none. */
+export const parseOutsideSource = (text: string | null | undefined): OutsideSource | null => {
+  if (!text) return null
+  try {
+    const value: unknown = JSON.parse(text)
+    return isOutsideSource(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Who decided a step of the action log (spec 007, "Action log"). `app` is the app itself, for an
  * address that is never allowed (spec 007, "Sensitive places").

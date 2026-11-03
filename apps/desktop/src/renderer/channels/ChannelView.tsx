@@ -377,7 +377,10 @@ export const ChannelView = (props: { channel: Channel }) => {
     <div class={chat.view} data-testid="channel-view">
       <PlaceMarksLine
         place={{ kind: "channel", id: props.channel.id }}
-        marks={{ sensitive: props.channel.sensitive ?? null }}
+        marks={{
+          outside: props.channel.outside ?? null,
+          sensitive: props.channel.sensitive ?? null,
+        }}
       />
       {retry.dialog()}
       {reviewing.dialog()}
