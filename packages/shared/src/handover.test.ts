@@ -497,6 +497,35 @@ describe("the limits", () => {
   })
 })
 
+describe("the lines of the app in a chat", () => {
+  test("a muted line, a compact line and a card are no reply and no message in the brief", () => {
+    const lines: ChatMessage[] = [
+      {
+        ...agent("x"),
+        id: "line-1",
+        createdAt: 1_800_000_000_000,
+        parts: [
+          { kind: "note", note: "handed_over", toName: "Bo", toAgentId: "b", toThreadId: "t" },
+        ],
+      },
+      {
+        ...agent("x"),
+        id: "line-2",
+        createdAt: 1_800_000_000_001,
+        parts: [{ kind: "compacted", summary: "S", at: 1, auto: false }],
+      },
+    ]
+    const text = brief([user("Go"), agent("The real reply."), ...lines], {
+      formatTime: (ms) => String(ms),
+    })
+    expect(text).toContain("Last reply of Ada:\nThe real reply.")
+    // The time is the time of the last message of the chat, not of a line.
+    expect(text).not.toContain("18000000000")
+    // A chat of lines only has no message of the user.
+    expect(hasUserMessage(lines)).toBe(false)
+  })
+})
+
 describe("the text for the model", () => {
   test("says that the brief is information from a colleague and not an order", () => {
     const text = handoverCardForModel("BRIEF")

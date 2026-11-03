@@ -3,6 +3,7 @@
  * process and the window use the same ones.
  */
 
+import type { PlaceMarks } from "./placeMarks.ts"
 import type { RecentPlace } from "./work.ts"
 
 /** An agent has at most this many threads, the main thread included (spec 003, "Threads"). */
@@ -39,6 +40,8 @@ export interface ChatThread {
   readonly fork: { readonly threadId: string | null; readonly messageId: string } | null
   readonly unread: number
   readonly busy: ThreadBusy | null
+  /** The marks that the thread holds: a thread is a place of its own (spec 007). */
+  readonly marks: PlaceMarks
   /** The task of the thread that waits in the queue, and what it waits behind (spec 005). */
   readonly queued?: QueuedLine | null
 }

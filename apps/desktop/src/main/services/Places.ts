@@ -53,7 +53,10 @@ export class Places extends Context.Service<Places, PlacesService>()("robot/main
 
       const lastMessage = (agentId: string) => {
         const row = db.get<{ parts: string }>(
-          "SELECT parts FROM message WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+          // The muted line and the card of a handover are no news for the preview (spec 003).
+          `SELECT parts FROM message WHERE agent_id = ?
+             AND parts NOT LIKE '%"note":"handed_over"%' AND parts NOT LIKE '%"kind":"handover"%'
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
           agentId,
         )
         if (!row) return null

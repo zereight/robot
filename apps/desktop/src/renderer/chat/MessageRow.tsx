@@ -3,6 +3,7 @@ import {
   type ChatMessage,
   catalogues,
   type FilePart,
+  handoverOf,
   isNoteOnly,
   type KnowledgeNote,
   type MemoryNote,
@@ -49,6 +50,7 @@ import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
 import { fileSize, formatTime } from "./format.ts"
+import { HandedOverText, HandoverCard } from "./Handover.tsx"
 import { Markdown } from "./Markdown.tsx"
 
 export interface MessageRowProps {
@@ -1070,6 +1072,8 @@ const NoteLine = (props: { message: ChatMessage }) => {
   const words = () => {
     const part = note()
     if (!part) return ""
+    // The muted line of a handover has a link to the new thread (spec 003, "Hand over").
+    if (part.note === "handed_over") return ""
     if (part.note === "watch_unchanged") return t("routines.note.unchanged", { name: part.routine })
     if (part.note === "compact_failed")
       return t("chat.compact.failed", { reason: errorWords(t, part.code) })
@@ -1078,9 +1082,19 @@ const NoteLine = (props: { message: ChatMessage }) => {
       n: part.what === "routine" ? ROUTINES_MAX : SKILLS_MAX,
     })
   }
+  const handedOver = () => {
+    const part = note()
+    return part?.note === "handed_over" ? part : undefined
+  }
   return (
     <div class={styles.noteLine} data-testid="note-line">
-      <span>{words()}</span>
+      <Show when={handedOver()} fallback={<span>{words()}</span>}>
+        {(part) => (
+          <span data-testid="handed-over-line">
+            <HandedOverText part={part()} />
+          </span>
+        )}
+      </Show>
       <span>{formatTime(app.locale(), props.message.createdAt)}</span>
     </div>
   )
@@ -1104,7 +1118,9 @@ export const MessageRow = (props: MessageRowProps) => (
       </Show>
     }
   >
-    <FullMessageRow {...props} />
+    <Show when={handoverOf(props.message)} fallback={<FullMessageRow {...props} />}>
+      {(card) => <HandoverCard message={props.message} part={card()} />}
+    </Show>
   </Show>
 )
 

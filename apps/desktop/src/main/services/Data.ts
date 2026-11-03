@@ -295,6 +295,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                 if (p.kind === "skill")
                   return { ...p, instructions: redactSecrets(p.instructions, known) }
                 if (p.kind === "note") return p
+                // The brief of a handover card was written with the keys hidden. It is hidden again
+                // here, with the stored values of this export (spec 003, 014).
+                if (p.kind === "handover") return { ...p, brief: redactSecrets(p.brief, known) }
                 if (p.kind === "compacted")
                   return { ...p, summary: redactSecrets(p.summary, known) }
                 return { ...p, text: redactSecrets(p.text, known) }
@@ -432,6 +435,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run(
                 "UPDATE provider_account SET off = 1 WHERE kind IN ('claude_code', 'codex', 'muse', 'pi', 'opencode')",
               )
+              // The threads come before the messages that point to them (spec 003, 014). A thread
+              // holds its marks, so a handover comes back with the marks of its new thread.
+              db.run("INSERT INTO thread SELECT * FROM imp.thread")
               db.run("INSERT INTO message SELECT * FROM imp.message")
               db.run("INSERT INTO memory SELECT * FROM imp.memory")
               db.run("INSERT INTO memory_proposal SELECT * FROM imp.memory_proposal")

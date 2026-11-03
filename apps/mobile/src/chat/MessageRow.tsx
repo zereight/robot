@@ -223,7 +223,10 @@ const Part = (props: {
             ? t("chat.note.watch", { routine: part.routine })
             : part.note === "compact_failed"
               ? t("chat.note.compact_failed", { reason: errorText(locale, part.code) })
-              : t(`chat.note.starter.${part.what}.${part.why}`, { name: part.name })}
+              : part.note === "handed_over"
+                ? // The phone shows the main thread only, so the line is plain text (spec 011).
+                  t("chat.note.handed_over", { name: part.toName })
+                : t(`chat.note.starter.${part.what}.${part.why}`, { name: part.name })}
         </Text>
       )
     case "tool":

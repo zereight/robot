@@ -25,10 +25,15 @@ import {
   createReadGuard,
   endOfTurn,
   type FilePart,
+  type HandoverOffReason,
+  handoverCardForModel,
+  handoverOf,
+  handoverOffReason,
   hasVisibleReply,
   holdOutside,
   isNoteOnly,
   isTaskProgress,
+  type MarkPlace,
   type MessagePart,
   type MessageStatus,
   type ModelInfo,
@@ -41,7 +46,6 @@ import {
   outsideOfCall,
   outsideOfParts,
   type PermissionLevel,
-  type PlaceRef,
   QUEUE_MAX,
   type QueuedLine,
   type QueuedMessage,
@@ -188,6 +192,11 @@ export interface Place {
 /** The key of the state of one conversation: the id of the thread, or of the agent for the main thread. */
 const keyOf = (place: Place) => place.threadId ?? place.agentId
 const mainOf = (agentId: string): Place => ({ agentId, threadId: null })
+/** The place that holds the marks of a conversation: the agent for its main thread, else the thread. */
+const markPlaceOf = (place: Place): MarkPlace =>
+  place.threadId === null
+    ? { kind: "agent", id: place.agentId }
+    : { kind: "thread", id: place.threadId }
 
 export interface ChatService {
   history(agentId: string, threadId?: string | null): Effect.Effect<ChatHistory>
@@ -229,6 +238,31 @@ export interface ChatService {
   announce(messageId: string): void
   /** Posts one muted line of the agent, with no task: a watch saw no change (spec 009). */
   note(agentId: string, part: Extract<MessagePart, { kind: "note" }>): void
+  /**
+   * Why "Hand over" is off for a conversation, or null when it is on (spec 003, "Hand over"): the
+   * reasons come in the order of the spec.
+   */
+  handoverReason(place: Place): Effect.Effect<HandoverOffReason | null, AppError>
+  /**
+   * Hands a conversation over to another agent (spec 003, "Hand over"): a new thread in the chat
+   * of that agent, with the handover card and the words of the user, a turn that starts at once
+   * as a task with the source "Handover", and a muted line in the first conversation.
+   */
+  startHandover(
+    input: HandoverStart,
+  ): Effect.Effect<{ agentId: string; threadId: string }, AppError>
+}
+
+/** What a handover needs, once the brief is written and the user has typed the words. */
+export interface HandoverStart {
+  readonly from: Place
+  readonly toAgentId: string
+  /** The words of the user for the new agent. */
+  readonly text: string
+  /** The brief, as the dialog showed it. */
+  readonly brief: string
+  /** The title of the new thread: "Handover from <name>", cut. */
+  readonly title: string
 }
 
 /** The turn that runs now for an agent, as far as messages of the user can join it (spec 003). */
@@ -276,6 +310,8 @@ interface ThreadRow {
   archived_at: number | null
   fork_thread_id: string | null
   fork_message_id: string | null
+  sensitive_mark: string | null
+  updated_at: number
 }
 
 /** The line before the notes that the app adds to a message for Claude Code. */
@@ -699,6 +735,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       /** The text of a message for the model. A reply quotes what it answers. */
       const turnText = (r: MessageRow) => {
+        // The handover card goes to the model as information from a colleague (spec 003).
+        const card = handoverOf(toMessage(r))
+        if (card) return handoverCardForModel(card.brief)
         const skill = messageSkill(toMessage(r))
         // The agent reads the instructions of a skill chip first, then the text (spec 017).
         const text = [
@@ -883,7 +922,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             messageId: reply.id,
             retryOf: retryLinks.get(key) ?? origin?.retryOf ?? null,
             // A routine or a workflow starts its task with no message of the user (spec 005).
-            askedAt: source === "chat" && !retryLinks.has(key) ? (askedAt ?? null) : null,
+            // A handover starts with a message of the user, so its times count from there too.
+            askedAt:
+              (source === "chat" || source === "handover") && !retryLinks.has(key)
+                ? (askedAt ?? null)
+                : null,
             ...(origin?.depth !== undefined ? { depth: origin.depth } : {}),
           }))
         const depth = tasks.depthOf(task.id)
@@ -898,7 +941,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const fresh = resumed ? undefined : origin
         // The turn also holds a sensitive read from its start when the chat does (spec 007,
         // "Sensitive places"): an earlier turn read a credential place, and no one cleared it.
-        const markPlace: PlaceRef = { kind: "agent", id: agentId }
+        const markPlace = markPlaceOf(place)
         const mark = newTurnMark(
           fresh?.starter ?? starterOf(task.source),
           fresh?.outside ?? null,
@@ -1187,7 +1230,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
               // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
               // message of another agent) keeps the short one.
-              cache: task.source === "chat" ? "long" : "short",
+              cache: task.source === "chat" || task.source === "handover" ? "long" : "short",
               signal: controller.signal,
               workspace: agent.workspace,
               permission: agent.permission,
@@ -1464,8 +1507,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
         const sender = yield* CurrentActor
         const agent = yield* usableAgent(input.agentId, origin?.model)
-        // Work from a routine, a workflow or another agent goes to the main thread (spec 003).
-        const threadId = origin ? null : (input.threadId ?? null)
+        // Work from a routine, a workflow or another agent goes to the main thread (spec 003). A
+        // handover goes to the new thread that it made.
+        const threadId = origin && origin.source !== "handover" ? null : (input.threadId ?? null)
         const place: Place = { agentId: input.agentId, threadId }
         if (threadId !== null) {
           const thread = threadRow(input.agentId, threadId)
@@ -2068,6 +2112,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           : null,
         unread,
         busy,
+        marks: placeMarks.get({ kind: "thread", id: row.id }),
       })
       const threadsChanged = (agentId: string) => {
         bus.emit("chat.threads", { agentId })
@@ -2112,8 +2157,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO thread (id, agent_id, title, titled, created_at, archived_at, fork_thread_id, fork_message_id)
-           VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+          `INSERT INTO thread (id, agent_id, title, titled, created_at, archived_at, fork_thread_id, fork_message_id, updated_at)
+           VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
           id,
           agentId,
           title,
@@ -2121,6 +2166,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           Date.now(),
           fork?.threadId ?? null,
           fork?.messageId ?? null,
+          Date.now(),
         )
         return db.get<ThreadRow>("SELECT * FROM thread WHERE id = ?", id) as ThreadRow
       }
@@ -2192,6 +2238,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             )
           // The copied replies are no news.
           db.run("INSERT INTO thread_read (thread_id, at) VALUES (?, ?)", made.id, Date.now())
+          // A thread is a place of its own and starts with no mark, but a fork keeps what the
+          // conversation it copied held (spec 007): the model of the fork reads the same text.
+          placeMarks.carry(markPlaceOf(place), { kind: "thread", id: made.id })
           return made
         })
         threadsChanged(place.agentId)
@@ -2248,12 +2297,123 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         threadsChanged(agentId)
       })
 
+      // --- Handover (spec 003, "Hand over") ---------------------------------------------------------
+
+      /** The error code of each reason why "Hand over" is off. */
+      const HANDOVER_CODE: Readonly<Record<HandoverOffReason, string>> = {
+        noMessage: "handover_no_message",
+        running: "handover_running",
+        noAgent: "handover_no_agent",
+      }
+      const handoverReason = (place: Place) =>
+        Effect.gen(function* () {
+          const first = agentRow(place.agentId)
+          if (!first) return yield* new AppError({ code: "agent_not_found" })
+          if (place.threadId !== null && !threadRow(place.agentId, place.threadId))
+            return yield* new AppError({ code: "thread_not_found" })
+          const others =
+            db.get<{ n: number }>(
+              "SELECT COUNT(*) AS n FROM agent WHERE server_id = ? AND archived_at IS NULL AND id != ?",
+              first.server_id,
+              place.agentId,
+            )?.n ?? 0
+          // A turn that runs, waits for the user, or waits in the queue is a turn of this chat.
+          const busy = yield* busyOf(place)
+          const reason: HandoverOffReason | null = handoverOffReason({
+            messages: rows(place).map((r) => toMessage(r)),
+            running: busy !== null,
+            otherAgents: others,
+          })
+          return reason
+        })
+
+      /** Stores one line or card as a message of a conversation, and tells the windows. */
+      const insertLine = (
+        place: Place,
+        author: "user" | "agent",
+        part: Extract<MessagePart, { kind: "note" | "handover" }>,
+      ) => {
+        const id = randomUUID()
+        db.run(
+          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name, thread_id)
+           VALUES (?, ?, ?, ?, 'done', NULL, NULL, ?, NULL, NULL, ?)`,
+          id,
+          place.agentId,
+          author,
+          JSON.stringify([part]),
+          timeIn(place.agentId),
+          place.threadId,
+        )
+        const row = messageRow(id) as MessageRow
+        emitMessage(row)
+        return row
+      }
+
+      const startHandover = Effect.fn("Chat.startHandover")(function* (input: HandoverStart) {
+        const { from } = input
+        const first = agentRow(from.agentId)
+        if (!first) return yield* new AppError({ code: "agent_not_found" })
+        if (input.toAgentId === from.agentId)
+          return yield* new AppError({ code: "handover_same_agent" })
+        // The other agent must be able to take a turn now, and be on the same computer and server.
+        const to = yield* usableAgent(input.toAgentId)
+        if (to.server_id !== first.server_id)
+          return yield* new AppError({ code: "agent_not_found" })
+        const off = yield* handoverReason(from)
+        if (off) return yield* new AppError({ code: HANDOVER_CODE[off] })
+        if (!roomForThread(to.id)) return yield* new AppError({ code: "thread_limit" })
+        // The task of the new turn needs space in the queue of the new agent (spec 005). Checked
+        // before anything is made, so that a refusal leaves no thread behind.
+        const full = tasks.queueFull(to.id)
+        if (full) return yield* full
+        const made = db.transaction(() => {
+          const thread = insertThread(to.id, input.title, null)
+          // The card comes first: it is the first message of the thread. It is no words of the user.
+          insertLine({ agentId: to.id, threadId: thread.id }, "user", {
+            kind: "handover",
+            brief: input.brief,
+            fromName: first.name,
+            fromAgentId: first.id,
+            fromThreadId: from.threadId,
+          })
+          // The new thread holds the marks that the first place holds now (spec 007).
+          placeMarks.carry(markPlaceOf(from), { kind: "thread", id: thread.id })
+          return thread
+        })
+        const place: Place = { agentId: to.id, threadId: made.id }
+        // The words of the user start a turn at once, with the source "Handover" and depth 0. The
+        // turn waits when the agent works in another thread, as any message in a thread does.
+        yield* send(
+          { agentId: to.id, text: input.text, replyTo: null, threadId: made.id },
+          // The task holds the words of the user, not the card (spec 005, 007).
+          { source: "handover", sourceId: to.id, depth: 0, prompt: input.text },
+        ).pipe(
+          Effect.catch((error: AppError) => {
+            // Nothing stays of a handover that did not start.
+            db.run("DELETE FROM thread WHERE id = ?", made.id)
+            queues.delete(made.id)
+            threadsChanged(to.id)
+            return Effect.fail(error)
+          }),
+        )
+        insertLine(from, "agent", {
+          kind: "note",
+          note: "handed_over",
+          toName: to.name,
+          toAgentId: to.id,
+          toThreadId: made.id,
+        })
+        placesChanged(first.id)
+        threadsChanged(to.id)
+        return { agentId: place.agentId, threadId: made.id }
+      })
+
       // A queued task started or ended: a message queue that waited for space can go on (spec 005).
       tasks.onQueueSpace((agentId) => {
         for (const place of blockedPlaces(agentId)) Effect.runFork(kickQueued(place))
       })
 
-      tasks.onRetry("chat", (task) =>
+      const retryOfChat = (task: Task) =>
         Effect.suspend(() => {
           const place = task.messageId
             ? placeOfMessage(task.agentId, task.messageId)
@@ -2273,8 +2433,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               return Effect.asVoid(send({ ...again, ...inThread }))
             }),
           )
-        }),
-      )
+        })
+      tasks.onRetry("chat", retryOfChat)
+      // A task of a handover is a message in a thread: it tries again the way a chat task does.
+      tasks.onRetry("handover", retryOfChat)
 
       // A task that another agent asked for runs again as a new message to the same agent. It keeps
       // the depth of the old task. Its reply does not go back: the user asked for the retry.
@@ -2351,6 +2513,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       }
 
       return Chat.of({
+        handoverReason,
+        startHandover,
         note: (agentId, part) => {
           const id = randomUUID()
           db.run(

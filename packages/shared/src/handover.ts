@@ -63,6 +63,14 @@ export const handoverCardForModel = (brief: string): string => `${HANDOVER_MODEL
 // The menu choice: when it is off, and why.
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * True when a message is a line of the app and no turn of the chat: a muted note, the line
+ * "Compacted", or a handover card. A line is no reply of the agent and no request of the user.
+ */
+const isLine = (message: ChatMessage): boolean =>
+  message.parts.length > 0 &&
+  message.parts.every((p) => p.kind === "note" || p.kind === "compacted" || p.kind === "handover")
+
 /** True when a message has words or an attachment of the user. */
 const isUserRequest = (message: ChatMessage): boolean =>
   message.author === "user" &&
@@ -227,7 +235,8 @@ export const writeBrief = (input: BriefInput): string => {
     translate(locale, key, params)
   const name = clean(agentName)
 
-  const messages = input.messages
+  // The lines of the app (a muted note, "Compacted", a card) are no turns of the chat.
+  const messages = input.messages.filter((m) => !isLine(m))
   const requests = messages.flatMap((m, index) => (isUserRequest(m) ? [{ m, index }] : []))
   const asRequest = (m: ChatMessage, max: number): string => {
     const words = cutBriefText(clean(textOf(m)), max)
@@ -342,4 +351,30 @@ export const writeBrief = (input: BriefInput): string => {
   // The parts that cannot shrink (the header and the two requests) are short by their own limits.
   // This line holds the limit even if a name or a folder is very long.
   return cutBriefText(text, HANDOVER_LIMITS.brief)
+}
+
+// ---------------------------------------------------------------------------------------------
+// What the window and the main process say to each other about a handover.
+// ---------------------------------------------------------------------------------------------
+
+/** Whether "Hand over" is on for a chat or thread, and why not (spec 003, "Flows" 1). */
+export interface HandoverState {
+  readonly off: HandoverOffReason | null
+}
+
+/** An agent in the list of the dialog. `full` is true when it has 50 threads: it is off. */
+export interface HandoverCandidate {
+  readonly agentId: string
+  readonly full: boolean
+}
+
+/**
+ * What the dialog needs: the brief (written when the dialog opens, in the language of the app),
+ * and the id under which the main process keeps that same text until the user presses "Hand
+ * over". The window never sends the brief back.
+ */
+export interface HandoverOpen {
+  readonly briefId: string
+  readonly brief: string
+  readonly candidates: readonly HandoverCandidate[]
 }
