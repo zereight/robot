@@ -9,6 +9,7 @@ import type {
   ChannelPatch,
 } from "./channels.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
+import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type { AgentPick, ImportChecklist } from "./importReview.ts"
 import type {
   KnowledgeArticle,
@@ -366,6 +367,15 @@ export interface RpcMethods {
   "secrets.replace": { input: { id: string; value: string }; output: SavedSecret }
   /** Deletes a saved secret and its value. */
   "secrets.delete": { input: { id: string }; output: undefined }
+  /**
+   * The decision model (spec 013): whether a key is saved, never the key. Not offered to a linked
+   * device: the keys stay on this computer.
+   */
+  "decision.status": { input: undefined; output: DecisionStatus }
+  /** Saves or removes the keys that the patch names; a key that is not named stays. */
+  "decision.keys": { input: DecisionKeys; output: DecisionStatus }
+  /** Sends one real request with three made-up members to the saved choice. */
+  "decision.test": { input: undefined; output: DecisionTestResult }
   "knowledge.list": { input: { agentId: string; query?: string }; output: KnowledgeView }
   "knowledge.get": { input: { agentId: string; file: string }; output: KnowledgeArticle }
   /** Saves an article as the user. `file` is null for a new article. */

@@ -25,6 +25,7 @@ import { unzipSync } from "fflate"
 import { Agents } from "./Agents.ts"
 import { type ArchiveFile, writeZip } from "./archive.ts"
 import { Database } from "./Database.ts"
+import { DECISION_KEY } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
@@ -115,6 +116,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           ...(yield* providers.list)
             .map((a) => secrets.get(secretKey(a.id)))
             .filter((k): k is string => k !== null),
+          // The key of the decision model (spec 013) is a stored key too.
+          ...[secrets.get(DECISION_KEY)].filter((k): k is string => k !== null),
           // The values of saved secrets (spec 020) are hidden too, wherever a text holds one.
           ...savedSecrets.knownValues(),
         ]

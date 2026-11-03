@@ -1,4 +1,5 @@
 import { Schema, Struct } from "effect"
+import { DECISION_CHOICES, DECISION_MODEL_DEFAULT, DECISION_MODEL_MAX } from "./decision.ts"
 import { DEVICE_NAME_MAX } from "./link.ts"
 import { ISLAND_MODES } from "./notifications.ts"
 import { STEP_LIMIT_DEFAULT, STEP_LIMIT_MAX, STEP_LIMIT_MIN } from "./steps.ts"
@@ -73,6 +74,13 @@ export const Settings = Schema.Struct({
    * A setting saved before this switch existed has none, and the switch is off.
    */
   secretsLocal: Schema.Boolean,
+  /**
+   * The decision model (spec 013). Off at first: the model of the lead decides, and nothing is
+   * sent. A setting saved before this existed has none, and the model is off.
+   */
+  decisionModel: Schema.Literals(DECISION_CHOICES),
+  /** The model name of the choice "Jev through OpenRouter". An empty name means not set up. */
+  decisionModelName: Schema.String.check(Schema.isMaxLength(DECISION_MODEL_MAX)),
 })
 export type Settings = typeof Settings.Type
 
@@ -106,6 +114,8 @@ export const defaultSettings: Settings = {
   linkPort: 0,
   duringTurn: "join",
   secretsLocal: false,
+  decisionModel: "off",
+  decisionModelName: DECISION_MODEL_DEFAULT,
 }
 
 export type Locale = "en" | "ko"

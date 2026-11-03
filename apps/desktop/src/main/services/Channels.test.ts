@@ -5,6 +5,7 @@ import type { ChannelMessage } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
+import { Decision } from "./Decision.ts"
 import { Memory } from "./Memory.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
@@ -111,6 +112,36 @@ const server = Bun.serve({
 // Some requests are held with no answer on purpose, so the stop must close them.
 afterAll(() => server.stop(true))
 
+// The service of the decision model (spec 013): what it was asked, and what it answers next.
+const DECISION_KEY = "sk-or-channel-test-key"
+const asked: { auth: string | null; body: string }[] = []
+let decide: () => Response = () => new Response("none set", { status: 500 })
+const decisionServer = Bun.serve({
+  port: 0,
+  async fetch(req) {
+    asked.push({ auth: req.headers.get("authorization"), body: await req.text() })
+    return decide()
+  },
+})
+afterAll(() => decisionServer.stop(true))
+/** An answer of the model for the options of a channel: the members in order, then "none". */
+const picks = (choice: string, probability: number) =>
+  Response.json({
+    answers: {
+      pick: {
+        type: "choice",
+        choice,
+        confidence: probability,
+        probabilities: {
+          member_1: choice === "member_1" ? probability : (1 - probability) / 3,
+          member_2: choice === "member_2" ? probability : (1 - probability) / 3,
+          member_3: choice === "member_3" ? probability : (1 - probability) / 3,
+          none: choice === "none" ? probability : (1 - probability) / 3,
+        },
+      },
+    },
+  })
+
 const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
   const end = Date.now() + ms
   while (Date.now() < end) {
@@ -120,8 +151,10 @@ const until = async (check: () => Promise<boolean> | boolean, ms = 5000) => {
   throw new Error("timed out")
 }
 
-const setup = async (options: { lead?: boolean } = { lead: true }) => {
-  const t = testRuntime()
+const setup = async (options: { lead?: boolean; decision?: boolean } = { lead: true }) => {
+  const t = testRuntime(
+    options.decision ? { decisionUrl: `http://127.0.0.1:${decisionServer.port}` } : {},
+  )
   const run = t.runtime.runPromise
   const account = await run(
     Providers.use((p) =>
@@ -133,6 +166,11 @@ const setup = async (options: { lead?: boolean } = { lead: true }) => {
       }),
     ),
   )
+  if (options.decision) {
+    await run(SettingsStore.use((x) => x.update({ decisionModel: "openrouter" })))
+    await run(Decision.use((d) => d.keys({ openrouter: DECISION_KEY })))
+    asked.length = 0
+  }
   const local = await run(Servers.use((s) => s.local))
   const agent = (name: string) =>
     run(
@@ -166,7 +204,20 @@ const setup = async (options: { lead?: boolean } = { lead: true }) => {
       return all.length > 0 && all.every((x) => !["queued", "running"].includes(x.state))
     })
   const tasks = () => run(Tasks.use((x) => x.list(local.id)))
-  return { run, local, lead, bo, cy, channel, history, send, idle, tasks, runtime: t.runtime }
+  return {
+    run,
+    local,
+    lead,
+    bo,
+    cy,
+    channel,
+    history,
+    send,
+    idle,
+    tasks,
+    runtime: t.runtime,
+    dataDir: t.dataDir,
+  }
 }
 
 const kinds = (list: readonly ChannelMessage[]) => list.map((m) => `${m.author}:${m.kind}`)
@@ -414,5 +465,95 @@ describe("tools in channels", () => {
     })
     await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
     await s.idle()
+  })
+})
+
+describe("fast pick (spec 004)", () => {
+  const channelLog = (dir: string) => {
+    try {
+      return readFileSync(join(dir, "logs", "channels.log"), "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as Record<string, unknown>)
+    } catch {
+      return []
+    }
+  }
+
+  test("a sure answer sends the job to that member, not to the lead; one log line, no job text", async () => {
+    decide = () => picks("member_3", 0.9)
+    const s = await setup({ decision: true })
+    expect(await s.send("Please check the budget")).toEqual({ awaiting: false })
+    await s.idle()
+    const list = await s.history()
+    expect(kinds(list)).toEqual(["user:text", "agent:text"])
+    expect(list[1]?.agentId).toBe(s.cy.id)
+    expect((await s.tasks()).map((t) => t.agentId)).toEqual([s.cy.id])
+    expect(asked).toHaveLength(1)
+    expect(asked[0]?.auth).toBe(`Bearer ${DECISION_KEY}`)
+    expect(asked[0]?.body).toContain("Please check the budget")
+    const log = channelLog(s.dataDir)
+    expect(log).toHaveLength(1)
+    expect(log[0]).toMatchObject({ event: "fast_pick", chosen: true, probability: 0.9 })
+    expect(JSON.stringify(log)).not.toContain("budget")
+    expect(JSON.stringify(log)).not.toContain(DECISION_KEY)
+  })
+
+  test("an unsure answer: the lead reads the job as if the pick did not exist", async () => {
+    decide = () => picks("member_2", 0.4)
+    const s = await setup({ decision: true })
+    await s.send("Please check the budget")
+    await s.idle()
+    const list = await s.history()
+    expect(list[1]?.agentId).toBe(s.lead.id)
+    expect(channelLog(s.dataDir)[0]).toMatchObject({
+      chosen: false,
+      reason: "below_threshold",
+    })
+  })
+
+  test("a failing service, with no lead: the user picks, and the job waits", async () => {
+    decide = () => new Response("down", { status: 503 })
+    const s = await setup({ lead: false, decision: true })
+    expect(await s.send("Who takes this")).toEqual({ awaiting: false })
+    await until(async () => (await s.history())[0]?.awaiting === true)
+    expect(channelLog(s.dataDir)[0]).toMatchObject({
+      chosen: false,
+      reason: "service_error",
+      code: 503,
+    })
+    expect(await s.tasks()).toHaveLength(0)
+  })
+
+  test("a mention skips the pick; so do a channel with open work and a channel with one member", async () => {
+    decide = () => picks("member_3", 0.9)
+    const s = await setup({ decision: true })
+    await s.send("@bo say hi")
+    await s.idle()
+    expect(asked).toHaveLength(0)
+
+    // A part that still runs is open work: a new message may continue it.
+    await s.send("@bo SLOW work")
+    await until(async () => (await s.tasks()).some((t) => t.state === "running"))
+    await s.send("and then this")
+    expect(asked).toHaveLength(0)
+    await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
+    await s.idle()
+
+    await s.run(
+      Channels.use((c) => c.update(s.channel.id, { memberIds: [s.lead.id], leadId: s.lead.id })),
+    )
+    await s.send("a job for one member")
+    await s.idle()
+    expect(asked).toHaveLength(0)
+  })
+
+  test("off by default: nothing is asked and the lead reads the job", async () => {
+    const s = await setup()
+    await s.send("Please check the budget")
+    await s.idle()
+    expect((await s.history())[1]?.agentId).toBe(s.lead.id)
+    expect(channelLog(s.dataDir)).toEqual([])
   })
 })
