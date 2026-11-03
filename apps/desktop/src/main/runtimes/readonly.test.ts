@@ -29,6 +29,11 @@ describe("the read-only mode of a program is found in its own help text", () => 
     expect(await hasReadOnlyMode("pi", fake.pi)).toBe(false)
   })
 
+  test("opencode has no mode: its help names none, and rules in its settings are not a mode", async () => {
+    expect(READ_ONLY_HELP.opencode).toEqual([])
+    expect(await hasReadOnlyMode("opencode", fake.opencode)).toBe(false)
+  })
+
   test("Muse Code has the mode only when both of its programs name both controls", () => {
     const checks = READ_ONLY_HELP.muse
     expect(checks.map((c) => c.args[0])).toEqual(["exec", "serve"])

@@ -472,3 +472,49 @@ test("subscription: pi lists its own models and has no sign-in in the app", asyn
   expect(thinking.args[thinking.args.indexOf("--thinking") + 1]).toBe("xhigh")
   await app.close()
 })
+
+test("subscription: opencode lists its own models, has no sign-in in the app, and takes the level as rules", async () => {
+  test.setTimeout(120_000)
+  const fake = makeFakeRuntimes()
+  fake.setOpencode({ ready: false })
+  const { app, page } = await launch(freshUserData(), {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+    ROBOT_CLAUDE_BIN: "none",
+    ROBOT_CODEX_BIN: "none",
+    ROBOT_MUSE_BIN: "none",
+    ROBOT_PI_BIN: "none",
+    ROBOT_OPENCODE_BIN: fake.opencode,
+  })
+  await resizeWindow(app, 1300, 900)
+
+  await openAddForm(page)
+  await page.getByTestId("provider-kind").selectOption("opencode")
+  // No model is listed: the user signs in inside opencode.
+  await expect(page.getByTestId("runtime-status")).toHaveText("Not signed in.")
+  await expect(page.getByTestId("runtime-sign-in")).toHaveCount(0)
+  await expect(page.getByTestId("runtime-sign-in-hint")).toContainText("inside opencode")
+  await expect(page.getByTestId("provider-submit")).toBeDisabled()
+  await shot(page, "s17-11-opencode-not-ready")
+  fake.setOpencode({ ready: true })
+  await page.getByTestId("runtime-recheck").click()
+  await expect(page.getByTestId("runtime-status")).toHaveText("Signed in.")
+  await page.getByTestId("provider-submit").click()
+  await expect(page.getByTestId("provider-status")).toHaveText("Connected")
+  await page.getByTestId("settings-close").click()
+
+  await createAgent(page, "Opal")
+  await send(page, "hello opencode")
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Echo: hello opencode")
+  const call = fake.opencodeCalls().at(-1) as {
+    args: string[]
+    config: { permission: Record<string, string> }
+  }
+  // The model comes from the list of opencode, as "provider/model".
+  expect(call.args[call.args.indexOf("--model") + 1]).toMatch(/^[\w-]+\/fake-(free|large)$/)
+  expect(call.args).toContain("--standalone")
+  // The permission level of the agent reached the program as rules.
+  expect(call.config.permission.bash).toBe("deny")
+  await shot(page, "s17-12-opencode-chat")
+  await app.close()
+})

@@ -23,6 +23,7 @@ const kinds: readonly ProviderKind[] = [
   "codex",
   "muse",
   "pi",
+  "opencode",
   "openai",
   "anthropic",
   "custom",

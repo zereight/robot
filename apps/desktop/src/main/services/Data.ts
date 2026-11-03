@@ -426,7 +426,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               // The sign-in of a vendor program belongs to the other computer. Connect again.
               db.run(
-                "UPDATE provider_account SET off = 1 WHERE kind IN ('claude_code', 'codex', 'muse', 'pi')",
+                "UPDATE provider_account SET off = 1 WHERE kind IN ('claude_code', 'codex', 'muse', 'pi', 'opencode')",
               )
               db.run("INSERT INTO message SELECT * FROM imp.message")
               db.run("INSERT INTO memory SELECT * FROM imp.memory")

@@ -23,8 +23,9 @@ const STRIPPED = new Set([
 const EXTRA_PATH = ["/opt/homebrew/bin", "/usr/local/bin"]
 
 /**
- * The environment for a vendor program. pi is the exception: it serves the models that the user
- * set up in it, with keys from the environment among them, so its environment is left alone.
+ * The environment for a vendor program. pi and opencode are the exceptions: they serve the models
+ * that the user set up in them, with keys from the environment among them, so their environment
+ * is left alone.
  */
 export const runtimeEnv = (
   base: NodeJS.ProcessEnv = process.env,
@@ -33,9 +34,11 @@ export const runtimeEnv = (
 ): NodeJS.ProcessEnv => {
   const env: NodeJS.ProcessEnv = {}
   for (const [key, value] of Object.entries(base))
-    if (kind === "pi" || !STRIPPED.has(key)) env[key] = value
+    if (kind === "pi" || kind === "opencode" || !STRIPPED.has(key)) env[key] = value
   // The launcher of Muse Code updates itself in the background. Not while ROBot uses it.
   if (kind === "muse") env.MUSE_NO_AUTO_UPDATE = "1"
+  // The same for opencode: it does not update itself while ROBot uses it.
+  if (kind === "opencode") env.OPENCODE_DISABLE_AUTOUPDATE = "1"
   if (process.platform !== "win32") {
     const have = (env.PATH ?? "").split(delimiter)
     const extra = [...EXTRA_PATH, ...(home ? [`${home}/.local/bin`] : [])].filter(
