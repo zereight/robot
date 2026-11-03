@@ -24,6 +24,7 @@ import {
   Show,
 } from "solid-js"
 import { formatElapsed, formatHitTime, formatTime } from "../chat/format.ts"
+import { openThread } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
@@ -172,6 +173,9 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
   }
   const openSource = (task: Task) => {
     if (!task.sourceId || (task.source !== "chat" && task.source !== "channel")) return
+    // A linked device has the main thread only (spec 003, 012): the button is off for a thread.
+    if (ui.linked() && task.threadId) return
+    if (task.source === "chat") openThread(task.sourceId, task.threadId)
     ui.selectPlace({ kind: task.source === "chat" ? "agent" : "channel", id: task.sourceId })
     props.onClose()
   }
@@ -383,9 +387,23 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 </Button>
               </Show>
               <Show when={d().task.sourceId && ["chat", "channel"].includes(d().task.source)}>
-                <Button onClick={() => openSource(d().task)} data-testid="task-open-source">
+                <Button
+                  onClick={() => openSource(d().task)}
+                  disabled={ui.linked() && d().task.threadId !== undefined}
+                  title={
+                    ui.linked() && d().task.threadId !== undefined
+                      ? t("tasks.openSource.thread")
+                      : undefined
+                  }
+                  data-testid="task-open-source"
+                >
                   {t("tasks.openSource")}
                 </Button>
+                <Show when={ui.linked() && d().task.threadId !== undefined}>
+                  <span class={styles.meta} data-testid="task-open-source-off">
+                    {t("tasks.openSource.thread")}
+                  </span>
+                </Show>
               </Show>
               <span class={styles.spacer} />
               <Button variant="primary" onClick={props.onClose}>

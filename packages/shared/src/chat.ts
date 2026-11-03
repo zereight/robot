@@ -38,6 +38,22 @@ export type MessagePart =
       readonly name: string
       readonly why: "limit" | "error"
     }
+  /**
+   * The line "Compacted" (spec 003, "Compact"). The model gets `summary` in place of every older
+   * row of the thread. The chat keeps those rows. `at` is when the compact ended: the use of the
+   * context is not known until a reply that ends after it. `auto` is true for an automatic compact.
+   */
+  | {
+      readonly kind: "compacted"
+      readonly summary: string
+      readonly at: number
+      readonly auto: boolean
+    }
+  /**
+   * A muted line with no task: an automatic compact failed and the turn went on without it (spec
+   * 003, "Automatic compact"). `code` is the error code; the window writes the words.
+   */
+  | { readonly kind: "note"; readonly note: "compact_failed"; readonly code: string }
   | {
       readonly kind: "tool"
       readonly id: string
@@ -141,6 +157,8 @@ export type MessageStatus = "done" | "streaming" | "stopped" | "failed"
 export interface ChatMessage {
   readonly id: string
   readonly agentId: string
+  /** The thread of the message (spec 003, "Threads"). Null for the main thread. */
+  readonly threadId?: string | null
   readonly author: "user" | "agent"
   readonly parts: readonly MessagePart[]
   readonly status: MessageStatus
@@ -210,6 +228,7 @@ export interface ChatHistory {
 }
 
 export const MESSAGE_MAX = 100_000
+/** The message queue of one thread holds at most this many messages (spec 003). */
 export const QUEUE_MAX = 10
 export const ATTACH_MAX = 10
 export const ATTACH_BYTES = 20 * 1024 * 1024
@@ -223,6 +242,8 @@ export const ChatSend = Schema.Struct({
   files: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(ATTACH_MAX))),
   /** The skill of the chip in the message box (spec 017). */
   skillId: Schema.optionalKey(Schema.String),
+  /** The thread of the message (spec 003). None or null for the main thread. */
+  threadId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type ChatSend = typeof ChatSend.Type
 
@@ -261,11 +282,14 @@ export const sameDay = (a: number, b: number) => {
 export const messageSkill = (message: Pick<ChatMessage, "parts">) =>
   message.parts.find((p): p is SkillPart => p.kind === "skill")
 
-/** True when the saved parts of a message are one muted note: it is no turn of the chat. */
+/**
+ * True when the saved parts of a message are one muted note or the line "Compacted": it is no turn
+ * of the chat.
+ */
 export const isNoteOnly = (parts: string | readonly MessagePart[]): boolean => {
   try {
     const list = typeof parts === "string" ? (JSON.parse(parts) as MessagePart[]) : parts
-    return list.length > 0 && list.every((p) => p.kind === "note")
+    return list.length > 0 && list.every((p) => p.kind === "note" || p.kind === "compacted")
   } catch {
     return false
   }

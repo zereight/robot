@@ -153,6 +153,14 @@ const General = () => {
           ]}
         />
       </Row>
+      <Row label={t("settings.autoCompact")} hint={t("settings.autoCompact.hint")}>
+        <Switch
+          label={t("settings.autoCompact")}
+          testId="setting-auto-compact"
+          checked={app.settings.autoCompact}
+          onChange={(autoCompact) => app.update({ autoCompact })}
+        />
+      </Row>
       <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
         <Segmented
           label={t("settings.silentLimit")}

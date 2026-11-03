@@ -1,4 +1,11 @@
-import { type Agent, type ChatMessage, type PlaceRef, sameDay, startsGroup } from "@robot/shared"
+import {
+  type Agent,
+  type ChatMessage,
+  canAddThread,
+  type PlaceRef,
+  sameDay,
+  startsGroup,
+} from "@robot/shared"
 import {
   createEffect,
   createMemo,
@@ -11,11 +18,13 @@ import {
   Show,
 } from "solid-js"
 import { AgentChecklist } from "../imports/ImportChecklist.tsx"
+import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
 import { useApp } from "../state/app.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
 import { useUi } from "../state/ui.tsx"
+import { showToast } from "../ui/toast.ts"
 import { Composer } from "./Composer.tsx"
 import styles from "./chat.module.css"
 import { formatDay, formatElapsed } from "./format.ts"
@@ -23,9 +32,12 @@ import { MessageRow } from "./MessageRow.tsx"
 import { RestartNotice } from "./RestartNotice.tsx"
 import { shapeOf } from "./shape.ts"
 import { createChat } from "./state.ts"
+import { createMeter, createThreads, openThread, threadPart } from "./threads.ts"
 
 export interface ChatViewProps {
   agent: Agent
+  /** The open thread (spec 003, "Threads"). Null is the main thread. */
+  threadId: string | null
   /** The first screen of the chat: face, name and role. */
   start: JSX.Element
   onConnect: () => void
@@ -36,7 +48,7 @@ export interface ChatViewProps {
 
 const NEAR_BOTTOM_PX = 48
 
-const WorkingLine = (props: { since: number }) => {
+const WorkingLine = (props: { since: number; compacting: boolean }) => {
   const { t } = useApp()
   const [now, setNow] = createSignal(Date.now())
   const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -44,7 +56,7 @@ const WorkingLine = (props: { since: number }) => {
   return (
     <div class={styles.working} data-testid="working-line" aria-live="polite">
       <span class={styles.pulse} />
-      <span>{t("chat.working")}</span>
+      <span>{props.compacting ? t("chat.compacting") : t("chat.working")}</span>
       <span>{formatElapsed(now() - props.since)}</span>
     </div>
   )
@@ -54,7 +66,26 @@ export const ChatView = (props: ChatViewProps) => {
   const app = useApp()
   const { t } = app
   const ui = useUi()
-  const chat = createChat(props.agent.id, () => (ui.linked() ? ui.server()?.id : undefined))
+  const server = () => (ui.linked() ? ui.server()?.id : undefined)
+  const chat = createChat(props.agent.id, server, () => props.threadId)
+  // A linked computer and the phone have the main thread only, and no meter (spec 011, 012).
+  const threads = createThreads(() => props.agent.id, server)
+  const meter = createMeter(
+    () => props.agent.id,
+    () => props.threadId,
+    server,
+  )
+  const compacting = () => meter()?.compacting === true
+  const archived = () =>
+    props.threadId !== null &&
+    threads.list.threads.find((x) => x.id === props.threadId)?.archivedAt != null
+  /** What the open thread does now, or undefined when it is not known (a linked server). */
+  const busy = () => {
+    if (ui.linked() || !threads.loaded) return undefined
+    return props.threadId === null
+      ? threads.list.main.busy
+      : (threads.list.threads.find((x) => x.id === props.threadId)?.busy ?? null)
+  }
   const place: PlaceRef = { kind: "agent", id: props.agent.id }
   const [replyTo, setReplyTo] = createSignal<ChatMessage>()
   const [atBottom, setAtBottom] = createSignal(true)
@@ -67,7 +98,26 @@ export const ChatView = (props: ChatViewProps) => {
   const byId = createMemo(() => new Map(chat.messages.map((m) => [m.id, m])))
   const streaming = () => chat.messages.find((m) => m.status === "streaming")
   const retry = useRetry()
-  const working = () => props.agent.state === "working" || streaming() !== undefined
+  const working = () => {
+    if (streaming() !== undefined || compacting()) return true
+    const now = busy()
+    return now === undefined ? props.agent.state === "working" : now === "turn"
+  }
+  /** Fork at a finished message (spec 003, "Fork"). The new thread opens. */
+  const fork = async (message: ChatMessage) => {
+    try {
+      const made = await call("chat.thread.fork", {
+        agentId: props.agent.id,
+        ...threadPart(props.threadId),
+        messageId: message.id,
+      })
+      openThread(props.agent.id, made.id)
+    } catch (e) {
+      const error = describeError(e)
+      showToast("error", error.key, error.params)
+    }
+  }
+  const forkOff = () => (canAddThread(threads.list.threads.length) ? undefined : t("threads.limit"))
   /** The notice of a request that a restart cut off. It leaves when the user writes. */
   const cutNotice = () => {
     const cut = chat.cut
@@ -98,7 +148,8 @@ export const ChatView = (props: ChatViewProps) => {
 
   // Mark the chat read while it is open and the window has focus.
   const markRead = () => {
-    if (document.hasFocus()) void call("chat.markRead", { agentId: props.agent.id })
+    if (document.hasFocus())
+      void call("chat.markRead", { agentId: props.agent.id, ...threadPart(props.threadId) })
   }
   createEffect(
     on(
@@ -185,6 +236,12 @@ export const ChatView = (props: ChatViewProps) => {
                     quoted={message.replyTo ? byId().get(message.replyTo) : undefined}
                     onReply={() => setReplyTo(message)}
                     onJumpTo={jumpTo}
+                    onFork={
+                      ui.linked() || message.status === "streaming"
+                        ? undefined
+                        : () => void fork(message)
+                    }
+                    forkOff={forkOff()}
                     onEdit={(text) =>
                       call("chat.edit", { agentId: props.agent.id, messageId: message.id, text })
                     }
@@ -203,7 +260,7 @@ export const ChatView = (props: ChatViewProps) => {
             }}
           </For>
           <Show when={working()}>
-            <WorkingLine since={streaming()?.createdAt ?? Date.now()} />
+            <WorkingLine since={streaming()?.createdAt ?? Date.now()} compacting={compacting()} />
           </Show>
           {props.end}
         </div>
@@ -236,22 +293,33 @@ export const ChatView = (props: ChatViewProps) => {
         </div>
       </Show>
       <Show when={cutNotice()}>
-        {(cut) => <RestartNotice agentId={props.agent.id} cut={cut()} />}
+        {(cut) => <RestartNotice agentId={props.agent.id} threadId={props.threadId} cut={cut()} />}
       </Show>
-      <Composer
-        agent={props.agent}
-        working={working()}
-        queue={chat.queue}
-        hold={chat.hold}
-        replyTo={replyTo()}
-        onCancelReply={() => setReplyTo(undefined)}
-        onSent={() => {
-          setAtBottom(true)
-          queueMicrotask(scrollToBottom)
-        }}
-        onConnect={props.onConnect}
-        onChooseModel={props.onChooseModel}
-      />
+      {/* An archived thread takes no message until the user restores it (spec 003). */}
+      <Show
+        when={!archived()}
+        fallback={
+          <div class={styles.blocked} data-testid="thread-archived">
+            {t("threads.archivedNote")}
+          </div>
+        }
+      >
+        <Composer
+          agent={props.agent}
+          threadId={props.threadId}
+          working={working()}
+          queue={chat.queue}
+          hold={chat.hold}
+          replyTo={replyTo()}
+          onCancelReply={() => setReplyTo(undefined)}
+          onSent={() => {
+            setAtBottom(true)
+            queueMicrotask(scrollToBottom)
+          }}
+          onConnect={props.onConnect}
+          onChooseModel={props.onChooseModel}
+        />
+      </Show>
     </div>
   )
 }

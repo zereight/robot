@@ -730,4 +730,39 @@ export const migrations: readonly string[] = [
   ALTER TABLE channel ADD COLUMN sensitive_mark TEXT;
   ALTER TABLE action_log ADD COLUMN sensitive TEXT;
   `,
+  `
+  -- Threads (spec 003, "Threads"). A thread is a second conversation with the same agent. The main
+  -- thread has no row: a message with no thread is in the main thread, so every message from before
+  -- this step stays there. A thread syncs (spec 019) like a message. \`titled\` is 1 when the title
+  -- is fixed: by the user, by a fork, or by the first message. A fork keeps a link to its source
+  -- thread (NULL for the main thread) and message; it does not change when the source goes.
+  CREATE TABLE thread (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    title TEXT,
+    titled INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    archived_at INTEGER,
+    fork_thread_id TEXT,
+    fork_message_id TEXT
+  );
+  CREATE INDEX thread_agent ON thread (agent_id, created_at);
+  ${dirtyTriggers("thread", "thread", plainId)}
+  ALTER TABLE message ADD COLUMN thread_id TEXT REFERENCES thread (id) ON DELETE CASCADE;
+  CREATE INDEX message_thread ON message (thread_id, created_at);
+  -- When the user last read a thread, for its unread count. It stays on this computer, as the
+  -- read time of the main thread does.
+  CREATE TABLE thread_read (
+    thread_id TEXT PRIMARY KEY REFERENCES thread (id) ON DELETE CASCADE,
+    at INTEGER NOT NULL
+  );
+  -- The pause of automatic compact for one conversation (spec 003): the number of turns that must
+  -- end before the next try. \`thread_id\` is '' for the main thread. It stays on this computer.
+  CREATE TABLE compact_pause (
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    thread_id TEXT NOT NULL DEFAULT '',
+    turns INTEGER NOT NULL,
+    PRIMARY KEY (agent_id, thread_id)
+  );
+  `,
 ]

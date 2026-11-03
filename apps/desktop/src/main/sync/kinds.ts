@@ -35,6 +35,7 @@ import {
   TASK_PROGRESS,
   TASK_SOURCES,
   TASK_STATES,
+  THREAD_TITLE_MAX,
   TriggerSchema,
   VERDICTS,
   validSchedule,
@@ -313,8 +314,18 @@ const partCheck = (v: unknown): boolean => {
         str(SKILL_NAME_MAX * 2, 1)(v.name) &&
         str(SKILL_INSTRUCTIONS_MAX, 1)(v.instructions)
       )
+    // The line "Compacted" syncs with its summary (spec 003, 019).
+    case "compacted":
+      return (
+        shape(["kind", "summary", "at", "auto"])(v) &&
+        str(TEXT_MAX)(v.summary) &&
+        int(v.at) &&
+        bool(v.auto)
+      )
     case "note":
       // A note travels as a code with its names. The window writes the words (spec 002, 009).
+      if (v.note === "compact_failed")
+        return shape(["kind", "note", "code"])(v) && str(100, 1)(v.code)
       if (v.note === "starter_not_made")
         return (
           shape(["kind", "note", "what", "name", "why"])(v) &&
@@ -976,6 +987,7 @@ interface MessageRow {
   edited_at: number | null
   from_name: string | null
   origin: string | null
+  thread_id: string | null
 }
 
 const errorOf = (r: {
@@ -1012,6 +1024,9 @@ const message: KindDef = {
     editedAt: { check: nullable(int) },
     sender: { check: nullable(str(100)) },
     origin: { check: str(64, 1) },
+    // The thread of the message (spec 003). Null for the main thread. A computer that does not
+    // send it has the main thread only.
+    threadId: { check: nullable(str(100, 1)) },
   },
   required: [
     "agentId",
@@ -1027,7 +1042,7 @@ const message: KindDef = {
     "sender",
     "origin",
   ],
-  fixed: ["agentId", "author", "createdAt", "sender", "origin"],
+  fixed: ["agentId", "author", "createdAt", "sender", "origin", "threadId"],
   count: (db) => q.count(db, "message"),
   ids: (db, after, limit) => q.ids(db, "message", after, limit),
   read: (ctx, id) => {
@@ -1047,6 +1062,7 @@ const message: KindDef = {
         editedAt: r.edited_at,
         sender: r.from_name,
         origin: r.origin ?? ctx.self,
+        threadId: r.thread_id,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: Math.max(r.created_at, r.finished_at ?? 0, r.edited_at ?? 0),
@@ -1054,10 +1070,22 @@ const message: KindDef = {
   },
   create: (ctx, id, f) => {
     if (!has(ctx.db, "agent", f.agentId as string)) return false
+    const threadId = (f.threadId as string | null | undefined) ?? null
+    // A thread of another agent is no place for the message.
+    if (
+      threadId !== null &&
+      ctx.db.get(
+        "SELECT 1 AS x FROM thread WHERE id = ? AND agent_id = ?",
+        threadId,
+        f.agentId as string,
+      ) === undefined
+    )
+      return false
     const peer = ctx.peer()
     insert(ctx.db, "message", {
       id,
       agent_id: f.agentId,
+      thread_id: threadId,
       author: f.author,
       parts: JSON.stringify(f.parts),
       status: f.status,
@@ -1088,6 +1116,78 @@ const message: KindDef = {
     }),
   remove: (ctx, id) => ctx.db.run("DELETE FROM message WHERE id = ?", id),
   label: (f) => firstText(f.parts),
+}
+
+interface ThreadRow {
+  id: string
+  agent_id: string
+  title: string | null
+  titled: number
+  created_at: number
+  archived_at: number | null
+  fork_thread_id: string | null
+  fork_message_id: string | null
+}
+
+/**
+ * A thread of an agent (spec 003, "Threads"). It syncs as messages do (019). The read time and the
+ * pause of automatic compact stay on each computer.
+ */
+const thread: KindDef = {
+  kind: "thread",
+  rank: 2,
+  fields: {
+    agentId: { check: str(100, 1) },
+    title: { check: nullable(str(THREAD_TITLE_MAX * 2, 1)) },
+    titled: { check: bool },
+    createdAt: { check: int },
+    archivedAt: { check: nullable(int) },
+    forkThreadId: { check: nullable(str(100, 1)) },
+    forkMessageId: { check: nullable(str(100, 1)) },
+  },
+  required: ["agentId", "title", "titled", "createdAt", "archivedAt"],
+  fixed: ["agentId", "createdAt", "forkThreadId", "forkMessageId"],
+  count: (db) => q.count(db, "thread"),
+  ids: (db, after, limit) => q.ids(db, "thread", after, limit),
+  read: (ctx, id) => {
+    const r = ctx.db.get<ThreadRow>("SELECT * FROM thread WHERE id = ?", id)
+    if (!r) return undefined
+    return {
+      fields: {
+        agentId: r.agent_id,
+        title: r.title,
+        titled: r.titled === 1,
+        createdAt: r.created_at,
+        archivedAt: r.archived_at,
+        forkThreadId: r.fork_thread_id,
+        forkMessageId: r.fork_message_id,
+      },
+      parent: { kind: "agent", id: r.agent_id },
+      wall: Math.max(r.created_at, r.archived_at ?? 0),
+    }
+  },
+  create: (ctx, id, f) => {
+    if (!has(ctx.db, "agent", f.agentId as string)) return false
+    insert(ctx.db, "thread", {
+      id,
+      agent_id: f.agentId,
+      title: f.title,
+      titled: f.titled ? 1 : 0,
+      created_at: f.createdAt,
+      archived_at: f.archivedAt,
+      fork_thread_id: f.forkThreadId ?? null,
+      fork_message_id: f.forkMessageId ?? null,
+    })
+    return true
+  },
+  write: (ctx, id, f) =>
+    update(ctx.db, "thread", "id = ?", [id], {
+      ...(f.title !== undefined ? { title: f.title } : {}),
+      ...(f.titled !== undefined ? { titled: f.titled ? 1 : 0 } : {}),
+      ...(f.archivedAt !== undefined ? { archived_at: f.archivedAt } : {}),
+    }),
+  remove: (ctx, id) => ctx.db.run("DELETE FROM thread WHERE id = ?", id),
+  label: (f) => (typeof f.title === "string" ? f.title : ""),
 }
 
 interface ChannelMessageRow {
@@ -1918,6 +2018,7 @@ export const KINDS: Readonly<Record<SyncKind, KindDef>> = {
   channel,
   memory,
   message,
+  thread,
   cmessage,
   routine,
   workflow,

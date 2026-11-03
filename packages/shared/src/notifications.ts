@@ -52,6 +52,11 @@ export interface PlaceTarget {
   readonly kind: "agent" | "channel"
   readonly id: string
   readonly messageId?: string
+  /**
+   * The thread of a message in a direct chat, when it is not the main thread (spec 003). A linked
+   * device cannot open it in this version (spec 011, 012).
+   */
+  readonly threadId?: string
   /** Set for a place on a linked server: the window opens that server first (spec 012). */
   readonly serverId?: string
 }

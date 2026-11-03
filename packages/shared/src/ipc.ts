@@ -60,6 +60,7 @@ import type {
 } from "./sync.ts"
 import type { Task, TaskDetail } from "./task.ts"
 import type { TeachState } from "./teach.ts"
+import type { ChatMeter, ChatThread, ChatThreads } from "./threads.ts"
 import type { TodaySnapshot } from "./today.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceKind, PlaceRef, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
@@ -550,25 +551,53 @@ export interface RpcMethods {
     input: { serverId: string; query: string; offset?: number }
     output: SearchPage
   }
-  "chat.history": { input: { agentId: string }; output: ChatHistory }
+  /**
+   * Each chat method takes the thread (spec 003, "Threads"). None or null is the main thread. A
+   * linked computer and the phone get the main thread only (011, 012).
+   */
+  "chat.history": { input: ThreadRef; output: ChatHistory }
   "chat.send": { input: ChatSend; output: { queued: boolean } }
-  "chat.stop": { input: { agentId: string }; output: undefined }
+  "chat.stop": { input: ThreadRef; output: undefined }
   /** As `tasks.retry`, for the failed reply of a chat. */
   "chat.retry": {
-    input: { agentId: string; messageId: string; confirmed?: boolean }
+    input: ThreadRef & { messageId: string; confirmed?: boolean }
     output: RetryResult
   }
-  "chat.edit": { input: { agentId: string; messageId: string; text: string }; output: undefined }
+  "chat.edit": { input: ThreadRef & { messageId: string; text: string }; output: undefined }
   "chat.queue.update": {
-    input: { agentId: string; itemId: string; text: string }
+    input: ThreadRef & { itemId: string; text: string }
     output: undefined
   }
-  "chat.queue.remove": { input: { agentId: string; itemId: string }; output: undefined }
+  "chat.queue.remove": { input: ThreadRef & { itemId: string }; output: undefined }
   /** Sends a queued message into the turn that runs now (spec 003). */
-  "chat.queue.sendNow": { input: { agentId: string; itemId: string }; output: undefined }
+  "chat.queue.sendNow": { input: ThreadRef & { itemId: string }; output: undefined }
   /** Deletes a message of the running turn that the agent did not read yet (spec 003). */
-  "chat.unread.delete": { input: { agentId: string; messageId: string }; output: undefined }
-  "chat.markRead": { input: { agentId: string }; output: undefined }
+  "chat.unread.delete": { input: ThreadRef & { messageId: string }; output: undefined }
+  "chat.markRead": { input: ThreadRef; output: undefined }
+  /** The context meter of a thread and why Compact is off (spec 003). */
+  "chat.meter": { input: ThreadRef; output: ChatMeter }
+  /** Runs a manual compact of the thread (spec 003, "Compact"). It ends when the compact ends. */
+  "chat.compact": { input: ThreadRef; output: undefined }
+  /** The threads of an agent, for the list in the chat header (spec 003, "Threads"). */
+  "chat.threads": { input: { agentId: string }; output: ChatThreads }
+  "chat.thread.create": { input: { agentId: string }; output: ChatThread }
+  /** A new thread with a copy of the conversation up to the message (spec 003, "Fork"). */
+  "chat.thread.fork": { input: ThreadRef & { messageId: string }; output: ChatThread }
+  "chat.thread.rename": {
+    input: { agentId: string; threadId: string; title: string }
+    output: undefined
+  }
+  "chat.thread.archive": {
+    input: { agentId: string; threadId: string; archived: boolean }
+    output: undefined
+  }
+  "chat.thread.delete": { input: { agentId: string; threadId: string }; output: undefined }
+}
+
+/** A thread of an agent. `threadId` none or null is the main thread. */
+export interface ThreadRef {
+  agentId: string
+  threadId?: string | null
 }
 
 /** Events that the main process pushes to the renderer. */
@@ -624,7 +653,16 @@ export interface RpcEvents {
   /** A new or changed message. While a reply streams, this comes many times. */
   "chat.message": ChatMessage
   "chat.removed": { agentId: string; messageId: string }
-  "chat.queue": { agentId: string; queue: readonly QueuedMessage[]; hold: QueueHold | null }
+  "chat.queue": {
+    agentId: string
+    threadId?: string | null
+    queue: readonly QueuedMessage[]
+    hold: QueueHold | null
+  }
+  /** The meter or the compact state of a thread changed: the window reads `chat.meter` again. */
+  "chat.meter": { agentId: string; threadId: string | null }
+  /** A thread was made, renamed, archived, restored or deleted, or its unread count changed. */
+  "chat.threads": { agentId: string }
 }
 
 export type RpcMethod = keyof RpcMethods

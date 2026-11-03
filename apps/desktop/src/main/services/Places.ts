@@ -64,8 +64,13 @@ export class Places extends Context.Service<Places, PlacesService>()("robot/main
       }
       const unread = (agentId: string) =>
         db.get<{ n: number }>(
+          // Each thread keeps its own count (spec 003). The place shows the sum of them. The line
+          // "Compacted" is no news.
           `SELECT COUNT(*) AS n FROM message m JOIN agent a ON a.id = m.agent_id
-           WHERE m.agent_id = ? AND m.author = 'agent' AND m.finished_at > a.last_read_at`,
+           LEFT JOIN thread_read r ON r.thread_id = m.thread_id
+           WHERE m.agent_id = ? AND m.author = 'agent'
+             AND m.finished_at > CASE WHEN m.thread_id IS NULL THEN a.last_read_at ELSE COALESCE(r.at, 0) END
+             AND m.parts NOT LIKE '%"kind":"compacted"%'`,
           agentId,
         )?.n ?? 0
 

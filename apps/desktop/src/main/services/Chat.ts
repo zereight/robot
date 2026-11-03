@@ -13,8 +13,15 @@ import {
   CHAIN_LIMIT_RULE,
   type ChatHistory,
   type ChatMessage,
+  type ChatMeter,
   type ChatSend,
+  type ChatThread,
+  type ChatThreads,
+  COMPACT_AT,
+  type CompactOff,
   type CutNotice,
+  canAddThread,
+  compactCut,
   createReadGuard,
   endOfTurn,
   type FilePart,
@@ -28,7 +35,9 @@ import {
   messageFiles,
   messageSkill,
   messageText,
+  meterShare,
   newTurnMark,
+  nextPause,
   type OutsideSource,
   outsideOfCall,
   outsideOfParts,
@@ -42,20 +51,23 @@ import {
   runtimeTakesInput,
   type SkillPart,
   type StepEffort,
+  shouldAutoCompact,
   skillLead,
   starterOf,
   stepTurnEffort,
   type Task,
   type TaskProgress,
   type TaskSource,
+  type ThreadBusy,
   type ToolAsk,
   type TurnEnd,
   type TurnStarter,
   taskDepth,
+  threadTitle,
   toldAboutBlocked,
   toolNameOf,
 } from "@robot/shared"
-import { Cause, Context, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
@@ -72,7 +84,7 @@ import { Memory } from "./Memory.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
-import { Providers, storedFailure } from "./Providers.ts"
+import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
 import { closing, turnWatch } from "./silence.ts"
@@ -105,6 +117,11 @@ interface MessageRow {
   joined_to: string | null
   /** When the agent read the message that joined a turn. Null until then. */
   read_at: number | null
+  /** The thread of the message (spec 003). Null for the main thread. */
+  thread_id: string | null
+  input_tokens: number | null
+  output_tokens: number | null
+  finished_at: number | null
 }
 
 interface AgentModelRow {
@@ -158,8 +175,17 @@ export interface TaskOrigin {
   readonly retryOf?: string
 }
 
+/** A conversation of an agent: the main thread (`threadId` null) or another thread (spec 003). */
+export interface Place {
+  readonly agentId: string
+  readonly threadId: string | null
+}
+/** The key of the state of one conversation: the id of the thread, or of the agent for the main thread. */
+const keyOf = (place: Place) => place.threadId ?? place.agentId
+const mainOf = (agentId: string): Place => ({ agentId, threadId: null })
+
 export interface ChatService {
-  history(agentId: string): Effect.Effect<ChatHistory>
+  history(agentId: string, threadId?: string | null): Effect.Effect<ChatHistory>
   /**
    * Sends at once when the agent is free. While it works, a message of the user joins the turn
    * (spec 003), or waits in the queue by the setting, by the program, or when it has an origin.
@@ -169,7 +195,7 @@ export interface ChatService {
   sendNow(agentId: string, itemId: string): Effect.Effect<void, AppError>
   /** Deletes a message that joined the turn and that the agent did not read. */
   deleteUnread(agentId: string, messageId: string): Effect.Effect<void, AppError>
-  stop(agentId: string): Effect.Effect<void>
+  stop(agentId: string, threadId?: string | null): Effect.Effect<void>
   /**
    * Asks the model again for the reply that failed. When the first try ran steps that may have
    * changed things, nothing starts and the answer holds the retry note (spec 005).
@@ -182,7 +208,18 @@ export interface ChatService {
   edit(agentId: string, messageId: string, text: string): Effect.Effect<void, AppError>
   updateQueued(agentId: string, itemId: string, text: string): Effect.Effect<void, AppError>
   removeQueued(agentId: string, itemId: string): Effect.Effect<void>
-  markRead(agentId: string): Effect.Effect<void>
+  markRead(agentId: string, threadId?: string | null): Effect.Effect<void>
+  /** The context meter of a thread, and why Compact is off (spec 003). */
+  meter(place: Place): Effect.Effect<ChatMeter>
+  /** Runs a manual compact of the thread. It ends when the compact ends (spec 003). */
+  compact(place: Place): Effect.Effect<void, AppError>
+  threads(agentId: string): Effect.Effect<ChatThreads>
+  createThread(agentId: string): Effect.Effect<ChatThread, AppError>
+  /** A new thread with a copy of the conversation up to the message (spec 003, "Fork"). */
+  fork(place: Place, messageId: string): Effect.Effect<ChatThread, AppError>
+  renameThread(agentId: string, threadId: string, title: string): Effect.Effect<void, AppError>
+  archiveThread(agentId: string, threadId: string, archived: boolean): Effect.Effect<void, AppError>
+  deleteThread(agentId: string, threadId: string): Effect.Effect<void, AppError>
   /** Tells the windows about a message that sync wrote, so an open chat shows it at once. */
   announce(messageId: string): void
   /** Posts one muted line of the agent, with no task: a watch saw no change (spec 009). */
@@ -207,6 +244,35 @@ interface LiveTurn {
 const EMIT_EVERY_MS = 50
 const SAVE_EVERY_MS = 500
 const QUOTE_MAX = 500
+/** The words around the summary of a compact, as the model reads it (spec 003). */
+const summaryTurn = (summary: string) =>
+  `Summary of the earlier conversation, written when it was compacted:\n\n${summary}`
+/** What the model reads to write the summary of a compact. */
+const COMPACT_SYSTEM =
+  "You write the summary of a conversation between a user and an AI agent. The summary takes the place of the conversation for the agent. Keep the facts, decisions, names, files, open questions and the current state of the work. Leave out small talk. Write plain text only. Do not answer the user."
+const COMPACT_ASK = "Write the summary of the conversation above now."
+/** The line "Compacted" of a row, if it is one. */
+const compactedOf = (row: { readonly parts: string }) => {
+  try {
+    return (JSON.parse(row.parts) as MessagePart[]).find(
+      (p): p is Extract<MessagePart, { kind: "compacted" }> => p.kind === "compacted",
+    )
+  } catch {
+    return undefined
+  }
+}
+
+interface ThreadRow {
+  id: string
+  agent_id: string
+  title: string | null
+  titled: number
+  created_at: number
+  archived_at: number | null
+  fork_thread_id: string | null
+  fork_message_id: string | null
+}
+
 /** The line before the notes that the app adds to a message for Claude Code. */
 const NOTES_LEAD = "Notes from the app for this message. The user did not write them:"
 
@@ -241,6 +307,7 @@ export const copyAttachments = (workspace: string, paths: readonly string[]): Fi
 const toMessage = (row: MessageRow, unread?: "waiting" | "handed"): ChatMessage => ({
   id: row.id,
   agentId: row.agent_id,
+  threadId: row.thread_id,
   author: row.author,
   parts: JSON.parse(row.parts) as MessagePart[],
   status: row.status,
@@ -374,6 +441,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const notifier = yield* Notifier
       const skills = yield* Skills
       const settings = yield* SettingsStore
+      // Each map below is keyed by the conversation (`keyOf`): every thread has its own turn, its
+      // own message queue and its own worker (spec 003, "Threads").
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
@@ -392,11 +461,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
        */
       const asks = new Map<string, number>()
       /** Writes a queued item as a message, and moves its origin to the message. */
-      const insertQueued = (agentId: string, next: QueuedMessage) => {
+      const insertQueued = (place: Place, next: QueuedMessage) => {
         const sender = senders.get(next.id)
         senders.delete(next.id)
         const row = insertMessage(
-          agentId,
+          place.agentId,
           "user",
           next.text,
           next.replyTo,
@@ -405,6 +474,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           sender ?? null,
           null,
           next.skill ?? null,
+          place.threadId,
         )
         const origin = origins.get(next.id)
         if (origin) {
@@ -439,11 +509,34 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         )
       const messageRow = (id: string) =>
         db.get<MessageRow>("SELECT * FROM message WHERE id = ?", id)
-      const rows = (agentId: string) =>
+      /** The messages of one conversation, oldest first. */
+      const rows = (place: Place) =>
         db.all<MessageRow>(
-          "SELECT * FROM message WHERE agent_id = ? ORDER BY created_at, rowid",
-          agentId,
+          "SELECT * FROM message WHERE agent_id = ? AND thread_id IS ? ORDER BY created_at, rowid",
+          place.agentId,
+          place.threadId,
         )
+      const placeOfRow = (row: Pick<MessageRow, "agent_id" | "thread_id">): Place => ({
+        agentId: row.agent_id,
+        threadId: row.thread_id,
+      })
+      const threadRow = (agentId: string, threadId: string) =>
+        db.get<ThreadRow>("SELECT * FROM thread WHERE id = ? AND agent_id = ?", threadId, agentId)
+      /** The conversation of a key of the maps. */
+      const placeOfKey = (agentId: string, key: string): Place =>
+        key === agentId ? mainOf(agentId) : { agentId, threadId: key }
+      /** The keys of every conversation of an agent. */
+      const keysOf = (agentId: string) => [
+        agentId,
+        ...db
+          .all<{ id: string }>("SELECT id FROM thread WHERE agent_id = ?", agentId)
+          .map((r) => r.id),
+      ]
+      /** The conversation whose message queue holds the item. */
+      const queuePlace = (agentId: string, itemId: string): Place | undefined => {
+        const key = keysOf(agentId).find((k) => queues.get(k)?.some((q) => q.id === itemId))
+        return key === undefined ? undefined : placeOfKey(agentId, key)
+      }
 
       /**
        * How far the turn of each failed reply went, by the id of the reply (spec 005). A reply
@@ -472,7 +565,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const message =
           row.joined_to === null || row.read_at !== null
             ? toMessage(row)
-            : toMessage(row, live.get(row.agent_id)?.handed.has(row.id) ? "handed" : "waiting")
+            : toMessage(
+                row,
+                live.get(keyOf(placeOfRow(row)))?.handed.has(row.id) ? "handed" : "waiting",
+              )
         if (!failedReply(row)) return message
         const progress = (known ?? progressOf([row.id])).get(row.id)
         return progress ? { ...message, progress } : message
@@ -525,12 +621,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const kind = account ? providers.runtimeKind(account) : null
         return kind && !runtimeTakesInput(kind) ? { runtime: kind } : null
       }
-      const emitQueue = (agentId: string) =>
+      const emitQueue = (place: Place) => {
         bus.emit("chat.queue", {
-          agentId,
-          queue: queues.get(agentId) ?? [],
-          hold: holdOf(agentId),
+          agentId: place.agentId,
+          threadId: place.threadId,
+          queue: queues.get(keyOf(place)) ?? [],
+          hold: holdOf(place.agentId),
         })
+        // A thread with queued messages cannot be archived or deleted (spec 003).
+        bus.emit("chat.threads", { agentId: place.agentId })
+      }
 
       /** The time of a new message of a direct chat (see `nextMessageTime`). */
       const timeIn = (agentId: string) =>
@@ -551,11 +651,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         from: Actor | null = null,
         joined: { readonly to: string; readonly readAt: number | null } | null = null,
         skill: SkillPart | null = null,
+        threadId: string | null = null,
       ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name, joined_to, read_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name, joined_to, read_at, thread_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           agentId,
           author,
@@ -572,10 +673,22 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           from?.name ?? null,
           joined?.to ?? null,
           joined?.readAt ?? null,
+          threadId,
         )
         const row = messageRow(id) as MessageRow
+        // A new thread takes the first line of its first message as its title (spec 003).
+        if (threadId !== null && author === "user") {
+          const title = threadTitle(text)
+          if (title)
+            db.run(
+              "UPDATE thread SET title = ?, titled = 1 WHERE id = ? AND titled = 0",
+              title,
+              threadId,
+            )
+        }
         emitMessage(row)
         placesChanged(agentId)
+        bus.emit("chat.threads", { agentId })
         return row
       }
 
@@ -608,8 +721,19 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
        * brings the notes that it had when it was asked. A message that joined a turn and was read
        * there goes before the reply of that turn, because the reply answers it too.
        */
-      const buildTurns = (agentId: string, exceptId: string, notes: boolean): Turn[] => {
-        const kept = rows(agentId).filter(
+      const buildTurns = (place: Place, exceptId: string, notes: boolean): Turn[] => {
+        const all = rows(place)
+        const mark = all.findLastIndex((r) => compactedOf(r) !== undefined)
+        const summary = mark >= 0 ? compactedOf(all[mark] as MessageRow)?.summary : undefined
+        const turns = modelTurns(orderedRows(all.slice(mark + 1), exceptId), notes)
+        if (summary === undefined) return turns
+        // The model gets one summary in place of everything older (spec 003, "Compact").
+        return [{ role: "user", content: summaryTurn(summary) }, ...turns]
+      }
+
+      /** The rows that the model reads, in the order that it reads them (see `buildTurns`). */
+      const orderedRows = (list: readonly MessageRow[], exceptId: string): MessageRow[] => {
+        const kept = list.filter(
           (r) =>
             r.id !== exceptId &&
             !(r.author === "agent" && r.status === "failed") &&
@@ -626,13 +750,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (r.author === "agent") ordered.push(...kept.filter((j) => joinedTo(j) === r.id))
           ordered.push(r)
         }
-        return ordered.map((r) => ({
+        return ordered
+      }
+
+      const modelTurns = (ordered: readonly MessageRow[], notes: boolean): Turn[] =>
+        ordered.map((r) => ({
           role: r.author === "user" ? "user" : "assistant",
           content:
             turnText(r) +
             (notes && r.author === "user" && r.context ? `\n\n${NOTES_LEAD}\n${r.context}` : ""),
         }))
-      }
 
       /**
        * The words around a message that another agent sent. The receiver reads it as input from a
@@ -678,11 +805,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
 
       /** Answers the last message. `resumed` is a task that waited through a restart: it goes on. */
-      const runTurn = Effect.fn("Chat.runTurn")(function* (agentId: string, resumed?: Task) {
+      const runTurn = Effect.fn("Chat.runTurn")(function* (place: Place, resumed?: Task) {
+        const agentId = place.agentId
+        const key = keyOf(place)
         const own = agentRow(agentId)
         if (!own) return
         const kept = resumed?.messageId ? messageRow(resumed.messageId) : undefined
-        const lastUser = rows(agentId)
+        const lastUser = rows(place)
           .filter((r) => r.author === "user")
           .at(-1)
         // A routine with a model of its own uses it for its turn (spec 009).
@@ -695,7 +824,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               model_effort: ownModel.effort,
             }
           : own
-        const reply = kept ?? insertMessage(agentId, "agent", "", null, agent.model_name)
+        const reply =
+          kept ??
+          insertMessage(
+            agentId,
+            "agent",
+            "",
+            null,
+            agent.model_name,
+            [],
+            null,
+            null,
+            null,
+            place.threadId,
+          )
         const asked = lastUser ? toMessage(lastUser) : undefined
         const origin = lastUser ? origins.get(lastUser.id) : undefined
         const turnEffort = origin?.effort
@@ -706,8 +848,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             .join(", ")
         // Messages that a stopped turn did not read come after its reply. The new turn answers
         // all of them, as one request, in the order that the user sent them (spec 003).
-        const all = rows(agentId)
-        const lastReply = all.findLastIndex((r) => r.author === "agent" && r.id !== reply.id)
+        const all = rows(place)
+        const lastReply = all.findLastIndex(
+          (r) => r.author === "agent" && r.id !== reply.id && compactedOf(r) === undefined,
+        )
         const open = all
           .slice(lastReply + 1)
           .filter((r) => r.author === "user" && r.joined_to === null)
@@ -731,14 +875,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             source,
             sourceId: origin?.sourceId ?? agentId,
             messageId: reply.id,
-            retryOf: retryLinks.get(agentId) ?? origin?.retryOf ?? null,
+            retryOf: retryLinks.get(key) ?? origin?.retryOf ?? null,
             // A routine or a workflow starts its task with no message of the user (spec 005).
-            askedAt: source === "chat" && !retryLinks.has(agentId) ? (askedAt ?? null) : null,
+            askedAt: source === "chat" && !retryLinks.has(key) ? (askedAt ?? null) : null,
             ...(origin?.depth !== undefined ? { depth: origin.depth } : {}),
           }))
         const depth = tasks.depthOf(task.id)
         if (!resumed) {
-          retryLinks.delete(agentId)
+          retryLinks.delete(key)
           if (lastUser) origins.get(lastUser.id)?.onStart?.(task.id)
         }
         const parts: MessagePart[] = kept ? (JSON.parse(kept.parts) as MessagePart[]) : []
@@ -763,6 +907,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           : undefined
         const usage = { input: counted?.input_tokens ?? 0, output: counted?.output_tokens ?? 0 }
         const controller = new AbortController()
+        /** Where a notice of this turn leads: the reply, in its thread. */
+        const replyTarget = {
+          kind: "agent" as const,
+          id: agentId,
+          messageId: reply.id,
+          ...(place.threadId ? { threadId: place.threadId } : {}),
+        }
         // The silent limit counts for every kind of turn. A change of the setting counts for the
         // turns that start after it (spec 013).
         const silence = turnWatch({
@@ -807,7 +958,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             return () => turn.watchers.delete(ready)
           },
         }
-        live.set(agentId, turn)
+        live.set(key, turn)
         // The first part that the user sees is saved and shown at once, and its time is kept.
         let replied = task.firstReplyAt !== null
         const firstReply = () => !replied && hasVisibleReply(parts)
@@ -895,6 +1046,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           // The data changed since the restart, so the card cannot go on.
           if (resumed && !resume) return yield* new AppError({ code: "app_stopped" })
           const isRuntime = providers.isRuntime(agent.model_account_id)
+          // At 85 percent or more of the context, the app compacts first (spec 003). A turn that
+          // goes on after a restart does not: its request is made already.
+          if (!resumed && !isRuntime)
+            yield* autoCompact(place, agent, reply.id, (code) => {
+              parts.push({ kind: "note", note: "compact_failed", code })
+              save("streaming")
+              publish()
+            })
           const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
           // Claude Code reads the start of a request from the cache of the model, but only when
           // that start is the same as in the turn before. What the app tells it about this
@@ -958,7 +1117,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   always: askAllowsAlways(ask),
                   summary: askSummary(ask),
                   step: askStep(ask, toolNameOf(parts, callId)),
-                  target: { kind: "agent", id: agentId, messageId: reply.id },
+                  target: replyTarget,
                   ...(ask.askedAt !== undefined ? { askedAt: ask.askedAt } : {}),
                 })
               else notifier.clearAttention(agentId, callId)
@@ -1009,7 +1168,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               model: agent.model_name,
               effort: stepTurnEffort(turnEffort, agent.model_effort, offered),
               system,
-              turns: buildTurns(agentId, reply.id, withNotes),
+              turns: buildTurns(place, reply.id, withNotes),
               tools: tools.defs({
                 memory: agent.memory_enabled === 1,
                 knowledge: knowledge.enabled(agentId),
@@ -1089,7 +1248,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             Effect.sync(() => {
               silence.stop()
               controller.abort()
-              live.delete(agentId)
+              live.delete(key)
+              setCompacting(place, false)
               // A message that the agent did not read starts the next turn (spec 003). It is a
               // plain message after the reply now.
               const unread = [...turn.waiting.map((m) => m.id), ...turn.handed]
@@ -1102,7 +1262,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   const row = messageRow(id)
                   if (row) emitMessage(row)
                 }
-                unreadLeft.add(agentId)
+                unreadLeft.add(key)
               }
               knowledge.end(agentId, writesFiles ? "agent" : "user")
               notifier.clearAgent(agentId)
@@ -1126,7 +1286,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                     serverId: agent.server_id,
                     title: agent.name,
                     body: messageText({ parts }),
-                    target: { kind: "agent", id: agentId, messageId: reply.id },
+                    target: replyTarget,
                   })
               } else if (Cause.hasInterruptsOnly(exit.cause)) save("stopped")
               else {
@@ -1149,6 +1309,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               if (row) emitMessage(row)
               activity.setWorking(agentId, agent.server_id, false)
               placesChanged(agentId)
+              turnEnded(place, reply.id, agent)
+              bus.emit("chat.meter", { agentId, threadId: place.threadId })
+              bus.emit("chat.threads", { agentId })
             }),
           ),
           Effect.ignore,
@@ -1158,24 +1321,35 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       })
 
       /** Answers the last message, then each queued message in order. */
-      const worker = (agentId: string, resumed?: Task) =>
+      const worker = (place: Place, resumed?: Task) =>
         Effect.gen(function* () {
           let first = resumed
           for (;;) {
-            yield* runTurn(agentId, first)
+            yield* runTurn(place, first)
             first = undefined
-            // Messages that the turn did not read go first: they are in the chat already.
-            if (unreadLeft.delete(agentId)) continue
-            const next = queues.get(agentId)?.shift()
-            if (!next) return
-            emitQueue(agentId)
-            insertQueued(agentId, next)
+            if (!(yield* nextQueued(place))) return
           }
         })
 
-      const kick = (agentId: string) =>
-        FiberMap.run(workers, agentId, worker(agentId), { onlyIfMissing: true })
-      const isRunning = (agentId: string) => FiberMap.has(workers, agentId)
+      /**
+       * After a turn or a manual compact: true when the messages that the turn did not read, or the
+       * first queued message, start the next turn.
+       */
+      const nextQueued = (place: Place) =>
+        Effect.sync(() => {
+          const key = keyOf(place)
+          // Messages that the turn did not read go first: they are in the chat already.
+          if (unreadLeft.delete(key)) return true
+          const next = queues.get(key)?.shift()
+          if (!next) return false
+          emitQueue(place)
+          insertQueued(place, next)
+          return true
+        })
+
+      const kick = (place: Place) =>
+        FiberMap.run(workers, keyOf(place), worker(place), { onlyIfMissing: true })
+      const isRunning = (place: Place) => FiberMap.has(workers, keyOf(place))
 
       const usableAgent = (agentId: string, model?: AgentModel) =>
         Effect.gen(function* () {
@@ -1207,7 +1381,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
        * the message is its answer. Otherwise the agent reads it at the next step.
        */
       const join = Effect.fn("Chat.join")(function* (
-        agentId: string,
+        place: Place,
         turn: LiveTurn,
         message: {
           readonly text: string
@@ -1219,7 +1393,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       ) {
         const question = turn.question()
         const row = insertMessage(
-          agentId,
+          place.agentId,
           "user",
           message.text,
           message.replyTo,
@@ -1228,10 +1402,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           sender,
           { to: turn.replyId, readAt: question ? Date.now() : null },
           message.skill,
+          place.threadId,
         )
         if (question) {
           turn.answeredInChat(question)
-          yield* tools.respond(agentId, question, turnText(row))
+          yield* tools.respond(place.agentId, question, turnText(row))
           return
         }
         turn.waiting.push({ id: row.id, text: turnText(row) })
@@ -1239,16 +1414,25 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       })
 
       /** True when a message that the user sends now joins the running turn of the agent. */
-      const joinable = (agentId: string) =>
+      const joinable = (place: Place) =>
         Effect.gen(function* () {
-          const turn = live.get(agentId)
-          if (!turn || holdOf(agentId)) return undefined
+          const turn = live.get(keyOf(place))
+          // A compact that the user started is no turn: messages wait in the queue (spec 003).
+          if (!turn || holdOf(place.agentId) || manual.has(keyOf(place))) return undefined
           return (yield* settings.get).duringTurn === "join" ? turn : undefined
         })
 
       const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
         const sender = yield* CurrentActor
         const agent = yield* usableAgent(input.agentId, origin?.model)
+        // Work from a routine, a workflow or another agent goes to the main thread (spec 003).
+        const threadId = origin ? null : (input.threadId ?? null)
+        const place: Place = { agentId: input.agentId, threadId }
+        if (threadId !== null) {
+          const thread = threadRow(input.agentId, threadId)
+          if (!thread) return yield* new AppError({ code: "thread_not_found" })
+          if (thread.archived_at !== null) return yield* new AppError({ code: "thread_archived" })
+        }
         const paths = input.files ?? []
         // A skill chip that is off, deleted, or not for this agent is refused (spec 017).
         const chosen = input.skillId
@@ -1261,26 +1445,26 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (!input.text.trim() && paths.length === 0 && !skill)
           return yield* new AppError({ code: "invalid_input" })
         // A routine or a workflow always starts new work; only the user joins a turn.
-        const turn = origin ? undefined : yield* joinable(input.agentId)
-        const isFull = (queues.get(input.agentId)?.length ?? 0) >= QUEUE_MAX
-        if (!turn && (yield* isRunning(input.agentId)) && isFull)
+        const turn = origin ? undefined : yield* joinable(place)
+        const isFull = (queues.get(keyOf(place))?.length ?? 0) >= QUEUE_MAX
+        if (!turn && (yield* isRunning(place)) && isFull)
           return yield* new AppError({ code: "queue_full" })
         const files = yield* Effect.try({
           try: () => copyAttachments(agent.workspace, paths),
           catch: (e) => (e instanceof AppError ? e : new AppError({ code: "file_unreadable" })),
         })
         // The turn can have ended while the files were copied.
-        if (turn && live.get(input.agentId) === turn) {
+        if (turn && live.get(keyOf(place)) === turn) {
           yield* join(
-            input.agentId,
+            place,
             turn,
             { text: input.text, replyTo: input.replyTo, files, skill },
             sender,
           )
           return { queued: false }
         }
-        if (yield* isRunning(input.agentId)) {
-          const queue = queues.get(input.agentId) ?? []
+        if (yield* isRunning(place)) {
+          const queue = queues.get(keyOf(place)) ?? []
           if (queue.length >= QUEUE_MAX) return yield* new AppError({ code: "queue_full" })
           const item: QueuedMessage = {
             id: randomUUID(),
@@ -1293,8 +1477,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (origin) origins.set(item.id, origin)
           if (sender) senders.set(item.id, sender)
           queue.push(item)
-          queues.set(input.agentId, queue)
-          emitQueue(input.agentId)
+          queues.set(keyOf(place), queue)
+          emitQueue(place)
           return { queued: true }
         }
         const row = insertMessage(
@@ -1307,31 +1491,27 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           sender,
           null,
           skill,
+          threadId,
         )
         asks.set(row.id, row.created_at)
         if (origin) origins.set(row.id, origin)
-        yield* kick(input.agentId)
+        yield* kick(place)
         return { queued: false }
       })
 
-      const stop = Effect.fn("Chat.stop")(function* (agentId: string) {
-        const fiber = yield* FiberMap.get(workers, agentId)
+      const stop = Effect.fn("Chat.stop")(function* (place: Place) {
+        const fiber = yield* FiberMap.get(workers, keyOf(place))
         if (fiber._tag === "Some") yield* Fiber.interrupt(fiber.value)
-        // Messages that the turn did not read start the next turn (spec 003).
-        if (unreadLeft.delete(agentId)) {
-          yield* kick(agentId)
-          return
-        }
-        // The turn has ended, so the next queued message goes now.
-        const next = queues.get(agentId)?.shift()
-        if (next) {
-          emitQueue(agentId)
-          insertQueued(agentId, next)
-          yield* kick(agentId)
-        }
+        // Messages that the turn did not read start the next turn (spec 003). Else the turn has
+        // ended, so the next queued message goes now.
+        if (yield* nextQueued(place)) yield* kick(place)
       })
 
-      const lastRow = (agentId: string) => rows(agentId).at(-1)
+      /** The conversation of a message of the agent. */
+      const placeOfMessage = (agentId: string, messageId: string): Place => {
+        const row = messageRow(messageId)
+        return row && row.agent_id === agentId ? placeOfRow(row) : mainOf(agentId)
+      }
 
       const retry = Effect.fn("Chat.retry")(function* (
         agentId: string,
@@ -1339,8 +1519,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         options?: RetryOptions,
       ) {
         yield* usableAgent(agentId)
-        if (yield* isRunning(agentId)) return yield* new AppError({ code: "agent_working" })
-        const last = lastRow(agentId)
+        const place = placeOfMessage(agentId, messageId)
+        const key = keyOf(place)
+        if (yield* isRunning(place)) return yield* new AppError({ code: "agent_working" })
+        const last = rows(place).at(-1)
         // A reply that failed is asked again. So is a reply that stopped at the step limit: its
         // task has failed (spec 005). So is a reply that a restart cut off before the request
         // reached the model: it has nothing in it and ran no step, and "Send again" asks it again
@@ -1365,7 +1547,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             const note = tasks.noteFor(first.id, options)
             if (note) return { started: false, note } as const
           }
-          retryLinks.set(agentId, first.id)
+          retryLinks.set(key, first.id)
         }
         // The new turn tries the failed task again (spec 005), so the Today page drops its row.
         const failed = db.get<{ id: string }>(
@@ -1373,10 +1555,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           messageId,
           agentId,
         )
-        if (failed) retryLinks.set(agentId, failed.id)
+        if (failed) retryLinks.set(key, failed.id)
         db.run("DELETE FROM message WHERE id = ?", messageId)
         bus.emit("chat.removed", { agentId, messageId })
-        yield* kick(agentId)
+        yield* kick(place)
         return { started: true } as const
       })
 
@@ -1386,8 +1568,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         text: string,
       ) {
         yield* usableAgent(agentId)
-        if (yield* isRunning(agentId)) return yield* new AppError({ code: "agent_working" })
-        const all = rows(agentId)
+        const place = placeOfMessage(agentId, messageId)
+        if (yield* isRunning(place)) return yield* new AppError({ code: "agent_working" })
+        const all = rows(place)
         const index = all.findIndex((r) => r.id === messageId)
         const target = all[index]
         if (target?.author !== "user" || all.slice(index + 1).some((r) => r.author === "user")) {
@@ -1413,25 +1596,607 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const edited = messageRow(messageId) as MessageRow
         asks.set(messageId, edited.edited_at ?? Date.now())
         emitMessage(edited)
-        yield* kick(agentId)
+        yield* kick(place)
+      })
+
+      // --- Compact and the context meter (spec 003) ----------------------------------------------
+
+      /** Conversations with a compact that runs now, by key: the working line reads "Compacting…". */
+      const compacting = new Set<string>()
+      /** Conversations with a compact that the user started. It is no turn: messages wait. */
+      const manual = new Set<string>()
+      /** Replies whose automatic compact failed. Their turn does not take one off the pause. */
+      const failedNow = new Set<string>()
+      /** The context size of each model from the last look, by account and model. */
+      const sizes = new Map<string, number | null>()
+      const meterChanged = (place: Place) =>
+        bus.emit("chat.meter", { agentId: place.agentId, threadId: place.threadId })
+      const setCompacting = (place: Place, on: boolean) => {
+        const key = keyOf(place)
+        if (compacting.has(key) === on) return
+        if (on) compacting.add(key)
+        else compacting.delete(key)
+        meterChanged(place)
+      }
+      /** The size of the context of the model of the agent, or null when the provider does not tell it. */
+      const contextSize = (agent: AgentModelRow) =>
+        Effect.gen(function* () {
+          if (!agent.model_account_id || !agent.model_name) return null
+          const key = `${agent.model_account_id}|${agent.model_name}`
+          const listed = yield* providers
+            .models(agent.model_account_id)
+            .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+          if (listed === undefined) return sizes.get(key) ?? null
+          const size = listed.find((m) => m.id === agent.model_name)?.contextWindow ?? null
+          sizes.set(key, size)
+          return size
+        })
+      const COMPACTED_LIKE = `%"kind":"compacted"%`
+      /** The time of the latest compact of a conversation, or 0. */
+      const compactedAt = (place: Place) => {
+        const found = db.get<{ parts: string }>(
+          `SELECT parts FROM message WHERE agent_id = ? AND thread_id IS ? AND parts LIKE ?
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          place.agentId,
+          place.threadId,
+          COMPACTED_LIKE,
+        )
+        return found ? (compactedOf(found)?.at ?? 0) : 0
+      }
+      /**
+       * The use of the context that the last reply reported (spec 003). Null after a compact until
+       * the next reply, and when no reply reported it.
+       */
+      const contextUse = (place: Place): number | null => {
+        const found = db.get<{ n: number }>(
+          `SELECT COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) AS n FROM message
+           WHERE agent_id = ? AND thread_id IS ? AND author = 'agent' AND finished_at > ?
+             AND COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) > 0 AND parts NOT LIKE ?
+           ORDER BY finished_at DESC LIMIT 1`,
+          place.agentId,
+          place.threadId,
+          compactedAt(place),
+          COMPACTED_LIKE,
+        )
+        return found ? found.n : null
+      }
+      /** Ended turns to wait before the next automatic compact of a conversation. */
+      const pauseOf = (place: Place) =>
+        db.get<{ turns: number }>(
+          "SELECT turns FROM compact_pause WHERE agent_id = ? AND thread_id = ?",
+          place.agentId,
+          place.threadId ?? "",
+        )?.turns ?? 0
+      const setPause = (place: Place, turns: number) => {
+        if (turns > 0)
+          db.run(
+            `INSERT INTO compact_pause (agent_id, thread_id, turns) VALUES (?, ?, ?)
+             ON CONFLICT (agent_id, thread_id) DO UPDATE SET turns = excluded.turns`,
+            place.agentId,
+            place.threadId ?? "",
+            turns,
+          )
+        else
+          db.run(
+            "DELETE FROM compact_pause WHERE agent_id = ? AND thread_id = ?",
+            place.agentId,
+            place.threadId ?? "",
+          )
+      }
+      /**
+       * What a compact of the conversation covers now: the earlier summary and the rows before the
+       * newest 2 turns. Null when the conversation has 2 turns or fewer.
+       */
+      const compactRange = (place: Place) => {
+        const all = rows(place)
+        const mark = all.findLastIndex((r) => compactedOf(r) !== undefined)
+        const summary = mark >= 0 ? compactedOf(all[mark] as MessageRow)?.summary : undefined
+        const ordered = orderedRows(
+          all.slice(mark + 1).filter((r) => r.status !== "streaming"),
+          "",
+        )
+        const cut = compactCut(ordered.map((r) => r.author))
+        const firstKept = cut === null ? undefined : ordered[cut]
+        if (cut === null || !firstKept) return null
+        // The line "Compacted" shows just before the first row that stays word for word.
+        const before = all[all.findIndex((r) => r.id === firstKept.id) - 1]
+        return {
+          summary,
+          covered: ordered.slice(0, cut),
+          createdAt: before ? before.created_at : firstKept.created_at - 1,
+        }
+      }
+      /** True while the agent has a turn, a compact or a task that runs or waits. */
+      const agentBusy = (agentId: string) =>
+        Effect.gen(function* () {
+          for (const key of keysOf(agentId)) if (yield* FiberMap.has(workers, key)) return true
+          return (
+            db.get(
+              "SELECT 1 AS n FROM task WHERE agent_id = ? AND state IN ('queued', 'running', 'waiting') LIMIT 1",
+              agentId,
+            ) !== undefined
+          )
+        })
+      /** Why Compact is off for the conversation now, or null (spec 003). */
+      const compactOff = (place: Place, agent: AgentModelRow, size: number | null) =>
+        Effect.gen(function* () {
+          if (
+            !agent.model_account_id ||
+            !agent.model_name ||
+            !providers.isConnected(agent.model_account_id)
+          )
+            return "not_connected"
+          // Every vendor runtime compacts its own conversation (see docs/spec-questions.md).
+          if (providers.isRuntime(agent.model_account_id)) return "self_compacts"
+          if (size === null) return "size_unknown"
+          if (yield* agentBusy(place.agentId)) return "agent_working"
+          if (compactRange(place) === null) return "too_short"
+          return null
+        })
+
+      /**
+       * Asks the model of the agent for the summary, and writes the line "Compacted". A compact
+       * that is stopped or fails changes nothing (spec 003).
+       */
+      const runCompact = (place: Place, agent: AgentModelRow, auto: boolean) =>
+        Effect.gen(function* () {
+          if (!agent.model_account_id || !agent.model_name)
+            return yield* new AppError({ code: "provider_not_connected" })
+          const range = compactRange(place)
+          if (!range) return yield* new AppError({ code: "compact_too_short" })
+          const accounts = yield* providers.accounts
+          const listed = yield* providers
+            .models(agent.model_account_id)
+            .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+          const kind = accounts.find((a) => a.id === agent.model_account_id)?.kind ?? "custom"
+          // The lowest effort that the model offers. The lists go from low to high.
+          const effort = offeredEfforts(kind, agent.model_name, listed)[0] ?? agent.model_effort
+          const turns: Turn[] = [
+            ...(range.summary !== undefined
+              ? [{ role: "user" as const, content: summaryTurn(range.summary) }]
+              : []),
+            ...modelTurns(range.covered, false),
+            { role: "user", content: COMPACT_ASK },
+          ]
+          const controller = new AbortController()
+          const watch = turnWatch({
+            limitMinutes: (yield* settings.get).silentLimit,
+            progress: () => {},
+          })
+          const usage = { input: 0, output: 0 }
+          const events = yield* providers.events(
+            agent.model_account_id,
+            {
+              model: agent.model_name,
+              effort,
+              system: COMPACT_SYSTEM,
+              turns,
+              signal: controller.signal,
+              workspace: agent.workspace,
+              permission: agent.permission,
+              useTools: false,
+            },
+            { execute: async () => ({ output: "", failed: true }), approve: async () => false },
+          )
+          const summary = yield* Effect.raceFirst(
+            Effect.tryPromise({
+              try: async () => {
+                let text = ""
+                for await (const event of closing(events, controller, watch)) {
+                  watch.sense(event)
+                  if (event.type === "text") text += event.text
+                  if (event.type === "usage") {
+                    usage.input = event.input ?? usage.input
+                    usage.output = event.output ?? usage.output
+                  }
+                }
+                return text.trim()
+              },
+              catch: toAppError,
+            }),
+            watch.silent,
+          ).pipe(
+            Effect.onExit(() =>
+              Effect.sync(() => {
+                watch.stop()
+                controller.abort()
+              }),
+            ),
+          )
+          if (!summary) return yield* new AppError({ code: "compact_empty" })
+          const id = randomUUID()
+          const now = Date.now()
+          const part: MessagePart = { kind: "compacted", summary, at: now, auto }
+          // The tokens of the summary add to the usage of the agent and the day (spec 003, 006).
+          db.run(
+            `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at,
+               finished_at, input_tokens, output_tokens, thread_id)
+             VALUES (?, ?, 'agent', ?, 'done', NULL, ?, ?, ?, ?, ?, ?)`,
+            id,
+            place.agentId,
+            JSON.stringify([part]),
+            agent.model_name,
+            range.createdAt,
+            now,
+            usage.input,
+            usage.output,
+            place.threadId,
+          )
+          const row = messageRow(id)
+          if (row) emitMessage(row)
+          meterChanged(place)
+        })
+
+      /**
+       * Before a turn: at 85 percent or more of the context, compacts first (spec 003, "Automatic
+       * compact"). A failure does not stop the turn: `failed` adds the muted line to the reply.
+       */
+      const autoCompact = (
+        place: Place,
+        agent: AgentModelRow,
+        replyId: string,
+        failed: (code: string) => void,
+      ) =>
+        Effect.gen(function* () {
+          const setting = (yield* settings.get).autoCompact
+          if (!setting) return
+          const size = yield* contextSize(agent)
+          const go = shouldAutoCompact({
+            setting,
+            selfCompacts: false,
+            used: contextUse(place),
+            size,
+            pause: pauseOf(place),
+          })
+          if (!go) return
+          setCompacting(place, true)
+          yield* runCompact(place, agent, true).pipe(
+            Effect.catch((error: AppError) =>
+              Effect.sync(() => {
+                // A conversation of 2 turns or fewer has nothing to compact. That is no failure.
+                if (error.code === "compact_too_short") return
+                setPause(place, nextPause(pauseOf(place), "compact_failed"))
+                failedNow.add(replyId)
+                failed(error.code)
+              }),
+            ),
+            Effect.ensuring(Effect.sync(() => setCompacting(place, false))),
+          )
+        })
+
+      /** Counts an ended turn for the pause of the automatic compact (spec 003). */
+      const turnEnded = (place: Place, replyId: string, agent: AgentModelRow) => {
+        // The turn in which the compact failed starts the 5 turns; it is not one of them.
+        if (failedNow.delete(replyId)) return
+        const at = compactedAt(place)
+        const reply = db.get<{ n: number; finished_at: number | null }>(
+          `SELECT COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) AS n, finished_at
+           FROM message WHERE id = ?`,
+          replyId,
+        )
+        const pause = pauseOf(place)
+        if (at > 0 && reply && reply.n > 0 && (reply.finished_at ?? 0) > at) {
+          const earlier = db.get(
+            `SELECT 1 AS n FROM message
+             WHERE agent_id = ? AND thread_id IS ? AND author = 'agent' AND id != ? AND finished_at > ?
+               AND COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) > 0 AND parts NOT LIKE ?
+             LIMIT 1`,
+            place.agentId,
+            place.threadId,
+            replyId,
+            at,
+            COMPACTED_LIKE,
+          )
+          const size = sizes.get(`${agent.model_account_id}|${agent.model_name}`) ?? null
+          const share = meterShare(reply.n, size)
+          if (!earlier && share !== null && share >= COMPACT_AT) {
+            setPause(place, nextPause(pause, "full_after_compact"))
+            return
+          }
+        }
+        if (pause > 0) setPause(place, nextPause(pause, "turn"))
+      }
+
+      const meter = (place: Place) =>
+        Effect.gen(function* () {
+          const agent = agentRow(place.agentId)
+          const size = agent ? yield* contextSize(agent) : null
+          const off: CompactOff | null = agent
+            ? yield* compactOff(place, agent, size)
+            : "not_connected"
+          const running = compacting.has(keyOf(place))
+          // The ring is empty from the start of a compact until the next reply (spec 003).
+          const out: ChatMeter = {
+            used: running ? null : contextUse(place),
+            size,
+            off,
+            compacting: running,
+          }
+          return out
+        })
+
+      /**
+       * A compact that the user starts. It runs as the work of the conversation, so messages wait
+       * in its queue and Stop ends it. It holds the agent as a task does, with no slot (spec 003).
+       */
+      const compact = Effect.fn("Chat.compact")(function* (place: Place) {
+        const agent = yield* usableAgent(place.agentId)
+        if (place.threadId !== null && !threadRow(place.agentId, place.threadId))
+          return yield* new AppError({ code: "thread_not_found" })
+        const off = yield* compactOff(place, agent, yield* contextSize(agent))
+        if (off) return yield* new AppError({ code: `compact_${off}` })
+        const key = keyOf(place)
+        const done = Deferred.makeUnsafe<void, AppError>()
+        const job = Effect.suspend(() => {
+          manual.add(key)
+          setCompacting(place, true)
+          return tasks.holdAgent(place.agentId, runCompact(place, agent, false))
+        }).pipe(
+          Effect.onExit((exit) =>
+            Effect.sync(() => {
+              manual.delete(key)
+              setCompacting(place, false)
+              const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+              Deferred.doneUnsafe(
+                done,
+                failure instanceof AppError ? Exit.fail(failure) : Exit.void,
+              )
+            }),
+          ),
+          Effect.ignore,
+          // The queue sends its first message as after a turn (spec 003).
+          Effect.andThen(
+            Effect.gen(function* () {
+              if (yield* nextQueued(place)) yield* worker(place)
+            }),
+          ),
+        )
+        yield* FiberMap.run(workers, key, job, { onlyIfMissing: true })
+        yield* Deferred.await(done)
+      })
+
+      // --- Threads (spec 003) ---------------------------------------------------------------------
+
+      /** Why a conversation cannot be archived or deleted now, or null. */
+      const busyOf = (place: Place) =>
+        Effect.gen(function* () {
+          const key = keyOf(place)
+          const state = db.get<{ state: string }>(
+            `SELECT t.state FROM task t JOIN message m ON m.id = t.message_id
+             WHERE t.agent_id = ? AND m.thread_id IS ? AND t.state IN ('queued', 'running', 'waiting')
+             ORDER BY CASE t.state WHEN 'waiting' THEN 0 WHEN 'running' THEN 1 ELSE 2 END LIMIT 1`,
+            place.agentId,
+            place.threadId,
+          )?.state
+          const busy: ThreadBusy | null =
+            state === "waiting"
+              ? "waiting"
+              : state === "running" || compacting.has(key)
+                ? "turn"
+                : state === "queued" || (yield* FiberMap.has(workers, key))
+                  ? "queued"
+                  : (queues.get(key)?.length ?? 0) > 0
+                    ? "messages"
+                    : null
+          return busy
+        })
+      /** The unread replies of each conversation of an agent, by the id of the thread ("" for main). */
+      const unreadOf = (agentId: string) =>
+        new Map(
+          db
+            .all<{ id: string; n: number }>(
+              `SELECT COALESCE(m.thread_id, '') AS id, COUNT(*) AS n
+               FROM message m JOIN agent a ON a.id = m.agent_id
+               LEFT JOIN thread_read r ON r.thread_id = m.thread_id
+               WHERE m.agent_id = ? AND m.author = 'agent'
+                 AND m.finished_at > CASE WHEN m.thread_id IS NULL THEN a.last_read_at ELSE COALESCE(r.at, 0) END
+                 AND m.parts NOT LIKE ?
+               GROUP BY m.thread_id`,
+              agentId,
+              COMPACTED_LIKE,
+            )
+            .map((r) => [r.id, r.n]),
+        )
+      const toThread = (row: ThreadRow, unread: number, busy: ThreadBusy | null): ChatThread => ({
+        id: row.id,
+        agentId: row.agent_id,
+        title: row.title,
+        createdAt: row.created_at,
+        archivedAt: row.archived_at,
+        fork: row.fork_message_id
+          ? { threadId: row.fork_thread_id, messageId: row.fork_message_id }
+          : null,
+        unread,
+        busy,
+      })
+      const threadsChanged = (agentId: string) => {
+        bus.emit("chat.threads", { agentId })
+        placesChanged(agentId)
+      }
+      const threads = (agentId: string) =>
+        Effect.gen(function* () {
+          const unread = unreadOf(agentId)
+          const list: ChatThread[] = []
+          for (const row of db.all<ThreadRow>(
+            "SELECT * FROM thread WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC",
+            agentId,
+          ))
+            list.push(
+              toThread(row, unread.get(row.id) ?? 0, yield* busyOf({ agentId, threadId: row.id })),
+            )
+          const out: ChatThreads = {
+            main: { unread: unread.get("") ?? 0, busy: yield* busyOf(mainOf(agentId)) },
+            threads: list,
+          }
+          return out
+        })
+      /** Refuses a new thread when the agent has 50, the main thread included (spec 003). */
+      const roomForThread = (agentId: string) =>
+        canAddThread(
+          db.get<{ n: number }>("SELECT COUNT(*) AS n FROM thread WHERE agent_id = ?", agentId)
+            ?.n ?? 0,
+        )
+      const insertThread = (
+        agentId: string,
+        title: string | null,
+        fork: { readonly threadId: string | null; readonly messageId: string } | null,
+      ) => {
+        const id = randomUUID()
+        db.run(
+          `INSERT INTO thread (id, agent_id, title, titled, created_at, archived_at, fork_thread_id, fork_message_id)
+           VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+          id,
+          agentId,
+          title,
+          title === null ? 0 : 1,
+          Date.now(),
+          fork?.threadId ?? null,
+          fork?.messageId ?? null,
+        )
+        return db.get<ThreadRow>("SELECT * FROM thread WHERE id = ?", id) as ThreadRow
+      }
+      const createThread = Effect.fn("Chat.createThread")(function* (agentId: string) {
+        const agent = agentRow(agentId)
+        if (!agent || agent.archived_at !== null)
+          return yield* new AppError({ code: "agent_not_found" })
+        if (!roomForThread(agentId)) return yield* new AppError({ code: "thread_limit" })
+        const row = insertThread(agentId, null, null)
+        threadsChanged(agentId)
+        return toThread(row, 0, null)
+      })
+      const fork = Effect.fn("Chat.fork")(function* (place: Place, messageId: string) {
+        const agent = agentRow(place.agentId)
+        if (!agent || agent.archived_at !== null)
+          return yield* new AppError({ code: "agent_not_found" })
+        if (place.threadId !== null && !threadRow(place.agentId, place.threadId))
+          return yield* new AppError({ code: "thread_not_found" })
+        const all = rows(place)
+        const index = all.findIndex((r) => r.id === messageId)
+        const target = all[index]
+        if (!target) return yield* new AppError({ code: "message_not_found" })
+        // A message of a turn that still runs: the reply streams, or the message waits for it.
+        const lastEnded = all.findLastIndex(
+          (r) => r.author === "agent" && r.status !== "streaming" && compactedOf(r) === undefined,
+        )
+        if (
+          target.status === "streaming" ||
+          (index > lastEnded && (yield* isRunning(place))) ||
+          (target.joined_to !== null && live.get(keyOf(place))?.replyId === target.joined_to)
+        )
+          return yield* new AppError({ code: "fork_running" })
+        if (!roomForThread(place.agentId)) return yield* new AppError({ code: "thread_limit" })
+        // After a "Compacted" line, the fork copies the summary and the turns after it.
+        const mark = all.slice(0, index + 1).findLastIndex((r) => compactedOf(r) !== undefined)
+        const copied = all.slice(Math.max(0, mark), index + 1)
+        const thread = db.transaction(() => {
+          const made = insertThread(place.agentId, threadTitle(messageText(toMessage(target))), {
+            threadId: place.threadId,
+            messageId,
+          })
+          const ids = new Map(copied.map((r) => [r.id, randomUUID()]))
+          // The copies count no tokens: the usage of the agent counts each reply once.
+          for (const r of copied)
+            db.run(
+              `INSERT INTO message (id, agent_id, author, parts, status, error_code, error_detail,
+                 error_resets_at, reply_to, model, created_at, edited_at, from_device, from_name,
+                 context, joined_to, read_at, thread_id, input_tokens, output_tokens, finished_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+              ids.get(r.id) as string,
+              r.agent_id,
+              r.author,
+              r.parts,
+              r.status === "streaming" ? "stopped" : r.status,
+              r.error_code,
+              r.error_detail,
+              r.error_resets_at,
+              r.reply_to ? (ids.get(r.reply_to) ?? r.reply_to) : null,
+              r.model,
+              r.created_at,
+              r.edited_at,
+              r.from_device,
+              r.from_name,
+              r.context,
+              r.joined_to ? (ids.get(r.joined_to) ?? null) : null,
+              r.read_at,
+              made.id,
+              r.finished_at,
+            )
+          // The copied replies are no news.
+          db.run("INSERT INTO thread_read (thread_id, at) VALUES (?, ?)", made.id, Date.now())
+          return made
+        })
+        threadsChanged(place.agentId)
+        return toThread(thread, 0, null)
+      })
+      const ownThread = (agentId: string, threadId: string) =>
+        Effect.suspend(() => {
+          const row = threadRow(agentId, threadId)
+          return row ? Effect.succeed(row) : Effect.fail(new AppError({ code: "thread_not_found" }))
+        })
+      const renameThread = Effect.fn("Chat.renameThread")(function* (
+        agentId: string,
+        threadId: string,
+        title: string,
+      ) {
+        yield* ownThread(agentId, threadId)
+        const clean = threadTitle(title)
+        if (!clean) return yield* new AppError({ code: "invalid_input" })
+        db.run("UPDATE thread SET title = ?, titled = 1 WHERE id = ?", clean, threadId)
+        threadsChanged(agentId)
+      })
+      const archiveThread = Effect.fn("Chat.archiveThread")(function* (
+        agentId: string,
+        threadId: string,
+        archived: boolean,
+      ) {
+        yield* ownThread(agentId, threadId)
+        if (archived && (yield* busyOf({ agentId, threadId })))
+          return yield* new AppError({ code: "thread_busy" })
+        db.run(
+          "UPDATE thread SET archived_at = ? WHERE id = ?",
+          archived ? Date.now() : null,
+          threadId,
+        )
+        threadsChanged(agentId)
+      })
+      const deleteThread = Effect.fn("Chat.deleteThread")(function* (
+        agentId: string,
+        threadId: string,
+      ) {
+        yield* ownThread(agentId, threadId)
+        if (yield* busyOf({ agentId, threadId }))
+          return yield* new AppError({ code: "thread_busy" })
+        db.transaction(() => {
+          db.run("DELETE FROM message WHERE thread_id = ?", threadId)
+          db.run(
+            "DELETE FROM compact_pause WHERE agent_id = ? AND thread_id = ?",
+            agentId,
+            threadId,
+          )
+          db.run("DELETE FROM thread WHERE id = ?", threadId)
+        })
+        queues.delete(threadId)
+        threadsChanged(agentId)
       })
 
       tasks.onRetry("chat", (task) =>
         Effect.suspend(() => {
-          retryLinks.set(task.agentId, task.id)
+          const place = task.messageId
+            ? placeOfMessage(task.agentId, task.messageId)
+            : mainOf(task.agentId)
+          retryLinks.set(keyOf(place), task.id)
           // A reply that failed is asked again. A stopped one has nothing to replace, so the
           // question is sent again as a new message. A task of the other computer (spec 019)
           // runs here as a new task, and its messages stay as they are.
-          if (task.originName !== null)
-            return Effect.asVoid(send({ agentId: task.agentId, text: task.prompt, replyTo: null }))
+          const again = { agentId: task.agentId, text: task.prompt, replyTo: null }
+          const inThread = place.threadId ? { threadId: place.threadId } : {}
+          if (task.originName !== null) return Effect.asVoid(send({ ...again, ...inThread }))
           return retry(task.agentId, task.messageId ?? "", { confirmed: true }).pipe(
             Effect.asVoid,
             Effect.catch(() => {
               // Set before the send, because the turn can start at once.
-              retryLinks.set(task.agentId, task.id)
-              return Effect.asVoid(
-                send({ agentId: task.agentId, text: task.prompt, replyTo: null }),
-              )
+              retryLinks.set(keyOf(place), task.id)
+              return Effect.asVoid(send({ ...again, ...inThread }))
             }),
           )
         }),
@@ -1501,7 +2266,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       // The turns of tasks that waited through a restart start again. Each keeps the place of its
       // agent, so a message that comes now waits in the queue behind it.
       for (const task of reviving) {
-        yield* FiberMap.run(workers, task.agentId, worker(task.agentId, task), {
+        const place = task.messageId
+          ? placeOfMessage(task.agentId, task.messageId)
+          : mainOf(task.agentId)
+        yield* FiberMap.run(workers, keyOf(place), worker(place, task), {
           onlyIfMissing: true,
         })
       }
@@ -1525,12 +2293,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const row = db.get<MessageRow>("SELECT * FROM message WHERE id = ?", messageId)
           if (row) emitMessage(row)
         },
-        history: (agentId) =>
+        history: (agentId, threadId = null) =>
           Effect.sync(() => {
-            const list = rows(agentId)
+            const place: Place = { agentId, threadId }
+            const list = rows(place)
             return {
               messages: presentAll(list),
-              queue: queues.get(agentId) ?? [],
+              queue: queues.get(keyOf(place)) ?? [],
               hold: holdOf(agentId),
               cut: cutOf(list),
             }
@@ -1538,26 +2307,29 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         send,
         sendNow: (agentId, itemId) =>
           Effect.gen(function* () {
-            const queue = queues.get(agentId) ?? []
+            const place = queuePlace(agentId, itemId)
+            const queue = place ? (queues.get(keyOf(place)) ?? []) : []
             const item = queue.find((q) => q.id === itemId)
-            if (!item) return yield* new AppError({ code: "queue_item_gone" })
-            const turn = live.get(agentId)
-            // A program that takes no input during a turn cannot get it now (spec 003).
-            if (!turn || holdOf(agentId)) return yield* new AppError({ code: "invalid_input" })
+            if (!place || !item) return yield* new AppError({ code: "queue_item_gone" })
+            const turn = live.get(keyOf(place))
+            // A program that takes no input during a turn cannot get it now (spec 003). Nor can
+            // a compact that the user started: it is no turn.
+            if (!turn || holdOf(agentId) || manual.has(keyOf(place)))
+              return yield* new AppError({ code: "invalid_input" })
             queues.set(
-              agentId,
+              keyOf(place),
               queue.filter((q) => q.id !== itemId),
             )
-            emitQueue(agentId)
+            emitQueue(place)
             const sender = senders.get(itemId) ?? null
             senders.delete(itemId)
             origins.delete(itemId)
             // "Send now" keeps the chip of the queued message (spec 017).
-            yield* join(agentId, turn, { ...item, skill: item.skill ?? null }, sender)
+            yield* join(place, turn, { ...item, skill: item.skill ?? null }, sender)
           }),
         deleteUnread: (agentId, messageId) =>
           Effect.suspend(() => {
-            const turn = live.get(agentId)
+            const turn = live.get(keyOf(placeOfMessage(agentId, messageId)))
             const index = turn?.waiting.findIndex((m) => m.id === messageId) ?? -1
             if (!turn || index < 0) return Effect.fail(new AppError({ code: "message_read" }))
             turn.waiting.splice(index, 1)
@@ -1566,32 +2338,52 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             placesChanged(agentId)
             return Effect.void
           }),
-        stop,
+        stop: (agentId, threadId = null) => stop({ agentId, threadId }),
         retry,
         edit,
         updateQueued: (agentId, itemId, text) =>
           Effect.suspend(() => {
-            const queue = queues.get(agentId) ?? []
+            const place = queuePlace(agentId, itemId)
+            const queue = place ? (queues.get(keyOf(place)) ?? []) : []
             const index = queue.findIndex((q) => q.id === itemId)
             const item = queue[index]
-            if (!item) return Effect.fail(new AppError({ code: "queue_item_gone" }))
+            if (!place || !item) return Effect.fail(new AppError({ code: "queue_item_gone" }))
             queue[index] = { ...item, text }
-            emitQueue(agentId)
+            emitQueue(place)
             return Effect.void
           }),
         removeQueued: (agentId, itemId) =>
           Effect.sync(() => {
+            const place = queuePlace(agentId, itemId)
+            if (!place) return
             queues.set(
-              agentId,
-              (queues.get(agentId) ?? []).filter((q) => q.id !== itemId),
+              keyOf(place),
+              (queues.get(keyOf(place)) ?? []).filter((q) => q.id !== itemId),
             )
-            emitQueue(agentId)
+            emitQueue(place)
           }),
-        markRead: (agentId) =>
+        markRead: (agentId, threadId = null) =>
           Effect.sync(() => {
-            db.run("UPDATE agent SET last_read_at = ? WHERE id = ?", Date.now(), agentId)
-            placesChanged(agentId)
+            if (threadId === null)
+              db.run("UPDATE agent SET last_read_at = ? WHERE id = ?", Date.now(), agentId)
+            else if (threadRow(agentId, threadId))
+              db.run(
+                `INSERT INTO thread_read (thread_id, at) VALUES (?, ?)
+                 ON CONFLICT (thread_id) DO UPDATE SET at = excluded.at`,
+                threadId,
+                Date.now(),
+              )
+            else return
+            threadsChanged(agentId)
           }),
+        meter,
+        compact,
+        threads,
+        createThread,
+        fork,
+        renameThread,
+        archiveThread,
+        deleteThread,
       })
     }),
   )

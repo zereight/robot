@@ -949,3 +949,46 @@
 .pictureLoad {
   margin-top: 2px;
 }
+
+/* The line "Compacted" (spec 003). It opens to the summary. */
+.compacted {
+  margin: 8px 16px;
+  padding-inline-start: 44px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.compacted summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.compacted summary::before,
+.compacted summary::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--c-border);
+}
+
+.compactedSummary {
+  white-space: pre-wrap;
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  background: var(--c-sidebar);
+  color: var(--c-text);
+  font-size: var(--text-s);
+}
+
+.compacted[open] .compactedSummary {
+  animation: unfold var(--motion-medium) var(--ease-out);
+}
+
+.compactFailed {
+  margin: 2px 0;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}

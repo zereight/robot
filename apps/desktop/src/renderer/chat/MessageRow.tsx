@@ -29,6 +29,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  GitBranch,
   Pencil,
   Reply,
   Sparkles,
@@ -64,6 +65,39 @@ export interface MessageRowProps {
   onJumpTo: (messageId: string) => void
   onEdit: (text: string) => Promise<void>
   onRetry: () => void
+  /** Fork at this message (spec 003, "Fork"). None where Fork does not show. */
+  onFork?: (() => void) | undefined
+  /** Why Fork is off now, in words. */
+  forkOff?: string | undefined
+}
+
+/** The words of an error code, or "Something went wrong" for a code with no words. */
+const errorWords = (t: ReturnType<typeof useApp>["t"], code: string) => {
+  const key = `error.${code}`
+  return key in catalogues.en ? t(key as MessageKey) : t("error.unknown")
+}
+
+/** The muted line of an automatic compact that failed: the turn went on without it (spec 003). */
+const CompactFailedLine = (props: { code: string }) => {
+  const { t } = useApp()
+  return (
+    <p class={styles.compactFailed} data-testid="compact-failed">
+      {t("chat.compact.failed", { reason: errorWords(t, props.code) })}
+    </p>
+  )
+}
+
+/** The line "Compacted". The user opens it to read the summary (spec 003, "Compact"). */
+const CompactedLine = (props: { part: Extract<MessagePart, { kind: "compacted" }> }) => {
+  const { t } = useApp()
+  return (
+    <details class={styles.compacted} data-testid="compacted-line">
+      <summary>{props.part.auto ? t("chat.compacted.auto") : t("chat.compacted")}</summary>
+      <p class={styles.compactedSummary} data-testid="compacted-summary">
+        {props.part.summary}
+      </p>
+    </details>
+  )
 }
 
 const Thinking = (props: { text: string; live: boolean }) => {
@@ -1037,6 +1071,8 @@ const NoteLine = (props: { message: ChatMessage }) => {
     const part = note()
     if (!part) return ""
     if (part.note === "watch_unchanged") return t("routines.note.unchanged", { name: part.routine })
+    if (part.note === "compact_failed")
+      return t("chat.compact.failed", { reason: errorWords(t, part.code) })
     return t(`starters.note.${part.what}.${part.why}` as MessageKey, {
       name: part.name,
       n: part.what === "routine" ? ROUTINES_MAX : SKILLS_MAX,
@@ -1050,8 +1086,24 @@ const NoteLine = (props: { message: ChatMessage }) => {
   )
 }
 
+const compactedOf = (message: ChatMessage) =>
+  message.parts.find(
+    (p): p is Extract<MessagePart, { kind: "compacted" }> => p.kind === "compacted",
+  )
+
 export const MessageRow = (props: MessageRowProps) => (
-  <Show when={!isNoteOnly(props.message.parts)} fallback={<NoteLine message={props.message} />}>
+  <Show
+    when={!isNoteOnly(props.message.parts)}
+    fallback={
+      <Show when={compactedOf(props.message)} fallback={<NoteLine message={props.message} />}>
+        {(part) => (
+          <div data-message-id={props.message.id} data-testid="message-compacted">
+            <CompactedLine part={part()} />
+          </div>
+        )}
+      </Show>
+    }
+  >
     <FullMessageRow {...props} />
   </Show>
 )
@@ -1206,6 +1258,11 @@ const FullMessageRow = (props: MessageRowProps) => {
                       }
                     />
                   </Match>
+                  <Match
+                    when={part.kind === "note" && part.note === "compact_failed" ? part : undefined}
+                  >
+                    {(note) => <CompactFailedLine code={(note() as { code: string }).code} />}
+                  </Match>
                   <Match when={part.kind === "tool"}>
                     <ToolStep
                       agent={props.agent}
@@ -1253,6 +1310,18 @@ const FullMessageRow = (props: MessageRowProps) => {
             <IconButton label={t("chat.edit")} onClick={startEdit} data-testid="action-edit">
               <Pencil size={16} />
             </IconButton>
+          </Show>
+          <Show when={props.onFork}>
+            {(fork) => (
+              <IconButton
+                label={props.forkOff ?? t("chat.fork")}
+                onClick={() => fork()()}
+                disabled={props.forkOff !== undefined}
+                data-testid="action-fork"
+              >
+                <GitBranch size={16} />
+              </IconButton>
+            )}
           </Show>
         </div>
       </Show>

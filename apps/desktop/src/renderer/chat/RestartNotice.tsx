@@ -6,6 +6,7 @@ import { useRetry } from "../retry/RetryNote.tsx"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
+import { threadPart } from "./threads.ts"
 
 /**
  * The notice above the message box after a restart cut off the last request (spec 003, "Rules").
@@ -13,7 +14,11 @@ import styles from "./chat.module.css"
  * task. A request that reached the model shows how far it went, and has "Continue", which sends
  * a short new message and does not send the old request again.
  */
-export const RestartNotice = (props: { agentId: string; cut: CutNotice }) => {
+export const RestartNotice = (props: {
+  agentId: string
+  threadId: string | null
+  cut: CutNotice
+}) => {
   const { t } = useApp()
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
@@ -45,6 +50,7 @@ export const RestartNotice = (props: { agentId: string; cut: CutNotice }) => {
     act(() =>
       call("chat.send", {
         agentId: props.agentId,
+        ...threadPart(props.threadId),
         text: t("chat.restart.continueMessage"),
         replyTo: null,
       }),

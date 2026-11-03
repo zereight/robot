@@ -265,7 +265,9 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         })
 
       const notify = (n: Notice, ids?: { callId: string; agentId: string }, isNew = true) => {
-        if (isNew) push(n, ids)
+        // A linked device has the main thread only: a reply in another thread is no news there
+        // (spec 011, 012). A card that waits in another thread still goes, for "Needs you".
+        if (isNew && !(n.kind === "reply" && n.target?.threadId)) push(n, ids)
         show(n)
       }
 

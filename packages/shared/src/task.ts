@@ -187,6 +187,11 @@ export interface Task {
   readonly retryOf: string | null
   /** The message that started the task, or holds its reply. */
   readonly messageId: string | null
+  /**
+   * The thread of a chat task that is not the main thread (spec 003). A linked device cannot open
+   * it in this version (011, 012).
+   */
+  readonly threadId?: string
   readonly state: TaskState
   readonly error: { readonly code: string; readonly detail: string } | null
   readonly createdAt: number

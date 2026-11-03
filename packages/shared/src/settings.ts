@@ -8,6 +8,11 @@ import { STEP_LIMIT_DEFAULT, STEP_LIMIT_MAX, STEP_LIMIT_MIN } from "./steps.ts"
 export const DURING_TURN = ["join", "queue"] as const
 export type DuringTurn = (typeof DURING_TURN)[number]
 
+/** "Agents working at once" (spec 005, 013): the number of slots, from 1 to 8. */
+export const AGENTS_AT_ONCE_MIN = 1
+export const AGENTS_AT_ONCE_MAX = 8
+export const AGENTS_AT_ONCE_DEFAULT = 4
+
 export const Language = Schema.Literals(["system", "en", "ko"])
 export const Theme = Schema.Literals(["system", "dark", "light"])
 export const TextSize = Schema.Literals(["small", "default", "large"])
@@ -81,6 +86,12 @@ export const Settings = Schema.Struct({
   decisionModel: Schema.Literals(DECISION_CHOICES),
   /** The model name of the choice "Jev through OpenRouter". An empty name means not set up. */
   decisionModelName: Schema.String.check(Schema.isMaxLength(DECISION_MODEL_MAX)),
+  /** "Compact long chats automatically" (spec 003, 013). On by default. */
+  autoCompact: Schema.Boolean,
+  /** "Agents working at once" (spec 005, 013): how many tasks run at the same time. */
+  agentsAtOnce: Schema.Int.check(
+    Schema.isBetween({ minimum: AGENTS_AT_ONCE_MIN, maximum: AGENTS_AT_ONCE_MAX }),
+  ),
 })
 export type Settings = typeof Settings.Type
 
@@ -116,6 +127,8 @@ export const defaultSettings: Settings = {
   secretsLocal: false,
   decisionModel: "off",
   decisionModelName: DECISION_MODEL_DEFAULT,
+  autoCompact: true,
+  agentsAtOnce: AGENTS_AT_ONCE_DEFAULT,
 }
 
 export type Locale = "en" | "ko"

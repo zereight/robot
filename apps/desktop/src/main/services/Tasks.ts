@@ -47,6 +47,7 @@ interface TaskRow {
   id: string
   agent_id: string
   agent_name: string
+  thread_id: string | null
   prompt: string
   label: string
   source: TaskSource
@@ -231,6 +232,11 @@ export interface TasksService {
   retryNoteForModel(task: Pick<Task, "retryOf">): string
   /** The depth of a task in a chain of messages between agents. 0 for an unknown task. */
   depthOf(taskId: string): number
+  /**
+   * Runs work that holds the agent as a task does, with no task: a manual compact (spec 003). No
+   * task of the agent starts until it ends.
+   */
+  holdAgent<A, E, R>(agentId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
   /** Adds a step of a task to the action log (spec 007). */
   recordStep(step: StepRecord): void
   /** The logged steps of a task, oldest first. */
@@ -255,7 +261,9 @@ export interface TasksService {
 const LIST_MAX = 500
 const RESULT_MAX = 4000
 
-const SELECT = `SELECT t.*, a.name AS agent_name FROM task t JOIN agent a ON a.id = t.agent_id`
+const SELECT = `SELECT t.*, a.name AS agent_name,
+  (SELECT m.thread_id FROM message m WHERE m.id = t.message_id) AS thread_id
+  FROM task t JOIN agent a ON a.id = t.agent_id`
 
 const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   id: row.id,
@@ -268,6 +276,7 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   parentId: row.parent_id,
   retryOf: row.retry_of,
   messageId: row.message_id,
+  ...(row.thread_id ? { threadId: row.thread_id } : {}),
   state: row.state,
   error: row.error_code ? { code: row.error_code, detail: row.error_detail ?? "" } : null,
   createdAt: row.created_at,
@@ -931,6 +940,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         endRequest,
         noteFor,
         depthOf,
+        holdAgent: (agentId, work) => slot(agentId).withPermits(1)(work),
         recordStep,
         steps,
         onRetry: (source, handler) => void retryHandlers.set(source, handler),
