@@ -70,8 +70,8 @@ keep, and can undo a change.
 - Memory is stored locally with the agent.
 - Deleting an agent deletes its memory, its proposals and its history. Archiving keeps them.
 - The user can turn memory off per agent. Existing items stay but are not used. An agent with
-  memory off has no tool to save, to suggest or to search past chats (see 007). The tabs stay
-  open and the user can still change items.
+  memory off has no tool to save, to suggest, to search or to read past chats (see 007). The tabs
+  stay open and the user can still change items.
 - The memory tool accepts a text of at most 500 characters, for an item and for a proposal. It
   refuses a longer text and tells the agent. The user can type longer items by hand.
 - A proposal with the same text as an item or as another proposal is not added. Spaces at both
