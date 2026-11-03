@@ -228,8 +228,8 @@ have no transparency. Remove the alpha channel after the export, for example wit
 | End to end | Playwright with Electron | The real app against a local mock provider: every M1 flow, restarts, both languages, narrow windows, motion limits |
 | Packaged | Same suite, `ROBOT_E2E_APP` | The installed app on macOS arm64 |
 
-End-to-end runs write screenshots, a report and a motion video under `build/e2e`. CI keeps them
-as an artifact for each run.
+End-to-end runs write screenshots, a report and a motion video under `build/e2e`. The Release
+workflow keeps the report of the packaged app as an artifact.
 
 Both suites run in parallel. Unit test files run in separate processes. Each end-to-end test
 starts its own copy of the app with its own data folder. Tests that run two copies of the app ask
@@ -237,13 +237,13 @@ the system for free ports (`apps/desktop/e2e/ports.ts`) and give every worker it
 the network name service, so they run in parallel, next to other runs, and next to an open ROBot.
 Some hosted test machines block multicast; the test of nearby computers then checks the rest of
 its flow without the list. The number of end-to-end workers is half of the CPU cores; set
-`ROBOT_E2E_WORKERS` to change it. CI splits the end-to-end suite over two runners and retries a
-failed test once; the report marks a test that passed on the retry as flaky.
+`ROBOT_E2E_WORKERS` to change it. On CI a failed test is retried once; the report marks a test
+that passed on the retry as flaky.
 
-CI runs the end-to-end suite on every push to `main`. A pull request runs it too, unless every
-changed file is one that the desktop app does not use: `docs/`, `specs/`, `apps/mobile/`,
-`.githooks/`, Markdown files, the licence, and some `.github` files (`ci.yml` is not one of them).
-The lint, typecheck and unit tests of the `check` job run on every pull request.
+The end-to-end suite runs on your computer only. The `CI` workflow does not run it, neither on a
+pull request nor on a push to `main`. It runs the host checks, lint, typecheck and unit tests, and
+the size check. Run `bun run e2e` for the area you changed before you open a pull request. The
+only CI run of the suite is the Release workflow, against the packaged app (see below).
 
 ```sh
 bun run e2e                                        # whole suite

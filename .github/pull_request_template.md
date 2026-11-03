@@ -15,4 +15,4 @@ Implementer
 
 ## End-to-end check
 
-<!-- Test file and what it shows. Reports go to build/e2e (git-ignored, uploaded by CI). -->
+<!-- Test file and what it shows. CI does not run the suite: run it on your computer. Reports go to build/e2e (git-ignored). -->
