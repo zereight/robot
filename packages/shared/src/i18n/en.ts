@@ -1924,6 +1924,22 @@ export const en = {
   "memory.item.menu": "Actions for this item",
   "error.skill_agents_invalid": "Pick at least one agent of this server.",
   "error.skill_task_not_done": "Only a task that is done can make a skill.",
+  "handover.title": "Handover from {name}",
+  "handover.brief.header": "Handover from {name}",
+  "handover.brief.chat": "Chat: {title}",
+  "handover.brief.lastMessage": "Last message: {time}",
+  "handover.brief.folder": "Folder of {name}: {folder}",
+  "handover.brief.first": "First request",
+  "handover.brief.latest": "Latest request",
+  "handover.brief.reply": "Last reply of {name}",
+  "handover.brief.files": "Files that {name} wrote, changed or deleted (newest first)",
+  "handover.brief.commands": "Commands that {name} ran (oldest first)",
+  "handover.brief.ran": "Ran",
+  "handover.brief.failed": "Failed",
+  "handover.brief.attached": "Attached: {names}",
+  "handover.off.noMessage": "Hand over is off: this chat has no message of yours.",
+  "handover.off.running": "Hand over is off while a turn of this chat runs.",
+  "handover.off.noAgent": "Hand over is off: there is no other agent that is not archived.",
 } as const
 
 export type MessageKey = keyof typeof en
