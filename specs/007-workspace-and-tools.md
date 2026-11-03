@@ -44,7 +44,7 @@ Each agent works in its own folder with real tools, and the user stays in contro
 ## Permission levels
 
 - **Read only**: the agent can read, list and search files, fetch web pages, ask the user a
-  question, save memory and list agents. These steps are refused: writing or deleting a file, a
+  question, save memory, list agents and use the board tools (024). These steps are refused: writing or deleting a file, a
   shell command, a tool of a connection, the browser, computer use, "send message", and running
   a workflow. A refused step shows a card with "Refused: read only". The agent gets the refusal
   as a failed step, and the turn goes on. The action log has the step with the result Refused and
@@ -92,7 +92,8 @@ the user gets a card only when the check is sure that the user asked for the ste
     for example `make` or `npm run`, also runs a script file. A short command can start a long
     script that any turn wrote, by a file step or by a command.
 - **Words of the user**: the messages of the user that started the turn or joined it (003), or the
-  prompt of a routine (009). The prompt of a routine from an agent file (002) counts only after the
+  prompt of a routine (009), or the title and description of a card that the user wrote and
+  started (024). The prompt of a routine from an agent file (002) counts only after the
   user saves the routine form once. For a part of a channel job (004), the words of the user are
   the job message, when the user posted the job and the turn of the lead held no outside content
   before it made the part. For a new part after "Request changes" (004), the text of the request
@@ -276,6 +277,7 @@ text is in the turn.
   - the answer of a request with a saved secret (020),
   - the change that starts a routine with a watch trigger (009),
   - a message from another agent,
+  - the text that an agent wrote on a card of the board (024),
   - a message of an outside program (023),
   - a hit of "search chats" (see "Searching past chats") on a message that the user did not write.
   Files in the workspace and files that the user attaches are not outside content.

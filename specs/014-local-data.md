@@ -81,6 +81,8 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 - Export: one archive for one profile (022), with the database, attachments, agent knowledge,
   and a readme of the format. Secrets are not included. The archive holds the rules, the action log, the skills and
   the connections without their secret values.
+- The cards of the board and their comments (024) are in the archive, with their numbers and
+  their links to tasks. An import restores them.
 - The memory history in the archive follows the rule for secrets above: text that looks like a
   secret is replaced with "[redacted]".
 - Import of a ROBot export into an empty profile (022) restores everything except secrets. Every

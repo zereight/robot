@@ -15,7 +15,7 @@ and linked devices. A phone that is paired with one profile sees that profile an
 - **Server**: one profile on one computer (see 000 and 012). Each profile is a server for its own
   agents.
 - **What a profile holds**: everything that 014 lists as local data: agents, channels, chats,
-  tasks, routines, workflows, memory, knowledge, skills, connections, saved secrets, permission
+  tasks, the board, routines, workflows, memory, knowledge, skills, connections, saved secrets, permission
   rules, the action log, usage numbers, settings, model accounts and their keys, browser sessions
   of agents, the default folder for workspaces, linked devices and their keys, and the sync
   pair.
@@ -103,7 +103,7 @@ apart").
 
 - No screen, search, tool or agent of one profile reads or changes the data of another profile.
   The tools "list agents", "send message" and "search chats" (007) see only the agents and chats
-  of their own profile.
+  of their own profile. The board tools (024) use only the board of their own profile.
 - All settings belong to the profile, except the list of profiles and "start at login", which
   belong to the computer.
 - A new profile has no model account. The keys and tokens of each profile are in the keychain,
