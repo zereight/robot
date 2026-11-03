@@ -1,10 +1,12 @@
 import { ATTACH_BYTES, ATTACH_MAX } from "@robot/phone"
-import { useState } from "react"
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { type Agent, insertMention, mentionEntries, openMention } from "@robot/shared"
+import { useEffect, useState } from "react"
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { fileSizeText } from "../i18n/index.ts"
 import { type Picked, pickFiles, pickPhotos } from "../platform/files.ts"
 import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
+import { Face } from "../ui/Face.tsx"
 import { ErrorLine } from "../ui/kit.tsx"
 import { Sheet } from "../ui/Sheet.tsx"
 
@@ -23,6 +25,11 @@ export const Composer = (props: {
   readonly working: boolean
   /** A line that says why the box cannot send now (offline, removed), or null. */
   readonly blocked: string | null
+  /**
+   * The members of a channel that can answer (not archived). With it, an `@` before the caret
+   * opens a list of them above the box (spec 004, "Mention"). Direct chats pass none.
+   */
+  readonly mentions?: readonly Agent[] | undefined
   readonly reply: { readonly name: string; readonly text: string } | null
   readonly onCancelReply: () => void
   readonly onSend: (
@@ -37,6 +44,26 @@ export const Composer = (props: {
   const [menu, setMenu] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<number | null>(null)
+  // The `@` list: where the caret is, and a caret that a pick asks for. The ask holds for one
+  // render only, so the box is free again at once.
+  const [caret, setCaret] = useState(0)
+  const [forced, setForced] = useState<{ start: number; end: number } | undefined>()
+  useEffect(() => {
+    if (forced) setForced(undefined)
+  }, [forced])
+  const members = props.mentions
+  const openAt = members ? openMention(value, caret) : null
+  const entries =
+    members && openAt && !props.blocked
+      ? mentionEntries(members, openAt.query, members.length >= 2)
+      : []
+  const pickMention = (name: string) => {
+    if (!openAt) return
+    const next = insertMention(value, openAt, caret, name)
+    setValue(next.text)
+    setCaret(next.caret)
+    setForced({ start: next.caret, end: next.caret })
+  }
 
   const add = (picked: readonly Picked[]) => {
     setError(null)
@@ -125,6 +152,45 @@ export const Composer = (props: {
         </Text>
       ) : null}
       <ErrorLine text={error} />
+      {entries.length > 0 ? (
+        <ScrollView
+          testID="composer.mentions"
+          accessibilityLabel={t("chat.mentions")}
+          keyboardShouldPersistTaps="handled"
+          style={[
+            styles.mentions,
+            { borderColor: palette.border, backgroundColor: palette.surface },
+          ]}
+        >
+          {entries.map((entry) => {
+            const name = entry.kind === "all" ? "all" : entry.member.name
+            return (
+              <Pressable
+                key={entry.kind === "all" ? "@all" : entry.member.id}
+                testID={`composer.mention.${name}`}
+                accessibilityRole="button"
+                accessibilityLabel={`@${name}`}
+                onPress={() => pickMention(name)}
+                style={({ pressed }) => [
+                  styles.mention,
+                  { backgroundColor: pressed ? palette.pressed : "transparent" },
+                ]}
+              >
+                {entry.kind === "all" ? null : (
+                  <Face face={entry.member.face} image={entry.member.faceImage} size={24} />
+                )}
+                <Text style={[styles.mentionName, { color: palette.text }]}>@{name}</Text>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.xs, styles.grow, { color: palette.textMuted }]}
+                >
+                  {entry.kind === "all" ? t("chat.mentionAll") : entry.member.role}
+                </Text>
+              </Pressable>
+            )
+          })}
+        </ScrollView>
+      ) : null}
       <View style={styles.bar}>
         {props.canAttach ? (
           <Pressable
@@ -151,6 +217,8 @@ export const Composer = (props: {
           placeholderTextColor={palette.textMuted}
           value={value}
           onChangeText={setValue}
+          onSelectionChange={(e) => setCaret(e.nativeEvent.selection.start)}
+          {...(forced ? { selection: forced } : {})}
           editable={!props.blocked}
           multiline
           style={[
@@ -219,6 +287,15 @@ const styles = StyleSheet.create({
     gap: space.s,
     marginHorizontal: space.xs,
   },
+  mentions: { maxHeight: 192, borderWidth: 1, borderRadius: radius.m },
+  mention: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.s,
+    minHeight: 44,
+    paddingHorizontal: space.m,
+  },
+  mentionName: { fontSize: text.m, fontWeight: "600" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: space.xs },
   chip: {
     flexDirection: "row",

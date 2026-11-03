@@ -126,6 +126,8 @@ export const ko: Record<MessageKey, string> = {
   "chat.working": "작업 중…",
   "chat.placeholder": "{name}에게 메시지 보내기",
   "chat.placeholder.channel": "#{name}에 메시지 보내기",
+  "chat.mentions": "멤버",
+  "chat.mentionAll": "모든 멤버가 답해요",
   "chat.send": "보내기",
   "chat.stop": "멈추기",
   "chat.attach": "첨부",

@@ -630,6 +630,8 @@ export const en = {
   "channels.stopAll": "Stop all work",
   "channels.placeholder": "Message #{name}. Use @Name to ask one agent.",
   "channels.send": "Send",
+  "channels.mentions": "Members",
+  "channels.mentionAll": "Every member answers",
   "channels.start": "This is the start of #{name}.",
   "channels.empty": "Write a job. The lead reads it first.",
   "channels.pick": "Who should take this job?",

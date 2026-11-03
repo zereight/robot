@@ -280,3 +280,57 @@
     transform: rotate(360deg);
   }
 }
+
+/* The `@` list above the message box (spec 004, "Mention"). */
+.mentions {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  margin: 0 0 6px;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-l);
+  background: var(--c-elevated);
+}
+.mention {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.mention[aria-selected="true"],
+.mention:hover {
+  background: var(--c-hover);
+}
+.mentionAllIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--c-hover);
+  color: var(--c-text-muted);
+}
+.mentionName {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mentionRole {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

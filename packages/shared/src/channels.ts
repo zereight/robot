@@ -158,6 +158,17 @@ export const parseMentions = (text: string, names: readonly string[]): string[] 
   return names.filter((n) => found.has(n))
 }
 
+/** The name after the `@` of the everyone mention (spec 004, "Everyone mention"). */
+export const EVERYONE_MENTION = "all"
+
+/**
+ * True when `text` holds the word `@all`. It counts at the start of the text or after a character
+ * that is no letter, no digit and no underscore, as a mention of a member does. The letter case
+ * does not count.
+ */
+export const mentionsEveryone = (text: string): boolean =>
+  new RegExp(`(^|[^\\p{L}\\p{N}_])@${EVERYONE_MENTION}(?![\\p{L}\\p{N}_])`, "iu").test(text)
+
 export interface PlanPart {
   readonly member: string
   readonly label: string

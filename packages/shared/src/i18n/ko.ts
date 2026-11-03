@@ -628,6 +628,8 @@ export const ko: Record<MessageKey, string> = {
   "channels.stopAll": "모든 작업 중지",
   "channels.placeholder": "#{name}에 메시지 보내기. @이름으로 에이전트 한 명에게 물어볼 수 있어요.",
   "channels.send": "보내기",
+  "channels.mentions": "멤버",
+  "channels.mentionAll": "모든 멤버가 답해요",
   "channels.start": "#{name} 채널의 시작이에요.",
   "channels.empty": "일을 적어 주세요. 리드가 가장 먼저 읽어요.",
   "channels.pick": "이 일을 누가 맡을까요?",

@@ -36,6 +36,7 @@ import {
   type MemberState,
   type MessagePart,
   type MessageStatus,
+  mentionsEveryone,
   mentionsUser,
   messageText,
   needsVerdict,
@@ -1783,12 +1784,24 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           return yield* new AppError({ code: "invalid_input" })
         const members = memberRows(channelId)
         if (members.length === 0) return yield* new AppError({ code: "channel_empty" })
-        const mentioned = parseMentions(
-          value,
-          members.map((m) => m.name),
-        )
+        // `@all` comes first: every member that is not archived gets its own task, and nobody else
+        // reads the message, also not a member that a name mentions (spec 004, flow 2).
+        const everyone = mentionsEveryone(value)
+        const everyoneIds = everyone ? availableMembers(channelId).map((m) => m.id) : []
+        if (everyone && everyoneIds.length === 0)
+          return yield* new AppError({ code: "channel_empty" })
+        const mentioned = everyone
+          ? []
+          : parseMentions(
+              value,
+              members.map((m) => m.name),
+            )
+        // The members that the message goes to by name or by `@all`.
+        const direct = everyone
+          ? everyoneIds
+          : mentioned.flatMap((name) => members.find((m) => m.name === name)?.id ?? [])
         // A reply to a part with no mention goes to the member of that part (spec question of 004).
-        const replied = mentioned.length === 0 ? yield* partOfReply(channelId, replyTo) : undefined
+        const replied = direct.length === 0 ? yield* partOfReply(channelId, replyTo) : undefined
         if (replied) {
           insertUserMessage(channelId, value, false, sender)
           placesChanged(channel.server_id)
@@ -1801,27 +1814,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         // at least two members can take it (spec 004).
         // A member whose queue is full takes no job: the fast pick leaves it out (spec 005).
         const candidates =
-          mentioned.length === 0
+          direct.length === 0
             ? availableMembers(channelId).filter((m) => tasks.queueFull(m.id) === null)
             : []
         const picking = candidates.length >= 2 && !hasOpenWork(channelId) && (yield* decision.ready)
-        const awaiting = mentioned.length === 0 && lead === null && !picking
-        // A full queue refuses the message before it shows, and the box keeps the text.
-        if (mentioned.length > 0)
-          for (const name of mentioned) {
-            const member = members.find((m) => m.name === name)
-            if (member) yield* checkQueue(member.id)
-          }
+        const awaiting = direct.length === 0 && lead === null && !picking
+        // A full queue refuses the message before it shows, and the box keeps the text. One
+        // member with a full queue refuses a message that names or calls several members.
+        if (direct.length > 0) for (const id of direct) yield* checkQueue(id)
         else if (!picking && lead !== null) yield* checkQueue(lead)
         const jobId = insertUserMessage(channelId, value, awaiting, sender)
         placesChanged(channel.server_id)
         for (const handler of messageHandlers) handler(channelId, value)
         if (awaiting) return { awaiting: true }
-        if (mentioned.length > 0) {
-          for (const name of mentioned) {
-            const member = members.find((m) => m.name === name)
-            if (member) yield* startDirect(channel, member.id, value)
-          }
+        if (direct.length > 0) {
+          for (const id of direct) yield* startDirect(channel, id, value)
         } else if (picking) {
           // The answer takes up to 3 seconds. The message shows at once, and the send does not wait.
           yield* background(fastPick(channel, jobId, value, candidates, lead))
