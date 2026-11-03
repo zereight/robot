@@ -9,6 +9,7 @@ import {
   DEFAULT_PERMISSION,
   faceFromName,
   type InstructionSource,
+  isSensitiveLabel,
   nameKey,
   type PermissionLevel,
 } from "@robot/shared"
@@ -45,6 +46,7 @@ interface AgentRow {
   created_at: number
   changed_by: string | null
   changed_at: number | null
+  sensitive_mark: string | null
 }
 
 export interface AgentsService {
@@ -133,6 +135,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
               ? { by: row.changed_by, at: row.changed_at }
               : null,
           knowledgeEnabled: row.knowledge_enabled === 1,
+          sensitive: isSensitiveLabel(row.sensitive_mark) ? row.sensitive_mark : null,
         }
       }
 

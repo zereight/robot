@@ -1,5 +1,6 @@
 import type { IslandShape, TeachEvent } from "@robot/shared"
 import { Context } from "effect"
+import type { Resolver } from "../web/fetch.ts"
 
 /** A place in the app window, in px from the top left corner of the window content. */
 export interface PageBounds {
@@ -50,6 +51,13 @@ export interface PlatformService {
   readonly platform: string
   readonly dataDir: string
   readonly defaultWorkspaceRoot: string
+  /**
+   * The home folder of the user. The lists of sensitive places (spec 007) start here, so a test
+   * gives a folder of its own and never reads a real place of the user.
+   */
+  readonly homeDir: string
+  /** Looks up a host name for a web page fetch. A test gives a table of its own. */
+  readonly resolveHost: Resolver
   systemLocale(): string
   pickFolder(defaultPath: string): Promise<string | undefined>
   /** Full paths of files that the user picks. Empty when cancelled. */

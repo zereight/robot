@@ -8,9 +8,11 @@ import {
   type ActionLogEntry,
   type ActionResult,
   isOutsideSource,
+  isSensitiveLabel,
   LOGGED_KINDS,
   type OutsideSource,
   redactSecrets,
+  type SensitiveLabel,
   type StepAccess,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
@@ -28,6 +30,8 @@ export interface ActionLogInput {
   readonly result: ActionResult
   readonly taskId: string | null
   readonly outside: OutsideSource | null
+  /** The label of the first credential place that the turn read, or none (spec 007). */
+  readonly sensitive?: SensitiveLabel | null
 }
 
 export interface ActionLogFilter {
@@ -59,6 +63,7 @@ interface Row {
   result: ActionResult
   task_id: string | null
   outside: string | null
+  sensitive: string | null
 }
 
 const parseOutside = (text: string | null): OutsideSource | null => {
@@ -83,6 +88,7 @@ const toEntry = (r: Row): ActionLogEntry => ({
   result: r.result,
   taskId: r.task_id,
   outside: parseOutside(r.outside),
+  sensitive: isSensitiveLabel(r.sensitive) ? r.sensitive : null,
 })
 
 /** The target as the log keeps it: secrets hidden, then cut at 200 characters. */
@@ -110,8 +116,8 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", input.agentId)?.name ??
             ""
           db.run(
-            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside, sensitive)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             at,
             input.agentId,
@@ -123,6 +129,7 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             input.result,
             input.taskId,
             input.outside ? JSON.stringify(input.outside) : null,
+            input.sensitive ?? null,
           )
           db.run("DELETE FROM action_log WHERE at < ?", at - ACTION_LOG_DAYS * DAY_MS)
           db.run(

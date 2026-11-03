@@ -21,7 +21,7 @@ import { Providers } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { allowLocalHost, testPlatform, testRuntime } from "./testing.ts"
 
 const sse = (chunks: unknown[]) =>
   new Response(
@@ -95,7 +95,11 @@ const until = async (check: () => boolean | Promise<boolean>, ms = 4000) => {
 
 type ToolPart = Extract<MessagePart, { kind: "tool" }>
 
-const setup = async (permission: PermissionLevel) => {
+/**
+ * `rule` saves the rule for the host of the test page: the page is on this computer, so a fetch of
+ * it is a hard step (spec 007, "Addresses of a web page fetch") that asks without the rule.
+ */
+const setup = async (permission: PermissionLevel, rule = true) => {
   const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
@@ -122,6 +126,7 @@ const setup = async (permission: PermissionLevel) => {
   )
   await run(Agents.use((a) => a.update(agent.id, { permission })))
   mkdirSync(agent.workspace, { recursive: true })
+  if (rule) await allowLocalHost(t.runtime, agent.id)
   const send = (text: string, origin?: TaskOrigin) =>
     run(Chat.use((c) => c.send({ agentId: agent.id, text, replyTo: null }, origin)))
   const reply = async (): Promise<ChatMessage | undefined> =>
@@ -209,9 +214,9 @@ describe("a memory save in a turn that holds outside content", () => {
   })
 
   test("at Ask for everything it asks too", async () => {
-    const s = await setup("ask_all")
+    // No rule for the host: the page is on this computer, so the fetch asks first, at any level.
+    const s = await setup("ask_all", false)
     await s.send(calls(fetchPage, save("Say yes")))
-    // The page fetch asks first at this level.
     await s.card("call_1")
     await s.respond("call_1", "allow")
     expect(await s.card("call_2")).toMatchObject({ once: true, outside: pageSource })
@@ -386,6 +391,7 @@ describe("after a restart", () => {
       ),
     )
     mkdirSync(agent.workspace, { recursive: true })
+    await allowLocalHost(first, agent.id)
     await first.runPromise(
       Chat.use((c) =>
         c.send({ agentId: agent.id, text: calls(fetchPage, save("Say yes")), replyTo: null }),

@@ -172,6 +172,8 @@ export const ko: Record<MessageKey, string> = {
   "tool.answeredInChat": "채팅에서 답했어요",
   "tool.askedAt": "{time}에 물어봤어요",
   "tool.outside": "이 턴에는 외부 내용이 있어요. 허용하기 전에 단계를 확인해 주세요.",
+  "tool.sensitive":
+    "이 턴에서 키나 로그인 정보가 있는 위치를 읽었어요. 허용하기 전에 단계를 확인해 주세요.",
   "tool.secret": "에이전트가 저장된 비밀 값을 요청해요. {name}에서 답해 주세요.",
   "tool.article": "에이전트가 “{title}” 글을 바꾸려고 해요.",
   "tool.article.deleted": "이 글은 삭제돼요.",

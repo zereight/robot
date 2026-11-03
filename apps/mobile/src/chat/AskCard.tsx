@@ -81,6 +81,9 @@ export const AskCard = (props: {
           {ask.outside ? (
             <Text style={[styles.small, { color: palette.danger }]}>{t("tool.outside")}</Text>
           ) : null}
+          {ask.sensitive ? (
+            <Text style={[styles.small, { color: palette.danger }]}>{t("tool.sensitive")}</Text>
+          ) : null}
           {allowDeny}
         </>
       ) : ask.kind === "article" ? (

@@ -5,6 +5,7 @@ import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
 import type { SecretAsk } from "./secrets.ts"
+import type { SensitiveLabel } from "./sensitive.ts"
 import type { TaskProgress } from "./task.ts"
 import type { RefusalReason } from "./tools.ts"
 
@@ -87,6 +88,12 @@ export type ToolAsk =
        * says so and names this first source. Such a card always has `once`.
        */
       readonly outside?: OutsideSource
+      /**
+       * Set when a step that sends data out asks because the turn read a credential place (spec
+       * 007, "Sensitive places"). The card says "This turn read a place with keys or logins." and
+       * names the label of the first place. Such a card always has `once`.
+       */
+      readonly sensitive?: SensitiveLabel
     }
   | {
       readonly kind: "question"

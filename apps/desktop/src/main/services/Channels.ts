@@ -29,6 +29,7 @@ import {
   hasVisibleReply,
   holdOutside,
   isFinal,
+  isSensitiveLabel,
   isTaskProgress,
   LOOKS_MAX,
   MESSAGE_MAX,
@@ -84,6 +85,7 @@ import { Knowledge } from "./Knowledge.ts"
 import { appendLog } from "./logs.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
+import { PlaceMarks } from "./PlaceMarks.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
@@ -163,6 +165,7 @@ interface ChannelRow {
   lead_agent_id: string | null
   place_section_id: string | null
   review_parts: number
+  sensitive_mark: string | null
 }
 
 interface MessageRow {
@@ -226,6 +229,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const providers = yield* Providers
       const tasks = yield* Tasks
       const tools = yield* Tools
+      const placeMarks = yield* PlaceMarks
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
       const agentActivity = yield* Activity
@@ -243,7 +247,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -297,6 +301,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           memberIds,
           sectionId: row.place_section_id,
           reviewParts: row.review_parts === 1,
+          sensitive: isSensitiveLabel(row.sensitive_mark) ? row.sensitive_mark : null,
           unread,
           working: hasActiveWork(row.id),
         }
@@ -531,6 +536,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               taskId: o.taskId,
               decidedBy: tools.decidedBy(o.agent.id, callId),
               outside: mark.source,
+              sensitive: mark.sensitive,
             }),
         })
         db.run(
@@ -652,6 +658,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             depth: tasks.depthOf(o.taskId),
             guard: createReadGuard(),
             onReason: (callId, reason) => changePart(callId, (p) => ({ ...p, reason })),
+            // The channel holds the mark from the first read of any member (spec 007).
+            onSensitive: (label) =>
+              placeMarks.holdSensitive({ kind: "channel", id: o.channel.id }, label),
           }
           const events = yield* providers.events(
             o.agent.model_account_id,
@@ -832,10 +841,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             if (extraTurn) turns.push({ role: "user", content: extraTurn })
             const starter: TurnStarter =
               task.source === "routine" ? "routine" : from ? "agent" : "user"
+            // A turn of the channel holds a sensitive read from its start when an earlier turn of
+            // any member read a credential place: the channel holds the mark (spec 007). This
+            // covers a part that the lead gives after its own turn read one.
             const turn = newTurnMark(
               starter,
               outside ??
                 (from ? { kind: "agent", name: from.name } : otherVoice(channel.id, agent)),
+              placeMarks.get({ kind: "channel", id: channel.id }).sensitive,
             )
             return streamReply({
               channel,
@@ -1840,7 +1853,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts FROM channel
+                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )

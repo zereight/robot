@@ -22,6 +22,7 @@ import {
   remoteRetryNote,
   retryNote,
   retryNoteForModel,
+  type SensitiveLabel,
   type Task,
   type TaskDetail,
   type TaskProgress,
@@ -107,6 +108,8 @@ export interface StepRecord extends Omit<LoggedStep, "at"> {
   readonly decidedBy: ActionDecider
   /** The first source of outside content of the turn, or null. */
   readonly outside: OutsideSource | null
+  /** The label of the first credential place that the turn read, or null (spec 007). */
+  readonly sensitive: SensitiveLabel | null
 }
 
 export interface RetryOptions {
@@ -742,6 +745,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           result: step.result,
           taskId: step.taskId,
           outside: step.outside,
+          sensitive: step.sensitive,
         })
       }
 

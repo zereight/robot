@@ -60,6 +60,7 @@ import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
+import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
@@ -695,6 +696,19 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String, query: Schema.optionalKey(Schema.String) }))(
       input,
     ).pipe(Effect.flatMap(({ agentId, query }) => Memory.use((m) => m.list(agentId, query)))),
+  // Only the window of this computer clears a mark: the method is not on the list of a linked
+  // device, so the phone and a linked computer get "not allowed" (spec 007, 012).
+  "placeMarks.clear": (input) =>
+    decode(
+      Schema.Struct({
+        place: Schema.Struct({
+          kind: Schema.Literals(["agent", "channel"]),
+          id: Schema.String,
+        }),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ place }) => PlaceMarks.use((m) => Effect.sync(() => m.clear(place)))),
+    ),
   "actionLog.list": (input) =>
     decode(
       Schema.Struct({

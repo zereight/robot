@@ -173,6 +173,8 @@ export const en = {
   "tool.answeredInChat": "Answered in the chat",
   "tool.askedAt": "Asked at {time}",
   "tool.outside": "This turn holds outside content. Check the step before you allow it.",
+  "tool.sensitive":
+    "This turn read a place with keys or logins. Check the step before you allow it.",
   "tool.secret": "The agent asks for a saved secret. Answer it on {name}.",
   "tool.article": "The agent wants to change the article “{title}”.",
   "tool.article.deleted": "The article would be deleted.",

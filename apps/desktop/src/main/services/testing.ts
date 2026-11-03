@@ -6,12 +6,17 @@ import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
+import { Database } from "./Database.ts"
 import type { BrowserPage, PlatformService } from "./Platform.ts"
 import { Secrets } from "./Secrets.ts"
 
 /** A platform for unit tests: a temp data folder and a trash list. */
 export const testPlatform = () => {
   const dataDir = mkdtempSync(join(tmpdir(), "robot-unit-"))
+  // A home folder of its own, so a test never reads or writes a real place of the user (spec 007).
+  const homeDir = mkdtempSync(join(tmpdir(), "robot-unit-home-"))
+  /** The addresses that each host name leads to, for a web page fetch. A name not here fails. */
+  const hosts = new Map<string, string[]>()
   const trashed: string[] = []
   /** What the fake browsers did, in order, as "agent:action". */
   const browserLog: string[] = []
@@ -83,6 +88,12 @@ export const testPlatform = () => {
     platform: "test",
     dataDir,
     defaultWorkspaceRoot: join(dataDir, "workspaces"),
+    homeDir,
+    resolveHost: async (host) => {
+      const list = hosts.get(host.toLowerCase())
+      if (!list) throw new Error(`ENOTFOUND ${host}`)
+      return list.map((address) => ({ address, family: address.includes(":") ? 6 : 4 }))
+    },
     systemLocale: () => "en-US",
     pickFolder: async () => undefined,
     pickFiles: async () => [],
@@ -134,6 +145,8 @@ export const testPlatform = () => {
   return {
     platform,
     dataDir,
+    homeDir,
+    hosts,
     trashed,
     browserLog,
     browserPlaced,
@@ -157,6 +170,8 @@ export const testRuntime = (
   const {
     platform,
     dataDir,
+    homeDir,
+    hosts,
     trashed,
     browserLog,
     browserPlaced,
@@ -186,6 +201,8 @@ export const testRuntime = (
   return {
     runtime,
     dataDir,
+    homeDir,
+    hosts,
     trashed,
     events,
     browserLog,
@@ -199,4 +216,22 @@ export const testRuntime = (
 }
 
 export type TestRuntime = ReturnType<typeof testRuntime>["runtime"]
+
+/**
+ * Saves the rule "Always allow for this agent" for a fetch of a local host (spec 007, "Addresses of
+ * a web page fetch"). A test that fetches from a test server on this computer needs it: a fetch of
+ * a local address is a hard step, and it asks without the rule.
+ */
+export const allowLocalHost = (runtime: TestRuntime, agentId: string, host = "127.0.0.1") =>
+  runtime.runPromise(
+    Database.use((db) =>
+      Effect.sync(() =>
+        db.run(
+          "INSERT OR IGNORE INTO agent_allow (agent_id, key) VALUES (?, ?)",
+          agentId,
+          `fetch_url:local:${host}`,
+        ),
+      ),
+    ),
+  )
 export { Effect, Layer }

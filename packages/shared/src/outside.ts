@@ -1,5 +1,6 @@
 import type { MessagePart } from "./chat.ts"
 import { toolStepKind } from "./notifications.ts"
+import type { SensitiveLabel } from "./sensitive.ts"
 import type { LoggedKind, StepAccess } from "./steps.ts"
 import type { TaskSource } from "./task.ts"
 import type { PermissionLevel } from "./tools.ts"
@@ -78,29 +79,71 @@ export const guardDecision = (input: GuardInput): GuardVerdict => {
 }
 
 /**
- * The mark of one turn: who started it and the first source of outside content, or null. A turn
- * holds outside content from the first such step until it ends.
+ * The mark of one turn: who started it, the first source of outside content, or null, and the
+ * label of the first credential place that the turn read, or null. A turn holds outside content
+ * from the first such step until it ends, and holds a sensitive read from the first read of a
+ * credential place until it ends (spec 007, "Sensitive places").
  */
 export interface TurnMark {
   readonly starter: TurnStarter
   source: OutsideSource | null
+  sensitive: SensitiveLabel | null
 }
 
 /**
  * A new mark. A turn that a message from another agent or a watch routine starts passes its
- * source here: it holds outside content from its start.
+ * source here: it holds outside content from its start. A turn in a place that holds a sensitive
+ * read passes the label here: it holds the sensitive read from its start.
  */
 export const newTurnMark = (
   starter: TurnStarter,
   source: OutsideSource | null = null,
+  sensitive: SensitiveLabel | null = null,
 ): TurnMark => ({
   starter,
   source,
+  sensitive,
 })
 
 /** The turn got outside content. The first source stays. */
 export const holdOutside = (mark: TurnMark, source: OutsideSource | null): void => {
   if (source && !mark.source) mark.source = source
+}
+
+/** The turn read a credential place. The first label stays. */
+export const holdSensitive = (mark: TurnMark, label: SensitiveLabel | null): void => {
+  if (label && !mark.sensitive) mark.sensitive = label
+}
+
+/**
+ * True when the turn holds a sensitive read, so no step of it goes to the check of "Ask when
+ * unsure" (spec 007, "Sensitive places"). The agent has seen keys or logins, so a step that sends
+ * data out must ask the user. The check calls this with the mark of the turn.
+ */
+export const sensitiveStopsCheck = (mark: Pick<TurnMark, "sensitive">): boolean =>
+  mark.sensitive !== null
+
+/**
+ * What a step that sends data out does in a turn that holds a sensitive read (spec 007):
+ * - `refuse_rule`: a Deny rule refuses it, at every level,
+ * - `ask`: an approval card with Allow once and Deny only, also when an Allow rule matches,
+ * - `run`: it runs with no question ("Full access"),
+ * - `usual`: the turn holds no sensitive read, and the step goes the way it goes without one.
+ * The steps are a command that uses the network to send data, and a fetch of a web page. At "Read
+ * only" the commands are refused before this decision, and a fetch asks.
+ */
+export type SendVerdict = "refuse_rule" | "ask" | "run" | "usual"
+
+export const sendDecision = (input: {
+  readonly level: GuardLevel
+  /** True when the turn holds a sensitive read. */
+  readonly sensitive: boolean
+  /** True when a Deny rule matches the step. */
+  readonly denied?: boolean
+}): SendVerdict => {
+  if (!input.sensitive) return "usual"
+  if (input.denied) return "refuse_rule"
+  return input.level === "full" ? "run" : "ask"
 }
 
 /** The host of an address, or "" when it is not an address. */
@@ -185,8 +228,11 @@ export const isOutsideSource = (v: unknown): v is OutsideSource => {
   }
 }
 
-/** Who decided a step of the action log (spec 007, "Action log"). */
-export type ActionDecider = "level" | "allow_rule" | "deny_rule" | "user"
+/**
+ * Who decided a step of the action log (spec 007, "Action log"). `app` is the app itself, for an
+ * address that is never allowed (spec 007, "Sensitive places").
+ */
+export type ActionDecider = "level" | "allow_rule" | "deny_rule" | "user" | "app"
 /** The result of a step of the action log. */
 export type ActionResult = "ran" | "failed" | "refused" | "stopped"
 
@@ -213,6 +259,8 @@ export interface ActionLogEntry {
   readonly taskId: string | null
   /** The first source of outside content, when the turn held outside content. */
   readonly outside: OutsideSource | null
+  /** The label of the first credential place, when the turn held a sensitive read. */
+  readonly sensitive: SensitiveLabel | null
 }
 
 export const ACTION_LOG_DAYS = 90

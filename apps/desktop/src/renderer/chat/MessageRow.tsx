@@ -16,6 +16,7 @@ import {
   ROUTINES_MAX,
   type SecretAsk,
   type SecretAuth,
+  type SensitiveLabel,
   type SettingChange,
   type SettingsNote,
   type SettingValue,
@@ -39,6 +40,7 @@ import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
+import { sensitiveLabelText } from "../lib/sensitive.ts"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { openMemory } from "../state/memoryLink.ts"
@@ -231,7 +233,11 @@ const ToolCard = (props: {
           data-testid="tool-state"
         >
           {props.part.refused
-            ? t("chat.tool.refusedReadOnly")
+            ? t(
+                props.part.refused === "address"
+                  ? "chat.tool.refusedAddress"
+                  : "chat.tool.refusedReadOnly",
+              )
             : t(`chat.tool.${props.part.state}` as MessageKey)}
         </span>
         <Show when={props.part.reason}>
@@ -404,6 +410,17 @@ const ToolCard = (props: {
                           {t("outside.first", { source: outsideSourceText(t, source()) })}
                         </span>
                         <span class={styles.outsideHint}>{t("outside.hint")}</span>
+                      </div>
+                    )}
+                  </Show>
+                  {/* A step that sends data out in a turn that read a credential place (spec 007). */}
+                  <Show when={(ask() as { sensitive?: SensitiveLabel }).sensitive}>
+                    {(label) => (
+                      <div class={styles.outside} role="note" data-testid="ask-sensitive">
+                        <strong>{t("sensitive.askLine")}</strong>
+                        <span data-testid="ask-sensitive-label">
+                          {t("sensitive.first", { label: sensitiveLabelText(t, label()) })}
+                        </span>
                       </div>
                     )}
                   </Show>

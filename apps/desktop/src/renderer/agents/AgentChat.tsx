@@ -2,6 +2,7 @@ import { type Agent, type AgentModel, runtimeModel } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
 import { createEffect, createSignal, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
+import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
@@ -199,6 +200,10 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
               <BrowserPane agentId={a().id} />
             </Show>
             <div class={styles.chatColumn}>
+              <PlaceMarksLine
+                place={{ kind: "agent", id: a().id }}
+                marks={{ sensitive: a().sensitive ?? null }}
+              />
               <ChatView
                 agent={a()}
                 start={<Start agent={a()} />}
