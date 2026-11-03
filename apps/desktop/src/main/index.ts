@@ -6,6 +6,7 @@ import { app, BrowserWindow } from "electron"
 import { appLayer } from "./layers.ts"
 import { electronPlatform, isTestRun, setMainWindow } from "./platform-electron.ts"
 import { registerRpc } from "./register-rpc.ts"
+import { importLoginPath } from "./runtimes/login-path.ts"
 import { Database } from "./services/Database.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Platform } from "./services/Platform.ts"
@@ -18,6 +19,11 @@ app.setName("ROBot")
 app.setPath("userData", process.env.ROBOT_USER_DATA ?? join(app.getPath("appData"), "ROBot"))
 if (process.env.ROBOT_SYSTEM_LOCALE)
   app.commandLine.appendSwitch("lang", process.env.ROBOT_SYSTEM_LOCALE)
+
+// An installed app starts from the desktop with a short PATH. The PATH of the login shell of the
+// user has the folders of programs such as pi and node. It is read while the app starts, and a test
+// run keeps its own PATH.
+const loginPath = app.isPackaged && !isTestRun ? importLoginPath() : Promise.resolve()
 
 /** The longest time that the app waits for its services to close before it quits anyway. */
 const CLOSE_MS = 5_000
@@ -118,6 +124,7 @@ app.whenReady().then(async () => {
       }
     }),
   )
+  await loginPath
   registerRpc(runtime)
   createWindow()
   await runtime.runPromise(Notifier.use((n) => Effect.sync(() => n.refresh())))
