@@ -44,6 +44,9 @@ A new word goes here in the same pull request as the spec that brings it.
 | Program mark | The part of that mark that says the text came from an outside program (007, 023). Not shown as a word in the interface. | — | — |
 | Action log | The list of tool steps and who decided them (007). | 작업 기록 | history, audit |
 | Profile | A separate space on one computer (022). | 프로필 | account, user, workspace |
+| Handover | A new thread in the chat of another agent, with a brief of the first chat (003). | 인계 (proposed) | transfer, delegate |
+| Brief | The text of the handover card. The app writes it from the chat, with no model (003). | 인계 요약 (proposed) | summary (a summary belongs to a compact) |
+| Reviewed tools, held tool | The tools of a connection that the user accepted, and a tool that waits for the user because it is new or changed (018). | 검토한 도구, 검토 대기 도구 (proposed) | blocked tool, quarantined tool |
 
 ## Places and work
 
@@ -85,6 +88,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Mine | The switch of a card that the user does alone. Agents do not see it (024). | 내가 할 일 (proposed) | Human, private |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
+| Sensitive read | A step that reads a place with keys or logins. The turn then holds a mark (007). | 민감한 정보 읽기 (proposed) | leak, breach |
+| Control place | A place that starts a program later or gives access to the computer. A change there is a hard step (007). | 제어 위치 (proposed) | system folder |
 
 ## Words that ROBot does not use
 

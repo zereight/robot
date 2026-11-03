@@ -61,6 +61,9 @@ keep, and can undo a change.
 7. Memory check: the choice "Memory check" is on the memory page, under "Memory saving". Its text
    says that each check is a turn of the model and uses the account of the agent. "Check now" runs
    a check at once with the turns since the last check. It is off when there are none.
+8. Make a skill: the menu of a row in the tab Items has "Make a skill". It opens the form of a new
+   skill with a draft that the model of the agent writes from the text of the item (see 017,
+   "Make a skill from work"). It is on the computer only.
 
 ## Rules
 

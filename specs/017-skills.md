@@ -83,6 +83,48 @@ agent, and the agent writes a draft skill from what the user did.
 - If the model request fails, the card shows the reason and "Try again". The recording stays
   until the user saves or discards.
 
+## Make a skill from work
+
+The user can turn work that went well into a skill, and does not write the instructions by hand.
+
+### Sources
+
+- **A task**: "Make a skill" in the task view (005), for a task in the state done.
+- **An article**: "Make a skill" in the view of an article on the knowledge page (016).
+- **A memory item**: "Make a skill" in the menu of a row of the tab Items (008).
+
+### Flow
+
+1. The user picks "Make a skill". The form of flow 1 opens, with the muted line "Writing a draft…".
+   The app asks the model account of the agent for a draft, in one request, as "Teach a task"
+   does. The agent is the agent of the task, of the article or of the item. "Cancel" closes the
+   form, and the app drops the answer.
+2. What the request holds:
+   - For a task: the prompt of the task, the messages of the user that joined its turns, its final
+     reply, and its steps as lines of kind and target (a command, a path or a host, each cut at 200
+     characters; at most 40 steps, the oldest dropped first). It holds no output of a tool, no
+     thinking, no page and no content of a file.
+   - For an article: its title, its summary and its body.
+   - For a memory item: its text.
+   - The request is at most 20000 characters. Text that looks like a secret (014) is hidden. The
+     request asks for a name, a description that tells when to use the skill, and instructions in
+     plain words: the steps, what to check at the end, and when to ask the user first.
+3. The form fills with the draft. The user can edit every field. The field "Agents" holds the agent
+   of the source only, and the user can change it. When the name is taken, the app adds a number to
+   the name of the draft.
+4. Save: as flow 1. The same limits, checks and warning about secrets apply. The skill is on.
+5. When a turn of the task held outside content (007), the form shows a muted line: "This work read
+   outside content. Read the instructions before you save." A skill is a lasting order, so the
+   user reads it first. Nothing is saved before the user presses Save.
+6. When the request fails, the form shows the reason and the button "Try again". Nothing is saved.
+
+- "Make a skill" needs a connected model account. Without one, the form shows the same line as
+  "Teach a task" does.
+- The request makes no task and no message.
+- A skill made this way has no link to its source. A later change or delete of the source does not
+  change the skill.
+- "Make a skill" is on the computer only. A linked device (012) and the phone (011) do not show it.
+
 ## States
 
 - No skills: the list shows one muted line that says what a skill is, and the "New skill"
@@ -138,6 +180,18 @@ agent, and the agent writes a draft skill from what the user did.
   message above. Remove the chip and send: it works.
 - Make a skill with the name of an existing skill in other case: the form refuses it.
 - With 100 skills, the form for one more refuses to save.
+- With a stand-in model: a task in the state done has a prompt, two steps and a reply. Press "Make a
+  skill" in the task view: the form opens, then fills with the draft of the stand-in. The request
+  to the stand-in holds the prompt, the two steps and the reply, and holds no output of a tool.
+  Save: the skill shows in the list of skills, for the agent of the task only, and it is on. In the
+  chat of that agent, `/` lists it.
+- A task whose turn held outside content: the form shows "This work read outside content. Read the
+  instructions before you save."
+- "Make a skill" on an article and on a memory item: the form fills in the same way.
+- The stand-in fails: the form shows the reason and "Try again", and no skill is made. Press
+  "Cancel" while the draft is written: the form closes and no skill is made.
+- With 100 skills, "Make a skill" opens the form, and Save refuses.
+- On a linked device and on the phone, no "Make a skill" shows.
 - Export, then import into an empty app: the skills are back.
 - Teach a task with a fake model on a local test page: open the page, click a button, type
   "hello" into a field, type a password into a password field. Stop teaching: the request to the
