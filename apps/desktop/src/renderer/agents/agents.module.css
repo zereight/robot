@@ -1,10 +1,18 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   width: min(520px, 80vw);
   /* No scroll here. The dialog around the form scrolls, so there is one scroll bar only. */
-  padding: 2px;
+}
+
+/* A line between two groups of fields. */
+.divider {
+  flex: none;
+  height: 1px;
+  border: 0;
+  margin: 0;
+  background: var(--c-border);
 }
 
 .title {
@@ -14,7 +22,44 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+/* A switch has its label on the left and itself on the right, on one line. */
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* The fold of a field: a small arrow instead of the default marker. */
+.field > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.field > summary::-webkit-details-marker {
+  display: none;
+}
+
+.field > summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-inline: 3px;
+  border-right: 1.5px solid var(--c-text-muted);
+  border-bottom: 1.5px solid var(--c-text-muted);
+  transform: rotate(-45deg);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.field[open] > summary::before {
+  transform: rotate(45deg);
 }
 
 .fieldTop {
@@ -24,6 +69,7 @@
 }
 
 .label {
+  font-size: var(--text-s);
   font-weight: 500;
 }
 
@@ -31,6 +77,7 @@
 .counter {
   color: var(--c-text-muted);
   font-size: var(--text-xs);
+  line-height: 1.4;
 }
 
 .counter[data-over="true"] {
@@ -49,9 +96,16 @@
 .textarea {
   border: 1px solid var(--c-border);
   background: var(--c-main);
-  border-radius: var(--radius-s);
-  padding: 6px 8px;
+  color: var(--c-text);
+  border-radius: var(--radius-m);
+  padding: 7px 10px;
   user-select: text;
+}
+
+.input {
+  flex: 1;
+  /* A select is shorter than a text field by default. All of them are one height. */
+  min-height: 36px;
 }
 
 .input:focus-visible,
@@ -177,7 +231,7 @@
 .faceRow {
   display: flex;
   gap: 16px;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .facePicker {
@@ -190,6 +244,10 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.faceRow + .options {
+  margin-top: 4px;
 }
 
 .option {
@@ -304,15 +362,6 @@
 .archiveName {
   flex: 1;
   font-weight: 500;
-}
-
-.input {
-  flex: 1;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-m);
-  padding: 6px 8px;
-  background: var(--c-main);
-  color: var(--c-text);
 }
 
 .memoryRow {
@@ -455,6 +504,12 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* The same width as the form, so that the lines and the buttons below it end at the same edge. */
+  width: min(520px, 80vw);
+}
+
+.pane > .form {
+  width: 100%;
 }
 
 .pane[hidden] {

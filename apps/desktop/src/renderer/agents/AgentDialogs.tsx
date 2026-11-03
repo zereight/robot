@@ -192,13 +192,14 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
                   onPicture: async (dataUrl: string | null) => {
                     await call("agents.setFaceImage", { id: props.agent.id, dataUrl })
                   },
+                  // The browser belongs to the computer that runs the agent: a client has no
+                  // field for it. The choice applies at once, so it stands above the buttons
+                  // and not among the fields that Save keeps.
+                  immediate: <BrowserProfileField agent={props.agent} />,
                 })}
           />
         </Show>
-        {/* The browser belongs to the computer that runs the agent: a client has no field for it. */}
-        <Show when={!ui.linked()}>
-          <BrowserProfileField agent={props.agent} />
-        </Show>
+        <hr class={styles.divider} />
         <div class={styles.spread}>
           <Show
             when={ui.linked()}

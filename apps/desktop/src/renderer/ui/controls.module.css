@@ -13,6 +13,9 @@
 .segmented {
   position: relative;
   display: inline-flex;
+  /* In a column, the control is as wide as its options, not as wide as the box. */
+  width: fit-content;
+  max-width: 100%;
   margin: 0;
   padding: 2px;
   gap: 2px;
@@ -141,6 +144,8 @@
   place-items: center;
   width: 28px;
   height: 28px;
+  /* The default button padding is 6 px wide: an 18 px icon would sit 1 px right of the centre. */
+  padding: 0;
   border: 0;
   border-radius: var(--radius-s);
   background: transparent;

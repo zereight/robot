@@ -167,6 +167,9 @@
 .articleTitle {
   flex: 1;
   margin: 0;
+  /* One line of the title is as tall as a 32 px button, so their centres line up. A title that
+     wraps grows downward, and the buttons stay at the first line. */
+  padding-block: calc((32px - 1.45em) / 2);
   font-size: var(--text-l);
   overflow-wrap: anywhere;
 }

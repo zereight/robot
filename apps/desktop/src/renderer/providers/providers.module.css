@@ -68,10 +68,11 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .label {
+  font-size: var(--text-s);
   font-weight: 500;
 }
 
@@ -85,8 +86,9 @@
 .select {
   border: 1px solid var(--c-border);
   background: var(--c-main);
-  border-radius: var(--radius-s);
-  padding: 6px 8px;
+  border-radius: var(--radius-m);
+  padding: 7px 10px;
+  min-height: 36px;
   user-select: text;
 }
 
@@ -110,7 +112,14 @@
 .picker {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
+}
+
+/* The captions of the three choices are quieter than the label of the group. */
+.picker .label {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
 }
 
 .pickerWide {

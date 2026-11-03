@@ -530,7 +530,12 @@ export const Composer = (props: ComposerProps) => {
           </div>
         </Show>
         <div class={styles.box} ref={dropZone}>
-          <IconButton label={t("chat.attach")} onClick={pick} data-testid="composer-attach">
+          <IconButton
+            class={styles.attach}
+            label={t("chat.attach")}
+            onClick={pick}
+            data-testid="composer-attach"
+          >
             <Paperclip size={16} />
           </IconButton>
           <textarea

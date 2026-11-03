@@ -37,6 +37,7 @@ import {
   createUniqueId,
   For,
   Index,
+  type JSX,
   Show,
 } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -83,6 +84,8 @@ export interface AgentFormProps {
   onCancel: () => void
   /** Changes the picture of an existing agent. */
   onPicture?: (dataUrl: string | null) => Promise<void>
+  /** A field that applies at once, not with Save. It shows after the fields, above the buttons. */
+  immediate?: JSX.Element
 }
 
 const Counter = (props: { used: number; max: number }) => {
@@ -381,6 +384,7 @@ export const AgentForm = (props: AgentFormProps) => {
             )}
           </Show>
         </fieldset>
+        <hr class={styles.divider} />
       </Show>
 
       <div class={styles.field}>
@@ -470,6 +474,8 @@ export const AgentForm = (props: AgentFormProps) => {
         {(agent) => <InstructionHistory agentId={agent().id} onRestored={setInstructions} />}
       </Show>
 
+      <hr class={styles.divider} />
+
       <div class={styles.field}>
         <span class={styles.label}>{t("agents.field.face")}</span>
         <div class={styles.faceRow}>
@@ -507,27 +513,29 @@ export const AgentForm = (props: AgentFormProps) => {
                 )}
               </Index>
             </div>
-            <Show when={props.onPicture}>
-              <div class={styles.options}>
-                <input
-                  ref={fileInput}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  hidden
-                  data-testid="face-file"
-                  onChange={(e) => upload(e.currentTarget.files?.[0])}
-                />
-                <Button onClick={() => fileInput?.click()}>{t("agents.face.upload")}</Button>
-                <Show when={props.agent?.faceImage}>
-                  <Button onClick={() => props.onPicture?.(null)} data-testid="face-remove">
-                    {t("agents.face.remove")}
-                  </Button>
-                </Show>
-              </div>
-            </Show>
           </div>
         </div>
+        <Show when={props.onPicture}>
+          <div class={styles.options}>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              hidden
+              data-testid="face-file"
+              onChange={(e) => upload(e.currentTarget.files?.[0])}
+            />
+            <Button onClick={() => fileInput?.click()}>{t("agents.face.upload")}</Button>
+            <Show when={props.agent?.faceImage}>
+              <Button onClick={() => props.onPicture?.(null)} data-testid="face-remove">
+                {t("agents.face.remove")}
+              </Button>
+            </Show>
+          </div>
+        </Show>
       </div>
+
+      <hr class={styles.divider} />
 
       <div class={styles.field}>
         <span class={styles.label}>{t("agents.field.model")}</span>
@@ -549,6 +557,7 @@ export const AgentForm = (props: AgentFormProps) => {
 
       {/* The level: in the profile of an agent, and in the form of a new agent on this computer. */}
       <Show when={props.agent || !remote()}>
+        <hr class={styles.divider} />
         <div class={styles.field}>
           <span class={styles.label}>{t("agents.field.permission")}</span>
           <Segmented
@@ -610,8 +619,9 @@ export const AgentForm = (props: AgentFormProps) => {
       <Show when={props.agent}>
         {(agent) => (
           <>
+            <hr class={styles.divider} />
             <Show when={!remote()}>
-              <div class={styles.field}>
+              <div class={styles.switchRow}>
                 <span class={styles.label}>{t("agents.field.memory")}</span>
                 <Switch
                   label={t("agents.field.memory")}
@@ -622,6 +632,15 @@ export const AgentForm = (props: AgentFormProps) => {
               </div>
             </Show>
             <MemoryPanel agentId={agent().id} />
+          </>
+        )}
+      </Show>
+
+      <Show when={props.immediate}>
+        {(field) => (
+          <>
+            <hr class={styles.divider} />
+            {field()}
           </>
         )}
       </Show>
