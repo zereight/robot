@@ -17,6 +17,8 @@ export const BrowserProfileField = (props: { agent: Agent }) => {
   })
   onCleanup(window.robot.on("browserProfiles.changed", () => void refetch()))
   const [error, setError] = createSignal<ErrorText>()
+  /** The profiles an agent may get. The sign-in profile of the Teams link is not one (spec 028). */
+  const choices = () => profiles().filter((p) => !p.teamsLink)
   /** The profile that the agent uses now, or "" for its own data. */
   const current = () => profiles().find((p) => p.agentIds.includes(props.agent.id))?.id ?? ""
 
@@ -46,7 +48,7 @@ export const BrowserProfileField = (props: { agent: Agent }) => {
         <option value="" selected={current() === ""}>
           {t("browserProfiles.own")}
         </option>
-        <For each={profiles()}>
+        <For each={choices()}>
           {(profile) => (
             <option value={profile.id} selected={current() === profile.id} data-user-data>
               {profile.name}

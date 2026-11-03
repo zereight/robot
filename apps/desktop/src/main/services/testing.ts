@@ -6,12 +6,17 @@ import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
+import { FakeChat } from "../teams/fakeChat.testing.ts"
 import { Database } from "./Database.ts"
 import type { BrowserPage, PlatformService } from "./Platform.ts"
 import { Secrets } from "./Secrets.ts"
+import { fakeClock } from "./silence.testing.ts"
 
-/** A platform for unit tests: a temp data folder and a trash list. */
-export const testPlatform = () => {
+/**
+ * A platform for unit tests: a temp data folder and a trash list. A test that restarts the app
+ * gives the same stand-in Teams to both starts, because the outside world does not restart.
+ */
+export const testPlatform = (options: { chat?: FakeChat } = {}) => {
   const dataDir = mkdtempSync(join(tmpdir(), "robot-unit-"))
   // A home folder of its own, so a test never reads or writes a real place of the user (spec 007).
   const homeDir = mkdtempSync(join(tmpdir(), "robot-unit-home-"))
@@ -25,6 +30,10 @@ export const testPlatform = () => {
   /** Whether the input of the user was let in or kept out, as "agent:on" or "agent:off". */
   const browserInput: string[] = []
   const pages = new Map<string, BrowserPage>()
+  /** The stand-in Teams (spec 028). No Teams page opens until the Teams link asks for one. */
+  const chat = options.chat ?? new FakeChat()
+  /** The browser profile that holds the sign-in of the Teams page now, as the platform was told. */
+  const teamsProfile: { id: string | undefined } = { id: undefined }
   /** The browser profile that each agent uses now, as the fake platform was told. */
   const browserProfiles = new Map<string, string>()
   /** The browser profiles whose saved data was deleted, in order. */
@@ -58,6 +67,9 @@ export const testPlatform = () => {
       },
       type: async (selector, text) => {
         browserLog.push(`${agentId}:type ${selector} ${text}`)
+      },
+      evaluate: async () => {
+        throw new Error("The fake browser runs no script")
       },
       place: (bounds) => {
         browserPlaced.push(
@@ -140,10 +152,19 @@ export const testPlatform = () => {
     },
     clearBrowserProfile: async (profileId) => {
       clearedProfiles.push(profileId)
+      // The saved sign-in is gone: the stand-in Teams shows a sign-in form again.
+      if (profileId === teamsProfile.id) chat.endSession()
+    },
+    teams: () => chat.surface,
+    setTeamsProfile: (profileId) => {
+      if (profileId !== teamsProfile.id) chat.closeByUser()
+      teamsProfile.id = profileId
     },
   }
   return {
     platform,
+    chat,
+    teamsProfile,
     dataDir,
     homeDir,
     hosts,
@@ -165,10 +186,16 @@ export const testRuntime = (
     network?: MemoryNetwork
     decisionUrl?: string
     cacheHosts?: readonly string[]
+    /** A database file, for a test that starts the app again on the same data. */
+    databaseFile?: string
+    /** The stand-in Teams to use. A restart gives the same one to both starts. */
+    chat?: FakeChat
   } = {},
 ) => {
   const {
     platform,
+    chat,
+    teamsProfile,
     dataDir,
     homeDir,
     hosts,
@@ -180,12 +207,15 @@ export const testRuntime = (
     clearedProfiles,
     recorders,
     shell,
-  } = testPlatform()
+  } = testPlatform(options.chat ? { chat: options.chat } : {})
   const events: { event: string; payload: unknown; server?: string }[] = []
+  // The clock of the Teams link. A test moves it by hand (`advance`, `sleep`).
+  const { clock, advance, sleep } = fakeClock()
   const runtime = ManagedRuntime.make(
     appLayer({
       platform,
-      databaseFile: ":memory:",
+      clock,
+      databaseFile: options.databaseFile ?? ":memory:",
       linkPort: 0,
       nearbySocket: (options.network ?? new MemoryNetwork()).open,
       localServerName: options.name ?? "Test computer",
@@ -200,6 +230,11 @@ export const testRuntime = (
   void bindLinkDispatcher(runtime)
   return {
     runtime,
+    chat,
+    teamsProfile,
+    clock,
+    advance,
+    sleep,
     dataDir,
     homeDir,
     hosts,

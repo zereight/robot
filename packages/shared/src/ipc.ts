@@ -61,6 +61,7 @@ import type {
 } from "./sync.ts"
 import type { Task, TaskDetail } from "./task.ts"
 import type { TeachState } from "./teach.ts"
+import type { TeamsLinkView, TeamsPatch } from "./teamsLink.ts"
 import type { ChatMeter, ChatThread, ChatThreads } from "./threads.ts"
 import type { TodaySnapshot } from "./today.ts"
 import type { ApprovalAnswer } from "./tools.ts"
@@ -222,6 +223,31 @@ export interface RpcMethods {
     input: { agentId: string; profileId: string | null }
     output: undefined
   }
+  /**
+   * The Teams link (spec 028): the form, the switch and the state. Only the window of this computer
+   * calls these methods; a linked device cannot.
+   */
+  "teams.get": { input: undefined; output: TeamsLinkView }
+  /** "Set up": makes the link with an empty form and the switch off. */
+  "teams.setup": { input: undefined; output: TeamsLinkView }
+  /** Changes fields of the form. The target, the title, the kind and the marker need the switch off. */
+  "teams.update": { input: TeamsPatch; output: TeamsLinkView }
+  /** The switch. A refusal leaves the switch off and lists the reasons in `problems`. */
+  "teams.setEnabled": { input: { enabled: boolean }; output: TeamsLinkView }
+  /** "Show the Teams page" and "Sign in to Teams". */
+  "teams.showPage": { input: undefined; output: TeamsLinkView }
+  "teams.hidePage": { input: undefined; output: TeamsLinkView }
+  /** Where the Teams page shows, in CSS px of the app window, or `null` to hide it. */
+  "teams.place": {
+    input: { bounds: { x: number; y: number; width: number; height: number } | null }
+    output: undefined
+  }
+  /** "Use this chat": the title of the chat that is open in the Teams page fills the form. */
+  "teams.useChat": { input: undefined; output: TeamsLinkView }
+  /** "Sign out of Teams": deletes the saved sign-in and turns the link off. */
+  "teams.signOut": { input: undefined; output: TeamsLinkView }
+  /** "Remove link": deletes the link and the sign-in profile. */
+  "teams.remove": { input: undefined; output: TeamsLinkView }
   "ui.get": { input: undefined; output: UiState }
   "ui.update": { input: UiStatePatch; output: UiState }
   "agents.list": { input: { serverId: string; archived: boolean }; output: readonly Agent[] }
@@ -659,6 +685,8 @@ export interface RpcEvents {
   "browser.changed": { agentId: string }
   /** A browser profile was made, renamed or deleted, or an agent got another one. */
   "browserProfiles.changed": Record<string, never>
+  /** The Teams link changed: its form, its switch, its state or its last read. */
+  "teams.changed": Record<string, never>
   /** "Teach a task" started, recorded a step, paused, stopped, made a draft, or ended. */
   "teach.changed": TeachState
   /** A skill was made, turned on or off, or deleted. */

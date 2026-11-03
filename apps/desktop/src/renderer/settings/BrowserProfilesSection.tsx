@@ -107,31 +107,49 @@ export const BrowserProfilesSection = () => {
         <ul class={styles.log} data-testid="browser-profiles-list">
           <For each={profiles()}>
             {(profile) => (
-              <li class={styles.logRow} data-testid="browser-profile" data-name={profile.name}>
+              <li
+                class={styles.logRow}
+                data-testid="browser-profile"
+                data-name={profile.teamsLink ? t("browserProfiles.teamsName") : profile.name}
+                data-teams-link={profile.teamsLink ? "true" : undefined}
+              >
                 <div class={styles.logHead}>
-                  <span class={styles.label} data-user-data>
-                    {profile.name}
+                  <span class={styles.label} data-user-data={profile.teamsLink ? undefined : ""}>
+                    {profile.teamsLink ? t("browserProfiles.teamsName") : profile.name}
                   </span>
                 </div>
-                <div class={styles.hint} data-testid="browser-profile-users" data-user-data>
-                  {profile.agentIds.length > 0
-                    ? t("browserProfiles.usedBy", { names: usedBy(profile) })
-                    : t("browserProfiles.unused")}
-                </div>
-                <div class={styles.actions}>
-                  <Button onClick={() => openEditor(profile)} data-testid="browser-profile-rename">
-                    {t("browserProfiles.rename")}
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setError(undefined)
-                      setDeleting(profile)
-                    }}
-                    data-testid="browser-profile-delete"
-                  >
-                    {t("browserProfiles.delete")}
-                  </Button>
-                </div>
+                {/* The sign-in profile of the Teams link has no rename and no delete (spec 028). */}
+                <Show
+                  when={!profile.teamsLink}
+                  fallback={
+                    <div class={styles.hint} data-testid="browser-profile-teams">
+                      {t("browserProfiles.usedByTeams")}
+                    </div>
+                  }
+                >
+                  <div class={styles.hint} data-testid="browser-profile-users" data-user-data>
+                    {profile.agentIds.length > 0
+                      ? t("browserProfiles.usedBy", { names: usedBy(profile) })
+                      : t("browserProfiles.unused")}
+                  </div>
+                  <div class={styles.actions}>
+                    <Button
+                      onClick={() => openEditor(profile)}
+                      data-testid="browser-profile-rename"
+                    >
+                      {t("browserProfiles.rename")}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setError(undefined)
+                        setDeleting(profile)
+                      }}
+                      data-testid="browser-profile-delete"
+                    >
+                      {t("browserProfiles.delete")}
+                    </Button>
+                  </div>
+                </Show>
               </li>
             )}
           </For>

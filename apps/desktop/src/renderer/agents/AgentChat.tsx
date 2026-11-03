@@ -10,6 +10,7 @@ import { createThreads, openThreadOf } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
+import { TeamsMark } from "../settings/TeamsMark.tsx"
 import type { PlaceView } from "../shell/Shell.tsx"
 import { useApp } from "../state/app.tsx"
 import { memoryTarget } from "../state/memoryLink.ts"
@@ -100,6 +101,8 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
           {modelName()}
         </button>
       </Show>
+      {/* The Teams link serves this agent: a muted mark, with the state word if it is not On. */}
+      <TeamsMark kind="agent" id={props.agent.id} />
       {/* A linked computer and the phone show the main thread only (spec 003, 011, 012). */}
       <Show when={!ui.linked()}>
         <ThreadList agentId={props.agent.id} />
