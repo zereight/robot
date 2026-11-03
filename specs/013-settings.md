@@ -13,7 +13,8 @@ The user sets the app up the way they like in one place.
   choices are 1, 5, 10 (default), 30 and 60 minutes, and Never.
   Two more settings are here. "Compact long chats automatically" is on or off; the default is on
   (see 003, "Automatic compact"). "Agents working at once" is a whole number from 1 to 8; the
-  default is 4 (see 005, "Queue"). Both are local to the computer, as the other settings.
+  default is 4 (see 005, "Queue"). Both belong to the open profile and are local to the computer,
+  as the other settings.
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
   list on/off, reduce motion (follow the system by default).
 - **Providers**: see 006.

@@ -72,8 +72,8 @@ The user can change the course of a turn without stopping it.
   same reason.
 - This applies to direct chats and threads. In a channel (see 004), a message always starts new
   work, as before.
-- The queue of a thread holds at most 10 messages. The message over the limit is not queued. The
-  box keeps its text and the line above it says "The queue is full (10)."
+- The message queue of a thread holds at most 10 messages. The message over the limit is not
+  queued. The box keeps its text and the line above it says "10 messages wait. Remove one or wait."
 
 ## Context meter
 
@@ -95,10 +95,14 @@ the app can run it (see "Automatic compact").
   read the summary. A later compact summarises the earlier summary and the turns after it.
 - While it runs, the working line reads "Compacting…" and Stop ends it. A compact that is stopped
   or fails changes nothing. A message that the user sends during a compact that the user started
-  waits in the queue. During an automatic compact, a message joins the turn as usual.
-- Compact is off, with the reason in words, while a turn runs and when the conversation has 2
-  turns or fewer. The other reasons are in "Context meter".
-- A compact is not a task. Its tokens add to the usage of the agent and the day (006).
+  waits in the message queue. When that compact ends, stops or fails, the queue sends its first
+  message as after a turn. During an automatic compact, a message joins the turn as usual.
+- Compact is off, with the reason in words, while the agent has a task that runs or waits, and
+  when the conversation has 2 turns or fewer. The other reasons are in "Context meter".
+- A manual compact is not a task. Its tokens add to the usage of the agent and the day (006). It
+  holds the agent as a task does: no task of the agent starts until it ends. It does not use a slot
+  (005). It does not ask first, because the chat keeps all its rows.
+- A restart during a compact changes nothing.
 - The mark "Holds outside content" stays after a compact (007).
 - An agent on a vendor runtime (006) that compacts by itself has no Compact and no automatic
   compact. For other agents, nothing else changes.
@@ -109,13 +113,18 @@ the app can run it (see "Automatic compact").
 - Before a turn of a direct chat or a thread starts, the app reads the last known use of the
   context. At 85 percent or more, the app compacts first, and then the turn goes on. The working
   line reads "Compacting…" first. The line "Compacted" shows afterwards.
-- It does not run when Compact is off for the agent (see "Context meter"). It does not run in a
-  channel, which has its own rule (004).
+- It does not run when the size of the context is not known, or when the provider compacts by
+  itself (see "Context meter"). It does not run in a channel, which has its own rule (004).
 - After a compact the use is not known until the next reply (see "Context meter"). So a second
   compact cannot follow at once.
+- An automatic compact is part of the task of the turn. Its tokens add to the usage of that task
+  and to the token limit of a run of a routine (009).
 - When the compact fails, the turn goes on without it. A muted line gives the reason. The app does
-  not try again for this conversation until 5 more turns of it have ended.
-- Stop during the compact ends the turn. The chat does not change.
+  not try again for this conversation until 5 more turns of it have ended. The same holds when the
+  first reply after a compact reports 85 percent or more. The count of 5 turns stays after a
+  restart.
+- Stop during the compact ends the task as Cancelled. The message of the user stays. What the
+  model gets does not change.
 - A linked computer and the phone show the result only. They do not start a compact in this
   version (011, 012).
 
@@ -124,24 +133,34 @@ the app can run it (see "Automatic compact").
 - **Thread**: a second conversation with the same agent. The agent keeps its identity, memory and
   workspace; only the history is separate. The direct chat is the main thread.
 - The user starts a thread, renames it, archives it, restores it, and deletes it. A thread shows
-  in a list in the chat header. Each thread keeps its own queue and its own unread count.
+  in a list in the chat header. Each thread keeps its own message queue and its own unread count.
 - A new thread opens empty (see "Empty state"). Its title is "New thread" until the user sends the
   first message. Then the title is the first line of that message, at most 60 characters. The user
-  can rename it. The main thread keeps its name. The user cannot archive or delete it.
-- An agent has at most 50 threads. Archived threads count. At 50, the control for a new thread is
-  off, with the reason in words.
-- A thread that has a running turn or queued messages cannot be archived or deleted. The control
-  is off, with the reason in words.
+  can rename it. The main thread keeps its name. The user cannot archive or delete it. Delete of
+  another thread asks first and says that the thread cannot be restored.
+- An agent has at most 50 threads, the main thread included. Archived threads count. At 50, the
+  controls for a new thread and for Fork are off, with the reason in words.
+- A thread that has a running turn, a task that waits for the user, a queued task or queued
+  messages cannot be archived or deleted. The control is off, with the reason in words.
 - All threads of one agent share one queue of tasks (see 005). A message joins the running turn
   of its own thread only. When the agent works in another thread, the message starts its own task
-  and waits. The thread shows the muted line "Waits for another thread".
+  and waits. The thread shows the line of the queued task (see 005, "Tasks page"). When the agent
+  works in another thread, the line reads "Waits for another thread".
+- Work that a routine, a workflow, another agent or an outside program sends to the chat of an
+  agent goes to the main thread.
+- A fork made at a message after a "Compacted" line copies the summary and the turns after it. The
+  model of the fork gets the same summary.
 - A linked computer and the phone show the main thread only in this version. They never get the
-  messages of another thread (011, 012).
+  messages of another thread, and the search of messages on a linked server (001) finds the main
+  thread only. An approval card or a question card of a task in another thread shows in "Needs
+  you" (011) and in the task view (012), and the user can answer it there. "Open source place" is
+  off there, with the reason in words. A notice of a reply in another thread is not sent to these
+  devices.
 - **Fork**: on a finished message of the main thread or of another thread, the user picks "Fork".
   A new thread of the same agent opens. It holds a copy of the conversation up to that message.
   The agent reads that copy with the first message that the user sends in the new thread. The
   original thread does not change. Later changes in either thread do not reach the other.
-- The title of a fork is the first line of the message where it was made, or a default title when
+- The title of a fork is the first line of the message where it was made, or "New thread" when
   that line is empty.
 - A fork is refused for a message that belongs to a turn that still runs, and for a message that
   does not exist.
@@ -238,4 +257,14 @@ and its role line. Nothing moves.
   task that waits, and thread B shows "Waits for another thread". It starts when the turn of
   thread A ends. A message in thread A joins the turn of thread A.
 - Delete a thread that has a running turn: the control is off.
-- Fill a queue with 10 messages: the 11th stays in the box and the line shows "The queue is full (10)."
+- Fill a message queue with 10 messages: the 11th stays in the box and the line shows "10 messages
+  wait. Remove one or wait."
+- Stop an automatic compact: the task ends as Cancelled, the message of the user stays, and the
+  next turn sends the old conversation to the model.
+- Fork at a message after the line "Compacted": the new thread holds the summary and the turns
+  after it, and its first turn sends that summary to the model. At 50 threads, Fork is off.
+- Delete a thread that has a queued task: the control is off. Delete another thread: the app
+  asks first.
+- On a linked computer and on the phone, an agent with 3 threads shows the main thread only. A
+  task of thread 2 waits for an approval: the card shows in "Needs you" and can be answered there.
+  The search of messages finds no message of thread 2.
