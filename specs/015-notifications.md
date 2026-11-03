@@ -61,6 +61,7 @@ The user knows when an agent needs them or finishes, without watching the window
   2. the kind of step that the agent runs: file work, a command, the web, the browser, a
      connection, another agent, or the computer (see 007);
   3. "Working…".
+  When the turn is quiet (see 005, "Quiet line"), the row shows the quiet line in place of these.
 - The kinds follow the tools. File work is the file tools, the tools for articles (see 016) and
   the file edits of vendor programs. A command is the shell tools. The web is page fetch and
   web search. The browser is the browser tools. A connection is a tool of a connection (see

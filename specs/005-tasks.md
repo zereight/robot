@@ -180,6 +180,39 @@ its Retry shows no retry note.
 - The limit holds for every turn: a chat, a part of a channel job, a routine, a step of a
   workflow, and a message from another agent.
 
+### Quiet line
+
+A turn can be quiet for a long time and still finish, for example while a model works on a long
+answer and sends no part of it. The user must see that nothing arrives before the silent limit
+stops the turn.
+
+- A turn is quiet when it shows no sign of life for the quiet time. The quiet time is 90 seconds.
+  When half of the silent limit is shorter, the quiet time is half of the silent limit. With the
+  silent limit Never, the quiet time is 90 seconds.
+- The quiet clock is the clock of the silent limit. It stops and starts again at 0 in the same
+  cases.
+- While a turn is quiet, every place that shows the turn as working shows the quiet line in place
+  of its working text: "No answer from <name> for <time>". The name is the name of the model
+  account, or of the vendor program for an agent on a vendor runtime (006). The time is the time
+  on the quiet clock, so it starts at the quiet time. It reads m:ss, and h:mm:ss after one hour,
+  and changes once each second.
+- The places are: the working line of a chat (003), the plan step of a part in the activity panel
+  (004, as the text label of the running icon and its tooltip), the row of the task on the Tasks
+  page (as the state text), the row of the agent in the detail card of the status island (015),
+  and the same places on a phone and on a linked device (011, 012).
+- The quiet line does not stop the turn. Stop stays where it was. The user can stop the turn, or
+  wait.
+- At the next sign of life, the quiet line goes away at once, and the place shows its working
+  text again. The quiet clock starts again at 0.
+- The quiet line makes no notification, no sound, no row on the Today page (021), and no entry
+  in the action log. A turn that becomes quiet more than once shows the line each time.
+- When the silent limit is reached, the turn fails as before. The failed row replaces the quiet
+  line.
+- The quiet line is not stored. It does not sync (019), and an export (014) does not hold it. After
+  a restart the turn has failed (see "Rules"), so no quiet line is left.
+- The quiet line is the same for an agent that uses the tools of the app and for an agent on a
+  vendor runtime. For a vendor runtime, a sign of life is what the program reports to the app.
+
 ## Rules
 
 - One agent runs one task at a time. Other tasks for it wait in its queue in order. When two
@@ -241,6 +274,14 @@ its Retry shows no retry note.
   Retry, and one notification of the kind "task failed" shows.
 - The silent limit is 1 minute. A turn waits for an approval for 2 minutes: it does not fail. The
   user allows the step, the stand-in model then sends nothing for 90 seconds: the turn fails.
+- The silent limit is 10 minutes. A stand-in model sends one reply part, then nothing for 100
+  seconds, then the rest of the reply. At 90 seconds the working line of the chat reads "No answer
+  from <account name> for 1:30", and the Tasks page row and the island detail card show the same
+  text. No notification shows. When the next part arrives, the working line shows again, and the
+  turn ends as done.
+- The silent limit is 1 minute. A stand-in model sends nothing: the quiet line shows at about 30
+  seconds, and the turn fails at about 60 seconds.
+- A turn waits for an approval for 3 minutes: no quiet line shows.
 - A stand-in model starts to send a reply, and the app ends at once. After the restart, the failed
   task shows the line for "Started". A task that was only queued shows the line for "Not sent".
 - Retry a task whose line said "Started": the new task runs, and its progress starts at "Not

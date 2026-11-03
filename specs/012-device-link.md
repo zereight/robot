@@ -219,6 +219,9 @@ means a profile on a computer.
 - A server pushes: new and changed messages, task state changes, agent state changes, approval
   requests and questions, unread counts, changes to the sections or to the section of a place,
   changes to workflows, and changes to the state of a run.
+- A server pushes the start and the end of a quiet turn (005, "Quiet line"), with the name and
+  the time when the quiet clock started at 0. The client counts the time by itself. It does not
+  get a push each second.
 - Each message has a type, an id, and a version number. Both sides use one protocol version. A
   peer with another version gets a clear "Update the app" error.
 - A server answers each client by what that client may do (see above). A request for something

@@ -52,6 +52,27 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M13 | The changes to 000, 002, 004, 005, 008, 009, 016, 017 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S50 to S54: honest wording, verdicts in the check, work record, starters, skills that go with their agent |
 | M14 | The changes to 000, 001, 011, 012 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S55: the desktop app is for Macs with Apple silicon only; the phone app is for iOS and Android |
 | M15 | 022, and the changes to 000, 001, 011, 012, 013, 014, 015 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S57 and S58: profiles on one computer, and profiles with linked devices and sync |
+| M16 | The changes to 003, 004, 005 and 015 listed in [docs/spec-changes.md](../docs/spec-changes.md), and the phone plan of [docs/performance.md](../docs/performance.md) | Slices S59 and S60: the quiet line, and the measures of the phone app |
+
+## Surfaces check
+
+A change that works in one place and is missing in the others is the most common gap. Before a
+spec goes to an implementer, the author answers each line below in the spec. "Not in this version"
+is a valid answer when the spec says it.
+
+- **Ways in**: the place where the user starts the action, and the other ways to the same action:
+  a menu, the search field (Cmd+K), a key, a setting, a command of the message box.
+- **Devices**: the computer, a linked computer (012), the phone (011), and a second profile (022).
+  Say what each one shows and what each one can do.
+- **Runtimes**: an agent that uses the tools of the app, and an agent on each vendor runtime (006).
+  Say what changes, or say that nothing changes.
+- **Ways out**: each way in has a way out. Pause has resume, hide has show, archive has restore,
+  on has off. A change that the user cannot undo asks first and says so.
+- **Seeing the state**: the place where the user sees that the thing is on, waits, runs, or failed,
+  also after a restart.
+- **Data**: what syncs (019), what an export holds (014), what a file of agents or workflows
+  holds, and what the phone keeps in its cache.
+- **Words**: new words go in [docs/glossary.md](../docs/glossary.md), in English and Korean.
 
 ## Template
 
@@ -72,6 +93,9 @@ Empty, loading, working, done, failed, offline. What the user sees in each.
 
 ## Rules
 Limits, order, permissions, storage.
+
+## Surfaces
+Where the feature shows and how the user leaves it. See "Surfaces check" above.
 
 ## Out of scope
 What this area does not do.

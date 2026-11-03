@@ -49,6 +49,7 @@ These are in the code today and the specs now say something else.
 | 000, 001, 011, 012, 015 | The desktop app is built for macOS, Windows and Linux. Search opens with Cmd or Ctrl+K. | The desktop app is for Macs with Apple silicon only. Search opens with Cmd+K. The phone app is for iOS and Android. A phone with no such Mac cannot be used. |
 | 012, 010 | A computer client cannot open the workflows of a linked server. | It sees the workflows and their runs, runs and stops them, and answers approval steps. With the switch "Can create and change agents" it also edits them. The assistant and the workflow file stay on the server. |
 | 000, 001, 011, 012, 013, 014, 015, 019 | One computer holds one set of data, and it is one server. | A computer can hold up to 5 profiles. A profile has its own data, accounts, settings, linked devices and sync pair, and it is the server that a phone pairs with. The window shows one profile. The rail has a profile button when there are 2 or more. A profile that is not open keeps working, and makes no notice on the computer. The first profile is the data that exists today. |
+| 003, 004, 005, 015 | A quiet turn shows "Working…" until the silent limit stops it. | After 90 seconds with no sign of life (or half the silent limit, when shorter), every place that shows the turn reads "No answer from <name> for <time>". The turn goes on. |
 
 ## Slices
 
@@ -94,12 +95,15 @@ These are in the code today and the specs now say something else.
 | S56 | Workflows on a linked computer: the Workflows page of a linked server, the list, canvas, run history, run details and live run state, run and stop, approval steps, "Started by <device name>", changes with the switch only, read-only canvas and "Not allowed" without it, the muted line for the assistant and the workflow file, "Runs on <name>" through sync, the offline line, the new messages and pushes. | 012, 010, 019 |
 | S57 | Profiles on one computer: the first profile made from the data that exists today, with a phone that stays paired. The profile button and menu, the switch of the whole window, Settings → Profiles (add, rename, face, delete with the typed name, the limit of 5, the muted line), and data, keys, logs and the default folder for workspaces apart for each profile. Export and import for one profile. The delete moves the workspace folders to the system trash, so check where the default folder lies now before the delete removes data. | 022, 000, 001, 013, 014 |
 | S58 | Profiles with linked devices and sync: every profile runs while the app runs, with its own device identity, name, switch, pairing code and device list. A phone or computer sees one profile only. The refusal to link two profiles of one computer. A sync pair of two profiles. No notice, sound or island card on the computer for a profile that is not open, and the dot in the menu. Needs S56. A link that exists before this slice must still work. | 022, 011, 012, 015, 019 |
+| S59 | Quiet line: the quiet time, the line "No answer from <name> for <time>" in the chat, the plan step, the Tasks page row, the island detail card, and on the phone and a linked device. No notification. The line goes at the next sign of life. Needs S47 for the clock of the silent limit. | 005, 003, 004, 015, 011, 012 |
+| S60 | Phone performance: the setup, the measures, the traces and the "before" and "after" reports of the phone app in `docs/performance.md`, with the compare command. No change to the app. | 011 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
 S50 needs no code change in the app besides text, and can go first. S52 follows S51. S53 does not depend on S50 to S52. S54 follows S53.
 S57 does not depend on S55, but both change the same packaging and data code, so do S55 first when both are open. S58 needs S57.
 S55 does not depend on the other slices. It removes code, so it goes best when no other slice is open on the same files.
+S59 follows S47. S60 does not depend on the other slices.
 
 ## Decided against
 
