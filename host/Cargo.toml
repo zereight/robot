@@ -10,7 +10,15 @@ description = "The host process of ROBot: the work of the app, apart from the wi
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.release]
 lto = true
 codegen-units = 1
 strip = true
+
+# The system keychain. The app is for macOS only (specs/000-product.md); on other systems the host
+# builds for its checks and has the file store only.
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"

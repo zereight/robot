@@ -63,12 +63,12 @@ const broadcast = (event: string, payload: unknown, server?: string) => {
  * The host program: in the bundle of a packaged app, and the release build of `host/` in a
  * development or test run ("bun run build:host").
  */
-const hostCommand = (dataDir: string) => ({
-  command: app.isPackaged
+const hostBinary = () =>
+  app.isPackaged
     ? join(process.resourcesPath, "robot-host")
-    : resolve(app.getAppPath(), "../../host/target/release/robot-host"),
-  args: ["--data", dataDir],
-})
+    : resolve(app.getAppPath(), "../../host/target/release/robot-host")
+
+const hostCommand = (dataDir: string) => ({ command: hostBinary(), args: ["--data", dataDir] })
 
 const makeRuntime = () => {
   const platform = electronPlatform()
@@ -78,9 +78,7 @@ const makeRuntime = () => {
       host: Host.process(hostCommand(platform.dataDir)),
       localServerName: hostname().replace(/\.local$/, ""),
       emit: broadcast,
-      secrets: process.env.ROBOT_TEST_SECRETS
-        ? Secrets.file(process.env.ROBOT_TEST_SECRETS)
-        : Secrets.keychain,
+      secrets: Secrets.host(hostBinary(), process.env.ROBOT_TEST_SECRETS),
       // Only a test run may send the decision model to another address (spec 013).
       ...(isTestRun && process.env.ROBOT_TEST_DECISION_URL
         ? { decisionUrl: process.env.ROBOT_TEST_DECISION_URL }
