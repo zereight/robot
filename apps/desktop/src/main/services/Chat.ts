@@ -17,11 +17,11 @@ import {
   type ChatSend,
   type ChatThread,
   type ChatThreads,
-  COMPACT_AT,
   type CompactOff,
   type CutNotice,
   canAddThread,
   compactCut,
+  compactDue,
   createReadGuard,
   endOfTurn,
   type FilePart,
@@ -35,7 +35,6 @@ import {
   messageFiles,
   messageSkill,
   messageText,
-  meterShare,
   newTurnMark,
   nextPause,
   type OutsideSource,
@@ -1937,8 +1936,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             COMPACTED_LIKE,
           )
           const size = sizes.get(`${agent.model_account_id}|${agent.model_name}`) ?? null
-          const share = meterShare(reply.n, size)
-          if (!earlier && share !== null && share >= COMPACT_AT) {
+          if (!earlier && compactDue(reply.n, size)) {
             setPause(place, nextPause(pause, "full_after_compact"))
             return
           }

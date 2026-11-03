@@ -1,4 +1,4 @@
-import { COMPACT_AT, type CompactOff, type MessageKey, meterShare } from "@robot/shared"
+import { type CompactOff, compactDue, type MessageKey, meterShare } from "@robot/shared"
 import { createSignal, Show } from "solid-js"
 import styles from "../agents/agents.module.css"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -94,7 +94,7 @@ export const ContextMeter = (props: { agentId: string; threadId: string | null }
         onClick={toggle}
         data-testid="context-meter"
         data-used={meter()?.used ?? ""}
-        data-level={(share() ?? 0) >= COMPACT_AT ? "high" : undefined}
+        data-level={compactDue(meter()?.used ?? null, meter()?.size ?? null) ? "high" : undefined}
       >
         <svg width={RING} height={RING} viewBox={`0 0 ${RING} ${RING}`} aria-hidden="true">
           <circle

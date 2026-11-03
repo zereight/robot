@@ -11,6 +11,11 @@ export const THREAD_MAX = 50
 export const THREAD_TITLE_MAX = 60
 /** At this share of the context or more, the app compacts before a turn (spec 003). */
 export const COMPACT_AT = 0.85
+/**
+ * At this many tokens of use or more, the app also compacts before a turn, whatever the share
+ * (spec 003). It comes first for a model with a context larger than about 470000 tokens.
+ */
+export const COMPACT_AT_TOKENS = 400_000
 /** The newest turns that a compact keeps word for word. */
 export const COMPACT_KEEP_TURNS = 2
 /** After a failed automatic compact, the app waits this many ended turns before it tries again. */
@@ -108,9 +113,19 @@ export const meterShare = (used: number | null, size: number | null): number | n
   used === null || size === null || size <= 0 ? null : Math.min(1, used / size)
 
 /**
+ * True when a use of the context is so high that the app compacts before the next turn (spec 003):
+ * the size and the use are known, and the use is 85 percent or more, or 400000 tokens or more.
+ */
+export const compactDue = (used: number | null, size: number | null): boolean => {
+  const share = meterShare(used, size)
+  if (share === null || used === null) return false
+  return share >= COMPACT_AT || used >= COMPACT_AT_TOKENS
+}
+
+/**
  * True when the app compacts before a turn (spec 003, "Automatic compact"): the setting is on, the
- * provider does not compact by itself, the size and the use are known, the use is 85 percent or
- * more, and no pause of 5 turns holds.
+ * provider does not compact by itself, the use is due for a compact (see `compactDue`), and no
+ * pause of 5 turns holds.
  */
 export const shouldAutoCompact = (input: {
   readonly setting: boolean
@@ -120,13 +135,12 @@ export const shouldAutoCompact = (input: {
   readonly pause: number
 }): boolean => {
   if (!input.setting || input.selfCompacts || input.pause > 0) return false
-  const share = meterShare(input.used, input.size)
-  return share !== null && share >= COMPACT_AT
+  return compactDue(input.used, input.size)
 }
 
 /**
  * The pause after a turn ends (spec 003): a failed compact, or a first reply after a compact that
- * reports 85 percent or more, sets 5 turns. Each other ended turn takes one off.
+ * reports a use that is due for a compact again, sets 5 turns. Each other ended turn takes one off.
  */
 export const nextPause = (
   pause: number,

@@ -46,7 +46,12 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models")
-      return Response.json({ data: [{ id: "mock", context_length: 1000 }] })
+      return Response.json({
+        data: [
+          { id: "mock", context_length: 1000 },
+          { id: "mock-large", context_length: 1_000_000 },
+        ],
+      })
     const body = (await req.json()) as { messages: { role: string; content: string }[] }
     const summary = body.messages.some(
       (m) => m.role === "system" && m.content.startsWith("You write the summary"),
@@ -60,9 +65,11 @@ const server = Bun.serve({
     const last = body.messages.at(-1)?.content ?? ""
     if (last.endsWith("slow"))
       return sse([...Array.from({ length: 40 }, (_, i) => delta(`w${i} `)), "[DONE]"], 25)
+    // "use=N" at the end reports a use of N tokens.
+    const use = /use=(\d+)$/.exec(last)?.[1]
     return sse([
       delta(`Echo: ${last.split("\n").at(-1)}`),
-      last.endsWith("big") ? usage(890, 10) : usage(12, 5),
+      use ? usage(Number(use) - 10, 10) : last.endsWith("big") ? usage(890, 10) : usage(12, 5),
       "[DONE]",
     ])
   },
@@ -78,7 +85,7 @@ const until = async (check: () => Promise<boolean>, ms = 4000) => {
   throw new Error("timed out")
 }
 
-const setup = async () => {
+const setup = async (model = "mock") => {
   const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
@@ -99,7 +106,7 @@ const setup = async () => {
         name: "Ada",
         role: "",
         instructions: "Be brief.",
-        model: { accountId: account.id, model: "mock", effort: null },
+        model: { accountId: account.id, model, effort: null },
       }),
     ),
   )
@@ -432,6 +439,32 @@ describe("Automatic compact", () => {
       ),
     )
     expect(tokens?.n).toBe(37)
+  })
+
+  test("at 400000 tokens or more of a large context, whichever comes first", async () => {
+    const t = await setup("mock-large")
+    await t.turn("k1")
+    await t.turn("k2")
+    await t.turn("k3 use=399999")
+    expect((await t.meter()).used).toBe(399_999)
+    await t.turn("k4 use=400000")
+    expect(await t.compactRows()).toEqual([])
+    expect((await t.meter()).used).toBe(400_000)
+    await t.turn("k5")
+    expect(await t.compactRows()).toEqual([expect.objectContaining({ auto: true })])
+    // The setting turns this rule off too.
+    const off = await setup("mock-large")
+    await off.run(SettingsStore.use((s) => s.update({ autoCompact: false })))
+    for (const text of ["m1", "m2", "m3 use=500000", "m4"]) await off.turn(text)
+    expect(await off.compactRows()).toEqual([])
+  })
+
+  test("a first reply after a compact at 400000 tokens or more starts the pause too", async () => {
+    const t = await setup("mock-large")
+    for (const text of ["n1", "n2", "n3 use=400000"]) await t.turn(text)
+    await t.turn("n4 use=450000")
+    expect(await t.compactRows()).toHaveLength(1)
+    expect(await pause(t)).toBe(COMPACT_PAUSE_TURNS)
   })
 
   test("off by the setting, and never for 2 turns or fewer", async () => {

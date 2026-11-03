@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import {
+  COMPACT_AT_TOKENS,
   COMPACT_PAUSE_TURNS,
   canAddThread,
   compactCut,
+  compactDue,
   meterShare,
   nextPause,
   shouldAutoCompact,
@@ -45,6 +47,19 @@ describe("automatic compact", () => {
     expect(meterShare(null, 1000)).toBeNull()
     expect(shouldAutoCompact(base)).toBe(true)
     expect(shouldAutoCompact({ ...base, used: 849 })).toBe(false)
+  })
+  test("at 400000 tokens or more, whichever comes first (spec 003)", () => {
+    const big = { ...base, size: 1_000_000 }
+    expect(shouldAutoCompact({ ...big, used: 399_999 })).toBe(false)
+    expect(shouldAutoCompact({ ...big, used: COMPACT_AT_TOKENS })).toBe(true)
+    // A model of 200000 tokens: the 85 percent rule comes first.
+    expect(shouldAutoCompact({ ...base, size: 200_000, used: 170_000 })).toBe(true)
+    expect(shouldAutoCompact({ ...base, size: 200_000, used: 169_999 })).toBe(false)
+    // The limit needs a known size too.
+    expect(compactDue(COMPACT_AT_TOKENS, null)).toBe(false)
+    expect(compactDue(null, 1_000_000)).toBe(false)
+    // The setting turns both rules off.
+    expect(shouldAutoCompact({ ...big, used: COMPACT_AT_TOKENS, setting: false })).toBe(false)
   })
   test("never when off, when the provider compacts by itself, when not known, or in a pause", () => {
     expect(shouldAutoCompact({ ...base, setting: false })).toBe(false)
