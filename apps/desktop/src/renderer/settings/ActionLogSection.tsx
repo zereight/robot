@@ -3,6 +3,7 @@ import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { formatDateTime } from "../chat/format.ts"
 import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
+import { sensitiveLabelText } from "../lib/sensitive.ts"
 import { useApp } from "../state/app.tsx"
 import { Segmented } from "../ui/controls.tsx"
 import styles from "./settings.module.css"
@@ -24,7 +25,12 @@ export const ActionLogSection = () => {
   onCleanup(window.robot.on("actionLog.changed", () => void refetch()))
 
   const row = (e: ActionLogEntry) => (
-    <li class={styles.logRow} data-testid="action-log-entry" data-outside={e.outside !== null}>
+    <li
+      class={styles.logRow}
+      data-testid="action-log-entry"
+      data-outside={e.outside !== null}
+      data-sensitive={e.sensitive !== null}
+    >
       <div class={styles.logHead}>
         <span class={styles.label}>
           {t(`permissions.log.kind.${e.kind}` as MessageKey)}
@@ -53,6 +59,11 @@ export const ActionLogSection = () => {
         {e.outside
           ? t("permissions.log.outside", { source: outsideSourceText(t, e.outside) })
           : t("permissions.log.noOutside")}
+      </div>
+      <div class={styles.hint} data-testid="action-log-sensitive">
+        {e.sensitive
+          ? t("permissions.log.sensitive", { label: sensitiveLabelText(t, e.sensitive) })
+          : t("permissions.log.noSensitive")}
       </div>
     </li>
   )

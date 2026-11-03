@@ -1,0 +1,41 @@
+/* The muted line of a place that holds a mark (spec 007). */
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--c-border);
+  padding: 4px 16px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.clear {
+  margin-left: auto;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  padding: 2px 8px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.clear:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+.title {
+  font-size: var(--text-l);
+}
+
+.error {
+  color: var(--c-danger);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

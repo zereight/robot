@@ -18,6 +18,7 @@ import { Face } from "../agents/Face.tsx"
 import chat from "../chat/chat.module.css"
 import { formatDay } from "../chat/format.ts"
 import { MessageRow } from "../chat/MessageRow.tsx"
+import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
 import { shapeOf } from "../chat/shape.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -319,6 +320,10 @@ export const ChannelView = (props: { channel: Channel }) => {
 
   return (
     <div class={chat.view} data-testid="channel-view">
+      <PlaceMarksLine
+        place={{ kind: "channel", id: props.channel.id }}
+        marks={{ sensitive: props.channel.sensitive ?? null }}
+      />
       {retry.dialog()}
       {reviewing.dialog()}
       {ending.dialog()}
