@@ -22,6 +22,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Knowledge | Linked articles that an agent writes and reads again (016). | 지식 | memory, wiki |
 | Skill | Saved instructions that the user calls with a slash (017). The text of a skill is its "instructions" (지시 사항), apart from the instructions of an agent (지침). | 스킬 | plugin, tool |
 | Connection | An outside tool provider that speaks MCP (018). | 연결 | integration, app, plugin |
+| Tool search | The step "Search tools", with which an agent finds the tools of its connections when it may use more than 20 (018). | 도구 검색 (proposed) | lookup, discover, browse |
 | Saved secret | A key or password that an agent uses and the model never sees (020). | 저장된 비밀 값 | credential, token |
 | Model account | A provider or a vendor program that the user signed in to (006). | 모델 계정 | provider (in interface text), subscription |
 | Permission level | How much an agent may do before it asks (007). | 권한 수준 | mode, autonomy |

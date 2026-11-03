@@ -36,3 +36,15 @@ Tests:
   open, or with a copy method of the database that gives one consistent file. Copy in only. Never
   link the test folder to the real one, and never copy back.
 - Use stand-in providers. A test sends nothing to a real model account.
+
+Look at the screen:
+
+- A test that passes does not prove that the screen is right. Open the screenshots and look at them.
+- Run one spec: `bun run --cwd apps/desktop e2e e2e/<name>.spec.ts`. It builds the app, starts it, and
+  writes the screenshots to `build/e2e/screenshots`. Use the `shot` helper of `e2e/harness.ts`.
+- Take a screenshot at the end of each state that the spec describes. Use the smallest window size
+  that the spec allows, and take the same state in Korean.
+- Fix the largest fault first, in this order: layout, then what the eye sees first, then motion,
+  then detail. Run the spec again after each fix.
+- Do not hide a fault from a check. A check that you silence is a defect.
+- In the pull request, say which screenshots you looked at and what you did not check.
