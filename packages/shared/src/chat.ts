@@ -148,6 +148,11 @@ export type MessagePart =
        */
       readonly checkAllowed?: number
       /**
+       * Set when the read-only mark of a connection tool let the call run with no card (spec 018,
+       * "Rules"): the card says "Read only, as the connection says".
+       */
+      readonly readOnlyTrusted?: true
+      /**
        * Set for a call of a connection tool and for the step "Search tools" (spec 018): the card
        * names the connection and the tool, or the words of the search and the tools found.
        */

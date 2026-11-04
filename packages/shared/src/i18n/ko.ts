@@ -2417,6 +2417,13 @@ export const ko: Record<MessageKey, string> = {
   "connections.review.failed": "도구를 읽지 못했어요. 다시 해 보세요.",
   "chat.note.connectionHeld": "연결 {name}의 도구가 검토를 기다리고 있어요.",
   "chat.tool.searchTools": "검색한 도구: {words} · 찾음: {found}",
+  "connections.tool.readOnly": "읽기 전용 표시",
+  "connections.tool.readOnly.title": "연결이 이 도구는 읽기만 한다고 알려요.",
+  "connections.trust.label": "읽기 전용 표시 믿기",
+  "connections.trust.switch": "{name}의 읽기 전용 표시 믿기",
+  "connections.trust.hint":
+    "표시는 연결이 정해요. 앱은 표시가 맞는지 확인할 수 없어요. 에이전트가 쓴 인자는 그대로 연결에 전달돼요. 표시가 있는 도구는 ‘위험한 작업만 확인’과 ‘확실하지 않을 때만 확인’에서 카드 없이 실행되고, 바깥 내용이 있는 턴에서는 다시 물어봐요.",
+  "chat.tool.readOnlyTrusted": "연결이 알린 대로 읽기 전용",
 
   "page.orgchart": "조직도",
   "orgchart.legend.label": "조직도의 선",

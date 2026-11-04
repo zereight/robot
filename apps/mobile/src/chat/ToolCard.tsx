@@ -88,6 +88,11 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
           {t("tool.checkAllowed")}
         </Text>
       ) : null}
+      {tool.readOnlyTrusted ? (
+        <Text style={[styles.decision, { color: palette.textMuted }]}>
+          {t("tool.readOnlyTrusted")}
+        </Text>
+      ) : null}
       {tool.answeredInChat ? (
         <Text style={[styles.decision, { color: palette.textMuted }]}>
           {t("tool.answeredInChat")}

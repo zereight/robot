@@ -483,6 +483,10 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       ...(existing?.kind === "tool" && existing.checkAllowed !== undefined
         ? { checkAllowed: existing.checkAllowed }
         : {}),
+      // The read-only mark of a connection tool let the call run: the card keeps saying so (spec 018).
+      ...(existing?.kind === "tool" && existing.readOnlyTrusted
+        ? { readOnlyTrusted: true as const }
+        : {}),
       // The connection and the tool of a call, or the words of a search of tools (spec 018).
       ...(existing?.kind === "tool" && existing.connection
         ? { connection: existing.connection }
@@ -1483,6 +1487,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               onRuleAllowed: (callId) => changePart(callId, (p) => ({ ...p, ruleAllowed: true })),
               onCheckAllowed: (callId, probability) =>
                 changePart(callId, (p) => ({ ...p, checkAllowed: probability })),
+              onReadOnlyTrusted: (callId) =>
+                changePart(callId, (p) => ({ ...p, readOnlyTrusted: true })),
               words: () => wordsOfTurn(task, reply.id),
               onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
               onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),

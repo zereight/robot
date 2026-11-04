@@ -1068,4 +1068,12 @@ export const migrations: readonly string[] = [
   -- saved the routine form once (spec 007, 009): 1 until then. It syncs with the routine.
   ALTER TABLE routine ADD COLUMN unsaved_import INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  -- "Trust read-only marks" (spec 018, S63): the switch of a connection. 0 (off) is the default.
+  -- With 1, a call of a tool that carries the read-only mark is not a risky step outside a turn
+  -- that holds outside content. The switch stays on this computer with the connection: sync (019)
+  -- does not carry the table. An export keeps the column, and an import leaves it off (the import
+  -- names its columns and does not read this one), like the review of tools.
+  ALTER TABLE tool_connection ADD COLUMN trust_read_only INTEGER NOT NULL DEFAULT 0;
+  `,
 ]

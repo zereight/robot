@@ -822,6 +822,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               onRuleAllowed: (callId) => changePart(callId, (p) => ({ ...p, ruleAllowed: true })),
               onCheckAllowed: (callId, probability) =>
                 changePart(callId, (p) => ({ ...p, checkAllowed: probability })),
+              onReadOnlyTrusted: (callId) =>
+                changePart(callId, (p) => ({ ...p, readOnlyTrusted: true })),
               words: () => tasks.userWords(o.taskId),
               onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
               onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),

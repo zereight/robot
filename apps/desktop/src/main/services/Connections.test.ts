@@ -118,6 +118,7 @@ const setup = (options: ConnectionsOptions = {}) => {
     setEnabled: (id: string, on: boolean) => run(Connections.use((c) => c.setEnabled(id, on))),
     setTool: (id: string, name: string, on: boolean) =>
       run(Connections.use((c) => c.setTool(id, name, on))),
+    setTrust: (id: string, on: boolean) => run(Connections.use((c) => c.setTrust(id, on))),
     remove: (id: string) => run(Connections.use((c) => c.remove(id))),
     held: (id: string) => run(Connections.use((c) => c.held(id))),
     accept: (id: string, tools: { name: string; key: string }[]) =>
@@ -328,13 +329,14 @@ describe("adding, changing and removing a connection", () => {
 describe("test", () => {
   test("shows the tools with name and description, or the reason of the failure", async () => {
     const { connections, fake } = setup()
-    fake.state.tools = [tool("echo", "Gives the text back."), tool("lookup")]
+    fake.state.tools = [tool("echo", "Gives the text back."), { ...tool("lookup"), readOnly: true }]
     const result = await connections.test({ connection: form() })
     expect(result).toMatchObject({ ok: true, tooMany: false })
+    // The list shows the read-only mark beside the tool (spec 018, "Read-only mark").
     if (result.ok)
       expect(result.tools).toEqual([
-        { name: "echo", description: "Gives the text back.", enabled: true },
-        { name: "lookup", description: "The tool lookup.", enabled: true },
+        { name: "echo", description: "Gives the text back.", enabled: true, readOnly: false },
+        { name: "lookup", description: "The tool lookup.", enabled: true, readOnly: true },
       ])
     for (const failure of [
       "not_found",
@@ -1095,5 +1097,76 @@ describe("review of tools (spec 018, Tool review)", () => {
     expect(await run(Rules.use((r) => r.list()))).toHaveLength(1)
     await connections.acceptAll(saved.id)
     expect(await run(Rules.use((r) => r.list()))).toHaveLength(1)
+  })
+})
+
+describe("read-only marks (spec 018, Read-only mark, Trust read-only marks)", () => {
+  const marked = (name: string): McpTool => ({ ...tool(name), readOnly: true })
+
+  test("the list shows the mark of each tool, and the switch is off by default", async () => {
+    const { connections, fake } = setup()
+    fake.state.tools = [tool("echo"), marked("lookup")]
+    const saved = await connections.save(saving())
+    expect(saved.trustReadOnly).toBe(false)
+    expect(saved.tools.map((t) => [t.name, t.readOnly])).toEqual([
+      ["echo", false],
+      ["lookup", true],
+    ])
+  })
+
+  test("the switch is set and cleared, and it is kept when the form is saved or the name changes", async () => {
+    const { connections, fake } = setup()
+    fake.state.tools = [tool("echo"), marked("lookup")]
+    const saved = await connections.save(saving())
+    const on = await connections.setTrust(saved.id, true)
+    expect(on.trustReadOnly).toBe(true)
+    expect((await connections.list())[0]?.trustReadOnly).toBe(true)
+    // A change of the name is not a change of the way to the server: the switch and the reviewed
+    // tools stay (spec 018, "Tool review").
+    const renamed = await connections.save(saving({ name: "Journal" }, saved.id))
+    expect(renamed.trustReadOnly).toBe(true)
+    expect(renamed.needReview).toBe(0)
+    expect((await connections.setTrust(saved.id, false)).trustReadOnly).toBe(false)
+  })
+
+  test("an unknown connection cannot be set", async () => {
+    const { connections, run } = setup()
+    const error = await run(Connections.use((c) => c.setTrust("nope", true)).pipe(Effect.flip))
+    expect(error.code).toBe("connection_not_found")
+  })
+
+  test("a call target tells the mark and the switch; the switch is read at each call", async () => {
+    const { connections, fake, agent } = setup()
+    const ada = await agent()
+    fake.state.tools = [tool("echo"), marked("lookup")]
+    const saved = await connections.save(saving())
+    const turn = await connections.forTurn(ada.id)
+    const lookup = aliasOf(turn, "lookup")
+    const echo = aliasOf(turn, "echo")
+    expect(turn.resolve(lookup)).toMatchObject({ readOnly: true, trusted: false })
+    expect(turn.resolve(echo)).toMatchObject({ readOnly: false, trusted: false })
+    await connections.setTrust(saved.id, true)
+    // The same turn sees the new switch at once: turning it off must count at once.
+    expect(turn.resolve(lookup)).toMatchObject({ readOnly: true, trusted: true })
+    expect(turn.resolve(echo)).toMatchObject({ readOnly: false, trusted: true })
+    await connections.setTrust(saved.id, false)
+    expect(turn.resolve(lookup)).toMatchObject({ trusted: false })
+  })
+
+  test("a tool whose mark changed is held, and its new mark counts only after the user accepts it", async () => {
+    const { connections, fake, agent } = setup()
+    const ada = await agent()
+    const saved = await connections.save(saving())
+    await connections.setTrust(saved.id, true)
+    fake.state.tools = [tool("echo"), marked("lookup")]
+    await connections.setEnabled(saved.id, false)
+    await connections.setEnabled(saved.id, true)
+    const held = await connections.forTurn(ada.id)
+    // The tool "lookup" now says it only reads: it is held, so the agent does not get it.
+    expect(held.held).toEqual(["Notes"])
+    expect(held.defs().map((d) => d.name.replace(/^mcp__notes__/, ""))).toEqual(["echo"])
+    await connections.acceptAll(saved.id)
+    const turn = await connections.forTurn(ada.id)
+    expect(turn.resolve(aliasOf(turn, "lookup"))).toMatchObject({ readOnly: true, trusted: true })
   })
 })

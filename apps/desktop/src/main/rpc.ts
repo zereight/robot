@@ -919,6 +919,10 @@ export const handlers: Handlers = {
         Connections.use((c) => c.setTool(id, tool, enabled)),
       ),
     ),
+  "connections.setTrust": (input) =>
+    decode(Schema.Struct({ id: Schema.String, trust: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, trust }) => Connections.use((c) => c.setTrust(id, trust))),
+    ),
   "connections.held": (input) =>
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Connections.use((c) => c.held(id)))),
   "connections.accept": (input) =>

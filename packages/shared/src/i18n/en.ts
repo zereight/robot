@@ -2435,6 +2435,13 @@ export const en = {
   "connections.review.failed": "The tools could not be read. Try again.",
   "chat.note.connectionHeld": "Tools of the connection {name} wait for your review.",
   "chat.tool.searchTools": "Searched tools: {words} · found: {found}",
+  "connections.tool.readOnly": "Read-only mark",
+  "connections.tool.readOnly.title": "The connection says that this tool only reads.",
+  "connections.trust.label": "Trust read-only marks",
+  "connections.trust.switch": "Trust read-only marks of {name}",
+  "connections.trust.hint":
+    "The connection sets the mark, and the app cannot check it. The arguments of the agent still go to the connection. A call of a tool with the mark runs with no card at “Ask for risky steps” and “Ask when unsure”, and asks again in a turn that holds outside content.",
+  "chat.tool.readOnlyTrusted": "Read only, as the connection says",
 
   "page.orgchart": "Org chart",
   "orgchart.legend.label": "Lines of the chart",

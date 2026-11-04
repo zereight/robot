@@ -522,6 +522,11 @@ export interface RpcMethods {
     output: ToolConnection
   }
   /**
+   * Turns "Trust read-only marks" on or off for a connection (spec 018, "Rules"). Off is the
+   * default. This computer only: a linked device cannot set it.
+   */
+  "connections.setTrust": { input: { id: string; trust: boolean }; output: ToolConnection }
+  /**
    * The tools of a connection that wait for the user's review (spec 018, "Tool review"), each with
    * the reviewed text and the text that the connection offers now. This computer only.
    */

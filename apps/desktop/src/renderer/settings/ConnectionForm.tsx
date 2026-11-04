@@ -554,7 +554,19 @@ export const ConnectionFormDialog = (props: {
                             data-tool={tool.name}
                           >
                             <span class={styles.toolText}>
-                              <span class={styles.toolName}>{tool.name}</span>
+                              <span class={styles.toolNameLine}>
+                                <span class={styles.toolName}>{tool.name}</span>
+                                {/* The Test list shows the read-only mark beside the tool (spec 018). */}
+                                <Show when={tool.readOnly}>
+                                  <span
+                                    class={styles.markTag}
+                                    title={t("connections.tool.readOnly.title")}
+                                    data-testid="connection-test-tool-read-only"
+                                  >
+                                    {t("connections.tool.readOnly")}
+                                  </span>
+                                </Show>
+                              </span>
                               <span class={styles.meta}>{tool.description}</span>
                             </span>
                           </li>

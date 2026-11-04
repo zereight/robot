@@ -83,6 +83,8 @@ interface Row {
   reviewed: string
   /** 1 for a connection from before the review: its first start sets its reviewed tools. */
   review_adopt: number
+  /** 1 when the user turned on "Trust read-only marks" (spec 018, "Rules"). */
+  trust_read_only: number
   created_at: number
 }
 
@@ -116,6 +118,13 @@ export interface ConnectionTarget extends ToolTarget {
   /** The name of the connection, as the user wrote it. */
   readonly connection: string
   readonly description: string
+  /** True when the connection marks the tool as one that only reads (spec 018, "Read-only mark"). */
+  readonly readOnly: boolean
+  /**
+   * True when the user has "Trust read-only marks" on for the connection right now. It is read at
+   * each call, so turning the switch off counts at once.
+   */
+  readonly trusted: boolean
 }
 
 /**
@@ -161,6 +170,8 @@ export interface ConnectionsService {
   }): Effect.Effect<ConnectionTestResult, AppError>
   setEnabled(id: string, enabled: boolean): Effect.Effect<ToolConnection, AppError>
   setTool(id: string, tool: string, enabled: boolean): Effect.Effect<ToolConnection, AppError>
+  /** Turns "Trust read-only marks" on or off for a connection (spec 018, "Rules"). */
+  setTrust(id: string, trust: boolean): Effect.Effect<ToolConnection, AppError>
   /** The tools of a connection that wait for the user's review, with the old and the new text. */
   held(id: string): Effect.Effect<readonly HeldToolView[], AppError>
   /**
@@ -334,6 +345,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               name: t.name,
               description: t.description,
               enabled: !off.has(t.name),
+              readOnly: t.readOnly,
               ...(tag ? { held: tag } : {}),
             }
           })
@@ -368,6 +380,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             tooMany: row.tools_more === 1,
             needReview: held.size,
             valueMissing: [...env, ...headers].some((e) => e.secret && e.saved !== true),
+            trustReadOnly: row.trust_read_only === 1,
           }
         }
 
@@ -631,7 +644,14 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             const tool = source?.tools.find((t) => t.name === target.tool)
             if (!source || !tool) return undefined
             return {
-              target: { ...target, connection: source.name, description: tool.description },
+              target: {
+                ...target,
+                connection: source.name,
+                description: tool.description,
+                readOnly: tool.readOnly,
+                // The switch is read at each call: turning it off takes effect at once.
+                trusted: rowOf(target.connectionId)?.trust_read_only === 1,
+              },
               tool,
             }
           }
@@ -794,6 +814,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             name: t.name,
             description: t.description,
             enabled: !off.has(t.name),
+            readOnly: t.readOnly,
           }))
 
         // -- Save. --
@@ -1091,6 +1112,18 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               db.run(
                 "UPDATE tool_connection SET tools_off = ? WHERE id = ?",
                 JSON.stringify([...off]),
+                id,
+              )
+              changed()
+              return view(rowOf(id) as Row)
+            }),
+          setTrust: (id, trust) =>
+            Effect.gen(function* () {
+              const row = rowOf(id)
+              if (!row) return yield* new AppError({ code: "connection_not_found" })
+              db.run(
+                "UPDATE tool_connection SET trust_read_only = ? WHERE id = ?",
+                trust ? 1 : 0,
                 id,
               )
               changed()
