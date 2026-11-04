@@ -122,7 +122,7 @@ const openPhone = async (
     secrets,
     opener,
     maxDelayMs: 300,
-    connectMs: 2_000,
+    connectMs: 15_000,
     pingMs: 1_000,
   })
   phones.push(hub)

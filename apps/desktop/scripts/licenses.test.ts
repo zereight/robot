@@ -21,7 +21,9 @@ test("every package the app imports ships: it is a dependency or listed as bundl
   const shipping = new Set([...Object.keys(pkg.dependencies), ...pkg.bundled, "electron"])
   const imported = new Set<string>()
   for (const file of new Bun.Glob("src/**/*.{ts,tsx}").scanSync(root)) {
-    if (file.includes(".test.")) continue
+    // The files of the tests are not in the app. The runner of the tests loads `test-preload.ts`
+    // from `bunfig.toml`, and no file of the app imports it.
+    if (file.includes(".test.") || file === "src/main/test-preload.ts") continue
     const source = readFileSync(join(root, file), "utf8")
     // "from" and "import" must start a word. A test id such as "card-from" and a key such as
     // "card.from" end in "from" and are not imports.

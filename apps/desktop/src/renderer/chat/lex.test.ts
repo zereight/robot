@@ -124,18 +124,34 @@ test("an empty text and a short text give no settled tokens", () => {
   expect(lexMarkdown("Only one block").settled).toBe(0)
 })
 
-test("the work for a part does not grow with the length of the reply", () => {
+test("reading the end of a long reply costs far less than reading it whole", () => {
   const block = "A paragraph of plain words that goes on for a while, then ends.\n\n"
-  const read = (blocks: number) => {
-    let previous = lexMarkdown(block.repeat(blocks))
-    const t = performance.now()
-    for (let i = 0; i < 30; i++)
-      previous = lexMarkdown(`${block.repeat(blocks)}tail ${i}`, previous)
-    return performance.now() - t
+  const base = block.repeat(2000)
+  // The texts are made before the timing starts. A part of a reply is the text so far, plus a tail.
+  const texts = Array.from({ length: 20 }, (_, i) => `${base}tail ${i}`)
+  const first = lexMarkdown(base)
+  // A time is the best of several runs. A pause of the computer, or of the memory cleaner, in one
+  // run is not the cost of the reading, and a busy test computer has such pauses.
+  const best = (times: number, run: () => void) => {
+    let least = Number.POSITIVE_INFINITY
+    for (let i = 0; i < times; i++) {
+      const start = performance.now()
+      run()
+      least = Math.min(least, performance.now() - start)
+    }
+    return least
   }
-  read(50) // warm up
-  const small = read(100)
-  const large = read(2000)
-  // 20 times the text. A whole reading would cost about 20 times more; a reading of the end does not.
-  expect(large).toBeLessThan(small * 8 + 20)
+  best(2, () => {
+    let previous = first
+    for (const text of texts) previous = lexMarkdown(text, previous)
+  }) // warm up
+  const part =
+    best(7, () => {
+      let previous = first
+      for (const text of texts) previous = lexMarkdown(text, previous)
+    }) / texts.length
+  const whole = best(3, () => lexMarkdown(texts[0] ?? ""))
+  // A reading of the end is 40 to 200 times cheaper here, depending on the computer. If it went
+  // back to a whole reading, the two costs would be the same. A fifth sits far from both.
+  expect(part).toBeLessThan(whole / 5)
 })

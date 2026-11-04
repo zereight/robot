@@ -5,32 +5,28 @@ import { join } from "node:path"
 import { hostStore } from "./Secrets.ts"
 
 /**
- * A stand-in for `robot-host secrets …` with the same exit codes: it keeps the values in a JSON
- * file, writes each call to a log, and fails every call for the key "broken".
+ * A stand-in for `robot-host secrets …` with the same exit codes: it keeps each value in a file,
+ * writes each call to a log, and fails every call for the key "broken". It is a shell script, not a
+ * program of Bun. Each call of the store starts the program again, and when many test files start
+ * Bun programs at once, some of them do not start for seconds, or never: the test waits for its
+ * time limit. A shell script starts at once.
  */
 const fakeHost = () => {
   const dir = mkdtempSync(join(tmpdir(), "robot-secrets-unit-"))
-  const values = join(dir, "values.json")
   const log = join(dir, "calls.log")
   const command = join(dir, "robot-host")
   writeFileSync(
     command,
-    `#!${process.execPath}
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs"
-const [, , , op, key] = process.argv
-appendFileSync(${JSON.stringify(log)}, op + " " + key + "\\n")
-if (key === "broken") { console.error("keychain error -1"); process.exit(1) }
-const all = existsSync(${JSON.stringify(values)}) ? JSON.parse(readFileSync(${JSON.stringify(values)}, "utf8")) : {}
-if (op === "get") {
-  if (!(key in all)) process.exit(3)
-  process.stdout.write(all[key])
-} else if (op === "set") {
-  all[key] = readFileSync(0, "utf8")
-  writeFileSync(${JSON.stringify(values)}, JSON.stringify(all))
-} else if (op === "remove") {
-  delete all[key]
-  writeFileSync(${JSON.stringify(values)}, JSON.stringify(all))
-}
+    `#!/bin/sh
+op="$2"; key="$3"
+echo "$op $key" >> "${log}"
+if [ "$key" = broken ]; then echo "keychain error -1" >&2; exit 1; fi
+file="${dir}/value_$(printf %s "$key" | tr -c 'A-Za-z0-9' _)"
+case "$op" in
+  get) [ -e "$file" ] || exit 3; cat "$file" ;;
+  set) cat > "$file" ;;
+  remove) rm -f "$file" ;;
+esac
 `,
   )
   chmodSync(command, 0o755)

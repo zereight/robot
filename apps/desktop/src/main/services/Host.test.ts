@@ -5,27 +5,33 @@ import { join } from "node:path"
 import { isHostMethod, makeHost } from "./Host.ts"
 
 /**
- * Writes a stand-in host program in a new folder and returns the command that runs it with Bun.
- * The source gets the folder, for files that the program leaves for the test.
+ * Writes a stand-in host program in a new folder and returns the command that runs it with the
+ * shell. The source gets the folder, for files that the program leaves for the test. It is a shell
+ * script, not a program of Bun: when many test files start Bun programs at once, some of them do
+ * not start for seconds, or never, and the test waits for its time limit.
  */
 const fakeHost = (source: (dir: string) => string) => {
   const dir = mkdtempSync(join(tmpdir(), "robot-host-unit-"))
-  const file = join(dir, "host.ts")
+  const file = join(dir, "host.sh")
   writeFileSync(file, source(dir))
-  return { command: process.execPath, args: [file], dir }
+  return { command: "/bin/sh", args: [file], dir }
 }
 
-/** Reads requests, keeps two, and answers them in the other order with what it was sent. */
-const echoTwoReversed = `
-import { createInterface } from "node:readline"
-const held = []
-createInterface({ input: process.stdin }).on("line", (line) => {
-  held.push(JSON.parse(line))
-  if (held.length < 2) return
-  for (const r of held.reverse())
-    process.stdout.write(JSON.stringify({ id: r.id, result: { ok: true, value: r } }) + "\\n")
-  held.length = 0
-})
+/**
+ * Reads two requests and answers them in the other order. An answer holds the request that it
+ * answers, as the value. Then it reads until its input closes, as the host does.
+ */
+// `String.raw` keeps the backslashes for the shell.
+const echoTwoReversed = String.raw`
+read -r first
+read -r second
+answer() {
+  id=$(printf '%s' "$1" | sed -n 's/^{"id":\([0-9]*\),.*/\1/p')
+  printf '{"id":%s,"result":{"ok":true,"value":%s}}\n' "$id" "$1"
+}
+answer "$second"
+answer "$first"
+cat > /dev/null
 `
 
 test("answers find their calls by id, also in another order", async () => {
@@ -49,9 +55,8 @@ test("answers find their calls by id, also in another order", async () => {
 test("a host that stops fails its calls, and the next call starts it again", async () => {
   const spec = fakeHost(
     (dir) => `
-import { appendFileSync } from "node:fs"
-appendFileSync(${JSON.stringify(join(dir, "starts"))}, "start\\n")
-process.exit(3)
+echo start >> ${JSON.stringify(join(dir, "starts"))}
+exit 3
 `,
   )
   const host = makeHost(spec)
@@ -75,17 +80,20 @@ test("a program that cannot run fails the call and does not throw", async () => 
 test("close ends the host through its input, and later calls fail at once", async () => {
   const spec = fakeHost(
     (dir) => `
-import { writeFileSync } from "node:fs"
-process.stdin.on("data", () => {})
-process.stdin.on("end", () => {
-  writeFileSync(${JSON.stringify(join(dir, "ended"))}, "")
-  process.exit(0)
-})
+: > ${JSON.stringify(join(dir, "started"))}
+cat > /dev/null
+: > ${JSON.stringify(join(dir, "ended"))}
+exit 0
 `,
   )
   const host = makeHost(spec)
   void host.call("app.licenses", undefined, null)
   expect(host.pid()).toBeNumber()
+  // The host gets only a short time to end after its input closes, and then it is killed. A program
+  // that has not started yet cannot end in that time, so the test closes the input only after
+  // the program has started. On a busy computer, the start can take seconds.
+  for (let i = 0; i < 3000 && !existsSync(join(spec.dir, "started")); i++) await Bun.sleep(10)
+  expect(existsSync(join(spec.dir, "started"))).toBe(true)
   await host.close()
   expect(existsSync(join(spec.dir, "ended"))).toBe(true)
   const late = await host.call("app.licenses", undefined, null)

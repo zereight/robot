@@ -294,9 +294,10 @@ describe("blocked parts", () => {
   test("a blocked part is final: the lead does not wait for it", async () => {
     const s = await setup({ review: true })
     await s.send("split block it")
-    // Bo's part goes to review. Cy's part is blocked, not in review.
+    // Bo's part goes to review. Cy's part is blocked, not in review. The two members work at the
+    // same time, so the test waits for each state: one may come before the other.
     await until(s.inState("Intro", "review"))
-    expect((await s.parts()).find((t) => t.label === "Repo")?.state).toBe("blocked")
+    await until(s.inState("Repo", "blocked"))
     const bo = (await s.parts()).find((t) => t.label === "Intro")
     await s.run(Tasks.use((x) => x.accept(bo?.id ?? "")))
     await until(async () => kinds(await s.history()).includes("agent:summary"))
