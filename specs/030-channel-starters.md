@@ -64,9 +64,10 @@ starter with the same job. The language follows the interface at the moment of t
    goal dialog opens with an empty text box, and "All starters" lists the eight starters in the order
    given in "Matching". The form does not change.
 2. Type: while the user types, "Recommended" shows the starters that fit. It updates at each change
-   of the text.
-3. Pick an agent starter: the dialog closes, and the form fills in with that starter, as in 002
-   (flow 3). The goal text is cleared.
+   of the text. "All starters" does not change.
+   It always lists all eight starters, the recommended ones too.
+3. Pick an agent starter: the dialog closes. The New agent form fills in the name, the role line
+   and the instructions of that starter, as in 002 (flow 3). The goal text is cleared.
 4. Pick a channel starter: the dialog shows a preview of the channel. The preview has a field for
    the channel name, a field for the topic, and one row for each agent. Each row has a field for the
    name and, in muted text, the role line. The lead row has the mark "Lead". The buttons are "Create",
@@ -94,7 +95,7 @@ starter with the same job. The language follows the interface at the moment of t
 
 ### Goal text
 
-- The text box takes up to 300 characters. It takes no more.
+- The text box takes up to 300 characters. It takes no more. A paste over the limit is cut at 300.
 - The app sends the goal text to no model, no service and no other device. No request leaves the
   computer while the user types or picks.
 - The app keeps no goal text. It is in no history, memory, export, sync, log or file.
@@ -113,7 +114,7 @@ starter with the same job. The language follows the interface at the moment of t
   keep the order of "All starters".
 - The order of "All starters" is: Assistant, Briefer, Researcher, Reviewer, Organizer, Research,
   Code review, Files.
-- With an empty goal text, "Recommended" is not shown.
+- With an empty goal text, "Recommended" is not shown. A goal text with only spaces is empty.
 
 ### Agent starters from the dialog
 
@@ -137,6 +138,12 @@ starter with the same job. The language follows the interface at the moment of t
   applies to the channel name too.
 - The channel name has 1 to 60 characters (see 004). An agent name has 1 to 40 characters (see 002).
   A text box refuses more characters than its limit.
+
+### Keyboard
+
+- The text box has the focus when the dialog opens.
+- Tab moves the focus in the order on screen. In the list, Enter picks the row, as a click does.
+- Escape closes the dialog (see "Flows", step 8).
 
 ### Limits
 
@@ -168,15 +175,15 @@ starter with the same job. The language follows the interface at the moment of t
 
 ### Ways out
 
-- The goal dialog closes with "Back", "Cancel" or Escape. Nothing is made before Create, so nothing
-  needs an undo.
+- The goal dialog closes with "Cancel" or Escape. "Back" only leaves the preview. Nothing is made
+  before Create, so nothing needs an undo.
 - After Create, the user can archive the channel as any channel (see 004) and each agent as any
   agent (see 002).
 
 ### Seeing the state
 
 - After Create, the new channel shows in the Channels list at once. The org chart (see 029) shows it
-  at once too, with the mark "Lead" on the lead.
+  within 1 second, with the mark "Lead" on the lead.
 - The agents show their state as any new agent does (see 002).
 - After a restart, the same channel and agents show.
 
@@ -224,7 +231,7 @@ starter with the same job. The language follows the interface at the moment of t
 7. Type 300 characters, then one more: the text box does not take the last character.
 8. Pick "Briefer": the dialog closes, the form fills in with the Briefer starter, and reopening the
    dialog shows an empty text box. Create makes the paused routine and the skill, as in 002.
-9. In a profile with no agent, pick "Files", keep the names, and press Create: the channel "Files"
+9. In a profile with no agent, pick "Files", keep the default names, and press Create: the channel "Files"
    opens, with "Organizer" marked "Lead" and "Assistant" as a member. Both agents have no routine and
    no skill. The channel has "Review parts" off, "The lead answers questions" on, "Own copies for
    parts" off, no instructions, and "No section".
@@ -236,8 +243,8 @@ starter with the same job. The language follows the interface at the moment of t
     and no agent is made, and the preview shows the reason and the words "Nothing was made."
 13. Pick "Research" and press Back: the lists show the same goal text as before. Press Cancel:
     nothing is made, and the dialog opens empty the next time.
-14. Type a goal and close the dialog. Restart the app and export the profile: the goal text is in no
-    place.
+14. Type a goal and close the dialog. Restart the app, open the dialog again, and export the
+    profile: the dialog is empty, and the export holds no goal text.
 15. Type a goal with network monitoring on: no request is made.
 16. Create "Research" and open the org chart: the channel node shows the mark "Lead" on Researcher,
     and a solid line runs from Researcher to Briefer and to Assistant (see 029).
