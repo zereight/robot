@@ -548,11 +548,26 @@ export const ChannelView = (props: { channel: Channel }) => {
           </For>
         </div>
       </div>
-      <Show when={backTo() !== undefined || origin() !== undefined}>
+      <Show when={!atBottom() || backTo() !== undefined || origin() !== undefined}>
         <div class={chat.floating} style={{ bottom: "auto", top: "12px" }}>
-          <button type="button" class={chat.floatButton} onClick={goBack} data-testid="jump-back">
-            {t("channels.back")}
-          </button>
+          <Show when={backTo() !== undefined || origin() !== undefined}>
+            <button type="button" class={chat.floatButton} onClick={goBack} data-testid="jump-back">
+              {t("channels.back")}
+            </button>
+          </Show>
+          <Show when={!atBottom()}>
+            <button
+              type="button"
+              class={chat.floatButton}
+              onClick={() => {
+                setBackTo(undefined)
+                scrollToBottom()
+              }}
+              data-testid="jump-latest"
+            >
+              {t("chat.jumpLatest")}
+            </button>
+          </Show>
         </div>
       </Show>
       <div class={chat.composer}>

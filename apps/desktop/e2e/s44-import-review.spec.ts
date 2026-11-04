@@ -212,7 +212,11 @@ test("review before an import: agent file and workflow file, ticks, not imported
     "false",
   )
   await page.getByTestId("wf-save").click()
-  await expect(page.getByTestId("toast-success")).toHaveText("Workflow saved.")
+  // The import of S67 shows a toast of its own, and it can still be on screen: look for the toast
+  // of the save by its text.
+  await expect(page.getByTestId("toast-success").filter({ hasText: "Workflow saved." })).toHaveText(
+    "Workflow saved.",
+  )
 
   // "Turn on" opens the list at the workflow; turning it on ticks the last item.
   await wfChecklist.getByTestId("checklist-item").nth(2).getByTestId("checklist-action").click()
