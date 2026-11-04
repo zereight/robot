@@ -7,6 +7,7 @@ import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Decision } from "./Decision.ts"
+import { Handbook } from "./Handbook.ts"
 import { Memory } from "./Memory.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Places } from "./Places.ts"
@@ -614,6 +615,25 @@ describe("fast pick (spec 004)", () => {
     expect(log[0]).toMatchObject({ event: "fast_pick", chosen: true, probability: 0.9 })
     expect(JSON.stringify(log)).not.toContain("budget")
     expect(JSON.stringify(log)).not.toContain(DECISION_KEY)
+  })
+
+  test("the request to the decision model holds neither the handbook nor the instructions of the channel (spec 002, 004)", async () => {
+    decide = () => picks("member_3", 0.9)
+    const s = await setup({ decision: true })
+    await s.run(Handbook.use((h) => h.save(s.local.id, "Answer in Korean.", "page")))
+    await s.run(
+      Channels.use((c) => c.update(s.channel.id, { instructions: "Write the answer as a list." })),
+    )
+    await s.send("Please check the budget")
+    await s.idle()
+    expect(asked).toHaveLength(1)
+    // The pick still got the job, and the job went to the member that it chose.
+    expect(asked[0]?.body).toContain("Please check the budget")
+    expect((await s.history())[1]?.agentId).toBe(s.cy.id)
+    expect(asked[0]?.body).not.toContain("Answer in Korean.")
+    expect(asked[0]?.body).not.toContain("Write the answer as a list.")
+    // The own instructions of a member do not go to the pick either.
+    expect(asked[0]?.body).not.toContain("You are Bo.")
   })
 
   test("an unsure answer: the lead reads the job as if the pick did not exist", async () => {

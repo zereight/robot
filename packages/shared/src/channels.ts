@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import type { ChatMessage, MessagePart } from "./chat.ts"
 import { cleanDoneTest } from "./check.ts"
+import { CHANNEL_INSTRUCTIONS_MAX } from "./handbook.ts"
 import type { PlaceOutside } from "./placeMarks.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
 import type { TaskState } from "./task.ts"
@@ -17,6 +18,11 @@ export interface Channel {
   readonly serverId: string
   readonly name: string
   readonly topic: string
+  /**
+   * The instructions of the channel (spec 004): up to 4000 characters, empty by default. Each
+   * member and the lead read them in every turn of the channel, after their own instructions.
+   */
+  readonly instructions: string
   /** The agent that reads each job first. Always one of the members. */
   readonly leadId: string | null
   readonly memberIds: readonly string[]
@@ -36,6 +42,10 @@ export const ChannelCreate = Schema.Struct({
   serverId: Schema.String,
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(CHANNEL_NAME_MAX * 2)),
   topic: Schema.String.check(Schema.isMaxLength(CHANNEL_TOPIC_MAX * 2)),
+  /** Absent is empty. The service checks the length and refuses a text that looks like a secret. */
+  instructions: Schema.optionalKey(
+    Schema.String.check(Schema.isMaxLength(CHANNEL_INSTRUCTIONS_MAX * 4)),
+  ),
   memberIds: Schema.Array(Schema.String),
   leadId: Schema.NullOr(Schema.String),
   sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -45,6 +55,7 @@ export type ChannelCreate = typeof ChannelCreate.Type
 export const ChannelPatch = Schema.Struct({
   name: Schema.optionalKey(ChannelCreate.fields.name),
   topic: Schema.optionalKey(ChannelCreate.fields.topic),
+  instructions: ChannelCreate.fields.instructions,
   memberIds: Schema.optionalKey(ChannelCreate.fields.memberIds),
   leadId: Schema.optionalKey(ChannelCreate.fields.leadId),
   sectionId: ChannelCreate.fields.sectionId,
@@ -64,6 +75,7 @@ export const ClientChannelCreate = Schema.Struct({
   serverId: Schema.String.check(Schema.isMaxLength(100)),
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(CHANNEL_NAME_MAX * 2)),
   topic: Schema.String.check(Schema.isMaxLength(CHANNEL_TOPIC_MAX * 2)),
+  instructions: ChannelCreate.fields.instructions,
   memberIds: ClientMemberIds,
   leadId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(100))),
 })
@@ -74,6 +86,7 @@ export const ClientChannelPatch = Schema.Struct({
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(CHANNEL_NAME_MAX * 2)),
   ),
   topic: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(CHANNEL_TOPIC_MAX * 2))),
+  instructions: ChannelCreate.fields.instructions,
   memberIds: Schema.optionalKey(ClientMemberIds),
   leadId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
 })

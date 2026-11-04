@@ -4,6 +4,7 @@ import {
   AGENT_MESSAGE_KINDS,
   AGENT_NAME_MAX,
   AGENT_ROLE_MAX,
+  CHANNEL_INSTRUCTIONS_MAX,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
   CONNECTION_NAME_MAX,
@@ -13,6 +14,8 @@ import {
   ENDED_AS,
   FACE_HUES,
   FACE_SHAPES,
+  HANDBOOK_MAX,
+  HANDBOOK_SOURCES,
   HANDOVER_LIMITS,
   INSTRUCTION_SOURCES,
   isOutsideSource,
@@ -633,6 +636,7 @@ interface AgentRow {
   last_read_at: number
   sensitive_mark: string | null
   outside_mark: string | null
+  read_handbook: number
 }
 
 const readFace = (ctx: Ctx, file: string | null) => {
@@ -727,6 +731,9 @@ const agent: KindDef = {
     // The backup model is a setting of the agent and syncs with it (spec 019). The hold of the main
     // model is a state of one computer and never travels. A computer of an older step has none.
     backupModel: { check: nullable(modelShape) },
+    // The switch "Read the handbook" (spec 002, 019). A computer of an older step has none, and the
+    // switch counts as on.
+    readHandbook: { check: bool },
     archived: { check: bool },
     // The mark of a sensitive read of the chat (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
@@ -758,6 +765,7 @@ const agent: KindDef = {
           r.backup_account_id && r.backup_model
             ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
             : null,
+        readHandbook: r.read_handbook === 1,
         archived: r.archived_at !== null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
@@ -790,6 +798,7 @@ const agent: KindDef = {
       section: "agents",
       permission: "ask_all",
       memory_enabled: 1,
+      read_handbook: f.readHandbook === false ? 0 : 1,
       archived_at: f.archived === true ? now : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
@@ -810,6 +819,7 @@ const agent: KindDef = {
     }
     if (f.role !== undefined) columns.role = (f.role as string).trim()
     if (f.instructions !== undefined) columns.instructions = f.instructions
+    if (typeof f.readHandbook === "boolean") columns.read_handbook = f.readHandbook ? 1 : 0
     if (f.face !== undefined) {
       const face = f.face as { shape: number; hue: number }
       columns.face_shape = face.shape
@@ -858,6 +868,7 @@ interface ChannelRow {
   id: string
   name: string
   topic: string
+  instructions: string
   lead_agent_id: string | null
   review_parts: number
   sensitive_mark: string | null
@@ -893,6 +904,11 @@ const channel: KindDef = {
       },
     },
     topic: { check: (v) => typeof v === "string" && charLength(v) <= CHANNEL_TOPIC_MAX },
+    // The instructions of the channel (spec 004, 019). A computer of an older step has none, and
+    // they count as empty.
+    instructions: {
+      check: (v) => typeof v === "string" && charLength(v) <= CHANNEL_INSTRUCTIONS_MAX,
+    },
     lead: { check: nullable(str(100, 1)) },
     // "Review parts" (spec 004). A computer of an older step has none, and it counts as off.
     reviewParts: { check: (v) => typeof v === "boolean" },
@@ -918,6 +934,7 @@ const channel: KindDef = {
       fields: {
         name: r.name,
         topic: r.topic,
+        instructions: r.instructions,
         lead: r.lead_agent_id,
         reviewParts: r.review_parts === 1,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
@@ -943,6 +960,7 @@ const channel: KindDef = {
       name: (f.name as string).trim(),
       name_key: nameKey(f.name as string),
       topic: f.topic,
+      instructions: typeof f.instructions === "string" ? f.instructions : "",
       lead_agent_id: f.lead,
       review_parts: f.reviewParts === true ? 1 : 0,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
@@ -963,6 +981,7 @@ const channel: KindDef = {
       columns.name_key = nameKey(f.name as string)
     }
     if (f.topic !== undefined) columns.topic = f.topic
+    if (typeof f.instructions === "string") columns.instructions = f.instructions
     if (f.lead !== undefined) columns.lead_agent_id = f.lead
     if (typeof f.reviewParts === "boolean") columns.review_parts = f.reviewParts ? 1 : 0
     if (f.sensitive !== undefined)
@@ -1091,6 +1110,57 @@ const iversion: KindDef = {
   },
   write: () => {},
   remove: (ctx, id) => ctx.db.run("DELETE FROM instruction_version WHERE id = ?", id),
+  label: (f) => [...String(f.text ?? "").replace(/\s+/g, " ")].slice(0, 60).join(""),
+}
+
+// ------------------------------------------------------------------------------ handbook history
+
+interface HandbookRow {
+  id: string
+  text: string
+  source: string
+  created_at: number
+}
+
+/**
+ * A version of the handbook of the server (spec 002, 019). The newest version is the handbook, so
+ * when both computers change it before they sync, both versions arrive, the later one is the
+ * handbook, and the other stays in the history. A version never changes. The id of the server is
+ * not sent: each computer puts the version on its own server.
+ */
+const hversion: KindDef = {
+  kind: "hversion",
+  rank: 1,
+  fields: {
+    text: { check: str(HANDBOOK_MAX * 2) },
+    source: { check: oneOf(HANDBOOK_SOURCES) },
+    createdAt: { check: int },
+  },
+  required: ["text", "source", "createdAt"],
+  fixed: ["text", "source", "createdAt"],
+  count: (db) => q.count(db, "handbook_version"),
+  ids: (db, after, limit) => q.ids(db, "handbook_version", after, limit),
+  read: (ctx, id) => {
+    const r = ctx.db.get<HandbookRow>("SELECT * FROM handbook_version WHERE id = ?", id)
+    if (!r) return undefined
+    return {
+      fields: { text: r.text, source: r.source, createdAt: r.created_at },
+      parent: null,
+      wall: r.created_at,
+    }
+  },
+  create: (ctx, id, f) => {
+    insert(ctx.db, "handbook_version", {
+      id,
+      server_id: ctx.localServerId(),
+      text: f.text,
+      source: f.source,
+      created_at: f.createdAt,
+    })
+    return true
+  },
+  write: () => {},
+  remove: (ctx, id) => ctx.db.run("DELETE FROM handbook_version WHERE id = ?", id),
   label: (f) => [...String(f.text ?? "").replace(/\s+/g, " ")].slice(0, 60).join(""),
 }
 
@@ -2263,6 +2333,7 @@ export const KINDS: Readonly<Record<SyncKind, KindDef>> = {
   wrun,
   wstep,
   iversion,
+  hversion,
 }
 
 /** The kinds in the order in which they are copied: parents first. */
