@@ -46,7 +46,9 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-width: min(520px, 90vw);
+  /* A fixed width, not a minimum: the content (a long option, a long line) must not resize the box. */
+  width: min(520px, 90vw);
+  min-width: 0;
   max-height: 80vh;
   overflow: auto;
 }

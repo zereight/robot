@@ -2,7 +2,12 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-width: min(460px, 80vw);
+  /*
+   * A fixed width, not a minimum. The box must not grow or shrink with what the member list holds
+   * (a long role, a search that hides most agents).
+   */
+  width: min(520px, 80vw);
+  min-width: 0;
 }
 .title {
   font-size: var(--text-l);
@@ -45,15 +50,43 @@
 .memberSearch {
   margin-top: 6px;
 }
+/*
+ * The box has one height for any search: a list, a short list and "no match" fill the same room.
+ * The height comes from all agents (the sizer, hidden), up to 180 px. The list that the user sees
+ * lies over it and scrolls.
+ */
+.memberBox {
+  position: relative;
+  max-height: 180px;
+  overflow: hidden;
+}
+.memberSizer,
 .memberList {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 180px;
+}
+.memberSizer {
+  visibility: hidden;
+  pointer-events: none;
+}
+.memberList {
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
+}
+.memberFace {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+/* The line of the count keeps its room, so the first chosen member does not push the form down. */
+.memberCount {
+  min-height: 1lh;
 }
 .member {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
   padding: 2px 0;

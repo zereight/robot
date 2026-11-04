@@ -155,39 +155,57 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
               }}
               data-testid="channel-member-search"
             />
-            <Show
-              when={shown().length > 0}
-              fallback={
-                <p class={styles.hint} data-testid="channel-member-nomatch">
-                  {t("channels.members.noMatch")}
-                </p>
-              }
-            >
-              <div class={styles.memberList}>
-                <For each={shown()}>
-                  {(agent) => (
-                    <label class={styles.member}>
-                      <input
-                        type="checkbox"
-                        checked={members().includes(agent.id)}
-                        onChange={() => toggle(agent)}
-                        data-testid={`channel-member-${agent.name}`}
-                      />
-                      <Face face={agent.face} image={agent.faceImage} size={20} />
-                      <span class={styles.memberName}>{agent.name}</span>
-                      <Show when={agent.role}>
-                        <span class={styles.memberRole}>{agent.role}</span>
-                      </Show>
-                    </label>
+            <div class={styles.memberBox} data-testid="channel-member-box">
+              {/* Rows of the same shape as the real ones, so the box is as high as the whole list. */}
+              <div class={styles.memberSizer} aria-hidden="true">
+                <For each={agents.agents()}>
+                  {() => (
+                    <div class={styles.member}>
+                      <input type="checkbox" tabindex={-1} disabled />
+                      <span class={styles.memberFace} />
+                      <span class={styles.memberName}>&nbsp;</span>
+                    </div>
                   )}
                 </For>
               </div>
-            </Show>
-            <Show when={members().length > 0}>
-              <span class={styles.hint} aria-live="polite" data-testid="channel-member-count">
+              <div class={styles.memberList}>
+                <Show
+                  when={shown().length > 0}
+                  fallback={
+                    <p class={styles.hint} data-testid="channel-member-nomatch">
+                      {t("channels.members.noMatch")}
+                    </p>
+                  }
+                >
+                  <For each={shown()}>
+                    {(agent) => (
+                      <label class={styles.member}>
+                        <input
+                          type="checkbox"
+                          checked={members().includes(agent.id)}
+                          onChange={() => toggle(agent)}
+                          data-testid={`channel-member-${agent.name}`}
+                        />
+                        <Face face={agent.face} image={agent.faceImage} size={20} />
+                        <span class={styles.memberName}>{agent.name}</span>
+                        <Show when={agent.role}>
+                          <span class={styles.memberRole}>{agent.role}</span>
+                        </Show>
+                      </label>
+                    )}
+                  </For>
+                </Show>
+              </div>
+            </div>
+            <span
+              class={`${styles.hint} ${styles.memberCount}`}
+              aria-live="polite"
+              data-testid="channel-member-count"
+            >
+              <Show when={members().length > 0}>
                 {t("channels.members.selected", { count: members().length })}
-              </span>
-            </Show>
+              </Show>
+            </span>
           </Show>
         </fieldset>
         <label class={styles.field}>
