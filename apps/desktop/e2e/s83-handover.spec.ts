@@ -376,7 +376,7 @@ test("hand over in Korean: the dialog, the card and the line", async () => {
   const dialog = page.getByTestId("handover-dialog")
   await expect(dialog).toBeVisible()
   await expect(dialog.getByTestId("handover-agent")).toContainText("Ben")
-  await expect(dialog.getByText("Ben이(가) 다음에 무엇을 해야 하나요?")).toBeVisible()
+  await expect(dialog.getByText("Ben이 다음에 무엇을 해야 하나요?")).toBeVisible()
   await dialog.getByText("인계 요약 보기").click()
   await expect(dialog.getByTestId("handover-brief")).toContainText("Ada에게서 인계")
   await shot(page, "s83-ko-01-dialog")

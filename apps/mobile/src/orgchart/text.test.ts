@@ -95,7 +95,7 @@ describe("the words of the screen Org chart", () => {
     expect(handoffLabel(en, h)).toBe("Ada handed 3 tasks to Bo in the last 7 days.")
     expect(handoffLabel(en, { ...h, count: 1 })).toBe("Ada handed 1 task to Bo in the last 7 days.")
     expect(handoffLabel(ko, { ...h, count: 1 })).toBe(
-      "Ada이(가) 최근 7일간 Bo에게 작업 1개를 넘겼어요.",
+      "Ada가 최근 7일간 Bo에게 작업 1개를 넘겼어요.",
     )
   })
 })

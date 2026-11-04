@@ -374,7 +374,7 @@ test("skills: the page and the list in Korean, at a narrow window", async () => 
   await shot(page, "s31-11-list-ko")
   await row(page, "주간 요약").getByTestId("skill-duplicate").click()
   await expect(row(page, "주간 요약 사본")).toBeVisible()
-  await expect(page.getByText("스킬 주간 요약 사본을(를) 복제했어요.")).toBeVisible()
+  await expect(page.getByText("스킬 주간 요약 사본을 복제했어요.")).toBeVisible()
   await row(page, "주간 요약").getByTestId("skill-edit").click()
   await expect(page.getByRole("heading", { name: "스킬 수정" })).toBeVisible()
   await shot(page, "s31-12-edit-form-ko")
