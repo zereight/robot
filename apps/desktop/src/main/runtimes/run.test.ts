@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
+import { dirname } from "node:path"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
@@ -11,9 +12,19 @@ import { piLogin } from "./pi.ts"
 import type { RuntimeRun } from "./types.ts"
 
 let fake: FakeRuntimes
+let grant: Awaited<ReturnType<typeof grantBridge>>
 beforeAll(() => {
   fake = makeFakeRuntimes()
 })
+
+/** Waits until a state is there. A wait that ends with no result fails with a message. */
+const until = async (check: () => boolean, what: string, ms = 15_000) => {
+  const end = Date.now() + ms
+  while (!check()) {
+    if (Date.now() > end) throw new Error(`Gave up waiting for ${what}.`)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+}
 
 const base = (bin: string, patch: Partial<RuntimeRun> = {}): RuntimeRun => ({
   bin,
@@ -90,6 +101,8 @@ describe("claude program", () => {
     expect(call.args.at(-1)).toBe("")
     expect(call.cwd).not.toBe(process.cwd())
     expect(call.cwd).toContain("robot-claude-probe")
+    // The folder is for this look only. Nothing of it stays in the temporary folder.
+    expect(existsSync(call.cwd)).toBe(false)
   })
 
   test("the text of /usage is the second try, and a program that tells nothing gives null", async () => {
@@ -106,6 +119,10 @@ describe("claude program", () => {
     expect(await claudeUsage(fake.claude)).toBeNull()
     // A program that is not there tells nothing, and does not throw.
     expect(await claudeUsage("/no/such/claude")).toBeNull()
+    // The look at the text of /usage has its own folder too, and removes it.
+    const folders = fake.claudeUsageCalls().map((c) => (c as { cwd: string }).cwd)
+    expect(folders.length).toBeGreaterThan(0)
+    for (const folder of folders) expect(existsSync(folder)).toBe(false)
   })
 
   test("a turn streams text, reports usage and limits", async () => {
@@ -287,6 +304,29 @@ describe("claude program", () => {
     await run
     expect(Date.now() - started).toBeLessThan(5000)
     expect(text(events)).toBe("Thinking slowly")
+  })
+
+  test("a Stop removes the files of the run when the program ends, though nobody reads the stream again", async () => {
+    grant = await grantBridge(browser)
+    const controller = new AbortController()
+    const stream = runClaude(
+      base(fake.claude, { prompt: "SLOW", bridge: grant, signal: controller.signal }),
+    )
+    try {
+      // The program says its first words and then works for a minute.
+      expect((await stream.next()).done).toBe(false)
+      const call = fake.claudeCalls().at(-1) as { args: string[] }
+      const file = call.args[call.args.indexOf("--mcp-config") + 1] ?? ""
+      expect(existsSync(file)).toBe(true)
+      controller.abort()
+      // The turn is marked stopped by the app and the stream is not read again. Only the end of
+      // the program can remove the files: the token must not wait for a step of the stream.
+      await until(() => !existsSync(file), "the files of the run to go after the Stop")
+      expect(existsSync(dirname(file))).toBe(false)
+    } finally {
+      await stream.return(undefined)
+      grant.release()
+    }
   })
 
   test("a program that cannot start fails with a reason", async () => {
