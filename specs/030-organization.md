@@ -22,6 +22,21 @@ the teams on the chart.
 - An archived parent channel counts as no parent channel while it is archived. Its sub-channels are
   then top channels. A restore makes them sub-channels again. A deleted parent channel clears the
   field.
+- **Repair**: a state that breaks the rules of the tree is repaired at once, by a change of the
+  parent field that syncs like any other change (019). The tree never stays broken, and no channel
+  counts as a top channel only because its field is wrong. There are two cases.
+  1. A restore of a channel would put another channel below the third level. The restore works. The
+     app checks from the top down, and clears the parent field of each channel that would be on the
+     fourth level. That channel becomes a top channel, and the channels under it count from their
+     new level.
+  2. A sync brings a change that makes a loop or a fourth level. The app clears the parent field of
+     the channel whose parent change is the later one. When both changes carry the same time, it
+     clears the field of the channel that was made later. Both computers choose the same channel, so
+     they end with the same tree. The computer that finds the break first repairs it. The repaired
+     field syncs, and the other computer finds nothing to repair.
+  Each repair posts one muted line in the channel whose field was cleared: "The parent channel was
+  cleared. The tree would have a loop." or "The parent channel was cleared. The tree would have more
+  than 3 levels." It makes no notification. A repair is not a change of the user, so it has no Undo.
 - **Hand-off rule**: a setting of the profile (022) in the settings part "Organization" (013). It
   has two values:
   - **Any agent** (the default): every agent can send a message to every other agent (007), as
@@ -40,6 +55,9 @@ the teams on the chart.
 
 ## Channel tree
 
+- The list "Put under…" on the org chart (029) holds the same channels as the field "Parent
+  channel", without "None" and without the channel that is the parent now, because that pick
+  changes nothing. "Move to the top" does the work of "None".
 - In the channel settings, the field "Parent channel" lists "None" and the channels that are not
   archived and that the rules of the tree allow. A channel that is not allowed shows muted, with the
   reason: "This is a sub-channel of this channel." or "The tree would have more than 3 levels."
@@ -255,6 +273,20 @@ the lead, and the parent channel.
 - The header of "Docs" shows "In Product". A click opens "Product".
 - Archive "Product": the confirm names 1 sub-channel. "Docs" is a top channel. Restore "Product":
   "Docs" is under it again.
+- Archive "Product" while "Docs" has "Site" under it and "Site" has "Wiki" under it. Then "Docs" is
+  a
+  top channel, and "Wiki" is on its third level. Put "Docs" back as a top channel and add "Lab"
+  under
+  "Wiki". Restore "Product": the restore works, "Lab" would be on the fourth level, so its parent
+  field is cleared. "Lab" is a top channel and shows the muted line "The parent channel was cleared.
+  The tree would have more than 3 levels." No notification shows.
+- Two computers sync. Before they sync, computer 1 puts "Docs" under "Site", and computer 2 puts
+  "Site" under "Docs". After the sync both computers hold the same tree: the parent field of the
+  channel with the later change is cleared, and that channel shows the muted line "The parent
+  channel
+  was cleared. The tree would have a loop." The tree has no loop.
+- The channel "Docs" is under "Product". Its menu on the chart shows "Put under…" with the channels
+  that the tree allows, but not "Product". "Move to the top" is on the menu.
 - Hand-off rule "Any agent": agent A of "Docs" sends to agent X in no channel. A task starts.
 - Hand-off rule "Along the channels", with main agent M, "Product" with lead P, and "Docs" under
   "Product" with lead D and member A:
