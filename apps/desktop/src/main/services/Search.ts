@@ -52,6 +52,12 @@ export interface SearchService {
      * outside program, of Teams, or of such a turn (spec 007, "Program mark"). Else null.
      */
     readonly program: OutsideSource | null
+    /**
+     * The first source of outside content, when a hit is a message that the user did not write
+     * (spec 007, "Outside content"): the agent that wrote it. Else null. A hit that holds the
+     * program mark gives the program mark as well (`program`).
+     */
+    readonly outside: OutsideSource | null
   }
 }
 
@@ -216,10 +222,15 @@ export class Search extends Context.Service<Search, SearchService>()("robot/main
               output: "Give at least 2 characters to search for.",
               failed: true,
               program: null,
+              outside: null,
             }
           }
           const found = find(db, { kind: "agent", agentId }, words, TOOL_SEARCH_HITS)
           const program = found.map(programOf).find((source) => source !== null) ?? null
+          // A message that the user did not write can hold text that came from outside, so a hit
+          // on one is outside content (spec 007, "Outside content").
+          const other = found.map(writer).find((w) => w.author !== "user")
+          const outside: OutsideSource | null = other ? { kind: "agent", name: other.agent } : null
           const hits = found.map((f): ToolHit => {
             const who = writer(f)
             return {
@@ -231,7 +242,7 @@ export class Search extends Context.Service<Search, SearchService>()("robot/main
               text: snippetOf(bodyOf(db, f), words, TOOL_SEARCH_SNIPPET).text,
             }
           })
-          return { output: toolSearchOutput(hits), failed: false, program }
+          return { output: toolSearchOutput(hits), failed: false, program, outside }
         },
       })
     }),

@@ -62,14 +62,23 @@ describe("workspace and permission", () => {
     expect(needsApproval("ask_all", false)).toBe(true)
     expect(needsApproval("ask_risky", false)).toBe(false)
     expect(needsApproval("ask_risky", true)).toBe(true)
+    // "Ask when unsure" asks for a risky step as "Ask for risky steps" does. The check, when it is
+    // sure, takes the question away in the tool service; the pure rule stays strict.
+    expect(needsApproval("ask_unsure", true)).toBe(true)
+    expect(needsApproval("ask_unsure", false)).toBe(false)
     expect(needsApproval("full", true)).toBe(false)
   })
 })
 
 describe("permission levels (spec 007)", () => {
   test("the levels go from the strictest to the loosest, and Read only is the strictest", () => {
-    expect(PERMISSION_LEVELS).toEqual(["read_only", "ask_all", "ask_risky", "full"])
+    expect(PERMISSION_LEVELS).toEqual(["read_only", "ask_all", "ask_risky", "ask_unsure", "full"])
     expect(DEFAULT_PERMISSION).toBe("ask_risky")
+    // "Ask when unsure" is looser than "Ask for risky steps" and stricter than "Full access".
+    expect(isLooser("ask_unsure", "ask_risky")).toBe(true)
+    expect(isLooser("full", "ask_unsure")).toBe(true)
+    expect(isLooser("ask_unsure", "full")).toBe(false)
+    expect(isLooser("ask_risky", "ask_unsure")).toBe(false)
     expect(isLooser("full", "ask_risky")).toBe(true)
     expect(isLooser("ask_risky", "ask_all")).toBe(true)
     expect(isLooser("ask_all", "read_only")).toBe(true)

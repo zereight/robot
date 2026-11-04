@@ -334,7 +334,7 @@ export const lexCommand = (command: string): CommandToken[] => {
 }
 
 /** The simple commands of a command line: the words between operators that join commands. */
-const simpleCommands = (tokens: readonly CommandToken[]): string[][] => {
+export const simpleCommands = (tokens: readonly CommandToken[]): string[][] => {
   const out: string[][] = []
   let current: string[] = []
   const end = () => {

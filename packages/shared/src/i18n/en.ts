@@ -438,6 +438,10 @@ export const en = {
     "The program needs repair: it does not answer. Open Providers and choose Repair.",
   "error.runtime_repair_unreadable":
     "The program needs repair: the app cannot read its answer. Open Providers and choose Repair.",
+  "error.unsure_unavailable":
+    'This level needs the switch "Permission checks" on, and an agent that does not use a program of a vendor. Check Settings, Decision model.',
+  "error.decision_not_set_up":
+    "The decision model is not set up. Choose Jev through OpenRouter, then save a key and a model name.",
   "error.read_only_unsupported":
     "This agent is at the level Read only, and its program has no read-only mode. Pick another level.",
   "error.runtime_not_signed_in": "The program is not signed in. Sign in first.",
@@ -2224,6 +2228,32 @@ export const en = {
   "error.teams_unreadable": "The app cannot read the Teams page.",
   "agents.permission.rules": "See the rules for this agent",
   "chat.tool.refusedRule": "Denied by a rule",
+  "agents.permission.ask_unsure": "Ask when unsure",
+  "agents.permission.line.app.ask_unsure":
+    "The app decides each step. It asks before a risky step, unless a check is sure that you asked for it.",
+  "agents.permission.line.app.ask_unsure.off":
+    'Permission checks are off, so this agent works as "Ask for risky steps".',
+  "agents.permission.line.program.ask_unsure":
+    '{program} decides its own steps, so this agent works as "Ask for risky steps".',
+  "agents.permission.unsureOff.checks": "Turn on permission checks in Settings, Decision model.",
+  "agents.permission.unsureOff.program": "{program} decides its own steps.",
+  "decision.checks": "Permission checks",
+  "decision.checks.hint":
+    'Agents at the level "Ask when unsure" ask the decision model before a checked step. Your words in the turn, and the command text, the host or the name of a tool, go to OpenRouter and TypeSafe, and their terms apply. It is off by default.',
+  "decision.checks.needsSetup":
+    "To turn this on, choose Jev through OpenRouter, then save a key and a model name.",
+  "permissions.log.decided.check": "The check",
+  "permissions.log.check.allowed": "The check was sure: {percent}%",
+  "permissions.log.check.sent": "The check sent the step to you: {reason}",
+  "permissions.log.check.reason.unsure": "it was not sure",
+  "permissions.log.check.reason.timeout": "no answer in 3 seconds",
+  "permissions.log.check.reason.network_error": "network error",
+  "permissions.log.check.reason.service_error": "the service refused the request",
+  "permissions.log.check.reason.unreadable": "the answer could not be read",
+  "permissions.log.check.reason.not_set_up": "the decision model is not set up",
+  "chat.tool.checkAllowed": "Allowed by the check",
+  "chat.tool.unsure": "The check was not sure.",
+  "routines.unsavedImport": "Checked steps of this routine ask until you save it once.",
   "chat.tool.ruleAllowed": "Allowed by a rule",
   "chat.tool.unreadable": "A rule cannot be read, so this step asks you.",
   "permissions.log.decided.unreadable_rule": "A rule that cannot be read, then you",

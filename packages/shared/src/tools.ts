@@ -1,11 +1,17 @@
-export const PERMISSION_LEVELS = ["read_only", "ask_all", "ask_risky", "full"] as const
+export const PERMISSION_LEVELS = [
+  "read_only",
+  "ask_all",
+  "ask_risky",
+  "ask_unsure",
+  "full",
+] as const
 export type PermissionLevel = (typeof PERMISSION_LEVELS)[number]
 export const DEFAULT_PERMISSION: PermissionLevel = "ask_risky"
 
 /**
  * True when `next` lets the agent do more without asking than `current` does. The order of
  * `PERMISSION_LEVELS` is the order of care, strictest first: Read only, Ask for everything, Ask for
- * risky steps, Full access (spec 007, 012).
+ * risky steps, Ask when unsure, Full access (spec 007, 012).
  */
 export const isLooser = (next: PermissionLevel, current: PermissionLevel) =>
   PERMISSION_LEVELS.indexOf(next) > PERMISSION_LEVELS.indexOf(current)
@@ -96,7 +102,9 @@ export const riskyReason = (command: string, workspace: string): RiskReason | nu
 /**
  * Whether a step waits for the user, by the permission level and the risk of the step. A step that
  * "Read only" lets run is asked about as at "Ask for risky steps": a read outside the workspace
- * asks. Which steps "Read only" lets run is `readOnlyRefuses` (spec 007).
+ * asks. Which steps "Read only" lets run is `readOnlyRefuses` (spec 007). "Ask when unsure" asks
+ * for a risky step as "Ask for risky steps" does; a checked step may skip the question when the
+ * check is sure (`unsure.ts`).
  */
 export const needsApproval = (level: PermissionLevel, risky: boolean) =>
   level === "ask_all" ? true : level === "full" ? false : risky

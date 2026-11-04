@@ -602,7 +602,12 @@ describe("a message from one agent to another", () => {
     await s.send(s.ada.id, dispatch("Bo", change("Say only yes")))
     await s.quiet(2)
     await until(async () => (await s.instructions(s.bo.id)) === "Say only yes")
-    expect(await s.marks({ kind: "agent", id: s.bo.id })).toEqual(NO_MARKS)
+    // The message of Ada is outside content for Bo, and the mark outlasts the turn (spec 007). It
+    // has no program mark: the turn of Ada had none.
+    expect(await s.marks({ kind: "agent", id: s.bo.id })).toEqual({
+      ...NO_MARKS,
+      outside: { source: { kind: "agent", name: "Ada" }, program: false },
+    })
   })
 
   test("the reply that comes back to the asker holds the mark when the replier's turn held it", async () => {
@@ -694,11 +699,12 @@ describe("a channel", () => {
       outside: { source: TEAMS, program: true },
       sensitive: null,
     })
-    // The part comes from the lead, so the first source is the lead; the mark rides along.
+    // The job came from Teams, so the part holds outside content from its start. The first source
+    // is the one of the channel: Teams (spec 007, "Outside content").
     expect(await s.channelCard(s.cy.id)).toMatchObject({
       kind: "approval",
       once: true,
-      outside: { kind: "agent", name: "Lia" },
+      outside: TEAMS,
     })
     await s.respond(s.cy.id, "call_1", "deny")
     await s.channelQuiet()

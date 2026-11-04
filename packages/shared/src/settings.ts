@@ -98,6 +98,12 @@ export const Settings = Schema.Struct({
   decisionModel: Schema.Literals(DECISION_CHOICES),
   /** The model name of the choice "Jev through OpenRouter". An empty name means not set up. */
   decisionModelName: Schema.String.check(Schema.isMaxLength(DECISION_MODEL_MAX)),
+  /**
+   * The switch "Permission checks" (spec 013). Off at first: an agent at the level "Ask when
+   * unsure" works as at "Ask for risky steps", and nothing is sent to the decision model. A
+   * setting saved before this existed has none, and the switch is off.
+   */
+  permissionChecks: Schema.Boolean,
   /** "Compact long chats automatically" (spec 003, 013). On by default. */
   autoCompact: Schema.Boolean,
   /** "Keep going on open steps" (spec 005, 013). On by default. */
@@ -147,6 +153,7 @@ export const defaultSettings: Settings = {
   secretsLocal: false,
   decisionModel: "off",
   decisionModelName: DECISION_MODEL_DEFAULT,
+  permissionChecks: false,
   autoCompact: true,
   keepGoing: true,
   agentsAtOnce: AGENTS_AT_ONCE_DEFAULT,

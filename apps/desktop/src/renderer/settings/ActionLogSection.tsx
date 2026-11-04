@@ -110,6 +110,26 @@ export const ActionLogSection = () => {
           ? t("permissions.log.outside", { source: outsideSourceText(t, e.outside) })
           : t("permissions.log.noOutside")}
       </div>
+      {/*
+        The check of "Ask when unsure" (spec 007): when it was sure, the step ran and the check
+        decided, with its probability. When it was not, it sent the step to the user, with its
+        reason. A step that did not go to the check shows nothing here.
+      */}
+      <Show when={e.check}>
+        {(check) => (
+          <div class={styles.hint} data-testid="action-log-check" data-allowed={check().allowed}>
+            {check().allowed
+              ? t("permissions.log.check.allowed", {
+                  percent: Math.round((check().probability ?? 0) * 100),
+                })
+              : t("permissions.log.check.sent", {
+                  reason: t(
+                    `permissions.log.check.reason.${check().reason ?? "unsure"}` as MessageKey,
+                  ),
+                })}
+          </div>
+        )}
+      </Show>
       <div class={styles.hint} data-testid="action-log-sensitive">
         {e.sensitive
           ? t("permissions.log.sensitive", { label: sensitiveLabelText(t, e.sensitive) })

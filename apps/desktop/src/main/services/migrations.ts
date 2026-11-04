@@ -1048,4 +1048,24 @@ export const migrations: readonly string[] = [
   ALTER TABLE task ADD COLUMN token_limit INTEGER;
   ALTER TABLE routine ADD COLUMN token_limit INTEGER;
   `,
+  `
+  -- "Ask when unsure" (spec 007, S62).
+  -- \`outside_mark\` on a message is JSON text, or NULL: the first source of outside content of the
+  -- turn that started or made the message, when that turn held outside content. A fork of a chat
+  -- keeps the mark of the place only when its copy holds such a message. It syncs with the message
+  -- (spec 019), as \`program_mark\` does. The place keeps its own \`outside_mark\` (see above): from
+  -- now on it holds any outside content that a turn gave, with a flag for the program mark.
+  ALTER TABLE message ADD COLUMN outside_mark TEXT;
+  ALTER TABLE channel_message ADD COLUMN outside_mark TEXT;
+  -- The check of a step in the action log. \`check_reason\` is NULL when the step did not go to the
+  -- check, 'allowed' when the check was sure, and a reason of the check ('unsure', 'timeout',
+  -- 'network_error', 'service_error', 'unreadable', 'not_set_up') when the check sent the step to
+  -- the user. \`check_probability\` is the chance of "The user asked for this", or NULL. The log
+  -- stays on this computer and does not sync.
+  ALTER TABLE action_log ADD COLUMN check_reason TEXT;
+  ALTER TABLE action_log ADD COLUMN check_probability REAL;
+  -- A routine that an agent file made counts its prompt as words of the user only after the user
+  -- saved the routine form once (spec 007, 009): 1 until then. It syncs with the routine.
+  ALTER TABLE routine ADD COLUMN unsaved_import INTEGER NOT NULL DEFAULT 0;
+  `,
 ]

@@ -218,6 +218,12 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
             {t("error.routines_full", { detail: String(ROUTINES_MAX) })}
           </div>
         </Show>
+        {/* A routine from an agent file: its checked steps ask until the user saves the form (009). */}
+        <Show when={props.routine?.unsavedImport}>
+          <div class={styles.hint} data-testid="routine-unsaved-import">
+            {t("routines.unsavedImport")}
+          </div>
+        </Show>
         <label class={styles.field}>
           <span>{t("routines.field.name")}</span>
           <input

@@ -77,7 +77,21 @@ test("outside content: a memory save after a page fetch asks, Full access runs, 
   await page.getByTestId("ask-deny").click()
   await settled(page)
 
-  // The same save in a turn with no outside content applies at once.
+  // The page is still in front of the agent: the next turn of the chat holds outside content too,
+  // and the header says so (spec 007, "Outside content").
+  await expect(page.getByTestId("place-mark-outside")).toBeVisible()
+  await send(page, tools({ name: "save_memory", args: { text: "Likes green tea" } }))
+  await expect(page.getByTestId("ask-outside")).toContainText("This turn holds outside content", {
+    timeout: 15_000,
+  })
+  await page.getByTestId("ask-deny").click()
+  await settled(page)
+
+  // "Clear" and its confirm end the mark. The same save in a turn with no outside content applies
+  // at once.
+  await page.getByTestId("place-marks-clear").click()
+  await page.getByTestId("place-marks-confirm").click()
+  await expect(page.getByTestId("place-mark-outside")).toHaveCount(0)
   await send(page, tools({ name: "save_memory", args: { text: "Likes green tea" } }))
   await settled(page)
   await expect(page.getByTestId("ask-card")).toHaveCount(0)
@@ -85,7 +99,9 @@ test("outside content: a memory save after a page fetch asks, Full access runs, 
   await expect(page.getByTestId("agent-profile")).toBeVisible()
   await expect(page.getByTestId("memory-item")).toHaveCount(1)
   await expect(page.getByTestId("memory-item")).toContainText("Likes green tea")
-  report.push("2. Deny saved nothing. A save with no outside content saved at once.")
+  report.push(
+    "2. Deny saved nothing. The next turn held outside content too and asked. After Clear, a save ran at once.",
+  )
 
   // At "Full access" the save runs with no question.
   await page.getByTestId("agent-permission").getByText("Full access").click()
@@ -104,15 +120,19 @@ test("outside content: a memory save after a page fetch asks, Full access runs, 
   const all = page.getByTestId("action-log-entry")
   await expect(all.filter({ hasText: /^\s*Web page/ })).toHaveCount(2)
   const entries = all.filter({ hasText: /^\s*Save to memory/ })
-  await expect(entries).toHaveCount(3)
+  await expect(entries).toHaveCount(4)
   await expect(entries.nth(0)).toHaveAttribute("data-outside", "true")
   await expect(entries.nth(0)).toContainText("Ran")
   await expect(entries.nth(0)).toContainText("Outside content: the web page 127.0.0.1")
   await expect(entries.nth(1)).toHaveAttribute("data-outside", "false")
   await expect(entries.nth(1)).toContainText("No outside content")
-  await expect(entries.nth(2)).toContainText("Refused")
-  await expect(entries.nth(2)).toContainText("You, on a card")
-  await expect(entries.nth(2)).toContainText("Outside content: the web page 127.0.0.1")
+  // The two saves that the user refused held outside content: the first in the turn of the page,
+  // the second in the next turn, because the page was still in front of the agent.
+  for (const refused of [entries.nth(2), entries.nth(3)]) {
+    await expect(refused).toContainText("Refused")
+    await expect(refused).toContainText("You, on a card")
+    await expect(refused).toContainText("Outside content: the web page 127.0.0.1")
+  }
   await shot(page, "s39-02-action-log")
   report.push("4. Action log, newest first:")
   for (const text of await entries.allInnerTexts())
@@ -120,8 +140,8 @@ test("outside content: a memory save after a page fetch asks, Full access runs, 
 
   // The filter keeps only the refused step.
   await page.getByTestId("action-log-result").getByText("Refused").click()
-  await expect(entries).toHaveCount(1)
-  report.push("5. Filter Refused: one entry.")
+  await expect(entries).toHaveCount(2)
+  report.push("5. Filter Refused: two entries.")
 
   const reports = resolve(shotsDir, "..", "reports")
   mkdirSync(reports, { recursive: true })

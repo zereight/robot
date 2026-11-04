@@ -25,6 +25,12 @@ export interface PlaceMarksService {
    */
   holdSensitive(place: MarkPlace, label: SensitiveLabel): void
   /**
+   * A turn of the place holds outside content (spec 007, "Outside content"). The next turns of the
+   * place hold it too, until "Clear", because the agent still sees the text. The first source
+   * stays. With `program`, the content holds the program mark too.
+   */
+  holdOutside(place: MarkPlace, source: OutsideSource, program?: boolean): void
+  /**
    * A turn of the place holds the program mark (spec 007, "Program mark"). The next turns of the
    * place hold outside content with the program mark, until "Clear". The first source stays.
    */
@@ -118,6 +124,15 @@ export class PlaceMarks extends Context.Service<PlaceMarks, PlaceMarksService>()
           const here = read(place)
           if (here.sensitive !== null) return
           write(place, { ...here, sensitive: label })
+        },
+        holdOutside: (place, source, program = false) => {
+          const here = read(place)
+          // Nothing new: the place holds the content already, with the program mark if it needs it.
+          if (here.outside && (here.outside.program || !program)) return
+          write(place, {
+            ...here,
+            outside: { source: here.outside?.source ?? source, program },
+          })
         },
         holdProgram: (place, source) => {
           const here = read(place)

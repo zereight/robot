@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import {
+  type ActionCheck,
   type ActionDecider,
   type AgentMessageKind,
   addSpent as addToUsage,
@@ -12,6 +13,7 @@ import {
   isTaskProgress,
   isTeamsJobKind,
   isVerdict,
+  joinWords,
   type LoggedStep,
   lastChange,
   limitState,
@@ -144,6 +146,8 @@ export interface StepRecord extends Omit<LoggedStep, "at"> {
   readonly decidedBy: ActionDecider
   /** The rule that decided the step, or that could not be read (spec 007). */
   readonly rule?: RuleRef | null
+  /** The check of "Ask when unsure", when the step went to the check (spec 007). */
+  readonly check?: ActionCheck | null
   /** The first source of outside content of the turn, or null. */
   readonly outside: OutsideSource | null
   /** The label of the first credential place that the turn read, or null (spec 007). */
@@ -301,6 +305,20 @@ export interface TasksService {
   retryNoteForModel(task: Pick<Task, "retryOf">): string
   /** The depth of a task in a chain of messages between agents. 0 for an unknown task. */
   depthOf(taskId: string): number
+  /**
+   * The words of the user for the turn of a task (spec 007, "Ask when unsure"), or null when the
+   * task has none. A chat message of the user, the text typed in the dialog of a handover, the
+   * prompt of a routine that the user saved, and the job message of a part of a channel job count.
+   * A message of another agent, of an outside program, of Teams, a step of a workflow and the
+   * handover card do not. The text of a request for changes counts for the new part (`noteRequest`).
+   */
+  userWords(taskId: string): string | null
+  /**
+   * Records the text that the user typed to ask a member for changes (or to reply to a part): it
+   * counts as words of the user for the new part and for a retry of it (spec 007). It stays in
+   * memory: after a restart the part has no such words, and a checked step asks.
+   */
+  noteRequest(taskId: string, text: string): void
   /**
    * Runs work that holds the agent as a task does, with no task: a manual compact (spec 003). No
    * task of the agent starts until it ends.
@@ -741,6 +759,59 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           ? (db.get<{ depth: number }>("SELECT depth FROM task WHERE id = ?", taskId)?.depth ?? 0)
           : 0
 
+      /** The text of a request for changes, by the part that it made (spec 007, "Ask when unsure"). */
+      const requests = new Map<string, string>()
+      const noteRequest = (taskId: string, text: string) => {
+        if (requests.size >= 1000) requests.clear()
+        requests.set(taskId, text)
+      }
+
+      /** The prompt of a routine, when it counts as words of the user. */
+      const routineWords = (routineId: string | null, prompt: string) => {
+        if (!routineId) return null
+        const row = db.get<{ unsaved_import: number }>(
+          "SELECT unsaved_import FROM routine WHERE id = ?",
+          routineId,
+        )
+        // A routine that an agent file made counts after the user saved it once (spec 007, 009).
+        return row && row.unsaved_import === 0 ? prompt : null
+      }
+
+      const userWords = (taskId: string): string | null => {
+        const row = db.get<{
+          source: string
+          source_id: string | null
+          prompt: string
+          parent_id: string | null
+          retry_of: string | null
+        }>("SELECT source, source_id, prompt, parent_id, retry_of FROM task WHERE id = ?", taskId)
+        if (!row) return null
+        switch (row.source) {
+          case "chat":
+          case "handover":
+            return row.prompt === "(no text)" ? null : row.prompt
+          case "routine":
+            return routineWords(row.source_id, row.prompt)
+          case "channel": {
+            // A job message, or a message that a member answers: the text of the task is what the
+            // user wrote. A part has the job message (the task above it) and the text of a request
+            // for changes. The text of a part is what the lead wrote: it is not words of the user.
+            if (!row.parent_id) return joinWords([row.prompt])
+            const job = db.get<{ prompt: string; parent_id: string | null }>(
+              "SELECT prompt, parent_id FROM task WHERE id = ?",
+              row.parent_id,
+            )
+            if (!job || job.parent_id) return null
+            // A retry of a part that "Request changes" made has the same request.
+            const asked =
+              requests.get(taskId) ?? (row.retry_of ? requests.get(row.retry_of) : undefined)
+            return joinWords([job.prompt, asked])
+          }
+          default:
+            return null
+        }
+      }
+
       /** How the job of a task began, when a message from Teams began it (spec 028). */
       const teamsJobOf = (taskId: string | null | undefined): TeamsJobKind | null => {
         if (!taskId) return null
@@ -1053,6 +1124,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           target: step.target,
           decidedBy: step.decidedBy,
           ...(step.rule ? { rule: step.rule } : {}),
+          ...(step.check ? { check: step.check } : {}),
           result: step.result,
           taskId: step.taskId,
           outside: step.outside,
@@ -1399,6 +1471,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         endRequest,
         noteFor,
         depthOf,
+        userWords,
+        noteRequest,
         holdAgent: (agentId, work) =>
           Effect.suspend(() => {
             const id = `hold:${randomUUID()}`
