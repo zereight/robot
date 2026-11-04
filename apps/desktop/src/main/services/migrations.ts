@@ -1137,6 +1137,12 @@ export const migrations: readonly string[] = [
   ALTER TABLE memory_history ADD COLUMN channel_name_after TEXT;
   `,
   `
+  -- "The lead answers questions" (spec 004, S74): a setting of the channel, on (1) by default. A
+  -- question of a member in a part goes to the lead first. It syncs with the channel (spec 019):
+  -- the dirty trigger of the channel already watches every column.
+  ALTER TABLE channel ADD COLUMN lead_answers INTEGER NOT NULL DEFAULT 1;
+  `,
+  `
   -- The parent channel (spec 030, S109). NULL is a top channel, as every channel was before this
   -- step, so existing data keeps its meaning. The column has no foreign key: a sync (019) can bring
   -- a sub-channel before its parent, and a parent that is gone counts as no parent. When the user

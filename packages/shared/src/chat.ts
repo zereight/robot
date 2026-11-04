@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import type { SettingsNote } from "./agentSettings.ts"
 import type { KnowledgeNote } from "./knowledge.ts"
+import type { LeadAnswer, QuestionLead, QuestionPass } from "./leadAnswers.ts"
 import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
@@ -140,6 +141,12 @@ export type MessagePart =
       readonly knowledge?: KnowledgeNote
       /** Set when a message of the user in the chat answered this question card (spec 003). */
       readonly answeredInChat?: boolean
+      /**
+       * Set when the lead of the channel answered this question card in place of the user (spec
+       * 004, "Questions of members"): the card says "Answered by <lead>" with the reason, and
+       * offers "Correct".
+       */
+      readonly answeredByLead?: LeadAnswer
       /** Set when a protected card ended: the value was saved, or the user cancelled (spec 020). */
       readonly secret?: "saved" | "cancelled"
       /** Set for the settings tool: what the call changed, so the chat shows a line with Undo. */
@@ -216,6 +223,17 @@ export type ToolAsk =
       readonly question: string
       readonly choices: readonly string[]
       readonly askedAt?: number
+      /**
+       * Set while the lead of the channel looks at the question (spec 004, "Questions of
+       * members"). The card says "<lead> looks at it" and shows a spinner. The user can still
+       * answer it. The card is not in "Needs you" and makes no notification in that time.
+       */
+      readonly lead?: QuestionLead
+      /**
+       * Set when the lead passed the question to the user: the card is a normal question with the
+       * line of the lead. The kind of the pass is data for a later slice (spec 030).
+       */
+      readonly passed?: QuestionPass
     }
   /** The agent wants to change an article that the user edited last. Old and new text show side by side. */
   | {

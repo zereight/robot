@@ -227,6 +227,13 @@ export const en = {
   "tool.answer": "Your answer",
   "tool.answer.send": "Send",
   "tool.answeredInChat": "Answered in the chat",
+  "tool.leadLooks": "{name} looks at it",
+  "tool.leadPass.reason": "{name}: {reason}",
+  "tool.leadPass.late": "{name} did not answer in time.",
+  "tool.leadPass.failure": "{name} could not answer.",
+  "tool.leadPass.user_choice": "{name}: Only you can choose.",
+  "tool.leadPass.not_sure": "{name}: Not sure.",
+  "tool.answeredByLead": "Answered by {name}",
   "tool.askedAt": "Asked at {time}",
   "tool.outside": "This turn holds outside content. Check the step before you allow it.",
   "tool.sensitive":

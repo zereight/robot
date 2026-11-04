@@ -810,6 +810,104 @@ describe("Tasks queue and slots", () => {
     expect(await state(parent.id)).toBe("done")
   })
 
+  test("a turn of a parent that waits takes one slot while it runs and frees it after", async () => {
+    const { run, agent, makeFrom, start } = await queueSetup(1)
+    const [ada, bo] = [await agent("Ada"), await agent("Bo")]
+    const parent = await makeFrom(ada.id, "parent", "chat")
+    const other = await makeFrom(bo.id, "other", "chat")
+    const gateLook = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const parentRun = run(
+      Tasks.use((t) =>
+        t.run(
+          parent.id,
+          ada.id,
+          t.withoutSlot(
+            parent.id,
+            t.withSlot(
+              parent.id,
+              Effect.gen(function* () {
+                order.push("look starts")
+                yield* Deferred.await(gateLook)
+                order.push("look ends")
+              }),
+            ),
+          ),
+        ),
+      ),
+    )
+    await sleep(30)
+    // The look holds the only slot, so the task of Bo waits.
+    const otherRun = start(other, order)
+    await sleep(30)
+    expect(order).toEqual(["look starts"])
+    await run(Deferred.succeed(gateLook, undefined))
+    await Promise.all([parentRun, otherRun])
+    expect(order).toEqual(["look starts", "look ends", "other"])
+  })
+
+  test("a turn of a parent waits for a free slot, and an interrupt takes no slot", async () => {
+    const { run, agent, makeFrom, start, state } = await queueSetup(2)
+    const [ada, bo, cy, di] = [
+      await agent("Ada"),
+      await agent("Bo"),
+      await agent("Cy"),
+      await agent("Di"),
+    ]
+    const parent = await makeFrom(ada.id, "parent", "chat")
+    const other = await makeFrom(bo.id, "other", "chat")
+    const later = await makeFrom(cy.id, "later", "chat")
+    const fourth = await makeFrom(di.id, "fourth", "chat")
+    const gateOther = Deferred.makeUnsafe<void>()
+    const gateLater = Deferred.makeUnsafe<void>()
+    const gateStart = Deferred.makeUnsafe<void>()
+    const gateEnd = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    // The task of Bo holds one slot. The parent runs, gives up its slot, and the task of Cy takes
+    // that slot. The look of the parent then waits for a free slot.
+    const otherRun = start(other, order, gateOther)
+    const parentRun = run(
+      Tasks.use((t) =>
+        t.run(
+          parent.id,
+          ada.id,
+          t.withoutSlot(
+            parent.id,
+            Effect.gen(function* () {
+              yield* Deferred.await(gateStart)
+              // A look that is cut short: it waits for a slot and is interrupted before it has one.
+              yield* Effect.timeout(
+                t.withSlot(
+                  parent.id,
+                  Effect.sync(() => order.push("look")),
+                ),
+                "80 millis",
+              ).pipe(Effect.ignore)
+              order.push("look cut")
+              yield* Deferred.await(gateEnd)
+            }),
+          ),
+        ),
+      ),
+    )
+    await sleep(30)
+    const laterRun = start(later, order, gateLater)
+    await sleep(30)
+    await run(Deferred.succeed(gateStart, undefined))
+    await sleep(200)
+    expect(order).toEqual(["other", "later", "look cut"])
+    // The cut look left the queue: the slot that comes free goes to the next task, not to it.
+    await run(Deferred.succeed(gateLater, undefined))
+    const fourthRun = start(fourth, order)
+    await sleep(60)
+    expect(order).toEqual(["other", "later", "look cut", "fourth"])
+    expect(await state(parent.id)).toBe("running")
+    await run(Deferred.succeed(gateEnd, undefined))
+    await run(Deferred.succeed(gateOther, undefined))
+    await Promise.all([parentRun, otherRun, laterRun, fourthRun])
+    expect(await state(parent.id)).toBe("done")
+  })
+
   test("an agent takes at most 20 queued tasks; a part over the limit is made as Failed", async () => {
     const { run, agent, makeFrom } = await queueSetup(4)
     const ada = await agent("Ada")
