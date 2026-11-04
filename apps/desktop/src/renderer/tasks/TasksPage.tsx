@@ -89,7 +89,7 @@ const BehindLine = (props: { task: Task; testid: string; class: string | undefin
 }
 
 /** The sources of a task whose place the button "Open source place" opens. */
-const OPENS_PLACE: readonly Task["source"][] = ["chat", "channel", "handover"]
+const OPENS_PLACE: readonly Task["source"][] = ["chat", "channel", "handover", "teams"]
 
 /** A request has parts that may still be open, so "End the request" is offered (spec 004, 005). */
 const OPEN_REQUEST = new Set<Task["state"]>([
@@ -205,7 +205,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
     // A linked device has the main thread only (spec 003, 012): the button is off for a thread.
     if (ui.linked() && task.threadId) return
     // A handover is a message in a thread of the agent that runs it (spec 003, 005).
-    const inChat = task.source === "chat" || task.source === "handover"
+    const inChat = task.source === "chat" || task.source === "handover" || task.source === "teams"
     if (inChat) openThread(task.sourceId, task.threadId)
     ui.selectPlace({ kind: inChat ? "agent" : "channel", id: task.sourceId })
     props.onClose()

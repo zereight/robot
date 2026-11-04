@@ -162,6 +162,11 @@ export interface ChannelsService {
  */
 export interface ChannelOrigin {
   readonly outside: OutsideSource
+  /**
+   * The name of the sender of a message from Teams (spec 028). It is stored with the message,
+   * which shows the mark "From Teams" with this name.
+   */
+  readonly teamsSender?: string
 }
 
 /** What a run of a routine brings to its turn in a channel (spec 009). */
@@ -200,6 +205,7 @@ interface MessageRow {
   model: string | null
   created_at: number
   from_name: string | null
+  teams_sender?: string | null
 }
 
 interface AgentRow {
@@ -404,6 +410,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         createdAt: row.created_at,
         editedAt: null,
         fromDevice: row.from_name,
+        ...(row.teams_sender ? { fromTeams: row.teams_sender } : {}),
         taskId: row.task_id,
         awaiting: row.awaiting === 1,
         chips: chipsFor(row),
@@ -1861,6 +1868,15 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             id,
           )
           placeMarks.holdProgram({ kind: "channel", id: channelId }, program)
+          // The message of a Teams chat shows its mark and the name of its sender (spec 028).
+          if (program.kind === "teams" && origin?.teamsSender) {
+            db.run(
+              "UPDATE channel_message SET teams_sender = ? WHERE id = ?",
+              origin.teamsSender,
+              id,
+            )
+            emitMessage(id)
+          }
           return id
         }
         if (replied) {

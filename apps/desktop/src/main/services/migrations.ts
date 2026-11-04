@@ -897,4 +897,11 @@ export const migrations: readonly string[] = [
   );
   DROP TABLE agent_allow;
   `,
+  `
+  -- The mark "From Teams" (spec 028): the name of the sender, as the Teams page showed it, on a
+  -- message that a Teams chat sent to a direct chat or a channel. NULL for any other message. The
+  -- name is stored with the message, as the text is, and syncs with it (spec 019).
+  ALTER TABLE message ADD COLUMN teams_sender TEXT;
+  ALTER TABLE channel_message ADD COLUMN teams_sender TEXT;
+  `,
 ]

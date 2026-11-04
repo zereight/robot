@@ -230,6 +230,8 @@ describe("the mark of a turn", () => {
     expect(starterOf("channel")).toBe("user")
     expect(starterOf("routine")).toBe("routine")
     expect(starterOf("workflow")).toBe("workflow")
+    // A message from Teams is a turn that the user did not start (spec 007, 028).
+    expect(starterOf("teams")).toBe("program")
   })
 })
 

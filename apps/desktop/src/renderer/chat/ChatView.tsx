@@ -282,7 +282,7 @@ export const ChatView = (props: ChatViewProps) => {
                     agent={props.agent}
                     message={message}
                     first={startsGroup(previous(), message)}
-                    canEdit={message.id === lastUserId() && !working()}
+                    canEdit={message.id === lastUserId() && !working() && !message.fromTeams}
                     flash={flashId() === message.id}
                     enter={message.createdAt >= openedAt}
                     quoted={message.replyTo ? byId().get(message.replyTo) : undefined}

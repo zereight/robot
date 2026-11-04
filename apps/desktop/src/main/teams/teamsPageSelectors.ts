@@ -34,6 +34,29 @@ export const TEAMS_PAGE = {
   chatListItem: '[data-tid="chat-list-item"], [data-tid="chat-list"] [role="treeitem"]',
   /** The element inside a row that holds the title of the chat. The row itself when none. */
   chatListItemTitle: '[data-tid="chat-list-item-title"], [data-tid="chat-title"]',
+
+  // --- The messages of the open chat (S102) ----------------------------------------------------
+  // STATUS: GUESSES, as all values in this file. They come from the public look of the Teams web
+  // client, not from a check on the real page. Row 554 of `docs/spec-questions.md` lists the four
+  // points that the spec relies on: a sender name on the messages of the user, a stable identity of
+  // each message across reloads, the text of the message as plain text, and a time on each message.
+  // If the real page differs, the link reads no message or reads wrong data: fix these values.
+
+  /** One message of the open chat. The messages come in the order that the chat shows them. */
+  messageItem: '[data-tid="message-pane-list-viewport"] [data-mid], [data-tid="chat-pane-message"]',
+  /**
+   * The attribute of a message that holds its identity. The identity must be the same after a
+   * reload and after an edit. A message with no such attribute is keyed by sender and time.
+   */
+  messageIdAttribute: "data-mid",
+  /** The element inside a message that holds the name of the sender. */
+  messageSender: '[data-tid="message-author-name"]',
+  /** The element inside a message that holds its text. */
+  messageText: '[data-tid="chat-pane-message-body"], [data-tid="message-body-content"]',
+  /** The element inside a message that holds its time. Its `datetime` attribute is read. */
+  messageTime: "time[datetime]",
+  /** An element inside a message that only a message of the signed-in user holds. */
+  messageOwn: '[data-tid="my-message-marker"]',
 } as const
 
 export type TeamsPageSelectors = typeof TEAMS_PAGE

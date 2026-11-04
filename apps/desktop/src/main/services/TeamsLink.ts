@@ -1,10 +1,18 @@
 import {
+  type BaselineReason,
   botListWins,
+  callMayStart,
+  checkCall,
   checkTeamsLink,
   emptyTeamsFields,
   emptyTeamsView,
   holdsChatTitle,
+  markAllRead,
+  newReadSet,
   patchTouchesLocked,
+  readGap,
+  recentCalls,
+  senderOfMessage,
   TEAMS_CONNECT_MAX_MS,
   TEAMS_INPUT_MAX,
   TEAMS_LOOK_AGAIN_MS,
@@ -13,16 +21,22 @@ import {
   type TeamsChatOpened,
   type TeamsFields,
   type TeamsLinkView,
+  type TeamsLogEvent,
   type TeamsLook,
+  type TeamsMessage,
   type TeamsPatch,
   type TeamsState,
+  takeUnread,
   tidyTeamsFields,
 } from "@robot/shared"
-import { Context, Effect, Layer } from "effect"
+import { Cause, Context, Effect, Layer } from "effect"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
+import { Channels } from "./Channels.ts"
+import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { appendLog, pruneLog } from "./logs.ts"
 import type { PageBounds } from "./Platform.ts"
 import { Platform } from "./Platform.ts"
 import { type Clock, realClock } from "./silence.ts"
@@ -73,10 +87,16 @@ export interface TeamsLinkService {
 /** Time of a save of the last read to the database, at most. The screen has the exact time. */
 const SAVE_READ_MS = 30_000
 
+/** The link log keeps 90 days (spec 014). */
+const LOG_KEEP_MS = 90 * 24 * 3_600_000
+const LOG_PRUNE_EVERY_MS = 24 * 3_600_000
+
 /**
- * The Teams link (spec 028), first slice: the form, the sign-in, the switch and the states. The
- * link opens the chat and reads its title and the sign-in, and nothing else: it reads no message
- * and writes nothing to Teams. The loop that reads and the outbox come with the next slices.
+ * The Teams link (spec 028): the form, the sign-in, the switch and the states (S101), and the
+ * calls (S102). While the switch is on, the loop reads the new messages of the chat every 3
+ * seconds, applies "Who may call" to each one, and gives a call to the agent or the channel of the
+ * link as work. The link writes nothing to Teams in these slices: the answers and the outbox come
+ * with the next slice.
  *
  * The link belongs to this computer and this profile. Sync does not carry it, an export does not
  * hold it, and a linked device never sees it.
@@ -92,6 +112,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         const bus = yield* EventBus
         const platform = yield* Platform
         const profiles = yield* BrowserProfiles
+        const chat = yield* Chat
+        const channels = yield* Channels
         const clock = options.clock ?? realClock
         const surface = platform.teams()
 
@@ -111,6 +133,35 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           /** Counts each start and each stop, so that a late answer of an old run is dropped. */
           generation: 0,
           busy: false,
+          /** The messages that the app has read. A message is read once (spec 028). */
+          readSet: newReadSet(),
+          /** The next read marks every message as read and answers none (a baseline read). */
+          baseline: "start" as BaselineReason | null,
+          /** When the last read finished. Null before the first read of a run. */
+          lastFinishedAt: null as number | null,
+          /** When the calls of the last minute started work. */
+          callStarts: [] as number[],
+        }
+
+        // ----------------------------------------------------------------- The link log
+        let lastPrune = 0
+        /**
+         * One record in the link log (spec 014): the time, the event, the reason and the place. It
+         * holds no text of a message and no name of a sender.
+         */
+        const record = (event: TeamsLogEvent, reason?: string) => {
+          const now = clock.now()
+          if (now - lastPrune >= LOG_PRUNE_EVERY_MS) {
+            lastPrune = now
+            pruneLog(platform.dataDir, "teams", LOG_KEEP_MS, now)
+          }
+          const r = row()
+          appendLog(platform.dataDir, "teams", {
+            time: new Date(now).toISOString(),
+            event,
+            ...(reason ? { reason } : {}),
+            ...(r?.target_kind && r.target_id ? { place: `${r.target_kind}:${r.target_id}` } : {}),
+          })
         }
 
         // ----------------------------------------------------------------- The row
@@ -207,6 +258,10 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         const start = () => {
           const now = clock.now()
           run.generation++
+          run.readSet = newReadSet()
+          run.baseline = "start"
+          run.lastFinishedAt = null
+          run.callStarts = []
           setState("connecting")
           run.since = now
           run.nextAt = now
@@ -216,6 +271,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         /** The link stops: the state is Off and the Teams page closes. */
         const stop = () => {
           run.generation++
+          run.readSet = newReadSet()
+          run.lastFinishedAt = null
           setState("off")
           run.pageShown = false
           surface.place(undefined)
@@ -257,11 +314,15 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           switch (seen.kind) {
             case "offline":
               setState("offline")
+              // The first read after Offline is a baseline read (spec 028, "Starts and gaps").
+              run.baseline ??= "offline"
               run.nextAt = now + TEAMS_LOOK_AGAIN_MS
               break
             case "signIn":
               setSignedIn(false)
               setState("signedOut")
+              // So is the first read after a sign-in that follows Signed out.
+              run.baseline ??= "signed_out"
               // The loop goes on at the pace of a read: it must see the sign-in at once.
               run.nextAt = now + TEAMS_READ_MS
               break
@@ -282,7 +343,6 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
               setSignedIn(true)
               if (seen.opened.kind === "opened") {
                 setState("on")
-                noteRead(now)
                 run.nextAt = now + TEAMS_READ_MS
               } else {
                 setState("chatNotFound", seen.opened.kind)
@@ -306,8 +366,10 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           const fields = fieldsOf(r)
           if (!targetFound(fields)) return targetGone()
           if (run.state === "targetMissing") {
-            // The agent came back (restored): the link starts again.
+            // The agent came back (restored): the link starts again, with a baseline read.
             run.generation++
+            run.baseline = "start"
+            run.lastFinishedAt = null
             setState("connecting")
             run.since = now
             run.nextAt = now
@@ -320,7 +382,96 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           if (generation !== run.generation) return
           const before = `${run.state}|${run.chat}|${run.lastReadAt}`
           apply(seen, clock.now())
+          if (seen.kind === "chat" && seen.opened.kind === "opened") await readStep(generation)
           if (before !== `${run.state}|${run.chat}|${run.lastReadAt}`) changed()
+        }
+
+        // ----------------------------------------------------------------- The calls (S102)
+        /** Gives a call to the agent or the channel of the link. Gives the failure code, or null. */
+        const dispatch = async (fields: TeamsFields, text: string, sender: string) => {
+          if (fields.targetId === null) return "target_missing"
+          const teams = { kind: "teams" } as const
+          const work: Effect.Effect<void, AppError> =
+            fields.targetKind === "channel"
+              ? Effect.asVoid(
+                  channels.send(fields.targetId, text, null, {
+                    outside: teams,
+                    teamsSender: sender,
+                  }),
+                )
+              : Effect.asVoid(
+                  chat.send(
+                    { agentId: fields.targetId, text, replyTo: null },
+                    {
+                      source: "teams",
+                      sourceId: fields.targetId,
+                      starter: "program",
+                      outside: teams,
+                      teamsSender: sender,
+                    },
+                  ),
+                )
+          const exit = await Effect.runPromiseExit(work)
+          if (exit._tag === "Success") return null
+          const failure = Cause.squash(exit.cause)
+          return failure instanceof AppError ? failure.code : "error"
+        }
+
+        /** One new message: "Who may call", the limit of calls, and then the work. */
+        const handle = async (message: TeamsMessage, fields: TeamsFields, generation: number) => {
+          const call = checkCall(message, fields)
+          if (!call.ok) return record("call_refused", call.reason)
+          const now = clock.now()
+          if (!callMayStart(run.callStarts, now)) return record("call_over_limit")
+          if (generation !== run.generation) return
+          const failed = await dispatch(fields, call.text, senderOfMessage(message.sender))
+          if (failed === "tasks_full") return record("queue_full")
+          if (failed) return record("target_failed", failed)
+          run.callStarts = [...recentCalls(run.callStarts, now), now]
+          record("call_started")
+        }
+
+        /**
+         * Reads the new messages of the open chat and handles them in the order that the chat shows
+         * them (spec 028, "Run"). A baseline read marks every message as read and answers none.
+         */
+        const readStep = async (generation: number) => {
+          const read = await guarded(() => surface.readMessages())
+          if (generation !== run.generation) return
+          const r = row()
+          if (!r) return
+          if (r.enabled !== 1) return
+          // The user looks at another chat, or the page cannot be read: this read did not finish.
+          const fields = fieldsOf(r)
+          if (!read || read.openTitle === null || !holdsChatTitle(read.openTitle, fields.chatTitle))
+            return
+          const now = clock.now()
+          // More than 2 minutes since the last finished read: the computer slept, or the page could
+          // not be read. The messages of that time get no answer.
+          const gap = readGap(run.lastFinishedAt, now)
+          if (gap) run.baseline ??= "gap"
+          if (run.baseline !== null) {
+            const reason = run.baseline
+            run.baseline = null
+            // After a gap the unread calls are counted, so the next slice can tell the chat about
+            // them. Every message counts as read after this.
+            let skipped: TeamsMessage[] = []
+            if (gap) skipped = takeUnread(run.readSet, read.messages)
+            else markAllRead(run.readSet, read.messages)
+            record("baseline", reason)
+            // The line for Teams about a call that the gap skipped comes with the next slice. The
+            // link log records that there was one.
+            if (gap && skipped.some((m) => checkCall(m, fields).ok)) record("gap_skipped_call")
+          } else {
+            for (const message of takeUnread(run.readSet, read.messages)) {
+              // The switch was turned off, or the link started again, while a call was handled.
+              if (generation !== run.generation) return
+              await handle(message, fieldsOf(row() ?? r), generation)
+            }
+          }
+          if (generation !== run.generation) return
+          run.lastFinishedAt = clock.now()
+          noteRead(run.lastFinishedAt)
         }
 
         /** With the switch off, a page that the user shows is watched for the sign-in only. */
@@ -372,6 +523,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         run.lastSavedAt = run.lastReadAt ?? 0
         // After a restart a link that is on starts again: Connecting, then the state that fits.
         if (first?.enabled === 1) {
+          run.baseline = "start"
           run.state = "connecting"
           run.since = clock.now()
           run.nextAt = clock.now()

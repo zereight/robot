@@ -62,6 +62,7 @@ import {
   skillLead,
   starterOf,
   stepTurnEffort,
+  TASKS_QUEUED_MAX,
   type Task,
   type TaskProgress,
   type TaskSource,
@@ -128,6 +129,8 @@ interface MessageRow {
   thread_id: string | null
   /** The first source of the turn that started or made the message, when it holds the program mark. */
   program_mark?: string | null
+  /** The name of the sender of a message from Teams, as the Teams page showed it (spec 028). */
+  teams_sender?: string | null
   input_tokens: number | null
   output_tokens: number | null
   finished_at: number | null
@@ -167,6 +170,11 @@ export interface TaskOrigin {
    * source that carries the mark (Teams) gives it with no flag.
    */
   readonly program?: boolean
+  /**
+   * The name of the sender of a message from Teams (spec 028). It is stored with the message, which
+   * shows the mark "From Teams" and this name. Only a message with the source "teams" has it.
+   */
+  readonly teamsSender?: string
   /** Called when the task of the message starts, with its id. */
   readonly onStart?: (taskId: string) => void
   /**
@@ -195,6 +203,15 @@ export interface TaskOrigin {
   readonly returning?: boolean
 }
 
+/** The origin of a turn that a message from Teams starts (spec 028). */
+const teamsOrigin = (agentId: string, sender: string): TaskOrigin => ({
+  source: "teams",
+  sourceId: agentId,
+  starter: "program",
+  outside: { kind: "teams" },
+  teamsSender: sender,
+})
+
 /** A conversation of an agent: the main thread (`threadId` null) or another thread (spec 003). */
 export interface Place {
   readonly agentId: string
@@ -213,7 +230,9 @@ export interface ChatService {
   history(agentId: string, threadId?: string | null): Effect.Effect<ChatHistory>
   /**
    * Sends at once when the agent is free. While it works, a message of the user joins the turn
-   * (spec 003), or waits in the queue by the setting, by the program, or when it has an origin.
+   * (spec 003), or waits in the queue by the setting, by the program, or when it has an origin. A
+   * message with the origin "teams" (spec 028) never joins a turn: it waits in a queue of its own
+   * that the windows do not see, and starts its own turn.
    */
   send(input: ChatSend, origin?: TaskOrigin): Effect.Effect<{ queued: boolean }, AppError>
   /** Sends a queued message into the turn that runs now. */
@@ -279,6 +298,11 @@ export interface HandoverStart {
 /** The turn that runs now for an agent, as far as messages of the user can join it (spec 003). */
 interface LiveTurn {
   readonly replyId: string
+  /**
+   * The turn was started by a message from Teams (spec 028). A message of the user never joins it,
+   * so the words of the user do not go into work whose reply goes to Teams.
+   */
+  readonly fromTeams: boolean
   /** Messages that wait for the next step, oldest first. They can still be deleted. */
   readonly waiting: JoinedMessage[]
   /** Messages that a program has and did not begin to read. They cannot be deleted. */
@@ -288,6 +312,15 @@ interface LiveTurn {
   question(): string | undefined
   /** Marks the card of a question as answered by a message in the chat. */
   answeredInChat(callId: string): void
+}
+
+/** A message from Teams that waits for the turn of its agent (spec 028). */
+interface ProgramItem {
+  readonly id: string
+  readonly text: string
+  readonly origin: TaskOrigin
+  /** The queue of tasks of the agent was full when the turn ended. It goes when space comes. */
+  readonly blocked?: boolean
 }
 
 /** How often a streaming reply is sent to the window and written to disk. */
@@ -325,6 +358,9 @@ interface ThreadRow {
   outside_mark: string | null
   updated_at: number
 }
+
+/** The line before a message from Teams, as the model reads it (spec 028). */
+const teamsLead = (sender: string) => `A message from Teams. The sender is shown as "${sender}".`
 
 /** The line before the notes that the app adds to a message for Claude Code. */
 const NOTES_LEAD = "Notes from the app for this message. The user did not write them:"
@@ -372,6 +408,7 @@ const toMessage = (row: MessageRow, unread?: "waiting" | "handed"): ChatMessage 
   createdAt: row.created_at,
   editedAt: row.edited_at,
   fromDevice: row.from_name,
+  ...(row.teams_sender ? { fromTeams: row.teams_sender } : {}),
   ...(unread ? { unread } : {}),
 })
 
@@ -506,6 +543,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const origins = new Map<string, TaskOrigin>()
       /** The linked device that sent a queued item, by the id of the item (spec 012). */
       const senders = new Map<string, Actor>()
+      /**
+       * Messages from Teams that wait for their turn, by conversation (spec 028). They are not in
+       * the message queue of the user: the windows never see them, they have no "Send now" and no
+       * edit, and they never join a turn or merge with a message of the user. Each one starts its
+       * own turn, in the order in which it came.
+       */
+      const programQueues = new Map<string, ProgramItem[]>()
       /** The running turn of each agent that messages can join (spec 003). */
       const live = new Map<string, LiveTurn>()
       /** Agents whose last turn ended with messages that the agent did not read. */
@@ -515,6 +559,17 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
        * it count from here (spec 005). A turn that no new message started has no entry.
        */
       const asks = new Map<string, number>()
+      /**
+       * The origin of the turn that a message starts. A message from Teams keeps its origin in the
+       * stored name of its sender, so a retry after a restart still has the source "Teams" and the
+       * program mark (spec 028, 005).
+       */
+      const originOf = (row: MessageRow): TaskOrigin | undefined => {
+        const held = origins.get(row.id)
+        if (held) return held
+        if (row.author !== "user" || !row.teams_sender || row.thread_id !== null) return undefined
+        return teamsOrigin(row.agent_id, row.teams_sender)
+      }
       /** Writes a queued item as a message, and moves its origin to the message. */
       const insertQueued = (place: Place, next: QueuedMessage) => {
         const sender = senders.get(next.id)
@@ -642,7 +697,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           progress: string | null
         }>(
           `SELECT id, state, error_code, progress FROM task
-           WHERE message_id = ? AND source = 'chat' AND origin IS NULL
+           WHERE message_id = ? AND source IN ('chat', 'teams') AND origin IS NULL
            ORDER BY created_at DESC, rowid DESC LIMIT 1`,
           replyId,
         )
@@ -707,11 +762,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         joined: { readonly to: string; readonly readAt: number | null } | null = null,
         skill: SkillPart | null = null,
         threadId: string | null = null,
+        teamsSender: string | null = null,
       ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name, joined_to, read_at, thread_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name, joined_to, read_at, thread_id, teams_sender)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           agentId,
           author,
@@ -729,6 +785,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           joined?.to ?? null,
           joined?.readAt ?? null,
           threadId,
+          teamsSender,
         )
         const row = messageRow(id) as MessageRow
         // A new thread takes the first line of its first message as its title (spec 003).
@@ -756,6 +813,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // The agent reads the instructions of a skill chip first, then the text (spec 017).
         const text = [
           skill ? skillLead(skill.name, skill.instructions) : "",
+          // The agent gets the name of the sender of a message from Teams (spec 028).
+          r.teams_sender ? teamsLead(r.teams_sender) : "",
           messageText(toMessage(r)),
         ]
           .filter(Boolean)
@@ -901,7 +960,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             place.threadId,
           )
         const asked = lastUser ? toMessage(lastUser) : undefined
-        const origin = lastUser ? origins.get(lastUser.id) : undefined
+        const origin = lastUser ? originOf(lastUser) : undefined
         const turnEffort = origin?.effort
         const textOf = (m: ChatMessage) =>
           messageText(m) ||
@@ -920,6 +979,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const askedAt = lastUser ? asks.get(lastUser.id) : undefined
         if (lastUser) asks.delete(lastUser.id)
         const source = origin?.source ?? "chat"
+        const turnFromTeams = source === "teams"
         // A message from another agent has its own text for the task, without the words around it.
         const prompt =
           origin?.prompt ??
@@ -941,7 +1001,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             // A routine or a workflow starts its task with no message of the user (spec 005).
             // A handover starts with a message of the user, so its times count from there too.
             askedAt:
-              (source === "chat" || source === "handover") && !retryLinks.has(key)
+              (source === "chat" || source === "handover" || source === "teams") &&
+              !retryLinks.has(key)
                 ? (askedAt ?? null)
                 : null,
             ...(origin?.depth !== undefined ? { depth: origin.depth } : {}),
@@ -949,7 +1010,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const depth = tasks.depthOf(task.id)
         if (!resumed) {
           retryLinks.delete(key)
-          if (lastUser) origins.get(lastUser.id)?.onStart?.(task.id)
+          if (lastUser) origin?.onStart?.(task.id)
         }
         const parts: MessagePart[] = kept ? (JSON.parse(kept.parts) as MessagePart[]) : []
         const resume = kept ? resumeOf(parts) : undefined
@@ -1018,6 +1079,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // Messages that the user sends now join this turn (spec 003).
         const turn: LiveTurn = {
           replyId: reply.id,
+          fromTeams: turnFromTeams,
           waiting: [],
           handed: new Set(),
           watchers: new Set(),
@@ -1276,7 +1338,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
               // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
               // message of another agent) keeps the short one.
-              cache: task.source === "chat" || task.source === "handover" ? "long" : "short",
+              cache:
+                task.source === "chat" || task.source === "handover" || task.source === "teams"
+                  ? "long"
+                  : "short",
               signal: controller.signal,
               workspace: agent.workspace,
               permission: agent.permission,
@@ -1441,7 +1506,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           if (unreadLeft.delete(key)) return true
           const queue = queues.get(key) ?? []
           const head = queue[0]
-          if (!head) return false
+          if (!head) return startProgram(place)
           // The queue of the agent is full: the message stays in the message queue with the
           // reason, and goes when a queued task starts or ends (spec 005, "Queue").
           const full = origins.get(head.id)?.returning ? null : tasks.queueFull(place.agentId)
@@ -1457,14 +1522,50 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           return true
         })
 
+      /**
+       * The first message from Teams that waits for this conversation starts its own turn, when
+       * the queue of tasks of the agent has space (spec 028, 005). It comes after the messages of
+       * the user that wait in the message queue.
+       */
+      const startProgram = (place: Place): boolean => {
+        const key = keyOf(place)
+        const waiting = programQueues.get(key) ?? []
+        const head = waiting[0]
+        if (!head) return false
+        if (tasks.queueFull(place.agentId)) {
+          waiting[0] = { ...head, blocked: true }
+          return false
+        }
+        waiting.shift()
+        const row = insertMessage(
+          place.agentId,
+          "user",
+          head.text,
+          null,
+          null,
+          [],
+          null,
+          null,
+          null,
+          place.threadId,
+          head.origin.teamsSender ?? null,
+        )
+        asks.set(row.id, row.created_at)
+        origins.set(row.id, head.origin)
+        return true
+      }
+
       /** The places of an agent whose first queued message waits for space in the task queue. */
-      const blockedPlaces = (agentId: string): Place[] =>
-        [...queues.entries()].flatMap(([key, queue]) => {
-          if (!queue[0]?.blocked) return []
+      const blockedPlaces = (agentId: string): Place[] => {
+        const blocked = new Set<string>()
+        for (const [key, queue] of queues) if (queue[0]?.blocked) blocked.add(key)
+        for (const [key, waiting] of programQueues) if (waiting[0]?.blocked) blocked.add(key)
+        return [...blocked].flatMap((key) => {
           if (key === agentId) return [mainOf(agentId)]
           const thread = threadRow(agentId, key)
           return thread ? [{ agentId, threadId: key }] : []
         })
+      }
 
       const kick = (place: Place) =>
         FiberMap.run(workers, keyOf(place), worker(place), { onlyIfMissing: true })
@@ -1547,13 +1648,60 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         Effect.gen(function* () {
           const turn = live.get(keyOf(place))
           // A compact that the user started is no turn: messages wait in the queue (spec 003).
-          if (!turn || holdOf(place.agentId) || manual.has(keyOf(place))) return undefined
+          // A turn that a message from Teams started takes no message of the user, so that the
+          // words of the user are not part of work whose reply goes to Teams (spec 028).
+          if (!turn || turn.fromTeams || holdOf(place.agentId) || manual.has(keyOf(place)))
+            return undefined
           return (yield* settings.get).duringTurn === "join" ? turn : undefined
+        })
+
+      /**
+       * A message from Teams (spec 028). It goes to the main thread as a message of the user with
+       * the mark "From Teams". It never joins a running turn: while the agent works, it waits in a
+       * queue of its own, and then starts its own turn. When the queue of tasks of the agent is
+       * full, no task is made and the call fails with the reason (spec 005).
+       */
+      const sendFromTeams = (input: ChatSend, origin: TaskOrigin, agent: AgentModelRow) =>
+        Effect.gen(function* () {
+          const text = input.text.trim()
+          if (text === "") return yield* new AppError({ code: "invalid_input" })
+          const place = mainOf(input.agentId)
+          const key = keyOf(place)
+          const waiting = programQueues.get(key) ?? []
+          const full = tasks.queueFull(input.agentId)
+          if (full) return yield* full
+          // Messages that wait to become tasks count like tasks that wait.
+          if (waiting.length >= TASKS_QUEUED_MAX)
+            return yield* new AppError({ code: "tasks_full", detail: agent.name })
+          const behind = waiting.length > 0 || (queues.get(key)?.length ?? 0) > 0
+          if (behind || (yield* isRunning(place))) {
+            waiting.push({ id: randomUUID(), text, origin })
+            programQueues.set(key, waiting)
+            return { queued: true }
+          }
+          const row = insertMessage(
+            input.agentId,
+            "user",
+            text,
+            null,
+            null,
+            [],
+            null,
+            null,
+            null,
+            null,
+            origin.teamsSender ?? null,
+          )
+          asks.set(row.id, row.created_at)
+          origins.set(row.id, origin)
+          yield* kick(place)
+          return { queued: false }
         })
 
       const send = Effect.fn("Chat.send")(function* (input: ChatSend, origin?: TaskOrigin) {
         const sender = yield* CurrentActor
         const agent = yield* usableAgent(input.agentId, origin?.model)
+        if (origin?.source === "teams") return yield* sendFromTeams(input, origin, agent)
         // Work from a routine, a workflow or another agent goes to the main thread (spec 003). A
         // handover goes to the new thread that it made.
         const threadId = origin && origin.source !== "handover" ? null : (input.threadId ?? null)
@@ -1712,7 +1860,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const all = rows(place)
         const index = all.findIndex((r) => r.id === messageId)
         const target = all[index]
-        if (target?.author !== "user" || all.slice(index + 1).some((r) => r.author === "user")) {
+        // A message from Teams has no edit (spec 028).
+        if (
+          target?.author !== "user" ||
+          target.teams_sender ||
+          all.slice(index + 1).some((r) => r.author === "user")
+        ) {
           return yield* new AppError({ code: "cannot_edit" })
         }
         db.transaction(() => {
@@ -2479,17 +2632,26 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           // runs here as a new task, and its messages stay as they are.
           const again = { agentId: task.agentId, text: task.prompt, replyTo: null }
           const inThread = place.threadId ? { threadId: place.threadId } : {}
-          if (task.originName !== null) return Effect.asVoid(send({ ...again, ...inThread }))
+          // A task from Teams asks again as a message from Teams, with the same sender (spec 028).
+          const sender = rows(place).findLast(
+            (r) => r.author === "user" && r.teams_sender,
+          )?.teams_sender
+          const askedAs =
+            task.source === "teams" ? teamsOrigin(task.agentId, sender ?? "") : undefined
+          if (task.originName !== null)
+            return Effect.asVoid(send({ ...again, ...inThread }, askedAs))
           return retry(task.agentId, task.messageId ?? "", { confirmed: true }).pipe(
             Effect.asVoid,
             Effect.catch(() => {
               // Set before the send, because the turn can start at once.
               retryLinks.set(keyOf(place), task.id)
-              return Effect.asVoid(send({ ...again, ...inThread }))
+              return Effect.asVoid(send({ ...again, ...inThread }, askedAs))
             }),
           )
         })
       tasks.onRetry("chat", retryOfChat)
+      // A task from Teams tries again the way a chat task does, and keeps its source (spec 028).
+      tasks.onRetry("teams", retryOfChat)
       // A task of a handover is a message in a thread: it tries again the way a chat task does.
       tasks.onRetry("handover", retryOfChat)
 

@@ -25,9 +25,9 @@ import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
 
-// The program mark (spec 007, "Program mark"; 023, 028). The real producers of the mark (the
-// Teams link of spec 028, the outside programs of spec 023) are not in the app yet. A test turn
-// passes a source of the kind "teams", as the Teams link will. Nothing here needs Teams.
+// The program mark (spec 007, "Program mark"; 023, 028). The producer of the mark for Teams (the
+// Teams link of spec 028) calls the chat with the origin below. The outside programs of spec 023
+// are not in the app yet. Nothing here needs the Teams page.
 
 const sse = (chunks: unknown[]) =>
   new Response(
@@ -110,10 +110,11 @@ const until = async (check: () => boolean | Promise<boolean>, ms = 6000) => {
 const TEAMS: OutsideSource = { kind: "teams" }
 /** The origin of a turn that a message from Teams starts. The real link gives the same fields. */
 const fromTeams = (agentId: string): TaskOrigin => ({
-  source: "chat",
+  source: "teams",
   sourceId: agentId,
   starter: "program",
   outside: TEAMS,
+  teamsSender: "Marta Kim",
 })
 
 const calls = (...list: { name: string; args: unknown }[]) => `CALLS ${JSON.stringify(list)}`
