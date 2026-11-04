@@ -266,6 +266,11 @@ export interface ChatService {
   deleteThread(agentId: string, threadId: string): Effect.Effect<void, AppError>
   /** Tells the windows about a message that sync wrote, so an open chat shows it at once. */
   announce(messageId: string): void
+  /**
+   * How many messages from Teams wait for the next turn of this agent (spec 028). The Teams link
+   * reads it to know that a card of the agent holds back a new message from Teams.
+   */
+  teamsWaiting(agentId: string): number
   /** Posts one muted line of the agent, with no task: a watch saw no change (spec 009). */
   note(agentId: string, part: Extract<MessagePart, { kind: "note" }>): void
   /**
@@ -2753,6 +2758,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const row = db.get<MessageRow>("SELECT * FROM message WHERE id = ?", messageId)
           if (row) emitMessage(row)
         },
+        teamsWaiting: (agentId) => programQueues.get(keyOf(mainOf(agentId)))?.length ?? 0,
         history: (agentId, threadId = null) =>
           Effect.sync(() => {
             const place: Place = { agentId, threadId }

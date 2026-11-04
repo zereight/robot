@@ -904,4 +904,19 @@ export const migrations: readonly string[] = [
   ALTER TABLE message ADD COLUMN teams_sender TEXT;
   ALTER TABLE channel_message ADD COLUMN teams_sender TEXT;
   `,
+  `
+  -- The records of the Teams link (spec 028, "Records"): an answer that did not go out, with the
+  -- time, the reason, the place and the task. A record holds no text of a message and no name of a
+  -- sender. The service keeps the newest 50. The table belongs to this computer and this profile:
+  -- sync (019) does not carry it, and an export deletes it. The place and the task have no foreign
+  -- key: an agent, a channel or a task that goes leaves the record, and the window shows no name.
+  CREATE TABLE teams_record (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    place_kind TEXT,
+    place_id TEXT,
+    task_id TEXT
+  );
+  `,
 ]

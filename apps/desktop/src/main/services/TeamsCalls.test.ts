@@ -29,8 +29,9 @@ import { Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
 
 // The calls from Teams (spec 028, S102) with the stand-in Teams and a stand-in model. Nothing here
-// calls the real Teams. The link writes nothing to Teams in this slice, so every test also looks
-// at what the stand-in got typed: nothing.
+// calls the real Teams. Since S103 the link writes answers and lines to Teams: the tests that look
+// at what the stand-in got typed say which text it is. The answers have their own tests in
+// `TeamsAnswers.test.ts`.
 
 const ROOM = "Team room"
 const PASSWORD = "correct-horse-battery-staple-7731"
@@ -322,7 +323,10 @@ describe("who may call, through the loop (the table of spec 028)", () => {
     const text = s.logText()
     for (const word of [MARTA, "Joe Lee", "Helper Bot", "list my tasks", "secret request", "echo"])
       expect(text).not.toContain(word)
-    expect(s.chat.typed).toEqual([])
+    // Only the two calls that started work got an answer. A message that fails a check gets no
+    // line in Teams.
+    await s.pass(1000)
+    expect(s.chat.typed.map((x) => x.text)).toEqual(["[ROBot] ok", "[ROBot] ok"])
     await dispose(s)
   })
 
@@ -380,8 +384,9 @@ describe("the read loop and the baseline", () => {
     const asked = (await s.messages()).find((m) => m.author === "user")
     expect(asked).toMatchObject({ fromTeams: MARTA })
     expect(asked?.parts).toEqual([{ kind: "text", text: "list my tasks" }])
-    // The link wrote nothing to Teams.
-    expect(s.chat.typed).toEqual([])
+    // The reply text went to Teams, and it starts with the marker.
+    await s.pass(1000)
+    expect(s.chat.typed).toEqual([{ chat: ROOM, text: "[ROBot] ok" }])
     await dispose(s)
   })
 
@@ -467,9 +472,12 @@ describe("gaps and baselines", () => {
     await s.pass(3000)
     expect(await s.tasks()).toHaveLength(0)
     expect(s.reasons("baseline")).toEqual(["start", "gap"])
-    // The log records that the gap skipped a call. The line for Teams comes with the next slice.
+    // The log records that the gap skipped a call, and Teams gets one line about it.
     expect(s.reasons("gap_skipped_call")).toEqual([undefined])
-    expect(s.chat.typed).toEqual([])
+    await s.pass(2000)
+    expect(s.chat.typed.map((x) => x.text)).toEqual([
+      "[ROBot] ROBot did not read this chat for a while. Messages from that time got no answer. Send them again.",
+    ])
     s.chat.say(ROOM, MARTA, "@ROBot after the jump")
     await s.pass(3000)
     await s.quiet(1)
@@ -485,6 +493,8 @@ describe("gaps and baselines", () => {
     await s.pass(3000)
     expect(s.reasons("baseline")).toEqual(["start", "gap"])
     expect(s.reasons("gap_skipped_call")).toEqual([])
+    // No call was skipped, so Teams gets no line.
+    expect(s.chat.typed).toEqual([])
     await dispose(s)
   })
 
@@ -659,7 +669,11 @@ describe("work from a message: direct chat", () => {
     expect(await s.tasks()).toHaveLength(20)
     expect(s.reasons("queue_full")).toEqual([undefined])
     expect((await s.messages()).filter((m) => m.author === "user")).toHaveLength(0)
-    expect(s.chat.typed).toEqual([])
+    // Teams gets the line of the queue, with the name of the agent.
+    await s.pass(1000)
+    expect(s.chat.typed.map((x) => x.text)).toEqual([
+      "[ROBot] Ada has 20 tasks that wait. Try again later.",
+    ])
     // A call over a full queue does not count for the limit of calls.
     expect(s.reasons("call_started")).toEqual([])
     await dispose(s)
@@ -676,7 +690,12 @@ describe("work from a message: direct chat", () => {
       Array.from({ length: TEAMS_CALLS_MAX }, (_, i) => `call ${i + 1}`),
     )
     expect(s.reasons("call_over_limit")).toEqual([undefined])
-    expect(s.chat.typed).toEqual([])
+    // One line goes out for the 11th call (and the ten replies).
+    await s.pass(1000)
+    const lines = s.chat.typed.map((x) => x.text)
+    expect(lines.filter((x) => x.includes("Too many messages"))).toEqual([
+      "[ROBot] Too many messages. Try again in a minute.",
+    ])
     // After a minute the window has room again.
     await s.pass(60_000)
     s.chat.say(ROOM, MARTA, "@ROBot call 12")
@@ -697,8 +716,11 @@ describe("a guarded step in a turn from Teams", () => {
       once: true,
       outside: { kind: "teams" },
     } as ToolAsk)
-    // The link writes only the waiting line in the next slice. Nothing is typed now.
-    expect(s.chat.typed).toEqual([])
+    // Teams gets one waiting line, with no text of the step.
+    await s.pass(2000)
+    expect(s.chat.typed.map((x) => x.text)).toEqual([
+      "[ROBot] Ada waits for you in ROBot. Open the app to answer.",
+    ])
     s.chat.say(ROOM, MARTA, "@ROBot allow it")
     s.chat.say(ROOM, MARTA, "@ROBot yes")
     await s.pass(6000)

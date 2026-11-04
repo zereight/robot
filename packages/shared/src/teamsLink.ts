@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import { charLength } from "./agents.ts"
 import type { MessageKey } from "./i18n/en.ts"
+import type { TeamsRecord } from "./teamsOutbox.ts"
 
 // The Teams link (spec 028): the pure rules of the form, the names and the states. Nothing here
 // touches a page, a clock or a database.
@@ -281,6 +282,8 @@ export interface TeamsLinkView {
   readonly botListWins: boolean
   /** The browser profile that holds the sign-in, or null before the first sign-in. */
   readonly signInProfileId: string | null
+  /** The newest answers that did not go out, newest first, at most 50 (spec 028, "Records"). */
+  readonly records: readonly TeamsRecord[]
 }
 
 export const emptyTeamsView: TeamsLinkView = {
@@ -295,6 +298,7 @@ export const emptyTeamsView: TeamsLinkView = {
   problems: [],
   botListWins: false,
   signInProfileId: null,
+  records: [],
 }
 
 /** The state that the header mark names. Only a link that is on has a mark (spec 028). */
