@@ -26,7 +26,8 @@ service holds it.
 | Agents | Face, name, role line, instructions, the switch "Read the handbook", model choice, backup model choice, archive state. |
 | Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
-| Channels | Name, topic, instructions, members, lead, the settings "Review parts", "The lead answers questions" and "Own copies for parts", picture, archive state. |
+| Channels | Name, topic, instructions, members, lead, the settings "Review parts", "The lead answers questions" and "Own copies for parts", picture, archive state, parent channel and daily token limit (030). The tools of a channel do not sync, because skills and connections do not sync. |
+| Organization (030) | The hand-off rule and the switch "Ask up the line". They are data of the agents, like the handbook. The later change wins. |
 | Messages | Direct chats with their threads, and channels, with tool cards, plan steps, reply chips and the rows "Compacted". |
 | Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent, with the channel of a channel note. |
@@ -57,7 +58,7 @@ service holds it.
 | The hold of a model (006) | It is a state of one computer. Each computer learns its own limits. |
 | The secret of a web hook (010) | It is in the keychain of one computer, like a saved secret. |
 | Saved logins (020) | Their values are in the keychain of one computer, like saved secrets. |
-| The decision model and the other settings of 013, except the handbook | Settings are local. The handbook is data of the agents (002). |
+| The decision model and the other settings of 013, except the handbook and the part "Organization" | Settings are local. The handbook and the part "Organization" are data of the agents (002, 030). |
 | Linked devices and their keys | They are not data of the agents. |
 | The memory check: its switch and its count (008) | The switch is a choice of one computer, like the other memory switches. Each computer counts its own turns. |
 | Outside programs and their keys (023) | A key reaches one computer only. |

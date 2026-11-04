@@ -13,7 +13,9 @@ not type the same long request again.
     start of the typed name is removed.
   - The description holds up to 140 characters. It may be empty.
   - The instructions hold 1 to 20000 characters of plain text.
-  - The agents: "All agents" (the default), or a list that the user picks.
+  - The agents: "All agents" (the default), or a list that the user picks. The list can hold
+    agents and channels. A channel in the list gives the skill to its members and to the members
+    of its lower channels (030, "Channel tools").
 - **Skill chip**: a small tag with the name of a skill. It sits in the message box, and later in
   the message row.
 - A **runtime skill** is a skill that an agent runtime reports (see 006). The user cannot edit

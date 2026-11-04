@@ -244,7 +244,8 @@ not sign in for it. The sign-in stays in the program on this computer.
 
 - Keys and tokens are stored in the system keychain, never in the database or logs.
 - The app shows usage that the provider reports (tokens, cost if known, plan limits) on the usage
-  page, per agent and per day.
+  page, per agent and per day. For each channel with a daily token limit (030), it also shows the
+  tokens used today and the limit.
 - A runtime that has skills (named sets of instructions) can report them, and the command list
   of the chat shows them (see 003).
 - A runtime that can report the size of the context at the end of a turn does so, so the context
