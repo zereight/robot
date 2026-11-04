@@ -141,7 +141,8 @@ const answer = (body: ChatBody): Plan => {
   // questions to ask, one after the other (see `askWords`). "split lead approval" gives Bo a step
   // that needs an approval instead.
   if (text.includes("split lead")) {
-    const asks = /ASKS(?: (?:answer|pass|slow|hang|fail))+/.exec(text)?.[0] ?? "ASKS answer"
+    const asks =
+      /ASKS(?: (?:answer|pass|slow|hang|fail|\w+\d(?:slow)?))+/.exec(text)?.[0] ?? "ASKS answer"
     const prompt = text.includes("approval")
       ? 'Run the step. TOOL run_command {"command":"sudo ls"}'
       : `Pick the sizes. ${asks}`
@@ -322,11 +323,51 @@ const answer = (body: ChatBody): Plan => {
  * A stand-in lead for a look at a question (spec 004). The word in square brackets in the question
  * tells what it does: [answer] picks the first choice, [pass] passes the question, [slow] answers
  * after 3 seconds, [hang] does not answer for 30 seconds, and [fail] fails.
+ *
+ * For the line above the lead (spec 030, "Ask up the line") the same stand-in serves every agent
+ * that looks. It tells the place of the agent on the line from the lines "Passes before you:" in
+ * the text of the look: the lead has none, the first agent of the line has one, and so on. The
+ * word tells what each place does:
+ * - [upN]: every agent before the place N passes with "Not sure", and the agent at place N answers.
+ *   [upNslow] answers after 3 seconds.
+ * - [lateN]: the lead passes with "Not sure"; the agents at the places 1 to N do not answer for
+ *   30 seconds; the agent after them answers.
+ * - [userN]: the agents before the place N pass with "Not sure"; the agent at place N passes with
+ *   "Only the user can choose".
  */
 const leadLook = (state: string): Plan => {
   const question = /Question of [^\n]*:\n([^\n]*)/.exec(state)?.[1] ?? ""
   const how = /\[(\w+)\]/.exec(question)?.[1] ?? "answer"
   if (how === "fail") return { status: 500 }
+  const line = /^(up|late|user)(\d)(slow)?$/.exec(how)
+  if (line) {
+    const kind = line[1]
+    const n = Number(line[2])
+    // The place of the agent: the number of passes before it.
+    const place =
+      state
+        .split("Passes before you:")[1]
+        ?.split("\n\n")[0]
+        ?.split("\n")
+        .filter((l) => l.startsWith("- ")).length ?? 0
+    const pass = (passKind: string) => ({
+      chunks: [JSON.stringify({ action: "pass", kind: passKind, reason: `Not sure at ${place}.` })],
+      delay: 0,
+    })
+    const answer = (pause: number) => ({
+      chunks: [JSON.stringify({ action: "answer", choice: 1, reason: `Answered at ${place}.` })],
+      delay: 0,
+      pause,
+    })
+    if (kind === "up") return place < n ? pass("not_sure") : answer(line[3] ? 3000 : 0)
+    if (kind === "late") {
+      if (place === 0) return pass("not_sure")
+      return place <= n
+        ? { chunks: [JSON.stringify({ action: "answer", choice: 1 })], delay: 0, pause: 30_000 }
+        : answer(0)
+    }
+    return place < n ? pass("not_sure") : pass("user_choice")
+  }
   const reply =
     how === "pass"
       ? { action: "pass", kind: "user_choice", reason: "A matter of taste." }
@@ -343,7 +384,10 @@ const leadLook = (state: string): Plan => {
  * one after the other, and each question holds its word in square brackets (see `leadLook`).
  */
 const askWords = (text: string) =>
-  /ASKS((?: (?:answer|pass|slow|hang|fail))+)/.exec(text)?.[1]?.trim().split(" ") ?? []
+  /ASKS((?: (?:answer|pass|slow|hang|fail|(?:up|late|user)\d(?:slow)?))+)/
+    .exec(text)?.[1]
+    ?.trim()
+    .split(" ") ?? []
 
 const askCall = (words: readonly string[], index: number) => ({
   name: "ask_user",
