@@ -396,6 +396,19 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ["providers.list", undefined],
       ["settings.update", { patch: { workspaceRoot: "/tmp/x" } }],
       ["routines.list", undefined],
+      // A linked device cannot make a routine, so the limit of 50 is never its business (009, 012).
+      [
+        "routines.create",
+        {
+          serverId: p.serverId,
+          agentId: created.id,
+          name: "X",
+          prompt: "Y",
+          schedule: { kind: "daily", times: ["09:00"] },
+          place: { kind: "agent" },
+        },
+      ],
+      ["routines.update", { id: "x", patch: { enabled: true } }],
       ["workflows.runHere", { id: "x" }],
       ["usage.get", undefined],
       ["data.export", undefined],

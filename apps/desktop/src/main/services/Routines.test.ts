@@ -2,13 +2,16 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { messageText, type Watch } from "@robot/shared"
+import { messageText, ROUTINES_MAX, type Watch } from "@robot/shared"
+import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
+import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
 
@@ -142,6 +145,7 @@ const setup = async () => {
   const routine = async (id: string) =>
     (await run(Routines.use((r) => r.list(local.id)))).find((r) => r.id === id)
   return {
+    t,
     run,
     local,
     agent,
@@ -558,5 +562,275 @@ describe("late runs and the model of a routine", () => {
     await s.tick(routine.createdAt + 2 * MIN + 1000)
     await s.idle()
     expect((await s.tasks()).map((t) => t.state)).toEqual(["done"])
+  })
+})
+
+describe("routine limits (spec 009)", () => {
+  /** The refusal of `create`, or undefined when it worked. */
+  const refusal = (s: Awaited<ReturnType<typeof setup>>, over: object = {}) =>
+    s.run(
+      Routines.use((r) =>
+        r
+          .create({
+            serverId: s.local.id,
+            agentId: s.agent.id,
+            name: "One more",
+            prompt: "Look.",
+            schedule: { kind: "daily", times: ["09:00"] },
+            place: { kind: "agent" },
+            ...over,
+          })
+          .pipe(
+            Effect.map(() => undefined),
+            Effect.catch((e) => Effect.succeed(e)),
+          ),
+      ),
+    )
+  const fill = async (s: Awaited<ReturnType<typeof setup>>, count: number) => {
+    const ids: string[] = []
+    for (let i = 0; i < count; i++)
+      ids.push(
+        (
+          await s.run(
+            Routines.use((r) =>
+              r.create({
+                serverId: s.local.id,
+                agentId: s.agent.id,
+                name: `R${i}`,
+                prompt: "Look.",
+                schedule: { kind: "daily", times: ["09:00"] },
+                place: { kind: "agent" },
+              }),
+            ),
+          )
+        ).id,
+      )
+    return ids
+  }
+  const count = async (s: Awaited<ReturnType<typeof setup>>) =>
+    (await s.run(Routines.use((r) => r.list(s.local.id)))).length
+
+  test("with 50 routines the 51st is refused, with the limit as its reason; delete one and it works", async () => {
+    const s = await setup()
+    expect(ROUTINES_MAX).toBe(50)
+    const ids = await fill(s, 50)
+    const error = await refusal(s)
+    expect(error).toMatchObject({ code: "routines_full", detail: "50" })
+    expect(await count(s)).toBe(50)
+    await s.run(Routines.use((r) => r.remove(ids[0] ?? "")))
+    expect(await refusal(s)).toBeUndefined()
+    expect(await count(s)).toBe(50)
+    expect(await refusal(s)).toMatchObject({ code: "routines_full" })
+  })
+
+  test("a paused routine and a watch count in the limit", async () => {
+    const s = await setup()
+    const ids = await fill(s, 49)
+    // The 50th is a watch that starts paused.
+    await s.run(
+      Routines.use((r) =>
+        r.create(
+          {
+            serverId: s.local.id,
+            agentId: s.agent.id,
+            name: "Watcher",
+            prompt: "Look.",
+            watch: { minutes: 60, target: { kind: "path", path: "x.txt" }, postUnchanged: false },
+            place: { kind: "agent" },
+          },
+          { paused: true },
+        ),
+      ),
+    )
+    expect(await refusal(s)).toMatchObject({ code: "routines_full" })
+    // Pausing the others changes nothing.
+    for (const id of ids) await s.run(Routines.use((r) => r.update(id, { enabled: false })))
+    expect(await refusal(s)).toMatchObject({ code: "routines_full" })
+  })
+
+  test("an edit of a routine, and Resume, are not refused at 50", async () => {
+    const s = await setup()
+    const ids = await fill(s, 50)
+    const first = ids[0] ?? ""
+    const edited = await s.run(Routines.use((r) => r.update(first, { name: "Renamed" })))
+    expect(edited.name).toBe("Renamed")
+    await s.run(Routines.use((r) => r.update(first, { enabled: false })))
+    await s.run(Routines.use((r) => r.update(first, { enabled: true })))
+    expect(await count(s)).toBe(50)
+  })
+
+  test("a refused routine makes no row", async () => {
+    const s = await setup()
+    await fill(s, 50)
+    await refusal(s)
+    await refusal(s)
+    expect(await count(s)).toBe(50)
+  })
+})
+
+describe("a routine that pauses itself (spec 009, Repeated failure)", () => {
+  const notices = (s: Awaited<ReturnType<typeof setup>>) => s.t.shell.notices
+
+  test("the third failed run pauses it: one notice says so, the fourth run does not start, Resume goes on", async () => {
+    blockReplies = true
+    try {
+      const s = await setup()
+      s.t.shell.focused = false
+      const routine = await s.create("BLOCKME in the folder", 2)
+      const t0 = routine.createdAt
+      for (let i = 1; i <= 3; i++) {
+        await s.tick(t0 + i * 2 * MIN + 1000)
+        await s.idle()
+      }
+      // A failed run that does not pause the routine has its own notice. The third failed run has
+      // only the notice that says the routine is paused, not two notices.
+      expect(notices(s).map((n) => n.title)).toEqual(["Ada", "Ada", "Ada"])
+      expect(notices(s)[0]?.body).not.toContain("paused")
+      expect(notices(s)[1]?.body).not.toContain("paused")
+      expect(notices(s)[2]?.body).toBe("Check is paused after 3 failed runs.")
+      const paused = await s.routine(routine.id)
+      expect(paused?.enabled).toBe(false)
+      expect(paused?.pausedAfterFailures?.code).toBe("blocked")
+
+      // The fourth run does not start, and no notice comes for it.
+      await s.tick(t0 + 4 * 2 * MIN + 1000)
+      await s.idle()
+      expect(await s.tasks()).toHaveLength(3)
+      expect(notices(s)).toHaveLength(3)
+
+      // Resume starts the checks again, and the count of failed runs starts at 0.
+      await s.run(Routines.use((r) => r.update(routine.id, { enabled: true })))
+      const resumed = await s.routine(routine.id)
+      expect(resumed?.enabled).toBe(true)
+      expect(resumed?.pausedAfterFailures).toBeNull()
+      await s.tick(Date.now() + 2 * MIN + 1000)
+      await s.idle()
+      expect(await s.tasks()).toHaveLength(4)
+      // One failed run after the resume does not pause it.
+      expect((await s.routine(routine.id))?.enabled).toBe(true)
+    } finally {
+      blockReplies = false
+    }
+  })
+
+  test("runs that cannot start make no task, and the third failure still sends the one notice", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    const routine = await s.create("No account", 2, {
+      model: { accountId: "gone-account", model: "other", effort: null },
+    })
+    for (let i = 1; i <= 3; i++) await s.tick(routine.createdAt + i * 2 * MIN + 1000)
+    expect(notices(s)).toHaveLength(1)
+    expect(notices(s)[0]?.body).toBe("Check is paused after 3 failed runs.")
+    // The fourth run does not start: no new failed entry in the calendar.
+    await s.tick(routine.createdAt + 4 * 2 * MIN + 1000)
+    expect((await s.calendar()).filter((e) => e.state === "failed")).toHaveLength(3)
+    expect(notices(s)).toHaveLength(1)
+    // Resume starts the checks again.
+    await s.run(Routines.use((r) => r.update(routine.id, { enabled: true })))
+    await s.tick(Date.now() + 2 * MIN + 1000)
+    expect((await s.calendar()).filter((e) => e.state === "failed")).toHaveLength(4)
+    expect((await s.routine(routine.id))?.enabled).toBe(true)
+  })
+
+  test("the notice is in the language of the interface", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    await s.run(SettingsStore.use((x) => x.update({ language: "ko" })))
+    const routine = await s.create("No account", 2, {
+      model: { accountId: "gone-account", model: "other", effort: null },
+    })
+    for (let i = 1; i <= 3; i++) await s.tick(routine.createdAt + i * 2 * MIN + 1000)
+    expect(notices(s)).toHaveLength(1)
+    expect(notices(s)[0]?.body).toBe("Check이(가) 3번 연속 실패해서 일시 중지됐어요.")
+  })
+
+  test("a notice names the routine paused, and a muted server gets none", async () => {
+    const s = await setup()
+    s.t.shell.focused = false
+    await s.run(Notifier.use((n) => n.setMute("server", s.local.id, "1h")))
+    const routine = await s.create("No account", 2, {
+      model: { accountId: "gone-account", model: "other", effort: null },
+    })
+    for (let i = 1; i <= 3; i++) await s.tick(routine.createdAt + i * 2 * MIN + 1000)
+    expect(notices(s)).toHaveLength(0)
+    expect((await s.routine(routine.id))?.enabled).toBe(false)
+  })
+
+  test("a Skipped run and a Cancelled run do not change the count: two failures, both, one failure pause it", async () => {
+    const s = await setup()
+    const routine = await s.create("BLOCKME SLOW", 2)
+    const t0 = routine.createdAt
+    const round = async (n: number, blocked: boolean) => {
+      blockReplies = blocked
+      await s.tick(t0 + n * 2 * MIN + 1000)
+    }
+    try {
+      await round(1, true)
+      await s.idle()
+      await round(2, true)
+      await s.idle()
+      // A slow run goes. The next check finds it running: it is Skipped.
+      await round(3, false)
+      await until(async () => (await s.tasks()).some((x) => x.state === "running"))
+      await round(4, false)
+      expect((await s.calendar()).filter((e) => e.state === "skipped")).toHaveLength(1)
+      // The user stops the slow run: it is Cancelled.
+      await s.run(Chat.use((c) => c.stop(s.agent.id)))
+      await s.idle()
+      expect((await s.routine(routine.id))?.enabled).toBe(true)
+      // The third failed run pauses it, as if the Skipped and the Cancelled run were not there.
+      await round(5, true)
+      await s.idle()
+      expect((await s.tasks()).map((x) => x.state).sort()).toEqual([
+        "blocked",
+        "blocked",
+        "blocked",
+        "cancelled",
+      ])
+      expect((await s.routine(routine.id))?.enabled).toBe(false)
+    } finally {
+      blockReplies = false
+    }
+  })
+
+  test("a run of Run now that fails counts like a run of the schedule", async () => {
+    blockReplies = true
+    try {
+      const s = await setup()
+      const routine = await s.create("BLOCKME in the folder", 2)
+      for (let i = 1; i <= 3; i++) {
+        await s.run(Routines.use((r) => r.runNow(routine.id)))
+        await s.idle()
+      }
+      expect((await s.routine(routine.id))?.enabled).toBe(false)
+      expect((await s.routine(routine.id))?.pausedAfterFailures?.code).toBe("blocked")
+    } finally {
+      blockReplies = false
+    }
+  })
+
+  test("an edit of the prompt, the trigger, the agent or the place sets the count to 0", async () => {
+    blockReplies = true
+    try {
+      const s = await setup()
+      const routine = await s.create("BLOCKME in the folder", 2)
+      const fail = async (n: number) => {
+        await s.tick(Date.now() + n * 2 * MIN + 1000)
+        await s.idle()
+      }
+      await fail(1)
+      await fail(2)
+      // Two failed runs, then an edit of the prompt: the next failed run is the first of three.
+      await s.run(Routines.use((r) => r.update(routine.id, { prompt: "BLOCKME again" })))
+      await fail(3)
+      expect((await s.routine(routine.id))?.enabled).toBe(true)
+      await fail(4)
+      expect((await s.routine(routine.id))?.enabled).toBe(true)
+      await fail(5)
+      expect((await s.routine(routine.id))?.enabled).toBe(false)
+    } finally {
+      blockReplies = false
+    }
   })
 })

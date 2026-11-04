@@ -4,8 +4,10 @@ import {
   changeText,
   dueRuns,
   isActive,
+  type Locale,
   type OutsideSource,
   ROUTINE_FAILURES_MAX,
+  ROUTINES_MAX,
   type Routine,
   type RoutineEntry,
   type RoutineEntryState,
@@ -13,9 +15,11 @@ import {
   type RoutineInput,
   type RoutinePatch,
   type RoutinePlace,
+  resolveLocale,
   runText,
   runTimes,
   type Schedule,
+  translate,
   validSchedule,
   validWatch,
   type Watch,
@@ -28,6 +32,8 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Notifier } from "./Notifier.ts"
+import { Platform } from "./Platform.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { type CheckOutcome, runCheck, type ToolCaller } from "./watchCheck.ts"
 
@@ -139,6 +145,16 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       const chat = yield* Chat
       const channels = yield* Channels
       const notifier = yield* Notifier
+      const settings = yield* SettingsStore
+      const platform = yield* Platform
+
+      const localeNow = (): Locale =>
+        resolveLocale(Effect.runSync(settings.get).language, platform.systemLocale())
+
+      /** The routines of a server. A paused routine counts (spec 009, "Limits and safeguards"). */
+      const routineCount = (serverId: string) =>
+        db.get<{ n: number }>("SELECT COUNT(*) AS n FROM routine WHERE server_id = ?", serverId)
+          ?.n ?? 0
 
       const stateOf = (id: string): StateRow =>
         db.get<StateRow>("SELECT * FROM routine_state WHERE routine_id = ?", id) ?? {
@@ -240,43 +256,51 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
 
       /**
        * A failed run or a failed check adds 1 to the count. At 3 in a row the routine pauses
-       * itself, keeps the reason, and sends one notification (spec 009, "Repeated failure").
+       * itself, keeps the reason, and sends one notification (spec 009, "Repeated failure"). It
+       * returns true when it sent that notification: it says that the routine is paused, and it
+       * is the only one for that failure, so a task that failed makes no notice of its own.
        */
-      const addFailure = (routineId: string, reason: RoutineFailure) => {
+      const addFailure = (routineId: string, reason: RoutineFailure): boolean => {
         const r = row(routineId)
-        if (!r) return
+        if (!r) return false
         const count = stateOf(routineId).failed_runs + 1
         setState(routineId, { failed_runs: count })
-        if (count < ROUTINE_FAILURES_MAX || r.enabled !== 1) return
+        if (count < ROUTINE_FAILURES_MAX || r.enabled !== 1) return false
         setState(routineId, { paused_failure: JSON.stringify(reason) })
         db.run("UPDATE routine SET enabled = 0, updated_at = ? WHERE id = ?", Date.now(), r.id)
-        // The main process holds no interface text: the window and the island show the reason
-        // "routine_paused" in the language of the interface.
+        // The notice is of the kind "routine failed" and it says "<routine> is paused after 3
+        // failed runs", in the language of the interface. The island shows the same words as the
+        // reason of its result card. A click opens the page of routines, where Resume is.
         notifier.notify({
           kind: "routine_failed",
           agentId: r.agent_id,
           serverId: r.server_id,
           channelId: r.channel_id,
           title: r.agent_name,
-          body: r.name,
+          body: translate(localeNow(), "error.routine_paused", { detail: r.name }),
           reason: { code: "routine_paused", detail: r.name },
+          target: r.channel_id
+            ? { kind: "channel", id: r.channel_id }
+            : { kind: "agent", id: r.agent_id },
           page: "workflows",
         })
         changed(r.server_id)
+        return true
       }
       const clearFailures = (routineId: string) =>
         setState(routineId, { failed_runs: 0, paused_failure: null })
 
       // A run that ends as Done sets the count to 0; a run that fails adds 1. A run that the user
       // stops (cancelled) does not change it.
-      tasks.onEnd((task) => {
-        if (task.source !== "routine" || !task.sourceId || task.parentId) return
+      tasks.onEndTold((task) => {
+        if (task.source !== "routine" || !task.sourceId || task.parentId) return false
         // The routine may be gone, or live on the other computer only.
-        if (!row(task.sourceId)) return
+        if (!row(task.sourceId)) return false
         if (task.state === "done") clearFailures(task.sourceId)
         // A blocked run is a failed run for the pause, with the reason of the block (spec 009).
         else if (task.state === "failed" || task.state === "blocked")
-          addFailure(task.sourceId, task.error ?? { code: "unknown", detail: "" })
+          return addFailure(task.sourceId, task.error ?? { code: "unknown", detail: "" })
+        return false
       })
 
       /** Starts a run. `text` is the prompt with what the run gets with it. */
@@ -483,6 +507,10 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           ),
         create: (input, options) =>
           Effect.gen(function* () {
+            // Every way to make a routine comes here: the form, an agent file, a starter. A server
+            // holds at most 50, and a paused routine counts (spec 009, "Limits and safeguards").
+            if (routineCount(input.serverId) >= ROUTINES_MAX)
+              return yield* new AppError({ code: "routines_full", detail: String(ROUTINES_MAX) })
             const trigger = triggerOf(input as { schedule?: Schedule; watch?: Watch })
             yield* checkInput(input.agentId, trigger, input.place)
             const id = randomUUID()

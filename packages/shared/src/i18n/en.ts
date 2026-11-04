@@ -1796,6 +1796,9 @@ export const en = {
   "routines.watch.first":
     "The first check keeps the result and does not run the routine. A later check runs it when the result changed.",
   "routines.watch.often": "This checks about {n} times a day.",
+  "routines.often": "This runs about {n} times a day.",
+  "error.routines_full":
+    "This server has {detail} routines, the most it can hold. A paused routine counts. Delete one to make another.",
   "routines.confirm.title": "This runs at each check",
   "routines.confirm.command":
     "ROBot runs this command in the workspace of {agent} at each check, with no question:",

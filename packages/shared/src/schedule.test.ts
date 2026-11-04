@@ -4,6 +4,7 @@ import {
   MISSED_MAX_MS,
   parseCron,
   parseTime,
+  runsPerDayNote,
   runTimes,
   type Schedule,
   validSchedule,
@@ -85,5 +86,49 @@ describe("dueRuns", () => {
     const r = dueRuns({ kind: "once", at: 5 * MIN }, 0, late)
     expect(r).toEqual({ start: null, missed: [5 * MIN] })
     expect(MISSED_MAX_MS).toBe(12 * 60 * MIN)
+  })
+})
+
+describe("runsPerDayNote (spec 009: a schedule under 15 minutes shows how often it runs)", () => {
+  const now = at(2026, 3, 4, 10, 0)
+  const note = (s: Schedule) => runsPerDayNote(s, now)
+
+  test("every 5 minutes runs about 288 times a day", () => {
+    expect(note({ kind: "every", minutes: 5, from: now })).toBe(288)
+  })
+  test("every minute and every 14 minutes show it; every 15 minutes does not", () => {
+    expect(note({ kind: "every", minutes: 1, from: now })).toBe(1440)
+    expect(note({ kind: "every", minutes: 14, from: now })).toBe(103)
+    expect(note({ kind: "every", minutes: 15, from: now })).toBeNull()
+    expect(note({ kind: "every", minutes: 60, from: now })).toBeNull()
+  })
+  test("a daily schedule shows it only when two times are under 15 minutes apart", () => {
+    expect(note({ kind: "daily", times: ["09:00"] })).toBeNull()
+    expect(note({ kind: "daily", times: ["09:00", "18:30"] })).toBeNull()
+    expect(note({ kind: "daily", times: ["09:00", "09:15"] })).toBeNull()
+    expect(note({ kind: "daily", times: ["09:00", "09:14", "18:00"] })).toBe(3)
+    // The same time twice is one run time.
+    expect(note({ kind: "daily", times: ["09:00", "09:00"] })).toBeNull()
+  })
+  test("the last time of a day and the first of the next count as two runs in a row", () => {
+    expect(note({ kind: "daily", times: ["00:05", "23:55"] })).toBe(2)
+  })
+  test("a cron schedule counts the runs of a full day", () => {
+    expect(note({ kind: "cron", expr: "*/5 * * * *" })).toBe(288)
+    expect(note({ kind: "cron", expr: "* * * * *" })).toBe(1440)
+    // The busiest day: 9:00 to 9:59 every 10 minutes, on weekdays and weekends alike.
+    expect(note({ kind: "cron", expr: "*/10 9 * * *" })).toBe(6)
+    expect(note({ kind: "cron", expr: "0 9 * * 1-5" })).toBeNull()
+    expect(note({ kind: "cron", expr: "*/30 * * * *" })).toBeNull()
+  })
+  test("a cron schedule that runs on some days counts the busiest of them", () => {
+    // 2026-03-04 is a Wednesday. Only Mondays run, and the next Monday is inside 7 days.
+    expect(note({ kind: "cron", expr: "*/5 9-10 * * 1" })).toBe(24)
+  })
+  test("once, weekly and a schedule that is not valid never show it", () => {
+    expect(note({ kind: "once", at: now + 1000 })).toBeNull()
+    expect(note({ kind: "weekly", days: [1, 2, 3], time: "09:00" })).toBeNull()
+    expect(note({ kind: "every", minutes: 0, from: now })).toBeNull()
+    expect(note({ kind: "cron", expr: "nope" })).toBeNull()
   })
 })

@@ -38,8 +38,9 @@ export class Starters extends Context.Service<Starters, StartersService>()("robo
       const chat = yield* Chat
 
       /**
-       * The routines of a server, a paused one too. The limit of 50 is checked here, because the
-       * routine form does not refuse the 51st routine yet (slice S29).
+       * The routines of a server, a paused one too. A starter checks the limit of 50 before it
+       * makes the routine, so that the chat of the new agent can say that the limit is why (the
+       * service of routines refuses the 51st routine too, for every other way in).
        */
       const routineCount = (serverId: string) =>
         db.get<{ n: number }>("SELECT COUNT(*) AS n FROM routine WHERE server_id = ?", serverId)
