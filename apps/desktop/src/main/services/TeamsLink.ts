@@ -1248,6 +1248,9 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           } finally {
             run.busy = false
           }
+          // A shown page always takes the input of the user, also after the page was made again
+          // with no new place from the window (a break of the page, with the same bounds).
+          if (run.pageShown) surface.allowUserInput(true)
         }
 
         // ----------------------------------------------------------------- Start and stop
@@ -1379,13 +1382,15 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             yield* ensureProfile
             run.pageShown = true
             run.watchAt = 0
+            // The input goes in from the moment the page shows: the user signs in by hand while
+            // the page still loads, and a slow load never leaves a shown page that takes no input.
+            surface.allowUserInput(true)
             changed()
             // The page opens now, so the window can place it at once. A page that cannot load
             // is a state, not a failure of this call.
             const look = yield* Effect.promise(() => guarded(() => surface.look()))
             if (look?.kind === "signIn") setSignedIn(false)
             else if (look?.kind === "teams") setSignedIn(true)
-            surface.allowUserInput(true)
             changed()
             return viewOf()
           })(),
@@ -1405,8 +1410,12 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
 
           place: (bounds) =>
             Effect.sync(() => {
-              if (run.pageShown) surface.place(bounds)
-              else surface.place(undefined)
+              if (run.pageShown) {
+                surface.place(bounds)
+                // A page that was made again (the window closed and opened, or the page broke)
+                // takes no input until it is allowed again: a shown page always takes it.
+                surface.allowUserInput(true)
+              } else surface.place(undefined)
             }),
 
           useChat: Effect.fn("TeamsLink.useChat")(function* () {

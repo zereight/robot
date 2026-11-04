@@ -410,6 +410,9 @@ const electronBrowser = (agentId: string): BrowserPage => {
       apply()
     },
     allowUserInput: (allowed) => {
+      // The Teams link says this again on each place and each tick while its page shows, so a
+      // page that was made again takes input: only a change moves the focus, never a repeat.
+      if (allowed === userInput) return
       userInput = allowed
       // A test run never moves the system focus: this call makes the app the active program.
       // No test checks where the keys go.
