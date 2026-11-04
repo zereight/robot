@@ -389,7 +389,10 @@ const ToolCard = (props: {
           <Show when={props.part.reason}>
             {(reason) => (
               <span class={styles.toolReason} data-testid="tool-reason" data-code={reason().code}>
-                {t(`error.${reason().code}` as MessageKey, { detail: reason().detail ?? "" })}
+                {t(`error.${reason().code}` as MessageKey, {
+                  detail: reason().detail ?? "",
+                  next: reason().next ?? "",
+                })}
               </span>
             )}
           </Show>

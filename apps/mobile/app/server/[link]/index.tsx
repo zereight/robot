@@ -10,6 +10,7 @@ import { ChannelMark } from "../../../src/ui/ChannelMark.tsx"
 import { Face } from "../../../src/ui/Face.tsx"
 import { Body, Button, HeaderButton, Notice, Screen } from "../../../src/ui/kit.tsx"
 import { stateText } from "../../../src/ui/states.ts"
+import { WorkingDot } from "../../../src/ui/WorkingDot.tsx"
 
 /**
  * Places (spec 011): the sections of the server, read only. The phone remembers which sections
@@ -201,9 +202,7 @@ const Header = (props: {
       >
         {props.title}
       </Text>
-      {!props.open && sum.working ? (
-        <View style={[styles.workDot, { backgroundColor: palette.success }]} />
-      ) : null}
+      {!props.open && sum.working ? <WorkingDot /> : null}
       {!props.open && sum.unread > 0 ? <Badge count={sum.unread} /> : null}
     </Pressable>
   )
@@ -275,9 +274,7 @@ const PlaceRow = (props: {
           >
             {place.name}
           </Text>
-          {place.working ? (
-            <View style={[styles.workDot, { backgroundColor: palette.success }]} />
-          ) : null}
+          {place.working ? <WorkingDot /> : null}
           {role ? (
             // The name comes first. The slot is what is left of the line. The badge is cut with an
             // ellipsis in it, and it hides when less than 4 characters of it fit.
@@ -333,7 +330,6 @@ const styles = StyleSheet.create({
   chevron: { width: 14, fontSize: text.s },
   headerBig: { flex: 1, fontSize: text.l, fontWeight: "700" },
   headerSmall: { flex: 1, fontSize: text.s, fontWeight: "600" },
-  workDot: { width: 8, height: 8, borderRadius: 4 },
   badge: {
     minWidth: 22,
     height: 22,

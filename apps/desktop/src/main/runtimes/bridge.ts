@@ -28,8 +28,18 @@ export const BROWSER_TOOL_NAMES = [
  */
 export const SEARCH_TOOL_NAME = "search_chats"
 
+/**
+ * The tools to work with other agents (spec 007, "Working with other agents"). The app checks
+ * each send, so the hand-off rule of spec 030 holds for a vendor program as for an API agent.
+ */
+export const AGENT_TOOL_NAMES = ["list_agents", "send_message"] as const
+
 /** The tools that the app can give to a runtime. */
-export const BRIDGE_TOOL_NAMES = [...BROWSER_TOOL_NAMES, SEARCH_TOOL_NAME] as const
+export const BRIDGE_TOOL_NAMES = [
+  ...BROWSER_TOOL_NAMES,
+  SEARCH_TOOL_NAME,
+  ...AGENT_TOOL_NAMES,
+] as const
 
 /** The name of the server, as the vendor program shows it in the name of a tool. */
 export const BRIDGE_SERVER = "robot"

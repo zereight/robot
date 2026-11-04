@@ -1149,6 +1149,45 @@ describe("the step for the memory check", () => {
   })
 })
 
+describe("the step of the part Organization (spec 030, S110)", () => {
+  const ORG = migrations.findIndex((sql) => sql.includes("CREATE TABLE organization"))
+
+  test("it makes one table, once, with one row that holds the default rule", () => {
+    expect(ORG).toBeGreaterThan(0)
+    expect(migrations.filter((sql) => sql.includes("CREATE TABLE organization"))).toHaveLength(1)
+    // It drops nothing and changes no row that exists (the triggers name UPDATE and DELETE).
+    expect(migrations[ORG] ?? "").not.toMatch(/DROP /i)
+    const db = upTo(ORG)
+    db.exec(migrations[ORG] as string)
+    expect(db.prepare("SELECT id, hand_off, changed_at FROM organization").all()).toEqual([
+      { id: "organization", hand_off: "any", changed_at: 0 },
+    ])
+  })
+
+  test("the table takes the two known rules and one row only", () => {
+    const db = upTo(ORG + 1)
+    db.exec("UPDATE organization SET hand_off = 'channels'")
+    expect(db.prepare("SELECT hand_off FROM organization").get()).toEqual({ hand_off: "channels" })
+    expect(() => db.exec("UPDATE organization SET hand_off = 'all'")).toThrow()
+    expect(() => db.exec("INSERT INTO organization (id) VALUES ('second')")).toThrow()
+  })
+
+  test("a change of the rule marks the row for sync, in a sync pair only", () => {
+    const db = upTo(ORG + 1)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE organization SET hand_off = 'channels'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([])
+    db.exec(`
+      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+    `)
+    db.exec("UPDATE organization SET hand_off = 'any'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "org", id: "organization" },
+    ])
+  })
+})
+
 describe("the step of the tools and the daily token limit of a channel (spec 030)", () => {
   const LIMIT = migrations.findIndex((sql) => sql.includes("ADD COLUMN daily_token_limit"))
   const server = `

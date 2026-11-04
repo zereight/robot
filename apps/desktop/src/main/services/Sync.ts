@@ -320,6 +320,10 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
               // The instruction history shows in the profile of the agent (spec 002).
               once("agents", () => bus.emit("agents.changed", { serverId }))
               break
+            case "org":
+              // The part "Organization" and the legend of the org chart show the rule (spec 030).
+              once("organization", () => bus.emit("organization.changed", { serverId }))
+              break
             case "hversion":
               // The handbook page shows the newest version and the history (spec 002, 019).
               once("handbook", () => bus.emit("handbook.changed", { serverId }))

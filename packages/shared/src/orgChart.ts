@@ -1,5 +1,6 @@
 import type { AgentState, Face } from "./agents.ts"
 import { treeParents } from "./channelTree.ts"
+import { DEFAULT_HAND_OFF_RULE, type HandOffRule } from "./organization.ts"
 
 // The org chart (spec 029). The chart stores nothing. A snapshot is read from the agents, the
 // channels and the tasks of a server. The functions below turn a snapshot into the nodes and lines
@@ -70,6 +71,8 @@ export interface OrgSnapshot {
   readonly agents: readonly OrgAgent[]
   readonly channels: readonly OrgChannel[]
   readonly handoffs: readonly OrgHandoff[]
+  /** The hand-off rule (spec 030). Absent counts as "Any agent", as for a server of an older step. */
+  readonly handOffRule?: HandOffRule
 }
 
 /** The empty snapshot: a profile with no agent. */
@@ -78,6 +81,7 @@ export const EMPTY_ORG_SNAPSHOT: OrgSnapshot = {
   agents: [],
   channels: [],
   handoffs: [],
+  handOffRule: DEFAULT_HAND_OFF_RULE,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -166,6 +170,11 @@ export interface ChartModel {
   readonly handoffsCapped: boolean
   /** True when no agent exists: the page shows no canvas. */
   readonly empty: boolean
+  /**
+   * The hand-off rule (spec 030). With "Along the channels" the legend ends with the muted line
+   * "Hand-offs follow the channels." Absent counts as "Any agent".
+   */
+  readonly handOffRule?: HandOffRule
 }
 
 /** Cuts a label at `max` characters (the sign for a cut counts) and joins the white space. */
@@ -249,13 +258,24 @@ const channelsOf = (snapshot: OrgSnapshot) => {
 /** The key of the node of an agent copy. */
 export const copyKey = (channelKey: string, agentId: string) => `${channelKey}/${agentId}`
 
+/** The rule goes into the model only when it is "Along the channels"; "Any agent" is the absence. */
+const ruleOf = (snapshot: OrgSnapshot): { handOffRule?: HandOffRule } =>
+  snapshot.handOffRule === "channels" ? { handOffRule: "channels" } : {}
+
 /**
  * Turns a snapshot into the nodes and lines of the chart (spec 029): the root, the channel nodes
  * with their copies of agents, the caps of 12 nodes and 40 hand-off lines, and the lines.
  */
 export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
   if (snapshot.agents.length === 0) {
-    return { root: null, channels: [], lines: [], handoffsCapped: false, empty: true }
+    return {
+      root: null,
+      channels: [],
+      lines: [],
+      handoffsCapped: false,
+      empty: true,
+      ...ruleOf(snapshot),
+    }
   }
   const agents = new Map(snapshot.agents.map((a) => [a.id, a]))
   const main = snapshot.mainAgentId ? agents.get(snapshot.mainAgentId) : undefined
@@ -436,6 +456,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
     lines,
     handoffsCapped: drawable.length > ORG_HANDOFF_LINES_MAX,
     empty: false,
+    ...ruleOf(snapshot),
   }
 }
 

@@ -184,6 +184,7 @@ describe("agents, channels and states", () => {
       agents: [],
       channels: [],
       handoffs: [],
+      handOffRule: "any",
     })
     expect(buildChart(await s.snapshot()).empty).toBe(true)
   })

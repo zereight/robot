@@ -177,9 +177,14 @@ export type MessagePart =
       readonly connection?: ConnectionNote
       /**
        * Set when the app refused or failed the step for a reason of its own (spec 005): a code
-       * that the card translates, for example the limit of the chain of messages.
+       * that the card translates, for example the limit of the chain of messages. `next` is a
+       * second name for the words of the card (the agent to send to, spec 030).
        */
-      readonly reason?: { readonly code: string; readonly detail?: string }
+      readonly reason?: {
+        readonly code: string
+        readonly detail?: string
+        readonly next?: string
+      }
     }
 
 /** What a card of a connection shows (spec 018). The log reads the names of a call from it. */

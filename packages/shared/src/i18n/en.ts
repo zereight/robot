@@ -2824,6 +2824,26 @@ export const en = {
   "error.invalid_daily_limit":
     "Use a whole number from 10,000 to 100,000,000 for the daily token limit.",
   "error.channel_limit": "The daily token limit of {detail} is used.",
+  "settings.section.organization": "Organization",
+  "organization.hint":
+    "How the agents of this server work together. The hand-off rule says who an agent may send a message to.",
+  "organization.handOff": "Hand-off rule",
+  "organization.handOff.hint":
+    "The work that you give does not change: a direct chat, a job for a channel, a mention, a routine, a workflow and a card of the board go as before.",
+  "organization.handOff.any": "Any agent",
+  "organization.handOff.channels": "Along the channels",
+  "organization.handOff.now.any": "Every agent can send a message to every other agent.",
+  "organization.handOff.now.channels":
+    "An agent can send a message to the agents of its channels and to the main agent. A lead can also send to the lead of the parent channel and to the lead of a sub-channel. The main agent can send to every agent.",
+  "organization.remote": "This is the part “Organization” of {name}.",
+  "organization.readonly":
+    "A linked computer reads this part and does not change it. Change it on {name}.",
+  "organization.offline": "{name} is offline. Open this page when it is online again.",
+  "organization.syncs": "This part syncs with the other computer. The later change wins.",
+  "orgchart.legend.channels": "Hand-offs follow the channels.",
+  "error.hand_off_path": "{detail} is not on your path. Send it to {next}.",
+  "error.hand_off_none":
+    "{detail} is not on your path, and no agent can pass it on. Tell the user.",
 } as const
 
 export type MessageKey = keyof typeof en

@@ -105,6 +105,7 @@ import { Memory } from "./Memory.ts"
 import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
+import { Organization } from "./Organization.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -578,6 +579,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const memory = yield* Memory
       const handbook = yield* Handbook
       const knowledge = yield* Knowledge
+      const organization = yield* Organization
       const notifier = yield* Notifier
       const skills = yield* Skills
       const settings = yield* SettingsStore
@@ -1430,6 +1432,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               }),
               `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
               CHAIN_LIMIT_RULE,
+              // The main agent is told what the hand-off rule means for it (spec 030).
+              organization.told(agentId),
               connected?.rule() ?? "",
               // A task of a routine, a workflow or another agent can say that it was blocked.
               toldAboutBlocked(task) ? BLOCKED_RULE : "",

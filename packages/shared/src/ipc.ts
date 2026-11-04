@@ -47,6 +47,7 @@ import type {
 } from "./memory.ts"
 import type { MemoryCheckInfo } from "./memoryCheck.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
+import type { HandOffRule, Organization } from "./organization.ts"
 import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
 import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
@@ -827,6 +828,16 @@ export interface RpcMethods {
    */
   "orgChart.model": { input: { serverId: string }; output: ChartModel }
   /**
+   * The part "Organization" of the settings (spec 030, 013): the hand-off rule of a server. A
+   * linked computer reads it with no switch (spec 012).
+   */
+  "organization.get": { input: { serverId: string }; output: Organization }
+  /**
+   * Sets the hand-off rule of this computer (spec 030). There is no request for a linked server:
+   * a client reads the part and never changes it (spec 012).
+   */
+  "organization.setHandOff": { input: { rule: HandOffRule }; output: Organization }
+  /**
    * Message search (spec 001): one page of the messages of a server that hold every word of the
    * text, newest first. A linked server answers it; while the link is offline the answer comes
    * from the saved messages and says so.
@@ -956,6 +967,8 @@ export interface RpcEvents {
   "today.changed": TodaySnapshot
   /** The org chart changed: the whole snapshot, so the window needs no second request (spec 029). */
   "orgChart.changed": OrgSnapshot
+  /** The part "Organization" changed here, by sync, or on a linked server (spec 030). */
+  "organization.changed": { serverId: string }
   /**
    * The org chart of a linked server changed: its whole ready model (spec 029, 012). A server
    * pushes it to its linked devices. This computer sends it to no window of its own, so a window

@@ -21,6 +21,7 @@ import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { MemoryCheck } from "./MemoryCheck.ts"
 import { Notifier } from "./Notifier.ts"
+import { Organization } from "./Organization.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Remote } from "./Remote.ts"
@@ -1184,6 +1185,56 @@ describe("two computers that were apart", () => {
       ),
     ).toBe(0)
     expect(await unread(a)).toBe(0)
+  })
+
+  test("the hand-off rule crosses as data of the agents; when both change it apart, the later change wins on both (spec 030, 019)", async () => {
+    const { a, b } = await pair()
+    const rule = (rt: Rt) =>
+      run(
+        rt,
+        Organization.use((o) => o.get),
+      ).then((x) => x.handOff)
+    const set = (rt: Rt, value: "any" | "channels") =>
+      run(
+        rt,
+        Organization.use((o) => o.setHandOff(value)),
+      )
+    expect(await rule(a)).toBe("any")
+    expect(await rule(b)).toBe("any")
+
+    // The rule that is set on one computer counts on the other after it syncs.
+    await set(a, "channels")
+    expect(
+      await waitFor(
+        () => rule(b),
+        (v) => v === "channels",
+      ),
+    ).toBe("channels")
+    // The window of the other computer hears of it.
+    expect(b.events.some((e) => e.event === "organization.changed")).toBe(true)
+
+    // Both change it while apart: the later change wins on both computers.
+    await apart(a, b)
+    await set(b, "any")
+    await settle()
+    await settle()
+    await set(a, "channels")
+    await set(a, "any")
+    await settle()
+    await set(b, "channels")
+    await together(a, b)
+    expect(
+      await waitFor(
+        () => rule(a),
+        (v) => v === "channels",
+      ),
+    ).toBe("channels")
+    expect(
+      await waitFor(
+        () => rule(b),
+        (v) => v === "channels",
+      ),
+    ).toBe("channels")
   })
 })
 

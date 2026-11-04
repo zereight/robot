@@ -1157,6 +1157,22 @@ export const migrations: readonly string[] = [
   ALTER TABLE channel ADD COLUMN picture TEXT;
   `,
   `
+  -- The part "Organization" of the settings (spec 013, 030, S110). One row for the profile; its id
+  -- is always 'organization', so both computers of a sync pair name the same row. \`hand_off\` is
+  -- the hand-off rule: 'any' (the default, as every profile was before this step) or 'channels'.
+  -- \`changed_at\` is the time of the last change by the user (0 while the row has the default), so
+  -- sync can order two changes before it has a stamp. The row syncs (kind "org"): a change on one
+  -- computer counts on the other after it syncs, and the later change wins (spec 019). An export
+  -- keeps it (spec 014). The switch "Ask up the line" joins this row in a later step.
+  CREATE TABLE organization (
+    id TEXT PRIMARY KEY CHECK (id = 'organization'),
+    hand_off TEXT NOT NULL DEFAULT 'any' CHECK (hand_off IN ('any', 'channels')),
+    changed_at INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO organization (id) VALUES ('organization');
+  ${dirtyTriggers("organization", "org", plainId)}
+  `,
+  `
   -- The tools and the daily token limit of a channel (spec 030, S112). \`channels\` is a JSON list of
   -- channel ids next to \`agents\`: a skill or a connection for a list holds agents and channels. An
   -- empty list is what every row had before, so existing data keeps its meaning. A channel that is
