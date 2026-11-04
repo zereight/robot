@@ -26,16 +26,16 @@ only from a fixed list. Nothing is made until the user presses Create.
 ### Keywords
 
 An English keyword is the start of a word: "writ" matches "write" and "writing". A Korean keyword is
-a part of a text: "파일" matches "파일을".
+a part of a text: "파일" matches "파일을", and "이름 바" matches "이름 바꾸기" and "이름 바꿔줘".
 
 | Starter | Keywords in English | Keywords in Korean |
 | --- | --- | --- |
-| Assistant | question, answer, writ, draft, email, explain | 질문, 답변, 글쓰기, 작성, 메일, 설명 |
+| Assistant | question, answer, writ, draft, email, explain | 질문, 답변, 답장, 글쓰기, 작성, 메일, 설명 |
 | Briefer | briefing, news, digest, summar, daily | 브리핑, 뉴스, 요약, 소식, 매일 |
 | Researcher | research, fact, source, verif, compar, study | 조사, 리서치, 사실, 출처, 검증, 비교 |
 | Reviewer | review, code, bug, diff, test | 리뷰, 코드, 버그, 풀 리퀘스트, 테스트 |
-| Organizer | file, folder, organi, sort, renam, tidy | 파일, 폴더, 정리, 분류, 이름 바꾸기, 정돈 |
-| Research | investigat, report, survey, literat | 보고서, 연구, 자료 찾기 |
+| Organizer | file, folder, organi, sort, renam, tidy | 파일, 폴더, 정리, 분류, 이름 바, 정돈 |
+| Research | investigat, report, survey, literat | 보고서, 연구, 자료 |
 | Code review | review, diff, commit | 리뷰, 풀 리퀘스트, 변경 검토 |
 | Files | desktop, download, folder, tidy | 바탕화면, 다운로드, 폴더, 정리 |
 
@@ -259,3 +259,32 @@ starter with the same job. The language follows the interface at the moment of t
 21. With the goal text empty, open the goal dialog with the keyboard: the text box has the focus. Press Tab: the focus moves to the first row, Assistant. Press Enter: the Assistant starter is picked, as with a click. Open the dialog again, type a goal, and press Escape: the dialog closes, and the goal text is cleared.
 22. Paste 320 characters into the goal text: it keeps the first 300. Type only spaces: "Recommended" is not shown, and "All starters" lists the eight starters. Paste 70 characters into a channel name: the field keeps the first 60.
 23. Pick "Files" and press Enter in the preview: nothing is made. Press Tab until Create has the focus, then press Enter: the channel is made, as in item 9.
+
+### Keyword check
+
+The rows below apply the rules in "Matching" and the keyword table to example goal texts. The examples are not user data.
+Each row is one check. The "Recommended" column lists the starters in that order, with their scores.
+Each keyword counts once.
+
+| Goal text | Recommended, best fit first | What it checks |
+| --- | --- | --- |
+| compare three laptops and write a short report | Assistant (1), Researcher (1), Research (1) | Three starters tie at one keyword. The fixed order decides. |
+| clean up my downloads folder | Files (2), Organizer (1) | A plural matches "download". The channel starter has two matches, the agent starter one. |
+| review the changes in my last commit for bugs | Reviewer (2), Code review (2) | Two starters tie at two keywords. The fixed order decides. |
+| write a reply to this email from my landlord | Assistant (2) | Two keywords match in one starter. |
+| daily news briefing about AI | Briefer (3) | Three keywords match in one starter. |
+| find sources for my thesis on sleep | Researcher (1) | A plural matches "source". |
+| plan a trip to Japan | No starter fits | No keyword matches. Travel planning is not covered. |
+| organize my photos by date | Organizer (1) | The stem "organi" matches "organize". |
+| study the facts about vaccines and check the sources | Researcher (3) | Three different keywords match in one starter. |
+| summarize the news and write a short summary | Briefer (2), Assistant (1) | "summar" counts once, although two words match it. |
+| 노트북 몇 개 비교해서 보고서 써줘 | Researcher (1), Research (1) | One Korean keyword for each of two starters. |
+| 다운로드 폴더 정리해줘 | Files (3), Organizer (2) | Three keywords beat two. |
+| 오늘 뉴스 요약해서 매일 아침 알려줘 | Briefer (3) | Three Korean keywords match in one starter. |
+| 이 코드 리뷰해서 버그 찾아줘 | Reviewer (3), Code review (1) | Three keywords beat one. |
+| 자료 찾아서 출처 정리해줘 | Researcher (1), Organizer (1), Research (1) | Four starters tie at one keyword. The fixed order decides, so three show. |
+| 사진 이름 바꿔줘 | Organizer (1) | "이름 바" matches the verb in another ending. |
+| 메일 답장 써줘 | Assistant (2) | "메일" (email) and "답장" (reply) match. |
+| 여행 계획 짜줘 | No starter fits | No keyword matches. Travel planning is not covered. |
+| 번역해줘 | No starter fits | No keyword matches. Translation is not covered. |
+
