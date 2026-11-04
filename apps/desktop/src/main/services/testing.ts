@@ -7,11 +7,29 @@ import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
+import { PAGE_CONTROLS_MAX } from "../web/pageControls.ts"
 import type { ConnectionsOptions } from "./Connections.ts"
-import type { BrowserPage, PlatformService } from "./Platform.ts"
+import type { BrowserAct, BrowserPage, PlatformService } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
 import { fakeClock } from "./silence.testing.ts"
+
+/** One control of a fake page: the selector it answers, and its line in the read list. */
+export interface FakeBrowserControl {
+  selector: string
+  role: string
+  label: string
+  x: number
+  y: number
+}
+
+/** What a test puts on a fake page before the agent acts: its controls, focus, errors, load. */
+export interface FakeBrowserSeed {
+  controls?: FakeBrowserControl[]
+  focus?: string | null
+  errors?: string[]
+  loading?: boolean
+}
 
 /**
  * A platform for unit tests: a temp data folder and a trash list. A test that restarts the app
@@ -60,10 +78,64 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
       for (const l of shell.powerListeners) l()
     },
   }
+  const browserSeeds = new Map<
+    string,
+    { controls: FakeBrowserControl[]; focus: string | null; errors: string[]; loading: boolean }
+  >()
+  const seedBrowserPage = (agentId: string, seed: FakeBrowserSeed) => {
+    browserSeeds.set(agentId, {
+      controls: seed.controls ?? [],
+      focus: seed.focus ?? null,
+      errors: [...(seed.errors ?? [])],
+      loading: seed.loading ?? false,
+    })
+  }
   const fakeBrowser = (agentId: string): BrowserPage => {
     let open = false
     let url = ""
     const listeners: (() => void)[] = []
+    const state = () => {
+      const known = browserSeeds.get(agentId)
+      if (known) return known
+      const fresh = {
+        controls: [] as FakeBrowserControl[],
+        focus: null as string | null,
+        errors: [] as string[],
+        loading: false,
+      }
+      browserSeeds.set(agentId, fresh)
+      return fresh
+    }
+    /** A click or a type: a number picks from the list, a selector must fit exactly one. */
+    const act = (target: string): BrowserAct => {
+      const s = state()
+      if (/^\d+$/.test(target)) {
+        const at = Number(target) - 1
+        if (at < 0 || at >= s.controls.length) return { ok: false, reason: "none" }
+      } else {
+        const fits = s.controls.filter((c) => c.selector === target)
+        if (fits.length === 0) return { ok: false, reason: "none" }
+        if (fits.length > 1)
+          return {
+            ok: false,
+            reason: "many",
+            candidates: fits.slice(0, 5).map((c) => ({
+              index: s.controls.indexOf(c) + 1,
+              role: c.role,
+              label: c.label,
+              x: c.x,
+              y: c.y,
+            })),
+            total: fits.length,
+          }
+      }
+      const errors = s.errors
+      s.errors = []
+      return {
+        ok: true,
+        state: { url, title: "Fake page", loading: s.loading, focus: s.focus, errors },
+      }
+    }
     return {
       isOpen: () => open,
       open: async (next) => {
@@ -72,12 +144,25 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
         browserLog.push(`${agentId}:open ${next}`)
         return { url, title: "Fake page" }
       },
-      read: async () => ({ url, title: "Fake page", text: `Text of ${url}` }),
-      click: async (selector) => {
-        browserLog.push(`${agentId}:click ${selector}`)
+      read: async () => {
+        const s = state()
+        return {
+          url,
+          title: "Fake page",
+          text: `Text of ${url}`,
+          controls: s.controls
+            .slice(0, PAGE_CONTROLS_MAX)
+            .map((c, i) => ({ index: i + 1, role: c.role, label: c.label })),
+          total: s.controls.length,
+        }
       },
-      type: async (selector, text) => {
-        browserLog.push(`${agentId}:type ${selector} ${text}`)
+      click: async (target) => {
+        browserLog.push(`${agentId}:click ${target}`)
+        return act(target)
+      },
+      type: async (target, text) => {
+        browserLog.push(`${agentId}:type ${target} ${text}`)
+        return act(target)
       },
       evaluate: async () => {
         throw new Error("The fake browser runs no script")
@@ -198,6 +283,7 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
     clearedProfiles,
     recorders,
     shell,
+    seedBrowserPage,
   }
 }
 
@@ -231,6 +317,7 @@ export const testRuntime = (
     clearedProfiles,
     recorders,
     shell,
+    seedBrowserPage,
   } = testPlatform(options.chat ? { chat: options.chat } : {})
   const events: { event: string; payload: unknown; server?: string }[] = []
   // The clock of the Teams link. A test moves it by hand (`advance`, `sleep`).
@@ -274,6 +361,7 @@ export const testRuntime = (
     clearedProfiles,
     recorders,
     shell,
+    seedBrowserPage,
   }
 }
 

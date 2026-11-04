@@ -408,21 +408,33 @@ const DEFS: Record<string, ToolDef> = {
   },
   browser_read: {
     name: "browser_read",
-    description: "Read the text of the page that is open in the browser.",
+    description: "Read the text and the numbered controls of the page that is open in the browser.",
     schema: object({}, []),
   },
   browser_click: {
     name: "browser_click",
-    description: "Click the element that matches a CSS selector on the open page.",
-    schema: object({ selector: str("A CSS selector.") }, ["selector"]),
+    description:
+      "Click a control on the open page. Give its number from browser_read, or a CSS selector. A selector that fits more than one control clicks nothing and lists up to 5 candidates to pick from. Answers with a short state of the page; set controls to also get the numbered list.",
+    schema: object(
+      {
+        selector: str("The number of a control from browser_read, or a CSS selector."),
+        controls: { type: "boolean", description: "Also list the numbered controls of the page." },
+      },
+      ["selector"],
+    ),
   },
   browser_type: {
     name: "browser_type",
-    description: "Type text into the field that matches a CSS selector on the open page.",
-    schema: object({ selector: str("A CSS selector."), text: str("The text.") }, [
-      "selector",
-      "text",
-    ]),
+    description:
+      "Type text into a control on the open page. Give its number from browser_read, or a CSS selector, with the same fit rules as a click. Answers with a short state of the page; set controls to also get the numbered list.",
+    schema: object(
+      {
+        selector: str("The number of a control from browser_read, or a CSS selector."),
+        text: str("The text."),
+        controls: { type: "boolean", description: "Also list the numbered controls of the page." },
+      },
+      ["selector", "text"],
+    ),
   },
   browser_close: {
     name: "browser_close",
@@ -646,6 +658,17 @@ const cut = (value: string, max: number) =>
   value.length > max
     ? `${value.slice(0, max)}\n[cut: ${value.length - max} more characters]`
     : value
+
+/** The controls of a read list: one control on one line, with the count that the cap hides. */
+const formatControls = (
+  controls: { index: number; role: string; label: string }[],
+  total: number,
+) => {
+  if (total === 0) return "Controls: none"
+  const lines = controls.map((c) => `[${c.index}] ${c.role} "${c.label}"`)
+  if (total > controls.length) lines.push(`... and ${total - controls.length} more`)
+  return `Controls:\n${lines.join("\n")}`
+}
 
 /** What the model reads when a step with a saved secret is refused (spec 020). */
 const SECRET_REFUSALS: Record<SecretAddressError, string> = {
@@ -1403,11 +1426,46 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           if (call.name === "browser_read") {
             const read = await page.read()
             holdOutside(ctx.turn, { kind: "page", host: hostOf(read.url) })
-            return { output: `${read.url}\nTitle: ${read.title}\n\n${read.text}`, failed: false }
+            return {
+              output: `${read.url}\nTitle: ${read.title}\n\n${read.text}\n\n${formatControls(read.controls, read.total)}`,
+              failed: false,
+            }
           }
-          if (call.name === "browser_click") await page.click(text(args, "selector"))
-          else await page.type(text(args, "selector"), text(args, "text"))
-          return { output: "Done.", failed: false }
+          // An action returns a short state, so the agent rarely needs to read again. An
+          // unclear target fails with candidates, and the agent picks one by its number.
+          const target = text(args, "selector")
+          const act =
+            call.name === "browser_click"
+              ? await page.click(target)
+              : await page.type(target, text(args, "text"))
+          if (!act.ok && act.reason === "many") {
+            const lines = act.candidates.map(
+              (c) => `[${c.index}] ${c.role} "${c.label}" at ${c.x},${c.y}`,
+            )
+            return {
+              output: `Not done: "${target}" fits ${act.total} controls. Pick one by its number:\n${lines.join("\n")}`,
+              failed: true,
+            }
+          }
+          if (!act.ok)
+            return {
+              output: `Not done: no control fits "${target}". Read the page with browser_read to see the controls and their numbers.`,
+              failed: true,
+            }
+          const state = act.state
+          const lines = [
+            call.name === "browser_click" ? "Clicked." : "Typed.",
+            `Address: ${state.url}`,
+            `Title: ${state.title}`,
+            `Loading: ${state.loading ? "yes" : "no"}`,
+            `Focus: ${state.focus ?? "none"}`,
+            `Page errors: ${state.errors.length === 0 ? "none" : state.errors.join("; ")}`,
+          ]
+          if (args.controls === true) {
+            const read = await page.read()
+            lines.push("", formatControls(read.controls, read.total))
+          }
+          return { output: lines.join("\n"), failed: false }
         } finally {
           ctx.signal.removeEventListener("abort", stop)
         }
