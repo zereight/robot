@@ -103,6 +103,8 @@ export class FakeChat {
   readonly typed: { chat: string; text: string }[] = []
   /** The times the send button was pressed. A refused press counts too. */
   sendTries = 0
+  /** Each press of the send button, with the time of the stand-in and whether the page refused. */
+  readonly presses: { at: number; refused: boolean; text: string }[] = []
   /**
    * The header of the page shows this title, whatever chat is open, until it is set to null. A
    * test uses it to show a wrong chat title.
@@ -316,7 +318,9 @@ export class FakeChat {
   /** The send button is pressed: the page posts the text of the message box, or refuses. */
   private pressSend() {
     this.sendTries++
-    if (this.sendRefusals > 0) {
+    const refused = this.sendRefusals > 0
+    this.presses.push({ at: this.now(), refused, text: this.composerText })
+    if (refused) {
       this.sendRefusals--
       return
     }
