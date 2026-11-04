@@ -82,6 +82,9 @@ const plan = (body: ChatBody): Plan => {
 const answer = (body: ChatBody): Plan => {
   const last = body.messages.at(-1)?.content ?? ""
   const text = last.split("\n").at(-1) ?? ""
+  // The memory check (spec 008) with nothing to suggest, or after its tool calls.
+  if (String(body.messages[0]?.content ?? "").startsWith("You look back at recent turns"))
+    return { chunks: ["Nothing to suggest."], delay: 0 }
   // "Make a skill" from work (spec 017): the system text says so. The draft depends on the work.
   // "FAILDRAFT" in the work fails the first request for that work; "SLOWDRAFT" answers late.
   if (String(body.messages[0]?.content ?? "").includes("You write a reusable skill from work")) {
@@ -398,6 +401,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const toolCalls = (body: ChatBody) => {
   const last = body.messages.at(-1)
   if (!body.tools || last?.role !== "user") return []
+  // The memory check (spec 008) has its own system text. It suggests one fact for every
+  // "REMEMBER: <fact>" in the words of the user, in the order of the request. The turns of the user
+  // are in the text of the request, so no "TOOL" word in them makes a call.
+  if (String(body.messages[0]?.content ?? "").startsWith("You look back at recent turns"))
+    return [...String(last.content).matchAll(/^User: .*?REMEMBER: (.*)$/gm)].map((m) => ({
+      name: "suggest_memory",
+      args: JSON.stringify({ text: (m[1] ?? "").trim() }),
+    }))
   const many = [...last.content.matchAll(/TOOLS (\[.*\])/g)].at(-1)
   if (many) {
     return (JSON.parse(many[1] as string) as { name: string; args: unknown }[]).map((c) => ({
@@ -488,6 +499,9 @@ export interface SentPart {
  * Returns undefined when the message holds no such word, and null for "none".
  */
 const spendOf = (body: ChatBody) => {
+  // Every request of a memory check (spec 008) reports 100 input and 10 output tokens.
+  if (String(body.messages[0]?.content ?? "").startsWith("You look back at recent turns"))
+    return { prompt_tokens: 100, completion_tokens: 10 }
   const at = body.messages.map((m) => m.role).lastIndexOf("user")
   const text = String(body.messages[at]?.content ?? "")
   // The summary of a lead quotes the parts, and so their words. It reports nothing, so that the

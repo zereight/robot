@@ -17,6 +17,7 @@ const NAMES: Record<RuntimeKind, string> = {
   muse: "muse",
   pi: "pi",
   opencode: "opencode",
+  cursor: "cursor-agent",
 }
 
 export const binaryName = (kind: RuntimeKind, platform = process.platform) =>

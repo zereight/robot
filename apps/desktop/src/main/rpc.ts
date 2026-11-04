@@ -67,6 +67,7 @@ import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
 import { KeepAwake } from "./services/KeepAwake.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
+import { MemoryCheck } from "./services/MemoryCheck.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
@@ -1038,6 +1039,20 @@ export const handlers: Handlers = {
       input,
     ).pipe(
       Effect.flatMap(({ agentId, mode }) => Memory.use((m) => m.setMode(agentId, mode))),
+      done,
+    ),
+  "memory.check": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => MemoryCheck.use((m) => m.info(agentId))),
+    ),
+  "memory.check.set": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, on: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ agentId, on }) => MemoryCheck.use((m) => m.setOn(agentId, on))),
+      done,
+    ),
+  "memory.check.now": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => MemoryCheck.use((m) => m.checkNow(agentId))),
       done,
     ),
   "memory.proposals": (input) =>

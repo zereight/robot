@@ -94,6 +94,8 @@ export type RecentPlace =
   | { readonly kind: "computer"; readonly name: string }
   | { readonly kind: "chat" }
   | { readonly kind: "agent" }
+  /** The agent runs a memory check (spec 008). */
+  | { readonly kind: "memoryCheck" }
   /** The agent works in another thread of its chat (spec 003). */
   | { readonly kind: "thread" }
   /** All slots are in use (spec 005, "Queue"): `count` is the number of slots. */
@@ -144,6 +146,8 @@ export const behindWords = (
       return { key: "recent.behind.chat" }
     case "agent":
       return { key: "recent.behind.agent" }
+    case "memoryCheck":
+      return { key: "recent.behind.memoryCheck" }
     case "thread":
       return { key: "recent.behind.thread" }
     case "slot":

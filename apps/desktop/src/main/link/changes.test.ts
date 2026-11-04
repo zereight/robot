@@ -588,6 +588,7 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ["memory.add", { agentId: "x", text: "t" }],
       ["memory.update", { id: "x", text: "t" }],
       ["memory.delete", { id: "x" }],
+      ["memory.check.set", { agentId: "x", on: true }],
       ["handbook.save", { serverId: p.serverId, text: "Answer in Korean." }],
       ["handbook.restore", { serverId: p.serverId, versionId: "x" }],
       ["models.available", undefined],
@@ -612,6 +613,45 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     expect(
       value<{ text: string }>(await p.onServer("handbook.get", { serverId: p.serverId })).text,
     ).toBe("")
+  })
+
+  test("it sees the choice of the memory check with the link only, and changes it only with the switch (spec 008, 012)", async () => {
+    // The switch is off: the client sees the choice and the count, and cannot change them.
+    const off = await pair(false)
+    const agent = value<Agent>(await off.onServer("agents.create", make(off.serverId, "Writer")))
+    const seen = value<{ on: boolean; count: number; every: number; program: string | null }>(
+      await off.ask("memory.check", { agentId: agent.id }),
+    )
+    expect(seen).toMatchObject({ on: false, count: 0, every: 10, program: null })
+    const refused = await off.ask("memory.check.set", { agentId: agent.id, on: true })
+    expect(codeOf(refused)).toBe("change_off")
+    expect(
+      value<{ on: boolean }>(await off.onServer("memory.check", { agentId: agent.id })).on,
+    ).toBe(false)
+    // "Check now" runs the model of the server: a client has no such request.
+    expect(await off.raw("memory.check.now", { agentId: agent.id })).toBe("not_allowed")
+
+    // The switch is on: the client turns the check on and off, and the server holds the choice.
+    const on = await pair(true)
+    const writer = value<Agent>(await on.ask("agents.create", make(on.serverId, "Writer")))
+    expect(codeOf(await on.ask("memory.check.set", { agentId: writer.id, on: true }))).toBe("ok")
+    expect(
+      value<{ on: boolean }>(await on.onServer("memory.check", { agentId: writer.id })).on,
+    ).toBe(true)
+    expect(value<{ on: boolean }>(await on.ask("memory.check", { agentId: writer.id })).on).toBe(
+      true,
+    )
+    expect(codeOf(await on.ask("memory.check.set", { agentId: writer.id, on: false }))).toBe("ok")
+    expect(
+      value<{ on: boolean }>(await on.onServer("memory.check", { agentId: writer.id })).on,
+    ).toBe(false)
+    // A field that the request does not list refuses it, and an unknown agent is refused.
+    expect(
+      codeOf(await on.ask("memory.check.set", { agentId: writer.id, on: true, extra: 1 })),
+    ).toBe("invalid_input")
+    expect(codeOf(await on.ask("memory.check.set", { agentId: "nope", on: true }))).toBe(
+      "agent_not_found",
+    )
   })
 
   test("it reads the handbook with no switch, and saves and restores it only with the switch (spec 002, 012)", async () => {

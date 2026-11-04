@@ -19,7 +19,8 @@ export type TaskState = (typeof TASK_STATES)[number]
  * Where a task came from. "agent" is a message of another agent (spec 007). "handover" is the
  * message that starts a handover of a chat (spec 003, "Hand over"): its depth is 0. "teams" is a
  * message from Teams to the direct chat of an agent (spec 028): its depth is 0, and it is a normal
- * source in the queue (spec 005).
+ * source in the queue (spec 005). "memory_check" is the short turn that finds facts that an agent
+ * did not save (spec 008): its depth is 0, it posts no message, and it is last in the queue.
  */
 export const TASK_SOURCES = [
   "chat",
@@ -29,6 +30,7 @@ export const TASK_SOURCES = [
   "agent",
   "handover",
   "teams",
+  "memory_check",
 ] as const
 export type TaskSource = (typeof TASK_SOURCES)[number]
 
@@ -48,11 +50,11 @@ export const TASKS_QUEUED_MAX = 20
 
 /**
  * The rank of a task that waits in the queue (spec 005, "Queue"): a lower rank starts first. 0 is a
- * task that went on after a wait and needs a slot again, 1 a pick of "Run next", 2 a normal source
- * and 3 a background source.
+ * task that went on after a wait and needs a slot again, 1 a pick of "Run next", 2 a normal source,
+ * 3 a background source and 4 a memory check.
  */
-export const queueRank = (source: TaskSource, picked: boolean): 1 | 2 | 3 =>
-  picked ? 1 : source === "routine" || source === "workflow" ? 3 : 2
+export const queueRank = (source: TaskSource, picked: boolean): 1 | 2 | 3 | 4 =>
+  picked ? 1 : source === "memory_check" ? 4 : source === "routine" || source === "workflow" ? 3 : 2
 
 /** States in which a task can still be stopped. A task in review is not one of them (spec 005). */
 export const ACTIVE_STATES: readonly TaskState[] = ["queued", "running", "waiting"]

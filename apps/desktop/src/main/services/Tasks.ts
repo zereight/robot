@@ -509,6 +509,15 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         for (const w of [...waiters].sort(compare)) {
           const holder = holders.get(w.agentId)
           if (holder !== undefined && holder !== w.id) continue
+          // A memory check starts only when its agent has no other task that runs or waits
+          // (spec 005, 008).
+          if (
+            w.source === "memory_check" &&
+            !w.back &&
+            !picks.has(w.id) &&
+            waiters.some((o) => o !== w && o.agentId === w.agentId && o.source !== "memory_check")
+          )
+            continue
           // One task per agent across both computers (spec 019): while the other computer runs a
           // task of this agent, this one stays queued.
           if (!w.back && w.slot && remote?.busyOn(w.agentId)) {
@@ -747,7 +756,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             "SELECT server_id, name FROM agent WHERE id = ?",
             agentId,
           )
-          if (task && agent) {
+          // A memory check makes no notification, also when it fails (spec 008).
+          if (task && agent && task.source !== "memory_check") {
             // A routine that posts in a channel fails in that channel.
             const channelId =
               task.source === "channel"
@@ -1329,6 +1339,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             return { kind: "chat" }
           case "agent":
             return { kind: "agent" }
+          case "memory_check":
+            return { kind: "memoryCheck" }
         }
       }
 

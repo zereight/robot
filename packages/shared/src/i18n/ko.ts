@@ -274,6 +274,7 @@ export const ko: Record<MessageKey, string> = {
   "providers.kind.muse": "Muse Code (Meta 계정)",
   "providers.kind.pi": "pi (자체 로그인)",
   "providers.kind.opencode": "opencode (자체 로그인)",
+  "providers.kind.cursor": "Cursor (Cursor 계정)",
   "providers.name": "계정 이름",
   "providers.name.placeholder": "예: 회사",
   "providers.baseUrl": "기본 URL",
@@ -290,7 +291,7 @@ export const ko: Record<MessageKey, string> = {
   "providers.cancel": "취소",
   "providers.empty": "아직 계정이 없어요. 계정을 추가해서 에이전트에게 모델을 연결하세요.",
   "providers.runtimes":
-    "Claude Code, Codex, Muse Code, pi, opencode는 이미 로그인한 계정을 그대로 써요. ROBot은 이 컴퓨터에서 프로그램을 실행만 하고, 로그인 정보를 읽지 않아요. 별도 Claude Code 로그인은 프로그램이 ROBot 데이터 폴더에 보관해요. pi와 opencode는 각각에서 설정한 모델을 쓰며, 요금도 그 설정을 따라요.",
+    "Claude Code, Codex, Muse Code, pi, opencode, Cursor는 이미 로그인한 계정을 그대로 써요. ROBot은 이 컴퓨터에서 프로그램을 실행만 하고, 로그인 정보를 읽지 않아요. 별도 Claude Code 로그인은 프로그램이 ROBot 데이터 폴더에 보관해요. pi와 opencode는 각각에서 설정한 모델을 쓰며, 요금도 그 설정을 따라요. Cursor는 이 컴퓨터의 Cursor 계정을 써요.",
   "providers.signIn.choice": "Claude 계정",
   "providers.signIn.computer": "이 컴퓨터의 계정",
   "providers.signIn.own": "다른 계정",
@@ -340,6 +341,9 @@ export const ko: Record<MessageKey, string> = {
     "이 컴퓨터에 opencode 2 이상을 설치한 뒤(예: brew install opencode) '다시 확인'을 누르세요.",
   "runtime.signIn.opencode":
     "opencode 안에서 로그인하세요. opencode auth login을 실행하거나 키를 설정하세요. ROBot에는 opencode 2 이상이 필요해요. 그다음 '다시 확인'을 누르세요.",
+  "runtime.install.cursor": "이 컴퓨터에 Cursor를 설치한 뒤 '다시 확인'을 누르세요.",
+  "runtime.signIn.cursor":
+    "Cursor에서 로그인하세요. cursor-agent login을 실행하거나 CURSOR_API_KEY를 설정한 뒤 '다시 확인'을 누르세요.",
   "runtime.signIn.pi":
     "pi 안에서 로그인하세요. pi를 실행해 /login을 쓰거나 키를 설정한 뒤 '다시 확인'을 누르세요.",
   "runtime.signInCode": "페이지를 열고 이 코드와 같은지 확인하세요:",
@@ -543,6 +547,8 @@ export const ko: Record<MessageKey, string> = {
     "pi는 작업 중에 메시지를 읽지 못해요. 작업이 끝날 때까지 메시지가 여기서 기다려요.",
   "chat.hold.opencode":
     "opencode는 작업 중에 메시지를 읽지 못해요. 작업이 끝날 때까지 메시지가 여기서 기다려요.",
+  "chat.hold.cursor":
+    "Cursor는 작업 중에 메시지를 읽지 못해요. 작업이 끝날 때까지 메시지가 여기서 기다려요.",
   "chat.tool.answeredInChat": "채팅으로 답했어요",
   "settings.duringTurn": "에이전트가 일하는 동안 보낸 메시지",
   "settings.duringTurn.hint":
@@ -925,6 +931,14 @@ export const ko: Record<MessageKey, string> = {
     "opencode를 편집, 쓰기 도구만 가지고 시작해요. 셸은 없어요.",
   "agents.permission.line.opencode.full":
     "opencode를 모든 도구와 함께 시작해요. opencode 자체 설정의 거부 규칙은 그대로 적용돼요.",
+  "agents.permission.line.cursor.read_only":
+    "Cursor를 질문 모드로 시작해요. 파일은 읽을 수 있고, 바꿀 수는 없어요.",
+  "agents.permission.line.cursor.ask_all":
+    "Cursor를 질문 모드로 시작해요. 파일은 읽을 수 있고, 바꿀 수는 없어요.",
+  "agents.permission.line.cursor.ask_risky":
+    "Cursor를 샌드박스를 켠 채로 시작해요. 변경은 적용돼요. 앱에서 실행한 턴은 작업 전에 물을 수 없어요.",
+  "agents.permission.line.cursor.full":
+    "Cursor를 샌드박스 없이 시작해요. 묻지 않고 변경을 적용해요.",
   "agents.permission.confirm.title": "모든 권한을 사용할까요?",
   "agents.permission.confirm.body":
     "에이전트가 묻지 않고 파일을 바꾸고 명령을 실행해요. 거부 규칙은 그대로 적용돼요.",
@@ -1009,6 +1023,22 @@ export const ko: Record<MessageKey, string> = {
   "memory.tab.proposals": "제안",
   "memory.tab.history": "기록",
   "memory.client.more": "{name}에서 열어 주세요.",
+  "memory.check.label": "메모리 점검",
+  "memory.check.hint":
+    "완료된 턴이 10번 쌓일 때마다 에이전트가 짧은 턴을 한 번 더 해서, 저장하지 않은 사실을 찾아요. 점검은 한 번마다 모델의 턴이고, 에이전트의 계정을 써요. 제안은 최대 5개이고, 제안 탭에서 하나씩 직접 정해요.",
+  "memory.check.count": "지난 점검 이후 완료된 턴: {every}번 중 {count}번",
+  "memory.check.now": "지금 점검",
+  "memory.check.now.none": "지난 점검 이후 끝난 턴이 없어요.",
+  "memory.check.now.busy": "점검이 기다리거나 실행 중이에요.",
+  "memory.check.now.off": "먼저 메모리 점검을 켜 주세요.",
+  "memory.check.runtime": "{program}은(는) 메모리 점검을 쓸 수 없어요.",
+  "memory.check.memoryOff": "이 에이전트는 메모리가 꺼져 있어서 점검이 실행되지 않아요.",
+  "memory.check.started": "점검이 에이전트의 대기열에 들어갔어요.",
+  "memory.proposals.fromCheck": "출처: 메모리 점검",
+  "tasks.source.memory_check": "메모리 점검",
+  "error.memory_check_unavailable": "이 프로그램은 메모리 점검을 쓸 수 없어요.",
+  "error.memory_check_off": "지금은 점검을 시작할 수 없어요. 선택과 횟수를 확인해 주세요.",
+  "error.memory_off": "이 에이전트는 메모리가 꺼져 있어요.",
   "memory.proposals.empty": "기다리는 제안이 없어요.",
   "memory.proposals.place": "출처: {name}",
   "memory.proposals.placeGone": "출처: 사라진 대화",
@@ -2040,6 +2070,7 @@ export const ko: Record<MessageKey, string> = {
   "moments.given.routine": "맡김: 루틴",
   "moments.given.workflow": "맡김: 워크플로",
   "moments.given.agent": "맡김: 다른 에이전트",
+  "moments.given.memory_check": "맡김: 메모리 점검",
   "moments.started": "시작",
   "moments.ended.done": "끝남: 완료",
   "moments.ended.failed": "끝남: 실패",
@@ -2062,6 +2093,7 @@ export const ko: Record<MessageKey, string> = {
   "recent.behind.routine": "루틴 {name} 뒤에서 기다려요",
   "recent.behind.workflow": "워크플로 {name} 뒤에서 기다려요",
   "recent.behind.agent": "다른 에이전트의 메시지 작업 뒤에서 기다려요",
+  "recent.behind.memoryCheck": "메모리 점검 뒤에서 기다려요",
   "recent.behind.thread": "다른 스레드를 기다려요",
   "recent.behind.slot": "빈 실행 자리를 기다려요. 실행 자리: {count}",
   "recent.behind.computer": "{name}의 작업 뒤에서 기다려요",
