@@ -411,7 +411,7 @@ describe("a full queue and the order of the queue (spec 005, 008)", () => {
     }
     for (let i = 0; i < MEMORY_CHECK_EVERY - 1; i++) await turn()
     // Twenty tasks wait that no turn runs: the queue of the agent is full.
-    const waiting = []
+    const waiting: { id: string }[] = []
     for (let i = 0; i < 20; i++)
       waiting.push(
         await s.run(
