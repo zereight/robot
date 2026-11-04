@@ -99,7 +99,7 @@ These are in the code today and the specs now say something else.
 | 004, 030 | A question that the lead passes goes to the user. | Same by default. With "Ask up the line" on, a pass that is not "Only the user can choose" goes to the higher leads and the main agent first, at most 3 agents and 5 minutes. |
 | 017, 018, 030 | The agents of a skill or a connection are "All agents" or a list of agents. | The list can also hold channels. A channel gives the skill or connection to its members and to the members of its lower channels. |
 | 005, 006, 030 | A channel has no limit of its own. | A channel can have a daily token limit. At the limit, new tasks of the channel and its lower channels end as Blocked. |
-| 003, 011, 013 | Finished tool steps always show as one card each. | The switch "Show tool steps" (on at first) folds each run of finished plain steps into one muted line with the count. The user opens the line to read the cards. A step that runs, waits, failed, was refused, or carries a note always shows as its own card or line. |
+| 003, 011, 013 | Finished tool steps always show as one card each. | The switch "Show tool steps" (on at first) can be turned off. Then each run of finished plain steps folds into one muted line with the count. The user opens the line to read the cards. A step that runs, waits, failed, was refused, or carries a note always shows as its own card or line. |
 
 ## Slices
 
