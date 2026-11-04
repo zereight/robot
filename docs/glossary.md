@@ -107,10 +107,18 @@ A new word goes here in the same pull request as the spec that brings it.
 | Work card | A card that the board makes by itself for a task that has no card (024). | 진행 중인 작업 카드 (proposed) | planned card, ticket |
 | Backlog, To do, Doing, Done | The four columns of the board (024). Agents leave "Backlog" alone. | 백로그, 할 일, 진행 중, 완료 (proposed) | In progress, Review |
 | Mine | The switch of a card that the user does alone. Agents do not see it (024). | 내가 할 일 (proposed) | Human, private |
-| Org chart | The page that draws the main agent, the channels with their members and leads, the state of each agent, and the work that agents handed to each other (029). It shows teams and hand-offs. It is no tree of bosses. | 조직도 | hierarchy, boss tree, employee tree, reporting line |
+| Org chart | The page that draws the main agent, the channels with their members and leads, the state of each agent, and the work that agents handed to each other (029). It shows teams and hand-offs, and the tree of channels (030). It is no tree of bosses. | 조직도 | hierarchy, boss tree, employee tree, reporting line |
 | Handed work | A task that one agent sent to another with "send message" in the last 7 days. The org chart draws it as a dashed line with a number (029, 007). | 넘긴 작업 | delegation, assignment |
 | Legend words of the org chart | The three kinds of line, named in the legend (029): "Gives parts" for the lead line, "Handed work in the last 7 days" for the hand-off line, "Belongs to" for the structure line. | 부분을 나눠 줘요, 최근 7일간 넘긴 작업, 소속 | boss, manager, reports to |
 | Fit to view | The button and the key "0" that frame the whole org chart with room around it (029). | 화면에 맞추기 | reset, zoom to 100% |
+| Parent channel | The channel that a channel sits inside (030). | 상위 채널 (proposed) | parent team, department |
+| Sub-channel | A channel with a parent channel (030). | 하위 채널 (proposed) | sub-team, child channel |
+| Top channel | A channel with no parent channel (030). | 최상위 채널 (proposed) | root channel |
+| Organization | The settings part with the hand-off rule and "Ask up the line" (030, 013). | 조직 (proposed) | company, Teams (that is the link of 028) |
+| Hand-off rule | The rule of who may send work to whom with "send message" (030). Values: "Any agent", "Along the channels". | 전달 규칙, 아무 에이전트에게, 채널을 따라 (proposed) | chain of command, reporting line |
+| Ask up the line | The switch that sends a question that the lead passes to the higher leads and the main agent before the user (030). | 위로 물어보기 (proposed) | escalate, auto answer |
+| Tools of this channel | The skills and connections that a channel gives to its members and to the members of its lower channels (030). | 이 채널의 도구 (proposed) | team permissions, inherited tools |
+| Daily token limit | The most tokens that the tasks of a channel and its lower channels may use in one day (030). | 하루 토큰 한도 (proposed) | budget, quota |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
 | Keep going | The app asks an agent to go on when a turn ends with open steps (005). | 이어서 진행 (proposed) | autopilot, auto-run |

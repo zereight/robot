@@ -9,7 +9,9 @@ The user gives a job to a group of agents in one place and watches them divide a
 - **Channel**: name (1 to 60 characters), topic (up to 200), instructions (up to 4000 characters,
   empty by default), members (agents), one optional lead agent, the setting "Review parts" (off by
   default), the setting "The lead answers questions" (on by default, see "Questions of members"),
-  the setting "Own copies for parts" (off by default, see 025), and an optional section: a user
+  the setting "Own copies for parts" (off by default, see 025), a parent channel (empty by
+  default), the tools of the channel and a daily token limit (off by default; for these three see
+  030), and an optional section: a user
   section of the Channels list (see 001, "User sections"). With no section, the channel shows in
   the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
@@ -122,7 +124,9 @@ plan and the channel. Then the user does not need to stop for it.
      which starts a reply to the answer in the message box with a mention of the member (flow 2).
   2. Pass: the lead gives a reason of up to 160 characters. The card becomes a normal question
      for the user, with the line "<lead>: <reason>". It is in "Needs you" and makes the normal
-     notification of the kind "question" (015).
+     notification of the kind "question" (015). With the setting "Ask up the line" on (030), a
+     pass that is not of the kind "Only the user can choose" goes first to the higher agents of
+     030, "Ask up the line".
 - The lead is told to pass when the question asks for a choice of taste, money, a payment, a
   message or a file that leaves the computer, a deletion, an account, a key or a secret, a fact
   that the channel does not hold, or when it is not sure. It is told to answer the way the user

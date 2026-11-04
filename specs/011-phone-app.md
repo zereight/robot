@@ -37,8 +37,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
    workflow and reading its runs need only the link. Editing steps and asking the assistant need
    the switch "Can create and change agents" of that computer (012).
 7. **Settings**: language, theme, notifications, unpair.
-8. **Org chart**: a read-only list of the main agent, the channels with their members and leads,
-   the state of each agent, and the work that agents handed to each other in the last 7 days. It
+8. **Org chart**: a read-only list of the main agent, the channels with their members and leads
+   (a sub-channel indented under its parent channel, 030), the state of each agent, and the work that agents handed to each other in the last 7 days. It
    is a list, not a canvas (see 029, "Phone"). A tap on an agent opens its chat, and a tap on a
    channel header opens the channel. It needs only the link.
 

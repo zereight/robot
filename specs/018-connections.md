@@ -9,7 +9,9 @@ as tools. Every use goes through the same approval and rule system as the built-
 
 - **Connection**: a link to a tool provider that speaks MCP (Model Context Protocol, an open
   standard). It has a name, a kind, the settings of its kind, an on or off switch, and the agents
-  that may use it ("All agents", or a list).
+  that may use it ("All agents", or a list). The list can hold agents and channels. A channel in
+  the list gives the connection to its members and to the members of its lower channels (030,
+  "Channel tools").
   - The name holds 1 to 40 characters. It is unique, and the check ignores case.
 - **Kind**: one of two.
   - **Program on this computer**: the app starts a program. The settings are the command, a list

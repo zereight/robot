@@ -183,7 +183,8 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - If an import fails, the agents made so far stay. The error says why it stopped.
 - **Channels in the file**: with "Channels of these agents", the file holds each channel whose
   members are all among the picked agents and that is not archived: name, topic, instructions, the
-  setting "Review parts", the members and the lead, by the names of the agents in the file. It holds
+  setting "Review parts", the members and the lead, by the names of the agents in the file, the
+  daily token limit, and the parent channel when that channel is in the file too (030). It holds
   no message, no section and no memory note. Import makes new channels only. A name that is taken
   gets a number. A channel whose member the user did not tick on the review screen is made without
   that member. A lead that is not made leaves the channel with no lead. A channel with no member
