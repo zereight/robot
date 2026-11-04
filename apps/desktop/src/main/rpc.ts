@@ -1138,6 +1138,24 @@ export const handlers: Handlers = {
         Skills.use((s) => s.create(serverId, skill, agentIds)),
       ),
     ),
+  "skills.update": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String.check(Schema.isMaxLength(1000)),
+        description: Schema.String.check(Schema.isMaxLength(10_000)),
+        instructions: Schema.String.check(Schema.isMaxLength(100_000)),
+        agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ id, agentIds, ...skill }) =>
+        Skills.use((s) => s.update(id, skill, agentIds)),
+      ),
+    ),
+  "skills.duplicate": (input) =>
+    decode(
+      Schema.Struct({ id: Schema.String, suffix: Schema.String.check(Schema.isMaxLength(20)) }),
+    )(input).pipe(Effect.flatMap(({ id, suffix }) => Skills.use((s) => s.duplicate(id, suffix)))),
   "skills.setEnabled": (input) =>
     decode(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }))(input).pipe(
       Effect.flatMap(({ id, enabled }) => Skills.use((s) => s.setEnabled(id, enabled))),

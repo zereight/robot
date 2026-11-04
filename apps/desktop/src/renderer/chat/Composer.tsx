@@ -7,6 +7,9 @@ import {
   type QueuedMessage,
   type QueueHold,
   type Skill,
+  type SlashCommand,
+  slashItems,
+  slashQuery,
 } from "@robot/shared"
 import {
   CornerDownRight,
@@ -23,6 +26,7 @@ import {
   createResource,
   createSignal,
   For,
+  on,
   onCleanup,
   onMount,
   Show,
@@ -34,6 +38,7 @@ import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
+import { compactOffKey } from "./ContextMeter.tsx"
 import styles from "./chat.module.css"
 import { pendingFill, takeFill } from "./fill.ts"
 import { threadPart } from "./threads.ts"
@@ -52,9 +57,6 @@ export interface ComposerProps {
   onConnect: () => void
   onChooseModel: () => void
 }
-
-/** The picker shows at most this many skills (spec 003). */
-const SKILL_LIST_MAX = 30
 
 /** The reason why queued messages cannot go into the turn. */
 const holdKey = (hold: QueueHold) => `chat.hold.${hold.runtime}` as MessageKey
@@ -158,25 +160,43 @@ export const Composer = (props: ComposerProps) => {
   const [files, setFiles] = createSignal<string[]>([])
   /** The skill chip at the start of the box (spec 017). One at a time. */
   const [skill, setSkill] = createSignal<{ id: string; name: string }>()
-  // The command picker (spec 003, flow 7): a slash as the first character opens a list of the
-  // skills that the user saved for this agent. The list narrows as the user types.
+  // The command picker (spec 003, flow 7): a slash as the first character opens a list. It shows
+  // the commands first, then the skills that the user saved for this agent. The list narrows as
+  // the user types.
   const [skillList, { refetch: refetchSkills }] = createResource(
     () => props.agent.id,
     (agentId) => call("skills.forAgent", { agentId }).catch(() => [] as readonly Skill[]),
     { initialValue: [] as readonly Skill[] },
   )
   onCleanup(window.robot.on("skills.changed", () => void refetchSkills()))
+  // A linked computer gets no push when the skills of its server change, so the list is read again
+  // each time it opens (spec 012).
+  createEffect(
+    on(
+      () => slashQuery(text()) !== null,
+      (open) => {
+        if (open && ui.linked()) void refetchSkills()
+      },
+      { defer: true },
+    ),
+  )
+  // A linked computer has no Compact control, so it has no command (spec 011, 012).
+  const commands = (): readonly SlashCommand[] => (ui.linked() ? [] : ["compact"])
+  // Whether Compact is on is read when the list opens, so the entry tells the truth.
+  const [meter] = createResource(
+    () =>
+      !ui.linked() && slashQuery(text()) !== null
+        ? `${props.agent.id}|${props.threadId ?? ""}`
+        : undefined,
+    () =>
+      call("chat.meter", { agentId: props.agent.id, ...threadPart(props.threadId) }).catch(
+        () => undefined,
+      ),
+  )
+  const compactOff = () => meter()?.off ?? null
   const [highlight, setHighlight] = createSignal(0)
   const [dismissed, setDismissed] = createSignal(false)
-  const matches = createMemo(() => {
-    const typed = /^\/(\S*)$/.exec(text())
-    if (!typed) return []
-    const q = (typed[1] ?? "").toLocaleLowerCase()
-    const all = skillList()
-    const starts = all.filter((x) => x.name.toLocaleLowerCase().startsWith(q))
-    const inside = all.filter((x) => !starts.includes(x) && x.name.toLocaleLowerCase().includes(q))
-    return [...starts, ...inside].slice(0, SKILL_LIST_MAX)
-  })
+  const matches = createMemo(() => slashItems(text(), skillList(), commands()))
   const pickerOpen = () => !dismissed() && matches().length > 0
   createEffect(() => {
     void text()
@@ -193,6 +213,20 @@ export const Composer = (props: ComposerProps) => {
       input?.focus()
     })
   }
+  /** A command runs at once, and its slash text leaves the box. A command that is off does nothing. */
+  const runCommand = async (command: SlashCommand) => {
+    if (command === "compact" && (compactOff() !== null || meter()?.compacting)) return
+    setText("")
+    setError(undefined)
+    queueMicrotask(resize)
+    try {
+      await call("chat.compact", { agentId: props.agent.id, ...threadPart(props.threadId) })
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+  const pickItem = (item: ReturnType<typeof matches>[number]) =>
+    item.kind === "command" ? void runCommand(item.command) : pickSkill(item.skill)
   let input: HTMLTextAreaElement | undefined
   // "Try it" on a draft skill card puts the chip and the result text in the box.
   createEffect(() => {
@@ -285,7 +319,7 @@ export const Composer = (props: ComposerProps) => {
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault()
         const chosen = list[highlight()]
-        if (chosen) pickSkill(chosen)
+        if (chosen) pickItem(chosen)
         return
       }
       if (event.key === "Escape") {
@@ -508,24 +542,49 @@ export const Composer = (props: ComposerProps) => {
             data-testid="skill-picker"
           >
             <For each={matches()}>
-              {(item, index) => (
-                <button
-                  type="button"
-                  role="option"
-                  class={skillStyles.pick}
-                  aria-selected={highlight() === index()}
-                  // The box keeps the focus, so a click does not end the typing.
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => pickSkill(item)}
-                  data-testid="skill-option"
-                  data-skill={item.name}
-                >
-                  <span class={skillStyles.pickName}>/{item.name}</span>
-                  <Show when={item.description}>
-                    <span class={skillStyles.pickHint}>{item.description}</span>
-                  </Show>
-                </button>
-              )}
+              {(item, index) =>
+                item.kind === "command" ? (
+                  <button
+                    type="button"
+                    role="option"
+                    class={skillStyles.pick}
+                    aria-selected={highlight() === index()}
+                    aria-disabled={compactOff() !== null || meter()?.compacting === true}
+                    // The box keeps the focus, so a click does not end the typing.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickItem(item)}
+                    data-testid="command-option"
+                    data-command={item.command}
+                  >
+                    <span class={skillStyles.pickName}>/{item.command}</span>
+                    <span class={skillStyles.pickHint}>
+                      {compactOff() !== null
+                        ? t(
+                            compactOffKey(
+                              compactOff() as NonNullable<ReturnType<typeof compactOff>>,
+                            ),
+                          )
+                        : t("skills.command.compact")}
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    role="option"
+                    class={skillStyles.pick}
+                    aria-selected={highlight() === index()}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickItem(item)}
+                    data-testid="skill-option"
+                    data-skill={item.skill.name}
+                  >
+                    <span class={skillStyles.pickName}>/{item.skill.name}</span>
+                    <Show when={item.skill.description}>
+                      <span class={skillStyles.pickHint}>{item.skill.description}</span>
+                    </Show>
+                  </button>
+                )
+              }
             </For>
           </div>
         </Show>

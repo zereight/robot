@@ -196,3 +196,224 @@ describe("Skills go with their only agent", () => {
     expect((await t.list()).map((s) => s.name)).toEqual(["Only B"])
   })
 })
+
+// Edit and Duplicate (spec 017, flows 2 and 3).
+
+describe("Edit a skill", () => {
+  const form = (name: string, instructions = "Do the new work.") => ({
+    name,
+    description: "When to use it",
+    instructions,
+  })
+  const update = (
+    t: Awaited<ReturnType<typeof setup>>,
+    id: string,
+    input: ReturnType<typeof form>,
+    agentIds: readonly string[] | null,
+  ) => t.run(Skills.use((s) => s.update(id, input, agentIds)))
+  const codeOf = async (
+    t: Awaited<ReturnType<typeof setup>>,
+    id: string,
+    input: ReturnType<typeof form>,
+    agentIds: readonly string[] | null,
+  ) => {
+    const exit = await t.runtime.runPromiseExit(Skills.use((s) => s.update(id, input, agentIds)))
+    if (Exit.isSuccess(exit)) return "ok"
+    return exit.cause.reasons
+      .map((r) => {
+        const error = "error" in r ? (r.error as { code: string; detail?: string }) : undefined
+        return `${error?.code}:${error?.detail ?? ""}`
+      })
+      .join()
+  }
+
+  test("every field changes, and the skill stays on or off as it was", async () => {
+    const t = await setup()
+    const a = await t.agent("Ada")
+    const made = await t.skill("Weekly summary", null)
+    await t.run(Skills.use((s) => s.setEnabled(made.id, false)))
+    const before = t.skillEvents().length
+
+    const edited = await update(t, made.id, form("/Monthly summary"), [a.id])
+
+    expect(edited).toMatchObject({
+      id: made.id,
+      name: "Monthly summary",
+      description: "When to use it",
+      instructions: "Do the new work.",
+      agentIds: [a.id],
+      enabled: false,
+      createdAt: made.createdAt,
+    })
+    expect((await t.list()).map((s) => s.name)).toEqual(["Monthly summary"])
+    expect(t.skillEvents().length).toBe(before + 1)
+  })
+
+  test("the agent list can go back to all agents", async () => {
+    const t = await setup()
+    const a = await t.agent("Ada")
+    const made = await t.skill("Only A", [a.id])
+    expect((await update(t, made.id, form("Only A"), null)).agentIds).toBeNull()
+  })
+
+  test("the name may stay, also with another letter case", async () => {
+    const t = await setup()
+    const made = await t.skill("Weekly summary", null)
+    expect((await update(t, made.id, form("Weekly summary"), null)).name).toBe("Weekly summary")
+    expect((await update(t, made.id, form("WEEKLY summary"), null)).name).toBe("WEEKLY summary")
+  })
+
+  test("the name of another skill is refused, ignoring case, and nothing changes", async () => {
+    const t = await setup()
+    await t.skill("Weekly summary", null)
+    const other = await t.skill("Check a claim", null)
+    expect(await codeOf(t, other.id, form("weekly SUMMARY"), null)).toBe("skill_name_taken:name")
+    expect((await t.list()).find((s) => s.id === other.id)?.name).toBe("Check a claim")
+  })
+
+  test("the checks of the form apply", async () => {
+    const t = await setup()
+    const made = await t.skill("Weekly summary", null)
+    expect(await codeOf(t, made.id, form("   "), null)).toBe("skill_name_empty:name")
+    expect(await codeOf(t, made.id, form("x".repeat(41)), null)).toBe("skill_name_long:name")
+    expect(await codeOf(t, made.id, form("Ok", "   "), null)).toBe("skill_empty:instructions")
+    expect(await codeOf(t, made.id, form("Ok", "x".repeat(20_001)), null)).toBe(
+      "skill_empty:instructions",
+    )
+    expect((await t.list())[0]?.instructions).toBe("Do the work.")
+  })
+
+  test("a list of agents holds agents of this server, and is not empty", async () => {
+    const t = await setup()
+    const a = await t.agent("Ada")
+    const made = await t.skill("Only A", [a.id])
+    expect(await codeOf(t, made.id, form("Only A"), [])).toBe("skill_agents_invalid:agents")
+    expect(await codeOf(t, made.id, form("Only A"), ["nobody"])).toBe("skill_agents_invalid:agents")
+    expect((await t.list())[0]?.agentIds).toEqual([a.id])
+  })
+
+  test("an archived agent that the skill names stays in its list, and a restore brings it back", async () => {
+    const t = await setup()
+    const a = await t.agent("Ada")
+    const b = await t.agent("Bo")
+    const made = await t.skill("Both", [a.id, b.id])
+    await t.archive(a.id)
+    const edited = await update(t, made.id, form("Both"), [a.id, b.id])
+    expect(edited.agentIds).toEqual([a.id, b.id])
+    // An archived agent that the skill does not name is not added.
+    const c = await t.agent("Cy")
+    await t.archive(c.id)
+    expect(await codeOf(t, made.id, form("Both"), [b.id, c.id])).toBe("skill_agents_invalid:agents")
+  })
+
+  test("an id of an agent that is gone leaves the list when the skill is saved", async () => {
+    const t = await setup()
+    const a = await t.agent("Ada")
+    const made = await t.skill("Old", [a.id])
+    await t.sql("UPDATE skill SET agents = ? WHERE id = ?", JSON.stringify(["gone", a.id]), made.id)
+    expect((await update(t, made.id, form("Old"), ["gone", a.id])).agentIds).toEqual([a.id])
+  })
+
+  test("a skill that does not exist is not available", async () => {
+    const t = await setup()
+    expect(await codeOf(t, "nope", form("Ok"), null)).toBe("skill_unavailable:")
+  })
+
+  test("the next send uses the new instructions", async () => {
+    const t = await setup()
+    const a = await t.agent("Ada")
+    const made = await t.skill("Weekly summary", null)
+    await update(t, made.id, form("Weekly summary", "New steps."), null)
+    const usable = await t.run(Skills.use((s) => s.usable(a.id, made.id)))
+    expect(usable.instructions).toBe("New steps.")
+  })
+})
+
+describe("Duplicate a skill", () => {
+  const duplicate = (t: Awaited<ReturnType<typeof setup>>, id: string, suffix = " copy") =>
+    t.run(Skills.use((s) => s.duplicate(id, suffix)))
+
+  test("the copy has the same fields, the word copy in its name, and it is off", async () => {
+    const t = await setup()
+    const a = await t.agent("Ada")
+    const made = await t.run(
+      Skills.use((s) =>
+        s.create(
+          t.server.id,
+          { name: "Weekly summary", description: "Each Friday", instructions: "Do the work." },
+          [a.id],
+        ),
+      ),
+    )
+    const before = t.skillEvents().length
+
+    const copy = await duplicate(t, made.id)
+
+    expect(copy).toMatchObject({
+      name: "Weekly summary copy",
+      description: "Each Friday",
+      instructions: "Do the work.",
+      agentIds: [a.id],
+      enabled: false,
+    })
+    expect(copy.id).not.toBe(made.id)
+    expect(made.enabled).toBe(true)
+    expect((await t.list()).find((s) => s.id === made.id)?.enabled).toBe(true)
+    expect(t.skillEvents().length).toBe(before + 1)
+  })
+
+  test("the copy of a skill for all agents is for all agents", async () => {
+    const t = await setup()
+    const made = await t.skill("Everyone", null)
+    expect((await duplicate(t, made.id)).agentIds).toBeNull()
+  })
+
+  test("a copy name that is taken gets a number, ignoring case", async () => {
+    const t = await setup()
+    const made = await t.skill("Weekly summary", null)
+    expect((await duplicate(t, made.id)).name).toBe("Weekly summary copy")
+    expect((await duplicate(t, made.id)).name).toBe("Weekly summary copy 2")
+    await t.skill("weekly summary COPY 3", null)
+    expect((await duplicate(t, made.id)).name).toBe("Weekly summary copy 4")
+  })
+
+  test("the word comes from the language of the window", async () => {
+    const t = await setup()
+    const made = await t.skill("주간 요약", null)
+    expect((await duplicate(t, made.id, " 사본")).name).toBe("주간 요약 사본")
+  })
+
+  test("a copy of a copy is named from the copy", async () => {
+    const t = await setup()
+    const made = await t.skill("Weekly summary", null)
+    const first = await duplicate(t, made.id)
+    expect((await duplicate(t, first.id)).name).toBe("Weekly summary copy copy")
+  })
+
+  test("a full server refuses the copy", async () => {
+    const t = await setup()
+    const made = await t.skill("Seed", null)
+    for (let n = 1; n < SKILLS_MAX; n++) await t.skill(`Skill ${n}`, null)
+    expect(await t.rows("SELECT id FROM skill")).toHaveLength(SKILLS_MAX)
+    const exit = await t.runtime.runPromiseExit(Skills.use((s) => s.duplicate(made.id, " copy")))
+    expect(Exit.isFailure(exit)).toBe(true)
+    expect(await t.rows("SELECT id FROM skill")).toHaveLength(SKILLS_MAX)
+  })
+
+  test("a skill that does not exist is not available", async () => {
+    const t = await setup()
+    const exit = await t.runtime.runPromiseExit(Skills.use((s) => s.duplicate("nope", " copy")))
+    expect(Exit.isFailure(exit)).toBe(true)
+  })
+
+  test("a copy that is off is not listed for an agent until it is turned on", async () => {
+    const t = await setup()
+    const a = await t.agent("Ada")
+    const made = await t.skill("Weekly summary", null)
+    const copy = await duplicate(t, made.id)
+    const names = async () => (await t.run(Skills.use((s) => s.forAgent(a.id)))).map((s) => s.name)
+    expect(await names()).toEqual(["Weekly summary"])
+    await t.run(Skills.use((s) => s.setEnabled(copy.id, true)))
+    expect(await names()).toEqual(["Weekly summary", "Weekly summary copy"])
+  })
+})

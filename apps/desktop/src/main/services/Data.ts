@@ -276,6 +276,18 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                   .prepare("UPDATE permission_rule SET match_text = ?, detail = ? WHERE id = ?")
                   .run(text, detail, row.id)
             }
+            // A skill keeps its instructions, which can hold a key although its form says not to.
+            // The key is hidden like a key in a chat (spec 014, 017).
+            for (const row of out
+              .prepare("SELECT id, description, instructions FROM skill")
+              .all() as { id: string; description: string; instructions: string }[]) {
+              const description = redactSecrets(row.description, known)
+              const instructions = redactSecrets(row.instructions, known)
+              if (description !== row.description || instructions !== row.instructions)
+                out
+                  .prepare("UPDATE skill SET description = ?, instructions = ? WHERE id = ?")
+                  .run(description, instructions, row.id)
+            }
             for (const row of out.prepare("SELECT id, text FROM memory").all() as {
               id: string
               text: string
