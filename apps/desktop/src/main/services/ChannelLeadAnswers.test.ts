@@ -99,6 +99,25 @@ const staleRequest = (text: string) => {
   return from !== undefined && Number(from) !== testNo
 }
 
+const ASSIGNMENT_HEAD = "Your assignment, which this reply does:\n"
+const ASSIGNMENT_END = "\n(End of your assignment.)"
+
+/**
+ * The text of a member starts with its assignment (spec 004, "What a member reads"). This stand-in
+ * decides by the messages after the last message of the user, as it did when the assignment ended
+ * the text. So the assignment goes back behind the last message of the user. The `system` that a
+ * test reads stays as the app sent it.
+ */
+const assignmentLast = (messages: { role: string; content: string }[], system: string) => {
+  if (!system.startsWith(ASSIGNMENT_HEAD)) return messages
+  const end = system.indexOf(ASSIGNMENT_END)
+  if (end < 0) return messages
+  const at = messages.map((m) => m.role).lastIndexOf("user")
+  const out = [...messages]
+  out.splice(at + 1, 0, { role: "user", content: system.slice(ASSIGNMENT_HEAD.length, end) })
+  return out
+}
+
 const server = Bun.serve({
   port: 0,
   hostname: "127.0.0.1",
@@ -110,7 +129,8 @@ const server = Bun.serve({
       tools?: unknown[]
     }
     const system = body.messages.find((m) => m.role === "system")?.content ?? ""
-    const last = body.messages.at(-1)
+    const messages = assignmentLast(body.messages, system)
+    const last = messages.at(-1)
     const content = last?.content ?? ""
     // A look of the lead at a question of a member.
     if (system.includes("A member asks a question")) {
@@ -131,8 +151,8 @@ const server = Bun.serve({
     if (!staleRequest(`${system}\n${content}`)) memberRequests.push({ system, content })
     // The member asks "ASK n" questions, one after the other, and then reports the last answer.
     // Only the turn that runs now counts: a part of an earlier turn has its own questions.
-    const turnStart = body.messages.map((m) => m.role).lastIndexOf("user")
-    const turn = body.messages.slice(Math.max(turnStart, 0))
+    const turnStart = messages.map((m) => m.role).lastIndexOf("user")
+    const turn = messages.slice(Math.max(turnStart, 0))
     const text = turn.map((m) => m.content).join("\n")
     const wanted = Number(/ASK (\d+)/.exec(text)?.[1] ?? 0)
     const answered = turn.filter((m) => m.role === "tool").length
