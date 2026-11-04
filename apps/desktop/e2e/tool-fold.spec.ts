@@ -84,4 +84,15 @@ test("tool steps: the switch folds finished steps into one line", async () => {
   await page.getByTestId("settings-close").click()
   await expect(page.getByTestId("tools-folded")).toHaveCount(0)
   await expect(page.getByTestId("tool-card")).toHaveCount(2)
+
+  // Dark theme: the switch goes off, so the run folds. The folded line is checked in the screenshot.
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("settings-nav-appearance").click()
+  await page.getByTestId("setting-theme").locator('label[data-value="dark"]').click()
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+  await page.getByTestId("setting-show-tool-steps").click()
+  await expect(page.getByTestId("setting-show-tool-steps")).toHaveAttribute("aria-checked", "false")
+  await page.getByTestId("settings-close").click()
+  await expect(page.getByTestId("tools-folded-line")).toHaveText("2 tool steps")
+  await shot(page, "tool-fold-04-dark-folded")
 })
