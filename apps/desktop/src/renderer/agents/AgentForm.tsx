@@ -171,6 +171,22 @@ export const AgentForm = (props: AgentFormProps) => {
   createEffect(() => {
     if (readOnlyOff() && permission() === "read_only") setPermission("ask_all")
   })
+  // "Ask when unsure" needs the switch "Permission checks" (013) and an agent that uses the tools
+  // of the app (007). On a linked server the switch is the server's, so the option is as the server
+  // allows it: the server refuses a pick that it cannot take.
+  const checksOn = () => remote() || app.settings.permissionChecks
+  const unsureOff = (): "checks" | "program" | null =>
+    programKind() !== null ? "program" : checksOn() ? null : "checks"
+  // A level that is off cannot be picked, but an agent that has it keeps it (it works as "Ask for
+  // risky steps" and the line says so). A new pick falls back to the default.
+  createEffect(() => {
+    if (
+      unsureOff() !== null &&
+      permission() === "ask_unsure" &&
+      props.agent?.permission !== "ask_unsure"
+    )
+      setPermission("ask_risky")
+  })
 
   // "Full access" asks the user to confirm. "Back" keeps the old level. No other level asks.
   const [confirmFull, setConfirmFull] = createSignal(false)
@@ -187,6 +203,19 @@ export const AgentForm = (props: AgentFormProps) => {
   const backFromFull = () => {
     setPermission(levelBefore())
     setConfirmFull(false)
+  }
+  /** The line under the level: how the level applies to the runtime of this agent. */
+  const permissionLine = () => {
+    const program = programKind()
+    if (permission() === "ask_unsure") {
+      // "Ask when unsure" works as "Ask for risky steps" on a program, and with the switch off.
+      if (program !== null)
+        return t("agents.permission.line.program.ask_unsure", {
+          program: t(`providers.kind.${program}` as MessageKey),
+        })
+      if (!checksOn()) return t("agents.permission.line.app.ask_unsure.off")
+    }
+    return t(`agents.permission.line.${program ?? "app"}.${permission()}` as MessageKey)
   }
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
@@ -590,15 +619,28 @@ export const AgentForm = (props: AgentFormProps) => {
             options={levels().map((value) => ({
               value,
               label: t(`agents.permission.${value}` as MessageKey),
-              disabled: value === "read_only" && readOnlyOff(),
+              disabled:
+                (value === "read_only" && readOnlyOff()) ||
+                (value === "ask_unsure" &&
+                  unsureOff() !== null &&
+                  props.agent?.permission !== "ask_unsure"),
             }))}
             onChange={pickLevel}
             testId="agent-permission"
           />
           {/* One line says how the level applies to the runtime of this agent. */}
           <span class={styles.hint} data-testid="agent-permission-line">
-            {t(`agents.permission.line.${programKind() ?? "app"}.${permission()}` as MessageKey)}
+            {permissionLine()}
           </span>
+          <Show when={unsureOff() !== null && props.agent?.permission !== "ask_unsure"}>
+            <span class={styles.hint} data-testid="agent-permission-unsure-off">
+              {unsureOff() === "program"
+                ? t("agents.permission.unsureOff.program", {
+                    program: t(`providers.kind.${programKind() ?? "claude_code"}` as MessageKey),
+                  })
+                : t("agents.permission.unsureOff.checks")}
+            </span>
+          </Show>
           <Show when={readOnlyOff()}>
             <span class={styles.hint} data-testid="agent-permission-off">
               {t("agents.permission.readOnlyOff", {

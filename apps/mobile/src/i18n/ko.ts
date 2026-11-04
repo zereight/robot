@@ -207,6 +207,8 @@ export const ko: Record<MessageKey, string> = {
   "tool.refusedRule": "규칙으로 거부됨",
   "tool.refusedAddress": "거부됨: 허용되지 않는 주소예요",
   "tool.searchTools": "검색한 도구: {words} · 찾음: {found}",
+  "tool.checkAllowed": "권한 판단으로 허용됨",
+  "tool.unsure": "권한 판단이 확실하지 않았어요.",
   "tool.ruleAllowed": "규칙으로 허용됨",
   "tool.unreadable": "읽을 수 없는 규칙이 있어서 이 작업은 확인을 요청해요.",
   "tool.details": "자세히",

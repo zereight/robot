@@ -1114,6 +1114,7 @@ interface MessageRow {
   origin: string | null
   thread_id: string | null
   program_mark: string | null
+  outside_mark: string | null
   teams_sender: string | null
 }
 
@@ -1161,6 +1162,9 @@ const message: KindDef = {
     // The first source of the turn that started or made the message, when that turn holds the
     // program mark (spec 007). A computer of an older step has none.
     programMark: { check: nullable(isOutsideSource) },
+    // The first source of the turn that started or made the message, when that turn held outside
+    // content (spec 007). A fork uses it. A computer of an older step has none.
+    outsideMark: { check: nullable(isOutsideSource) },
     // The name of the sender of a message from Teams, as the Teams page showed it (spec 028). It is
     // stored with the message, as the text is. A computer of an older step has none.
     teamsSender: { check: nullable(str(TEAMS_SENDER_MAX * 4)) },
@@ -1201,6 +1205,7 @@ const message: KindDef = {
         origin: r.origin ?? ctx.self,
         threadId: r.thread_id,
         programMark: parseOutsideSource(r.program_mark),
+        outsideMark: parseOutsideSource(r.outside_mark),
         teamsSender: r.teams_sender,
       },
       parent: { kind: "agent", id: r.agent_id },
@@ -1241,6 +1246,7 @@ const message: KindDef = {
       from_name: (f.sender as string | null) ?? peer?.name ?? null,
       origin: originColumn(ctx, f.origin),
       program_mark: markColumn(f.programMark),
+      outside_mark: markColumn(f.outsideMark),
       teams_sender: (f.teamsSender as string | null | undefined) ?? null,
     })
     return true
@@ -1248,6 +1254,7 @@ const message: KindDef = {
   write: (ctx, id, f) =>
     update(ctx.db, "message", "id = ?", [id], {
       ...(f.programMark !== undefined ? { program_mark: markColumn(f.programMark) } : {}),
+      ...(f.outsideMark !== undefined ? { outside_mark: markColumn(f.outsideMark) } : {}),
       ...(f.parts !== undefined ? { parts: JSON.stringify(f.parts) } : {}),
       ...(f.status !== undefined ? { status: f.status } : {}),
       ...(f.error !== undefined ? errorColumns(f.error) : {}),
@@ -1375,6 +1382,7 @@ interface ChannelMessageRow {
   from_name: string | null
   origin: string | null
   program_mark: string | null
+  outside_mark: string | null
   teams_sender: string | null
 }
 
@@ -1398,6 +1406,8 @@ const cmessage: KindDef = {
     origin: { check: str(64, 1) },
     // As for a message of a chat: the first source of a turn that holds the program mark.
     programMark: { check: nullable(isOutsideSource) },
+    // As for a message of a chat: the first source of a turn that held outside content.
+    outsideMark: { check: nullable(isOutsideSource) },
     // As for a message of a chat: the name of the sender of a message from Teams (spec 028).
     teamsSender: { check: nullable(str(TEAMS_SENDER_MAX * 4)) },
   },
@@ -1440,6 +1450,7 @@ const cmessage: KindDef = {
         sender: r.from_name,
         origin: r.origin ?? ctx.self,
         programMark: parseOutsideSource(r.program_mark),
+        outsideMark: parseOutsideSource(r.outside_mark),
         teamsSender: r.teams_sender,
       },
       parent: { kind: "channel", id: r.channel_id },
@@ -1469,6 +1480,7 @@ const cmessage: KindDef = {
       from_name: (f.sender as string | null) ?? peer?.name ?? null,
       origin: originColumn(ctx, f.origin),
       program_mark: markColumn(f.programMark),
+      outside_mark: markColumn(f.outsideMark),
       teams_sender: (f.teamsSender as string | null | undefined) ?? null,
     })
     return true
@@ -1476,6 +1488,7 @@ const cmessage: KindDef = {
   write: (ctx, id, f) =>
     update(ctx.db, "channel_message", "id = ?", [id], {
       ...(f.programMark !== undefined ? { program_mark: markColumn(f.programMark) } : {}),
+      ...(f.outsideMark !== undefined ? { outside_mark: markColumn(f.outsideMark) } : {}),
       ...(f.kind !== undefined ? { kind: f.kind } : {}),
       ...(f.parts !== undefined ? { parts: JSON.stringify(f.parts) } : {}),
       ...(f.status !== undefined ? { status: f.status } : {}),
@@ -1751,6 +1764,7 @@ interface RoutineRow {
   model_name: string | null
   model_effort: string | null
   token_limit: number | null
+  unsaved_import: number
 }
 
 const isSchedule = strictly(ScheduleSchema as unknown as Schema.Codec<unknown, unknown>)
@@ -1790,6 +1804,9 @@ const routine: KindDef = {
     channelId: { check: nullable(str(100, 1)) },
     enabled: { check: bool },
     runsOn: { check: str(64, 1) },
+    // 1 until the user saved a routine that an agent file made (spec 007, 009). A computer of an
+    // older step has none, and the routine counts as saved.
+    unsavedImport: { check: bool },
     createdAt: { check: int },
   },
   required: [
@@ -1825,6 +1842,7 @@ const routine: KindDef = {
         channelId: r.channel_id,
         enabled: r.enabled === 1,
         runsOn: r.runs_on ?? ctx.self,
+        unsavedImport: r.unsaved_import === 1,
         createdAt: r.created_at,
       },
       parent: { kind: "agent", id: r.agent_id },
@@ -1853,12 +1871,14 @@ const routine: KindDef = {
       created_at: f.createdAt,
       updated_at: now,
       runs_on: arrivingRunsOn(ctx, f.runsOn),
+      unsaved_import: f.unsavedImport === true ? 1 : 0,
     })
     return true
   },
   write: (ctx, id, f) => {
     const columns: Record<string, unknown> = {}
     if (f.name !== undefined) columns.name = f.name
+    if (f.unsavedImport !== undefined) columns.unsaved_import = f.unsavedImport ? 1 : 0
     if (f.prompt !== undefined) columns.prompt = f.prompt
     if (f.schedule !== undefined) columns.schedule = JSON.stringify(f.schedule)
     if (f.watch !== undefined) columns.watch = f.watch === null ? null : JSON.stringify(f.watch)

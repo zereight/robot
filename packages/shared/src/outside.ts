@@ -5,6 +5,7 @@ import type { SensitiveLabel } from "./sensitive.ts"
 import type { LoggedKind, StepAccess } from "./steps.ts"
 import type { TaskSource } from "./task.ts"
 import type { PermissionLevel } from "./tools.ts"
+import type { CheckReason } from "./unsure.ts"
 
 /**
  * Where outside content came from (spec 007, "Outside content"). The approval card of a guarded
@@ -315,7 +316,8 @@ export const parseOutsideSource = (text: string | null | undefined): OutsideSour
 /**
  * Who decided a step of the action log (spec 007, "Action log"). `app` is the app itself, for an
  * address that is never allowed (spec 007, "Sensitive places"). `unreadable_rule` is a rule that
- * the app could not read, followed by the user on a card.
+ * the app could not read, followed by the user on a card. `check` is the check of "Ask when
+ * unsure": it was sure that the user asked for the step (spec 007).
  */
 export type ActionDecider =
   | "level"
@@ -324,6 +326,32 @@ export type ActionDecider =
   | "user"
   | "app"
   | "unreadable_rule"
+  | "check"
+
+/** The decider values, for a column that stores them. */
+export const ACTION_DECIDERS = [
+  "level",
+  "allow_rule",
+  "deny_rule",
+  "user",
+  "app",
+  "unreadable_rule",
+  "check",
+] as const satisfies readonly ActionDecider[]
+
+/**
+ * The check of "Ask when unsure" on a step of the log (spec 007, "Action log"): `allowed` is true
+ * when the check was sure (the step ran, decided by the check, with its probability). When it is
+ * false the check sent the step to the user (decided by the user, with the reason of the check).
+ * A step that did not go to the check has none.
+ */
+export interface ActionCheck {
+  readonly allowed: boolean
+  /** The chance of "The user asked for this", or null when the check gave none. */
+  readonly probability: number | null
+  /** Why the check did not allow the step; null when it allowed it. */
+  readonly reason: CheckReason | null
+}
 
 /**
  * The rule that decided a step, as the log keeps it. The text stays when the rule is deleted
@@ -377,6 +405,8 @@ export interface ActionLogEntry {
   readonly sensitive: SensitiveLabel | null
   /** The rule that decided the step, or the rule that could not be read. Null when none did. */
   readonly rule: ActionRule | null
+  /** The check of "Ask when unsure", when the step went to the check (spec 007). */
+  readonly check: ActionCheck | null
 }
 
 export const ACTION_LOG_DAYS = 90

@@ -276,7 +276,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
                 schedule: r.schedule,
                 place: { kind: "agent" },
               },
-              { paused: true },
+              { paused: true, fromFile: true },
             )
             routineCount++
             todo.push({ kind: "routine", routineId: routine.id, name: routine.name })

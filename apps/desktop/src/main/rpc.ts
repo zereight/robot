@@ -253,6 +253,9 @@ export const handlers: Handlers = {
       // The device name and the switch go through "devices.update", which also opens or closes
       // the listener. The saved port is the app's own.
       const { deviceName: _name, acceptLinks: _accept, linkPort: _port, ...patch } = decoded
+      // The switch "Permission checks" can go on only when the decision model is set up (spec 013).
+      if (patch.permissionChecks === true && !(yield* Decision.use((d) => d.ready)))
+        return yield* new AppError({ code: "decision_not_set_up" })
       const next = yield* SettingsStore.use((s) => s.update(patch))
       yield* applySystemSettings(patch)
       if (patch.island !== undefined) yield* Notifier.use((n) => Effect.sync(() => n.refresh()))

@@ -142,6 +142,12 @@ export type MessagePart =
       /** Set when an Allow rule let the step run with no question: the card says so (spec 007). */
       readonly ruleAllowed?: true
       /**
+       * Set when the check of the level "Ask when unsure" let the step run with no question: the
+       * card says "Allowed by the check" (spec 007). The value is the probability of "The user
+       * asked for this".
+       */
+      readonly checkAllowed?: number
+      /**
        * Set for a call of a connection tool and for the step "Search tools" (spec 018): the card
        * names the connection and the tool, or the words of the search and the tools found.
        */
@@ -182,6 +188,12 @@ export type ToolAsk =
        * "Permission rules"). The card says so. Such a card always has `once`.
        */
       readonly unreadable?: true
+      /**
+       * Set when the check of the level "Ask when unsure" was asked and did not allow the step
+       * (spec 007): a lower probability, no answer in 3 seconds, an error, or no key. The card
+       * has the line "The check was not sure".
+       */
+      readonly unsure?: true
     }
   | {
       readonly kind: "question"

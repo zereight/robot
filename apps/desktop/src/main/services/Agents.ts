@@ -208,12 +208,22 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         return dir
       })
 
+      /** True when an agent on this account may pick "Ask when unsure" now (spec 007). */
+      const unsureAllowed = (accountId: string | null) =>
+        Effect.gen(function* () {
+          if (!(yield* settings.get).permissionChecks) return false
+          return accountId === null || !providers.isRuntime(accountId)
+        })
+
       const insert = Effect.fn("Agents.insert")(function* (input: AgentCreate) {
         const name = input.name.trim()
         if (nameTaken(input.serverId, name))
           return yield* new AppError({ code: "agent_name_taken" })
         const sectionId = yield* sections.check(input.serverId, "agent", input.sectionId ?? null)
         const level = input.permission ?? DEFAULT_PERMISSION
+        // "Ask when unsure" needs the switch "Permission checks" and a model of an API provider.
+        if (level === "ask_unsure" && !(yield* unsureAllowed(input.model?.accountId ?? null)))
+          return yield* new AppError({ code: "unsure_unavailable" })
         // "Read only" needs a mode that the program has itself (spec 007).
         if (
           level === "read_only" &&
@@ -275,6 +285,15 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         const level = patch.permission ?? row.permission
         const accountId =
           patch.model !== undefined ? (patch.model?.accountId ?? null) : row.model_account_id
+        // "Ask when unsure" can be picked only with the switch on, for an agent of an API provider
+        // (spec 007). An agent that has it already keeps it when its model changes, and when its
+        // profile is saved again with the same level: it then works as "Ask for risky steps".
+        if (
+          patch.permission === "ask_unsure" &&
+          row.permission !== "ask_unsure" &&
+          !(yield* unsureAllowed(accountId))
+        )
+          return yield* new AppError({ code: "unsure_unavailable" })
         if (
           level === "read_only" &&
           (patch.permission !== undefined || patch.model !== undefined) &&

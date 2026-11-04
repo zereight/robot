@@ -10,7 +10,7 @@ import { createResource, createSignal, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
-import { Button, Segmented } from "../ui/controls.tsx"
+import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import styles from "./settings.module.css"
 
 /** The reasons that all mean "the model was not sure enough" (spec 013, "unsure answer"). */
@@ -57,6 +57,11 @@ export const DecisionSection = () => {
 
   const keySaved = () => status()?.keys.openrouter === true
   const modelShown = () => modelDraft() ?? app.settings.decisionModelName
+  /** True when the choice has its key and its model name, so a check can be asked (spec 013). */
+  const setUp = () =>
+    app.settings.decisionModel === "openrouter" &&
+    keySaved() &&
+    app.settings.decisionModelName.trim() !== ""
 
   const guard = async (run: () => Promise<unknown>) => {
     setError(undefined)
@@ -207,6 +212,29 @@ export const DecisionSection = () => {
         </Show>
         <p class={styles.note} data-testid="setting-decision-sends">
           {t("decision.sends")}
+        </p>
+      </Show>
+      {/*
+        The switch "Permission checks" (spec 013): agents at the level "Ask when unsure" ask this
+        model before a checked step. It is off by default and cannot go on until the choice above
+        has its key and its model name. It can always go off.
+      */}
+      <Row
+        label={t("decision.checks")}
+        hint={t("decision.checks.hint")}
+        testId="setting-permission-checks-row"
+      >
+        <Switch
+          label={t("decision.checks")}
+          testId="setting-permission-checks"
+          checked={app.settings.permissionChecks}
+          disabled={!app.settings.permissionChecks && !setUp()}
+          onChange={(permissionChecks) => void guard(() => app.update({ permissionChecks }))}
+        />
+      </Row>
+      <Show when={!app.settings.permissionChecks && !setUp()}>
+        <p class={styles.note} data-testid="setting-permission-checks-needs">
+          {t("decision.checks.needsSetup")}
         </p>
       </Show>
       <Show when={error()}>

@@ -103,6 +103,11 @@ export interface Routine {
   readonly pausedAfterFailures: RoutineFailure | null
   /** The name of the other computer where it runs, when it syncs (019). Null: it runs here. */
   readonly runsOn: string | null
+  /**
+   * True for a routine that an agent file made, until the user saves its form once. The form says
+   * that checked steps of the routine ask until then (spec 007, "Ask when unsure"; 009).
+   */
+  readonly unsavedImport: boolean
 }
 
 /** One run in the calendar: past, present or planned. */

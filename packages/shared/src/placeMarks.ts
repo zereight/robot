@@ -11,9 +11,9 @@ export type MarkPlace = PlaceRef | { readonly kind: "thread"; readonly id: strin
 
 /**
  * The outside content that the next turns of a place hold (spec 007, "The mark of a place"): the
- * first source, and whether the content holds the program mark. Only content that holds the
- * program mark is stored for now; the carry of other outside content to later turns is not built
- * (see `docs/spec-questions.md`). So `program` is true in every stored value.
+ * first source, and whether the content holds the program mark. A turn that gets outside content
+ * (a page, a connection, a message of another agent, a hit of "search chats") sets it, because the
+ * agent still sees the text in later turns. `program` is false for ordinary outside content.
  */
 export interface PlaceOutside {
   readonly source: OutsideSource

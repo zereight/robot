@@ -2,10 +2,12 @@ import { spawn } from "node:child_process"
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import {
+  type ActionCheck,
   type ActionDecider,
   type ApprovalAnswer,
   CHAIN_LIMIT,
   CHAIN_LIMIT_TEXT,
+  type CheckTarget,
   type ConnectionNote,
   chainAtLimit,
   changeSummary,
@@ -13,6 +15,7 @@ import {
   classifyHostWriting,
   commandChangesControl,
   commandReads,
+  commandTarget,
   connectionToolLabel,
   type GuardedStep,
   guardDecision,
@@ -33,6 +36,7 @@ import {
   MEMORY_TEXT_MAX,
   type MemoryNote,
   makePlaces,
+  noCheckReason,
   type PermissionLevel,
   type PlaceEnv,
   parseOrigin,
@@ -79,6 +83,7 @@ import { AgentSettings } from "./AgentSettings.ts"
 import { CurrentActor } from "./actor.ts"
 import type { ConnectionTurn } from "./Connections.ts"
 import { Database } from "./Database.ts"
+import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge, type KnowledgePlan } from "./Knowledge.ts"
@@ -153,6 +158,22 @@ export interface ToolContext {
    */
   readonly onProgram?: () => void
   /**
+   * Called after a step of the turn when the turn holds outside content, so the place of the turn
+   * holds it for the next turns (spec 007, "Outside content"). It is safe to call again.
+   */
+  readonly onOutside?: () => void
+  /**
+   * The words of the user for this turn (spec 007, "Ask when unsure"), or null when the turn has
+   * none: the messages of the user that started it or joined it, the prompt of a routine, the job
+   * of a part. A function, because a message can join the turn later. Absent: no words.
+   */
+  readonly words?: () => string | null
+  /**
+   * Records that the check of "Ask when unsure" let the step run with no question, so its card
+   * says "Allowed by the check" (spec 007).
+   */
+  readonly onCheckAllowed?: (callId: string, probability: number) => void
+  /**
    * The tools of the connections that the agent may use in this turn (spec 018). Absent for an
    * agent on a vendor runtime, which has no connections.
    */
@@ -204,7 +225,10 @@ export interface ToolsService {
    * Who decided the step of a call, and the rule that decided it or that could not be read, for
    * the action log (spec 007). It reads the decision once and forgets it.
    */
-  decision(agentId: string, callId: string): { decidedBy: ActionDecider; rule: RuleRef | null }
+  decision(
+    agentId: string,
+    callId: string,
+  ): { decidedBy: ActionDecider; rule: RuleRef | null; check: ActionCheck | null }
   /**
    * The tools that an agent may call. Memory and knowledge tools are left out when they are off.
    * The settings tool is only for an agent of an API provider in its direct chat (spec 002).
@@ -684,6 +708,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const knowledge = yield* Knowledge
       const saved = yield* SavedSecrets
       const rules = yield* Rules
+      const decisionModel = yield* Decision
       const settingsStore = yield* SettingsStore
       const platform = yield* Platform
       const bus = yield* EventBus
@@ -704,6 +729,11 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
        * read them (spec 007). The rule stays with the entry.
        */
       const ruled = new Map<string, { by: ActionDecider; rule: RuleRef }>()
+      /**
+       * The calls that went to the check of "Ask when unsure", with what it said, until the log has
+       * read them (spec 007).
+       */
+      const checked = new Map<string, ActionCheck>()
       const browserChanged = (agentId: string) => bus.emit("browser.changed", { agentId })
       const pageOf = (agentId: string) => {
         const page = platform.browser(agentId)
@@ -749,18 +779,21 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         const id = `${ctx.agentId}:${callId}`
         return refusedByApp.has(id)
           ? "app"
-          : (ruled.get(id)?.by ?? (answered.has(id) ? "user" : otherwise))
+          : (ruled.get(id)?.by ??
+              (checked.get(id)?.allowed ? "check" : answered.has(id) ? "user" : otherwise))
       }
 
       const decision = (agentId: string, callId: string) => {
         const id = `${agentId}:${callId}`
         const rule = ruled.get(id)
         ruled.delete(id)
+        const check = checked.get(id) ?? null
+        checked.delete(id)
         const by = refusedByApp.delete(id)
           ? "app"
-          : (rule?.by ?? (answered.has(id) ? "user" : "level"))
+          : (rule?.by ?? (check?.allowed ? "check" : answered.has(id) ? "user" : "level"))
         answered.delete(id)
-        return { decidedBy: by as ActionDecider, rule: rule?.rule ?? null }
+        return { decidedBy: by as ActionDecider, rule: rule?.rule ?? null, check }
       }
 
       /**
@@ -801,6 +834,42 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }).finally(() => ctx.onWaiting(callId, null))
 
       /**
+       * The check of the level "Ask when unsure" for a checked step (spec 007). It gives:
+       * - `allowed`: the check was sure that the user asked for the step; the step runs with no card,
+       * - `unsure`: the check was asked and did not allow the step; the card says so,
+       * - `usual`: the step did not go to the check (outside content, a sensitive read, no words of
+       *   the user, a long command, a script, or the switch is off); the normal card asks, and the
+       *   decision model got no request.
+       * It never lets a step run unless the check said yes within 3 seconds.
+       */
+      const askCheck = async (
+        ctx: ToolContext,
+        callId: string,
+        target: CheckTarget,
+      ): Promise<"allowed" | "unsure" | "usual"> => {
+        if (!Effect.runSync(settingsStore.get).permissionChecks) return "usual"
+        const words = ctx.words?.() ?? null
+        const reason = noCheckReason({
+          outside: ctx.turn.source !== null,
+          sensitive: ctx.turn.sensitive !== null,
+          words,
+          target,
+        })
+        if (reason !== null || words === null) return "usual"
+        const result = await Effect.runPromise(decisionModel.check({ words, target }))
+        if (ctx.signal.aborted) throw new Error("stopped")
+        const id = `${ctx.agentId}:${callId}`
+        if (checked.size >= 1000) checked.clear()
+        if (result.allowed) {
+          checked.set(id, { allowed: true, probability: result.probability, reason: null })
+          ctx.onCheckAllowed?.(callId, result.probability)
+          return "allowed"
+        }
+        checked.set(id, { allowed: false, probability: result.probability, reason: result.reason })
+        return "unsure"
+      }
+
+      /**
        * Asks for approval, in the order of spec 007: a Deny rule refuses the step (`RuleDenied`),
        * a rule that cannot be read asks, an Allow rule lets the step run with no question, and
        * then the permission level and the risk decide. Throws `Denied` on a no.
@@ -816,6 +885,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         step: RuleStep | null,
         summary: string,
         verdict: RuleVerdict = checkRules(ctx, call.id, step),
+        target: CheckTarget | null = null,
       ) => {
         const outcome = ruleOutcome({ level: ctx.permission, risky, verdict })
         if (outcome === "refuse_rule" && verdict.kind === "deny") throw new RuleDenied(verdict.rule)
@@ -826,6 +896,14 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
         if (outcome === "run") return
         const unreadable = outcome === "ask_unreadable"
+        // "Ask when unsure": a checked step may run with no card when the check is sure. Every
+        // other case, and every failure of the check, asks the user (spec 007).
+        let unsure = false
+        if (outcome === "ask" && ctx.permission === "ask_unsure" && target) {
+          const verdictOfCheck = await askCheck(ctx, call.id, target)
+          if (verdictOfCheck === "allowed") return
+          unsure = verdictOfCheck === "unsure"
+        }
         // "Always allow" saves a rule that is not wider than the step. A card for a step with no
         // rules, one whose rule would not fit, and one that a rule that cannot be read stopped,
         // asks again the next time.
@@ -835,6 +913,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           summary,
           ...(save ? {} : { once: true }),
           ...(unreadable ? { unreadable: true as const } : {}),
+          ...(unsure ? { unsure: true as const } : {}),
         })
         // A small cap: a card that no log entry reads must not grow the set for ever.
         if (answered.size >= 1000) answered.clear()
@@ -1943,7 +2022,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         const label = connectionToolLabel(target.connection, target.tool)
         // A Deny rule refuses the call at every level, before any question.
         const verdict = checkRules(ctx, call.id, step)
-        await approve(ctx, call, true, step, `${label}\n${argumentsText(args)}`, verdict)
+        // The check gets the name of the connection and of the tool, and never the arguments.
+        await approve(ctx, call, true, step, `${label}\n${argumentsText(args)}`, verdict, {
+          kind: "connection",
+          connection: target.connection,
+          tool: target.tool,
+        })
         const result = await turn.call(call.name, args, ctx.signal)
         if (!result.ok) {
           ctx.onReason?.(call.id, {
@@ -2005,7 +2089,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const p = place(ctx, text(args, "path"))
             const blocked = knowledgeBlock(ctx, p.full)
             if (blocked) return { output: blocked, failed: true }
-            await approve(ctx, call, !p.inside, { kind: "file", path: p.full }, p.full)
+            // A file step inside the data folder of ROBot is a risky step, also inside the
+            // workspace (spec 007, "Rules"): it asks as a hard step does.
+            const dataList = makePlaces(placeEnv(ctx)).credential(p.full) === "robot"
+            await approve(ctx, call, !p.inside || dataList, { kind: "file", path: p.full }, p.full)
             const entries = readdirSync(p.full, { withFileTypes: true })
               .slice(0, LIST_MAX)
               .map((e) => `${e.isDirectory() ? "dir " : "file"} ${e.name}`)
@@ -2017,7 +2104,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const p = place(ctx, text(args, "path"))
             const blocked = knowledgeBlock(ctx, p.full)
             if (blocked) return { output: blocked, failed: true }
-            await approve(ctx, call, !p.inside, { kind: "file", path: p.full }, p.full)
+            const dataRead = makePlaces(placeEnv(ctx)).credential(p.full) === "robot"
+            await approve(ctx, call, !p.inside || dataRead, { kind: "file", path: p.full }, p.full)
             const output = cut(readFileSync(p.full, "utf8"), READ_MAX)
             // The agent has the text of a file of a credential place now (spec 007).
             markSensitive(ctx, makePlaces(placeEnv(ctx)).credential(p.full))
@@ -2029,7 +2117,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             if (blocked) return { output: blocked, failed: true }
             // A change to a control place is a hard step (spec 007): it asks as a risky step does,
             // also inside the workspace, and "Always allow" keeps a rule for this one path.
-            const control = makePlaces(placeEnv(ctx)).control(p.full)
+            const places = makePlaces(placeEnv(ctx))
+            const control = places.control(p.full) || places.credential(p.full) === "robot"
             await approve(ctx, call, control || !p.inside, { kind: "file", path: p.full }, p.full)
             mkdirSync(dirname(p.full), { recursive: true })
             const content = text(args, "content")
@@ -2067,7 +2156,18 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             if (!decided) {
               // A change to a control place is a hard step (spec 007), with a rule for this command.
               const hard = commandChangesControl(env, command, ctx.workspace)
-              await approve(ctx, call, hard || reason !== null, step, command, verdict)
+              // An install and a command that sends data are checked steps at "Ask when unsure";
+              // every other risky command is a hard step and never goes to the check.
+              await approve(
+                ctx,
+                call,
+                hard || reason !== null,
+                step,
+                command,
+                verdict,
+                // A command that names a credential place is a sensitive read: it is never checked.
+                commandTarget(command, reason, hard || reads !== null),
+              )
             }
             markSensitive(ctx, reads)
             return await runCommand(ctx, command)
@@ -2110,6 +2210,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               holdProgram(ctx.turn, found.program)
               ctx.onProgram?.()
             }
+            // A hit on a message that the user did not write is outside content too.
+            else if (found.outside) holdOutside(ctx.turn, found.outside)
             return { output: found.output, failed: found.failed }
           }
           case "save_memory":
@@ -2159,6 +2261,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           return { output: READ_ONLY_MESSAGE, failed: true, refused: "read_only" }
         try {
           const outcome = await run(ctx, call)
+          // The turn may hold outside content now: its place holds it for the next turns.
+          if (ctx.turn.source) ctx.onOutside?.()
           // A job that ended since the last step: the agent reads it at this step.
           const note = endedJobsNote(ctx)
           return note ? { ...outcome, output: `${outcome.output}\n\n${note}` } : outcome

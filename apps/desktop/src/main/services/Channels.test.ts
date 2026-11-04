@@ -8,6 +8,7 @@ import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Decision } from "./Decision.ts"
 import { Memory } from "./Memory.ts"
+import { PlaceMarks } from "./PlaceMarks.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
@@ -509,8 +510,37 @@ describe("tools in channels", () => {
     expect(ended?.parts.find((p) => p.kind === "tool")).toMatchObject({ state: "failed" })
   })
 
-  test("a part from the lead holds outside content from its start: a memory save asks", async () => {
+  // Spec 007, "Outside content": a part of a channel job holds outside content from its start only
+  // when the job came from an outside program, or when the lead held outside content before it
+  // made the part. The message of the lead that makes the part is not outside content by itself.
+  test("a part of a job of the user holds no outside content: a memory save runs", async () => {
     const s = await setup()
+    await s.send("split memory")
+    await s.idle()
+    expect((await s.tasks()).some((t) => t.state === "waiting")).toBe(false)
+    expect((await s.run(Memory.use((m) => m.list(s.bo.id)))).map((i) => i.text)).toEqual([
+      "Bo answers yes",
+    ])
+    const card = (await s.history())
+      .find((m) => m.agentId === s.bo.id)
+      ?.parts.find((p) => p.kind === "tool")
+    expect(card).toMatchObject({ name: "save_memory", state: "done" })
+    expect((card as { ask?: unknown }).ask).toBeUndefined()
+  })
+
+  test("a part holds outside content from its start when the channel holds it: a memory save asks", async () => {
+    const s = await setup()
+    // The lead read a page earlier, and no one cleared the mark of the channel.
+    await s.run(
+      PlaceMarks.use((marks) =>
+        Effect.sync(() =>
+          marks.holdOutside(
+            { kind: "channel", id: s.channel.id },
+            { kind: "page", host: "a.test" },
+          ),
+        ),
+      ),
+    )
     await s.send("split memory")
     await until(async () => (await s.tasks()).some((t) => t.state === "waiting"))
     const card = (await s.history())
@@ -519,7 +549,7 @@ describe("tools in channels", () => {
     expect(card).toMatchObject({
       name: "save_memory",
       state: "waiting",
-      ask: { kind: "approval", once: true, outside: { kind: "agent", name: "Lia" } },
+      ask: { kind: "approval", once: true, outside: { kind: "page", host: "a.test" } },
     })
     await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
     await s.idle()
