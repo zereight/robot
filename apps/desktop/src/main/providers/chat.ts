@@ -53,6 +53,12 @@ export interface ChatRequest {
   readonly connection: Connection
   readonly model: string
   readonly effort: string | null
+  /**
+   * The most tokens that one request may write: the output limit that the user set for a custom
+   * model (spec 006). Absent means that the request names no limit of its own, and an Anthropic
+   * request takes the room that its effort level needs.
+   */
+  readonly maxOutput?: number
   readonly system: string
   readonly turns: readonly Turn[]
   readonly tools?: readonly ToolDef[]
@@ -188,6 +194,7 @@ const outputTokens: Record<string, number> = {
   high: 32768,
   xhigh: 49152,
   max: 64000,
+  ultra: 64000,
 }
 const OUTPUT_TOKENS = 8192
 
@@ -198,6 +205,7 @@ const OUTPUT_TOKENS = 8192
  */
 const thinkingBudget: Record<string, number> = { low: 2048, medium: 8192, high: 24576 }
 const BUDGET_MODEL_OUTPUT_LIMIT = 32000
+const MIN_THINKING_BUDGET = 1024
 
 const post = async (req: ChatRequest, body: unknown) => {
   const response = await request(
@@ -237,6 +245,13 @@ async function* openAiStream(req: ChatRequest): AsyncGenerator<StreamEvent> {
         }
       : {}),
     ...(req.effort ? { reasoning_effort: req.effort } : {}),
+    // The output limit of a custom model (spec 006). OpenAI itself names the field in another way
+    // than the other servers that speak its API.
+    ...(req.maxOutput
+      ? req.connection.kind === "openai"
+        ? { max_completion_tokens: req.maxOutput }
+        : { max_tokens: req.maxOutput }
+      : {}),
   })
   const calls = new Map<number, { id: string; name: string; input: string }>()
   const flush = function* (): Generator<StreamEvent> {
@@ -313,11 +328,23 @@ export interface AnthropicBody {
  */
 export const anthropicBody = (req: ChatRequest): AnthropicBody => {
   // An older model has no effort setting: the level gives it a thinking budget.
-  const budget =
+  const wanted =
     req.effort && takesThinkingBudget(req.model) ? thinkingBudget[req.effort] : undefined
-  const maxTokens = budget
-    ? Math.min(OUTPUT_TOKENS + budget, BUDGET_MODEL_OUTPUT_LIMIT)
-    : ((req.effort ? outputTokens[req.effort] : undefined) ?? OUTPUT_TOKENS)
+  // The output limit of a custom model is the most tokens to write. The thinking budget must stay
+  // below it, and the smallest budget that the API takes is 1,024 tokens: a limit too small for
+  // that leaves the model without a thinking budget.
+  const cap = req.maxOutput
+  const budget =
+    wanted !== undefined && cap !== undefined
+      ? Math.min(wanted, cap - 1) >= MIN_THINKING_BUDGET
+        ? Math.min(wanted, cap - 1)
+        : undefined
+      : wanted
+  const maxTokens =
+    cap ??
+    (budget
+      ? Math.min(OUTPUT_TOKENS + budget, BUDGET_MODEL_OUTPUT_LIMIT)
+      : ((req.effort ? outputTokens[req.effort] : undefined) ?? OUTPUT_TOKENS))
   return {
     model: req.model,
     max_tokens: maxTokens,
@@ -334,7 +361,7 @@ export const anthropicBody = (req: ChatRequest): AnthropicBody => {
           })),
         }
       : {}),
-    ...(req.effort && !budget ? { output_config: { effort: req.effort } } : {}),
+    ...(req.effort && wanted === undefined ? { output_config: { effort: req.effort } } : {}),
     ...(budget
       ? { thinking: { type: "enabled", budget_tokens: budget } }
       : // The text of the thinking is hidden unless asked for, and the chat shows it.

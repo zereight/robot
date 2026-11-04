@@ -55,6 +55,7 @@ import {
   type QueuedMessage,
   type QueueHold,
   type RetryResult,
+  routineTurnEffort,
   runningStepKind,
   runtimeTakesInput,
   type SkillPart,
@@ -955,12 +956,28 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           .at(-1)
         // A routine with a model of its own uses it for its turn (spec 009).
         const ownModel = lastUser && !resumed ? origins.get(lastUser.id)?.model : undefined
+        // When the model of the routine does not list the effort of the routine, the run uses the
+        // effort of the agent (spec 009). The turn then sends the nearest level that the model
+        // lists (spec 006).
+        let routineEffort = ownModel?.effort ?? null
+        if (ownModel && routineEffort !== null) {
+          const listed = yield* providers
+            .models(ownModel.accountId)
+            .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+          const kind =
+            (yield* providers.accounts).find((a) => a.id === ownModel.accountId)?.kind ?? "custom"
+          routineEffort = routineTurnEffort(
+            routineEffort,
+            own.model_effort,
+            offeredEfforts(kind, ownModel.model, listed),
+          )
+        }
         const agent: AgentModelRow = ownModel
           ? {
               ...own,
               model_account_id: ownModel.accountId,
               model_name: ownModel.model,
-              model_effort: ownModel.effort,
+              model_effort: routineEffort,
             }
           : own
         const reply =

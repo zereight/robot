@@ -513,6 +513,100 @@ describe("the cache marker in the body of an Anthropic request", () => {
   })
 })
 
+describe("the output limit of a custom model (spec 006)", () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+  const base = {
+    system: "",
+    turns: [{ role: "user" as const, content: "hi" }],
+    signal: new AbortController().signal,
+    model: "m",
+    effort: null,
+  }
+
+  test("an Anthropic request sends the limit as the most tokens to write", () => {
+    const connection = { kind: "anthropic" as const, baseUrl: "http://x", apiKey: "k" }
+    expect(
+      anthropicBody({
+        ...base,
+        connection,
+        model: "claude-opus-5-5",
+        effort: "max",
+        maxOutput: 2000,
+      }).max_tokens,
+    ).toBe(2000)
+    // Without a limit the room follows the level, as before.
+    expect(
+      anthropicBody({ ...base, connection, model: "claude-opus-5-5", effort: "max" }).max_tokens,
+    ).toBe(64000)
+  })
+
+  test("Ultra gets as much room as Max", () => {
+    const connection = { kind: "anthropic" as const, baseUrl: "http://x", apiKey: "k" }
+    const room = (effort: string) =>
+      anthropicBody({ ...base, connection, model: "claude-opus-5-5", effort }).max_tokens
+    expect(room("ultra")).toBe(room("max"))
+  })
+
+  test("the thinking budget of an older model stays under the limit, or goes", () => {
+    const connection = { kind: "anthropic" as const, baseUrl: "http://x", apiKey: "k" }
+    const roomy = anthropicBody({
+      ...base,
+      connection,
+      model: "claude-sonnet-4-5",
+      effort: "high",
+      maxOutput: 4000,
+    })
+    expect(roomy.max_tokens).toBe(4000)
+    expect(roomy.thinking?.budget_tokens).toBe(3999)
+    const tight = anthropicBody({
+      ...base,
+      connection,
+      model: "claude-sonnet-4-5",
+      effort: "high",
+      maxOutput: 1000,
+    })
+    expect(tight.max_tokens).toBe(1000)
+    expect("thinking" in tight).toBe(false)
+    expect("output_config" in tight).toBe(false)
+  })
+
+  test("a custom address gets max_tokens, OpenAI gets max_completion_tokens, and no limit sends none", async () => {
+    const bodies: Record<string, unknown>[] = []
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)))
+      return new Response("data: [DONE]\n\n")
+    }) as unknown as typeof fetch
+    const drain = async (req: Parameters<typeof streamChat>[0]) => {
+      for await (const _ of streamChat(req));
+    }
+    const custom = { kind: "custom" as const, baseUrl: "http://x/v1", apiKey: "k" }
+    await drain({ ...base, connection: custom, maxOutput: 2000 })
+    await drain({ ...base, connection: { ...custom, kind: "openai" }, maxOutput: 2000 })
+    await drain({ ...base, connection: custom })
+    expect(bodies[0]?.max_tokens).toBe(2000)
+    expect("max_completion_tokens" in (bodies[0] ?? {})).toBe(false)
+    expect(bodies[1]?.max_completion_tokens).toBe(2000)
+    expect("max_tokens" in (bodies[1] ?? {})).toBe(false)
+    expect("max_tokens" in (bodies[2] ?? {})).toBe(false)
+    expect("max_completion_tokens" in (bodies[2] ?? {})).toBe(false)
+  })
+
+  test("each level of an OpenAI-compatible request goes as the level, also Minimal and Ultra", async () => {
+    const bodies: Record<string, unknown>[] = []
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)))
+      return new Response("data: [DONE]\n\n")
+    }) as unknown as typeof fetch
+    const connection = { kind: "custom" as const, baseUrl: "http://x/v1", apiKey: "k" }
+    for (const effort of ["none", "minimal", "ultra"])
+      for await (const _ of streamChat({ ...base, connection, effort }));
+    expect(bodies.map((b) => b.reasoning_effort)).toEqual(["none", "minimal", "ultra"])
+  })
+})
+
 describe("the input tokens of an Anthropic reply", () => {
   const realFetch = globalThis.fetch
   afterEach(() => {

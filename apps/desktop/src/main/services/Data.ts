@@ -492,6 +492,11 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO channel_member SELECT * FROM imp.channel_member")
               db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
+              // The models that the user turned off, and the fields of the custom models, come back
+              // with their accounts (spec 006, 014).
+              db.run(
+                "INSERT INTO provider_model SELECT * FROM imp.provider_model WHERE account_id IN (SELECT id FROM imp.provider_account)",
+              )
               // The sign-in of a vendor program belongs to the other computer. Connect again.
               db.run(
                 "UPDATE provider_account SET off = 1 WHERE kind IN ('claude_code', 'codex', 'muse', 'pi', 'opencode')",

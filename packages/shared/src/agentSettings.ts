@@ -7,7 +7,7 @@ import {
   FACE_SHAPES,
   type Face,
 } from "./agents.ts"
-import type { ModelInfo } from "./providers.ts"
+import { carriedEffort, type ModelInfo } from "./providers.ts"
 import type { Settings } from "./settings.ts"
 
 // ---------------------------------------------------------------------------------------------
@@ -446,8 +446,10 @@ export const planSettings = (
         )
       next = { ...next, effort: effortArg }
     } else if (next.effort !== null && !offered.includes(next.effort)) {
-      // The new model does not take the old level: the agent uses the default of the model.
-      next = { ...next, effort: null }
+      // The new model does not take the old level: the agent uses the nearest level that the new
+      // model lists, and the lower one when two are equally near (spec 006). A model with no
+      // levels gives "Default".
+      next = { ...next, effort: carriedEffort(next.effort, offered) }
     }
     add("model", current.model, next)
   }

@@ -2,9 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { ModelInfo } from "@robot/shared"
 import {
   anthropicEfforts,
+  createdOf,
   effortsFromCapabilities,
-  keepEffort,
+  effortToSend,
   listModels,
+  modelEfforts,
   offeredEfforts,
 } from "./client.ts"
 
@@ -122,30 +124,75 @@ describe("anthropicEfforts", () => {
   })
 })
 
-describe("keepEffort", () => {
+describe("effortToSend", () => {
   const listed: ModelInfo[] = [
     { id: "claude-haiku-5-5", label: "Haiku", efforts: ["low", "medium", "high", "xhigh", "max"] },
     { id: "claude-3-5-haiku-latest", label: "Haiku 3.5", efforts: [] },
+    { id: "stand-in", label: "Stand-in", efforts: ["minimal", "high", "ultra"] },
   ]
 
-  test("keeps a level that the listed model takes, and drops one that it does not", () => {
-    expect(keepEffort("anthropic", "claude-haiku-5-5", "max", listed)).toBe("max")
-    expect(keepEffort("anthropic", "claude-3-5-haiku-latest", "high", listed)).toBeNull()
+  test("sends a level that the listed model takes, and the nearest level when it does not", () => {
+    expect(effortToSend("anthropic", "claude-haiku-5-5", "max", listed)).toBe("max")
+    expect(effortToSend("anthropic", "claude-3-5-haiku-latest", "high", listed)).toBeNull()
+    // The list of any provider counts, also for Minimal and Ultra.
+    expect(effortToSend("custom", "stand-in", "ultra", listed)).toBe("ultra")
+    expect(effortToSend("custom", "stand-in", "max", listed)).toBe("ultra")
+    expect(effortToSend("custom", "stand-in", "none", listed)).toBe("minimal")
+    // Low is one step from Minimal and two from High.
+    expect(effortToSend("custom", "stand-in", "low", listed)).toBe("minimal")
   })
 
-  test("without a list, the name of the model decides", () => {
-    expect(keepEffort("anthropic", "claude-sonnet-4-6", "max")).toBe("max")
-    expect(keepEffort("anthropic", "claude-sonnet-4-6", "xhigh")).toBeNull()
-    expect(keepEffort("anthropic", "claude-3-5-haiku-latest", "high")).toBeNull()
-    // An older model that thinks with a budget keeps its three levels, and not the two new ones.
-    expect(keepEffort("anthropic", "claude-haiku-4-5", "high")).toBe("high")
-    expect(keepEffort("anthropic", "claude-haiku-4-5", "max")).toBeNull()
+  test("two levels equally near: the lower one is sent", () => {
+    expect(effortToSend("custom", "stand-in", "xhigh", listed)).toBe("high")
   })
 
-  test("no level stays no level, and other providers are left as they are", () => {
-    expect(keepEffort("anthropic", "claude-opus-5-5", null, listed)).toBeNull()
-    expect(keepEffort("openai", "o3", "high")).toBe("high")
-    expect(keepEffort("custom", "anything", "high")).toBe("high")
+  test("without a list, the name of the model decides an Anthropic model", () => {
+    expect(effortToSend("anthropic", "claude-sonnet-4-6", "max")).toBe("max")
+    // Sonnet 4.6 lists low, medium, high and max: xhigh is between high and max, so the lower one.
+    expect(effortToSend("anthropic", "claude-sonnet-4-6", "xhigh")).toBe("high")
+    expect(effortToSend("anthropic", "claude-3-5-haiku-latest", "high")).toBeNull()
+    // An older model that thinks with a budget keeps its three levels, and takes the nearest.
+    expect(effortToSend("anthropic", "claude-haiku-4-5", "high")).toBe("high")
+    expect(effortToSend("anthropic", "claude-haiku-4-5", "max")).toBe("high")
+  })
+
+  test("no level stays no level, and a model that the list does not name goes as it is", () => {
+    expect(effortToSend("anthropic", "claude-opus-5-5", null, listed)).toBeNull()
+    expect(effortToSend("openai", "o3", "high")).toBe("high")
+    expect(effortToSend("custom", "anything", "high")).toBe("high")
+    expect(effortToSend("custom", "anything", "ultra", listed)).toBe("ultra")
+  })
+})
+
+describe("modelEfforts and the dates of a list", () => {
+  test("a list of any provider can name None, Minimal and Ultra", () => {
+    const caps = { effort: { supported: true, minimal: level(true), ultra: level(true) } }
+    expect(modelEfforts("custom", "m", caps)).toEqual(["minimal", "ultra"])
+    expect(modelEfforts("openai", "m", caps)).toEqual(["minimal", "ultra"])
+    expect(
+      effortsFromCapabilities({
+        effort: { supported: true, none: level(true), low: level(true), ultra: level(false) },
+      }),
+    ).toEqual(["none", "low"])
+  })
+
+  test("a list that names no level leaves the name to decide", () => {
+    expect(modelEfforts("custom", "m", undefined)).toEqual([])
+    expect(modelEfforts("openai", "o3", { effort: { supported: false } })).toEqual([
+      "low",
+      "medium",
+      "high",
+    ])
+  })
+
+  test("the time that a provider gives is read as ms", () => {
+    expect(createdOf({ created_at: "2026-01-02T00:00:00Z" })).toBe(
+      Date.parse("2026-01-02T00:00:00Z"),
+    )
+    expect(createdOf({ created: 1_700_000_000 })).toBe(1_700_000_000_000)
+    expect(createdOf({ created: 1_700_000_000_000 })).toBe(1_700_000_000_000)
+    for (const bad of [{}, { created: 0 }, { created: "x" }, { created_at: "soon" }])
+      expect(createdOf(bad)).toBeUndefined()
   })
 })
 
@@ -206,7 +253,17 @@ describe("listModels for an Anthropic account", () => {
     ])
   })
 
-  test("an OpenAI list ignores capabilities and goes by the name", async () => {
+  test("the list keeps the order of the provider and tells when each model was made", async () => {
+    answer([
+      { id: "z-model", created_at: "2026-02-01T00:00:00Z" },
+      { id: "a-model", created_at: "2025-02-01T00:00:00Z" },
+    ])
+    const models = await listModels(conn)
+    expect(models.map((m) => m.id)).toEqual(["z-model", "a-model"])
+    expect(models[0]?.created).toBe(Date.parse("2026-02-01T00:00:00Z"))
+  })
+
+  test("an OpenAI list ignores capabilities that name no level and goes by the name", async () => {
     answer([{ id: "o3", capabilities: { effort: { supported: false } } }])
     const models = await listModels({ ...conn, kind: "openai" })
     expect(models[0]?.efforts).toEqual(["low", "medium", "high"])

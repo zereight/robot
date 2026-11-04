@@ -640,6 +640,40 @@ export const handlers: Handlers = {
     decode(ByAccount)(input).pipe(
       Effect.flatMap(({ accountId }) => Providers.use((p) => p.models(accountId))),
     ),
+  "providers.setModel": (input) =>
+    decode(
+      Schema.Struct({
+        accountId: Schema.String,
+        model: Schema.String,
+        hidden: Schema.optionalKey(Schema.Boolean),
+        contextSize: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+        outputLimit: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ accountId, model, ...patch }) =>
+        Providers.use((p) => p.setModel(accountId, model, patch)),
+      ),
+      Effect.as(undefined),
+    ),
+  "providers.setAllModels": (input) =>
+    decode(Schema.Struct({ accountId: Schema.String, hidden: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ accountId, hidden }) =>
+        Providers.use((p) => p.setAllModels(accountId, hidden)),
+      ),
+      Effect.as(undefined),
+    ),
+  "providers.addModel": (input) =>
+    decode(Schema.Struct({ accountId: Schema.String, model: Schema.String }))(input).pipe(
+      Effect.flatMap(({ accountId, model }) => Providers.use((p) => p.addModel(accountId, model))),
+      Effect.as(undefined),
+    ),
+  "providers.removeModel": (input) =>
+    decode(Schema.Struct({ accountId: Schema.String, model: Schema.String }))(input).pipe(
+      Effect.flatMap(({ accountId, model }) =>
+        Providers.use((p) => p.removeModel(accountId, model)),
+      ),
+      Effect.as(undefined),
+    ),
   "runtimes.status": (input) =>
     decode(ByRuntime)(input).pipe(
       Effect.flatMap(({ kind, signIn }) => Runtimes.use((r) => r.status(kind, signIn))),

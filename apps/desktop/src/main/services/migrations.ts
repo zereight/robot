@@ -989,4 +989,24 @@ export const migrations: readonly string[] = [
   ALTER TABLE task ADD COLUMN agent_message TEXT;
   CREATE INDEX task_hand_off ON task (created_at) WHERE agent_message = 'send';
   `,
+  `
+  -- The settings of the models of an account (spec 006, "Model list"). They belong to this
+  -- computer: sync (019) does not carry the table, so it has no dirty trigger. A row exists for a
+  -- model that this computer saw in a list of the account, and for a model ID that the user
+  -- typed (\`typed\` = 1). \`seen_at\` is when a LATER fetch first listed the model, in ms since the
+  -- epoch; it is NULL for a model of the first fetch of the account, which gets no tag "New".
+  -- \`hidden\` is 1 for a model that the user turned off in the part "Models". \`context_size\` and
+  -- \`output_limit\` are the optional fields of a custom model, in tokens. An export keeps the
+  -- table and an import brings it back with its account. No secret is in it.
+  CREATE TABLE provider_model (
+    account_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    seen_at INTEGER,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    context_size INTEGER,
+    output_limit INTEGER,
+    typed INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (account_id, model)
+  );
+  `,
 ]

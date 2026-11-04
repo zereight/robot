@@ -10,6 +10,79 @@ export const EFFORTS = ["low", "medium", "high"] as const
 export const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const
 
 /**
+ * Every effort level, from the lowest to the highest (spec 006, "Effort levels"). None and Minimal
+ * sit below Low, and Ultra sits above Max. A model lists only the levels that it takes, and a
+ * level that a model does not list is never sent to it. A list of levels keeps this order.
+ */
+export const EFFORT_LEVELS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+] as const
+export type EffortLevel = (typeof EFFORT_LEVELS)[number]
+
+export const isEffortLevel = (level: unknown): level is EffortLevel =>
+  (EFFORT_LEVELS as readonly unknown[]).includes(level)
+
+/** The levels of a list that this app knows, once each, from the lowest to the highest. */
+export const sortEfforts = (levels: Iterable<string>): EffortLevel[] => {
+  const given = new Set(levels)
+  return EFFORT_LEVELS.filter((level) => given.has(level))
+}
+
+/**
+ * The level of a list that is nearest to `level` (spec 006). A level on the list stays. When two
+ * levels are equally near, the lower one wins. Null when the list is empty, and for a level that
+ * this app does not know: it cannot be placed between the others.
+ */
+export const nearestEffort = (level: string | null, offered: readonly string[]): string | null => {
+  if (level === null) return null
+  if (offered.includes(level)) return level
+  const at = EFFORT_LEVELS.indexOf(level as EffortLevel)
+  if (at < 0) return null
+  let best: { level: string; gap: number } | null = null
+  for (const candidate of offered) {
+    const index = EFFORT_LEVELS.indexOf(candidate as EffortLevel)
+    if (index < 0) continue
+    const gap = Math.abs(index - at)
+    // The list is read in any order: on a tie the lower level wins.
+    if (
+      best === null ||
+      gap < best.gap ||
+      (gap === best.gap && index < EFFORT_LEVELS.indexOf(best.level as EffortLevel))
+    )
+      best = { level: candidate, gap }
+  }
+  return best?.level ?? null
+}
+
+/**
+ * The effort that a run of a routine with its own model uses (spec 009). The effort of the routine
+ * counts when its model lists it. When it does not, the run uses the effort of the agent. The turn
+ * then sends the nearest level that the model lists (spec 006). A routine with no effort of its own
+ * ("Default") leaves the choice to the model.
+ */
+export const routineTurnEffort = (
+  routineEffort: string | null,
+  agentEffort: string | null,
+  offered: readonly string[],
+): string | null =>
+  routineEffort !== null && !offered.includes(routineEffort) ? agentEffort : routineEffort
+
+/**
+ * The level of an agent, a routine or a header after its model changed: the level stays when the
+ * new model lists it, and else the nearest level that the new model lists (spec 006). "Default"
+ * (null) stays "Default". The form of a new agent does not use this: see `settledEffort`.
+ */
+export const carriedEffort = (current: string | null, offered: readonly string[]): string | null =>
+  nearestEffort(current, offered)
+
+/**
  * The level at which the effort field of the form of a new agent starts, when the model offers it
  * (spec 002, flow 1). A lower level uses fewer tokens, so a new agent starts at the middle level.
  */
@@ -104,9 +177,42 @@ export interface ModelInfo {
   readonly labelKey?: MessageKey
   /** Effort levels the model takes. Empty when it has none. */
   readonly efforts: readonly string[]
-  /** The size of the context of the model in tokens, when the provider tells it (spec 003). */
+  /**
+   * The size of the context of the model in tokens, when the provider tells it, or the user set it
+   * for a custom model (spec 003, 006).
+   */
   readonly contextWindow?: number
+  /** When the provider made the model, in ms since the epoch, when it tells it. */
+  readonly created?: number
+  /**
+   * Set by the picker list of an account (spec 006, "Model list"): a newer model of the same
+   * family exists, so the model belongs to the folded group "Older models".
+   */
+  readonly older?: true
+  /** The model first showed up in a later fetch of the account, less than 7 days ago. */
+  readonly isNew?: true
+  /** The user turned the model off in the part "Models" of the account. */
+  readonly hidden?: true
+  /** A custom model: the user may set its context size and its output limit. */
+  readonly custom?: true
+  /** A model ID that the user typed in the part "Models". The user can take it off again. */
+  readonly added?: true
+  /** The most tokens one request may write, set by the user for a custom model. */
+  readonly outputLimit?: number
 }
+
+/** How long the tag "New" stays on a model (spec 006, "Model list"). */
+export const MODEL_NEW_DAYS = 7
+export const MODEL_NEW_MS = MODEL_NEW_DAYS * 24 * 60 * 60 * 1000
+
+/** The most tokens that the fields "Context size" and "Output limit" of a custom model take. */
+export const TOKEN_FIELD_MAX = 10_000_000
+
+/** A whole number of tokens from 1 to 10,000,000 (spec 006), or null for anything else. */
+export const tokenCount = (value: unknown): number | null =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= TOKEN_FIELD_MAX
+    ? value
+    : null
 
 /**
  * What the app does itself for a runtime. "download": the vendor publishes a file with a checksum
@@ -237,7 +343,9 @@ export const runtimeModels = (kind: RuntimeKind): readonly ModelInfo[] =>
             id: "default",
             label: "Default",
             labelKey: "providers.model.default",
-            efforts: EFFORTS,
+            // Muse Code names all eight levels for its flag `--reasoning-effort`. Codex takes
+            // the three that the app has always offered for it.
+            efforts: kind === "muse" ? EFFORT_LEVELS : EFFORTS,
           },
         ]
 

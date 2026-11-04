@@ -362,7 +362,7 @@ describe("a file that is refused", () => {
       ],
       [
         "workflow_file_field",
-        [flow({ steps: [step({ effort: "minimal" })] })],
+        [flow({ steps: [step({ effort: "extreme" })] })],
         "workflows[0].steps[0].effort",
       ],
       [
