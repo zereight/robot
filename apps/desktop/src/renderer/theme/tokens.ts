@@ -14,10 +14,22 @@ export interface Palette {
   success: string
   danger: string
   focus: string
-  /** The app mark, as a small badge. The same in both themes: the badge has its own dark tile. */
+  /** The app mark, as a small badge. The app mark does not change with the theme: it has its own dark tile. */
   markTile: string
   markEyes: string
   markGlow: string
+  /**
+   * The mark of the user and the mark of a channel (spec 002). They follow the theme: a dark disc
+   * with a glyph of light in the dark theme, a light disc with a dark glyph in the light theme.
+   */
+  avatarTile: string
+  avatarGlyph: string
+  /** The colour of the glow of the glyph. The light theme has no glow, and this is its rim. */
+  avatarGlow: string
+  /** The thin rim of the disc. */
+  avatarRim: string
+  /** The second, fainter ring of the dark theme. */
+  avatarHalo: string
 }
 
 export const palettes: Record<"dark" | "light", Palette> = {
@@ -39,6 +51,11 @@ export const palettes: Record<"dark" | "light", Palette> = {
     markTile: "#0a0817",
     markEyes: "#eafff8",
     markGlow: "#7affd4",
+    avatarTile: "#0a0817",
+    avatarGlyph: "#eafff8",
+    avatarGlow: "#7affd4",
+    avatarRim: "#7affd466",
+    avatarHalo: "#7affd417",
   },
   light: {
     rail: "#e9e9eb",
@@ -58,6 +75,11 @@ export const palettes: Record<"dark" | "light", Palette> = {
     markTile: "#0a0817",
     markEyes: "#eafff8",
     markGlow: "#7affd4",
+    avatarTile: "#e1f7ef",
+    avatarGlyph: "#0a3a2c",
+    avatarGlow: "#17705a",
+    avatarRim: "#17705a",
+    avatarHalo: "transparent",
   },
 }
 

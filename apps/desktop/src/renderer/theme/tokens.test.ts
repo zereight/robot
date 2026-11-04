@@ -24,7 +24,35 @@ describe("theme contrast", () => {
     test(`${theme}: danger text on main is at least 4.5:1`, () => {
       expect(contrast(p.danger, p.main)).toBeGreaterThanOrEqual(4.5)
     })
+    test(`${theme}: the glyph of the mark of the user stands out from its disc at 7:1`, () => {
+      expect(contrast(p.avatarGlyph, p.avatarTile)).toBeGreaterThanOrEqual(7)
+    })
   }
+
+  test("light: the rim of the mark of the user shows on every surface at 3:1", () => {
+    const p = palettes.light
+    for (const surface of [p.rail, p.sidebar, p.main, p.hover, p.selected]) {
+      expect(contrast(p.avatarRim, surface)).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  test("the app mark does not change with the theme", () => {
+    const { dark, light } = palettes
+    expect([light.markTile, light.markEyes, light.markGlow]).toEqual([
+      dark.markTile,
+      dark.markEyes,
+      dark.markGlow,
+    ])
+  })
+
+  test("the dark theme keeps the look of the mark of the user", () => {
+    const p = palettes.dark
+    expect([p.avatarTile, p.avatarGlyph, p.avatarGlow]).toEqual([
+      p.markTile,
+      p.markEyes,
+      p.markGlow,
+    ])
+  })
 
   test("known ratio", () => {
     expect(contrast("#000000", "#ffffff")).toBeCloseTo(21, 5)
