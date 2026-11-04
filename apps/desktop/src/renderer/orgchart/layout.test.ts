@@ -278,12 +278,10 @@ describe("the layout never overlaps", () => {
     expect(model.lines.filter((l) => l.kind === "handoff")).toHaveLength(
       Math.min(40, model.lines.filter((l) => l.kind === "handoff").length),
     )
-    const started = performance.now()
     const layout = layoutChart(model, 14)
-    const took = performance.now() - started
     expect(faults(model, layout)).toEqual([])
-    // The window does it on each change, so it must be quick.
-    expect(took).toBeLessThan(2500)
+    // No time limit here: times never fail a test (docs/performance.md). On a busy computer a
+    // wall-clock limit fails by chance. The test timeout of the runner is the only limit.
   })
 
   test("every case draws the 40 busiest hand-offs and each has a number", () => {
