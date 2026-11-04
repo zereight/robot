@@ -53,6 +53,7 @@ import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
 import { Channels } from "./services/Channels.ts"
+import { ChannelTools } from "./services/ChannelTools.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
 import { Connections } from "./services/Connections.ts"
@@ -1435,6 +1436,37 @@ export const handlers: Handlers = {
     strict(Schema.Struct({ serverId: Id }))(input).pipe(
       Effect.flatMap(({ serverId }) => ownServer(serverId)),
       Effect.flatMap(() => OrgChart.use((o) => o.model())),
+    ),
+  // The tools of a channel and its daily token limit (spec 030). A linked device reads the first
+  // three with the link only; its input is checked as strictly as any request of a client.
+  "channelTools.list": (input) =>
+    strict(Schema.Struct({ channelId: Id }))(input).pipe(
+      Effect.flatMap(({ channelId }) => ChannelTools.use((c) => c.forChannel(channelId))),
+    ),
+  "channelTools.set": (input) =>
+    decode(
+      Schema.Struct({
+        channelId: Schema.String,
+        kind: Schema.Literals(["skill", "connection"]),
+        id: Schema.String,
+        on: Schema.Boolean,
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ channelId, kind, id, on }) =>
+        ChannelTools.use((c) => c.set(channelId, kind, id, on)),
+      ),
+    ),
+  "channelTools.forAgent": (input) =>
+    strict(Schema.Struct({ agentId: Id }))(input).pipe(
+      Effect.flatMap(({ agentId }) => ChannelTools.use((c) => c.forAgent(agentId))),
+    ),
+  "channels.limit": (input) =>
+    strict(Schema.Struct({ channelId: Id }))(input).pipe(
+      Effect.flatMap(({ channelId }) => ChannelTools.use((c) => c.limit(channelId))),
+    ),
+  "usage.channels": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => ChannelTools.use((c) => c.usage(serverId))),
     ),
   "usage.summary": (input) =>
     decode(

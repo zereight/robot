@@ -2003,3 +2003,54 @@ describe("the parent channel crosses with the channel (spec 030, 019)", () => {
     expect(KINDS.channel.read(b, "older")?.fields.parentChannel).toBe("up")
   })
 })
+
+describe("the daily token limit crosses with the channel (spec 030, 019)", () => {
+  const op = (kind: string, id: string, fields: Record<string, unknown>) => ({
+    k: kind,
+    i: id,
+    o: "dev-a",
+    f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+  })
+
+  test("the limit is a field of the channel; a change reaches the other computer, a bad number does not", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-limit")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    expect(KINDS.channel.read(ctxA, a.channel.id)?.fields.dailyTokenLimit).toBeNull()
+    a.db.run("UPDATE channel SET daily_token_limit = 50000 WHERE id = ?", a.channel.id)
+    const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
+    expect(fields.dailyTokenLimit).toBe(50_000)
+    expect(parseOp(op("channel", a.channel.id, fields), NOW)).toBeDefined()
+    // A text, a number out of range and a fraction are refused.
+    for (const bad of ["50000", 9_999, 100_000_001, 12_345.5])
+      expect(
+        parseOp(op("channel", a.channel.id, { ...fields, dailyTokenLimit: bad }), NOW),
+        JSON.stringify(bad),
+      ).toBeUndefined()
+
+    const b = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(b, a.channel.id, { ...fields, members: [] })).toBe(true)
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.dailyTokenLimit).toBe(50_000)
+    KINDS.channel.write(b, a.channel.id, { dailyTokenLimit: 80_000 })
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.dailyTokenLimit).toBe(80_000)
+    // Off crosses as null.
+    KINDS.channel.write(b, a.channel.id, { dailyTokenLimit: null })
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.dailyTokenLimit).toBeNull()
+  })
+
+  test("a computer of an older step sends no limit: the field stays as it is", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-limit-old")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const { dailyTokenLimit: _drop, ...older } = copy(
+      KINDS.channel.read(ctxA, a.channel.id)?.fields,
+    ) as Fields
+    expect(parseOp(op("channel", "older", older), NOW)).toBeDefined()
+    const b = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(b, "older", { ...older, members: [] })).toBe(true)
+    expect(KINDS.channel.read(b, "older")?.fields.dailyTokenLimit).toBeNull()
+    b.db.run("UPDATE channel SET daily_token_limit = 20000 WHERE id = 'older'")
+    KINDS.channel.write(b, "older", { topic: "New" })
+    expect(KINDS.channel.read(b, "older")?.fields.dailyTokenLimit).toBe(20_000)
+  })
+})

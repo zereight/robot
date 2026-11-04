@@ -131,6 +131,11 @@ export const CLIENT_METHODS = [
   // The skills that an agent may use now, for the command list of the message box (spec 003, 017).
   // A client gets the name and the description, never the instructions.
   "skills.forAgent",
+  // The part "Tools of this channel", the lines "From <channel>" of a profile, and the daily token
+  // limit of a channel (spec 030, 012). A client reads them and changes none of them with these.
+  "channelTools.list",
+  "channelTools.forAgent",
+  "channels.limit",
   "tasks.list",
   "tasks.get",
   "tasks.recent",

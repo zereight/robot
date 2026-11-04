@@ -4,7 +4,7 @@ import {
   type ActionDecider,
   type AgentMessageKind,
   addSpent as addToUsage,
-  blockedError,
+  blockedErrorOf,
   isActive,
   isDecision,
   isEndedAs,
@@ -136,6 +136,12 @@ export interface TaskInput {
    * limit of queued tasks (spec 005, "Queue").
    */
   readonly failed?: { readonly code: string; readonly detail: string }
+  /**
+   * The task is made, and then ends at once as Blocked with this reason and never runs: the daily
+   * token limit of its channel, or of a higher channel, is used (spec 005, "Blocked"; spec 030).
+   * The end makes the same notice and the same record as any other blocked task.
+   */
+  readonly blocked?: { readonly code: string; readonly detail: string }
 }
 
 /** One step of a task for the action log (spec 007). */
@@ -206,6 +212,13 @@ export interface TasksService {
        * turn is cancelled, whatever this says.
        */
       readonly finish?: (value: A) => TurnEnd
+      /**
+       * Asked when the task has its place and is about to start its turn. When it gives a reason,
+       * the task ends at once as Blocked with that error and the turn never runs: the daily token
+       * limit of a channel (spec 005, "Blocked"; spec 030). A task that goes on after a restart is
+       * not asked.
+       */
+      readonly gate?: () => { readonly code: string; readonly detail: string } | null
     },
   ): Effect.Effect<A, E, R>
   /**
@@ -868,13 +881,16 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             input.source === "agent" ? (input.agentMessage ?? null) : null,
             tokenLimit,
           )
-          if (!failed) {
+          if (!failed && !input.blocked) {
             stops.set(id, Deferred.makeUnsafe<void>())
             made.set(id, ++counter)
           }
           changed(input.agentId)
           if (input.source === "channel" && input.sourceId)
             bus.emit("channels.changed", { channelId: input.sourceId })
+          // A task that the daily limit of its channel stops ends here, with no turn. Its end
+          // goes through the same code as any end, so the notice and the listeners run.
+          if (input.blocked) setState(id, input.agentId, "blocked", input.blocked)
           return toTask(row(id) as TaskRow, remote)
         })
 
@@ -897,6 +913,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         options?: {
           readonly resumed?: boolean
           readonly finish?: (value: A) => TurnEnd
+          readonly gate?: () => { readonly code: string; readonly detail: string } | null
         },
       ) => {
         const stopSignal = stops.get(taskId) ?? Deferred.makeUnsafe<void>()
@@ -907,6 +924,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           agentId,
         )?.server_id
         const source = row(taskId)?.source ?? "chat"
+        let gated: { readonly code: string; readonly detail: string } | null = null
         const guarded = Effect.gen(function* () {
           // A task that waited through a restart goes on waiting until its card is answered. It
           // holds its agent and uses no slot until then (spec 005).
@@ -917,6 +935,15 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             back: false,
             slot: !options?.resumed,
           })
+          // The daily token limit of the channel (spec 030): a task that would start now ends as
+          // Blocked, with no turn. The state never goes to running.
+          if (!options?.resumed && options?.gate) {
+            const stop = options.gate()
+            if (stop) {
+              gated = stop
+              return yield* Effect.interrupt
+            }
+          }
           if (!options?.resumed) setState(taskId, agentId, "running")
           if (serverId) activity.setWorking(agentId, serverId, true)
           return yield* work.pipe(
@@ -934,6 +961,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               live.delete(taskId)
               stops.delete(taskId)
               leave(taskId, agentId)
+              if (gated) return setState(taskId, agentId, "blocked", gated)
               if (Exit.isSuccess(exit)) {
                 let end: TurnEnd = { state: "done" }
                 // A reading that fails never stops the end of a task.
@@ -943,7 +971,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
                   console.error("task finish failed", e)
                 }
                 if (end.state === "blocked")
-                  return setState(taskId, agentId, "blocked", blockedError(end.reason))
+                  return setState(taskId, agentId, "blocked", blockedErrorOf(end))
                 return setState(taskId, agentId, end.state)
               }
               if (Cause.hasInterruptsOnly(exit.cause)) return endStopped(taskId, agentId)

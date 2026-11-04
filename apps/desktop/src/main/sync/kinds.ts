@@ -49,6 +49,7 @@ import {
   THREAD_TITLE_MAX,
   TriggerSchema,
   VERDICTS,
+  validDailyLimit,
   validSchedule,
   validTokenLimit,
   validWatch,
@@ -874,6 +875,7 @@ interface ChannelRow {
   sensitive_mark: string | null
   outside_mark: string | null
   parent_channel_id: string | null
+  daily_token_limit: number | null
   created_at: number
   updated_at: number
   last_read_at: number
@@ -922,6 +924,9 @@ const channel: KindDef = {
     // it is. A parent that has not come yet, or is gone, counts as no parent, so the row needs no
     // order of its own.
     parentChannel: { check: nullable(str(100, 1)) },
+    // The daily token limit (spec 030, 019): off (null) or a whole number in the range. A computer
+    // of an older step has none, and leaves the field as it is.
+    dailyTokenLimit: { check: nullable(validDailyLimit) },
     members: {
       check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
     },
@@ -945,6 +950,7 @@ const channel: KindDef = {
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
         parentChannel: r.parent_channel_id,
+        dailyTokenLimit: r.daily_token_limit,
         members: ctx.db
           .all<{ agent_id: string }>(
             "SELECT agent_id FROM channel_member WHERE channel_id = ? ORDER BY position",
@@ -972,6 +978,7 @@ const channel: KindDef = {
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
       parent_channel_id: typeof f.parentChannel === "string" ? f.parentChannel : null,
+      daily_token_limit: validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null,
       created_at: f.createdAt,
       updated_at: now,
       last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
@@ -997,6 +1004,8 @@ const channel: KindDef = {
       columns.outside_mark = placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null)
     if (f.parentChannel !== undefined)
       columns.parent_channel_id = typeof f.parentChannel === "string" ? f.parentChannel : null
+    if (f.dailyTokenLimit !== undefined)
+      columns.daily_token_limit = validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null
     if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
     columns.updated_at = ctx.now()
     update(ctx.db, "channel", "id = ?", [id], columns)

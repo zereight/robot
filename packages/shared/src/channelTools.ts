@@ -92,6 +92,12 @@ export const emptyAudience = (audience: ToolAudience): boolean =>
 // The daily token limit of a channel
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * The error code of a task that the daily token limit of its channel stops (spec 030). Its detail
+ * is the name of the channel whose limit is used.
+ */
+export const CHANNEL_LIMIT_CODE = "channel_limit"
+
 /** The daily token limit takes a whole number in this range. It is off by default (spec 030). */
 export const DAILY_LIMIT_MIN = 10_000
 export const DAILY_LIMIT_MAX = 100_000_000
@@ -162,3 +168,44 @@ export const limitViewOf = (limit: number | null, used: number): ChannelLimitVie
   used,
   state: limit === null ? "ok" : limitState(used, limit),
 })
+
+// ---------------------------------------------------------------------------------------------
+// What the window shows
+// ---------------------------------------------------------------------------------------------
+
+/** One row of the part "Tools of this channel": a skill or a connection of this computer. */
+export interface ChannelToolRow {
+  readonly kind: "skill" | "connection"
+  readonly id: string
+  readonly name: string
+  /** The switch: the list of the skill or connection holds this channel, or holds "All agents". */
+  readonly on: boolean
+  /** True when the skill or connection is for "All agents": the switch is on and cannot change. */
+  readonly all: boolean
+}
+
+/** A skill or a connection that an agent has from channels, for the lines "From <channel>". */
+export interface AgentChannelTool {
+  readonly kind: "skill" | "connection"
+  readonly id: string
+  readonly name: string
+  /** The channels that give it, nearest first. */
+  readonly channels: readonly { readonly id: string; readonly name: string }[]
+}
+
+/** What a channel shows about its limit today. */
+export interface ChannelLimitInfo extends ChannelLimitView {
+  /**
+   * The channel whose limit is used and so stops new tasks of this channel: this channel or a
+   * higher one. Null when no limit stops it.
+   */
+  readonly stoppedBy: { readonly id: string; readonly name: string } | null
+}
+
+/** A row of the usage page for a channel with a daily token limit (spec 006, 030). */
+export interface ChannelUsageRow {
+  readonly channelId: string
+  readonly name: string
+  readonly used: number
+  readonly limit: number
+}

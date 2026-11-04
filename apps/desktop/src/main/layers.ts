@@ -8,6 +8,7 @@ import { AgentSettings } from "./services/AgentSettings.ts"
 import { Agents } from "./services/Agents.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
 import { Channels } from "./services/Channels.ts"
+import { ChannelTools } from "./services/ChannelTools.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
 import { Connections, type ConnectionsOptions } from "./services/Connections.ts"
@@ -129,7 +130,9 @@ export const appLayer = (options: AppLayerOptions) => {
   const knowledge = Knowledge.layer.pipe(Layer.provideMerge(agentSettings))
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
-  const agents = Layer.mergeAll(Chat.layer, Usage.layer).pipe(Layer.provideMerge(tasks))
+  const agents = Layer.mergeAll(Chat.layer, Usage.layer, ChannelTools.layer).pipe(
+    Layer.provideMerge(tasks),
+  )
   // The handover of a chat needs the chat service (spec 003, "Hand over").
   const handover = Handover.layer.pipe(Layer.provideMerge(agents))
   const channels = Channels.layer.pipe(Layer.provideMerge(handover))

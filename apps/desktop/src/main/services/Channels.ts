@@ -8,7 +8,9 @@ import {
   askStep,
   askSummary,
   BLOCKED_RULE,
+  blockedReasonForAgent,
   CHAIN_LIMIT_RULE,
+  CHANNEL_LIMIT_CODE,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
   CHECK_MESSAGES,
@@ -80,6 +82,7 @@ import {
   type TurnStarter,
   toldAboutBlocked,
   toolNameOf,
+  validDailyLimit,
   verdictText,
 } from "@robot/shared"
 import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
@@ -94,6 +97,7 @@ import { type Actor, CurrentActor } from "./actor.ts"
 import { type Attempt, withBackup } from "./backupTurn.ts"
 import { applyEvent } from "./Chat.ts"
 import { Connections } from "./Connections.ts"
+import { limitStopping } from "./channelAccess.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -205,6 +209,7 @@ interface ChannelRow {
   sensitive_mark: string | null
   outside_mark: string | null
   parent_channel_id: string | null
+  daily_token_limit: number | null
 }
 
 interface MessageRow {
@@ -292,7 +297,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -348,6 +353,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           sectionId: row.place_section_id,
           reviewParts: row.review_parts === 1,
           parentId: row.parent_channel_id,
+          dailyTokenLimit: row.daily_token_limit,
           sensitive: isSensitiveLabel(row.sensitive_mark) ? row.sensitive_mark : null,
           outside: parsePlaceOutside(row.outside_mark),
           unread,
@@ -1169,6 +1175,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             })
           }),
           {
+            ...limitGate(channel.id, task),
             // A last line "Blocked: ..." ends the task as Blocked. With "Review parts" on, a part of
             // a plan that ends well waits for the user. The setting is read when the part ends
             // (spec 004, 005). The plan, the summary, a check and a reply to a mention are no parts.
@@ -1190,6 +1197,18 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const full = tasks.queueFull(agentId)
         return full ? { failed: { code: full.code, detail: full.detail ?? "" } } : {}
       }
+      /**
+       * The daily token limit (spec 030): when the limit of the channel, or of a higher channel, is
+       * used, the error of a task that would start now, with the name of that channel. Else null.
+       */
+      const limitStop = (channelId: string) => {
+        const stop = limitStopping(db, channelId)
+        return stop ? { code: CHANNEL_LIMIT_CODE, detail: stop.name } : null
+      }
+      /** The `gate` of `tasks.run` for a task of this channel. A routine task is not a task of the channel. */
+      const limitGate = (channelId: string, task: Pick<Task, "source">) =>
+        task.source === "channel" ? { gate: () => limitStop(channelId) } : {}
+
       /** Fails with the reason when the queue of the agent is full (spec 005, "Queue"). */
       const checkQueue = (agentId: string) => {
         const full = tasks.queueFull(agentId)
@@ -1292,7 +1311,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             // A blocked part gives its reason, so the summary can name both (spec 004).
             const head = `- ${p.label} (${p.agentName}): ${now.state}${
               now.state === "blocked"
-                ? ` (reason: ${now.error?.detail || "none given"})`
+                ? ` (reason: ${blockedReasonForAgent(now.error) || "none given"})`
                 : now.error
                   ? ` (${now.error.code})`
                   : ""
@@ -1547,8 +1566,11 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         channel: ChannelRow,
         lead: AgentRow,
         task: Task,
-      ): Effect.Effect<unknown, unknown, never> =>
-        tasks.run(
+      ): Effect.Effect<unknown, unknown, never> => {
+        // The daily token limit (spec 030): a look or a summary of the lead that would start when
+        // the limit is used does not run, and the job ends as Blocked with the reason.
+        let limited: { readonly code: string; readonly detail: string } | null = null
+        return tasks.run(
           task.id,
           lead.id,
           Effect.gen(function* () {
@@ -1651,6 +1673,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 channelPartsOpen(channel.id)
               )
                 break
+              limited = limitStop(channel.id)
+              if (limited) break
               const final = looks >= LOOKS_MAX - 1
               looks++
               for (const part of ended) seen.add(part.id)
@@ -1661,6 +1685,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             }
 
             // All parts ended: the lead sums them up, also when some failed or were blocked.
+            limited = limited ?? limitStop(channel.id)
+            if (limited) return
             const ended = tasks.children(task.id)
             const unfixed = stillNotMet(ended).flatMap((id) => {
               const part = ended.find((p) => p.id === id)
@@ -1689,7 +1715,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             })
             void summary
           }),
+          {
+            ...limitGate(channel.id, task),
+            // A look or a summary that the limit stopped ends the job as Blocked (spec 030).
+            finish: () =>
+              limited
+                ? { state: "blocked", reason: limited.detail, code: limited.code }
+                : { state: "done" },
+          },
         )
+      }
 
       /**
        * The lead reads a job. `teamsJob` is "lead" when a message from Teams began the job (spec
@@ -1901,6 +1936,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         bus.emit("channels.changed", { channelId: channel.id })
       }
 
+      /** The daily token limit (spec 030): off, or a whole number from 10,000 to 100,000,000. */
+      const checkDailyLimit = (limit: number | null) =>
+        limit === null || validDailyLimit(limit)
+          ? Effect.succeed(limit)
+          : Effect.fail(new AppError({ code: "invalid_daily_limit" }))
+
       const create = Effect.fn("Channels.create")(function* (input: ChannelCreate) {
         const name = input.name.trim()
         const topic = input.topic.trim()
@@ -1914,12 +1955,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const id = randomUUID()
         const parentId = input.parentId ?? null
         yield* checkParent(input.serverId, id, parentId)
+        const dailyTokenLimit = yield* checkDailyLimit(input.dailyTokenLimit ?? null)
         const now = Date.now()
         db.transaction(() => {
           db.run(
             `INSERT INTO channel (id, server_id, name, name_key, topic, instructions, lead_agent_id,
-              place_section_id, parent_channel_id, created_at, updated_at, last_read_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              place_section_id, parent_channel_id, daily_token_limit, created_at, updated_at, last_read_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.serverId,
             name,
@@ -1929,6 +1971,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             input.leadId,
             sectionId,
             parentId,
+            dailyTokenLimit,
             now,
             now,
             now,
@@ -1979,6 +2022,11 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         // rules allowed stays allowed, or the tree shows it as none.
         const parentId = patch.parentId !== undefined ? patch.parentId : row.parent_channel_id
         if (parentId !== row.parent_channel_id) yield* checkParent(row.server_id, id, parentId)
+        // The daily token limit (spec 030). A limit that is already stored needs no new check.
+        const dailyTokenLimit =
+          patch.dailyTokenLimit !== undefined && patch.dailyTokenLimit !== row.daily_token_limit
+            ? yield* checkDailyLimit(patch.dailyTokenLimit)
+            : row.daily_token_limit
         // A member that works in this channel stays until its part ends or the user stops it.
         for (const removed of current.memberIds.filter((m) => !memberIds.includes(m))) {
           const busy = db.get(
@@ -1992,7 +2040,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         db.transaction(() => {
           db.run(
             `UPDATE channel SET name = ?, name_key = ?, topic = ?, instructions = ?, lead_agent_id = ?,
-              place_section_id = ?, review_parts = ?, parent_channel_id = ?, updated_at = ? WHERE id = ?`,
+              place_section_id = ?, review_parts = ?, parent_channel_id = ?, daily_token_limit = ?,
+              updated_at = ? WHERE id = ?`,
             name,
             name.toLocaleLowerCase(),
             topic,
@@ -2002,6 +2051,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             // Turning it off changes no part that is in review already (spec 004).
             patch.reviewParts === undefined ? row.review_parts : patch.reviewParts ? 1 : 0,
             parentId,
+            dailyTokenLimit,
             Date.now(),
             id,
           )
@@ -2356,7 +2406,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id FROM channel
+                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )
