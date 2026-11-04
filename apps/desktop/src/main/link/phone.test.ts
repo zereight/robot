@@ -535,7 +535,6 @@ describe("the phone on a real computer", () => {
       (s) => s === "online",
     )
     await phone.flush()
-    const filesBefore = [...storage.files.keys()].sort()
 
     const phases: OrgChartPhase[] = []
     const watch = phone.watchOrgChart(link.id, (p) => phases.push(p))
@@ -568,9 +567,20 @@ describe("the phone on a real computer", () => {
     expect(phases.slice(whileAway).map((p) => p.kind)).toEqual(["loading", "ready"])
     expect(names(last())).toEqual(["Ada L"])
 
-    // Nothing of the chart is on the disk of the phone.
+    // Nothing of the chart is on the disk of the phone. The normal cache (places, agents and
+    // channels) may end a write at any time, so this does not compare with the files of an earlier
+    // moment. It allows the known files only, and it needs that no file holds a field that only
+    // the model of the chart has.
     await phone.flush()
-    expect([...storage.files.keys()].sort()).toEqual(filesBefore)
+    const known = (path: string) =>
+      path === "device.json" ||
+      path === "servers.json" ||
+      /^cache\/[^/]+\/(places|agents|channels)\.json$/.test(path)
+    expect([...storage.files.keys()].filter((path) => !known(path))).toEqual([])
+    for (const text of storage.files.values()) {
+      expect(text).not.toContain("handoffsCapped")
+      expect(text).not.toContain("leadKey")
+    }
 
     // Stopping the watch ends it: a later change tells nobody.
     watch.stop()
