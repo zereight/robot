@@ -384,7 +384,9 @@ text is in the turn.
   - the result of a tool of a connection (018),
   - the answer of a request with a saved secret (020),
   - the change that starts a routine with a watch trigger (009),
-  - a message from another agent,
+  - a message from another agent (a message that it sends with "send message"; the messages of a
+    channel that a member reads under 004, "What a member reads", are not this, because the mark
+    of a place, below, already follows outside text through a channel),
   - the text that an agent wrote on a card of the board (024),
   - a message of an outside program (023),
   - a message from Teams (028),
