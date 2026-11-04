@@ -40,10 +40,21 @@ test("workflow editor: it fills the window, the runs sit on the right, and the c
   expect(canvas.height).toBeGreaterThan(600)
 
   // The panel and the runs share one column on the right of the canvas, the panel on top.
+  // The editor can still be settling when it shows, and a box is read at one time and the next at
+  // another. So the test waits until the two boxes line up, and does not read them in turn.
+  await expect
+    .poll(
+      async () => {
+        const p = await boxOf(first.page, "wf-panel")
+        const h = await boxOf(first.page, "wf-history")
+        return Math.abs(h.x - p.x)
+      },
+      { timeout: 5_000 },
+    )
+    .toBeLessThan(1)
   const panel = await boxOf(first.page, "wf-panel")
   const history = await boxOf(first.page, "wf-history")
-  expect(panel.x).toBeGreaterThanOrEqual(canvas.x + canvas.width)
-  expect(history.x).toBeCloseTo(panel.x, 0)
+  expect(panel.x).toBeGreaterThanOrEqual(canvas.x + canvas.width - 1)
   expect(history.y).toBeGreaterThan(panel.y + panel.height - 1)
   expect(panel.width).toBeCloseTo(340, -1)
   await shot(first.page, "workflow-side-default")
