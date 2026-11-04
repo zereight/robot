@@ -24,8 +24,22 @@ export const TEAMS_PAGE = {
   /** An element that only a sign-in form holds (the field for the name or the password). */
   signInForm: 'input[type="password"], input[name="loginfmt"], input[name="passwd"]',
 
+  /**
+   * Hosts of the Teams app. A host matches when it is equal to one of these or ends with a dot and
+   * one of these. A signed-out user never stays on one of these hosts: Teams sends the user to the
+   * sign-in.
+   */
+  appHosts: ["teams.cloud.microsoft", "teams.microsoft.com", "teams.live.com"],
+
   /** An element that only the signed-in Teams app holds: its chat list or its app bar. */
   appShell: '[data-tid="app-bar"], [data-tid="chat-list"], [data-tid="chat-pane-list"]',
+
+  /**
+   * The standard regions of a page that has loaded the app (the accessibility roles of its lists
+   * and its panes). It is the second proof of the app, for the day when `appShell` does not match
+   * the real page. It counts only on a host of `appHosts`.
+   */
+  appLandmarks: '[role="tree"], [role="treeitem"], [role="navigation"], [role="main"], nav, main',
 
   /** The title in the header of the open chat. */
   openChatTitle: '[data-tid="chat-title"], [data-tid="chat-header-title"]',

@@ -81,6 +81,8 @@ export interface RawTeamsRead {
   readonly online: boolean
   readonly signInForm: boolean
   readonly shell: boolean
+  /** The page holds the standard regions of a loaded app (`appLandmarks`). */
+  readonly landmarks: boolean
   readonly openTitle: string | null
   readonly chatTitles: readonly string[]
 }
@@ -97,6 +99,7 @@ export const readScript = (sel: TeamsPageSelectors = TEAMS_PAGE): string => `(()
     online: navigator.onLine !== false,
     signInForm: first(sel.signInForm) !== null,
     shell: first(sel.appShell) !== null,
+    landmarks: first(sel.appLandmarks) !== null,
     openTitle: open === "" ? null : open,
     chatTitles: items.map((item) => text(first(sel.chatListItemTitle, item) || item)),
   }
@@ -215,11 +218,18 @@ const hostOf = (url: string): string => {
   }
 }
 
-/** True when the address is a page of the Microsoft sign-in. */
-export const isSignInAddress = (url: string, hosts: readonly string[] = TEAMS_PAGE.signInHosts) => {
+const onHost = (url: string, hosts: readonly string[]) => {
   const host = hostOf(url)
   return host !== "" && hosts.some((h) => host === h || host.endsWith(`.${h}`))
 }
+
+/** True when the address is a page of the Teams app. */
+export const isTeamsAddress = (url: string, hosts: readonly string[] = TEAMS_PAGE.appHosts) =>
+  onHost(url, hosts)
+
+/** True when the address is a page of the Microsoft sign-in. */
+export const isSignInAddress = (url: string, hosts: readonly string[] = TEAMS_PAGE.signInHosts) =>
+  onHost(url, hosts)
 
 /**
  * A load failure that means "the page cannot reach Microsoft". Other failures (a redirect that
@@ -230,11 +240,16 @@ export const isOfflineError = (error: unknown): boolean =>
     String(error instanceof Error ? error.message : error),
   )
 
-/** What the read says about the page. A sign-in form comes before the app. */
+/**
+ * What the read says about the page. A sign-in form comes before the app. The app shows when the
+ * page holds its shell, or when a page of the Teams host holds the regions of a loaded app: the
+ * selector of the shell is a guess, and a user who is signed in must not see "not signed in".
+ */
 export const interpretRead = (raw: RawTeamsRead): TeamsLook => {
   if (!raw.online || raw.url.startsWith("chrome-error:")) return { kind: "offline" }
   if (raw.signInForm || isSignInAddress(raw.url)) return { kind: "signIn" }
-  if (raw.shell) return { kind: "teams", openTitle: raw.openTitle }
+  if (raw.shell || (raw.landmarks && isTeamsAddress(raw.url)))
+    return { kind: "teams", openTitle: raw.openTitle }
   return { kind: "unreadable" }
 }
 
