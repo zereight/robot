@@ -2152,7 +2152,7 @@ export const ko: Record<MessageKey, string> = {
   "memory.proposals.channelGone": "사라진 채널용",
   "memory.history.kind.moved": "이동",
   "memory.history.actor.channel_deleted": "채널 삭제",
-  "memory.history.moved": "{from}에서 {to}(으)로",
+  "memory.history.moved": "{from} → {to}",
   "memory.history.inChannel": "{name} 채널",
   "memory.history.channelGone": "채널이 더 이상 없어요.",
   "error.memory_not_member": "이 에이전트는 이 채널의 멤버가 아니에요.",
