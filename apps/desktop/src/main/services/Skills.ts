@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import {
+  copySkillName,
   numberedSkillName,
   SKILLS_MAX,
   type Skill,
@@ -35,6 +36,17 @@ const toSkill = (row: SkillRow): Skill => ({
   createdAt: row.created_at,
 })
 
+/** The agents in the stored list of a skill. A list that cannot be read names none. */
+const namedAgents = (stored: string | null): string[] => {
+  if (stored === null) return []
+  try {
+    const list: unknown = JSON.parse(stored)
+    return Array.isArray(list) ? list.filter((id): id is string => typeof id === "string") : []
+  } catch {
+    return []
+  }
+}
+
 export interface SkillsService {
   /** The skills of a server, in alphabetical order of their names. */
   list(serverId: string): Effect.Effect<readonly Skill[]>
@@ -48,6 +60,21 @@ export interface SkillsService {
     input: SkillInput,
     agentIds: readonly string[] | null,
   ): Effect.Effect<Skill, AppError>
+  /**
+   * Edit (spec 017, flow 2): changes every field of a skill. It stays on or off as it was. The
+   * checks of the form apply, and the name may stay the one it has. A skill whose list names an
+   * archived agent keeps that agent, so a restore brings the agent back to its skill.
+   */
+  update(
+    id: string,
+    input: SkillInput,
+    agentIds: readonly string[] | null,
+  ): Effect.Effect<Skill, AppError>
+  /**
+   * Duplicate (spec 017, flow 3): a copy with the same fields. `suffix` is the word "copy" in the
+   * language of the window. The copy is off until the user turns it on.
+   */
+  duplicate(id: string, suffix: string): Effect.Effect<Skill, AppError>
   /** Turns a skill on or off. */
   setEnabled(id: string, enabled: boolean): Effect.Effect<Skill, AppError>
   /** Deletes a skill. Old messages that used it keep their chip and their copy. */
@@ -105,7 +132,7 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
         serverId: string,
         input: SkillInput,
         agentIds: readonly string[] | null,
-        options?: { readonly numbered?: boolean },
+        options?: { readonly numbered?: boolean; readonly enabled?: boolean },
       ) =>
         Effect.gen(function* () {
           const problem = skillProblems(input)[0]
@@ -123,7 +150,7 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
           const id = randomUUID()
           db.run(
             `INSERT INTO skill (id, server_id, name, name_key, description, instructions, agents, enabled, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             serverId,
             name,
@@ -131,6 +158,7 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
             input.description.trim(),
             input.instructions,
             agentIds === null ? null : JSON.stringify(agentIds),
+            options?.enabled === false ? 0 : 1,
             Date.now(),
           )
           changed(serverId)
@@ -164,6 +192,83 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
               return yield* insert(serverId, input, known)
             }
             return yield* insert(serverId, input, null)
+          }),
+        update: (id, input, agentIds) =>
+          Effect.gen(function* () {
+            const row = db.get<SkillRow>("SELECT * FROM skill WHERE id = ?", id)
+            if (!row) return yield* new AppError({ code: "skill_unavailable" })
+            const problem = skillProblems(input)[0]
+            if (problem) return yield* new AppError({ code: problem.code, detail: problem.field })
+            const name = skillName(input.name)
+            const other = db.get(
+              "SELECT 1 FROM skill WHERE server_id = ? AND name_key = ? AND id <> ?",
+              row.server_id,
+              skillNameKey(name),
+              id,
+            )
+            if (other) return yield* new AppError({ code: "skill_name_taken", detail: "name" })
+            let list: string[] | null = null
+            if (agentIds !== null) {
+              const was = namedAgents(row.agents)
+              const unique = [...new Set(agentIds)]
+              const live = (agentId: string) =>
+                Boolean(
+                  db.get(
+                    "SELECT 1 FROM agent WHERE id = ? AND server_id = ? AND archived_at IS NULL",
+                    agentId,
+                    row.server_id,
+                  ),
+                )
+              const there = (agentId: string) =>
+                Boolean(
+                  db.get(
+                    "SELECT 1 FROM agent WHERE id = ? AND server_id = ?",
+                    agentId,
+                    row.server_id,
+                  ),
+                )
+              // An archived agent that the skill already names stays. An id of an agent that is
+              // gone and that the skill named goes. Any other id is not an agent of this server.
+              list = unique.filter(
+                (agentId) => live(agentId) || (was.includes(agentId) && there(agentId)),
+              )
+              const strange = unique.filter(
+                (agentId) => !list?.includes(agentId) && !was.includes(agentId),
+              )
+              if (list.length === 0 || strange.length > 0)
+                return yield* new AppError({ code: "skill_agents_invalid", detail: "agents" })
+            }
+            db.run(
+              `UPDATE skill SET name = ?, name_key = ?, description = ?, instructions = ?, agents = ?
+               WHERE id = ?`,
+              name,
+              skillNameKey(name),
+              input.description.trim(),
+              input.instructions,
+              list === null ? null : JSON.stringify(list),
+              id,
+            )
+            changed(row.server_id)
+            return toSkill(db.get<SkillRow>("SELECT * FROM skill WHERE id = ?", id) as SkillRow)
+          }),
+        duplicate: (id, suffix) =>
+          Effect.gen(function* () {
+            const row = db.get<SkillRow>("SELECT * FROM skill WHERE id = ?", id)
+            if (!row) return yield* new AppError({ code: "skill_unavailable" })
+            const source = toSkill(row)
+            const name = copySkillName(source.name, suffix, (candidate) =>
+              nameTaken(row.server_id, candidate),
+            )
+            return yield* insert(
+              row.server_id,
+              {
+                name,
+                description: source.description,
+                instructions: source.instructions,
+              },
+              source.agentIds,
+              { enabled: false },
+            )
           }),
         setEnabled: (id, enabled) =>
           Effect.gen(function* () {

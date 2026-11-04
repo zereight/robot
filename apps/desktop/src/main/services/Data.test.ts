@@ -31,6 +31,7 @@ import { Search } from "./Search.ts"
 import { Secrets } from "./Secrets.ts"
 import { Sections } from "./Sections.ts"
 import { Servers } from "./Servers.ts"
+import { Skills } from "./Skills.ts"
 import { testPlatform } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
@@ -235,6 +236,57 @@ describe("export and import", () => {
     // The entry of the log comes back and names its rule.
     const log = await b.run(ActionLog.use((l) => l.list()))
     expect(log).toMatchObject([{ decidedBy: "allow_rule", rule: { id: own.id, deleted: false } }])
+  })
+
+  test("skills are in the archive and come back as they were, on and off, for all agents or for some; a key in a skill is hidden (spec 014, 017)", async () => {
+    const out = join(testPlatform().dataDir, "export-skills.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const ada = await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const weekly = await a.run(
+      Skills.use((s) =>
+        s.create(
+          local.id,
+          { name: "Weekly summary", description: "Each Friday", instructions: "Write it up." },
+          null,
+        ),
+      ),
+    )
+    const own = await a.run(
+      Skills.use((s) =>
+        s.create(
+          local.id,
+          { name: "Only Ada", description: "", instructions: `Call it with ${KEY}.` },
+          [ada.id],
+        ),
+      ),
+    )
+    await a.run(Skills.use((s) => s.setEnabled(own.id, false)))
+    await a.run(Data.use((d) => d.export()))
+    const entries = unzipSync(readFileSync(out))
+    for (const data of Object.values(entries)) expect(Buffer.from(data).includes(KEY)).toBe(false)
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const back = await b.run(Skills.use((s) => s.list(bLocal.id)))
+    expect(back.map((s) => s.name)).toEqual(["Only Ada", "Weekly summary"])
+    expect(back.find((s) => s.id === weekly.id)).toMatchObject({
+      description: "Each Friday",
+      instructions: "Write it up.",
+      agentIds: null,
+      enabled: true,
+    })
+    expect(back.find((s) => s.id === own.id)).toMatchObject({
+      agentIds: [ada.id],
+      enabled: false,
+    })
+    // The key left the instructions.
+    expect(back.find((s) => s.id === own.id)?.instructions).toBe("Call it with [redacted].")
   })
 
   test("the reviewed tools of a connection stay out of the archive; an import brings the connection back off, with none (spec 018, 014)", async () => {

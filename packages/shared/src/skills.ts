@@ -51,6 +51,25 @@ export const numberedSkillName = (name: string, taken: (candidate: string) => bo
   }
 }
 
+/**
+ * The name of a copy of a skill (spec 017, flow 3): the name and the word "copy" in the language of
+ * the interface (`suffix`, for example " copy"), and a number when that name is taken. The name is
+ * cut so that the copy fits the length limit.
+ */
+export const copySkillName = (
+  name: string,
+  suffix: string,
+  taken: (candidate: string) => boolean,
+) => {
+  const base = [...skillName(name)]
+  for (let n = 1; ; n++) {
+    const tail = n === 1 ? suffix : `${suffix} ${n}`
+    const room = Math.max(1, SKILL_NAME_MAX - [...tail].length)
+    const candidate = base.slice(0, room).join("").trimEnd() + tail
+    if (!taken(candidate)) return candidate
+  }
+}
+
 /** The problems of a skill form, in the order of the fields. Empty when it can be saved. */
 export const skillProblems = (input: SkillInput): readonly SkillProblem[] => {
   const problems: SkillProblem[] = []

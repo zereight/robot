@@ -128,6 +128,9 @@ export const CLIENT_METHODS = [
   "chat.unread.delete",
   "chat.markRead",
   "tools.respond",
+  // The skills that an agent may use now, for the command list of the message box (spec 003, 017).
+  // A client gets the name and the description, never the instructions.
+  "skills.forAgent",
   "tasks.list",
   "tasks.get",
   "tasks.recent",

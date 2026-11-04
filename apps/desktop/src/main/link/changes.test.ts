@@ -699,10 +699,9 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     ["sections.move", { id: "x", direction: "up" }],
     ["sections.delete", { id: "x" }],
     ["places.move", { kind: "agent", id: "x", sectionId: null }],
-    // Skills, and "Make a skill" from a task, an article or an item, are on the computer only
-    // (spec 012, 017).
+    // Skills are made and changed, and "Make a skill" from a task, an article or an item, on the
+    // computer only (spec 012, 017). A client reads the list of one agent for its command list.
     ["skills.list", { serverId: "x" }],
-    ["skills.forAgent", { agentId: "x" }],
     // The delete of an agent is on the computer only (spec 012). So is the count of the skills
     // that it takes along (spec 002, 017): a client never sees that confirm text.
     ["agents.delete", { id: "x" }],
@@ -711,6 +710,8 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
       "skills.create",
       { serverId: "x", name: "N", description: "", instructions: "i", agentIds: null },
     ],
+    ["skills.update", { id: "x", name: "N", description: "", instructions: "i", agentIds: null }],
+    ["skills.duplicate", { id: "x", suffix: " copy" }],
     ["skills.setEnabled", { id: "x", enabled: false }],
     ["skills.delete", { id: "x" }],
     ["skills.draft", { requestId: "r", source: { kind: "task", id: "x" } }],

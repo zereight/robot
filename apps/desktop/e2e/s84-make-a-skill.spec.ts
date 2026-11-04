@@ -193,7 +193,9 @@ test("make a skill from a task: the form, the request, Save, the list and the sl
   expect(sent.indexOf("Do the work of Weekly report")).toBeLessThan(sent.indexOf("for the team"))
   await page.locator("[data-testid^=place-agent-]").filter({ hasText: "Bo" }).click()
   await page.getByTestId("composer-input").fill("/")
-  await expect(page.getByTestId("skill-picker")).toHaveCount(0)
+  // The list shows the command and no skill: the skill is for Ada only.
+  await expect(page.getByTestId("command-option")).toHaveCount(1)
+  await expect(page.getByTestId("skill-option")).toHaveCount(0)
   await page.getByTestId("composer-input").fill("")
 
   // --- A taken name gets a number in the draft ------------------------------------------------

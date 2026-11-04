@@ -45,15 +45,17 @@
 
 .item {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 8px 16px;
   padding: 12px 0;
   border-bottom: 1px solid var(--c-border);
 }
 
 .itemMain {
   display: flex;
+  flex: 1 1 14rem;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
@@ -72,9 +74,9 @@
 
 .itemActions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
 }
 
 .confirm {
@@ -91,6 +93,12 @@
   align-items: center;
   gap: 16px;
   padding-bottom: 8px;
+}
+
+/* The button keeps its words on one line when the hint beside it is long. */
+.newSkill {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* The list above the message box when the user types a slash (spec 003, flow 7). */
@@ -124,6 +132,11 @@
 .pick[aria-selected="true"],
 .pick:hover {
   background: var(--c-hover);
+}
+
+.pick[aria-disabled="true"] {
+  color: var(--c-text-muted);
+  cursor: default;
 }
 
 .pickName {

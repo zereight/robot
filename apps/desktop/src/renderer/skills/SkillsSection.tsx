@@ -7,12 +7,14 @@ import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
-import { openSkillForm } from "./SkillForm.tsx"
+import { showToast } from "../ui/toast.ts"
+import { editSkill, openSkillForm } from "./SkillForm.tsx"
 import styles from "./skills.module.css"
 
 /**
  * Settings, Skills (spec 017): the skills of this server. The user makes one with "New skill",
- * turns one off or on, and deletes one after a confirm. A skill is called with a slash in a chat.
+ * edits or duplicates one, turns one off or on, and deletes one after a confirm. A skill is called
+ * with a slash in a chat.
  */
 export const SkillsSection = () => {
   const { t } = useApp()
@@ -58,13 +60,24 @@ export const SkillsSection = () => {
       >
         <div class={styles.top}>
           <p class={settings.note}>{t("skills.hint")}</p>
-          <Button variant="primary" onClick={openSkillForm} data-testid="skills-new">
+          <Button
+            variant="primary"
+            class={styles.newSkill}
+            onClick={openSkillForm}
+            data-testid="skills-new"
+          >
             {t("skills.new")}
           </Button>
         </div>
         <Show when={error()}>
           {(err) => (
-            <p class={settings.note} role="alert" data-testid="skills-error">
+            <p
+              class={settings.note}
+              role="alert"
+              data-testid="skills-error"
+              // A long list scrolls: the reason must be in view when a row action fails.
+              ref={(el) => queueMicrotask(() => el.scrollIntoView({ block: "nearest" }))}
+            >
               {t(err().key, err().params)}
             </p>
           )}
@@ -105,6 +118,28 @@ export const SkillsSection = () => {
                             }
                             testId="skill-switch"
                           />
+                          <Button
+                            onClick={() => editSkill(skill)}
+                            aria-label={t("skills.edit.label", { name: skill.name })}
+                            data-testid="skill-edit"
+                          >
+                            {t("skills.edit")}
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              run(async () => {
+                                const copy = await call("skills.duplicate", {
+                                  id: skill.id,
+                                  suffix: t("skills.copySuffix"),
+                                })
+                                showToast("success", "skills.duplicated", { name: copy.name })
+                              })
+                            }
+                            aria-label={t("skills.duplicate.label", { name: skill.name })}
+                            data-testid="skill-duplicate"
+                          >
+                            {t("skills.duplicate")}
+                          </Button>
                           <Button onClick={() => setDeleting(skill.id)} data-testid="skill-delete">
                             {t("skills.delete")}
                           </Button>

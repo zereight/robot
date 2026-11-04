@@ -580,6 +580,13 @@ export interface RpcMethods {
     input: SkillInput & { serverId: string; agentIds: readonly string[] | null }
     output: Skill
   }
+  /** Edit (spec 017, flow 2): every field of the form. The skill stays on or off as it was. */
+  "skills.update": {
+    input: SkillInput & { id: string; agentIds: readonly string[] | null }
+    output: Skill
+  }
+  /** Duplicate (spec 017, flow 3): `suffix` is the word "copy" in the language of the window. */
+  "skills.duplicate": { input: { id: string; suffix: string }; output: Skill }
   "skills.setEnabled": { input: { id: string; enabled: boolean }; output: Skill }
   "skills.delete": { input: { id: string }; output: undefined }
   /**

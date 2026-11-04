@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { charLength } from "./agents.ts"
 import {
+  copySkillName,
   numberedSkillName,
   SKILL_NAME_MAX,
   skillAfterAgentDelete,
@@ -29,6 +30,36 @@ describe("skill names", () => {
     const name = numberedSkillName(long, (candidate) => taken.has(skillNameKey(candidate)))
     expect(charLength(name)).toBeLessThanOrEqual(SKILL_NAME_MAX)
     expect(name.endsWith(" 2")).toBe(true)
+  })
+})
+
+describe("the name of a copy (spec 017, flow 3)", () => {
+  const names = (...list: string[]) => {
+    const taken = new Set(list.map(skillNameKey))
+    return (candidate: string) => taken.has(skillNameKey(candidate))
+  }
+
+  test("the copy gets the word of the interface language", () => {
+    expect(copySkillName("Weekly summary", " copy", names())).toBe("Weekly summary copy")
+    expect(copySkillName("주간 요약", " 사본", names())).toBe("주간 요약 사본")
+  })
+
+  test("a copy name that is taken gets a number, ignoring case", () => {
+    const taken = names("Weekly summary copy", "weekly summary COPY 2")
+    expect(copySkillName("Weekly summary", " copy", taken)).toBe("Weekly summary copy 3")
+  })
+
+  test("a slash at the start of the name is not kept", () => {
+    expect(copySkillName("/Weekly summary", " copy", names())).toBe("Weekly summary copy")
+  })
+
+  test("a long name is cut so that the copy fits the limit", () => {
+    const copy = copySkillName("x".repeat(SKILL_NAME_MAX), " copy", names())
+    expect(charLength(copy)).toBe(SKILL_NAME_MAX)
+    expect(copy.endsWith(" copy")).toBe(true)
+    const again = copySkillName("x".repeat(SKILL_NAME_MAX), " copy", names(copy))
+    expect(charLength(again)).toBeLessThanOrEqual(SKILL_NAME_MAX)
+    expect(again.endsWith(" copy 2")).toBe(true)
   })
 })
 

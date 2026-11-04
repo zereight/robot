@@ -2,6 +2,7 @@ import {
   SKILL_DESCRIPTION_MAX,
   SKILL_INSTRUCTIONS_MAX,
   SKILL_NAME_MAX,
+  type Skill,
   type SkillSourceRef,
 } from "@robot/shared"
 import { createSignal, For, onMount, Show } from "solid-js"
@@ -16,10 +17,14 @@ import { Dialog } from "../ui/Dialog.tsx"
 import { showToast } from "../ui/toast.ts"
 import skillStyles from "./skills.module.css"
 
-/** What the form opens with: a blank form, or a draft that the model writes from some work. */
+/**
+ * What the form opens with: a blank form, a draft that the model writes from some work, or a skill
+ * that exists, to edit.
+ */
 export type SkillFormOpen =
   | { readonly kind: "blank" }
   | { readonly kind: "work"; readonly source: SkillSourceRef }
+  | { readonly kind: "edit"; readonly skill: Skill }
 
 const [formOpen, setFormOpen] = createSignal<SkillFormOpen>()
 
@@ -27,6 +32,8 @@ const [formOpen, setFormOpen] = createSignal<SkillFormOpen>()
 export const skillForm = formOpen
 /** Opens the form of a new skill (spec 017, flow 1). */
 export const openSkillForm = () => setFormOpen({ kind: "blank" })
+/** Opens the form of a skill that exists (spec 017, flow 2). */
+export const editSkill = (skill: Skill) => setFormOpen({ kind: "edit", skill })
 /** Opens the form of a new skill and fills it with a draft from a task, an article or an item. */
 export const makeSkillFromWork = (source: SkillSourceRef) => setFormOpen({ kind: "work", source })
 export const closeSkillForm = () => setFormOpen(undefined)
@@ -37,19 +44,21 @@ type Field = (typeof FIELDS)[number]
 const lengthOf = (text: string) => [...text.trim()].length
 
 /**
- * The form of a new skill (spec 017, flow 1): name, description, instructions and the agents that
- * may use it. When it opens from some work, it first shows "Writing a draft…", then the draft.
+ * The form of a skill (spec 017, flows 1 and 2): name, description, instructions and the agents
+ * that may use it. It opens blank, or with the fields of a skill to edit. When it opens from some
+ * work, it first shows "Writing a draft…", then the draft.
  */
 export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
   const work = props.open.kind === "work" ? props.open.source : undefined
-  const [name, setName] = createSignal("")
-  const [description, setDescription] = createSignal("")
-  const [instructions, setInstructions] = createSignal("")
-  const [all, setAll] = createSignal(true)
-  const [chosen, setChosen] = createSignal<readonly string[]>([])
+  const edited = props.open.kind === "edit" ? props.open.skill : undefined
+  const [name, setName] = createSignal(edited?.name ?? "")
+  const [description, setDescription] = createSignal(edited?.description ?? "")
+  const [instructions, setInstructions] = createSignal(edited?.instructions ?? "")
+  const [all, setAll] = createSignal(edited ? edited.agentIds === null : true)
+  const [chosen, setChosen] = createSignal<readonly string[]>(edited?.agentIds ?? [])
   const [phase, setPhase] = createSignal<"writing" | "ready" | "failed">(work ? "writing" : "ready")
   const [failure, setFailure] = createSignal<ErrorText>()
   const [outside, setOutside] = createSignal(false)
@@ -100,13 +109,14 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
     setBusy(true)
     setProblem(undefined)
     try {
-      await call("skills.create", {
-        serverId,
+      const fields = {
         name: name(),
         description: description(),
         instructions: instructions(),
         agentIds: all() ? null : chosen(),
-      })
+      }
+      if (edited) await call("skills.update", { id: edited.id, ...fields })
+      else await call("skills.create", { serverId, ...fields })
       showToast("success", "skills.saved", { name: name().trim().replace(/^\/+/, "") })
       closed = true
       props.onClose()
@@ -130,11 +140,13 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   )
 
   const locked = () => phase() !== "ready"
+  const title = () =>
+    edited ? t("skills.form.edit") : work ? t("skills.make") : t("skills.form.title")
 
   return (
-    <Dialog label={t("skills.form.title")} onClose={close} testId="skill-form-dialog">
+    <Dialog label={title()} onClose={close} testId="skill-form-dialog">
       <form class={styles.form} onSubmit={save} data-testid="skill-form" data-phase={phase()}>
-        <h2 class={styles.title}>{work ? t("skills.make") : t("skills.form.title")}</h2>
+        <h2 class={styles.title}>{title()}</h2>
         <Show when={phase() === "writing"}>
           <p class={styles.hint} role="status" data-testid="skill-writing">
             {t("skills.make.writing")}

@@ -12,6 +12,7 @@ import { AppError } from "../services/errors.ts"
 import { Notifier } from "../services/Notifier.ts"
 import { Platform } from "../services/Platform.ts"
 import { Servers } from "../services/Servers.ts"
+import { Skills } from "../services/Skills.ts"
 import { Sync } from "../services/Sync.ts"
 import { changeHandlers, forClient } from "./changes.ts"
 import { UploadError } from "./uploads.ts"
@@ -137,6 +138,18 @@ export const linkHandlers: Record<string, LinkHandler> = {
         () => new AppError({ code: "invalid_input" }),
       )
       return forClient(yield* Agents.use((a) => a.get(id)))
+    }),
+
+  // The skills for the command list of a client (spec 003, 017). The instructions stay on the
+  // server: the message that uses a skill holds its copy, and the client reads it there.
+  "skills.forAgent": (input) =>
+    E.gen(function* () {
+      const { agentId } = yield* E.mapError(
+        Schema.decodeUnknownEffect(Schema.Struct({ agentId: Schema.String }))(input),
+        () => new AppError({ code: "invalid_input" }),
+      )
+      const skills = yield* Skills.use((s) => s.forAgent(agentId))
+      return skills.map((skill) => ({ ...skill, instructions: "" }))
     }),
 
   /** The approvals and questions that wait now, for a device that connects (spec 015). */
