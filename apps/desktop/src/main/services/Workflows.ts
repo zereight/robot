@@ -680,7 +680,8 @@ export class Workflows extends Context.Service<Workflows, WorkflowsService>()(
         }
       })
 
-      yield* Effect.forkDetach(
+      // The loop ends with the layer: after that the database is closed, and a tick fails.
+      yield* Effect.forkScoped(
         Effect.forever(
           Effect.sleep(TICK_MS).pipe(Effect.andThen(Effect.suspend(() => tick(Date.now())))),
         ),
