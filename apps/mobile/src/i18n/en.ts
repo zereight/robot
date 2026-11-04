@@ -154,6 +154,7 @@ export const en = {
   "chat.note.compact_failed": "The compact failed: {reason} The turn went on without it.",
   "chat.note.watch": "{routine}: no change.",
   "chat.note.connection_down": "The connection {name} is not available.",
+  "chat.note.connection_held": "Tools of the connection {name} wait for your review.",
   "chat.note.handed_over": "Handed over to {name}",
   "chat.note.starter.routine.limit":
     "Not made: the routine “{name}”. The server has no room for more routines.",

@@ -170,7 +170,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
             // name of the value in the keychain of this computer (spec 020).
             out.exec("UPDATE saved_secret SET value_ref = NULL; DELETE FROM saved_secret_drop")
             // A connection keeps its settings and its plain values, never a secret value or the
-            // mark that this computer holds one (spec 018, 014).
+            // mark that this computer holds one (spec 018, 014). It holds no reviewed tools either:
+            // an import brings it back with none, so the user reviews its tools again (spec 018).
+            out.exec("UPDATE tool_connection SET reviewed = '[]', review_adopt = 0")
             for (const row of out.prepare("SELECT id, env, headers FROM tool_connection").all() as {
               id: string
               env: string
@@ -499,8 +501,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                  FROM imp.permission_rule WHERE agent_id IS NULL OR agent_id IN (SELECT id FROM agent)`,
                 local.id,
               )
-              // Connections come back turned off, with no tools read and no secret value (spec 018,
-              // 014). The archive is untrusted: the flags are made again here.
+              // Connections come back turned off, with no tools read, no reviewed tools and no secret
+              // value (spec 018, 014): their tools are all held at the first start. The archive is
+              // untrusted: the flags are made again here, and the review columns are not read at all.
               db.run(
                 `INSERT INTO tool_connection
                    (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,

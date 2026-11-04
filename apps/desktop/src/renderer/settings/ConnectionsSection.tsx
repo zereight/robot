@@ -15,6 +15,7 @@ import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ConnectionFormDialog } from "./ConnectionForm.tsx"
+import { ConnectionReviewDialog } from "./ConnectionReview.tsx"
 import styles from "./connections.module.css"
 import settings from "./settings.module.css"
 
@@ -43,6 +44,7 @@ export const ConnectionsSection = () => {
 
   const [editing, setEditing] = createSignal<{ connection?: ToolConnection }>()
   const [removing, setRemoving] = createSignal<string>()
+  const [reviewing, setReviewing] = createSignal<{ id: string; name: string }>()
   const [testing, setTesting] = createSignal<ReadonlySet<string>>(new Set())
   const [results, setResults] = createSignal<Readonly<Record<string, ConnectionTestResult>>>({})
   const [error, setError] = createSignal<ErrorText>()
@@ -132,6 +134,21 @@ export const ConnectionsSection = () => {
       <p class={styles.code} data-testid="connection-row-target">
         {c.kind === "program" ? commandLine(c.command, c.args) : c.address}
       </p>
+      <Show when={c.needReview > 0}>
+        <div class={styles.review} data-testid="connection-review-row">
+          <span class={styles.reviewText} data-testid="connection-review-text">
+            {c.needReview === 1
+              ? t("connections.review.one")
+              : t("connections.review.other", { n: c.needReview })}
+          </span>
+          <Button
+            onClick={() => setReviewing({ id: c.id, name: c.name })}
+            data-testid="connection-review-open"
+          >
+            {t("connections.review.open")}
+          </Button>
+        </div>
+      </Show>
       <Show when={c.valueMissing}>
         <span class={styles.warn} data-testid="connection-value-missing">
           {t("connections.valueMissing")}
@@ -189,7 +206,20 @@ export const ConnectionsSection = () => {
               {(tool) => (
                 <li class={styles.tool} data-testid="connection-tool" data-tool={tool.name}>
                   <span class={styles.toolText}>
-                    <span class={styles.toolName}>{tool.name}</span>
+                    <span class={styles.toolNameLine}>
+                      <span class={styles.toolName}>{tool.name}</span>
+                      <Show when={tool.held}>
+                        {(tag) => (
+                          <span
+                            class={styles.tag}
+                            data-tag={tag()}
+                            data-testid="connection-tool-held"
+                          >
+                            {t(`connections.review.tag.${tag()}` as MessageKey)}
+                          </span>
+                        )}
+                      </Show>
+                    </span>
                     <Show when={tool.description}>
                       <span class={styles.meta}>{tool.description}</span>
                     </Show>
@@ -267,6 +297,11 @@ export const ConnectionsSection = () => {
             <For each={list()}>{row}</For>
           </ul>
         </Show>
+        <Presence when={reviewing()}>
+          {(open) => (
+            <ConnectionReviewDialog connection={open} onClose={() => setReviewing(undefined)} />
+          )}
+        </Presence>
         <Presence when={editing()}>
           {(open) => (
             <ConnectionFormDialog

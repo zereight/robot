@@ -341,3 +341,162 @@
       "value value value";
   }
 }
+
+/* The line of a row with tools that wait for review, and the tag of such a tool (spec 018). */
+.review {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.reviewText {
+  color: var(--c-accent);
+  font-size: var(--text-s);
+  font-weight: 500;
+}
+
+.toolNameLine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.tag {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-s);
+  color: var(--c-accent);
+  font-size: var(--text-xs);
+}
+
+/* The dialog "Review": each held tool with the old and the new text of what changed. */
+.reviewBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(720px, 80vw);
+  min-width: 0;
+}
+
+.heldList {
+  display: flex;
+  flex-direction: column;
+  max-height: min(56vh, 460px);
+  margin: 0;
+  padding: 0 12px 0 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.heldItem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.heldHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.heldHead .toolName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.diffPart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.diffLabel,
+.diffSideLabel {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.diffLabel {
+  font-weight: 500;
+}
+
+.diffSides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.diffSide {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-height: 160px;
+  padding: 6px 8px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+}
+
+.diffSide[data-side="now"] {
+  border-color: var(--c-accent);
+}
+
+/* The text of a part of a new tool: no old text to set it against, so no box. */
+.diffPlain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.diffText {
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.diffEmpty {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.diffParams {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diffParams li {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.reviewActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .reviewBox {
+    width: 100%;
+  }
+}

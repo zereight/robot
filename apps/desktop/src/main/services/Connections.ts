@@ -14,11 +14,17 @@ import {
   type ConnectionToolView,
   checkConnection,
   cutResult,
+  type HeldToolView,
+  heldTools,
   NO_TOOL_FOUND_TEXT,
   nameKey,
   needsToolSearch,
+  parseReviewedTools,
+  type ReviewedTool,
+  reviewedToolOf,
   SEARCH_TOOLS_NAME,
   type SearchableTool,
+  schemaReachesModel,
   searchResultText,
   searchStepDescription,
   searchTools,
@@ -73,6 +79,10 @@ interface Row {
   tools: string
   tools_more: number
   tools_off: string
+  /** The reviewed tools: a JSON list (spec 018, "Tool review"). */
+  reviewed: string
+  /** 1 for a connection from before the review: its first start sets its reviewed tools. */
+  review_adopt: number
   created_at: number
 }
 
@@ -82,11 +92,6 @@ interface StoredEntry {
   secret: boolean
   value?: string
   saved?: boolean
-}
-
-interface StoredTool {
-  name: string
-  description: string
 }
 
 /** What a call of a connection tool gives back to the step (spec 018, "Rules"). */
@@ -121,6 +126,11 @@ export interface ConnectionTarget extends ToolTarget {
 export interface ConnectionTurn {
   /** The names of the connections that were down when the turn started. */
   readonly down: readonly string[]
+  /**
+   * The names of the connections that had held tools when the turn started: tools that are new or
+   * changed and that wait for the user's review (spec 018, "Tool review"). The turn goes on without them.
+   */
+  readonly held: readonly string[]
   /** True when the agent gets the step "Search tools" and no tool at the start. */
   readonly searching: boolean
   /** The tools that the agent may use, in all: the count of spec 018. */
@@ -151,6 +161,16 @@ export interface ConnectionsService {
   }): Effect.Effect<ConnectionTestResult, AppError>
   setEnabled(id: string, enabled: boolean): Effect.Effect<ToolConnection, AppError>
   setTool(id: string, tool: string, enabled: boolean): Effect.Effect<ToolConnection, AppError>
+  /** The tools of a connection that wait for the user's review, with the old and the new text. */
+  held(id: string): Effect.Effect<readonly HeldToolView[], AppError>
+  /**
+   * Accepts held tools. A tool is accepted with the text that the user saw (`key`); a tool whose
+   * text changed since stays held.
+   */
+  accept(
+    id: string,
+    tools: readonly { name: string; key: string }[],
+  ): Effect.Effect<ToolConnection, AppError>
   /** Removes a connection, its saved secrets and the rules for its tools. The log keeps its entries. */
   remove(id: string): Effect.Effect<void, AppError>
   /**
@@ -275,17 +295,48 @@ export class Connections extends Context.Service<Connections, ConnectionsService
           }
         }
 
+        // -- Review of tools (spec 018, "Tool review"). --
+
+        /**
+         * The tools of a row that wait for the user: what the connection offered the last time that
+         * it was read, against the reviewed tools. A connection from before the review has none
+         * until its first start sets its reviewed tools.
+         */
+        const heldOf = (row: Row) =>
+          row.review_adopt === 1
+            ? []
+            : heldTools(parseReviewedTools(row.reviewed), parseReviewedTools(row.tools))
+
+        /** Names the text that the user saw, so that a tool which changed since is not accepted. */
+        const keyOf = (tool: ReviewedTool) =>
+          createHash("sha256")
+            .update(
+              JSON.stringify([
+                tool.name,
+                tool.description,
+                tool.params.map((p) => [p.name, p.description]),
+                tool.readOnly,
+              ]),
+            )
+            .digest("hex")
+            .slice(0, 32)
+
         // -- The view of a row. --
 
         const view = (row: Row): ToolConnection => {
           const env = entriesOf(row.env)
           const headers = entriesOf(row.headers)
           const off = new Set(parse<string[]>(row.tools_off, []))
-          const tools: ConnectionToolView[] = parse<StoredTool[]>(row.tools, []).map((t) => ({
-            name: t.name,
-            description: t.description,
-            enabled: !off.has(t.name),
-          }))
+          const held = new Map(heldOf(row).map((h) => [h.name, h.tag]))
+          const tools: ConnectionToolView[] = parseReviewedTools(row.tools).map((t) => {
+            const tag = held.get(t.name)
+            return {
+              name: t.name,
+              description: t.description,
+              enabled: !off.has(t.name),
+              ...(tag ? { held: tag } : {}),
+            }
+          })
           const asView = (e: StoredEntry): ConnectionEntryView => ({
             name: e.name,
             secret: e.secret,
@@ -315,6 +366,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               state === "error" ? ((row.failure as ConnectionFailure | null) ?? "ended") : null,
             tools,
             tooMany: row.tools_more === 1,
+            needReview: held.size,
             valueMissing: [...env, ...headers].some((e) => e.secret && e.saved !== true),
           }
         }
@@ -412,8 +464,8 @@ export class Connections extends Context.Service<Connections, ConnectionsService
 
         // -- Running connections. --
 
-        const toStored = (tools: readonly McpTool[]): StoredTool[] =>
-          tools.map((t) => ({ name: t.name, description: t.description }))
+        /** The tools as the table keeps them: the parts that the user reviews. */
+        const toStored = (tools: readonly McpTool[]): ReviewedTool[] => tools.map(reviewedToolOf)
 
         const remember = (
           id: string,
@@ -424,14 +476,28 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 failure: ConnectionFailure
               },
         ) => {
-          if (update.state === "connected")
+          if (update.state === "connected") {
+            const row = rowOf(id)
+            if (!row) return
+            const offered = toStored(update.tools)
+            // The first read of a connection from before the review: what it offers is reviewed.
+            // Else a reviewed tool that the connection no longer offers leaves the reviewed tools,
+            // and comes back as a new tool (spec 018, "Tool review").
+            const reviewed =
+              row.review_adopt === 1
+                ? offered
+                : parseReviewedTools(row.reviewed).filter((r) =>
+                    offered.some((o) => o.name === r.name),
+                  )
             db.run(
-              "UPDATE tool_connection SET state = 'connected', failure = NULL, tools = ?, tools_more = ? WHERE id = ?",
-              JSON.stringify(toStored(update.tools)),
+              `UPDATE tool_connection SET state = 'connected', failure = NULL, tools = ?, tools_more = ?,
+                 reviewed = ?, review_adopt = 0 WHERE id = ?`,
+              JSON.stringify(offered),
               update.more ? 1 : 0,
+              JSON.stringify(reviewed),
               id,
             )
-          else
+          } else
             db.run(
               "UPDATE tool_connection SET state = 'error', failure = ? WHERE id = ?",
               update.failure,
@@ -507,9 +573,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
 
         const objectSchema = (tool: McpTool): Record<string, unknown> => {
           // A schema that is very long costs tokens at every request: the model gets the shape.
-          try {
-            if (JSON.stringify(tool.schema).length <= 20_000) return tool.schema
-          } catch {}
+          if (schemaReachesModel(tool.schema)) return tool.schema
           return { type: "object", properties: {}, additionalProperties: true }
         }
 
@@ -520,16 +584,33 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             return parse<string[]>(row.agents, []).includes(agentId)
           })
           const down: string[] = []
+          const held: string[] = []
           const sources: { id: string; name: string; tools: McpTool[] }[] = []
           await Promise.all(
             mine.map(async (row) => {
               try {
                 const started = await ensure(row.id)
-                const off = new Set(parse<string[]>(row.tools_off, []))
+                // The start sets the reviewed tools of a connection from before the review, so the
+                // row is read again. A tool that is new or changed is held: the agent does not
+                // get it, and the turn goes on with the others (spec 018, "Tool review").
+                const now = rowOf(row.id) ?? row
+                const off = new Set(parse<string[]>(now.tools_off, []))
+                const waiting =
+                  now.review_adopt === 1
+                    ? new Set<string>()
+                    : new Set(
+                        heldTools(
+                          parseReviewedTools(now.reviewed),
+                          started.tools.map(reviewedToolOf),
+                        ).map((h) => h.name),
+                      )
+                // A held tool that the user turned off waits too, but the chat does not say so: no
+                // agent would get it anyway.
+                if ([...waiting].some((name) => !off.has(name))) held.push(row.name)
                 sources.push({
                   id: row.id,
                   name: row.name,
-                  tools: started.tools.filter((t) => !off.has(t.name)),
+                  tools: started.tools.filter((t) => !off.has(t.name) && !waiting.has(t.name)),
                 })
               } catch {
                 down.push(row.name)
@@ -538,6 +619,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
           )
           sources.sort((a, b) => a.name.localeCompare(b.name))
           down.sort((a, b) => a.localeCompare(b))
+          held.sort((a, b) => a.localeCompare(b))
           const aliases = toolAliases(sources)
           const byId = new Map(sources.map((s) => [s.id, s]))
           const toolOf = (
@@ -587,6 +669,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
 
           return {
             down,
+            held,
             searching,
             count,
             defs: () => {
@@ -822,8 +905,9 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               db.run(
                 `INSERT INTO tool_connection
                    (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,
-                    agents, enabled, state, failure, tools, tools_more, tools_off, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, '[]', ?)`,
+                    agents, enabled, state, failure, tools, tools_more, tools_off, reviewed, review_adopt,
+                    created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, '[]', ?, 0, ?)`,
                 id,
                 serverId(),
                 next.name,
@@ -839,6 +923,10 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 probeResult ? "connected" : "untested",
                 JSON.stringify(probeResult ? toStored(probeResult.tools) : []),
                 probeResult?.more ? 1 : 0,
+                // A Test of this same form worked: the tools that it showed are the reviewed tools.
+                // With no Test, the connection has none, and all its tools are held at its first
+                // start (spec 018, "Flows", "Tool review").
+                JSON.stringify(probeResult ? toStored(probeResult.tools) : []),
                 Date.now(),
               )
               tested.delete(mark)
@@ -852,12 +940,15 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               const mark = markOf(form, before.id)
               const probeResult = tested.get(mark)
               tested.delete(mark)
-              // How the app reaches the server changed: what it read before is not known any more.
+              // How the app reaches the server changed: what it read before is not known any more,
+              // and the reviewed tools are cleared. A change of the name, of the agents or of a
+              // switch does not clear them (spec 018, "Tool review").
               const keepsTools = !reachChanged
               db.run(
                 `UPDATE tool_connection SET name = ?, name_key = ?, kind = ?, command = ?, args = ?,
                    folder = ?, env = ?, address = ?, headers = ?, agents = ?,
-                   state = ?, failure = NULL, tools = ?, tools_more = ?, tools_off = ?
+                   state = ?, failure = NULL, tools = ?, tools_more = ?, tools_off = ?,
+                   reviewed = ?, review_adopt = ?
                  WHERE id = ?`,
                 next.name,
                 nameKey(next.name),
@@ -879,6 +970,16 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 // A tool that the user turned off stays off, also when the tools are read again:
                 // a change of the address must not turn a tool on that the user switched off.
                 before.tools_off,
+                // A Test of this same form worked: the tools that it showed are the reviewed tools.
+                // Else they stay, or they are cleared when the way to the server changed.
+                probeResult
+                  ? JSON.stringify(toStored(probeResult.tools))
+                  : keepsTools
+                    ? before.reviewed
+                    : "[]",
+                // A connection from before the review still waits for its first start, unless the
+                // tools were reviewed or cleared now.
+                probeResult || !keepsTools ? 0 : before.review_adopt,
                 before.id,
               )
               for (const key of [...env.drops, ...headers.drops]) dropSecret(key)
@@ -913,7 +1014,14 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               if (tested.size >= 50) tested.clear()
               tested.set(markOf(form, before?.id), { tools: result.tools, more: result.more })
             } else if (before) {
-              remember(before.id, { state: "connected", tools: result.tools, more: result.more })
+              // A running connection that is not in a call stops, so that the next turn starts it
+              // again and reads the tools that it has now. The tools that a turn gets and the tools
+              // that the review compares are then the same ones (spec 018, "Tool review").
+              const running = live.get(before.id)
+              if (!running || running.active === 0) {
+                stop(before.id)
+                remember(before.id, { state: "connected", tools: result.tools, more: result.more })
+              }
             }
             return {
               ok: true,
@@ -940,6 +1048,37 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               // Off stops the connection at once; its tools leave every agent from the next turn.
               if (!enabled) stop(id)
               changed()
+              return view(rowOf(id) as Row)
+            }),
+          held: (id) =>
+            Effect.gen(function* () {
+              const row = rowOf(id)
+              if (!row) return yield* new AppError({ code: "connection_not_found" })
+              return heldOf(row).map((h) => ({ ...h, key: keyOf(h.now) }))
+            }),
+          accept: (id, items) =>
+            Effect.gen(function* () {
+              const row = rowOf(id)
+              if (!row) return yield* new AppError({ code: "connection_not_found" })
+              const waiting = new Map(heldOf(row).map((h) => [h.name, h]))
+              // A tool is accepted with the text that the user saw. One that changed since stays held.
+              const take = items.flatMap((item) => {
+                const found = waiting.get(item.name)
+                return found && keyOf(found.now) === item.key ? [found] : []
+              })
+              if (take.length > 0) {
+                const names = new Set(take.map((h) => h.name))
+                const reviewed = [
+                  ...parseReviewedTools(row.reviewed).filter((r) => !names.has(r.name)),
+                  ...take.map((h) => h.now),
+                ]
+                db.run(
+                  "UPDATE tool_connection SET reviewed = ? WHERE id = ?",
+                  JSON.stringify(reviewed),
+                  id,
+                )
+                changed()
+              }
               return view(rowOf(id) as Row)
             }),
           setTool: (id, tool, enabled) =>

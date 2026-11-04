@@ -348,8 +348,9 @@ const partCheck = (v: unknown): boolean => {
       // A note travels as a code with its names. The window writes the words (spec 002, 009).
       if (v.note === "compact_failed")
         return shape(["kind", "note", "code"])(v) && str(100, 1)(v.code)
-      // The muted line "The connection NAME is not available." travels with the name (spec 018).
-      if (v.note === "connection_down")
+      // The muted lines "The connection NAME is not available." and "Tools of the connection NAME wait
+      // for your review." travel with the name (spec 018).
+      if (v.note === "connection_down" || v.note === "connection_held")
         return shape(["kind", "note", "name"])(v) && str(CONNECTION_NAME_MAX * 4, 1)(v.name)
       // The muted line "Handed over to <name>" travels with the ids of the new thread (spec 003, 019).
       if (v.note === "handed_over")

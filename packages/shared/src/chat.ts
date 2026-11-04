@@ -61,6 +61,12 @@ export type MessagePart =
    */
   | { readonly kind: "note"; readonly note: "connection_down"; readonly name: string }
   /**
+   * The muted line "Tools of the connection NAME wait for your review." (spec 018, "States"): the
+   * connection had held tools when the turn started, and the turn went on without them. The model
+   * never reads it.
+   */
+  | { readonly kind: "note"; readonly note: "connection_held"; readonly name: string }
+  /**
    * The muted line "Handed over to <name>" in the chat that the user left (spec 003, "Hand over").
    * It links to the new thread. `toName` is the name that the other agent had then. The model
    * never reads it.

@@ -8,6 +8,7 @@ import {
   ChannelCreate,
   ChannelPatch,
   ChatSend,
+  CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
   isClientMethod,
@@ -852,6 +853,20 @@ export const handlers: Handlers = {
         Connections.use((c) => c.setTool(id, tool, enabled)),
       ),
     ),
+  "connections.held": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Connections.use((c) => c.held(id)))),
+  "connections.accept": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        tools: Schema.Array(
+          Schema.Struct({
+            name: Schema.String.check(Schema.isMaxLength(1000)),
+            key: Schema.String.check(Schema.isMaxLength(100)),
+          }),
+        ).check(Schema.isMaxLength(CONNECTION_TOOLS_MAX)),
+      }),
+    )(input).pipe(Effect.flatMap(({ id, tools }) => Connections.use((c) => c.accept(id, tools)))),
   "connections.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Connections.use((c) => c.remove(id))),

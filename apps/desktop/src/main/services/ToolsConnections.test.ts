@@ -1,7 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { ChatMessage, MessagePart, PermissionLevel, ToolAsk } from "@robot/shared"
+import type {
+  ChatMessage,
+  MessagePart,
+  PermissionLevel,
+  ToolAsk,
+  ToolConnectionInput,
+} from "@robot/shared"
 import { Effect } from "effect"
 import { ActionLog } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
@@ -116,30 +122,25 @@ const setup = async (permission: PermissionLevel = "ask_risky", tools = 0) => {
   const log = join(t.dataDir, "mcp-calls.jsonl")
   writeFileSync(log, "")
   const connect = async (name = "Notes") => {
-    const saved = await run(
-      Connections.use((c) =>
-        c.save({
-          connection: {
-            name,
-            kind: "program",
-            command: process.execPath,
-            args: [SERVER],
-            // Not the temp folder: Bun starts slowly in a folder whose parent holds very many entries.
-            folder: process.cwd(),
-            env: [
-              { name: "MCP_TEST_CALLS", value: log, secret: false },
-              { name: "MCP_TEST_TOOLS", value: String(tools), secret: false },
-            ],
-            address: "",
-            headers: [],
-            agents: "all",
-          },
-          confirmed: true,
-        }),
-      ),
-    )
-    await run(Connections.use((c) => c.test({ id: saved.id })))
-    return saved
+    const connection: ToolConnectionInput = {
+      name,
+      kind: "program",
+      command: process.execPath,
+      args: [SERVER],
+      // Not the temp folder: Bun starts slowly in a folder whose parent holds very many entries.
+      folder: process.cwd(),
+      env: [
+        { name: "MCP_TEST_CALLS", value: log, secret: false },
+        { name: "MCP_TEST_TOOLS", value: String(tools), secret: false },
+      ],
+      address: "",
+      headers: [],
+      agents: "all",
+    }
+    // A Test of the form, then Save: the tools that the Test showed are the reviewed tools, so a
+    // turn gets them (spec 018, "Flows", "Tool review").
+    await run(Connections.use((c) => c.test({ connection })))
+    return await run(Connections.use((c) => c.save({ connection, confirmed: true })))
   }
   const send = (text: string) =>
     run(Chat.use((c) => c.send({ agentId: agent.id, text, replyTo: null })))
@@ -444,6 +445,61 @@ describe("the tools an agent gets", () => {
       state: "error",
       failure: "not_found",
     })
+  })
+
+  test("a connection with no reviewed tools: one muted line, the turn goes on without its tools, the tools of the app work; Accept gives them (spec 018, Tool review)", async () => {
+    const s = await setup()
+    // Saved with no Test: nothing is reviewed, so every tool is held at the first start.
+    const saved = await s.run(
+      Connections.use((c) =>
+        c.save({
+          connection: {
+            name: "Notes",
+            kind: "program",
+            command: process.execPath,
+            args: [SERVER],
+            folder: process.cwd(),
+            env: [
+              {
+                name: "MCP_TEST_CALLS",
+                value: join(s.t.dataDir, "mcp-calls.jsonl"),
+                secret: false,
+              },
+            ],
+            address: "",
+            headers: [],
+            agents: "all",
+          },
+          confirmed: true,
+        }),
+      ),
+    )
+    requests.length = 0
+    await s.send("hello")
+    await s.finished()
+    const parts = (await s.reply())?.parts ?? []
+    expect(parts.filter((p) => p.kind === "note")).toEqual([
+      { kind: "note", note: "connection_held", name: "Notes" },
+    ])
+    expect(parts.some((p) => p.kind === "text" && p.text === "ok")).toBe(true)
+    expect((requests[0] ?? []).some((n) => n.startsWith("mcp__"))).toBe(false)
+    expect(requests[0]).toContain("read_file")
+    // Accept all: the next turn has the tools and no line.
+    const held = await s.run(Connections.use((c) => c.held(saved.id)))
+    expect(held.length).toBeGreaterThan(0)
+    await s.run(
+      Connections.use((c) =>
+        c.accept(
+          saved.id,
+          held.map(({ name, key }) => ({ name, key })),
+        ),
+      ),
+    )
+    requests.length = 0
+    await s.send("hello again")
+    await s.finished()
+    expect(requests[0]).toContain("mcp__notes__echo")
+    expect(((await s.reply())?.parts ?? []).filter((p) => p.kind === "note")).toEqual([])
   })
 
   test("an agent on a vendor runtime gets no connection", async () => {

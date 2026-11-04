@@ -965,4 +965,18 @@ export const migrations: readonly string[] = [
   );
   CREATE UNIQUE INDEX tool_connection_name ON tool_connection (server_id, name_key);
   `,
+  `
+  -- Review of connection tools (spec 018, "Tool review"). \`reviewed\` is a JSON list of the tools
+  -- that the user has seen and accepted: for each the name, the description, the names and
+  -- descriptions of its parameters, and the read-only mark. The list \`tools\` keeps the same
+  -- parts for what the connection offered the last time that the app read it, so the table holds
+  -- the old and the new text of a held tool. \`review_adopt\` is 1 for a connection that existed
+  -- before this rule: the tools that it offers at its first start after the update become its
+  -- reviewed tools. A new connection, an imported one and one whose way to the server changed have
+  -- 0 and an empty list, so their tools are all held at the first start. The reviewed tools stay
+  -- on this computer: sync (019) does not carry the table, and an export empties both columns.
+  ALTER TABLE tool_connection ADD COLUMN reviewed TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE tool_connection ADD COLUMN review_adopt INTEGER NOT NULL DEFAULT 0;
+  UPDATE tool_connection SET review_adopt = 1;
+  `,
 ]

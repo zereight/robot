@@ -1215,9 +1215,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           // A connection that does not start is left out, and the chat says so once (spec 018,
           // "States"). The turn goes on without its tools.
           const connected = isRuntime ? undefined : yield* connections.forTurn(agentId)
-          if (connected && connected.down.length > 0 && !resumed) {
+          if (connected && (connected.down.length > 0 || connected.held.length > 0) && !resumed) {
             for (const name of connected.down)
               parts.push({ kind: "note", note: "connection_down", name })
+            // Tools that are new or changed wait for the user's review: the turn goes on without
+            // them, and the chat says so once (spec 018, "States", "Tool review").
+            for (const name of connected.held)
+              parts.push({ kind: "note", note: "connection_held", name })
             save("streaming")
             publish()
           }

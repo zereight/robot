@@ -72,6 +72,7 @@ import type {
   ToolConnection,
   ToolConnectionInput,
 } from "./toolConnections.ts"
+import type { HeldToolView } from "./toolReview.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
@@ -458,6 +459,19 @@ export interface RpcMethods {
   /** Turns one tool of a connection on or off. A tool that is off is given to no agent. */
   "connections.setTool": {
     input: { id: string; tool: string; enabled: boolean }
+    output: ToolConnection
+  }
+  /**
+   * The tools of a connection that wait for the user's review (spec 018, "Tool review"), each with
+   * the reviewed text and the text that the connection offers now. This computer only.
+   */
+  "connections.held": { input: { id: string }; output: readonly HeldToolView[] }
+  /**
+   * Accepts held tools: each becomes a reviewed tool with the text that the user saw. A tool whose
+   * `key` is not the one of the text that the connection offers now stays held. This computer only.
+   */
+  "connections.accept": {
+    input: { id: string; tools: readonly { name: string; key: string }[] }
     output: ToolConnection
   }
   /** Removes a connection, its saved secrets and its rules. The action log keeps its entries. */
