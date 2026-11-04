@@ -259,6 +259,72 @@
 .card[data-state="working"] .cardState {
   color: var(--c-success);
 }
+/* The title row of the panel, with the button that opens the member picker. */
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panelHead .panelTitle {
+  flex: 1;
+}
+.panelAdd {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.panelAdd:hover:not(:disabled) {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+.panelAdd:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+/* The picker: one row per agent outside the channel. A click adds it at once. */
+.addList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  padding: 4px;
+}
+.addPick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  text-align: start;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.addPick:hover:not(:disabled) {
+  background: var(--c-hover);
+}
+.addPick:disabled {
+  cursor: default;
+}
+.addPickName {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* The tokens of the whole job, on the card of the lead (spec 005, "Usage of a task"). */
 .cardUsage {
   font-size: var(--text-xs);

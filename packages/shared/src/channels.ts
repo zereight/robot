@@ -163,6 +163,20 @@ export const stepLabel = (label: string) =>
     ? `${[...label].slice(0, STEP_LABEL_MAX - 1).join("")}…`
     : label
 
+/** The agents that can join the channel: all agents except its members, in the same order. */
+export const addableAgents = <A extends { readonly id: string }>(
+  agents: readonly A[],
+  memberIds: readonly string[],
+): A[] => agents.filter((a) => !memberIds.includes(a.id))
+
+/** The member list after one agent joins. A member that is already in stays once. */
+export const idsAfterAdd = (memberIds: readonly string[], agentId: string): string[] =>
+  memberIds.includes(agentId) ? [...memberIds] : [...memberIds, agentId]
+
+/** The member list after one member leaves. The rest keep their order. */
+export const idsAfterRemove = (memberIds: readonly string[], agentId: string): string[] =>
+  memberIds.filter((m) => m !== agentId)
+
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 /** The member names that `text` mentions as `@Name`, in the order of the members. */
