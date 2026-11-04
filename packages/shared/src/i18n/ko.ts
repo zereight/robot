@@ -2486,6 +2486,7 @@ export const ko: Record<MessageKey, string> = {
   "orgchart.done.unlead": "{name}을(를) {channel}의 리드에서 뺐어요.",
   "orgchart.undo": "되돌리기",
   "orgchart.undone": "되돌렸어요.",
+  "orgchart.refused.join": "{name}을(를) 만들었지만 채널에 넣지 못했어요. {reason}",
   "orgchart.refused.works":
     "{name}이(가) {channel}에서 작업 중이에요. 맡은 부분이 끝나기를 기다리거나 중지해 주세요.",
   "taskUsage.title": "사용량",

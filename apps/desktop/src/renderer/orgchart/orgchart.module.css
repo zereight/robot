@@ -586,3 +586,37 @@ button.node[data-kind="more"]:hover {
   font-weight: 600;
   pointer-events: none;
 }
+
+/*
+ * The drop area "No channel" during the drag of an agent node that is in a channel. It sits at
+ * the bottom left of the canvas, over the chart, the line at the bottom and the controls. It is no
+ * node of the layout and does not move with the view.
+ */
+.dropArea {
+  position: absolute;
+  z-index: 6;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 180px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 1px dashed var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  font-size: var(--text-s);
+  font-weight: 600;
+  animation: node-in var(--motion-fast) var(--ease-out);
+}
+
+.dropArea[data-ring="true"] {
+  border: 1px solid var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent);
+}
+
+.dropArea[data-ring="true"][data-over="true"] {
+  background: color-mix(in srgb, var(--c-accent) 14%, var(--c-elevated));
+}

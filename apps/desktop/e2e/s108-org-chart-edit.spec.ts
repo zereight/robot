@@ -62,18 +62,28 @@ const center = async (target: Locator) => {
   if (!box) throw new Error("no box")
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 }
-/** The center of a node once it stops moving: the view can fit again when the chart changes. */
-const settledCenter = async (target: Locator) => {
+/** The view of the chart: pan and zoom. */
+const viewOf = async (page: Page) => {
+  const surface = page.getByTestId("org-surface")
+  return {
+    x: await surface.getAttribute("data-x"),
+    y: await surface.getAttribute("data-y"),
+    zoom: await surface.getAttribute("data-zoom"),
+  }
+}
+const dropArea = (page: Page) => page.getByTestId("org-drop-area")
+/** The view once the page has framed the chart and stopped. */
+const settledView = async (page: Page) => {
   let last = ""
   await expect
     .poll(async () => {
-      const now = JSON.stringify(await center(target))
+      const now = JSON.stringify(await viewOf(page))
       const same = now === last
       last = now
       return same
     })
     .toBe(true)
-  return center(target)
+  return viewOf(page)
 }
 /** Presses on `from`, moves onto `to` in steps, and runs `during` before the drop. */
 const drag = async (
@@ -136,8 +146,10 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await expect(page.getByTestId("org-canvas")).toBeVisible()
     await expect(copyOf(page, bo, docs.id)).toBeVisible()
 
-    // Drag Bo from "Docs" onto "Ops": during the drag "Ops" and "No channel" show a ring, and
-    // "Docs" (where Bo is) shows none. The drop moves Bo, and the line "Moved Bo to Ops." shows.
+    // Drag Bo from "Docs" onto "Ops": during the drag "Ops", the drawn node "No channel" and the
+    // drop area "No channel" show a ring, and "Docs" (where Bo is) shows none. The drop moves Bo,
+    // and the line "Moved Bo to Ops." shows.
+    await expect(dropArea(page)).toHaveCount(0)
     await drag(
       page,
       copyOf(page, bo, docs.id),
@@ -146,9 +158,11 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
         await expect(channelNode(page, ops.id)).toHaveAttribute("data-ring", "true")
         await expect(channelNode(page, null)).toHaveAttribute("data-ring", "true")
         await expect(channelNode(page, docs.id)).toHaveAttribute("data-ring", "false")
+        await expect(dropArea(page)).toHaveAttribute("data-ring", "true")
         await shot(page, "s108-01-drag-ring")
       },
     )
+    await expect(dropArea(page)).toHaveCount(0)
     await expect(page.getByTestId("org-notice-text")).toHaveText("Moved Bo to Ops.")
     await expect(page.getByTestId("org-undo")).toBeVisible()
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Cy", "Ops: Bo, Dee"])
@@ -171,6 +185,7 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
       async () => {
         // With Option there is nothing to add to "No channel": it shows no ring.
         await expect(channelNode(page, null)).toHaveAttribute("data-ring", "false")
+        await expect(dropArea(page)).toHaveAttribute("data-ring", "false")
         await expect(channelNode(page, ops.id)).toHaveAttribute("data-ring", "true")
       },
     )
@@ -268,13 +283,16 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await expect(menu.getByRole("menuitem")).toHaveText(["New agent"])
     await page.keyboard.press("Escape")
 
-    // A drop on "No channel" removes the agent from the channel it came from.
+    // A drop on the drawn node "No channel" removes the agent from the channel it came from.
     await drag(page, copyOf(page, cy, docs.id), await center(channelNode(page, null)))
     await expect(page.getByTestId("org-notice-text")).toHaveText("Removed Cy from Docs.")
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada, Bo*", "Ops: Dee"])
     await expect(copyOf(page, cy, null)).toBeVisible()
-    // From "No channel", a drop on a channel node adds the agent.
-    await drag(page, copyOf(page, cy, null), await center(channelNode(page, docs.id)))
+    // From "No channel", a drop on a channel node adds the agent. The drop area does not show:
+    // the agent is in no channel.
+    await drag(page, copyOf(page, cy, null), await center(channelNode(page, docs.id)), () =>
+      expect(dropArea(page)).toHaveCount(0),
+    )
     await expect(page.getByTestId("org-notice-text")).toHaveText("Added Cy to Docs.")
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada, Bo*, Cy", "Ops: Dee"])
 
@@ -383,16 +401,18 @@ test("edit on the org chart of a linked computer with the switch Can create and 
     const bo = copyOf(one.page, ids.Bo as string, docs.id)
     await expect(bo).toBeVisible()
 
-    // A move on the chart works: Bo leaves "Docs" and joins "Ops" on MacBook 2.
-    // Every agent is in a channel, so the drag adds "No channel" and the view can fit again: the
-    // pointer goes onto "Ops" once the view is still.
+    // A move on the chart works: Bo leaves "Docs" and joins "Ops" on MacBook 2. Every agent is
+    // in a channel: the drag shows the drop area "No channel", and the view does not move.
+    const before = await settledView(one.page)
     await drag(one.page, bo, await center(channelNode(one.page, ops.id)), async () => {
-      const to = await settledCenter(channelNode(one.page, ops.id))
-      await one.page.mouse.move(to.x, to.y, { steps: 4 })
+      await expect(dropArea(one.page)).toBeVisible()
+      await expect(channelNode(one.page, null)).toHaveCount(0)
+      expect(await viewOf(one.page)).toEqual(before)
     })
     await expect(one.page.getByTestId("org-notice-text")).toHaveText("Moved Bo to Ops.")
     await expect.poll(() => teams(two.page)).toEqual(["Docs: Ada*", "Ops: Ada, Bo"])
     await expect(copyOf(one.page, ids.Bo as string, ops.id)).toBeVisible()
+    expect(await viewOf(one.page)).toEqual(before)
     await shot(one.page, "s108-06-linked-moved")
     // Undo goes to MacBook 2 too.
     await one.page.getByTestId("org-undo").click()
@@ -403,7 +423,7 @@ test("edit on the org chart of a linked computer with the switch Can create and 
   }
 })
 
-test("edit on the org chart: an empty No channel during a drag, Undone., and a new agent", async () => {
+test("edit on the org chart: the drop area No channel, a still view, edge scroll, Undone., and a new agent", async () => {
   test.setTimeout(240_000)
   const mock = await startMockProvider()
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
@@ -447,39 +467,55 @@ test("edit on the org chart: an empty No channel during a drag, Undone., and a n
     await expect(copyOf(page, bo, docs.id)).toBeVisible()
     await expect(channelNode(page, null)).toHaveCount(0)
 
-    // During the drag of Bo, "No channel" shows last, empty, with a ring. Escape ends the drag
-    // and "No channel" goes again.
-    await drag(
-      page,
-      copyOf(page, bo, docs.id),
-      await center(channelNode(page, ops.id)),
-      async () => {
-        await expect(channelNode(page, null)).toBeVisible()
-        await expect(channelNode(page, null)).toHaveAttribute("data-ring", "true")
-        await expect(page.locator('[data-testid=org-node][data-key^="c:none/"]')).toHaveCount(0)
-        await expect(page.locator("[data-testid=org-channel]").last()).toHaveAttribute(
-          "data-key",
-          "c:none",
-        )
-        await shot(page, "s108-07-drag-no-channel")
-        await page.keyboard.press("Escape")
-      },
-    )
-    await expect(channelNode(page, null)).toHaveCount(0)
+    // During the drag of Bo, the drop area "No channel" shows at the bottom left of the canvas,
+    // with a ring. The layout does not change: no node "No channel", the nodes stay in place, and
+    // the view is the same. Escape ends the drag and the drop area goes.
+    const before = await settledView(page)
+    const opsAt = await center(channelNode(page, ops.id))
+    const canvasBox = await page.getByTestId("org-canvas").boundingBox()
+    if (!canvasBox) throw new Error("no canvas")
+    await drag(page, copyOf(page, bo, docs.id), opsAt, async () => {
+      await expect(dropArea(page)).toHaveAttribute("data-ring", "true")
+      await expect(channelNode(page, null)).toHaveCount(0)
+      const area = await dropArea(page).boundingBox()
+      if (!area) throw new Error("no drop area")
+      expect(area.x - canvasBox.x).toBeLessThan(40)
+      expect(canvasBox.y + canvasBox.height - (area.y + area.height)).toBeLessThan(40)
+      expect(await center(channelNode(page, ops.id))).toEqual(opsAt)
+      expect(await viewOf(page)).toEqual(before)
+      await shot(page, "s108-07-drag-drop-area")
+      await page.keyboard.press("Escape")
+    })
+    await expect(dropArea(page)).toHaveCount(0)
+    expect(await viewOf(page)).toEqual(before)
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo", "Ops: Dee"])
 
-    // A drop on the empty "No channel" removes Bo from "Docs". After the drag, "No channel" shows
-    // by the normal rule: it holds Bo now.
-    // "No channel" shows only once the drag has begun, so the pointer goes onto it then.
-    await drag(
-      page,
-      copyOf(page, bo, docs.id),
-      await center(channelNode(page, ops.id)),
-      async () => {
-        const none = await settledCenter(channelNode(page, null))
-        await page.mouse.move(none.x, none.y, { steps: 4 })
-      },
-    )
+    // Edge scroll: while the pointer stays within 40 px of the top edge of the canvas, the view
+    // moves down; the drop area stays where it is. The pointer goes back and Escape ends the drag.
+    const areaBox = async () => JSON.stringify(await dropArea(page).boundingBox())
+    await drag(page, copyOf(page, bo, docs.id), opsAt, async () => {
+      await expect(dropArea(page)).toBeVisible()
+      const fixed = await areaBox()
+      await page.mouse.move(canvasBox.x + canvasBox.width / 2, canvasBox.y + 10, { steps: 4 })
+      await expect
+        .poll(async () => Number((await viewOf(page)).y))
+        .toBeGreaterThan(Number(before.y) + 40)
+      expect((await viewOf(page)).x).toBe(before.x)
+      expect((await viewOf(page)).zoom).toBe(before.zoom)
+      expect(await areaBox()).toBe(fixed)
+      await page.mouse.move(opsAt.x, opsAt.y, { steps: 4 })
+      await page.keyboard.press("Escape")
+    })
+    await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo", "Ops: Dee"])
+    await page.getByTestId("org-fit").click()
+
+    // A drop on the drop area removes Bo from "Docs". After the drag, "No channel" shows by the
+    // normal rule: it holds Bo now.
+    await drag(page, copyOf(page, bo, docs.id), opsAt, async () => {
+      const to = await center(dropArea(page))
+      await page.mouse.move(to.x, to.y, { steps: 4 })
+      await expect(dropArea(page)).toHaveAttribute("data-over", "true")
+    })
     await expect(page.getByTestId("org-notice-text")).toHaveText("Removed Bo from Docs.")
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada*", "Ops: Dee"])
     await expect(copyOf(page, bo, null)).toBeVisible()
@@ -525,6 +561,30 @@ test("edit on the org chart: an empty No channel during a drag, Undone., and a n
     await expect(copyOf(page, gus, null)).toBeFocused()
     await expect(page.getByTestId("org-canvas")).toBeVisible()
     await expect(page.getByTestId("chat-start")).toHaveCount(0)
+
+    // A new agent that is made but cannot join its channel: the channel is deleted while the form
+    // is open. The refusal line gives the reason, and the focus goes to its node in "No channel".
+    const tmp = await rpc<ChannelInfo>(page, "channels.create", {
+      serverId: server,
+      name: "Tmp",
+      topic: "",
+      memberIds: [ids.Dee],
+      leadId: null,
+    })
+    await channelNode(page, tmp.id).click({ button: "right" })
+    await page.getByTestId("org-menu").getByTestId("org-menu-new-agent").click()
+    await page.getByTestId("agent-name").fill("Ivy")
+    await page.getByTestId("model-model").waitFor()
+    await rpc(page, "channels.delete", { id: tmp.id })
+    await page.getByTestId("agent-submit").click()
+    await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
+    await expect(page.getByTestId("org-notice-text")).toHaveText(
+      "Ivy is made, but cannot join the channel. This channel does not exist any more.",
+    )
+    await expect(page.getByTestId("org-notice")).toHaveAttribute("data-kind", "refused")
+    const ivy = (await agentsOf(page)).find((a) => a.name === "Ivy")?.id as string
+    await expect(copyOf(page, ivy, null)).toBeFocused()
+    await shot(page, "s108-09-new-agent-cannot-join")
 
     // The New agent form elsewhere (002) still opens the new agent.
     await createAgent(page, "Hal")

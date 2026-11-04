@@ -35,7 +35,7 @@ import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { createChartEdit } from "./ChartEdit.tsx"
-import { withDropSpot } from "./edit.ts"
+import { edgeStep } from "./edit.ts"
 import { type ChartLayout, layoutChart } from "./layout.ts"
 import {
   agentLabel,
@@ -122,16 +122,13 @@ export const OrgChartPage = () => {
   const ui = useUi()
   const agents = useAgents()
   const chart = useOrgChart()
-  // During the drag of an agent node that is in a channel, the chart shows "No channel" also when
-  // it is empty, so that it can take the drop (see edit.ts).
-  const [dropFrom, setDropFrom] = createSignal<string | null>(null)
-  const model = createMemo(() => {
-    const m = chart.model()
-    return m && withDropSpot(m, dropFrom())
-  })
+  const model = chart.model
+  // The layout does not change during the drag of a node (spec 029): it waits until the drag ends.
+  const [nodeDrag, setNodeDrag] = createSignal(false)
 
   const unit = createMemo(() => TEXT_SIZES[app.settings.textSize])
-  const structure = createMemo(() => {
+  const structure = createMemo<string>((was) => {
+    if (nodeDrag() && was !== undefined) return was
     const m = model()
     return m && !m.empty ? structureKey(m) : ""
   })
@@ -324,7 +321,38 @@ export const OrgChartPage = () => {
     openChannel,
     focusAgent: (agentId, channelId) => setBorn({ agentId, channelId }),
   })
-  createEffect(() => setDropFrom(edit.dragging()?.from ?? null))
+  // A drag never moves the view by itself: from its start the view is the user's, so that no
+  // change of the chart frames it again (spec 029).
+  createEffect(() => {
+    const on = edit.dragging() !== undefined
+    if (on) own = true
+    setNodeDrag(on)
+  })
+
+  // Edge scroll: while a drag holds the pointer within EDGE_PX of an edge of the canvas, the view
+  // moves in that direction.
+  createEffect(() => {
+    if (!nodeDrag()) return
+    let frame = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      const ms = Math.min(now - last, 50)
+      last = now
+      const drag = untrack(edit.dragging)
+      const el = untrack(canvas)
+      if (drag && el) {
+        const { dx, dy } = edgeStep(drag, el.getBoundingClientRect(), ms)
+        if (dx !== 0 || dy !== 0) {
+          const v = untrack(view)
+          setView({ ...v, x: v.x + dx, y: v.y + dy }, false)
+          edit.pointerStays()
+        }
+      }
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    onCleanup(() => cancelAnimationFrame(frame))
+  })
 
   // After "New agent" or "New agent in this channel" the focus goes to the node of the new agent:
   // its copy in that channel, or the root when it is the main agent. It waits until the form has
@@ -932,6 +960,7 @@ export const OrgChartPage = () => {
                 <For each={nodeKeys()}>{(key) => <NodeMenuButton nodeKey={key} />}</For>
               </div>
               <edit.NoticeLine />
+              <edit.DropArea />
               <div
                 ref={controls}
                 class={styles.controls}

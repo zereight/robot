@@ -2503,6 +2503,7 @@ export const en = {
   "orgchart.done.unlead": "Removed {name} as lead of {channel}.",
   "orgchart.undo": "Undo",
   "orgchart.undone": "Undone.",
+  "orgchart.refused.join": "{name} is made, but cannot join the channel. {reason}",
   "orgchart.refused.works": "{name} works in {channel}. Wait for its part to end, or stop it.",
   "taskUsage.title": "Usage",
   "taskUsage.input": "Input tokens",

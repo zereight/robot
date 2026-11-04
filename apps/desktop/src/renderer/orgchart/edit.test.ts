@@ -1,17 +1,18 @@
 import { describe, expect, test } from "bun:test"
-import { buildChart, NO_CHANNEL_KEY, type OrgSnapshot } from "@robot/shared"
 import {
   agentsFor,
   channelsFor,
   dropEdit,
+  EDGE_PX,
+  EDGE_SPEED,
   type EditChannel,
+  edgeStep,
   leavingOf,
   NOTICE_MS,
   noticeMs,
   planEdit,
   UNDONE_MS,
   undoSteps,
-  withDropSpot,
 } from "./edit.ts"
 
 // Spec 029, "Edit on the chart": the lists of the menus, where a drop is allowed, the patches of
@@ -158,55 +159,47 @@ describe("undo", () => {
   })
 })
 
-describe("the node No channel during a drag", () => {
-  const snapshot = (memberIds: string[]): OrgSnapshot =>
-    ({
-      mainAgentId: null,
-      agents: ["a", "b"].map((id) => ({
-        id,
-        name: id.toUpperCase(),
-        role: "",
-        face: null,
-        state: "idle",
-        task: null,
-      })),
-      channels: [
-        { id: "docs", name: "Docs", leadId: null, memberIds, createdAt: 1 },
-        { id: "ops", name: "Ops", leadId: null, memberIds: ["b"], createdAt: 2 },
-      ],
-      handoffs: [],
-    }) as unknown as OrgSnapshot
-  const keysOf = (m: ReturnType<typeof buildChart>) => m.channels.map((c) => c.key)
-
-  test("shows last and empty while an agent from a channel is dragged", () => {
-    const model = buildChart(snapshot(["a"]))
-    expect(keysOf(model)).not.toContain(NO_CHANNEL_KEY)
-    const during = withDropSpot(model, "docs")
-    expect(keysOf(during)).toEqual(["c:docs", "c:ops", NO_CHANNEL_KEY])
-    const none = during.channels.at(-1)
-    expect(none?.channelId).toBeNull()
-    expect(none?.nodes).toEqual([])
-    expect(none?.memberCount).toBe(0)
-  })
-
-  test("is not added without a drag, or for a drag from No channel", () => {
-    const model = buildChart(snapshot(["a"]))
-    expect(withDropSpot(model, null)).toBe(model)
-    expect(withDropSpot(model, undefined)).toBe(model)
-  })
-
-  test("is not added twice when it holds agents", () => {
-    const model = buildChart(snapshot([]))
-    expect(keysOf(model)).toContain(NO_CHANNEL_KEY)
-    expect(withDropSpot(model, "ops")).toBe(model)
-  })
-
+describe("the drop area No channel during a drag", () => {
   test("takes the drop: the agent leaves the channel it came from", () => {
     expect(dropEdit({ agentId: "a", from: "docs", to: null, add: false }, all)).toEqual({
       kind: "remove",
       agentId: "a",
       from: "docs",
     })
+  })
+
+  test("with Option there is nothing to add: no ring", () => {
+    expect(dropEdit({ agentId: "a", from: "docs", to: null, add: true }, all)).toBeUndefined()
+  })
+})
+
+describe("edge scroll during a drag", () => {
+  const rect = { left: 100, top: 50, width: 800, height: 600 }
+  const at = (x: number, y: number, ms = 1000) => edgeStep({ x, y }, rect, ms)
+
+  test("the view does not move when the pointer is away from the edges or off the canvas", () => {
+    expect(at(500, 350)).toEqual({ dx: 0, dy: 0 })
+    expect(at(100 + EDGE_PX, 350)).toEqual({ dx: 0, dy: 0 })
+    expect(at(50, 350)).toEqual({ dx: 0, dy: 0 })
+    expect(at(500, 700)).toEqual({ dx: 0, dy: 0 })
+  })
+
+  test("the view moves toward the edge that the pointer is near", () => {
+    // Left and top: the chart moves right and down, so the view shows more of the left and top.
+    expect(at(100, 350).dx).toBe(EDGE_SPEED)
+    expect(at(500, 50).dy).toBe(EDGE_SPEED)
+    expect(at(900, 350).dx).toBe(-EDGE_SPEED)
+    expect(at(500, 650).dy).toBe(-EDGE_SPEED)
+    // A corner moves both ways.
+    const corner = at(101, 51)
+    expect(corner.dx).toBeGreaterThan(0)
+    expect(corner.dy).toBeGreaterThan(0)
+  })
+
+  test("nearer the edge is faster, and the step grows with the time", () => {
+    expect(at(110, 350).dx).toBeGreaterThan(at(130, 350).dx)
+    expect(at(100 + EDGE_PX - 1, 350).dx).toBeGreaterThan(0)
+    expect(at(110, 350, 16).dx).toBeCloseTo(at(110, 350, 1000).dx * 0.016)
   })
 })
 

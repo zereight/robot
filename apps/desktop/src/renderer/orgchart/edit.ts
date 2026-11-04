@@ -1,4 +1,4 @@
-import { type ChannelPatch, type ChartModel, NO_CHANNEL_KEY } from "@robot/shared"
+import type { ChannelPatch } from "@robot/shared"
 
 // Edit on the org chart (spec 029, "Edit on the chart"). The chart changes the members and the lead
 // of a channel with the same change as the channel settings (004), so the server keeps its rules:
@@ -175,32 +175,30 @@ export const leavingOf = (
   return gone.length > 0 ? { channelId: now.id, agentIds: gone } : undefined
 }
 
+/** The width of the strip along each edge of the canvas where a drag moves the view (spec 029). */
+export const EDGE_PX = 40
+/** How fast the view moves when the pointer is at the very edge, in pixels per second. */
+export const EDGE_SPEED = 720
+
 /**
- * The chart during the drag of an agent node that is in a channel: the channel node "No channel"
- * shows at its place in the order (last), also when it holds no agent, so that it can take the
- * drop. It is empty then. Other drags, and the chart after the drag, keep the rule of "Concepts".
+ * How far the view moves in `ms` milliseconds while a drag holds the pointer at `point`: the
+ * view moves toward the edge that the pointer is near, faster nearer the edge (a quarter of the speed at the inner side of the strip). The pointer must be
+ * on the canvas and within EDGE_PX of an edge; elsewhere the view does not move.
  */
-export const withDropSpot = (
-  model: ChartModel,
-  dragFrom: string | null | undefined,
-): ChartModel => {
-  if (!dragFrom || model.empty || model.channels.some((c) => c.channelId === null)) return model
-  return {
-    ...model,
-    channels: [
-      ...model.channels,
-      {
-        key: NO_CHANNEL_KEY,
-        channelId: null,
-        name: "",
-        memberCount: 0,
-        counts: { working: 0, waiting: 0, idle: 0, offline: 0 },
-        nodes: [],
-        leadKey: null,
-        more: [],
-      },
-    ],
-  }
+export const edgeStep = (
+  point: { x: number; y: number },
+  rect: { left: number; top: number; width: number; height: number },
+  ms: number,
+): { dx: number; dy: number } => {
+  const x = point.x - rect.left
+  const y = point.y - rect.top
+  if (x < 0 || y < 0 || x > rect.width || y > rect.height) return { dx: 0, dy: 0 }
+  const speed = (gap: number) =>
+    gap < EDGE_PX ? (EDGE_SPEED * Math.max(0.25, 1 - gap / EDGE_PX) * ms) / 1000 : 0
+  // Near the left edge the view shows more of the left: the chart moves right.
+  const dx = speed(x) - speed(rect.width - x)
+  const dy = speed(y) - speed(rect.height - y)
+  return { dx: dx === 0 ? 0 : dx, dy: dy === 0 ? 0 : dy }
 }
 
 /** How long a line "<what changed>." with "Undo" shows, and a refusal line (spec 029). */

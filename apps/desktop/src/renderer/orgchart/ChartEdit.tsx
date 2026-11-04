@@ -33,6 +33,8 @@ import styles from "./orgchart.module.css"
 
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_START_PX = 5
+/** The key of the drop area "No channel" that shows during a drag. It is no node of the layout. */
+export const DROP_AREA_KEY = "drop:none"
 
 interface Notice {
   readonly kind: NoticeKind
@@ -415,12 +417,21 @@ export const createChartEdit = (deps: {
   /** A drag ends with a click on the node where it began. That click opens nothing. */
   let swallowClick = false
 
-  const overAt = (x: number, y: number) =>
-    document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-node][data-kind="channel"]')
-      ?.dataset.key ?? undefined
+  /** The drop area "No channel", or the key of the channel node under the point. */
+  const overAt = (x: number, y: number) => {
+    const el = document.elementFromPoint(x, y)
+    if (el?.closest("[data-drop-area]")) return DROP_AREA_KEY
+    return el?.closest<HTMLElement>('[data-node][data-kind="channel"]')?.dataset.key ?? undefined
+  }
 
   const targetOf = (drag: Dragging, key: string | undefined) => {
     if (!key) return undefined
+    // The drop area does what a drop on the channel node "No channel" does.
+    if (key === DROP_AREA_KEY)
+      return dropEdit(
+        { agentId: drag.agentId, from: drag.from, to: null, add: drag.add },
+        channels.channels(),
+      )
     const node = deps.channelNode(key)
     if (!node) return undefined
     return dropEdit(
@@ -465,7 +476,7 @@ export const createChartEdit = (deps: {
     if (!press || event.pointerId !== press.pointerId) return
     const drag = dragging()
     // A drop where no ring shows, or on the empty canvas, changes nothing. The target is found
-    // before the drag ends: the end takes away an empty "No channel" and the chart can move.
+    // before the drag ends: the end takes away the drop area "No channel".
     const edit = drag
       ? targetOf({ ...drag, add: event.altKey }, overAt(event.clientX, event.clientY))
       : undefined
@@ -475,6 +486,13 @@ export const createChartEdit = (deps: {
     if (edit) void apply(edit)
   }
   const onCancel = () => endDrag()
+  /** The view moved under a pointer that stays: the node under the pointer can change. */
+  const pointerStays = () => {
+    const drag = dragging()
+    if (!drag) return
+    const over = overAt(drag.x, drag.y)
+    if (over !== drag.over) setDragging({ ...drag, over })
+  }
   // Option can go down or up during a drag. Escape ends the drag with no change.
   const onDragKey = (event: KeyboardEvent) => {
     const drag = dragging()
@@ -557,12 +575,34 @@ export const createChartEdit = (deps: {
               // the new agent once the chart shows it.
               deps.focusAgent(agent.id, target.channelId)
               if (!target.channelId) return
-              const current = (await fresh()).find((c) => c.id === target.channelId)
-              if (!current) return
-              await call("channels.update", {
-                id: current.id,
-                patch: { memberIds: [...current.memberIds, agent.id] },
-              })
+              // The agent is made but cannot join the channel: the refusal line gives the reason,
+              // and the focus goes to its node in "No channel".
+              const cannotJoin = (error: unknown) => {
+                const reason = describeError(error)
+                show({
+                  kind: "refused",
+                  text: t("orgchart.refused.join", {
+                    name: agent.name,
+                    reason: t(reason.key, reason.params),
+                  }),
+                })
+                deps.focusAgent(agent.id, null)
+              }
+              try {
+                const current = (await fresh()).find((c) => c.id === target.channelId)
+                if (!current) {
+                  cannotJoin(
+                    new RpcFailure({ code: "channel_not_found", message: target.channelId }),
+                  )
+                  return
+                }
+                await call("channels.update", {
+                  id: current.id,
+                  patch: { memberIds: [...current.memberIds, agent.id] },
+                })
+              } catch (error) {
+                cannotJoin(error)
+              }
             }}
           />
         )}
@@ -577,6 +617,27 @@ export const createChartEdit = (deps: {
         )}
       </Presence>
     </>
+  )
+
+  /**
+   * During the drag of an agent node that is in a channel: the drop area "No channel" at the
+   * bottom left of the canvas, over the chart and the controls. It stays in place when the view
+   * moves, and goes when the drag ends.
+   */
+  const DropArea = () => (
+    <Show when={dragging()?.from != null}>
+      <div
+        class={styles.dropArea}
+        data-drop-area=""
+        data-control=""
+        data-ring={ringOf(DROP_AREA_KEY)}
+        data-over={dragging()?.over === DROP_AREA_KEY}
+        data-testid="org-drop-area"
+        aria-hidden="true"
+      >
+        {t("orgchart.noChannel")}
+      </div>
+    </Show>
   )
 
   /** The line at the bottom of the canvas. */
@@ -622,10 +683,12 @@ export const createChartEdit = (deps: {
     isMenuKey,
     dragging,
     ringOf,
+    pointerStays,
     pressAgent,
     takeClick,
     Overlays,
     NoticeLine,
+    DropArea,
   }
 }
 
