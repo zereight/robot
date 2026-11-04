@@ -174,6 +174,22 @@ const answer = (body: ChatBody): Plan => {
       ],
       delay: 0,
     }
+  // The daily token limit of a channel (spec 030): the lead gives Bo two parts. Bo does one part at
+  // a time, so the second waits. The first one reports 51,000 tokens and so uses the limit of 50,000
+  // while it runs. The second one then meets the limit when it would start.
+  if (text.includes("split limit"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "Two parts for one agent",
+          parts: [
+            { member: "Bo", label: "Write the intro", prompt: "Write the intro USAGE 51000/0" },
+            { member: "Bo", label: "Check the facts", prompt: "Check the facts USAGE 100/10" },
+          ],
+        }),
+      ],
+      delay: 0,
+    }
   if (text.includes("split usage"))
     return {
       chunks: [
