@@ -197,3 +197,106 @@
 .stateTag[data-state="needs_repair"] {
   color: var(--c-danger);
 }
+
+/* The fold of the group "Older models" under the model box. It looks like a quiet link. */
+.fold {
+  align-self: flex-start;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.fold:hover {
+  color: var(--c-text);
+}
+
+.fold:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+/* The part "Models" of an account: a fold, and under it one row for each model. */
+.models {
+  width: 100%;
+}
+
+.modelsBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-main);
+}
+
+.modelsTitle {
+  margin: 0;
+  font-size: var(--text-s);
+  font-weight: 600;
+}
+
+/* The notes under the title sit close together. */
+.modelsBody .hint {
+  margin: 0;
+}
+
+.modelList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.modelRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.modelHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.modelName {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+
+.modelFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  padding-left: 44px;
+}
+
+.modelFields .hint,
+.modelFields .error {
+  grid-column: 1 / -1;
+}
+
+.modelAdd {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.modelAdd .field {
+  flex: 1;
+  min-width: 160px;
+}

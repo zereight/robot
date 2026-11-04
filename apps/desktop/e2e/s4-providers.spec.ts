@@ -71,11 +71,14 @@ test("providers: connect a key, pick a model, switch, disconnect, reconnect", as
   // Switch to the other account; the agent keeps its identity.
   await page.getByTestId("chat-header-model").click()
   await page.getByTestId("model-account").selectOption({ label: "Anthropic" })
+  // The newest models come first. Haiku 3.5 has a newer model of its family in the list, so it
+  // is last, in the folded group "Older models" (spec 006).
   await expect(page.getByTestId("model-model").locator("option")).toHaveText([
-    "Claude Haiku 3.5",
     "Claude Haiku 5.5",
     "Claude Sonnet 4.5",
+    "Claude Haiku 3.5",
   ])
+  await expect(page.getByTestId("model-older-toggle")).toHaveText("Older models (1)")
 
   // A Claude model offers all five levels, up to "Max". The request carries the level.
   await page.getByTestId("model-model").selectOption("claude-haiku-5-5")

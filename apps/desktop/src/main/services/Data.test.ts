@@ -528,6 +528,32 @@ describe("export and import", () => {
     expect(work).toMatchObject({ connected: false, signIn: "11111111-2222-3333-4444-555555555555" })
   })
 
+  test("the models that the user turned off, and the fields of a custom model, come back with their account (spec 006, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-models.zip")
+    const a = app({ save: out })
+    const dbA = await a.run(Database.use((d) => Effect.succeed(d)))
+    dbA.run(
+      "INSERT INTO provider_account (id, kind, name, base_url, created_at) VALUES ('c1', 'custom', 'Local', 'http://127.0.0.1:1/v1', 1)",
+    )
+    dbA.run(
+      "INSERT INTO provider_model (account_id, model, hidden, context_size, output_limit) VALUES ('c1', 'm1', 1, 32000, 2000)",
+    )
+    dbA.run("INSERT INTO provider_model (account_id, model, seen_at) VALUES ('c1', 'm2', 5)")
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const dbB = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(
+      dbB.all(
+        "SELECT model, seen_at, hidden, context_size, output_limit FROM provider_model ORDER BY model",
+      ),
+    ).toEqual([
+      { model: "m1", seen_at: null, hidden: 1, context_size: 32000, output_limit: 2000 },
+      { model: "m2", seen_at: 5, hidden: 0, context_size: null, output_limit: null },
+    ])
+  })
+
   test("memory history and proposals are in the archive: text that looks like a secret is [redacted] and has no Undo; the rest comes back whole (spec 014, 008)", async () => {
     const out = join(testPlatform().dataDir, "export-memory.zip")
     const a = app({ save: out })

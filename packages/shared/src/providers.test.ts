@@ -1,20 +1,27 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
+  carriedEffort,
+  EFFORT_LEVELS,
   effortsFor,
   isBlockingState,
+  isEffortLevel,
   isRuntimeKind,
   NEW_AGENT_EFFORT,
+  nearestEffort,
   ProviderConnect,
   RUNTIME_CHECK_MS,
   RUNTIME_KINDS,
   RUNTIME_STATES,
+  routineTurnEffort,
   runtimeModel,
   runtimeModels,
   runtimeSupport,
   settledEffort,
+  sortEfforts,
   takesAdaptiveThinking,
   takesThinkingBudget,
+  tokenCount,
 } from "./providers.ts"
 
 describe("providers", () => {
@@ -200,5 +207,83 @@ describe("effort of a new agent", () => {
     expect(settledEffort("high", [], null)).toBeNull()
     // "Default" picked by hand stays "Default", also when the model offers Medium.
     expect(settledEffort(null, five, null)).toBeNull()
+  })
+})
+
+describe("effort levels (spec 006)", () => {
+  test("None and Minimal sit below Low, and Ultra sits above Max", () => {
+    expect(EFFORT_LEVELS).toEqual([
+      "none",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+      "ultra",
+    ])
+    expect(isEffortLevel("ultra")).toBe(true)
+    expect(isEffortLevel("extreme")).toBe(false)
+  })
+
+  test("a list of levels keeps the order of the levels and holds each level once", () => {
+    expect(sortEfforts(["ultra", "low", "none", "low", "minimal", "other"])).toEqual([
+      "none",
+      "minimal",
+      "low",
+      "ultra",
+    ])
+  })
+
+  test("a level on the list stays", () => {
+    expect(nearestEffort("high", ["low", "high", "max"])).toBe("high")
+    expect(nearestEffort("ultra", ["minimal", "ultra"])).toBe("ultra")
+  })
+
+  test("a level off the list becomes the nearest level on it", () => {
+    expect(nearestEffort("ultra", ["low", "medium", "high"])).toBe("high")
+    expect(nearestEffort("none", ["low", "medium", "high"])).toBe("low")
+    expect(nearestEffort("xhigh", ["low", "high", "ultra"])).toBe("high")
+    expect(nearestEffort("minimal", ["high", "max"])).toBe("high")
+  })
+
+  test("two levels equally near: the lower one wins, whatever the order of the list", () => {
+    // medium sits between low and high: one step each way.
+    expect(nearestEffort("medium", ["low", "high"])).toBe("low")
+    expect(nearestEffort("medium", ["high", "low"])).toBe("low")
+    // xhigh sits between high and max.
+    expect(nearestEffort("xhigh", ["max", "high"])).toBe("high")
+    expect(nearestEffort("max", ["xhigh", "ultra"])).toBe("xhigh")
+  })
+
+  test("Default stays Default, an empty list gives Default, and an unknown level gives Default", () => {
+    expect(nearestEffort(null, ["low"])).toBeNull()
+    expect(nearestEffort("high", [])).toBeNull()
+    expect(nearestEffort("extreme", ["low", "high"])).toBeNull()
+    expect(carriedEffort("ultra", ["low", "medium"])).toBe("medium")
+    expect(carriedEffort(null, ["low", "medium"])).toBeNull()
+  })
+
+  test("a routine uses its own effort when its model lists it, else the effort of the agent", () => {
+    const offered = ["minimal", "low", "ultra"]
+    expect(routineTurnEffort("ultra", "high", offered)).toBe("ultra")
+    expect(routineTurnEffort("high", "low", offered)).toBe("low")
+    // The agent has no effort either: the model uses its own default.
+    expect(routineTurnEffort("high", null, offered)).toBeNull()
+    // "Default" on the routine stays "Default"; the agent does not take over.
+    expect(routineTurnEffort(null, "low", offered)).toBeNull()
+  })
+
+  test("the fields of a custom model take whole numbers from 1 to 10,000,000", () => {
+    expect(tokenCount(1)).toBe(1)
+    expect(tokenCount(2000)).toBe(2000)
+    expect(tokenCount(10_000_000)).toBe(10_000_000)
+    for (const bad of [0, -5, 10_000_001, 1.5, Number.NaN, "5", null, undefined])
+      expect(tokenCount(bad)).toBeNull()
+  })
+
+  test("Muse Code lists every level that its own help names", () => {
+    expect(runtimeModels("muse")[0]?.efforts).toEqual([...EFFORT_LEVELS])
+    expect(runtimeModels("codex")[0]?.efforts).toEqual(["low", "medium", "high"])
   })
 })

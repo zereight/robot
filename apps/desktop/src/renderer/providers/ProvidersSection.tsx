@@ -14,6 +14,7 @@ import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { Button, Segmented } from "../ui/controls.tsx"
+import { ModelsPart } from "./ModelsPart.tsx"
 import styles from "./providers.module.css"
 import { isReady, RuntimePanel, RuntimeReadiness, RuntimeSummary } from "./RuntimePanel.tsx"
 
@@ -375,6 +376,7 @@ const AccountItem = (props: { account: ProviderAccount }) => {
           <ConnectForm account={props.account} onDone={() => setReconnect(false)} />
         </div>
       </Show>
+      <ModelsPart account={props.account} />
     </li>
   )
 }

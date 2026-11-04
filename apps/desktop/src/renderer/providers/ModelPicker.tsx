@@ -1,5 +1,13 @@
-import { type AgentModel, type MessageKey, type ModelInfo, settledEffort } from "@robot/shared"
-import { createEffect, createResource, createSignal, For, on, Show } from "solid-js"
+import {
+  type AgentModel,
+  carriedEffort,
+  catalogues,
+  type MessageKey,
+  type ModelInfo,
+  modelMatches,
+  settledEffort,
+} from "@robot/shared"
+import { createEffect, createMemo, createResource, createSignal, For, on, Show } from "solid-js"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
@@ -7,12 +15,16 @@ import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import styles from "./providers.module.css"
 
+/** The search box shows when the list has this many models or more (spec 006, "Model list"). */
+export const MODEL_SEARCH_MIN = 5
+
 /**
  * Picks account, model and effort. Reports `null` while nothing complete is picked.
  *
  * `startEffort` is for the form of a new agent (spec 002, flow 1). While the user has not picked a
  * level, or "Default", by hand, the effort field shows this level when the model offers it, and
- * "Default" when it does not. Without it, the field starts as `value` says.
+ * "Default" when it does not. Without it, the field starts as `value` says, and a model that
+ * lacks the level gives the nearest level that it lists (spec 006, "Effort levels").
  */
 export const ModelPicker = (props: {
   value: AgentModel | null
@@ -59,26 +71,63 @@ export const ModelPicker = (props: {
   )
   const current = () => models()?.list.find((m) => m.id === model())
   const efforts = () => current()?.efforts ?? []
+  const labelOf = (m: ModelInfo) => (m.labelKey ? t(m.labelKey) : m.label)
+  /** The name of a model in the picker, with its tags as words: colour alone is not enough. */
+  const optionText = (m: ModelInfo) =>
+    [labelOf(m), m.isNew ? t("model.new") : null, m.hidden ? t("model.hidden") : null]
+      .filter(Boolean)
+      .join(" · ")
+  const effortText = (level: string) => {
+    const key = `model.effort.${level}`
+    return key in catalogues.en ? t(key as MessageKey) : level
+  }
+
+  // The search box, and the folded group "Older models" (spec 006, "Model list").
+  const [query, setQuery] = createSignal("")
+  const [olderOpen, setOlderOpen] = createSignal(false)
+  /**
+   * A model that is off is missing from the picker and from its search. The model that the agent
+   * uses stays, so that the field shows it, marked "Hidden". It also stays when the search does
+   * not match it.
+   */
+  const shown = createMemo(() =>
+    (models()?.list ?? []).filter(
+      (m) => m.id === model() || (!m.hidden && modelMatches(m, labelOf(m), query())),
+    ),
+  )
+  const recent = () => shown().filter((m) => !m.older)
+  const older = () => shown().filter((m) => m.older)
+  /** The group opens when the user types in the search box and when the model of the agent is in it. */
+  const olderShown = () =>
+    olderOpen() || query().trim() !== "" || older().some((m) => m.id === model())
+  const matches = () =>
+    (models()?.list ?? []).some((m) => !m.hidden && modelMatches(m, labelOf(m), query()))
 
   // The account list can arrive after the picker opens, for example right after a connect.
   createEffect(() => {
     const first = accounts()[0]
     if (first && !accountId()) setAccountId(first.id)
   })
-  // Pick the first model when the account changes and the old model is not in its list.
+  // Pick the first model when the account changes and the old model is not in its list. A model
+  // that is off is not picked: when every model is off, nothing is picked.
   createEffect(
     on(models, (result) => {
       if (!result || result.list.length === 0) return
-      if (!result.list.some((m) => m.id === model())) setModel(result.list[0]?.id ?? "")
+      if (!result.list.some((m) => m.id === model()))
+        setModel(result.list.find((m) => !m.hidden)?.id ?? "")
     }),
   )
-  // The effort follows the model: the start while it counts, else the pick of the user as far as
-  // the model offers it. It waits for the list, so that a field that is filled in keeps its level
+  // The effort follows the model. In the form of a new agent: the start while it counts, else the
+  // pick of the user as far as the model offers it, and "Default" when it does not (spec 002). In
+  // any other picker: the level stays when the model lists it, and else the nearest level that it
+  // lists (spec 006). It waits for the list, so that a field that is filled in keeps its level
   // while the list loads.
   createEffect(() => {
     if (!models()?.list.length) return
-    const start = pickedByHand() ? null : (props.startEffort ?? null)
-    const next = settledEffort(effort(), efforts(), start)
+    const next =
+      props.startEffort !== undefined
+        ? settledEffort(effort(), efforts(), pickedByHand() ? null : props.startEffort)
+        : carriedEffort(effort(), efforts())
     if (next !== effort()) setEffort(next)
   })
   createEffect(() => {
@@ -119,6 +168,21 @@ export const ModelPicker = (props: {
             </For>
           </select>
         </label>
+        {/* The search box has a row of its own, so that the model box and the effort box line up. */}
+        <Show when={(models()?.list.length ?? 0) >= MODEL_SEARCH_MIN}>
+          <div class={`${styles.field} ${styles.pickerWide}`}>
+            <input
+              class={styles.input}
+              type="search"
+              value={query()}
+              onInput={(e) => setQuery(e.currentTarget.value)}
+              placeholder={t("model.search")}
+              aria-label={t("model.search")}
+              spellcheck={false}
+              data-testid="model-search"
+            />
+          </div>
+        </Show>
         <Show
           when={(models()?.list.length ?? 0) > 0}
           fallback={
@@ -137,23 +201,64 @@ export const ModelPicker = (props: {
             </label>
           }
         >
-          <label class={styles.field}>
+          <div class={styles.field}>
             <span class={styles.label}>{t("model.model")}</span>
             <select
               class={styles.select}
               value={model()}
               onChange={(e) => setModel(e.currentTarget.value)}
+              aria-label={t("model.model")}
               data-testid="model-model"
             >
-              <For each={models()?.list}>
+              <For each={recent()}>
                 {(m) => (
                   <option value={m.id} selected={m.id === model()}>
-                    {m.labelKey ? t(m.labelKey) : m.label}
+                    {optionText(m)}
                   </option>
                 )}
               </For>
+              {/* A folded group stays in the list, hidden: the dropdown leaves it out, and the
+                  options can still be set by a program. */}
+              <Show when={older().length > 0}>
+                <optgroup
+                  label={t("model.older")}
+                  hidden={!olderShown()}
+                  data-testid="model-older-group"
+                >
+                  <For each={older()}>
+                    {(m) => (
+                      <option value={m.id} selected={m.id === model()} hidden={!olderShown()}>
+                        {optionText(m)}
+                      </option>
+                    )}
+                  </For>
+                </optgroup>
+              </Show>
             </select>
-          </label>
+            <Show when={(models()?.list ?? []).every((m) => m.hidden)}>
+              <span class={styles.hint} data-testid="model-all-hidden">
+                {t("model.allHidden")}
+              </span>
+            </Show>
+            <Show when={query().trim() !== "" && !matches()}>
+              <span class={styles.hint} data-testid="model-search-none">
+                {t("model.search.none")}
+              </span>
+            </Show>
+            {/* The group is folded until the user opens it, types in the search box, or has a model
+                in it. The button folds it again when the user opened it. */}
+            <Show when={older().length > 0 && (olderOpen() || !olderShown())}>
+              <button
+                type="button"
+                class={styles.fold}
+                aria-expanded={olderOpen()}
+                onClick={() => setOlderOpen(!olderOpen())}
+                data-testid="model-older-toggle"
+              >
+                {t("model.older.show", { count: older().length })}
+              </button>
+            </Show>
+          </div>
         </Show>
         <Show when={efforts().length > 0}>
           <label class={styles.field}>
@@ -168,11 +273,13 @@ export const ModelPicker = (props: {
               data-testid="model-effort"
             >
               <option value="" selected={effort() === null}>
-                {t("model.effort.none")}
+                {t("model.effort.default")}
               </option>
               <For each={efforts()}>
                 {(level) => (
-                  <option value={level}>{t(`model.effort.${level}` as MessageKey)}</option>
+                  <option value={level} selected={level === effort()}>
+                    {effortText(level)}
+                  </option>
                 )}
               </For>
             </select>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
-import { CLAUDE_EFFORTS, effortsFor } from "./providers.ts"
+import { CLAUDE_EFFORTS, EFFORT_LEVELS, effortsFor } from "./providers.ts"
 import {
   ANSWER_ERROR_MAX,
   ASK_RETRY_MS,
@@ -123,14 +123,19 @@ describe("notes and limits", () => {
     }
     for (const effort of STEP_EFFORTS)
       expect(Schema.is(StepSchema)({ ...agent, effort })).toBe(true)
-    expect(Schema.is(StepSchema)({ ...agent, effort: "minimal" })).toBe(false)
+    expect(Schema.is(StepSchema)({ ...agent, effort: "extreme" })).toBe(false)
     expect(Schema.is(StepSchema)(agent)).toBe(true)
   })
-  test("the levels of a step are the levels of the current Claude models", () => {
-    expect(STEP_EFFORTS as readonly string[]).toEqual([...CLAUDE_EFFORTS])
-    expect(STEP_EFFORTS as readonly string[]).toEqual([
-      ...effortsFor("anthropic", "claude-opus-5-5"),
-    ])
+  test("the levels of a step are all the effort levels, which hold those of the Claude models", () => {
+    expect(STEP_EFFORTS as readonly string[]).toEqual([...EFFORT_LEVELS])
+    for (const level of CLAUDE_EFFORTS) expect(STEP_EFFORTS as readonly string[]).toContain(level)
+    for (const level of effortsFor("anthropic", "claude-opus-5-5"))
+      expect(STEP_EFFORTS as readonly string[]).toContain(level)
+  })
+  test("a step with the effort of a model that lists Ultra keeps it, and one without it falls back", () => {
+    expect(stepTurnEffort("ultra", "medium", ["minimal", "ultra"])).toBe("ultra")
+    expect(stepTurnEffort("ultra", "medium", ["low", "medium"])).toBe("medium")
+    expect(stepTurnEffort("none", null, ["none", "low"])).toBe("none")
   })
   test("a notify step has a title of at most 100 characters", () => {
     const notify = { id: "n", kind: "notify", name: "n", x: 0, y: 0, title: "Done" }

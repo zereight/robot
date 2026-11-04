@@ -109,6 +109,17 @@ describe("a call of the settings tool", () => {
     })
   })
 
+  test("a model that lacks the level of the agent gets the nearest level, the lower one on a tie", () => {
+    const medium = { ...current, model: { accountId: "oa", model: "gpt-5", effort: "medium" } }
+    const sonnet = planSettings({ model: "Sonnet" }, medium, accounts, () => false, effortsOf)
+    // Sonnet lists low and high: both are one step from medium, so the lower one is used.
+    expect(sonnet.kind === "changes" && sonnet.changes[0]?.after).toEqual({
+      accountId: "an",
+      model: "claude-sonnet-4-5",
+      effort: "low",
+    })
+  })
+
   test("several or no matching models change nothing, and the agent gets the list", () => {
     const several = plan({ model: "haiku" })
     expect(several.kind).toBe("refused")

@@ -1,5 +1,11 @@
 import type { ModelInfo, ProviderKind, RuntimeKind } from "@robot/shared"
-import { CLAUDE_EFFORTS, EFFORTS, effortsFor, takesThinkingBudget } from "@robot/shared"
+import {
+  EFFORT_LEVELS,
+  EFFORTS,
+  effortsFor,
+  nearestEffort,
+  takesThinkingBudget,
+} from "@robot/shared"
 
 export interface Connection {
   /** Agent runtimes have no connection: they have no key and no address. */
@@ -94,15 +100,17 @@ export const request = async (url: string, init: RequestInit, signal?: AbortSign
 }
 
 /**
- * The effort levels that a model of the Anthropic list says it takes. Null when the entry does not
- * say, as with a proxy that leaves the capabilities out; the caller then goes by the model name.
+ * The effort levels that a model of a list says it takes, from the lowest to the highest. A level
+ * counts when the entry names it with `supported: true`; any level that the app knows may be
+ * named, also None, Minimal and Ultra (spec 006). Null when the entry does not say, as with a
+ * proxy that leaves the capabilities out; the caller then goes by the model name.
  */
 export const effortsFromCapabilities = (capabilities: unknown): readonly string[] | null => {
   const effort = (capabilities as { effort?: unknown } | null | undefined)?.effort
   if (effort === null || typeof effort !== "object") return null
   const levels = effort as Record<string, unknown>
   if (levels.supported !== true) return []
-  return CLAUDE_EFFORTS.filter(
+  return EFFORT_LEVELS.filter(
     (level) => (levels[level] as { supported?: unknown } | null | undefined)?.supported === true,
   )
 }
@@ -131,41 +139,87 @@ export const anthropicEfforts = (id: string, capabilities: unknown): readonly st
 }
 
 /**
- * The effort of an agent, kept only if an Anthropic model still takes it. The agent keeps the level
- * it was given; a model that takes no such level would refuse the request. `listed` is the model
- * list of the account when the app has it. Without it, the model name decides.
+ * The levels of a model of any API list. The entry says them when it can (all levels count, spec
+ * 006). Otherwise the name decides, and an Anthropic model that thinks with a token budget has the
+ * three levels that set the budget.
  */
-export const keepEffort = (
+export const modelEfforts = (
+  kind: ProviderKind,
+  id: string,
+  capabilities: unknown,
+): readonly string[] => {
+  if (kind === "anthropic") return anthropicEfforts(id, capabilities)
+  const told = effortsFromCapabilities(capabilities)
+  return told !== null && told.length > 0 ? told : effortsFor(kind, id)
+}
+
+/**
+ * The level that a turn sends (spec 006, "Effort levels"). The model that runs the turn counts.
+ * When it does not list the level, the nearest level that it lists is sent, and the lower one when
+ * two are equally near; a model with no levels gets none. `listed` is the model list of the account
+ * when the app has it. For a model that the list does not name, the name decides an Anthropic
+ * model, and the level of another provider goes as it is.
+ */
+export const effortToSend = (
   kind: ProviderKind,
   model: string,
   effort: string | null,
   listed?: readonly ModelInfo[],
 ): string | null => {
-  if (effort === null || kind !== "anthropic") return effort
-  return offeredEfforts(kind, model, listed).includes(effort) ? effort : null
+  if (effort === null) return null
+  const known = listed?.find((m) => m.id === model)
+  if (known) return nearestEffort(effort, known.efforts)
+  if (kind !== "anthropic") return effort
+  return nearestEffort(effort, effortsFor(kind, model))
 }
 
-/** Lists the models of an account. It is also the connection check: one small request. */
+/**
+ * Lists the models of an account, in the order of the provider. It is also the connection check:
+ * one small request. The picker puts the newest first (spec 006).
+ */
 export const listModels = async (c: Connection): Promise<ModelInfo[]> => {
   const response = await request(urlFor(c, "models"), { headers: headersFor(c) })
   if (!response.ok) throw await failureFrom(response)
   const body = (await response.json()) as {
-    data?: ({ id: string; display_name?: string; capabilities?: unknown } & ContextFields)[]
+    data?: ({
+      id: string
+      display_name?: string
+      capabilities?: unknown
+    } & ContextFields &
+      DateFields)[]
   }
-  return (body.data ?? [])
-    .map((m) => {
-      const contextWindow = contextWindowOf(m)
-      return {
-        id: m.id,
-        label: m.display_name ?? m.id,
-        efforts:
-          c.kind === "anthropic"
-            ? anthropicEfforts(m.id, m.capabilities)
-            : effortsFor(c.kind, m.id),
-        ...(contextWindow !== undefined ? { contextWindow } : {}),
-      }
-    })
-    .sort((a, b) => a.id.localeCompare(b.id))
+  return (body.data ?? []).map((m) => {
+    const contextWindow = contextWindowOf(m)
+    const created = createdOf(m)
+    return {
+      id: m.id,
+      label: m.display_name ?? m.id,
+      efforts: modelEfforts(c.kind, m.id, m.capabilities),
+      ...(contextWindow !== undefined ? { contextWindow } : {}),
+      ...(created !== undefined ? { created } : {}),
+    }
+  })
+}
+
+/** The fields in which a model list can tell when a model was made. */
+interface DateFields {
+  created_at?: unknown
+  created?: unknown
+}
+
+/**
+ * When the provider made the model, in ms since the epoch: `created_at` is a date text (Anthropic),
+ * `created` a number of seconds (OpenAI) or of milliseconds. Undefined when the entry does not
+ * tell it, or tells something that is not a time.
+ */
+export const createdOf = (m: DateFields): number | undefined => {
+  if (typeof m.created_at === "string") {
+    const time = Date.parse(m.created_at)
+    if (Number.isFinite(time) && time > 0) return time
+  }
+  if (typeof m.created === "number" && Number.isFinite(m.created) && m.created > 0)
+    return m.created < 1e11 ? Math.round(m.created * 1000) : Math.round(m.created)
+  return undefined
 }
 
 /** The fields in which a model list can tell the size of the context of a model. */

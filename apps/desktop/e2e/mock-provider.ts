@@ -541,10 +541,15 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
  * `contextSize` is the size of the context of "mock-fast" (spec 003). It is 100000 when not given.
  * `lowHighModel` adds a Claude model to the Anthropic list that takes the levels Low and High only
  * (spec 002, 006). Without it, the list is as before.
+ * `effortModels` gives the OpenAI list six models with dates, two of one family, and with effort
+ * levels in their capabilities, among them "minimal" and "ultra" (spec 006, "Model list"). A test
+ * adds a model between two fetches with `addModel`.
  */
 export const startMockProvider = async (
-  options: { contextSize?: number; lowHighModel?: boolean } = {},
+  options: { contextSize?: number; lowHighModel?: boolean; effortModels?: boolean } = {},
 ) => {
+  /** Models that a test added to the OpenAI list after the start. */
+  const extraModels: Record<string, unknown>[] = []
   const requests: RecordedRequest[] = []
   const sent: SentPart[] = []
   /** The draft requests that the app closed before the answer came (spec 017). */
@@ -560,11 +565,38 @@ export const startMockProvider = async (
     if (key !== GOOD_KEY) return json(res, 401, { error: { message: "invalid api key" } })
 
     if (url.pathname === "/v1/models") {
+      if (options.effortModels) {
+        // The levels go in the capabilities of each model, as in the Anthropic list.
+        const lv = { supported: true }
+        const levels = (...names: string[]) => ({
+          effort: { supported: true, ...Object.fromEntries(names.map((n) => [n, lv])) },
+        })
+        return json(res, 200, {
+          data: [
+            { id: "mock-pro-1", created: 1_700_000_000, capabilities: levels("low", "high") },
+            { id: "mock-pro-2", created: 1_710_000_000, capabilities: levels("low", "high") },
+            { id: "mock-fast", created: 1_720_000_000 },
+            { id: "o3-mini", created: 1_690_000_000 },
+            {
+              id: "mock-lite",
+              created: 1_705_000_000,
+              capabilities: levels("low", "medium", "high"),
+            },
+            {
+              id: "mock-think",
+              created: 1_715_000_000,
+              capabilities: levels("minimal", "low", "medium", "high", "ultra"),
+            },
+            ...extraModels,
+          ],
+        })
+      }
       // "mock-fast" tells the size of its context, for the context meter (spec 003).
       return json(res, 200, {
         data: [
           { id: "mock-fast", context_length: options.contextSize ?? CONTEXT_SIZE },
           { id: "o3-mini" },
+          ...extraModels,
         ],
       })
     }
@@ -621,6 +653,10 @@ export const startMockProvider = async (
   return {
     openaiUrl: `http://127.0.0.1:${port}/v1`,
     anthropicUrl: `http://127.0.0.1:${port}/anthropic`,
+    /** Adds a model to the OpenAI list. The app sees it at its next fetch. */
+    addModel: (entry: Record<string, unknown>) => {
+      extraModels.push(entry)
+    },
     requests,
     sent,
     dropped,

@@ -320,7 +320,31 @@ export interface RpcMethods {
    * server. It holds no key. Needs the switch "Can create and change agents" on a linked server.
    */
   "models.available": { input: undefined; output: readonly ModelChoice[] }
+  /**
+   * The models of an account, newest first, with the marks that this computer adds (spec 006):
+   * older, new, hidden, custom, and the limits of a custom model.
+   */
   "providers.models": { input: { accountId: string }; output: readonly ModelInfo[] }
+  /**
+   * Changes one model in the part "Models" of an account: shows or hides it, and sets the context
+   * size and the output limit of a custom model. A field that is absent stays; null clears it.
+   */
+  "providers.setModel": {
+    input: {
+      accountId: string
+      model: string
+      hidden?: boolean
+      contextSize?: number | null
+      outputLimit?: number | null
+    }
+    output: undefined
+  }
+  /** "Hide all" (hidden true) and "Reset" (hidden false) of the part "Models". */
+  "providers.setAllModels": { input: { accountId: string; hidden: boolean }; output: undefined }
+  /** Adds a model ID that the user typed to an API account. */
+  "providers.addModel": { input: { accountId: string; model: string }; output: undefined }
+  /** Takes a model ID that the user typed off the list of an account. */
+  "providers.removeModel": { input: { accountId: string; model: string }; output: undefined }
   /** Looks at the vendor program on this computer again, and returns what it finds. */
   "runtimes.status": { input: RuntimeTarget; output: RuntimeStatus }
   /** Downloads the vendor program into the app. Ends when the download is done or failed. */

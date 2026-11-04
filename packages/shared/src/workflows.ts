@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { CLAUDE_EFFORTS } from "./providers.ts"
+import { EFFORT_LEVELS } from "./providers.ts"
 import { ScheduleSchema } from "./routines.ts"
 
 export const WORKFLOW_NAME_MAX = 60
@@ -14,10 +14,10 @@ export const NOTIFY_BODY_MAX = 200
 export const ANSWER_ERROR_MAX = 240
 
 /**
- * The levels of an agent step that sets its own effort, from low to max. They are the levels of
- * the current Claude models; a model that takes fewer levels gets the effort of the agent instead.
+ * The levels of an agent step that sets its own effort, from none to ultra (spec 006, 010). A model
+ * that does not list the level gets the effort of the agent instead.
  */
-export const STEP_EFFORTS = CLAUDE_EFFORTS
+export const STEP_EFFORTS = EFFORT_LEVELS
 export type StepEffort = (typeof STEP_EFFORTS)[number]
 
 export const NOTE_TONES = ["yellow", "blue", "green", "pink"] as const

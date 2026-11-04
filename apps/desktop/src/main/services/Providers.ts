@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto"
 import {
+  effortsFor,
   isBlockingState,
   isRuntimeKind,
+  MODEL_NEW_MS,
   type ModelInfo,
+  nearestEffort,
+  orderModels,
   type ProviderAccount,
   type ProviderConnect,
   type ProviderKind,
@@ -10,11 +14,12 @@ import {
   type RuntimeProblem,
   runtimeHasSeparateSignIn,
   runtimeTakesInput,
+  tokenCount,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
 import { takesCacheMarker } from "../providers/cache.ts"
-import { type Connection, keepEffort, listModels, ProviderFailure } from "../providers/client.ts"
+import { type Connection, effortToSend, listModels, ProviderFailure } from "../providers/client.ts"
 import type { TurnHooks, TurnInput } from "../providers/turn.ts"
 import { grantBridge } from "../runtimes/bridge.ts"
 import { buildBlocks, buildPrompt } from "../runtimes/prompt.ts"
@@ -37,6 +42,31 @@ interface AccountRow {
 
 const COLUMNS = "id, kind, name, base_url, off, sign_in"
 
+/** What this computer keeps for one model of an account (spec 006, "Model list"). */
+interface ModelRow {
+  model: string
+  /** When a later fetch first listed the model, in ms. Null for a model of the first fetch. */
+  seen_at: number | null
+  hidden: number
+  context_size: number | null
+  output_limit: number | null
+  /** 1 for a model ID that the user typed. */
+  typed: number
+}
+
+/**
+ * The clock of the tag "New" (spec 006). A test moves it; the app never does.
+ */
+export const modelClock = { now: () => Date.now() }
+
+/** The change of one model in the part "Models" of an account. A field that is absent stays. */
+export interface ModelPatch {
+  readonly hidden?: boolean
+  /** In tokens, 1 to 10,000,000. Null clears the field. Custom models only. */
+  readonly contextSize?: number | null
+  readonly outputLimit?: number | null
+}
+
 export interface ProvidersService {
   readonly list: Effect.Effect<readonly ProviderAccount[]>
   /**
@@ -49,7 +79,22 @@ export interface ProvidersService {
   check(accountId: string): Effect.Effect<void, AppError>
   disconnect(accountId: string): Effect.Effect<void, AppError>
   remove(accountId: string): Effect.Effect<void, AppError>
+  /**
+   * The models of an account, newest first, with the marks that this computer adds: older, new,
+   * hidden, custom, and the limits of a custom model (spec 006, "Model list"). A hidden model is
+   * in the list, with its mark: the picker leaves it out, and an agent that uses it keeps it.
+   */
   models(accountId: string): Effect.Effect<readonly ModelInfo[], AppError>
+  /** Changes one model: shows or hides it, and sets the fields of a custom model. */
+  setModel(accountId: string, model: string, patch: ModelPatch): Effect.Effect<void, AppError>
+  /** "Hide all" turns every model of the account off. "Reset" turns them all on. */
+  setAllModels(accountId: string, hidden: boolean): Effect.Effect<void, AppError>
+  /** Adds a model ID that the user typed, to an API account. */
+  addModel(accountId: string, model: string): Effect.Effect<void, AppError>
+  /** Takes a model ID that the user typed off the list again. */
+  removeModel(accountId: string, model: string): Effect.Effect<void, AppError>
+  /** The output limit of a custom model, or null (spec 006). */
+  outputLimit(accountId: string, model: string): number | null
   /** The connection of an API account, with its key. Fails when no key is stored. */
   connection(accountId: string): Effect.Effect<Connection, AppError>
   isConnected(accountId: string): boolean
@@ -179,6 +224,68 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
         const fetchModels = (c: Connection) =>
           Effect.tryPromise({ try: () => listModels(c), catch: toAppError })
 
+        const modelRows = (accountId: string) =>
+          db.all<ModelRow>(
+            "SELECT model, seen_at, hidden, context_size, output_limit, typed FROM provider_model WHERE account_id = ?",
+            accountId,
+          )
+
+        /**
+         * Writes down the models that a fetch listed (spec 006). The first fetch of an account tags
+         * nothing: its models get no time. A model that a later fetch lists for the first time
+         * gets the time, and shows "New" for 7 days.
+         */
+        const noteSeen = (accountId: string, list: readonly ModelInfo[]) => {
+          const known = new Set<string>()
+          let fetchedBefore = false
+          for (const row of modelRows(accountId)) {
+            known.add(row.model)
+            if (row.typed === 0) fetchedBefore = true
+          }
+          const now = modelClock.now()
+          for (const m of list) {
+            if (known.has(m.id)) continue
+            db.run(
+              "INSERT INTO provider_model (account_id, model, seen_at) VALUES (?, ?, ?)",
+              accountId,
+              m.id,
+              fetchedBefore ? now : null,
+            )
+            known.add(m.id)
+          }
+        }
+
+        /** The list of the provider, with what this computer adds to it. */
+        const decorate = (row: AccountRow, raw: readonly ModelInfo[]): readonly ModelInfo[] => {
+          const saved = new Map(modelRows(row.id).map((r) => [r.model, r]))
+          const listed = new Set(raw.map((m) => m.id))
+          // A model ID that the user typed is in the list, also when the provider does not list it.
+          const typed: ModelInfo[] = []
+          for (const r of saved.values())
+            if (r.typed === 1 && !listed.has(r.model))
+              typed.push({ id: r.model, label: r.model, efforts: effortsFor(row.kind, r.model) })
+          const now = modelClock.now()
+          return orderModels(
+            [...raw, ...typed].map((m): ModelInfo => {
+              const r = saved.get(m.id)
+              // The fields belong to a custom model: any model of an account with a custom address,
+              // and any model ID that the user typed.
+              const custom = row.kind === "custom" || r?.typed === 1
+              return {
+                ...m,
+                ...(custom ? { custom: true as const } : {}),
+                ...(r?.typed === 1 ? { added: true as const } : {}),
+                ...(custom && r?.context_size ? { contextWindow: r.context_size } : {}),
+                ...(custom && r?.output_limit ? { outputLimit: r.output_limit } : {}),
+                ...(r?.hidden === 1 ? { hidden: true as const } : {}),
+                ...(r?.seen_at != null && now - r.seen_at < MODEL_NEW_MS
+                  ? { isNew: true as const }
+                  : {}),
+              }
+            }),
+          )
+        }
+
         const connection = (id: string) =>
           findRow(id).pipe(
             Effect.flatMap((row): Effect.Effect<Connection, AppError> => {
@@ -273,7 +380,10 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
           if (runtime) secrets.remove(secretKey(id))
           else secrets.set(secretKey(id), input.apiKey as string)
           // The models of a runtime come from the program each time. Only an API list is kept.
-          if (!runtime) modelCache.set(id, models)
+          if (!runtime) {
+            modelCache.set(id, models)
+            noteSeen(id, models)
+          }
           changed()
           return toAccount(yield* findRow(id))
         })
@@ -288,11 +398,14 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
               const cache = takesCacheMarker(conn, options.cacheHosts)
                 ? (input.cache ?? "short")
                 : null
+              const limit = outputLimit(id, input.model)
               return runAgent(
                 {
                   connection: conn,
                   model: input.model,
-                  effort: keepEffort(row.kind, input.model, input.effort, modelCache.get(id)),
+                  // The model that runs the turn counts: a level it does not list is never sent.
+                  effort: effortToSend(row.kind, input.model, input.effort, modelCache.get(id)),
+                  ...(limit !== null ? { maxOutput: limit } : {}),
                   system: input.system,
                   turns: input.resume ? [...input.turns, ...input.resume.turns] : input.turns,
                   ...(input.tools ? { tools: input.tools } : {}),
@@ -314,6 +427,12 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
               const mode = yield* runtimes.readOnly(kind)
               if (!mode.supported) return yield* new AppError({ code: "read_only_unsupported" })
             }
+            // The model that runs the turn counts: a level that its list does not hold is never
+            // sent. A model that the app has no list for goes as it is.
+            const listedModel = (yield* runtimes.models(kind)).find((m) => m.id === input.model)
+            const effort = listedModel
+              ? nearestEffort(input.effort, listedModel.efforts)
+              : input.effort
             return (async function* () {
               // The program reaches the browser of the agent through the app, for this turn only.
               // When the access cannot open, the turn goes on without the browser.
@@ -326,7 +445,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                   kind,
                   {
                     model: input.model,
-                    effort: input.effort,
+                    effort,
                     system: input.system,
                     prompt: buildPrompt(input.turns),
                     // Claude Code reads the start of a request from the cache of the model when its
@@ -375,6 +494,13 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
             { concurrency: "unbounded", discard: true },
           )
 
+        const outputLimit = (accountId: string, model: string): number | null =>
+          db.get<{ output_limit: number | null }>(
+            "SELECT output_limit FROM provider_model WHERE account_id = ? AND model = ?",
+            accountId,
+            model,
+          )?.output_limit ?? null
+
         const accounts = Effect.sync(() =>
           db
             .all<AccountRow>(`SELECT ${COLUMNS} FROM provider_account ORDER BY created_at`)
@@ -405,7 +531,14 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                 }
                 return connection(id).pipe(
                   Effect.flatMap(fetchModels),
-                  Effect.tap((models) => Effect.sync(() => modelCache.set(id, models))),
+                  Effect.tap((models) =>
+                    Effect.sync(() => {
+                      modelCache.set(id, models)
+                      noteSeen(id, models)
+                      // The part "Models" of the page shows what is new.
+                      bus.emit("providers.changed", {})
+                    }),
+                  ),
                 )
               }),
               Effect.asVoid,
@@ -434,6 +567,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                     "UPDATE agent SET model_account_id = NULL, model_name = NULL, model_effort = NULL WHERE model_account_id = ?",
                     id,
                   )
+                  db.run("DELETE FROM provider_model WHERE account_id = ?", id)
                   db.run("DELETE FROM provider_account WHERE id = ?", id)
                   changed()
                 }),
@@ -449,16 +583,123 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
             ),
           models: (id) =>
             findRow(id).pipe(
-              Effect.flatMap((row) => {
-                if (isRuntimeKind(row.kind)) return runtimes.models(row.kind)
+              Effect.flatMap((row): Effect.Effect<readonly ModelInfo[], AppError> => {
+                if (isRuntimeKind(row.kind))
+                  // Each look at a program is a fetch of its list.
+                  return runtimes.models(row.kind).pipe(
+                    Effect.map((raw) => {
+                      noteSeen(id, raw)
+                      return decorate(row, raw)
+                    }),
+                  )
                 const cached = modelCache.get(id)
-                if (cached) return Effect.succeed(cached)
+                if (cached) return Effect.sync(() => decorate(row, cached))
                 return connection(id).pipe(
                   Effect.flatMap(fetchModels),
-                  Effect.tap((models) => Effect.sync(() => modelCache.set(id, models))),
+                  Effect.map((models) => {
+                    modelCache.set(id, models)
+                    noteSeen(id, models)
+                    return decorate(row, models)
+                  }),
                 )
               }),
             ),
+          setModel: (id, model, patch) =>
+            findRow(id).pipe(
+              Effect.flatMap((row) =>
+                Effect.suspend(() => {
+                  const saved = modelRows(id).find((r) => r.model === model)
+                  const wantsLimit =
+                    patch.contextSize !== undefined || patch.outputLimit !== undefined
+                  if (wantsLimit && !(row.kind === "custom" || saved?.typed === 1))
+                    return Effect.fail(new AppError({ code: "invalid_input" }))
+                  for (const value of [patch.contextSize, patch.outputLimit])
+                    if (value !== undefined && value !== null && tokenCount(value) === null)
+                      return Effect.fail(new AppError({ code: "model_limit_invalid" }))
+                  if (!saved)
+                    db.run(
+                      "INSERT INTO provider_model (account_id, model) VALUES (?, ?)",
+                      id,
+                      model,
+                    )
+                  if (patch.hidden !== undefined)
+                    db.run(
+                      "UPDATE provider_model SET hidden = ? WHERE account_id = ? AND model = ?",
+                      patch.hidden ? 1 : 0,
+                      id,
+                      model,
+                    )
+                  if (patch.contextSize !== undefined)
+                    db.run(
+                      "UPDATE provider_model SET context_size = ? WHERE account_id = ? AND model = ?",
+                      patch.contextSize,
+                      id,
+                      model,
+                    )
+                  if (patch.outputLimit !== undefined)
+                    db.run(
+                      "UPDATE provider_model SET output_limit = ? WHERE account_id = ? AND model = ?",
+                      patch.outputLimit,
+                      id,
+                      model,
+                    )
+                  bus.emit("providers.changed", {})
+                  return Effect.void
+                }),
+              ),
+            ),
+          setAllModels: (id, hidden) =>
+            findRow(id).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  db.run(
+                    "UPDATE provider_model SET hidden = ? WHERE account_id = ?",
+                    hidden ? 1 : 0,
+                    id,
+                  )
+                  bus.emit("providers.changed", {})
+                }),
+              ),
+              Effect.asVoid,
+            ),
+          addModel: (id, model) =>
+            findRow(id).pipe(
+              Effect.flatMap((row) => {
+                const name = model.trim()
+                if (name.length < 1 || name.length > 200)
+                  return Effect.fail(new AppError({ code: "model_id_invalid" }))
+                // The models of a vendor program come from the program.
+                if (isRuntimeKind(row.kind))
+                  return Effect.fail(new AppError({ code: "invalid_input" }))
+                return Effect.sync(() => {
+                  db.run(
+                    `INSERT INTO provider_model (account_id, model, typed) VALUES (?, ?, 1)
+                     ON CONFLICT (account_id, model) DO UPDATE SET typed = 1`,
+                    id,
+                    name,
+                  )
+                  bus.emit("providers.changed", {})
+                })
+              }),
+            ),
+          removeModel: (id, model) =>
+            findRow(id).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  // The row stays, so that a model of the provider is not tagged "New" again. Its
+                  // fields go with the typed ID.
+                  db.run(
+                    `UPDATE provider_model SET typed = 0, context_size = NULL, output_limit = NULL
+                     WHERE account_id = ? AND model = ?`,
+                    id,
+                    model,
+                  )
+                  bus.emit("providers.changed", {})
+                }),
+              ),
+              Effect.asVoid,
+            ),
+          outputLimit,
           connection,
           isConnected,
           isRuntime,
