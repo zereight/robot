@@ -539,8 +539,12 @@ const anthropicReply = async (res: ServerResponse, body: ChatBody) => {
  */
 /**
  * `contextSize` is the size of the context of "mock-fast" (spec 003). It is 100000 when not given.
+ * `lowHighModel` adds a Claude model to the Anthropic list that takes the levels Low and High only
+ * (spec 002, 006). Without it, the list is as before.
  */
-export const startMockProvider = async (options: { contextSize?: number } = {}) => {
+export const startMockProvider = async (
+  options: { contextSize?: number; lowHighModel?: boolean } = {},
+) => {
   const requests: RecordedRequest[] = []
   const sent: SentPart[] = []
   /** The draft requests that the app closed before the answer came (spec 017). */
@@ -595,6 +599,15 @@ export const startMockProvider = async (options: { contextSize?: number } = {}) 
             display_name: "Claude Haiku 3.5",
             capabilities: { effort: { supported: false } },
           },
+          ...(options.lowHighModel
+            ? [
+                {
+                  id: "claude-opus-5-low-high",
+                  display_name: "Claude Opus Low High",
+                  capabilities: { effort: { supported: true, low: level, high: level } },
+                },
+              ]
+            : []),
         ],
       })
     }

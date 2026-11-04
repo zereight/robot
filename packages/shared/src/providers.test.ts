@@ -4,6 +4,7 @@ import {
   effortsFor,
   isBlockingState,
   isRuntimeKind,
+  NEW_AGENT_EFFORT,
   ProviderConnect,
   RUNTIME_CHECK_MS,
   RUNTIME_KINDS,
@@ -11,6 +12,7 @@ import {
   runtimeModel,
   runtimeModels,
   runtimeSupport,
+  settledEffort,
   takesAdaptiveThinking,
   takesThinkingBudget,
 } from "./providers.ts"
@@ -173,5 +175,30 @@ describe("the states of a runtime (spec 006)", () => {
 
   test("only Needs repair and Not installed stop an agent", () => {
     expect(RUNTIME_STATES.filter(isBlockingState)).toEqual(["needs_repair", "not_installed"])
+  })
+})
+
+describe("effort of a new agent", () => {
+  const five = ["low", "medium", "high", "xhigh", "max"]
+
+  test("a new agent starts at Medium", () => {
+    expect(NEW_AGENT_EFFORT).toBe("medium")
+  })
+
+  test("with a start, the field shows it when the model offers it, and Default when not", () => {
+    expect(settledEffort(null, five, "medium")).toBe("medium")
+    expect(settledEffort(null, ["low", "high"], "medium")).toBeNull()
+    expect(settledEffort(null, [], "medium")).toBeNull()
+    // A start replaces the level that the field showed before.
+    expect(settledEffort("high", five, "medium")).toBe("medium")
+    expect(settledEffort("medium", ["low", "high"], "medium")).toBeNull()
+  })
+
+  test("without a start, the pick stays when the model offers it and goes to Default when not", () => {
+    expect(settledEffort("high", five, null)).toBe("high")
+    expect(settledEffort("high", ["low", "medium"], null)).toBeNull()
+    expect(settledEffort("high", [], null)).toBeNull()
+    // "Default" picked by hand stays "Default", also when the model offers Medium.
+    expect(settledEffort(null, five, null)).toBeNull()
   })
 })

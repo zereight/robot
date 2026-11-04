@@ -1,4 +1,4 @@
-import type { AgentModel, MessageKey, ModelInfo } from "@robot/shared"
+import { type AgentModel, type MessageKey, type ModelInfo, settledEffort } from "@robot/shared"
 import { createEffect, createResource, createSignal, For, on, Show } from "solid-js"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -7,10 +7,17 @@ import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import styles from "./providers.module.css"
 
-/** Picks account, model and effort. Reports `null` while nothing complete is picked. */
+/**
+ * Picks account, model and effort. Reports `null` while nothing complete is picked.
+ *
+ * `startEffort` is for the form of a new agent (spec 002, flow 1). While the user has not picked a
+ * level, or "Default", by hand, the effort field shows this level when the model offers it, and
+ * "Default" when it does not. Without it, the field starts as `value` says.
+ */
 export const ModelPicker = (props: {
   value: AgentModel | null
   onChange: (value: AgentModel | null) => void
+  startEffort?: string | undefined
 }) => {
   const { t } = useApp()
   const providers = useProviders()
@@ -29,6 +36,8 @@ export const ModelPicker = (props: {
   const [accountId, setAccountId] = createSignal(props.value?.accountId ?? accounts()[0]?.id ?? "")
   const [model, setModel] = createSignal(props.value?.model ?? "")
   const [effort, setEffort] = createSignal<string | null>(props.value?.effort ?? null)
+  /** True once the user picked a level, or "Default", in the field. The start is over then. */
+  const [pickedByHand, setPickedByHand] = createSignal(false)
 
   const [models] = createResource(
     accountId,
@@ -63,9 +72,14 @@ export const ModelPicker = (props: {
       if (!result.list.some((m) => m.id === model())) setModel(result.list[0]?.id ?? "")
     }),
   )
+  // The effort follows the model: the start while it counts, else the pick of the user as far as
+  // the model offers it. It waits for the list, so that a field that is filled in keeps its level
+  // while the list loads.
   createEffect(() => {
-    if (effort() !== null && !efforts().includes(effort() as string) && models()?.list.length)
-      setEffort(null)
+    if (!models()?.list.length) return
+    const start = pickedByHand() ? null : (props.startEffort ?? null)
+    const next = settledEffort(effort(), efforts(), start)
+    if (next !== effort()) setEffort(next)
   })
   createEffect(() => {
     const id = accountId()
@@ -147,7 +161,10 @@ export const ModelPicker = (props: {
             <select
               class={styles.select}
               value={effort() ?? ""}
-              onChange={(e) => setEffort(e.currentTarget.value || null)}
+              onChange={(e) => {
+                setPickedByHand(true)
+                setEffort(e.currentTarget.value || null)
+              }}
               data-testid="model-effort"
             >
               <option value="" selected={effort() === null}>
