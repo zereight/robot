@@ -578,6 +578,132 @@ describe("two computers that were apart", () => {
     }
   })
 
+  describe("the channel tree is checked after the last batch of a sync (spec 030, Repair, When it runs)", () => {
+    // One consistent edit set of the other computer crosses in two batches: it moves "Y" to the top
+    // and puts "X" under "Y". The batch with the change of "X" comes first, and alone it makes a
+    // loop. The batches are written by hand to the entry of the link, so a test decides where the
+    // set is cut. The quiet time of the check is turned long, so the steps have room.
+    const withQuiet = async (quiet: number, body: () => Promise<void>) => {
+      process.env.ROBOT_SYNC_REPAIR_MS = String(quiet)
+      try {
+        await body()
+      } finally {
+        delete process.env.ROBOT_SYNC_REPAIR_MS
+      }
+    }
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    const setup = async () => {
+      const { a, b } = await pair([])
+      const serverA = await localId(a)
+      const make = (name: string, parentId: string | null) =>
+        run(
+          a,
+          Channels.use((c) =>
+            c.create({ serverId: serverA, name, topic: "", memberIds: [], leadId: null, parentId }),
+          ),
+        )
+      // "Y" is under "X" on both computers.
+      const x = await make("X", null)
+      const y = await make("Y", x.id)
+      const serverB = await localId(b)
+      const tree = async () =>
+        Object.fromEntries(
+          (
+            await run(
+              b,
+              Channels.use((c) => c.list(serverB)),
+            )
+          ).map((c) => [c.name, c.parentId === null ? null : c.parentId === x.id ? "X" : "Y"]),
+        )
+      await waitFor(tree, (t) => t.Y === "X")
+      const aId = (await run(
+        b,
+        Sync.use((s) => Effect.sync(() => s.peerId())),
+      )) as string
+      const base = Date.now() + 5000
+      const change = (id: string, parent: string | null, l: number) => ({
+        k: "channel",
+        i: id,
+        o: aId,
+        f: { parentChannel: { v: parent, s: [l, 0, aId] } },
+      })
+      // "Y" goes to the top first; "X" goes under "Y" a little later.
+      const yToTop = change(y.id, null, base)
+      const xUnderY = change(x.id, y.id, base + 100)
+      const push = (ops: readonly unknown[]) =>
+        run(
+          b,
+          Sync.use((s) => Effect.promise(() => s.handle("sync.push", { ops }, aId))),
+        )
+      const lines = async (id: string) =>
+        (
+          await run(
+            b,
+            Channels.use((c) => c.history(id)),
+          )
+        ).map((m) => m.parts)
+      return { b, x, y, tree, push, lines, yToTop, xUnderY }
+    }
+
+    test("two batches that make a valid tree together: no repair, in the middle or at the end", async () => {
+      const quiet = 1500
+      await withQuiet(quiet, async () => {
+        const s = await setup()
+        await s.push([s.xUnderY])
+        // Half of the set is a loop. The check has not run: it waits for the end of the flow.
+        expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+        await sleep(300)
+        expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+        await s.push([s.yToTop])
+        expect(await s.tree()).toEqual({ X: "Y", Y: null })
+        // The check runs after the quiet time, and finds a tree that is right.
+        await sleep(quiet + 800)
+        expect(await s.tree()).toEqual({ X: "Y", Y: null })
+        expect(await s.lines(s.x.id)).toEqual([])
+        expect(await s.lines(s.y.id)).toEqual([])
+      })
+    })
+
+    test("each batch moves the check back, also a batch with no channel in it", async () => {
+      // The quiet time is long, so that a pause of the test computer does not make a step late.
+      const quiet = 2500
+      await withQuiet(quiet, async () => {
+        const s = await setup()
+        await s.push([s.xUnderY])
+        await sleep(quiet * 0.5)
+        await s.push([])
+        // The first quiet time is over here (it ended at 1.0), but a batch came at 0.5, so the
+        // check is due at 1.5. The loop is still there.
+        await sleep(quiet * 0.6)
+        expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+        expect(await s.lines(s.x.id)).toEqual([])
+        await s.push([s.yToTop])
+        await sleep(quiet + 800)
+        expect(await s.tree()).toEqual({ X: "Y", Y: null })
+        expect(await s.lines(s.x.id)).toEqual([])
+        expect(await s.lines(s.y.id)).toEqual([])
+      })
+    })
+
+    test("a break that stays is repaired after the quiet time: one field, one muted line", async () => {
+      const quiet = 1500
+      await withQuiet(quiet, async () => {
+        const s = await setup()
+        await s.push([s.xUnderY])
+        // Not at once.
+        expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+        expect(await s.lines(s.x.id)).toEqual([])
+        // The change of "X" is the later one, so its field is cleared.
+        const done = await waitFor(s.tree, (t) => t.X === null, quiet + 6000)
+        expect(done).toEqual({ X: null, Y: "X" })
+        expect(await s.lines(s.x.id)).toEqual([
+          [{ kind: "note", note: "tree_repaired", why: "loop" }],
+        ])
+        expect(await s.lines(s.y.id)).toEqual([])
+      })
+    })
+  })
+
   test("the same memory item edited on both: the newest text stays and the other text is saved as a new item", async () => {
     const { a, b, agents } = await pair()
     const ada = agents[0]

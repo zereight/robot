@@ -94,6 +94,7 @@ import { type Actor, CurrentActor } from "./actor.ts"
 import { type Attempt, withBackup } from "./backupTurn.ts"
 import { applyEvent } from "./Chat.ts"
 import { Connections } from "./Connections.ts"
+import { NOT_REPAIR_LINE } from "./channelTreeRepair.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -330,10 +331,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const toChannel = (row: ChannelRow): Channel => {
         const memberIds = memberRows(row.id).map((m) => m.id)
+        // The muted line of a repaired tree is no message of an agent: it adds no unread count
+        // (spec 030, "Repair").
         const unread =
           db.get<{ n: number }>(
             `SELECT COUNT(*) AS n FROM channel_message m JOIN channel c ON c.id = m.channel_id
-             WHERE m.channel_id = ? AND m.author = 'agent' AND m.finished_at > c.last_read_at`,
+             WHERE m.channel_id = ? AND m.author = 'agent' AND m.finished_at > c.last_read_at
+               AND m.${NOT_REPAIR_LINE}`,
             row.id,
           )?.n ?? 0
         return {
@@ -2394,8 +2398,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             if (row) placesChanged(row.server_id)
           }),
         lastMessage: (channelId) => {
+          // The muted line of a repaired tree does not replace the preview (spec 030, "Repair").
           const row = db.get<{ parts: string }>(
-            "SELECT parts FROM channel_message WHERE channel_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            `SELECT parts FROM channel_message WHERE channel_id = ? AND ${NOT_REPAIR_LINE}
+             ORDER BY created_at DESC, rowid DESC LIMIT 1`,
             channelId,
           )
           if (!row) return null

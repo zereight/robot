@@ -566,13 +566,6 @@ export class SyncEngine {
           console.error("sync: a change could not be applied", op.kind, String(error))
         }
       }
-      // A first copy is repaired when it is complete (`repairTree`): it holds the channels in parts.
-      if (
-        !options.snapshot &&
-        result.touches.some((t) => t.kind === "channel" && t.action !== "deleted")
-      ) {
-        result.touches.push(...this.#repairTree())
-      }
     })
     return result
   }
@@ -586,6 +579,11 @@ export class SyncEngine {
    * hold the same stamps, so both choose the same channel. The cleared field is a change like any
    * other: it waits to go out, and the other computer finds nothing to repair. Returns what the
    * window needs to know.
+   *
+   * `apply` does not call it: a sync sends its changes in batches, and a set of changes that makes
+   * a valid tree can arrive in two of them. The first batch alone can show a loop that the second
+   * one removes. The caller runs the repair after the sync has applied all the changes that it has,
+   * and after a first copy is whole.
    */
   repairTree(): Touch[] {
     return this.#db.transaction(() => this.#repairTree())

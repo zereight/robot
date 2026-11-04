@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { isNoteOnly, type MessagePart, messageText } from "@robot/shared"
-import { repairChannelTree } from "./channelTreeRepair.ts"
+import { repairChannelTree, storedParentChanges } from "./channelTreeRepair.ts"
 import { type DatabaseService, openDatabase } from "./Database.ts"
 
 // The repair of a broken channel tree (spec 030, "Repair"): the parent field of the chosen channel
@@ -187,5 +187,61 @@ describe("the repair after a sync", () => {
         .all<{ kind: string; id: string }>("SELECT kind, id FROM sync_dirty ORDER BY kind, id")
         .map((r) => `${r.kind}:${r.id}`),
     ).toEqual(["channel:site", `cmessage:${made[0]?.messageId}`])
+  })
+})
+
+describe("the repair after a restore uses the changes that the fields carry (spec 030, Repair)", () => {
+  // A restore or an import has no parent change of its own, so it uses the stamps that sync keeps
+  // for the parent fields. An import into a new app has none, and the tie rule decides.
+  const stamp = (db: DatabaseService, id: string, l: number, n = "dev-a") =>
+    db.run(
+      "INSERT INTO sync_field (kind, id, field, l, c, n, h, aseq) VALUES ('channel', ?, 'parentChannel', ?, 0, ?, 'h', 0)",
+      id,
+      l,
+      n,
+    )
+
+  test("the stored stamps choose the channel of the loop, not the time it was made", () => {
+    const db = store()
+    // "A" was made first, but its parent change is the later one.
+    channel(db, "a", "b", 1)
+    channel(db, "b", "a", 2)
+    stamp(db, "a", 9)
+    stamp(db, "b", 3)
+    const made = repairChannelTree(db, { mode: "restore" })
+    expect(made.map((r) => [r.channelId, r.reason])).toEqual([["a", "loop"]])
+    expect(parents(db)).toEqual({ a: null, b: "a" })
+  })
+
+  test("given stamps win over the stored ones; none at all: the channel made later", () => {
+    const db = store()
+    channel(db, "a", "b", 1)
+    channel(db, "b", "a", 2)
+    stamp(db, "a", 9)
+    stamp(db, "b", 3)
+    const made = repairChannelTree(db, {
+      mode: "restore",
+      changed: new Map([["b", { l: 20, c: 0, n: "dev-b" }]]),
+    })
+    expect(made.map((r) => r.channelId)).toEqual(["b"])
+    const none = store()
+    channel(none, "a", "b", 1)
+    channel(none, "b", "a", 2)
+    expect(repairChannelTree(none, { mode: "restore" }).map((r) => r.channelId)).toEqual(["b"])
+  })
+
+  test("the line of a restore has the id of the sync repair, so a sync keeps one line", () => {
+    const one = store()
+    const two = store()
+    for (const db of [one, two]) {
+      channel(db, "a", "b", 1)
+      channel(db, "b", "a", 2)
+      stamp(db, "a", 9)
+      stamp(db, "b", 3)
+    }
+    const restore = repairChannelTree(one, { mode: "restore" })
+    const sync = repairChannelTree(two, { mode: "sync", changed: storedParentChanges(two) })
+    expect(restore[0]?.messageId).toBeTruthy()
+    expect(restore[0]?.messageId).toBe(sync[0]?.messageId as string)
   })
 })

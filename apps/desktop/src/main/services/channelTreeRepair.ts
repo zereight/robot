@@ -14,6 +14,14 @@ import { nextMessageTime } from "./messageTime.ts"
 // that they name, and posts the muted line in it. It is called where data comes in that was made
 // elsewhere: after a sync brought changes, after a copy by sync ended, and after a restore.
 
+/**
+ * A SQL test on `parts` that is true for every message that is not a muted repair line. The repair
+ * line is not a message of an agent (spec 030, "Repair"): it adds no unread count and does not
+ * replace the preview of the place. It stays in the channel. The text of the parts is the JSON that
+ * this app writes; text of a user or an agent has its quotes escaped, so it cannot match.
+ */
+export const NOT_REPAIR_LINE = `parts NOT LIKE '%"note":"tree_repaired"%'`
+
 /** One repair that was made: the channel, the muted line that was posted in it, and why. */
 export interface TreeRepaired {
   readonly channelId: string
@@ -30,7 +38,11 @@ export interface RepairOptions {
   readonly mode: "sync" | "restore"
   /**
    * When the parent field of each channel changed last, from the stamps that sync keeps. Both
-   * computers hold the same stamps for the same changes, so both choose the same channel.
+   * computers hold the same stamps for the same changes, so both choose the same channel. Absent:
+   * the stamps that the database holds. A restore or an import has no parent change of its own, so
+   * it uses the changes that the fields carry (spec 030, "Repair"). A database with no stamps (an
+   * import into a new app) gives none, and the tie rule decides: the channel made later, then the
+   * later id.
    */
   readonly changed?: ReadonlyMap<string, ChangeTime>
   readonly now?: () => number
@@ -50,6 +62,16 @@ const lineId = (channelId: string, changed: ChangeTime | undefined, reason: Tree
         .slice(0, 31)}`
     : randomUUID()
 
+/** The time of the last change of the parent field of each channel, from the stamps that sync keeps. */
+export const storedParentChanges = (db: DatabaseService): Map<string, ChangeTime> =>
+  new Map(
+    db
+      .all<{ id: string; l: number; c: number; n: string }>(
+        "SELECT id, l, c, n FROM sync_field WHERE kind = 'channel' AND field = 'parentChannel'",
+      )
+      .map((r) => [r.id, { l: r.l, c: r.c, n: r.n }]),
+  )
+
 /**
  * Looks at all channels. A loop or a fourth level is repaired: the parent field of the chosen
  * channel is cleared, and the channel gets one muted line with the reason. The line makes no
@@ -59,17 +81,18 @@ const lineId = (channelId: string, changed: ChangeTime | undefined, reason: Tree
  */
 export const repairChannelTree = (db: DatabaseService, options: RepairOptions): TreeRepaired[] => {
   const now = options.now ?? Date.now
+  const changed = options.changed ?? storedParentChanges(db)
   const channels = db
     .all<{ id: string; parent_channel_id: string | null; created_at: number }>(
       "SELECT id, parent_channel_id, created_at FROM channel",
     )
     .map((r): RepairChannel => {
-      const changed = options.changed?.get(r.id)
+      const stamp = changed.get(r.id)
       return {
         id: r.id,
         parentId: r.parent_channel_id,
         createdAt: r.created_at,
-        ...(changed ? { parentChanged: changed } : {}),
+        ...(stamp ? { parentChanged: stamp } : {}),
       }
     })
   const repairs =
@@ -79,7 +102,7 @@ export const repairChannelTree = (db: DatabaseService, options: RepairOptions): 
   db.transaction(() => {
     for (const { id, reason } of repairs) {
       db.run("UPDATE channel SET parent_channel_id = NULL, updated_at = ? WHERE id = ?", now(), id)
-      const messageId = lineId(id, options.changed?.get(id), reason)
+      const messageId = lineId(id, changed.get(id), reason)
       if (db.get("SELECT 1 AS x FROM channel_message WHERE id = ?", messageId)) {
         made.push({ channelId: id, messageId: null, reason })
         continue
