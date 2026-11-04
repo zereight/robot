@@ -8,6 +8,7 @@ import {
   isFinal,
   isRuntimeKind,
   isTaskProgress,
+  isTeamsJobKind,
   isVerdict,
   type LoggedStep,
   lastChange,
@@ -31,6 +32,7 @@ import {
   type TaskProgress,
   type TaskSource,
   type TaskState,
+  type TeamsJobKind,
   type TurnEnd,
   taskLabel,
   type Verdict,
@@ -102,6 +104,11 @@ export interface TaskInput {
   readonly depth?: number
   /** What a finished part must hold: one line, up to 200 characters (spec 004). */
   readonly doneTest?: string | null
+  /**
+   * How a channel job began, when a message from Teams began it (spec 028). Without it, a part and
+   * a retry keep the kind of the task that made them, and any other task has none.
+   */
+  readonly teamsJob?: TeamsJobKind | null
   /**
    * The task is made as Failed with this error and never runs: a part of a channel job over the
    * limit of queued tasks (spec 005, "Queue").
@@ -681,17 +688,32 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           ? (db.get<{ depth: number }>("SELECT depth FROM task WHERE id = ?", taskId)?.depth ?? 0)
           : 0
 
+      /** How the job of a task began, when a message from Teams began it (spec 028). */
+      const teamsJobOf = (taskId: string | null | undefined): TeamsJobKind | null => {
+        if (!taskId) return null
+        const kind = db.get<{ teams_job: string | null }>(
+          "SELECT teams_job FROM task WHERE id = ?",
+          taskId,
+        )?.teams_job
+        return isTeamsJobKind(kind) ? kind : null
+      }
+
       const create = (input: TaskInput) =>
         Effect.sync(() => {
           const id = randomUUID()
           const now = Date.now()
           const depth = input.depth ?? depthOf(input.parentId ?? input.retryOf)
           const failed = input.failed
+          // A job from Teams stays a job from Teams in its parts, retries and nudges (spec 028).
+          const teamsJob =
+            input.teamsJob === undefined
+              ? teamsJobOf(input.parentId ?? input.retryOf)
+              : input.teamsJob
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
                message_id, state, created_at, asked_at, depth, progress, done_test, error_code,
-               error_detail, finished_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?)`,
+               error_detail, finished_at, teams_job)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?, ?)`,
             id,
             input.agentId,
             input.prompt,
@@ -709,6 +731,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             failed?.code ?? null,
             failed?.detail ?? null,
             failed ? now : null,
+            teamsJob,
           )
           if (!failed) {
             stops.set(id, Deferred.makeUnsafe<void>())
