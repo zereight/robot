@@ -2088,6 +2088,8 @@ export const ko: Record<MessageKey, string> = {
   "teams.cancel": "취소",
   "teams.page.show": "Teams 페이지 보기",
   "teams.page.hide": "Teams 페이지 숨기기",
+  "teams.page.window":
+    "Teams 페이지가 별도 창에서 열려 있어요. 그 창에서 로그인하거나 확인 요청을 처리하세요. 끝나면 그 창을 닫거나 “Teams 페이지 숨기기”를 누르세요.",
   "teams.page.label": "Teams 페이지",
   "teams.report.button": "진단 보고서 복사",
   "teams.report.hint":

@@ -267,6 +267,15 @@ export class FakeChat {
     this.releasePage()
   }
 
+  /** The user closes the window of the page: the page closes, and the link hears it. */
+  dismissByUser() {
+    if (!this.open) return
+    this.releasePage()
+    for (const dismissed of this.dismissers) dismissed()
+  }
+
+  private dismissers: (() => void)[] = []
+
   /** True while the page is open. */
   get isOpen() {
     return this.open
@@ -428,6 +437,9 @@ export class FakeChat {
       this.inputAllowed = allowed
     },
     close: () => this.releasePage(),
+    onDismissed: (listener) => {
+      this.dismissers.push(listener)
+    },
   }
 
   /** The surface for the Teams link: the real scripts on the stand-in page. */

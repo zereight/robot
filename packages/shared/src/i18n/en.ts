@@ -2104,6 +2104,8 @@ export const en = {
   "teams.cancel": "Cancel",
   "teams.page.show": "Show the Teams page",
   "teams.page.hide": "Hide the Teams page",
+  "teams.page.window":
+    "The Teams page is open in its own window. Sign in or solve the prompt there. Close that window, or press “Hide the Teams page”, when you are done.",
   "teams.page.label": "Teams page",
   "teams.report.button": "Copy a diagnostic report",
   "teams.report.hint":

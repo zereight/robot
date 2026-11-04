@@ -193,7 +193,7 @@ export interface PageSnapshot {
   readonly view: Box | null
   readonly visible: boolean | null
   readonly zoom: number | null
-  readonly inWindow: "main" | "shelf" | "none"
+  readonly inWindow: "main" | "shelf" | "own" | "none"
   /** The place of the view among the views of its window: the last one is the top one. */
   readonly stackIndex: number | null
   readonly stackSize: number | null
@@ -224,11 +224,19 @@ export const findings = (pages: readonly PageSnapshot[], box: BoxMeasure | null)
   const out: string[] = []
   const teams = pages.find((p) => p.page === "teams")
   if (!teams) return ["The Teams page was never made. Show the Teams page, then make the report."]
+  // The Teams page has a window of its own ("own"), or it sits in the main window as a view.
+  const own = teams.inWindow === "own"
+  /** The user can see the page: its window shows, or the screen gave its view a place. */
+  const shown = own ? teams.userInput && teams.visible !== false : teams.placed !== null
   if (!teams.open) out.push("The Teams page is not open.")
   else {
-    if (!teams.placed)
+    if (own && !teams.userInput)
+      out.push("The Teams window is not shown. Press “Show the Teams page” first.")
+    if (own && teams.userInput && teams.visible === false)
+      out.push("The Teams window is hidden although the page is shown.")
+    if (!own && !teams.placed)
       out.push("The screen gave the page no place, so the page is hidden. Nothing can be clicked.")
-    if (teams.placed && teams.view) {
+    if (!own && teams.placed && teams.view) {
       const zoom = teams.zoom ?? 1
       if (
         !near(teams.view.width, teams.placed.width * zoom) ||
@@ -238,17 +246,19 @@ export const findings = (pages: readonly PageSnapshot[], box: BoxMeasure | null)
           "The view has another size than the place that the screen gave. Clicks land off the picture.",
         )
     }
-    if (teams.placed && teams.visible === false)
+    if (!own && teams.placed && teams.visible === false)
       out.push("The view is hidden although the screen gave it a place.")
-    if (!teams.userInput) out.push("The flag of user input is off: the app keeps clicks out.")
+    if (!own && !teams.userInput)
+      out.push("The flag of user input is off: the app keeps clicks out.")
     if (
+      !own &&
       teams.placed &&
       teams.stackIndex !== null &&
       teams.stackSize !== null &&
       teams.stackIndex !== teams.stackSize - 1
     )
       out.push("Another view of the window is above the page. It takes the clicks.")
-    if (box && box.dragAreasOver.length > 0)
+    if (!own && box && box.dragAreasOver.length > 0)
       out.push(
         `A drag area of the window lies over the place of the page (${box.dragAreasOver.join(", ")}; ${box.dragPoints} of 9 points). The system can take a press there as the start of a window drag.`,
       )
@@ -259,11 +269,11 @@ export const findings = (pages: readonly PageSnapshot[], box: BoxMeasure | null)
       )
     const pressed = c.nativeDown + c.touchStart + c.pointerDown
     const moved = c.nativeMove + c.nativeWheel
-    if (teams.placed && pressed === 0 && moved === 0)
+    if (shown && pressed === 0 && moved === 0)
       out.push(
         "Nothing reached the page yet: no press, no touch and no pointer move. Move the pointer over the page and click a few times, then make the report again. If you did, something covers the page before its view.",
       )
-    else if (teams.placed && pressed === 0)
+    else if (shown && pressed === 0)
       out.push(
         `The pointer moved over the page (${moved} events) but no press or touch reached it. Something takes the press before the view: a drag area of the window, or the system.`,
       )

@@ -2,12 +2,14 @@ import { readFileSync } from "node:fs"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { join } from "node:path"
-import { expect, test } from "@playwright/test"
-import { freshUserData, launch, resizeWindow } from "./harness.ts"
+import { type ElectronApplication, expect, test } from "@playwright/test"
+import { freshUserData, launch } from "./harness.ts"
 
-// The diagnostic report of the Teams page (spec 028, 014). A stand-in site fills the place of
-// Teams. The test gives the page a press, as the window does, and checks that the report counts it
-// on both sides: the window that gave it, and the document that received it.
+// The Teams page (spec 028, 014). A stand-in site fills the place of Teams. The page has a window of
+// its own: a view above the screen of the app did not take the pointer, the wheel or the keys of
+// the user on every computer. The test gives the window a press, as the system does, and checks
+// that the report counts it on both sides: the window that gave it, and the document that received
+// it.
 
 const startStandIn = async () => {
   const site = { clicks: 0 }
@@ -26,7 +28,19 @@ const startStandIn = async () => {
   return { site, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, server }
 }
 
-test("teams page: a press is counted by the window and by the document, and the report holds it", async () => {
+/** The window of the Teams page: the one that shows the stand-in site. */
+const teamsWindow = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }, base) => {
+    const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith(base))
+    return win
+      ? {
+          visible: win.isVisible(),
+          loading: win.webContents.isLoading(),
+        }
+      : undefined
+  }, "http://127.0.0.1")
+
+test("teams page: it opens in a window of its own, a press is counted by the window and by the document, and the report holds it", async () => {
   test.setTimeout(90_000)
   const stand = await startStandIn()
   const userData = freshUserData()
@@ -34,64 +48,48 @@ test("teams page: a press is counted by the window and by the document, and the 
     ROBOT_SYSTEM_LOCALE: "en-US",
     ROBOT_TEST_TEAMS_URL: stand.url,
   })
-  await resizeWindow(app, 1500, 1000)
   try {
     await page.getByTestId("open-settings").click()
     await page.getByTestId("settings-nav-teams").click()
     await page.getByTestId("teams-setup").click()
+    // Nothing shows before the user asks for it.
+    expect(await teamsWindow(app)).toBeUndefined()
     await page.getByTestId("teams-signin-button").click()
     await expect(page.getByTestId("teams-page-box")).toBeVisible()
 
-    // The page is placed: its view is the top view of the window and takes input.
+    // The page is a window of its own, shown, and loaded.
     await expect
-      .poll(() =>
-        app.evaluate(({ BrowserWindow }) => {
-          const win = BrowserWindow.getAllWindows()[0]
-          const top = win?.contentView.children.at(-1) as Electron.WebContentsView | undefined
-          // The stand-in has loaded: a press before that has no document to reach.
-          return Boolean(
-            top?.getVisible() &&
-              top.getBounds().width > 100 &&
-              top.webContents.getURL().startsWith("http://127.0.0.1") &&
-              !top.webContents.isLoading(),
-          )
-        }),
-      )
+      .poll(async () => {
+        const w = await teamsWindow(app)
+        return Boolean(w?.visible && !w.loading)
+      })
       .toBe(true)
 
     // A press at the top left of the page, where the stand-in has its button.
     const press = () =>
       app.evaluate(({ BrowserWindow }) => {
-        const win = BrowserWindow.getAllWindows()[0]
-        const top = win?.contentView.children.at(-1) as Electron.WebContentsView | undefined
-        const wc = top?.webContents
-        if (!wc) return false
+        const win = BrowserWindow.getAllWindows().find((w) =>
+          w.webContents.getURL().startsWith("http://127.0.0.1"),
+        )
+        if (!win) return false
         for (const type of ["mouseDown", "mouseUp"] as const)
-          wc.sendInputEvent({ type, x: 40, y: 40, button: "left", clickCount: 1 })
+          win.webContents.sendInputEvent({ type, x: 40, y: 40, button: "left", clickCount: 1 })
         return true
       })
     expect(await press()).toBe(true)
     await expect.poll(() => stand.site.clicks).toBeGreaterThan(0)
 
-    // A press that lands on the app screen under the page, inside its place, is counted apart: it is
-    // the sign of a page that is drawn above a spot but does not get the press there.
-    await app.evaluate(({ BrowserWindow }) => {
-      const wc = BrowserWindow.getAllWindows()[0]?.webContents
-      for (const type of ["mouseDown", "mouseUp"] as const)
-        wc?.sendInputEvent({ type, x: 300, y: 600, button: "left", clickCount: 1 })
-    })
-
-    // "Copy a diagnostic report" says where the file is and keeps it in the logs folder.
+    // "Copy a diagnostic report" keeps the report in the logs folder.
     await page.getByTestId("teams-report").click()
     await expect(page.getByTestId("teams-report")).toHaveText("Copied")
     const report = readFileSync(join(userData, "logs", "diagnostic-report.txt"), "utf8")
     expect(report).toContain("ROBot diagnostic report")
     expect(report).toContain("== What the numbers say ==")
-    // The document received the press and the click.
+    // The window gave the press, and the document received the press and the click.
+    expect(report).toMatch(/"nativeDown": [1-9]/)
     expect(report).toMatch(/"pointerDown": [1-9]/)
     expect(report).toMatch(/"click": [1-9]/)
-    expect(report).toMatch(/"screenDown": 1/)
-    expect(report).toContain("went to the app screen under the page")
+    expect(report).toContain('"inWindow": "own"')
     // The report knows the host of the page and holds no address beyond it.
     expect(report).toContain('"host": "127.0.0.1"')
     expect(report).not.toContain(stand.url)
@@ -105,7 +103,7 @@ test("teams page: a press is counted by the window and by the document, and the 
   }
 })
 
-test("teams page: nothing in the window drags by the place of the page, also when the page sits at the top", async () => {
+test("teams page: hide hides the window, and a window that the user closes is not shown any more", async () => {
   test.setTimeout(90_000)
   const stand = await startStandIn()
   const userData = freshUserData()
@@ -113,36 +111,31 @@ test("teams page: nothing in the window drags by the place of the page, also whe
     ROBOT_SYSTEM_LOCALE: "en-US",
     ROBOT_TEST_TEAMS_URL: stand.url,
   })
-  // The size of a new window, as the user has it.
-  await resizeWindow(app, 1200, 800)
   try {
     await page.getByTestId("open-settings").click()
     await page.getByTestId("settings-nav-teams").click()
     await page.getByTestId("teams-setup").click()
     await page.getByTestId("teams-signin-button").click()
-    await expect(page.getByTestId("teams-page-box")).toBeVisible()
+    await expect.poll(async () => (await teamsWindow(app))?.visible).toBe(true)
+    await expect(page.getByTestId("teams-page-toggle")).toHaveText("Hide the Teams page")
 
-    // The settings screen covers the whole window, and the header of the screen under it is a
-    // drag area of the window. Scroll the page up to the top of the window, under that header.
-    await page
-      .getByTestId("teams-page-box")
-      .evaluate((box) => box.scrollIntoView({ block: "start" }))
-    await expect
-      .poll(() =>
-        app.evaluate(({ BrowserWindow }) => {
-          const win = BrowserWindow.getAllWindows()[0]
-          const top = win?.contentView.children.at(-1) as Electron.WebContentsView | undefined
-          return top?.getVisible() ? top.getBounds().y : 9999
-        }),
-      )
-      .toBeLessThan(40)
+    // "Hide the Teams page" takes the window away.
+    await page.getByTestId("teams-page-toggle").click()
+    await expect(page.getByTestId("teams-page-toggle")).toHaveText("Show the Teams page")
+    await expect(page.getByTestId("teams-page-box")).toHaveCount(0)
+    await expect.poll(async () => (await teamsWindow(app))?.visible ?? false).toBe(false)
 
-    // Press the button with a script, so that nothing scrolls the page away from the top.
-    await page.getByTestId("teams-report").evaluate((button) => (button as HTMLElement).click())
-    await expect(page.getByTestId("teams-report")).toHaveText("Copied")
-    const report = readFileSync(join(userData, "logs", "diagnostic-report.txt"), "utf8")
-    expect(report).toContain('"dragAreasOver": []')
-    expect(report).not.toContain("A drag area of the window lies over the place")
+    // Shown again, then closed by the user with the button of the window: the screen says that the
+    // page is not shown.
+    await page.getByTestId("teams-page-toggle").click()
+    await expect.poll(async () => (await teamsWindow(app))?.visible).toBe(true)
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL().startsWith("http://127.0.0.1"))
+        ?.close()
+    })
+    await expect(page.getByTestId("teams-page-toggle")).toHaveText("Show the Teams page")
+    await expect(page.getByTestId("teams-page-box")).toHaveCount(0)
   } finally {
     await app.close()
     stand.server.close()

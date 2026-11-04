@@ -591,6 +591,33 @@ describe("the states", () => {
     await dispose(t)
   })
 
+  test("the user closes the window of the shown page: the page is not shown any more", async () => {
+    const t = await ready()
+    await t.turnOn()
+    await t.pass(3000)
+    await t.showPage()
+    expect((await t.view()).pageShown).toBe(true)
+    t.chat.dismissByUser()
+    expect(t.chat.isOpen).toBe(false)
+    expect((await t.view()).pageShown).toBe(false)
+    // The switch is on, so the link goes on: the next look opens the page again, and it stays
+    // hidden.
+    await t.pass(3000)
+    expect(t.chat.isOpen).toBe(true)
+    expect(t.chat.inputAllowed).toBe(false)
+    expect((await t.view()).pageShown).toBe(false)
+    await dispose(t)
+  })
+
+  test("a window that closes while the page is hidden changes nothing", async () => {
+    const t = await ready()
+    await t.showPage()
+    await t.hidePage()
+    t.chat.dismissByUser()
+    expect((await t.view()).pageShown).toBe(false)
+    await dispose(t)
+  })
+
   test("with the switch off, 'Hide the Teams page' closes it", async () => {
     const t = await setup()
     await t.setupLink()

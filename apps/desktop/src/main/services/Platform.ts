@@ -50,6 +50,12 @@ export interface BrowserPage {
   /** Calls back when the page is closed, by the agent, by Stop or by the user. */
   onClosed(listener: () => void): void
   /**
+   * Calls back when the user closes the window of a page that has a window of its own (the Teams
+   * page). The page is closed then, and it is not shown any more. A page in the main window has
+   * no such window, so it never calls back.
+   */
+  onDismissed?(listener: () => void): void
+  /**
    * Starts the recorder of "Teach a task" (spec 017), or stops it with `undefined`. While it runs,
    * the listener gets each page that opens and each step of the user. It goes on when the page
    * is closed and opened again.

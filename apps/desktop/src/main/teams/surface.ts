@@ -45,6 +45,8 @@ export interface TeamsSurface {
   allowUserInput(allowed: boolean): void
   /** Closes the page at once. */
   close(): void
+  /** Calls back when the user closes the window of the page: the page is not shown any more. */
+  onDismissed(listener: () => void): void
 }
 
 /** The result of one try to send a message. */
@@ -64,6 +66,8 @@ export interface TeamsPageDriver {
   place(bounds: PageBounds | undefined): void
   allowUserInput(allowed: boolean): void
   close(): void
+  /** Calls back when the user closes the window of the page. A stand-in page may have none. */
+  onDismissed?(listener: () => void): void
 }
 
 /**
@@ -397,5 +401,6 @@ export const createTeamsSurface = (
       reload = false
       driver.close()
     },
+    onDismissed: (listener) => driver.onDismissed?.(listener),
   }
 }

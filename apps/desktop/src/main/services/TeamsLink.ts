@@ -354,6 +354,14 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           }
         }
         const changed = () => bus.emit("teams.changed", {})
+        // The user closes the window of the Teams page: the page is not shown any more. The link
+        // goes on, and the next look opens the page again, hidden.
+        surface.onDismissed(() => {
+          if (!run.pageShown) return
+          run.pageShown = false
+          run.loopFirst = true
+          changed()
+        })
         /** The id of the sign-in profile, or null before the app made it. */
         const signInProfile = () =>
           db.get<{ id: string }>("SELECT id FROM browser_profile WHERE purpose = 'teams'")?.id ??

@@ -151,17 +151,9 @@ export const setMainWindow = (win: BrowserWindow) => {
  * One page per agent, inside the main window. Its session is kept on disk, so logins stay between
  * runs. The session is the one of the browser profile of the agent, or its own. The screen of the chat says where the page shows. Until it does, the page is hidden.
  */
-const electronBrowser = (
-  agentId: string,
-  options: { fixedLayout?: boolean; log?: DiagWrite } = {},
-): BrowserPage => {
+const electronBrowser = (agentId: string, options: { log?: DiagWrite } = {}): BrowserPage => {
   /** The counts of input and the lines of the log about this page (the diagnostic report). */
   const diag = createInputDiagnostics(options.log ?? (() => {}))
-  /**
-   * A fixed layout keeps the size of PAGE_VIEW whatever the size of its place. A plain view (the
-   * Teams page) fills its place exactly, so the clicks of the user land where the page shows them.
-   */
-  const fixedLayout = options.fixedLayout ?? true
   let view: WebContentsView | undefined
   let host: BaseWindow | undefined
   let bounds: PageBounds | undefined
@@ -201,7 +193,6 @@ const electronBrowser = (
    * the session ends.
    */
   const emulate = (scale: number) => {
-    if (!fixedLayout) return
     const v = live()
     if (!v || !started) return
     const session = v.webContents.debugger
@@ -233,40 +224,9 @@ const electronBrowser = (
   /** The app screen, when the page sits in the main window. The shelf has none. */
   const screenOf = () =>
     host && host === mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined
-  /**
-   * Puts a plain view where it belongs: exactly the place that the screen gives it, or parked
-   * and hidden. The page is laid out in the size that the user sees, so a real click lands where
-   * the page shows it, with no scale in between.
-   */
-  const applyPlain = (v: WebContentsView) => {
-    const screenContents = screenOf()
-    if (!bounds || !screenContents) {
-      v.setBounds({ x: 0, y: 0, ...PAGE_VIEW })
-      if (!sized) {
-        v.setVisible(true)
-        sized = true
-      }
-      v.setVisible(false)
-      return
-    }
-    // The screen measures in CSS px. The window measures in px after the page zoom.
-    const zoom = screenContents.getZoomFactor()
-    sized = true
-    v.setBounds({
-      x: Math.round(bounds.x * zoom),
-      y: Math.round(bounds.y * zoom),
-      width: Math.max(1, Math.round(bounds.width * zoom)),
-      height: Math.max(1, Math.round(bounds.height * zoom)),
-    })
-    v.setVisible(true)
-  }
   const apply = () => {
     const v = live()
     if (!v) return
-    if (!fixedLayout) {
-      applyPlain(v)
-      return
-    }
     const screenContents = screenOf()
     // The screen measures in CSS px. The window measures in px after the page zoom.
     const zoom = screenContents?.getZoomFactor() ?? 1
@@ -395,7 +355,7 @@ const electronBrowser = (
     return {
       page: agentId === TEAMS_PAGE_KEY ? "teams" : "agent",
       open: v !== undefined,
-      plain: !fixedLayout,
+      plain: false,
       userInput,
       placed: bounds ? { ...bounds } : null,
       view: v ? v.getBounds() : null,
@@ -508,12 +468,9 @@ const electronBrowser = (
       try {
         if (!started) {
           // An empty page first: from then on the view answers the debugger, and the page of the
-          // address has its size before its first script runs. A plain view has no debugger, so
-          // it loads the address at once.
-          if (fixedLayout) {
-            await v.webContents.loadURL("about:blank")
-            emulate(scaleNow)
-          }
+          // address has its size before its first script runs.
+          await v.webContents.loadURL("about:blank")
+          emulate(scaleNow)
           started = true
         }
         // A debugger that does not answer must not keep the agent from the page.
@@ -579,6 +536,200 @@ const electronBrowser = (
       v.webContents.send(TEACH_ON_CHANNEL, listener !== undefined)
       // The page that shows when the recording starts is its first step.
       if (starts && !v.webContents.isLoading()) reportPage(v.webContents)
+    },
+  }
+}
+
+/**
+ * The Teams page (spec 028): a window of its own. The user signs in there by hand, so the page must
+ * take the pointer, the wheel and the keys of the user. A view that sits above the screen of the
+ * app did not take them on every computer (the page showed, but no pointer, no wheel and no key
+ * reached it). A window of its own takes them like the window of the app. The window stays hidden
+ * until the user shows the page, and the link reads it and writes in it as before. Its session is
+ * kept on disk, so the sign-in stays between runs.
+ */
+const electronWindow = (agentId: string, options: { log?: DiagWrite } = {}): BrowserPage => {
+  /** The counts of input and the lines of the log about this page (the diagnostic report). */
+  const diag = createInputDiagnostics(options.log ?? (() => {}))
+  let win: BrowserWindow | undefined
+  /** The user holds the page: the window shows. */
+  let userInput = false
+  const listeners: (() => void)[] = []
+  /** Who hears that the user closed the window. */
+  const dismissers: (() => void)[] = []
+  /** The recorder of "Teach a task" (spec 017), while it runs. */
+  let recorder: ((event: TeachEvent) => void) | undefined
+  /** The host of the last page that loaded: the report keeps it after the window closed. */
+  let lastHost = ""
+  const live = () => (win && !win.isDestroyed() && !win.webContents.isDestroyed() ? win : undefined)
+  const need = () => {
+    const w = live()
+    if (!w) throw new Error("The browser is not open. Open a page first.")
+    return w.webContents
+  }
+  const run = async <T>(code: string): Promise<T> => need().executeJavaScript(code, true)
+  /** Shows the window while the user holds the page, and hides it otherwise. */
+  const sync = () => {
+    const w = live()
+    if (!w) return
+    if (!userInput) {
+      w.hide()
+      return
+    }
+    // A test run never takes the focus from the user.
+    if (isTestRun) w.showInactive()
+    else {
+      w.show()
+      w.focus()
+    }
+  }
+  /** Closes the window and tells the listeners. Does nothing when it is gone. */
+  const release = () => {
+    const w = win
+    if (!w) return
+    win = undefined
+    userInput = false
+    diag.state("closed", {})
+    if (!w.isDestroyed()) w.destroy()
+    for (const l of listeners) l()
+  }
+  snapshots.set(agentId, () => {
+    const w = live()
+    const size = w?.getContentBounds()
+    return {
+      page: "teams",
+      open: w !== undefined,
+      plain: true,
+      userInput,
+      placed: null,
+      view: size ? { x: 0, y: 0, width: size.width, height: size.height } : null,
+      visible: w ? w.isVisible() : null,
+      zoom: w ? w.webContents.getZoomFactor() : null,
+      inWindow: "own",
+      stackIndex: null,
+      stackSize: null,
+      pageFocused: w ? w.webContents.isFocused() : null,
+      windowFocused: w ? w.isFocused() : null,
+      loading: w ? w.webContents.isLoading() : null,
+      host: w ? hostOf(w.webContents.getURL()) : lastHost,
+      counts: diag.counts(),
+    }
+  })
+  return {
+    isOpen: () => live() !== undefined,
+    open: async (url) => {
+      let w = live()
+      if (!w) {
+        // Set before the page exists: a session applies its user agent to new pages only. Sites
+        // such as Teams turn away the `Electron/` token that Electron adds.
+        const data = session.fromPartition(partitionOf(agentId))
+        data.setUserAgent(pageUserAgent(data.getUserAgent(), app.getName()))
+        const created = new BrowserWindow({
+          width: 1000,
+          height: 760,
+          minWidth: 480,
+          minHeight: 400,
+          show: false,
+          webPreferences: {
+            partition: partitionOf(agentId),
+            sandbox: true,
+            contextIsolation: true,
+            nodeIntegration: false,
+            // The link goes on with the page while the window is hidden.
+            backgroundThrottling: false,
+            // The recorder of the page and the counts of the report. They run in their own world:
+            // the page cannot reach them.
+            preload: join(import.meta.dirname, "../preload/teach.cjs"),
+          },
+        })
+        const wc = created.webContents
+        wc.ipc.on(TEACH_ON_CHANNEL, (event) => {
+          event.returnValue = recorder !== undefined
+        })
+        wc.ipc.on(TEACH_CHANNEL, (_, payload: unknown) => {
+          const step = teachEventOf(payload)
+          if (step && recorder) recorder(step)
+        })
+        wc.ipc.on(PAGE_INPUT_CHANNEL, (_, payload: unknown) => {
+          const note = cleanInputNote(payload)
+          if (note) diag.page(note)
+        })
+        // Only counts: the user's input is never held back in this window.
+        wc.on("before-mouse-event", (_, mouse) => {
+          diag.native(mouse.type, { x: mouse.x, y: mouse.y }, false)
+        })
+        wc.on("did-finish-load", () => {
+          lastHost = hostOf(wc.getURL())
+          diag.state("loaded", { host: lastHost })
+          const url = wc.getURL()
+          if (recorder && /^https?:\/\//i.test(url))
+            recorder({ kind: "page", url, title: wc.getTitle() })
+        })
+        wc.on("did-fail-load", (_, code, __, url, isMainFrame) => {
+          if (isMainFrame) diag.state("load_failed", { code, host: hostOf(url) })
+        })
+        wc.on("render-process-gone", (_, details) => {
+          diag.state("page_process_gone", { reason: details.reason, exitCode: details.exitCode })
+        })
+        wc.on("unresponsive", () => diag.state("page_unresponsive", {}))
+        wc.on("responsive", () => diag.state("page_responsive", {}))
+        wc.setWindowOpenHandler(({ url: next }) => {
+          if (/^https?:\/\//i.test(next)) wc.loadURL(next).catch(() => {})
+          return { action: "deny" }
+        })
+        // The user closes the window: the page is closed, and the listeners hear it.
+        created.once("closed", () => {
+          if (win !== created) return
+          release()
+          for (const l of dismissers) l()
+        })
+        diag.reset()
+        win = created
+        w = created
+        sync()
+      }
+      await w.webContents.loadURL(url)
+      return { url: w.webContents.getURL(), title: w.webContents.getTitle() }
+    },
+    read: async () => {
+      const wc = need()
+      const text = await run<string>("document.body ? document.body.innerText : ''")
+      return { url: wc.getURL(), title: wc.getTitle(), text: text.slice(0, PAGE_TEXT_MAX) }
+    },
+    evaluate: <T>(code: string) => run<T>(code),
+    click: async (selector) => {
+      const found = await run<boolean>(
+        `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.click(); return true })()`,
+      )
+      if (!found) throw new Error(`No element matches ${selector}`)
+    },
+    type: async (selector, text) => {
+      const found = await run<boolean>(
+        `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.focus(); e.value = ${JSON.stringify(text)}; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true })()`,
+      )
+      if (!found) throw new Error(`No element matches ${selector}`)
+    },
+    // The page has a window of its own: the place that the app screen measures means nothing.
+    place: () => {},
+    allowUserInput: (allowed) => {
+      // The Teams link says this again on each tick while its page shows: only a change moves the
+      // window, so a window that the user moved or covered is left as it is.
+      if (allowed === userInput) return
+      userInput = allowed
+      diag.state("user_input", { allowed })
+      sync()
+    },
+    close: release,
+    onClosed: (l) => {
+      listeners.push(l)
+    },
+    onDismissed: (l) => {
+      dismissers.push(l)
+    },
+    record: (listener) => {
+      recorder = listener
+      const w = live()
+      if (w) w.webContents.send(TEACH_ON_CHANNEL, listener !== undefined)
     },
   }
 }
@@ -697,15 +848,15 @@ export const electronPlatform = (): PlatformService => {
   const pageOf = (agentId: string): BrowserPage => {
     const known = browsers.get(agentId)
     if (known) return known
-    // The Teams page is for the hands of the user (spec 028): it fills its place exactly, with
-    // no fixed layout and no scale, so a click lands where the page shows. An agent keeps the
-    // fixed layout, so its place never changes what the agent reads or where a click lands.
+    // The Teams page is for the hands of the user (spec 028): it has a window of its own. The page
+    // of an agent sits in the main window, in a fixed layout, so its place never changes what the
+    // agent reads or where a click lands.
     const isTeams = agentId === TEAMS_PAGE_KEY
     // The browser log (spec 014) gets the input that the page took or refused, and the changes of
     // its place. The line says "teams" or "agent", never the id of an agent.
     const log: DiagWrite = (event, data) =>
       appendLog(dataDir, "browser", { event, page: isTeams ? "teams" : "agent", ...data })
-    const page = electronBrowser(agentId, isTeams ? { fixedLayout: false, log } : { log })
+    const page = isTeams ? electronWindow(agentId, { log }) : electronBrowser(agentId, { log })
     browsers.set(agentId, page)
     return page
   }

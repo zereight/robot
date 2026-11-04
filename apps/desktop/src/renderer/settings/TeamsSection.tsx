@@ -20,7 +20,6 @@ import {
   For,
   Match,
   onCleanup,
-  onMount,
   Show,
   Switch as SwitchCase,
 } from "solid-js"
@@ -31,7 +30,6 @@ import { useApp } from "../state/app.tsx"
 import { setOpenTarget } from "../state/target.ts"
 import { useTeams } from "../state/teams.tsx"
 import { useUi } from "../state/ui.tsx"
-import { wholeBox } from "../teams/place.ts"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -39,52 +37,20 @@ import styles from "./settings.module.css"
 import teamStyles from "./teams.module.css"
 
 /**
- * What covers the place of the Teams page when it is open. The page is a native view above the
- * screen, so it hides while a box or a menu is open. The settings page is a dialog too, and it is
- * not a cover.
- */
-const COVERS = '[role="dialog"]:not([data-testid="settings"]), [role="menu"]'
-
-/**
- * The empty box where the Teams page shows. The page is a native view above this screen: this box
- * only keeps its place and tells the app where it is, on each frame. The place is given only while
- * the scroll area shows all of the box. A native view cannot show a part of itself, and a cut place
- * would make the page smaller as the box scrolls out. So the page hides until the box is whole
- * again, and it never covers the list of settings beside it.
+ * Where the Teams page is, while it shows: a window of its own, not a box in this screen. A view
+ * above this screen did not take the pointer, the wheel or the keys of the user on every computer,
+ * and a window does. The box only says so.
  */
 const PageBox = () => {
   const { t } = useApp()
-  let box: HTMLElement | undefined
-  onMount(() => {
-    // The page shows only while the whole box shows, so a box that opens below the fold scrolls
-    // into view once. Otherwise "Show the Teams page" would seem to do nothing.
-    box?.scrollIntoView?.({ block: "nearest" })
-    let last = ""
-    const send = (bounds: { x: number; y: number; width: number; height: number } | null) => {
-      const key = bounds ? `${bounds.x},${bounds.y},${bounds.width},${bounds.height}` : "hidden"
-      if (key === last) return
-      last = key
-      void call("teams.place", { bounds }).catch(() => {})
-    }
-    let frame = requestAnimationFrame(function measure() {
-      const rect = box?.getBoundingClientRect()
-      const area = box?.parentElement?.closest("section")?.getBoundingClientRect()
-      const covered = document.querySelector(COVERS) !== null
-      send(rect && area && !covered ? wholeBox(rect, area) : null)
-      frame = requestAnimationFrame(measure)
-    })
-    onCleanup(() => {
-      cancelAnimationFrame(frame)
-      void call("teams.place", { bounds: null }).catch(() => {})
-    })
-  })
   return (
     <section
-      ref={box}
       class={teamStyles.page}
       aria-label={t("teams.page.label")}
       data-testid="teams-page-box"
-    />
+    >
+      {t("teams.page.window")}
+    </section>
   )
 }
 
