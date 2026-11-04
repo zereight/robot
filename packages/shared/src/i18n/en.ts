@@ -1744,7 +1744,7 @@ export const en = {
   "importReview.skill.off": "Starts off. Read its instructions before you turn it on.",
   "importReview.handbook.replaces":
     "Replaces the handbook of this server. The old text stays in the handbook history.",
-  "importReview.handbook.length": "Handbook ({count} characters)",
+  "importReview.handbook.length": "{count} characters",
   "importReview.handbook.showAll": "Show all",
   "importReview.handbook.showLess": "Show less",
   "importReview.notImported.channel": "Channel “{owner}”",

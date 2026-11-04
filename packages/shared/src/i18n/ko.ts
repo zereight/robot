@@ -1726,7 +1726,7 @@ export const ko: Record<MessageKey, string> = {
   "importReview.skill.agents": "쓸 수 있는 에이전트: {names}",
   "importReview.skill.off": "꺼진 채로 만들어져요. 켜기 전에 지침을 읽어 보세요.",
   "importReview.handbook.replaces": "이 서버의 핸드북을 바꿔요. 이전 글은 핸드북 기록에 남아요.",
-  "importReview.handbook.length": "핸드북 ({count}자)",
+  "importReview.handbook.length": "{count}자",
   "importReview.handbook.showAll": "모두 보기",
   "importReview.handbook.showLess": "접기",
   "importReview.notImported.channel": "채널 “{owner}”",

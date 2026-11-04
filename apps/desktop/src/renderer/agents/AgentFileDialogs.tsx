@@ -249,7 +249,10 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
                     path: done().path,
                   })
                 : t("agentFile.exported", { count: done().count, path: done().path })}
-              <Show when={done().handbook}> {t("agentFile.exported.handbook")}</Show>
+              <Show when={done().handbook}>
+                <br />
+                {t("agentFile.exported.handbook")}
+              </Show>
             </p>
           )}
         </Show>
@@ -560,7 +563,7 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
               <For each={props.preview.channels}>
                 {(item, i) => (
                   <li class={review.reviewItem} data-testid="channel-import-item">
-                    <label class={review.row}>
+                    <label class={review.tickRow}>
                       <input
                         type="checkbox"
                         checked={team.channels[i()]}
@@ -581,18 +584,25 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
                         </Show>
                         <span class={styles.hint} data-testid="channel-import-members">
                           {t("importReview.channel.members", { names: names(item.members) })}
+                          {" · "}
+                          <span data-testid="channel-import-lead">
+                            {item.lead === null
+                              ? t("importReview.channel.noLead")
+                              : t("importReview.channel.lead", { name: names([item.lead]) })}
+                          </span>
                         </span>
-                        <span class={styles.hint} data-testid="channel-import-lead">
-                          {item.lead === null
-                            ? t("importReview.channel.noLead")
-                            : t("importReview.channel.lead", { name: names([item.lead]) })}
-                        </span>
-                        <Show when={item.reviewParts}>
-                          <span class={styles.hint}>{t("importReview.channel.reviewParts")}</span>
-                        </Show>
-                        <Show when={item.instructionsLength > 0}>
+                        <Show when={item.reviewParts || item.instructionsLength > 0}>
                           <span class={styles.hint}>
-                            {t("importReview.instructions", { count: item.instructionsLength })}
+                            {[
+                              ...(item.reviewParts ? [t("importReview.channel.reviewParts")] : []),
+                              ...(item.instructionsLength > 0
+                                ? [
+                                    t("importReview.instructions", {
+                                      count: item.instructionsLength,
+                                    }),
+                                  ]
+                                : []),
+                            ].join(" · ")}
                           </span>
                         </Show>
                         <Show when={item.secretRemoved}>
@@ -614,7 +624,7 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
               <For each={props.preview.skills}>
                 {(item, i) => (
                   <li class={review.reviewItem} data-testid="skill-import-item">
-                    <label class={review.row}>
+                    <label class={review.tickRow}>
                       <input
                         type="checkbox"
                         checked={team.skills[i()]}
@@ -633,10 +643,11 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
                         <Show when={item.description}>
                           <span class={styles.hint}>{item.description}</span>
                         </Show>
-                        <span class={styles.hint} data-testid="skill-import-agents">
-                          {t("importReview.skill.agents", { names: names(item.agents) })}
-                        </span>
                         <span class={styles.hint}>
+                          <span data-testid="skill-import-agents">
+                            {t("importReview.skill.agents", { names: names(item.agents) })}
+                          </span>
+                          {" · "}
                           {t("importReview.instructions", { count: item.instructionsLength })}
                         </span>
                         <Show when={item.secretRemoved}>
@@ -654,7 +665,7 @@ export const ImportAgentsDialog = (props: { preview: AgentFilePreview; onClose: 
           {(handbook) => (
             <div data-testid="handbook-import">
               <h3 class={review.sectionTitle}>{t("importReview.team.handbook.title")}</h3>
-              <label class={review.row}>
+              <label class={review.tickRow}>
                 <input
                   type="checkbox"
                   checked={team.handbook}

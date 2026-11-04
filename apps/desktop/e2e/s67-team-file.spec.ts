@@ -20,7 +20,7 @@ interface Words {
   readonly exportHandbook: string
   readonly found: (n: number) => string
   readonly limitChannels: string
-  readonly handbook: string
+  readonly handbookLength: (n: number) => string
   readonly showAll: string
   readonly replaces: string
   readonly noMember: string
@@ -44,7 +44,7 @@ const EN: Words = {
   exportHandbook: "Handbook",
   found: (n) => `${n} found`,
   limitChannels: "A file holds at most 40 channels. Pick fewer agents.",
-  handbook: "Handbook (",
+  handbookLength: (n) => `${n} characters`,
   showAll: "Show all",
   replaces: "Replaces the handbook of this server. The old text stays in the handbook history.",
   noMember: "None of its members is ticked.",
@@ -69,7 +69,7 @@ const KO: Words = {
   exportHandbook: "핸드북",
   found: (n) => `${n}개`,
   limitChannels: "파일 하나에는 채널을 최대 40개까지 담을 수 있어요. 에이전트를 줄여 주세요.",
-  handbook: "핸드북 (",
+  handbookLength: (n) => `${n}자`,
   showAll: "모두 보기",
   replaces: "이 서버의 핸드북을 바꿔요. 이전 글은 핸드북 기록에 남아요.",
   noMember: "멤버가 아무도 체크되지 않았어요.",
@@ -332,7 +332,9 @@ const scenario = (words: Words) => async () => {
   await expect(review.getByTestId("channel-import-lead")).toContainText("Ada")
   await expect(review.getByTestId("skill-import-agents").first()).toContainText("Ada")
   // The handbook shows its first lines and "Show all", and says that it replaces the handbook.
-  await expect(review.getByTestId("handbook-import")).toContainText(words.handbook)
+  await expect(review.getByTestId("handbook-import")).toContainText(
+    words.handbookLength([...HANDBOOK].length),
+  )
   await expect(review.getByTestId("handbook-import-replaces")).toHaveText(words.replaces)
   await expect(review.getByTestId("handbook-import-text")).not.toContainText(
     "Ask before you delete",
