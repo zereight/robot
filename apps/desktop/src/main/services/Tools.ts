@@ -473,8 +473,18 @@ const DEFS: Record<string, ToolDef> = {
   save_memory: {
     name: "save_memory",
     description:
-      "Save one short, lasting fact (a preference, a name, a decision) to your memory. Use at most 500 characters. Never save a password, a key or a token. The user may decide first whether the fact is kept.",
-    schema: object({ text: str("The fact, in one sentence.") }, ["text"]),
+      "Save one short, lasting fact (a preference, a name, a decision) to your memory. Use at most 500 characters. Never save a password, a key or a token. The user may decide first whether the fact is kept. In a channel, set for_channel to true when the fact holds only for that channel: you then read it in that channel and nowhere else.",
+    schema: object(
+      {
+        text: str("The fact, in one sentence."),
+        for_channel: {
+          type: "boolean",
+          description:
+            "Only in a channel: true keeps the fact as a note for this channel. Leave it out for a fact that holds everywhere.",
+        },
+      },
+      ["text"],
+    ),
   },
   read_article: {
     name: "read_article",
@@ -1675,9 +1685,18 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         ctx: ToolContext,
         call: ToolCall,
         value: string,
+        forChannel: boolean,
       ): Promise<ToolOutcome> => {
-        const plan = await Effect.runPromise(memory.plan(ctx.agentId, value))
-        const make = () => Effect.runPromise(memory.save(ctx.agentId, value, ctx.origin))
+        // A note belongs to the channel of the turn (spec 008, flow 6). Outside a channel there is none.
+        if (forChannel && ctx.origin?.kind !== "channel")
+          return {
+            output:
+              "Not saved: this is not a channel, so there is no channel note. Save the fact without for_channel.",
+            failed: true,
+          }
+        const channelId = forChannel ? ctx.origin?.id : undefined
+        const plan = await Effect.runPromise(memory.plan(ctx.agentId, value, channelId))
+        const make = () => Effect.runPromise(memory.save(ctx.agentId, value, ctx.origin, channelId))
         // A save at once is a guarded step (spec 007, "Outside content"): in a turn that holds
         // outside content it asks first, so a web page cannot put a lasting order into memory.
         // A proposal is not memory and needs no card, and a refused text asks nothing.
@@ -1688,7 +1707,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         switch (result.kind) {
           case "saved":
             ctx.onMemory(call.id, { kind: "saved", historyId: result.historyId })
-            return { output: "Saved to memory.", failed: false }
+            return {
+              output: channelId
+                ? "Saved to memory as a note for this channel."
+                : "Saved to memory.",
+              failed: false,
+            }
           case "suggested":
             ctx.onMemory(call.id, { kind: "suggested", proposalId: result.proposal.id })
             return {
@@ -1712,6 +1736,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return { output: "Not saved: the text is empty.", failed: true }
           case "off":
             return { output: "Not saved: memory is off for you.", failed: true }
+          case "not_member":
+            return { output: "Not saved: you are not a member of this channel.", failed: true }
         }
       }
 
@@ -2290,7 +2316,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return { output: found.output, failed: found.failed }
           }
           case "save_memory":
-            return await saveMemory(ctx, call, text(args, "text"))
+            return await saveMemory(ctx, call, text(args, "text"), args.for_channel === true)
           case "settings":
             return await settingsTool(ctx, call, args)
           case "read_article":

@@ -18,7 +18,7 @@ import { Channels } from "../services/Channels.ts"
 import { Devices } from "../services/Devices.ts"
 import { AppError } from "../services/errors.ts"
 import { Handbook } from "../services/Handbook.ts"
-import { Memory } from "../services/Memory.ts"
+import { Memory, MemoryFilterSchema } from "../services/Memory.ts"
 import { MemoryCheck } from "../services/MemoryCheck.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
@@ -241,13 +241,32 @@ export const changeHandlers: Record<string, ChangeHandler> = {
   "memory.list": (input) =>
     E.gen(function* () {
       yield* allowed
-      const { agentId, query } = yield* strict(
+      const { agentId, query, filter } = yield* strict(
         Schema.Struct({
           agentId: Id,
           query: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
+          filter: Schema.optionalKey(MemoryFilterSchema),
         }),
       )(input)
-      return yield* Memory.use((m) => m.list(agentId, query))
+      return yield* Memory.use((m) => m.list(agentId, query, filter))
+    }),
+
+  // The channels for the filter and for a move of a channel note (spec 008, 012).
+  "memory.scopes": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const { agentId } = yield* strict(Schema.Struct({ agentId: Id }))(input)
+      return yield* Memory.use((m) => m.scopes(agentId))
+    }),
+
+  // A move is a change of an item, so it needs the switch like an edit (spec 008, 012).
+  "memory.move": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const { id, channelId } = yield* strict(
+        Schema.Struct({ id: Id, channelId: Schema.NullOr(Id) }),
+      )(input)
+      return yield* Memory.use((m) => m.move(id, channelId))
     }),
 
   "memory.add": (input) =>

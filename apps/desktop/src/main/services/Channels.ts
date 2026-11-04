@@ -114,6 +114,7 @@ import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { withKeepGoing } from "./keepGoingTurn.ts"
 import { appendLog } from "./logs.ts"
+import { Memory } from "./Memory.ts"
 import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
@@ -267,6 +268,12 @@ const LEAD_RULES = (members: readonly string[]) =>
     `Use at most ${PLAN_STEPS_MAX} parts. Give each part to one of these members: ${members.join(", ")}.`,
   ].join("\n")
 
+/** The text of the newest turn: what the memory of an agent is matched against (spec 008). */
+const lastText = (turns: readonly Turn[]): string => {
+  const last = turns.at(-1)
+  return last ? last.content : ""
+}
+
 /** How long the app treats a lead as blocked when the usage limit gives no reset time. */
 const UNKNOWN_LIMIT_MS = 60_000
 
@@ -295,6 +302,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const platform = yield* Platform
       const decision = yield* Decision
       const handbook = yield* Handbook
+      const memory = yield* Memory
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
       // A part that streams from the other computer (spec 019) is not ours to end.
@@ -522,8 +530,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       // The handbook, then the instructions of the agent, then the instructions of the channel. The
       // member and the lead both get them, in every turn of the channel (spec 002, 004). The fast
       // pick and the check of the lead are requests of the app and get none of them.
-      const channelSystem = (channel: ChannelRow, agent: AgentRow, extra = "") =>
-        [
+      // The agent also reads its memory: its general items and its notes for this channel, the ones
+      // that relate to the new message (spec 008). A note for another channel is not read here.
+      const channelSystem = (
+        channel: ChannelRow,
+        agent: AgentRow,
+        extra = "",
+        turns: readonly Turn[] = [],
+      ) => {
+        const remembered = memory.forTurn(agent.id, lastText(turns), channel.id)
+        return [
           composeInstructions({
             handbook: agent.read_handbook === 1 ? handbook.text(agent.server_id) : "",
             own: agent.instructions,
@@ -536,10 +552,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             .join(
               ", ",
             )}.${channel.topic ? ` Topic: ${channel.topic}.` : ""} Messages of others show as "[Name]: text". Write only your own reply.`,
+          remembered.length > 0
+            ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
+            : "",
           extra,
         ]
           .filter(Boolean)
           .join("\n\n")
+      }
 
       /**
        * Accounts whose usage limit is reached, with the time (ms) when it resets (spec 004). The
@@ -1210,6 +1230,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 [toldAboutBlocked(task) ? BLOCKED_RULE : "", tasks.retryNoteForModel(task)]
                   .filter(Boolean)
                   .join("\n\n"),
+                turns,
               ),
               turns,
             })
@@ -1830,13 +1851,19 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           lead.id,
           Effect.gen(function* () {
             const others = memberRows(channel.id).filter((m) => m.id !== lead.id)
+            const planTurns = channelTurns(channel.id, lead)
             const reply = yield* streamReply({
               channel,
               agent: lead,
               taskId: task.id,
               kind: "text",
-              system: channelSystem(channel, lead, LEAD_RULES(others.map((m) => m.name))),
-              turns: channelTurns(channel.id, lead),
+              system: channelSystem(
+                channel,
+                lead,
+                LEAD_RULES(others.map((m) => m.name)),
+                planTurns,
+              ),
+              turns: planTurns,
               hideRaw: true,
             })
             const plan: ParsedPlan | null = parsePlan(
@@ -1961,7 +1988,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               agent: lead,
               taskId: task.id,
               kind: "summary",
-              system: channelSystem(channel, lead),
+              system: channelSystem(channel, lead, "", turns),
               turns,
             })
             void summary
@@ -2272,6 +2299,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         if (!row) return yield* new AppError({ code: "channel_not_found" })
         yield* stopAll(id)
         db.transaction(() => {
+          // The notes for the channel go first, while the rows still hold its name (spec 008).
+          Effect.runSync(memory.deleteChannel(id))
           db.run("DELETE FROM task WHERE source = 'channel' AND source_id = ?", id)
           db.run("DELETE FROM channel WHERE id = ?", id)
         })

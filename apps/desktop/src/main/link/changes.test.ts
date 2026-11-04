@@ -486,6 +486,68 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     ])
   })
 
+  test("it filters the items, lists the channels, and moves a channel note (spec 008, 012)", async () => {
+    const p = await pair(true)
+    const a = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    const channel = value<{ id: string }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Docs",
+        topic: "",
+        memberIds: [a.id],
+        leadId: null,
+      }),
+    )
+    const other = value<{ id: string }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Plans",
+        topic: "",
+        memberIds: [],
+        leadId: null,
+      }),
+    )
+    await p.server.runtime.runPromise(
+      Memory.use((m) => m.save(a.id, "Docs use plain words", undefined, channel.id)),
+    )
+    const general = value<{ id: string }>(
+      await p.ask("memory.add", { agentId: a.id, text: "Likes tea" }),
+    )
+    const texts = async (filter?: unknown) =>
+      value<{ text: string; channel: { id: string; member: boolean } | null }[]>(
+        await p.ask("memory.list", { agentId: a.id, ...(filter ? { filter } : {}) }),
+      ).map((i) => i.text)
+    expect(await texts({ kind: "general" })).toEqual(["Likes tea"])
+    expect(await texts({ kind: "channel", id: channel.id })).toEqual(["Docs use plain words"])
+    expect(await texts({ kind: "all" })).toHaveLength(2)
+    expect(codeOf(await p.ask("memory.list", { agentId: a.id, filter: { kind: "bogus" } }))).toBe(
+      "invalid_input",
+    )
+    expect(
+      value<{ id: string; notes: number; member: boolean }[]>(
+        await p.ask("memory.scopes", { agentId: a.id }),
+      ).map((c) => [c.id, c.notes, c.member]),
+    ).toEqual([[channel.id, 1, true]])
+    // A move to a channel the agent is a member of; not to one it is not a member of.
+    expect(
+      value<{ channel: { id: string } | null }>(
+        await p.ask("memory.move", { id: general.id, channelId: channel.id }),
+      ).channel?.id,
+    ).toBe(channel.id)
+    expect(codeOf(await p.ask("memory.move", { id: general.id, channelId: other.id }))).toBe(
+      "memory_not_member",
+    )
+    expect(
+      value<{ channel: unknown }>(await p.ask("memory.move", { id: general.id, channelId: null }))
+        .channel,
+    ).toBeNull()
+    expect(codeOf(await p.ask("memory.move", { id: general.id, channelId: null, extra: 1 }))).toBe(
+      "invalid_input",
+    )
+    const rows = await p.server.runtime.runPromise(Memory.use((m) => m.history(a.id)))
+    expect(rows.filter((r) => r.kind === "moved").map((r) => r.actor)).toEqual(["user", "user"])
+  })
+
   test("it sets the switch Read the handbook and the instructions of a channel, with the same limits as the server (spec 002, 004, 012)", async () => {
     const p = await pair(true)
     const off = value<Agent>(
@@ -585,6 +647,8 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ],
       ["channels.update", { id: "x", patch: { topic: "t" } }],
       ["memory.list", { agentId: "x" }],
+      ["memory.scopes", { agentId: "x" }],
+      ["memory.move", { id: "x", channelId: null }],
       ["memory.add", { agentId: "x", text: "t" }],
       ["memory.update", { id: "x", text: "t" }],
       ["memory.delete", { id: "x" }],
