@@ -16,6 +16,7 @@ import { Chat } from "./Chat.ts"
 import { Organization } from "./Organization.ts"
 import { OrgChart } from "./OrgChart.ts"
 import { Providers } from "./Providers.ts"
+import { Routines } from "./Routines.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
@@ -81,6 +82,9 @@ const server = Bun.serve({
     const body = (await req.json()) as { messages: { role: string; content: string | null }[] }
     systems.push(String(body.messages.find((m) => m.role === "system")?.content ?? ""))
     const last = body.messages.at(-1)
+    // A turn that starts with "SLOW" stays open for a short time, so a test can change the rule
+    // while it works.
+    if (/SLOW/.test(String(last?.content ?? ""))) await Bun.sleep(600)
     if (last?.role === "tool") return text("done")
     const many = /CALLS (\[.*\])/.exec(String(last?.content ?? ""))
     if (many) return toolCalls(JSON.parse(many[1] as string))
@@ -156,7 +160,7 @@ const setup = async (options: { main?: boolean } = {}) => {
       ),
     )
   const product = await channel("Product", ["P"], "P")
-  await channel("Docs", ["D", "A"], "D", product.id)
+  const docs = await channel("Docs", ["D", "A"], "D", product.id)
 
   const send = (name: string, message: string) =>
     run(Chat.use((c) => c.send({ agentId: agent(name).id, text: message, replyTo: null })))
@@ -201,7 +205,21 @@ const setup = async (options: { main?: boolean } = {}) => {
       return []
     }
   }
-  return { t, run, local, agent, send, call, tasks, quiet, rule, received, logLines, lastStep }
+  return {
+    t,
+    run,
+    local,
+    agent,
+    docs,
+    send,
+    call,
+    tasks,
+    quiet,
+    rule,
+    received,
+    logLines,
+    lastStep,
+  }
 }
 
 describe('rule "Any agent" (the default)', () => {
@@ -348,6 +366,69 @@ describe('rule "Along the channels"', () => {
     await s.run(Agents.use((a) => a.archive(s.agent("D").id)))
     const step = await s.call("A", "send_message", { to: "D", text: "hi" })
     expect(step.output).toBe("This agent is archived. Choose another agent.")
+  })
+
+  test("the reply always comes back: a receiver that the rule would refuse still answers", async () => {
+    const s = await setup()
+    // A sends to X while the rule is off. X is in no channel, so under the rule X could not send
+    // to A. X is still working when the user turns the rule on.
+    const sent = s.send(
+      "A",
+      `CALLS ${JSON.stringify([{ name: "send_message", args: { to: "X", text: "SLOW hi" } }])}`,
+    )
+    await sent
+    await until(async () => (await s.received("X")).length === 1)
+    await s.rule("channels")
+    await s.quiet()
+    // The reply of X is a task for A: it was not refused, and no refusal was written.
+    const back = (await s.received("A")).filter((x) => x.sourceId === s.agent("X").id)
+    expect(back.length).toBeGreaterThanOrEqual(1)
+    expect(s.logLines().filter((l) => l.event === "hand_off_refused")).toHaveLength(0)
+    // A send of X to A is refused under the rule: a reply is not a send.
+    const step = await s.call("X", "send_message", { to: "A", text: "again" })
+    expect(step.output).toBe("A is not on your path. Send it to M.")
+  })
+
+  test("the rule does not touch the work of the user: a direct chat, a mention, @all and a routine", async () => {
+    const s = await setup()
+    await s.rule("channels")
+    // A direct chat with an agent in no channel.
+    await s.send("X", "hello")
+    await s.quiet()
+    expect((await s.tasks()).some((x) => x.agentId === s.agent("X").id)).toBe(true)
+    // A mention and @all in a channel. The list of tasks is newest first, so new tasks are found
+    // by their id.
+    const newTasks = async (known: Set<string>) => (await s.tasks()).filter((x) => !known.has(x.id))
+    const known = new Set((await s.tasks()).map((x) => x.id))
+    await s.run(Channels.use((c) => c.send(s.docs.id, "@A say hi")))
+    await s.quiet()
+    const mentioned = await newTasks(known)
+    expect(mentioned.map((x) => x.agentId)).toEqual([s.agent("A").id])
+    for (const x of mentioned) known.add(x.id)
+    await s.run(Channels.use((c) => c.send(s.docs.id, "@all say hi")))
+    await s.quiet()
+    const all = await newTasks(known)
+    expect(all.map((x) => x.agentId).sort()).toEqual([s.agent("A").id, s.agent("D").id].sort())
+    // A routine of an agent in no channel.
+    const routine = await s.run(
+      Routines.use((r) =>
+        r.create({
+          serverId: s.local.id,
+          agentId: s.agent("X").id,
+          name: "Check",
+          prompt: "Look.",
+          schedule: { kind: "every", minutes: 60, from: Date.now() },
+          place: { kind: "agent" },
+        }),
+      ),
+    )
+    const routines = (await s.tasks()).length
+    await s.run(Routines.use((r) => r.runNow(routine.id)))
+    await s.quiet()
+    expect((await s.tasks()).length).toBeGreaterThan(routines)
+    // No send was refused, and no task came from another agent.
+    expect(s.logLines().filter((l) => l.event === "hand_off_refused")).toHaveLength(0)
+    expect((await s.tasks()).filter((x) => x.source === "agent")).toHaveLength(0)
   })
 
   test("a refused send counts for no limit: the chain limit is not used", async () => {
