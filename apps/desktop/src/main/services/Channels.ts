@@ -874,6 +874,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   lookAtQuestion({
                     channel: o.channel,
                     member: o.agent,
+                    taskId: o.taskId,
                     lead: reader.lead,
                     found: reader.found,
                     callId,
@@ -1625,6 +1626,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const lookAtQuestion = (l: {
         readonly channel: ChannelRow
         readonly member: AgentRow
+        /** The task of the part. It shows "Running", not "Waiting for you", while the lead looks. */
+        readonly taskId: string
         readonly lead: AgentRow
         readonly found: NonNullable<ReturnType<typeof partJob>>
         readonly callId: string
@@ -1638,9 +1641,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         let ended = false
         let cancelled = false
         let why: StopWhy = "user_answer"
+        // The part waits, but not for the user (spec 004, 024).
+        tasks.setWithLead(l.taskId, true)
+        const release = () => tasks.setWithLead(l.taskId, false)
         const end = (result: LeadLookEnd) => {
           if (ended) return
           ended = true
+          release()
           openLooks.delete(key)
           appendLog(platform.dataDir, "channels", leadLookLog(result))
         }
@@ -1649,6 +1656,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           // Who reads a passed question next is decided in one place. Today it is the user.
           const next = readerAfterPass(pass)
           if (next.kind === "user") {
+            // From here the part waits for the user: "Waiting for you" shows with the notification.
+            release()
             l.io.pass(pass)
             l.io.attend({ ...l.ask, passed: pass })
           }
@@ -1710,6 +1719,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           settingOff: () => {
             why = "setting_off"
             cancel()
+            release()
             l.io.plain()
             l.io.attend(l.ask)
           },

@@ -9,6 +9,7 @@ import { Notifier } from "./Notifier.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
@@ -71,6 +72,8 @@ const script = {
   queue: [] as string[],
   /** The wait before the lead answers a look, in ms. */
   lookDelay: 0,
+  /** Answers for the next checks of the lead, one each. When it is empty, the check does nothing. */
+  checks: [] as string[],
 
   /** The status of the answer to a look. 0 is an answer. */
   lookStatus: 0,
@@ -122,14 +125,17 @@ const server = Bun.serve({
       return sse(script.queue.shift() ?? script.look, script.lookUsage)
     }
     if (system.includes("The work in the channel has stopped"))
-      return sse('{"verdicts":[],"action":"nothing"}')
+      return sse(script.checks.shift() ?? '{"verdicts":[],"action":"nothing"}')
     if (content.includes("All parts have ended")) return sse("Summary done.")
     if (system.includes("Read the job of the user")) return sse(script.plan)
     if (!staleRequest(`${system}\n${content}`)) memberRequests.push({ system, content })
     // The member asks "ASK n" questions, one after the other, and then reports the last answer.
-    const text = body.messages.map((m) => m.content).join("\n")
+    // Only the turn that runs now counts: a part of an earlier turn has its own questions.
+    const turnStart = body.messages.map((m) => m.role).lastIndexOf("user")
+    const turn = body.messages.slice(Math.max(turnStart, 0))
+    const text = turn.map((m) => m.content).join("\n")
     const wanted = Number(/ASK (\d+)/.exec(text)?.[1] ?? 0)
-    const answered = body.messages.filter((m) => m.role === "tool").length
+    const answered = turn.filter((m) => m.role === "tool").length
     if (wanted > 0 && body.tools) {
       if (answered < wanted)
         return toolCall(
@@ -137,6 +143,8 @@ const server = Bun.serve({
           { question: `Question ${answered + 1}: use the EU sizes only?`, choices: ["Yes", "No"] },
           `call_${answered + 1}`,
         )
+      // "BLOCKAFTER": the part ends as Blocked after its questions, so that a test can Retry it.
+      if (text.includes("BLOCKAFTER")) return sse("Blocked: no access to the shop")
       return sse(`Done with ${last?.content ?? ""}`)
     }
     const run = /RUN (.*)$/m.exec(text)?.[1]
@@ -160,6 +168,7 @@ beforeEach(() => {
   memberRequests.length = 0
   script.look = '{"action":"pass","kind":"not_sure","reason":"No fact for it."}'
   script.queue = []
+  script.checks = []
   script.lookDelay = 0
   script.lookStatus = 0
   script.lookUsage = { prompt_tokens: 111, completion_tokens: 22 }
@@ -174,7 +183,9 @@ const planOf = (prompt: string, label = "Sizes") =>
     parts: [{ member: "Bo", label, prompt, doneTest: "Lists all sizes" }],
   })
 
-const setup = async (options: { prompt?: string; lead?: boolean; answers?: boolean } = {}) => {
+const setup = async (
+  options: { prompt?: string; lead?: boolean; answers?: boolean; review?: boolean } = {},
+) => {
   testNo += 1
   script.plan = planOf(options.prompt ?? "ASK 1 sizes")
   const t = testRuntime()
@@ -221,6 +232,7 @@ const setup = async (options: { prompt?: string; lead?: boolean; answers?: boole
   )
   if (options.answers === false)
     await run(Channels.use((c) => c.update(channel.id, { leadAnswers: false })))
+  if (options.review) await run(Channels.use((c) => c.update(channel.id, { reviewParts: true })))
   t.shell.focused = false
   const history = () => run(Channels.use((c) => c.history(channel.id)))
   const send = (text: string) => run(Channels.use((c) => c.send(channel.id, text)))
@@ -286,6 +298,8 @@ describe("the lead answers a question", () => {
     expect(askOf((await s.cards())[0])?.lead).toEqual({ agentId: s.lead.id, name: "Lia" })
     expect(await s.waiting()).toEqual([])
     expect(s.t.shell.notices).toHaveLength(0)
+    // The part shows as running, so the board shows "Working" and not "Needs you" (spec 024).
+    expect((await s.tasks()).find((x) => x.parentId !== null)?.state).toBe("running")
     await s.finished()
     const [card] = await s.cards()
     expect(card).toMatchObject({
@@ -343,6 +357,39 @@ describe("the lead answers a question", () => {
     // The plan (7 and 3), the look (111 and 22) and the summary (7 and 3).
     expect(lead?.usage.input).toBe(7 + 111 + 7)
     expect(lead?.usage.output).toBe(3 + 22 + 3)
+  })
+
+  test("the look uses one slot while it runs: another task waits behind it (spec 005)", async () => {
+    script.look = '{"action":"answer","choice":1,"reason":"r"}'
+    script.lookDelay = 500
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ agentsAtOnce: 1 })))
+    await s.send("split sizes")
+    await until(async () => askOf((await s.cards())[0])?.lead !== undefined)
+    // The member waits and uses no slot; the look of the lead has the only slot.
+    const other = await s.run(
+      Tasks.use((x) =>
+        x.create({ agentId: s.cy.id, prompt: "other", source: "chat", sourceId: s.cy.id }),
+      ),
+    )
+    const order: string[] = []
+    const otherRun = s.run(
+      Tasks.use((x) =>
+        x.run(
+          other.id,
+          s.cy.id,
+          Effect.sync(() => order.push("other")),
+        ),
+      ),
+    )
+    await Bun.sleep(200)
+    expect(order).toEqual([])
+    expect((await s.tasks()).find((x) => x.id === other.id)?.state).toBe("queued")
+    // The look ends, the slot frees, and the task goes on.
+    await otherRun
+    expect(order).toEqual(["other"])
+    await s.finished()
+    expect((await s.cards())[0]).toMatchObject({ state: "done", answeredByLead: { name: "Lia" } })
   })
 
   test("the task view of the part lists its questions, with who answered each one", async () => {
@@ -404,6 +451,8 @@ describe("the lead passes a question", () => {
       reason: "A matter of taste.",
     })
     expect(card?.state).toBe("waiting")
+    // From the pass on, the part waits for the user (spec 024: "Needs you").
+    expect((await s.tasks()).find((x) => x.parentId !== null)?.state).toBe("waiting")
     const waiting = await s.waiting()
     expect(waiting[0]).toMatchObject({ kind: "question", agentId: s.bo.id })
     expect(s.t.shell.notices).toHaveLength(1)
@@ -560,6 +609,50 @@ describe("which questions go to the lead", () => {
     await s.finished()
     expect(lookRequests).toHaveLength(6)
     expect(await s.waiting()).toEqual([])
+  })
+
+  test("a nudge of the lead is a new part: the lead answers 3 questions again", async () => {
+    script.look = '{"action":"answer","choice":1,"reason":"Yes."}'
+    // The check nudges the part once; the nudge asks 3 questions of its own.
+    script.checks = [
+      '{"verdicts":[{"part":1,"verdict":"not_met","reason":"Short."}],"action":"nudge","part":1,"instruction":"ASK 3 again"}',
+    ]
+    const s = await setup({ prompt: "ASK 3 sizes" })
+    await s.send("split sizes")
+    await s.finished()
+    const parts = (await s.tasks()).filter((x) => x.parentId !== null)
+    expect(parts).toHaveLength(2)
+    expect(lookRequests).toHaveLength(6)
+    expect(await s.waiting()).toEqual([])
+    expect(s.t.shell.notices).toHaveLength(0)
+  })
+
+  test("a Retry of a part is a new part: the lead answers 3 questions again", async () => {
+    script.look = '{"action":"answer","choice":1,"reason":"Yes."}'
+    const s = await setup({ prompt: "ASK 3 sizes BLOCKAFTER" })
+    await s.send("split sizes")
+    await s.finished()
+    const part = (await s.tasks()).find((x) => x.parentId !== null)
+    expect(part?.state).toBe("blocked")
+    expect(lookRequests).toHaveLength(3)
+    await s.run(Tasks.use((x) => x.retry(part?.id ?? "")))
+    await s.finished()
+    expect(lookRequests).toHaveLength(6)
+    expect(await s.waiting()).toEqual([])
+  })
+
+  test("a reply to @all is no part: the question goes to the user", async () => {
+    const s = await setup()
+    await s.send("@all ASK 1 sizes")
+    // Every member answers; the members that ask put a card to the user each.
+    await until(async () => (await s.waiting()).length >= 1)
+    expect(lookRequests).toHaveLength(0)
+    const asks = (await s.history())
+      .flatMap((m) => m.parts)
+      .filter((p) => p.kind === "tool" && p.ask?.kind === "question")
+    for (const card of asks) expect(card.kind === "tool" && askOf(card)?.lead).toBeUndefined()
+    await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
+    await s.finished()
   })
 
   test("a part whose turn holds outside content sends the question to the user at once", async () => {
