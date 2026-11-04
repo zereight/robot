@@ -408,6 +408,7 @@ export const en = {
   "backup.until": "Backup until {time}",
   "backup.useMain": "Use {model} now",
   "backup.header": "Backup model {model}",
+  "chat.note.keptGoing": "Kept going ({n} of {of})",
   "chat.note.backupGoesOn": "{main} reached its limit. {backup} goes on.",
   "chat.note.backupGoesOnUntil":
     "{main} reached its limit. {backup} goes on. The limit resets at {time}.",
@@ -505,6 +506,9 @@ export const en = {
   "threads.busy.waiting": "A task of this thread waits for you.",
   "threads.busy.queued": "A task of this thread waits in the queue.",
   "threads.busy.messages": "Messages of this thread wait in the message queue.",
+  "settings.keepGoing": "Keep going on open steps",
+  "settings.keepGoing.hint":
+    "When an agent ends a turn and its list of steps has steps that are not done, ROBot asks it to go on, up to 8 times for one request. This works for agents whose program reports a list of steps.",
   "settings.autoCompact": "Compact long chats automatically",
   "settings.autoCompact.hint":
     "Before a turn, a chat that uses 85 percent of the context of the model, or 400000 tokens, gets a summary of its older part.",

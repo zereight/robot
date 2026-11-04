@@ -139,6 +139,18 @@ const BackupGoesOnLine = (props: {
   )
 }
 
+/** The muted line "Kept going (1 of 8)" (spec 005, "Keep going"; 003). */
+const KeptGoingLine = (props: {
+  part: Extract<MessagePart, { kind: "note"; note: "kept_going" }>
+}) => {
+  const { t } = useApp()
+  return (
+    <p class={styles.compactFailed} data-testid="kept-going-line">
+      {t("chat.note.keptGoing", { n: props.part.n, of: props.part.of })}
+    </p>
+  )
+}
+
 /** The line "Compacted". The user opens it to read the summary (spec 003, "Compact"). */
 const CompactedLine = (props: { part: Extract<MessagePart, { kind: "compacted" }> }) => {
   const { t } = useApp()
@@ -1151,6 +1163,7 @@ const NoteLine = (props: { message: ChatMessage }) => {
     if (part.note === "connection_down") return t("chat.note.connectionDown", { name: part.name })
     if (part.note === "connection_held") return t("chat.note.connectionHeld", { name: part.name })
     if (part.note === "backup_goes_on") return backupWords(app, part)
+    if (part.note === "kept_going") return t("chat.note.keptGoing", { n: part.n, of: part.of })
     return t(`starters.note.${part.what}.${part.why}` as MessageKey, {
       name: part.name,
       n: part.what === "routine" ? ROUTINES_MAX : SKILLS_MAX,
@@ -1384,6 +1397,15 @@ const FullMessageRow = (props: MessageRowProps) => {
                         part={
                           note() as Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }>
                         }
+                      />
+                    )}
+                  </Match>
+                  <Match
+                    when={part.kind === "note" && part.note === "kept_going" ? part : undefined}
+                  >
+                    {(note) => (
+                      <KeptGoingLine
+                        part={note() as Extract<MessagePart, { kind: "note"; note: "kept_going" }>}
                       />
                     )}
                   </Match>

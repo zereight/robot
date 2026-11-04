@@ -326,6 +326,67 @@ async function turn(content) {
       },
     })
     delta(allowed ? "It ran." : "It was denied.")
+  } else if (/PLAN:(\w+)/.test(prompt)) {
+    // The program reports a list of steps (the tool TodoWrite) and ends its turn (spec 006, 005).
+    // The scenario is named in the message:
+    //   close    the first turn leaves two steps open; a turn that is asked to go on closes both
+    //   same     every turn leaves the same two steps open
+    //   grow     every turn leaves one more step open than the turn before
+    //   blocked  two steps stay open and the last line is "Blocked: no access"
+    //   ask      one step stays open and the reply asks a question; a turn asked to go on closes it
+    //   doneask  every step is done and the reply asks a question
+    // The chat so far is in the prompt, so the newest mention of a scenario is the one that counts.
+    const scenario = [...prompt.matchAll(/PLAN:(\w+)/g)].at(-1)[1]
+    // A turn that the app asks to go on carries the message of "Keep going".
+    const goesOn = prompt.includes("list of steps still has steps that are not done")
+    // The earlier turns of this reply left their TodoWrite cards in the steps so far.
+    const k = (prompt.match(/^- TodoWrite/gm) ?? []).length + 1
+    const step = (content, status) => ({ content, status, activeForm: content })
+    const todo = (steps) => {
+      const id = `toolu_todo_${process.pid}`
+      out({
+        type: "assistant",
+        message: {
+          content: [{ type: "tool_use", id, name: "TodoWrite", input: { todos: steps } }],
+        },
+      })
+      out({
+        type: "user",
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: id, is_error: false, content: "Todos updated." },
+          ],
+        },
+      })
+    }
+    const open = [step("Fix the bug", "in_progress"), step("Run the suite", "pending")]
+    if (scenario === "close") {
+      if (goesOn) todo([step("Fix the bug", "completed"), step("Run the suite", "completed")])
+      else todo(open)
+      delta(goesOn ? "Both steps are done." : "I fixed part of it.")
+    } else if (scenario === "same") {
+      todo(open)
+      delta(`Turn ${k} ended.`)
+    } else if (scenario === "grow") {
+      todo(Array.from({ length: k }, (_, i) => step(`Step ${i + 1}`, "pending")))
+      delta(`Turn ${k} ended.`)
+    } else if (scenario === "blocked") {
+      todo(open)
+      delta("I cannot go on.\nBlocked: no access")
+    } else if (scenario === "ask") {
+      if (goesOn) {
+        todo([step("Fix the bug", "completed")])
+        delta("I used the answer and finished.")
+      } else {
+        todo([step("Fix the bug", "pending")])
+        delta("Shall I continue?")
+      }
+    } else if (scenario === "doneask") {
+      todo([step("Fix the bug", "completed")])
+      delta("Shall I continue?")
+    } else {
+      delta("Unknown scenario.")
+    }
   } else {
     // The text of the last message of the user, without its label and without the notes.
     const last = (blocks.at(-1) ?? "")

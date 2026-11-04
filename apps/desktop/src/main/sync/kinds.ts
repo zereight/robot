@@ -359,6 +359,9 @@ const partCheck = (v: unknown): boolean => {
           str(600, 1)(v.backup) &&
           nullable(int)(v.until)
         )
+      // The muted line "Kept going (1 of 8)" travels with the two numbers (spec 005, 019).
+      if (v.note === "kept_going")
+        return shape(["kind", "note", "n", "of"])(v) && int(v.n) && int(v.of)
       // The muted lines "The connection NAME is not available." and "Tools of the connection NAME wait
       // for your review." travel with the name (spec 018).
       if (v.note === "connection_down" || v.note === "connection_held")
