@@ -7,15 +7,22 @@ import {
   type Face,
   nameKey,
 } from "./agents.ts"
+import { CHANNEL_NAME_MAX, CHANNEL_TOPIC_MAX } from "./channels.ts"
+import { CHANNEL_INSTRUCTIONS_MAX, HANDBOOK_MAX } from "./handbook.ts"
 import type { NotImported } from "./importReview.ts"
 import { ROUTINE_NAME_MAX, ROUTINE_PROMPT_MAX } from "./routines.ts"
 import { type Schedule, validSchedule } from "./schedule.ts"
+import { SKILLS_MAX, skillName, skillNameKey, skillProblems } from "./skills.ts"
 
 /** The value of the `format` field. It tells an agent file from other JSON files. */
 export const AGENT_FILE_FORMAT = "robot-agents"
-/** The format version that this app writes and reads. */
-export const AGENT_FILE_VERSION = 1
+/** The format version that this app writes. It reads this version and version 1. */
+export const AGENT_FILE_VERSION = 2
 export const AGENT_FILE_MAX_AGENTS = 40
+/** A file holds at most this many channels (version 2). */
+export const AGENT_FILE_MAX_CHANNELS = 40
+/** A file holds at most this many skills (version 2): the limit of skills of a server. */
+export const AGENT_FILE_MAX_SKILLS = SKILLS_MAX
 export const AGENT_FILE_MAX_BYTES = 10 * 1024 * 1024
 
 export interface AgentFileRoutine {
@@ -33,8 +40,41 @@ export interface AgentFileAgent {
   readonly routines: readonly AgentFileRoutine[]
 }
 
+/**
+ * A channel of a version 2 file, as it is read. The members and the lead are the places of agents
+ * in the `agents` list of the file (the file gives their names).
+ */
+export interface AgentFileChannel {
+  readonly name: string
+  readonly topic: string
+  readonly instructions: string
+  /** "Review parts" of the channel (spec 004). */
+  readonly reviewParts: boolean
+  /** Places in the `agents` list, in the order of the file. At least one. */
+  readonly members: readonly number[]
+  /** A place in the `agents` list. One of the members, or null. */
+  readonly lead: number | null
+}
+
+/** A skill of a version 2 file, as it is read. `agents` are places in the `agents` list. */
+export interface AgentFileSkill {
+  readonly name: string
+  readonly description: string
+  readonly instructions: string
+  /** The agents of the file that may use the skill. At least one. */
+  readonly agents: readonly number[]
+}
+
 export interface AgentFile {
+  /** The format version of the file: 1 or 2. */
+  readonly version: number
   readonly agents: readonly AgentFileAgent[]
+  /** Always empty for version 1. */
+  readonly channels: readonly AgentFileChannel[]
+  /** Always empty for version 1. */
+  readonly skills: readonly AgentFileSkill[]
+  /** The handbook. "" when the file holds none, and always for version 1. */
+  readonly handbook: string
 }
 
 /** Why a file is refused. `detail` is a path in the file, a name, or a number: never prose. */
@@ -45,6 +85,11 @@ export type AgentFileErrorCode =
   | "agent_file_too_many"
   | "agent_file_empty"
   | "agent_file_duplicate"
+  | "agent_file_too_many_channels"
+  | "agent_file_too_many_skills"
+  | "agent_file_duplicate_channel"
+  | "agent_file_duplicate_skill"
+  | "agent_file_member"
   | "agent_file_field"
   | "agent_file_name_length"
   | "agent_file_role_length"
@@ -163,10 +208,129 @@ const readAgent = (value: unknown, path: string): Step<AgentFileAgent> => {
   }
 }
 
+/** The place in the `agents` list of the agent that a name tells, or -1. */
+const placeOf = (keys: readonly string[], name: unknown): number =>
+  typeof name === "string" ? keys.indexOf(nameKey(name)) : -1
+
+/** A list of names of agents of the file, as places in the list. Repeats count once. */
+const readAgentNames = (
+  value: unknown,
+  keys: readonly string[],
+  path: string,
+): Step<readonly number[]> => {
+  if (!Array.isArray(value)) return fail("agent_file_field", path)
+  const places: number[] = []
+  for (const [k, entry] of value.entries()) {
+    if (typeof entry !== "string") return fail("agent_file_field", `${path}[${k}]`)
+    const place = placeOf(keys, entry)
+    if (place < 0) return fail("agent_file_member", `${path}[${k}]`)
+    if (!places.includes(place)) places.push(place)
+  }
+  if (places.length === 0) return fail("agent_file_field", path)
+  return { ok: true, value: places }
+}
+
+const readChannel = (
+  value: unknown,
+  path: string,
+  keys: readonly string[],
+): Step<AgentFileChannel> => {
+  if (!isObject(value)) return fail("agent_file_field", path)
+  const { name, topic, instructions, reviewParts, members, lead } = value
+  if (
+    typeof name !== "string" ||
+    charLength(name.trim()) < 1 ||
+    charLength(name.trim()) > CHANNEL_NAME_MAX
+  )
+    return fail("agent_file_field", `${path}.name`)
+  if (
+    topic !== undefined &&
+    (typeof topic !== "string" || charLength(topic.trim()) > CHANNEL_TOPIC_MAX)
+  )
+    return fail("agent_file_field", `${path}.topic`)
+  if (
+    instructions !== undefined &&
+    (typeof instructions !== "string" || charLength(instructions) > CHANNEL_INSTRUCTIONS_MAX)
+  )
+    return fail("agent_file_field", `${path}.instructions`)
+  if (reviewParts !== undefined && typeof reviewParts !== "boolean")
+    return fail("agent_file_field", `${path}.reviewParts`)
+  const readMembers = readAgentNames(members, keys, `${path}.members`)
+  if (!readMembers.ok) return readMembers
+  let readLead: number | null = null
+  if (lead !== undefined && lead !== null) {
+    readLead = placeOf(keys, lead)
+    if (readLead < 0) return fail("agent_file_member", `${path}.lead`)
+    // The lead is one of the members (spec 004).
+    if (!readMembers.value.includes(readLead)) return fail("agent_file_field", `${path}.lead`)
+  }
+  return {
+    ok: true,
+    value: {
+      name: name.trim(),
+      topic: typeof topic === "string" ? topic.trim() : "",
+      instructions: typeof instructions === "string" ? instructions : "",
+      reviewParts: reviewParts === true,
+      members: readMembers.value,
+      lead: readLead,
+    },
+  }
+}
+
+const readSkill = (value: unknown, path: string, keys: readonly string[]): Step<AgentFileSkill> => {
+  if (!isObject(value)) return fail("agent_file_field", path)
+  const { name, description, instructions } = value
+  if (typeof name !== "string") return fail("agent_file_field", `${path}.name`)
+  if (description !== undefined && typeof description !== "string")
+    return fail("agent_file_field", `${path}.description`)
+  if (typeof instructions !== "string") return fail("agent_file_field", `${path}.instructions`)
+  // The limits of the skill form (spec 017) are the limits of the file.
+  const problem = skillProblems({
+    name,
+    description: description ?? "",
+    instructions,
+  })[0]
+  if (problem) return fail("agent_file_field", `${path}.${problem.field}`)
+  const readAgents = readAgentNames(value.agents, keys, `${path}.agents`)
+  if (!readAgents.ok) return readAgents
+  return {
+    ok: true,
+    value: {
+      name: skillName(name),
+      description: (description ?? "").trim(),
+      instructions,
+      agents: readAgents.value,
+    },
+  }
+}
+
+/** Reads a list of a file that is absent or an array, with a limit on its length. */
+const readList = <T>(
+  root: Json,
+  field: "channels" | "skills",
+  limit: number,
+  tooMany: AgentFileErrorCode,
+  readOne: (value: unknown, path: string) => Step<T>,
+): Step<T[]> => {
+  const list = root[field]
+  if (list === undefined) return { ok: true, value: [] }
+  if (!Array.isArray(list)) return fail("agent_file_field", field)
+  if (list.length > limit) return fail(tooMany, String(list.length))
+  const out: T[] = []
+  for (const [i, entry] of list.entries()) {
+    const step = readOne(entry, `${field}[${i}]`)
+    if (!step.ok) return step
+    out.push(step.value)
+  }
+  return { ok: true, value: out }
+}
+
 /**
- * Reads the text of an agent file. Fields that the format does not define are ignored, so a
- * file can never carry a model, a folder or a permission into the app. The size of the file is
- * checked by the caller, before it reads the file (see `AGENT_FILE_MAX_BYTES`).
+ * Reads the text of an agent file, version 1 or 2. Fields that the format does not define are
+ * ignored, so a file can never carry a model, a folder or a permission into the app. The fields
+ * `channels`, `skills` and `handbook` belong to version 2: in a file of version 1 they are not
+ * defined, so they are ignored too. The size of the file is checked by the caller, before it
+ * reads the file (see `AGENT_FILE_MAX_BYTES`).
  */
 export const parseAgentFile = (text: string): AgentFileParse => {
   let root: unknown
@@ -192,11 +356,95 @@ export const parseAgentFile = (text: string): AgentFileParse => {
     seen.add(key)
     agents.push(step.value)
   }
-  return { ok: true, file: { agents } }
+  const version = root.version
+  if (version < 2)
+    return { ok: true, file: { version, agents, channels: [], skills: [], handbook: "" } }
+
+  const keys = agents.map((a) => nameKey(a.name))
+  const channels = readList(
+    root,
+    "channels",
+    AGENT_FILE_MAX_CHANNELS,
+    "agent_file_too_many_channels",
+    (value, path) => readChannel(value, path, keys),
+  )
+  if (!channels.ok) return channels
+  const skills = readList(
+    root,
+    "skills",
+    AGENT_FILE_MAX_SKILLS,
+    "agent_file_too_many_skills",
+    (value, path) => readSkill(value, path, keys),
+  )
+  if (!skills.ok) return skills
+  // A file may not hold two channels, or two skills, of one name (as for agents).
+  const channelKeys = new Set<string>()
+  for (const channel of channels.value) {
+    const key = channelNameKey(channel.name)
+    if (channelKeys.has(key)) return fail("agent_file_duplicate_channel", channel.name)
+    channelKeys.add(key)
+  }
+  const skillKeys = new Set<string>()
+  for (const skill of skills.value) {
+    const key = skillNameKey(skill.name)
+    if (skillKeys.has(key)) return fail("agent_file_duplicate_skill", skill.name)
+    skillKeys.add(key)
+  }
+  const handbook = root.handbook
+  if (
+    handbook !== undefined &&
+    handbook !== null &&
+    (typeof handbook !== "string" || charLength(handbook) > HANDBOOK_MAX)
+  )
+    return fail("agent_file_field", "handbook")
+  return {
+    ok: true,
+    file: {
+      version,
+      agents,
+      channels: channels.value,
+      skills: skills.value,
+      handbook: typeof handbook === "string" ? handbook : "",
+    },
+  }
 }
 
-/** The text of an agent file for these agents. Two spaces of indent, a newline at the end. */
-export const writeAgentFile = (agents: readonly AgentFileAgent[]): string =>
+/** The key that makes channel names unique on a server: case does not count. */
+export const channelNameKey = (name: string) => name.trim().normalize("NFC").toLocaleLowerCase()
+
+/** A channel to write. The members and the lead are names of agents that the file holds. */
+export interface AgentFileChannelOut {
+  readonly name: string
+  readonly topic: string
+  readonly instructions: string
+  readonly reviewParts: boolean
+  readonly members: readonly string[]
+  readonly lead: string | null
+}
+
+/** A skill to write. `agents` are names of agents that the file holds. */
+export interface AgentFileSkillOut {
+  readonly name: string
+  readonly description: string
+  readonly instructions: string
+  readonly agents: readonly string[]
+}
+
+/** The parts that a file holds besides its agents. A part that is absent is not written. */
+export interface AgentFileParts {
+  readonly channels?: readonly AgentFileChannelOut[]
+  readonly skills?: readonly AgentFileSkillOut[]
+  readonly handbook?: string
+}
+
+/**
+ * The text of an agent file for these agents, in format version 2. Two spaces of indent, a
+ * newline at the end. `parts` adds the channels, the skills and the handbook (spec 002).
+ */
+export const writeAgentFile = (
+  agents: readonly AgentFileAgent[],
+  parts: AgentFileParts = {},
+): string =>
   `${JSON.stringify(
     {
       format: AGENT_FILE_FORMAT,
@@ -212,6 +460,29 @@ export const writeAgentFile = (agents: readonly AgentFileAgent[]): string =>
           schedule: r.schedule,
         })),
       })),
+      ...(parts.channels
+        ? {
+            channels: parts.channels.map((c) => ({
+              name: c.name,
+              topic: c.topic,
+              instructions: c.instructions,
+              reviewParts: c.reviewParts,
+              members: c.members,
+              lead: c.lead,
+            })),
+          }
+        : {}),
+      ...(parts.skills
+        ? {
+            skills: parts.skills.map((k) => ({
+              name: k.name,
+              description: k.description,
+              instructions: k.instructions,
+              agents: k.agents,
+            })),
+          }
+        : {}),
+      ...(parts.handbook !== undefined ? { handbook: parts.handbook } : {}),
     },
     null,
     2,
@@ -245,12 +516,13 @@ export const planNames = (
   names: readonly string[],
   existing: Iterable<string>,
   max = AGENT_NAME_MAX,
+  key: (name: string) => string = nameKey,
 ): string[] => {
   const used = new Set<string>()
-  for (const name of existing) used.add(nameKey(name))
+  for (const name of existing) used.add(key(name))
   return names.map((name) => {
-    const planned = numberedName(name, (candidate) => used.has(nameKey(candidate)), max)
-    used.add(nameKey(planned))
+    const planned = numberedName(name, (candidate) => used.has(key(candidate)), max)
+    used.add(key(planned))
     return planned
   })
 }
@@ -282,23 +554,92 @@ export interface AgentFilePreviewItem {
   readonly routines: readonly AgentFilePreviewRoutine[]
 }
 
+/** A channel of the file in the review (spec 014). */
+export interface AgentFilePreviewChannel {
+  /** The name that the new channel gets. */
+  readonly name: string
+  /** The name in the file, when the new channel gets another one. */
+  readonly fileName: string | null
+  readonly topic: string
+  readonly reviewParts: boolean
+  /** The agents of the file that it needs, as places in `agents`. */
+  readonly members: readonly number[]
+  /** A place in `agents`, or null. */
+  readonly lead: number | null
+  /** The length in characters of its instructions. 0: it has none. */
+  readonly instructionsLength: number
+  /** True when the app hid a secret in it. It starts not ticked. */
+  readonly secretRemoved: boolean
+}
+
+/** A skill of the file in the review (spec 014). */
+export interface AgentFilePreviewSkill {
+  /** The name that the new skill gets. */
+  readonly name: string
+  /** The name in the file, when the new skill gets another one. */
+  readonly fileName: string | null
+  readonly description: string
+  /** The agents of the file that may use it, as places in `agents`. */
+  readonly agents: readonly number[]
+  /** The length in characters of its instructions. */
+  readonly instructionsLength: number
+  /** True when the app hid a secret in it. It starts not ticked. */
+  readonly secretRemoved: boolean
+}
+
+/** The handbook of the file in the review. The text is the one the import would save. */
+export interface AgentFilePreviewHandbook {
+  readonly text: string
+  readonly length: number
+  readonly secretRemoved: boolean
+}
+
 export interface AgentFilePreview {
+  /** The format version of the file. */
+  readonly version: number
   readonly agents: readonly AgentFilePreviewItem[]
+  /** Empty for a file of version 1, or a file with no channel. */
+  readonly channels: readonly AgentFilePreviewChannel[]
+  readonly skills: readonly AgentFilePreviewSkill[]
+  /** Null when the file holds no handbook. */
+  readonly handbook: AgentFilePreviewHandbook | null
+  /** How many more skills this server can hold (the limit is 100, spec 017). */
+  readonly skillRoom: number
   /** What the file holds that the import does not make, with the reason. */
   readonly notImported: readonly NotImported[]
+}
+
+/** What an export wrote. `path` is null when the user cancelled. */
+export interface AgentFileExported {
+  readonly path: string | null
+  /** The number of agents. */
+  readonly count: number
+  readonly channels: number
+  readonly skills: number
+  /** True when the file holds the handbook. */
+  readonly handbook: boolean
 }
 
 export interface AgentFileImported {
   readonly agents: number
   readonly routines: number
+  readonly channels: number
+  readonly skills: number
+  /** True when the handbook of the server was replaced. */
+  readonly handbook: boolean
 }
 
 /** The detail of the error `agent_file_failed`, as JSON text. */
 export interface AgentFileFailure {
-  /** The agent that could not be made. */
+  /** The part that could not be made: an agent (the default), a channel, a skill or the handbook. */
+  readonly kind?: "agent" | "channel" | "skill" | "handbook"
+  /** The name of the part that could not be made. Empty for the handbook. */
   readonly name: string
   /** How many agents were made before it. They stay. */
   readonly made: number
+  /** How many channels and skills were made before it. They stay too. */
+  readonly madeChannels?: number
+  readonly madeSkills?: number
   readonly code: string
   readonly detail: string | null
 }

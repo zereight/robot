@@ -94,6 +94,18 @@ export interface SkillsService {
     input: SkillInput,
     options?: { readonly numbered?: boolean },
   ): Effect.Effect<Skill, AppError>
+  /**
+   * Makes a skill from a file of agents (spec 002, "Agent file"; spec 017): for these agents only,
+   * and turned off, so that the user reads its instructions first. A name that is taken gets a
+   * number. The checks of the skill form apply, and so does the limit of 100 skills.
+   */
+  createImported(
+    serverId: string,
+    input: SkillInput,
+    agentIds: readonly string[],
+  ): Effect.Effect<Skill, AppError>
+  /** How many more skills a server can hold (the limit is 100). */
+  room(serverId: string): Effect.Effect<number>
   /** A skill that the agent may use now: it exists, it is on, and it is for this agent. */
   usable(agentId: string, skillId: string): Effect.Effect<Skill, AppError>
   /**
@@ -301,6 +313,29 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
             const serverId = serverOf(agentId)
             if (!serverId) return yield* new AppError({ code: "agent_not_found" })
             return yield* insert(serverId, input, [agentId], options)
+          }),
+        createImported: (serverId, input, agentIds) =>
+          Effect.gen(function* () {
+            if (!db.get("SELECT 1 FROM server WHERE id = ?", serverId))
+              return yield* new AppError({ code: "server_not_found" })
+            const unique = [...new Set(agentIds)]
+            const known = unique.filter((id) =>
+              db.get(
+                "SELECT 1 FROM agent WHERE id = ? AND server_id = ? AND archived_at IS NULL",
+                id,
+                serverId,
+              ),
+            )
+            if (unique.length === 0 || known.length !== unique.length)
+              return yield* new AppError({ code: "skill_agents_invalid", detail: "agents" })
+            return yield* insert(serverId, input, known, { numbered: true, enabled: false })
+          }),
+        room: (serverId) =>
+          Effect.sync(() => {
+            const count =
+              db.get<{ n: number }>("SELECT COUNT(*) AS n FROM skill WHERE server_id = ?", serverId)
+                ?.n ?? 0
+            return Math.max(0, SKILLS_MAX - count)
           }),
         usable: (agentId, skillId) =>
           Effect.gen(function* () {

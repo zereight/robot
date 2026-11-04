@@ -1677,12 +1677,40 @@ export const en = {
   "agentFile.export.limit": "A file holds at most 40 agents.",
   "agentFile.export.submit": "Export…",
   "agentFile.exported": "Saved {count} agents to {path}",
+  "agentFile.exported.team":
+    "Saved {count} agents, {channels} channels and {skills} skills to {path}",
+  "agentFile.exported.handbook": "The file holds the handbook.",
+  "agentFile.export.team.title": "Add to the file",
+  "agentFile.export.team.channels": "Channels of these agents",
+  "agentFile.export.team.channels.hint":
+    "A channel whose members are all picked. ROBot saves its name, topic, instructions, “Review parts”, members and lead. It saves no message.",
+  "agentFile.export.team.skills": "Skills of these agents",
+  "agentFile.export.team.skills.hint":
+    "Each skill that a picked agent may use, also a skill for all agents. ROBot saves its name, instructions and agents. An imported skill is off.",
+  "agentFile.export.team.handbook": "Handbook",
+  "agentFile.export.team.handbook.hint":
+    "The text that all agents read. An import replaces the handbook only when the user ticks it.",
+  "agentFile.export.team.handbook.empty": "The handbook is empty.",
+  "agentFile.export.team.found": "{count} found",
+  "agentFile.export.limit.channels": "A file holds at most 40 channels. Pick fewer agents.",
+  "agentFile.export.limit.skills": "A file holds at most 100 skills. Pick fewer agents.",
   "agentFile.import.title": "Import agents",
   "agentFile.import.renamed": "Name in the file: {name}",
   "agentFile.import.model": "Model for all of these agents",
   "agentFile.import.submit": "Import {count} agents",
+  "agentFile.import.submitTeam": "Import",
   "agentFile.import.stopped":
     "The import stopped at {name}. {made} agents were made and stay. Reason: {reason}",
+  "agentFile.import.stopped.channel":
+    "The import stopped at the channel “{name}”. {made} agents and {channels} channels were made and stay. Reason: {reason}",
+  "agentFile.import.stopped.skill":
+    "The import stopped at the skill “{name}”. {made} agents, {channels} channels and {skills} skills were made and stay. Reason: {reason}",
+  "agentFile.import.stopped.handbook":
+    "The import stopped at the handbook. {made} agents, {channels} channels and {skills} skills were made and stay. Reason: {reason}",
+  "agentFile.imported": "Imported {agents} agents, {routines} routines (paused).",
+  "agentFile.imported.team":
+    "Imported {agents} agents, {routines} routines (paused), {channels} channels and {skills} skills (off).",
+  "agentFile.imported.handbook": "The handbook was replaced.",
   "importReview.agents.intro":
     "Tick the parts to import. ROBot makes new agents only. It does not change an agent that exists.",
   "importReview.workflows.intro":
@@ -1704,6 +1732,30 @@ export const en = {
   "importReview.counts.agents": "ROBot will make {agents} agents, {routines} routines (paused).",
   "importReview.counts.workflows": "ROBot will make {workflows} workflows (off).",
   "importReview.nothing": "Nothing is ticked.",
+  "importReview.team.channels.title": "Channels",
+  "importReview.team.skills.title": "Skills",
+  "importReview.team.handbook.title": "Handbook",
+  "importReview.channel.members": "Members: {names}",
+  "importReview.channel.lead": "Lead: {name}",
+  "importReview.channel.noLead": "No lead",
+  "importReview.channel.reviewParts": "“Review parts” is on",
+  "importReview.channel.needs": "A member that is not ticked is left out of the channel.",
+  "importReview.skill.agents": "For: {names}",
+  "importReview.skill.off": "Starts off. Read its instructions before you turn it on.",
+  "importReview.handbook.replaces":
+    "Replaces the handbook of this server. The old text stays in the handbook history.",
+  "importReview.handbook.length": "Handbook ({count} characters)",
+  "importReview.handbook.showAll": "Show all",
+  "importReview.handbook.showLess": "Show less",
+  "importReview.notImported.channel": "Channel “{owner}”",
+  "importReview.notImported.skill": "Skill “{owner}”",
+  "importReview.reason.channel_no_member": "None of its members is ticked.",
+  "importReview.reason.skill_no_agent": "None of the agents that may use it is ticked.",
+  "importReview.reason.skills_full": "This server has 100 skills, the most it can hold.",
+  "importReview.counts.team":
+    "ROBot will make {agents} agents, {routines} routines (paused), {channels} channels and {skills} skills (off).",
+  "importReview.counts.handbook": "It will replace the handbook.",
+  "importReview.counts.handbookOnly": "ROBot will replace the handbook.",
   "error.import_nothing_picked": "Nothing is ticked. Tick at least one part to import.",
   "checklist.sender": "ROBot",
   "checklist.title": "After the import",
@@ -1717,9 +1769,15 @@ export const en = {
   "checklist.pick": "Pick",
   "checklist.done": "Done",
   "error.agent_file_format": "This file is not an agent file.",
-  "error.agent_file_version": "This file has format version {detail}. This app reads version 1.",
+  "error.agent_file_version":
+    "This file has format version {detail}. This app reads versions 1 and 2.",
   "error.agent_file_too_large": "The file is larger than 10 MB.",
   "error.agent_file_too_many": "A file holds at most 40 agents.",
+  "error.agent_file_too_many_channels": "A file holds at most 40 channels.",
+  "error.agent_file_too_many_skills": "A file holds at most 100 skills.",
+  "error.agent_file_duplicate_channel": "Two channels in the file have the name {detail}.",
+  "error.agent_file_duplicate_skill": "Two skills in the file have the name {detail}.",
+  "error.agent_file_member": "The name at {detail} is not the name of an agent in the file.",
   "error.agent_file_empty": "An agent file needs at least one agent.",
   "error.agent_file_duplicate": "Two agents in the file have the name {detail}.",
   "error.agent_file_field": "The value at {detail} is missing or not valid.",
