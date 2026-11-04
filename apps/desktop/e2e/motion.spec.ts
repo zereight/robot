@@ -143,6 +143,7 @@ test("motion: short, calm, and off with reduce motion", async () => {
     "dialog-out",
     "avatar-in",
     "row-in",
+    "send-in",
     "mark-in",
     "mark-open",
     "panel-out",

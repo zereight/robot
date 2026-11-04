@@ -45,6 +45,14 @@ import { pendingFill, takeFill } from "./fill.ts"
 import { pastedFiles } from "./paste.ts"
 import { threadPart } from "./threads.ts"
 
+/** What the box sends: the chat marks its echo, so it slides up from the box. */
+export interface SendPreview {
+  readonly text: string
+  readonly files: readonly string[]
+  readonly skillName?: string
+  readonly replyTo?: ChatMessage
+}
+
 export interface ComposerProps {
   agent: Agent
   /** The thread that the box writes to (spec 003, "Threads"). Null is the main thread. */
@@ -56,6 +64,10 @@ export interface ComposerProps {
   replyTo: ChatMessage | undefined
   onCancelReply: () => void
   onSent: () => void
+  /** Runs when a send starts, so the chat marks the echo of the message. */
+  onPreview: (preview: SendPreview) => void
+  /** Runs when a send fails and the draft goes back into the box. */
+  onFailed: () => void
   onConnect: () => void
   onChooseModel: () => void
 }
@@ -352,6 +364,13 @@ export const Composer = (props: ComposerProps) => {
     const chip = skill()
     const attached = files()
     if (!value && attached.length === 0 && !chip) return
+    // The chat marks the echo, so it slides up from the box.
+    props.onPreview({
+      text: value,
+      files: [...attached],
+      ...(chip ? { skillName: chip.name } : {}),
+      ...(props.replyTo ? { replyTo: props.replyTo } : {}),
+    })
     // The small pictures stay alive until the send ends, so a failed send can show them again.
     const shown = previews()
     setError(undefined)
@@ -380,6 +399,7 @@ export const Composer = (props: ComposerProps) => {
       if (chip && !skill()) setSkill(chip)
       queueMicrotask(resize)
       setError(describeError(e))
+      props.onFailed()
     }
   }
 
