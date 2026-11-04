@@ -9,7 +9,9 @@ The user gives a job to a group of agents in one place and watches them divide a
 - **Channel**: name (1 to 60 characters), topic (up to 200), instructions (up to 4000 characters,
   empty by default), members (agents), one optional lead agent, the setting "Review parts" (off by
   default), the setting "The lead answers questions" (on by default, see "Questions of members"),
-  the setting "Own copies for parts" (off by default, see 025), and an optional section: a user
+  the setting "Own copies for parts" (off by default, see 025), a parent channel (empty by
+  default), the tools of the channel and a daily token limit (off by default; for these three see
+  030), and an optional section: a user
   section of the Channels list (see 001, "User sections"). With no section, the channel shows in
   the Channels list itself.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
@@ -103,15 +105,21 @@ plan and the channel. Then the user does not need to stop for it.
     direct chat never go to the lead.
   - The channel has a lead that is not archived and not blocked by a usage limit, and the lead is
     not the member that asks.
-  - The turn of the member holds no outside content (007). Outside text can steer a question.
+  - The turn of the member holds no outside content (007). Outside text can steer a question. A
+    part that "Request changes" starts is a part like any other here: it holds outside content only
+    by the rules of 007, and the plan and the replies of other members in the channel do not make
+    it hold some.
   - The lead answered fewer than 3 questions of this part. The part of a nudge, of "Request
     changes" or of a Retry counts as a new part.
 - An approval card never goes to the lead. Only the user answers an approval.
 - **With the lead**: the question card shows in the channel at once, with the line "<lead> looks
   at it" and a spinner. The user can answer the card at any time. The answer of the user wins, and
-  the look of the lead stops. The card is not in "Needs you" (021) and makes no notification
+  the look of the lead stops. When the user turns off the setting while the lead looks, the look
+  stops in the same way: the card becomes a normal question for the user, with no line of the
+  lead, in "Needs you", with the normal notification. The card is not in "Needs you" (021) and makes no notification
   (015) while it is with the lead. The card of the part on the board (024) shows the mark
-  "Working" in that time, not "Needs you".
+  "Working" in that time, not "Needs you". On the Tasks page (005) the task of the part is Running
+  in that time, and it is Waiting for the user from the pass on.
 - **What the lead reads**: the question and its choices, the job message, the plan, the label and
   done test of the part, the channel instructions, the topic, and the last 12 messages of the
   channel, each cut to 600 characters. The lead treats all of that text as data, not as orders.
@@ -122,7 +130,9 @@ plan and the channel. Then the user does not need to stop for it.
      which starts a reply to the answer in the message box with a mention of the member (flow 2).
   2. Pass: the lead gives a reason of up to 160 characters. The card becomes a normal question
      for the user, with the line "<lead>: <reason>". It is in "Needs you" and makes the normal
-     notification of the kind "question" (015).
+     notification of the kind "question" (015). With the setting "Ask up the line" on (030), a
+     pass that is not of the kind "Only the user can choose" goes first to the higher agents of
+     030, "Ask up the line".
 - The lead is told to pass when the question asks for a choice of taste, money, a payment, a
   message or a file that leaves the computer, a deletion, an account, a key or a secret, a fact
   that the channel does not hold, or when it is not sure. It is told to answer the way the user

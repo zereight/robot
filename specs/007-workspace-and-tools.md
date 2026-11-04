@@ -142,9 +142,12 @@ the user gets a card only when the check is sure that the user asked for the ste
 ## Working with other agents
 
 - The tool "list agents" gives the agent a list of the other agents on the server that are not
-  archived: name, role line and state.
+  archived: name, role line and state. With the hand-off rule "Along the channels" (030), it gives
+  only the agents that the sender may send to.
 - The tool "send message" sends a text to one of them. This makes a task for that agent (see 005)
   with the source "another agent". An agent cannot send a message to itself or to an archived agent.
+  With the hand-off rule "Along the channels" (030), a send that the rule does not allow fails with
+  the reason of 030, and no task starts.
 - "Send message" fails when the chain of agent messages is at its limit (see 005, "Limits of a
   task"). The sender gets the reason as a failed step. The main agent is told: when a send fails
   for this reason, do not look for another way to pass the same work on. Tell the user what
@@ -381,7 +384,9 @@ text is in the turn.
   - the result of a tool of a connection (018),
   - the answer of a request with a saved secret (020),
   - the change that starts a routine with a watch trigger (009),
-  - a message from another agent,
+  - a message from another agent (a message that it sends with "send message"; the messages of a
+    channel that a member reads under 004, "What a member reads", are not this, because the mark
+    of a place, below, already follows outside text through a channel),
   - the text that an agent wrote on a card of the board (024),
   - a message of an outside program (023),
   - a message from Teams (028),
