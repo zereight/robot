@@ -16,6 +16,7 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
+import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
@@ -492,6 +493,92 @@ describe("two computers that were apart", () => {
     expect(rowsA[0]).toContain("|Writer|From B, later.")
   })
 
+  test("two computers put a channel under each other while apart: both end with the same tree, and the channel with the later change shows one muted line and no notice (spec 030, Repair)", async () => {
+    const { a, b } = await pair([])
+    const serverA = await localId(a)
+    const make = (name: string) =>
+      run(
+        a,
+        Channels.use((c) =>
+          c.create({ serverId: serverA, name, topic: "", memberIds: [], leadId: null }),
+        ),
+      )
+    const docs = await make("Docs")
+    const site = await make("Site")
+    const tree = async (rt: Rt) => {
+      const id = await localId(rt)
+      const list = await run(
+        rt,
+        Channels.use((c) => c.list(id)),
+      )
+      const name = new Map(list.map((c) => [c.id, c.name]))
+      return list.map((c) => `${c.name}<${c.parentId ? name.get(c.parentId) : "-"}`).sort()
+    }
+    await waitFor(
+      () => tree(b),
+      (x) => x.length === 2,
+    )
+    const linesOf = async (rt: Rt, channelId: string) =>
+      (
+        await run(
+          rt,
+          Channels.use((c) => c.history(channelId)),
+        )
+      ).map((m) => m.parts)
+
+    await apart(a, b)
+    // Each change is right alone. "Docs" under "Site" on the first computer; a little later "Site"
+    // under "Docs" on the second one.
+    await run(
+      a,
+      Channels.use((c) => c.update(docs.id, { parentId: site.id })),
+    )
+    await settle()
+    await run(
+      b,
+      Channels.use((c) => c.update(site.id, { parentId: docs.id })),
+    )
+    await together(a, b)
+
+    // The field of "Site" (the later change) is cleared on both computers, and the tree has no loop.
+    const want = ["Docs<Site", "Site<-"]
+    expect(
+      await waitFor(
+        () => tree(a),
+        (x) => x.join() === want.join(),
+      ),
+    ).toEqual(want)
+    expect(
+      await waitFor(
+        () => tree(b),
+        (x) => x.join() === want.join(),
+      ),
+    ).toEqual(want)
+    // One line in "Site" on both computers: the same row, not a line from each computer.
+    const line = [{ kind: "note", note: "tree_repaired", why: "loop" }] as const
+    for (const rt of [a, b]) {
+      expect(
+        await waitFor(
+          () => linesOf(rt, site.id),
+          (x) => x.length >= 1,
+        ),
+      ).toEqual([line])
+    }
+    await settle()
+    for (const rt of [a, b]) {
+      expect(await linesOf(rt, site.id)).toEqual([line])
+      expect(await linesOf(rt, docs.id)).toEqual([])
+      // A repair makes no notice and no card that waits for the user.
+      expect(rt.shell.notices).toEqual([])
+      expect(
+        await run(
+          rt,
+          Notifier.use((n) => Effect.sync(() => n.island().waiting)),
+        ),
+      ).toEqual([])
+    }
+  })
+
   test("the same memory item edited on both: the newest text stays and the other text is saved as a new item", async () => {
     const { a, b, agents } = await pair()
     const ada = agents[0]
@@ -616,6 +703,106 @@ describe("two computers that were apart", () => {
     expect((await history(a)).map((r) => r.kind)).toEqual(["edited", "added"])
     expect((await history(a))[0]?.undo).toEqual({ on: false, why: "newer" })
     expect((await proposals(b)).length).toBe(0)
+  })
+
+  test("the handbook, the switch and the instructions of a channel cross; when both change the handbook apart, the later text wins and the other stays in the history (spec 002, 019)", async () => {
+    const { a, b, agents } = await pair()
+    const ada = agents[0]
+    const handbook = async (rt: Rt) => {
+      const id = await localId(rt)
+      return run(
+        rt,
+        Handbook.use((h) => h.get(id)),
+      )
+    }
+    const texts = async (rt: Rt) => {
+      const id = await localId(rt)
+      return (
+        await run(
+          rt,
+          Handbook.use((h) => h.history(id)),
+        )
+      ).map((v) => v.text)
+    }
+    const save = async (rt: Rt, text: string) => {
+      const id = await localId(rt)
+      await run(
+        rt,
+        Handbook.use((h) => h.save(id, text, "page")),
+      )
+    }
+
+    // A text that is written on one computer is the handbook of the other, with its history.
+    await save(a, "From A.")
+    expect(
+      (
+        await waitFor(
+          () => handbook(b),
+          (h) => h.text === "From A.",
+        )
+      ).text,
+    ).toBe("From A.")
+    expect(await texts(b)).toEqual(["From A."])
+
+    // The switch of an agent and the instructions of a channel cross as fields.
+    const serverA = await localId(a)
+    await run(
+      a,
+      Agents.use((x) => x.update(ada?.id ?? "", { readHandbook: false })),
+    )
+    await run(
+      a,
+      Channels.use((c) =>
+        c.create({
+          serverId: serverA,
+          name: "Team",
+          topic: "",
+          instructions: "Use lists.",
+          memberIds: [ada?.id ?? ""],
+          leadId: null,
+        }),
+      ),
+    )
+    const serverB = await localId(b)
+    const channelsB = await waitFor(
+      () =>
+        run(
+          b,
+          Channels.use((c) => c.list(serverB)),
+        ),
+      (list) => list.length === 1,
+    )
+    expect(channelsB[0]?.instructions).toBe("Use lists.")
+    const agentB = await waitFor(
+      () =>
+        run(
+          b,
+          Agents.use((x) => x.get(ada?.id ?? "")),
+        ),
+      (x) => x.readHandbook === false,
+    )
+    expect(agentB.readHandbook).toBe(false)
+
+    // Both computers change the handbook while apart: the later change wins on both.
+    await apart(a, b)
+    await save(b, "From B, first.")
+    await new Promise((r) => setTimeout(r, 40))
+    await save(a, "From A, later.")
+    await together(a, b)
+    const both = (t: string[]) => t.length === 3
+    const textsA = await waitFor(() => texts(a), both)
+    const textsB = await waitFor(() => texts(b), both)
+    expect(textsA).toEqual(["From A, later.", "From B, first.", "From A."])
+    expect(textsB).toEqual(textsA)
+    expect((await handbook(a)).text).toBe("From A, later.")
+    expect(
+      (
+        await waitFor(
+          () => handbook(b),
+          (h) => h.text === "From A, later.",
+        )
+      ).text,
+    ).toBe("From A, later.")
   })
 
   test("a name stays unique when both computers give one name to different agents", async () => {

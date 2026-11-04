@@ -16,6 +16,7 @@ import { Database } from "./services/Database.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { Handbook } from "./services/Handbook.ts"
 import { Handover } from "./services/Handover.ts"
 import { Host } from "./services/Host.ts"
 import { KeepAwake } from "./services/KeepAwake.ts"
@@ -127,8 +128,12 @@ export const appLayer = (options: AppLayerOptions) => {
     Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),
     Agents.layer,
   ).pipe(Layer.provideMerge(notifier))
+  // The handbook refuses a text that holds a saved secret, so it comes after them (spec 002, 014).
+  const handbook = Handbook.layer.pipe(Layer.provideMerge(memory))
   // The connections use the rules, to remove the rules of a connection that is removed (spec 018).
-  const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(memory))
+  const connections = Connections.layer(options.connections ?? {}).pipe(
+    Layer.provideMerge(handbook),
+  )
   // The settings tool changes agents, so agents come before the tools (spec 002).
   const agentSettings = AgentSettings.layer.pipe(Layer.provideMerge(connections))
   const knowledge = Knowledge.layer.pipe(Layer.provideMerge(agentSettings))

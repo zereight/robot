@@ -18,6 +18,7 @@ export const SYNC_KINDS = [
   "wrun",
   "wstep",
   "iversion",
+  "hversion",
   "thread",
   "org",
 ] as const

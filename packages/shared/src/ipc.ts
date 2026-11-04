@@ -11,6 +11,7 @@ import type {
 } from "./channels.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
+import type { Handbook, HandbookVersion } from "./handbook.ts"
 import type { HandoverOpen, HandoverState } from "./handover.ts"
 import type { AgentPick, ImportChecklist } from "./importReview.ts"
 import type { KeepAwakeState } from "./keepAwake.ts"
@@ -456,6 +457,17 @@ export interface RpcMethods {
   "channels.stop": { input: { channelId: string }; output: undefined }
   "channels.activity": { input: { channelId: string }; output: ChannelActivity }
   "channels.markRead": { input: { channelId: string }; output: undefined }
+  /**
+   * The handbook of a server (spec 002, "Handbook"). A linked device reads it with no switch; it
+   * changes it only with "Can create and change agents" (spec 012).
+   */
+  "handbook.get": { input: { serverId: string }; output: Handbook }
+  /** The last 20 versions of the handbook, newest first. */
+  "handbook.history": { input: { serverId: string }; output: readonly HandbookVersion[] }
+  /** Saves a text as the handbook. A text that looks like a secret, or is too long, is refused. */
+  "handbook.save": { input: { serverId: string; text: string }; output: Handbook }
+  /** Makes the text of a version the handbook again. The restore is a new version. */
+  "handbook.restore": { input: { serverId: string; versionId: string }; output: Handbook }
   "memory.list": { input: { agentId: string; query?: string }; output: readonly MemoryItem[] }
   "memory.add": { input: { agentId: string; text: string }; output: MemoryItem }
   "memory.update": { input: { id: string; text: string }; output: MemoryItem }
@@ -842,6 +854,8 @@ export interface RpcEvents {
   "runtimes.changed": RuntimeStatus
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
+  /** The handbook of a server was saved or restored, here or by sync or a linked device (spec 002). */
+  "handbook.changed": { serverId: string }
   "actionLog.changed": Record<string, never>
   /** A permission rule was added, changed or deleted, or an agent with rules was deleted. */
   "rules.changed": Record<string, never>

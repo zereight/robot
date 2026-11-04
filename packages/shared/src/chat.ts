@@ -86,6 +86,17 @@ export type MessagePart =
    */
   | { readonly kind: "note"; readonly note: "kept_going"; readonly n: number; readonly of: number }
   /**
+   * The muted line "The parent channel was cleared. The tree would have a loop." (or "... more than
+   * 3 levels.") in the channel whose parent field the app cleared to repair the tree (spec 030,
+   * "Repair"). `why` says what the tree would have had. It makes no notification and has no Undo.
+   * The model never reads it.
+   */
+  | {
+      readonly kind: "note"
+      readonly note: "tree_repaired"
+      readonly why: "loop" | "levels"
+    }
+  /**
    * The muted line "Handed over to <name>" in the chat that the user left (spec 003, "Hand over").
    * It links to the new thread. `toName` is the name that the other agent had then. The model
    * never reads it.

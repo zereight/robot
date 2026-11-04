@@ -1,5 +1,6 @@
 import {
   type Agent,
+  CHANNEL_INSTRUCTIONS_MAX,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
   type Channel,
@@ -32,6 +33,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const channels = useChannels()
   const [name, setName] = createSignal(props.channel?.name ?? "")
   const [topic, setTopic] = createSignal(props.channel?.topic ?? "")
+  const [instructions, setInstructions] = createSignal(props.channel?.instructions ?? "")
   const [members, setMembers] = createSignal<string[]>([...(props.channel?.memberIds ?? [])])
   const [query, setQuery] = createSignal("")
   const [leadId, setLeadId] = createSignal<string | null>(props.channel?.leadId ?? null)
@@ -71,7 +73,8 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const valid = () =>
     charLength(name().trim()) >= 1 &&
     charLength(name().trim()) <= CHANNEL_NAME_MAX &&
-    charLength(topic().trim()) <= CHANNEL_TOPIC_MAX
+    charLength(topic().trim()) <= CHANNEL_TOPIC_MAX &&
+    charLength(instructions()) <= CHANNEL_INSTRUCTIONS_MAX
   // Members that the search hides stay chosen: the choice lives in `members`, not in the list.
   const shown = createMemo(() => filterAgents(agents.agents(), query()))
   const toggle = (agent: Agent) => {
@@ -99,6 +102,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           patch: {
             name: name().trim(),
             topic: topic().trim(),
+            instructions: instructions(),
             memberIds: members(),
             leadId: leadId(),
             // A client cannot set it (spec 012). Turning it off changes no part in review.
@@ -114,6 +118,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           serverId,
           name: name().trim(),
           topic: topic().trim(),
+          instructions: instructions(),
           memberIds: members(),
           leadId: leadId(),
           ...sectionField(),
@@ -291,6 +296,28 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             </For>
           </select>
           <span class={styles.hint}>{t("channels.parent.hint")}</span>
+        </label>
+        <label class={styles.field}>
+          <span class={styles.label}>{t("channels.instructions")}</span>
+          <textarea
+            class={`${styles.input} ${styles.textarea}`}
+            value={instructions()}
+            onInput={(e) => setInstructions(e.currentTarget.value)}
+            aria-invalid={charLength(instructions()) > CHANNEL_INSTRUCTIONS_MAX}
+            data-testid="channel-instructions"
+          />
+          <span class={styles.hint}>
+            {t("channels.instructions.hint")}{" "}
+            <span
+              data-over={charLength(instructions()) > CHANNEL_INSTRUCTIONS_MAX}
+              data-testid="channel-instructions-count"
+            >
+              {t("agents.counter", {
+                used: charLength(instructions()),
+                max: CHANNEL_INSTRUCTIONS_MAX,
+              })}
+            </span>
+          </span>
         </label>
         <Show when={props.channel && !ui.linked()}>
           <div class={styles.field}>

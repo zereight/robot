@@ -1,14 +1,27 @@
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import { expect, type Locator, type Page, test } from "@playwright/test"
 import { freshUserData, type Launched, launch, resizeWindow, shot } from "./harness.ts"
 import { freePortPair } from "./ports.ts"
-import { closeSettings, envFor, openDevices, rpc, setName } from "./sync-helpers.ts"
+import {
+  closeSettings,
+  envFor,
+  openDevices,
+  rpc,
+  setName,
+  synced,
+  turnOnSync,
+} from "./sync-helpers.ts"
 
 // Spec 030, "Channel tree" (S109), with 029 and 012: the field "Parent channel" with its rules
 // (no loop, at most 3 levels), the line "In <parent channel>" in the header, the tree on the org
 // chart (layout, structure lines, focus order), "Put under…" and "Move to the top" with Undo, the
 // drag of a channel node onto a channel node or onto the root, and a linked computer with the
 // switch "Can create and change agents". Sync and export of the field are checked by unit tests
-// (sync/kinds.test.ts, services/Data.test.ts).
+// (sync/kinds.test.ts, services/Data.test.ts), and the repair of a broken tree (030, "Repair") by
+// unit tests too (shared/channelTree.test.ts, sync/channelRepair.test.ts, services/Sync.test.ts).
+// The last test here shows the repair on two computers: the muted line and no notice. The repair of a
+// restore has no screen yet (the archive of a channel is slice S19), so a unit test checks it.
 
 interface ChannelInfo {
   id: string
@@ -170,6 +183,19 @@ test("the channel tree: the field, the header line, the chart, Put under, Move t
     await page.getByTestId("org-undo").click()
     await expect(page.getByTestId("org-notice-text")).toHaveText("Undone.")
     await expect.poll(() => tree(page)).toContain("Site < Docs")
+    // "Docs" is under "Product". Its menu has "Move to the top", and "Put under…" lists the
+    // channels that the tree allows, but not "Product", its parent now (spec 030, "Channel tree"):
+    // that pick would change nothing. "Site" is its own sub-channel, so only "Ops" is left.
+    await page.keyboard.press("Escape")
+    await openMenu(page, channelNode(page, docs.id))
+    await expect(page.getByTestId("org-menu").getByTestId("org-menu-to-top")).toHaveCount(1)
+    await page.getByTestId("org-menu").getByTestId("org-menu-put-under").click()
+    const docsMenu = page.getByTestId("org-menu")
+    await expect(docsMenu.getByTestId(`org-menu-under-${ops.id}`)).toBeVisible()
+    await expect(docsMenu.getByTestId(`org-menu-under-${product.id}`)).toHaveCount(0)
+    await expect(docsMenu.getByTestId(`org-menu-under-${site.id}`)).toHaveCount(0)
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("org-menu")).toHaveCount(0)
     // A top channel has no "Move to the top".
     await page.keyboard.press("Escape")
     await openMenu(page, channelNode(page, ops.id))
@@ -271,5 +297,65 @@ test("a linked computer with the switch Can create and change agents puts a chan
   } finally {
     await one.app.close().catch(() => {})
     await two.app.close().catch(() => {})
+  }
+})
+
+test("sync: two computers put a channel under each other while apart; the later change loses its parent, and the channel shows one muted line and no notice", async () => {
+  test.setTimeout(300_000)
+  const logs = freshUserData()
+  const notified = [join(logs, "one.jsonl"), join(logs, "two.jsonl")] as const
+  const count = (file: string) =>
+    existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).length : 0
+  const env = (file: string) => ({ ROBOT_TEST_NOTIFY_LOG: file, ROBOT_TEST_UNFOCUSED: "1" })
+  const s = await synced(await freePortPair(), [env(notified[0]), env(notified[1])])
+  const { one, two } = s
+  try {
+    const docs = await makeChannel(one.page, "Docs", [])
+    const site = await makeChannel(one.page, "Site", [])
+    await turnOnSync(one, two)
+    await closeSettings(one.page)
+    await closeSettings(two.page)
+    await expect.poll(() => tree(two.page)).toEqual(["Docs", "Site"])
+
+    // Apart: each computer makes a change that is right alone. "Docs" goes under "Site" on MacBook
+    // 1, and a little later "Site" goes under "Docs" on MacBook 2.
+    const linkId = (await rpc<{ linkId: string }[]>(one.page, "sync.list"))[0]?.linkId
+    await rpc(one.page, "sync.pause", { linkId })
+    await expect
+      .poll(async () => (await rpc<{ state: string }[]>(two.page, "sync.list"))[0]?.state, {
+        timeout: 20_000,
+      })
+      .toBe("paused")
+    await rpc(one.page, "channels.update", { id: docs.id, patch: { parentId: site.id } })
+    await two.page.waitForTimeout(60)
+    await rpc(two.page, "channels.update", { id: site.id, patch: { parentId: docs.id } })
+    const before = [count(notified[0]), count(notified[1])]
+    await rpc(one.page, "sync.resume", { linkId })
+
+    // The change of "Site" is the later one: its parent field is cleared on both computers, and the
+    // tree has no loop.
+    await expect.poll(() => tree(one.page), { timeout: 30_000 }).toEqual(["Docs < Site", "Site"])
+    await expect.poll(() => tree(two.page), { timeout: 30_000 }).toEqual(["Docs < Site", "Site"])
+    for (const page of [one.page, two.page]) {
+      await page.getByTestId(`place-channel-${site.id}`).click()
+      await expect(page.getByTestId("channel-header-name")).toHaveText("Site")
+      const noteLine = page.getByTestId("note-line")
+      await expect(noteLine).toHaveCount(1)
+      await expect(noteLine).toContainText(
+        "The parent channel was cleared. The tree would have a loop.",
+      )
+      await page.getByTestId(`place-channel-${docs.id}`).click()
+      await expect(page.getByTestId("channel-header-name")).toHaveText("Docs")
+      await expect(page.getByTestId("note-line")).toHaveCount(0)
+    }
+    await two.page.getByTestId(`place-channel-${site.id}`).click()
+    await shot(two.page, "s109-07-repaired-loop")
+    // The repair makes no notice on either computer.
+    await two.page.waitForTimeout(1000)
+    expect([count(notified[0]), count(notified[1])]).toEqual(before)
+  } finally {
+    await one.app.close().catch(() => {})
+    await two.app.close().catch(() => {})
+    await s.mock.close()
   }
 })

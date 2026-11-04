@@ -33,6 +33,7 @@ import { useClosing } from "../ui/Presence.tsx"
 import { ActionLogSection } from "./ActionLogSection.tsx"
 import { BrowserProfilesSection } from "./BrowserProfilesSection.tsx"
 import { DecisionSection } from "./DecisionSection.tsx"
+import { HandbookSection } from "./HandbookSection.tsx"
 import { OrganizationSection } from "./OrganizationSection.tsx"
 import { RulesSection } from "./RulesSection.tsx"
 import { SavedSecretsSection } from "./SavedSecretsSection.tsx"
@@ -44,6 +45,7 @@ export const sections = [
   "appearance",
   "providers",
   "decision",
+  "handbook",
   "organization",
   "teams",
   "devices",
@@ -546,6 +548,9 @@ export const SettingsPage = (props: {
           </Match>
           <Match when={section() === "decision"}>
             <DecisionSection />
+          </Match>
+          <Match when={section() === "handbook"}>
+            <HandbookSection />
           </Match>
           <Match when={section() === "organization"}>
             <OrganizationSection />

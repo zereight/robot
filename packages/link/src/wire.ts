@@ -154,6 +154,9 @@ export const CLIENT_METHODS = [
   // The hand-off rule of the server (spec 030, 012). A client reads the part "Organization" and
   // never changes it: there is no change request for it, with or without the switch.
   "organization.get",
+  // The handbook of the server (spec 002, 012). A client reads it and its history with no switch.
+  "handbook.get",
+  "handbook.history",
   // Only with the switch "Can create and change agents" (spec 012). Each one checks it again.
   "agents.create",
   "agents.update",
@@ -167,6 +170,9 @@ export const CLIENT_METHODS = [
   "memory.add",
   "memory.update",
   "memory.delete",
+  // Change the handbook (spec 002, 012): save a text, or restore a version.
+  "handbook.save",
+  "handbook.restore",
   "models.available",
   "workflows.create",
   "workflows.update",
@@ -201,6 +207,9 @@ export const CHANGE_METHODS = [
   "memory.add",
   "memory.update",
   "memory.delete",
+  // Change the handbook (spec 002, 012): save a text, or restore a version.
+  "handbook.save",
+  "handbook.restore",
   "models.available",
   "workflows.create",
   "workflows.update",
@@ -227,6 +236,8 @@ export const PUSHED_EVENTS = [
   "notice",
   "revoked",
   "memory.changed",
+  // The handbook of the server changed (spec 002, 012): a client that shows it reads it again.
+  "handbook.changed",
   "workflows.changed",
   "workflows.run",
   // The part "Organization" changed (spec 030, 012): a client that shows it reads it again.

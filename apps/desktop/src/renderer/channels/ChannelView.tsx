@@ -53,6 +53,7 @@ const removedAgent = (name: string): Agent => ({
   name,
   role: "",
   instructions: "",
+  readHandbook: false,
   face: { shape: 0, hue: 5 },
   faceImage: null,
   model: null,

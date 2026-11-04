@@ -64,6 +64,24 @@ const fetchSmall = async (ask: SentPictureAsk): Promise<string | undefined> => {
 const held = new Map<string, Promise<string | undefined>>()
 
 /**
+ * The address of the full-size picture of a file of a message, for the enlarged view. No cache:
+ * the view is transient, and a large photo must not stay in memory. Undefined when the file is
+ * gone, a linked server does not answer, or the window cannot read the bytes as a picture.
+ */
+export const loadFullPicture = async (ask: SentPictureAsk): Promise<string | undefined> => {
+  const type = pictureType(ask.path)
+  if (!type) return undefined
+  try {
+    const bytes = await call("attachments.picture", ask)
+    if (!bytes) return undefined
+    return URL.createObjectURL(new Blob([bytes as BlobPart], { type }))
+  } catch {
+    // The view keeps the small picture.
+    return undefined
+  }
+}
+
+/**
  * The address of the small picture of a file of a message, or undefined when there is none. A
  * second ask for the same file gets the same picture, so a message that leaves the screen and
  * comes back does not load again. A failed ask is not kept, so the next one tries again.

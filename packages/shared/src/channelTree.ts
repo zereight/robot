@@ -26,9 +26,11 @@ export type ParentRefusal =
 /**
  * The parent of each channel in the tree as it is now. A parent is null when the channel has none,
  * when the parent does not exist or is archived, or when the stored data breaks the rules of the
- * tree (two computers can each make a change that is right alone, spec 019): a channel on a loop,
- * and a channel that would be on a fourth level, count as top channels. The result is the same for
- * the same data, in any order.
+ * tree: a channel on a loop, and a channel that would be on a fourth level, count as top channels.
+ * That reading only keeps a window safe for the moment before a repair. The app repairs a broken
+ * tree at once and clears the field (`repairAfterSync`, `repairAfterRestore`, spec 030, "Repair"),
+ * so the stored data does not stay in that state. The result is the same for the same data, in any
+ * order.
  */
 export const treeParents = (channels: readonly TreeChannel[]): Map<string, string | null> => {
   const byId = new Map(channels.map((c) => [c.id, c]))
@@ -170,3 +172,183 @@ export const parentChoices = (
 /** The parent of channel `id` in the tree as it is now, or null for a top channel. */
 export const channelParent = (channels: readonly TreeChannel[], id: string): string | null =>
   treeParents(channels).get(id) ?? null
+
+// ------------------------------------------------------------------------------ repair
+
+/**
+ * The time of a change, in the order that both computers share (spec 019): a larger `l`, then a
+ * larger `c` is later. It is the stamp that sync keeps for each field. `n` is the computer that
+ * made the change: it names the change, but it does not make one change later than another.
+ */
+export interface ChangeTime {
+  readonly l: number
+  readonly c: number
+  readonly n: string
+}
+
+/** What the repair needs of a channel, on top of what the tree needs. */
+export interface RepairChannel extends TreeChannel {
+  /** When the channel was made. */
+  readonly createdAt: number
+  /** When the parent field changed last. Absent counts as the oldest time. */
+  readonly parentChanged?: ChangeTime
+}
+
+/** What the tree would have had: the words of the muted line differ. */
+export type TreeRepairReason = "loop" | "levels"
+
+/** The channel whose parent field the app clears, and why. */
+export interface TreeRepair {
+  readonly id: string
+  readonly reason: TreeRepairReason
+}
+
+const NEVER: ChangeTime = { l: 0, c: 0, n: "" }
+
+const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+
+/**
+ * More than 0 when the parent change of `a` is the later one. Two changes with the same time: the
+ * channel that was made later. Two channels made at the same time: the later id, so that the order
+ * has no tie and both computers choose the same channel (spec 030, "Repair").
+ */
+const laterParentChange = (a: RepairChannel, b: RepairChannel): number => {
+  const x = a.parentChanged ?? NEVER
+  const y = b.parentChanged ?? NEVER
+  return x.l - y.l || x.c - y.c || a.createdAt - b.createdAt || compareText(a.id, b.id)
+}
+
+/** The channels that the tree holds and the parent of each one, with a parent that is no channel here cut. */
+const workingTree = (channels: readonly RepairChannel[]) => {
+  const live = channels.filter((c) => !c.archived)
+  const byId = new Map(live.map((c) => [c.id, c]))
+  const parent = new Map<string, string | null>()
+  for (const c of live)
+    parent.set(c.id, c.parentId !== null && byId.has(c.parentId) ? c.parentId : null)
+  const ids = [...byId.keys()].sort(compareText)
+  return { byId, parent, ids }
+}
+type WorkingTree = ReturnType<typeof workingTree>
+
+/** The channels of the loop that the line up from `start` ends in, or undefined when it ends at a top channel. */
+const loopFrom = (parent: ReadonlyMap<string, string | null>, start: string) => {
+  const seen = new Set<string>()
+  let at: string | null = start
+  while (at !== null && !seen.has(at)) {
+    seen.add(at)
+    at = parent.get(at) ?? null
+  }
+  if (at === null) return undefined
+  const loop = [at]
+  for (
+    let next = parent.get(at) ?? null;
+    next !== null && next !== at;
+    next = parent.get(next) ?? null
+  )
+    loop.push(next)
+  return loop
+}
+
+/** The channel of the group that has the latest parent change. */
+const latest = (tree: WorkingTree, ids: readonly string[]) =>
+  ids
+    .map((id) => tree.byId.get(id) as RepairChannel)
+    .reduce((best, c) => (laterParentChange(c, best) > 0 ? c : best))
+
+/** Clears the parent of one channel on each loop, the one with the latest parent change, until no loop is left. */
+const breakLoops = (tree: WorkingTree, repairs: TreeRepair[]) => {
+  for (;;) {
+    let loop: string[] | undefined
+    for (const id of tree.ids) {
+      loop = loopFrom(tree.parent, id)
+      if (loop) break
+    }
+    if (!loop) return
+    const pick = latest(tree, loop)
+    tree.parent.set(pick.id, null)
+    repairs.push({ id: pick.id, reason: "loop" })
+  }
+}
+
+/** The level of each channel in a tree that has no loop: 1 for a top channel. */
+const levelsOfTree = (parent: ReadonlyMap<string, string | null>) => {
+  const levels = new Map<string, number>()
+  const levelOf = (id: string): number => {
+    const known = levels.get(id)
+    if (known !== undefined) return known
+    const up = parent.get(id) ?? null
+    const level = up === null ? 1 : levelOf(up) + 1
+    levels.set(id, level)
+    return level
+  }
+  for (const id of parent.keys()) levelOf(id)
+  return levels
+}
+
+/**
+ * The repair after a sync (spec 030, "Repair", case 2). Data that two computers each changed in
+ * a way that is right alone can make a loop or a fourth level. For each break, the parent field of
+ * the channel on the broken line whose parent change is the latest is cleared; when two changes
+ * carry the same time, the channel that was made later. The result depends on the data only, not on
+ * the order of the channels or of the changes, so two computers that hold the same data choose
+ * the same channels. The loops go first, then each channel that is too deep, the one nearest to
+ * the top first. Returns the channels to clear, in the order of the repairs. Nothing for a tree
+ * that is right.
+ */
+export const repairAfterSync = (channels: readonly RepairChannel[]): TreeRepair[] => {
+  const tree = workingTree(channels)
+  const repairs: TreeRepair[] = []
+  breakLoops(tree, repairs)
+  for (;;) {
+    const levels = levelsOfTree(tree.parent)
+    const deepest = tree.ids
+      .filter((id) => (levels.get(id) ?? 1) > CHANNEL_TREE_LEVELS)
+      .sort((a, b) => (levels.get(a) ?? 1) - (levels.get(b) ?? 1) || compareText(a, b))[0]
+    if (deepest === undefined) return repairs
+    // The line from the channel up to its top channel. Each channel of it, but the top one, has a
+    // parent change that put it there.
+    const line: string[] = []
+    for (
+      let at: string | null = deepest;
+      at !== null && tree.parent.get(at);
+      at = tree.parent.get(at) ?? null
+    )
+      line.push(at)
+    const pick = latest(tree, line)
+    tree.parent.set(pick.id, null)
+    repairs.push({ id: pick.id, reason: "levels" })
+  }
+}
+
+/**
+ * The repair after a restore (spec 030, "Repair", case 1). `channels` are the channels with the
+ * restored channel no longer archived. A restore works also when it would put a channel below the
+ * third level: the check goes from the top down, and the parent field of each channel that would
+ * be on the fourth level is cleared. That channel becomes a top channel, and the channels under
+ * it count from their new level. A loop that a restore closes is broken first, as after a sync
+ * (the spec names the levels only). Returns the channels to clear, in the order of the check.
+ */
+export const repairAfterRestore = (channels: readonly RepairChannel[]): TreeRepair[] => {
+  const tree = workingTree(channels)
+  const repairs: TreeRepair[] = []
+  breakLoops(tree, repairs)
+  const children = new Map<string, string[]>()
+  for (const id of tree.ids) {
+    const up = tree.parent.get(id) ?? null
+    if (up !== null) children.set(up, [...(children.get(up) ?? []), id])
+  }
+  const visit = (id: string, level: number) => {
+    let own = level
+    if (own > CHANNEL_TREE_LEVELS) {
+      tree.parent.set(id, null)
+      repairs.push({ id, reason: "levels" })
+      own = 1
+    }
+    for (const child of children.get(id) ?? []) visit(child, own + 1)
+  }
+  // The top channels are those of the start: a channel that the check clears is visited once,
+  // from its old parent, and its sub-channels count from level 1 under it.
+  const tops = tree.ids.filter((id) => (tree.parent.get(id) ?? null) === null)
+  for (const id of tops) visit(id, 1)
+  return repairs
+}

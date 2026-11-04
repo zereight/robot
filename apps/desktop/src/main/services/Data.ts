@@ -25,6 +25,7 @@ import { unzipSync } from "fflate"
 import { Agents } from "./Agents.ts"
 import { type ArchiveFile, writeZip } from "./archive.ts"
 import { Connections } from "./Connections.ts"
+import { repairChannelTree } from "./channelTreeRepair.ts"
 import { Database } from "./Database.ts"
 import { DECISION_KEY } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -54,7 +55,7 @@ const README = `ROBot export
 This archive holds the data of one ROBot app. It has no keys or tokens.
 
 robot.db            The database (SQLite). Servers, agents with their instruction history,
-                    chats, accounts and settings.
+                    the handbook with its history, chats, accounts and settings.
 meta.json           The version of this format and of the database.
 attachments/<id>/   Files that were attached to chats, one folder per agent id.
 knowledge/<id>/     The articles of agent knowledge (Markdown files) and, in the folder
@@ -267,6 +268,23 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               out
                 .prepare("UPDATE instruction_version SET text = ? WHERE id = ?")
                 .run(redactSecrets(row.text, known), row.id)
+            // The handbook and its history are text of the user (spec 002, 014), and so are the
+            // instructions of a channel (spec 004): a key in them is hidden like a key in a chat.
+            for (const row of out.prepare("SELECT id, text FROM handbook_version").all() as {
+              id: string
+              text: string
+            }[]) {
+              const text = redactSecrets(row.text, known)
+              if (text !== row.text)
+                out.prepare("UPDATE handbook_version SET text = ? WHERE id = ?").run(text, row.id)
+            }
+            for (const row of out
+              .prepare("SELECT id, instructions FROM channel WHERE instructions <> ''")
+              .all() as { id: string; instructions: string }[]) {
+              const text = redactSecrets(row.instructions, known)
+              if (text !== row.instructions)
+                out.prepare("UPDATE channel SET instructions = ? WHERE id = ?").run(text, row.id)
+            }
             // A rule keeps the text of a step, which can hold a key. The key is hidden like a key
             // in a chat; the restored rule then matches no step (spec 014).
             for (const row of out
@@ -484,6 +502,10 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               // The sections come first: agents and channels point to them.
               copyToServer("place_section")
               copyToServer("agent")
+              // The history of the instructions goes with its agent, and the handbook with its
+              // history goes to this computer's server (spec 002, 014).
+              db.run("INSERT INTO instruction_version SELECT * FROM imp.instruction_version")
+              copyToServer("handbook_version")
               copyToServer("channel")
               copyToServer("routine")
               copyToServer("workflow")
@@ -494,6 +516,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO routine_skip SELECT * FROM imp.routine_skip")
               db.run("INSERT INTO channel_member SELECT * FROM imp.channel_member")
               db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
+              // The archive is untrusted. A tree that breaks the rules (a loop, a fourth level) comes
+              // back repaired, with one muted line in each channel that lost its parent (spec 030).
+              repairChannelTree(db, { mode: "restore" })
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               // The models that the user turned off, and the fields of the custom models, come back
               // with their accounts (spec 006, 014).

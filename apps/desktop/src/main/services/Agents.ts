@@ -49,6 +49,7 @@ interface AgentRow {
   permission: PermissionLevel
   memory_enabled: number
   knowledge_enabled: number
+  read_handbook: number
   place_section_id: string | null
   archived_at: number | null
   created_at: number
@@ -157,6 +158,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           createdAt: row.created_at,
           permission: row.permission,
           memoryEnabled: row.memory_enabled === 1,
+          readHandbook: row.read_handbook === 1,
           changedBy:
             row.changed_by !== null && row.changed_at !== null
               ? { by: row.changed_by, at: row.changed_at }
@@ -242,8 +244,9 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         db.run(
           `INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
             model_account_id, model_name, model_effort, backup_account_id, backup_model, backup_effort,
-            workspace, section, place_section_id, created_at, updated_at, changed_by, changed_at, permission)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?, ?, ?)`,
+            workspace, section, place_section_id, created_at, updated_at, changed_by, changed_at, permission,
+            read_handbook)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?, ?, ?, ?)`,
           id,
           input.serverId,
           name,
@@ -265,6 +268,8 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           by.by,
           by.at,
           level,
+          // The switch "Read the handbook" is on at the start (spec 002).
+          input.readHandbook === false ? 0 : 1,
         )
         changed(input.serverId)
         return toAgent(yield* findRow(id))
@@ -347,6 +352,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         }
         if (patch.permission !== undefined) set("permission", patch.permission)
         if (patch.memoryEnabled !== undefined) set("memory_enabled", patch.memoryEnabled ? 1 : 0)
+        if (patch.readHandbook !== undefined) set("read_handbook", patch.readHandbook ? 1 : 0)
         const by = yield* stamp
         set("changed_by", by.by)
         set("changed_at", by.at)
@@ -466,6 +472,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
             name,
             role: row.role,
             instructions: row.instructions,
+            readHandbook: row.read_handbook === 1,
             face: { shape: row.face_shape, hue: row.face_hue },
             model:
               row.model_account_id && row.model_name

@@ -318,6 +318,10 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
               // The part "Organization" and the legend of the org chart show the rule (spec 030).
               once("organization", () => bus.emit("organization.changed", { serverId }))
               break
+            case "hversion":
+              // The handbook page shows the newest version and the history (spec 002, 019).
+              once("handbook", () => bus.emit("handbook.changed", { serverId }))
+              break
             case "routine":
               once("routines", () => bus.emit("routines.changed", { serverId }))
               break
@@ -1065,8 +1069,12 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
 
       const finishCopy = () => {
         engine.settleInitial()
+        // The channels came in parts, so the tree is checked now that the copy is whole (spec 030,
+        // "Repair").
+        const repaired = engine.repairTree()
         updatePair({ phase: "live", synced_at: Date.now() })
         attendAll()
+        touched(repaired)
         changed()
       }
 
