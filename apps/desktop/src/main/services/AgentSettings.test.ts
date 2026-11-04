@@ -39,6 +39,7 @@ const bodies: { model: string; tools?: { function: { name: string } }[] }[] = []
 /** A model that calls the tools listed in the user text ("CALLS [...]"), then answers. */
 const server = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models")

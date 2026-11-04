@@ -36,6 +36,7 @@ const sse = (chunks: unknown[]) =>
 /** A model that calls the tool named in the user text ("CALL name {json}"), then repeats the result. */
 const server = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })

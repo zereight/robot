@@ -13,6 +13,7 @@ const GOOD_KEY = "sk-test-good"
 
 const server = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   fetch(req) {
     const url = new URL(req.url)
     const auth = req.headers.get("authorization") ?? `Bearer ${req.headers.get("x-api-key")}`

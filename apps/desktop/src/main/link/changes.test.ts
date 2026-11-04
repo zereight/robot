@@ -12,12 +12,16 @@ import { Providers } from "../services/Providers.ts"
 import { Remote } from "../services/Remote.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
+import { pairRuntimes, waitFor } from "./pairing.testing.ts"
 
 type Rt = ReturnType<typeof testRuntime>
 
 // A model account with two models; one takes an effort level.
 const model = Bun.serve({
   port: 0,
+  // On 127.0.0.1 only, where the test connects. On all addresses, the system can give this server
+  // a port that another program holds on 127.0.0.1, and then the test would reach that program.
+  hostname: "127.0.0.1",
   fetch(req) {
     if (new URL(req.url).pathname === "/v1/models") {
       return Response.json({ data: [{ id: "model-b" }, { id: "o3", display_name: "O3" }] })
@@ -31,16 +35,6 @@ const side = (name: string) => {
   const s = testRuntime({ name })
   sides.push(s)
   return s
-}
-
-const waitFor = async <T>(read: () => Promise<T> | T, ok: (v: T) => boolean, ms = 8000) => {
-  const end = Date.now() + ms
-  let last = await read()
-  while (!ok(last) && Date.now() < end) {
-    await new Promise((r) => setTimeout(r, 40))
-    last = await read()
-  }
-  return last
 }
 
 beforeAll(() => {
@@ -60,23 +54,7 @@ afterAll(async () => {
 const pair = async (canChange: boolean | undefined) => {
   const server = side("MacBook 2")
   const client = side("MacBook 1")
-  const pairing = await server.runtime.runPromise(Devices.use((d) => d.pairStart()))
-  const found = await client.runtime.runPromise(Remote.use((r) => r.probe({ link: pairing.link })))
-  const done = client.runtime.runPromise(Remote.use((r) => r.finish(found.session, false)))
-  const request = await waitFor(
-    () => server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.joins()[0]))),
-    (j) => j !== undefined,
-  )
-  await server.runtime.runPromise(
-    Devices.use((d) =>
-      d.decide(request?.id ?? "", true, ...(canChange === undefined ? [] : [canChange])),
-    ),
-  )
-  const entry = await done
-  await waitFor(
-    () => client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.stateOf(entry.id)))),
-    (state) => state === "online",
-  )
+  const { entry } = await pairRuntimes(server, client, { canChange })
   const serverId = entry.serverId
   const clientName = (
     await client.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.self())))
@@ -613,9 +591,17 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, on)))
 
     expect((await summary()).canChange).toBe(true)
-    await waitFor(tile, (t) => t?.canChange === true)
+    await waitFor(
+      "the tile did not show that the client may change",
+      tile,
+      (t) => t?.canChange === true,
+    )
     await set(false)
-    await waitFor(tile, (t) => t?.canChange === false)
+    await waitFor(
+      "the tile did not show that the client may not change",
+      tile,
+      (t) => t?.canChange === false,
+    )
     expect((await summary()).canChange).toBe(false)
     // The same value again is not a change: the device hears nothing.
     const before = changes()
@@ -623,7 +609,11 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     await new Promise((r) => setTimeout(r, 300))
     expect(changes()).toBe(before)
     await set(true)
-    await waitFor(tile, (t) => t?.canChange === true)
+    await waitFor(
+      "the tile did not show that the client may change again",
+      tile,
+      (t) => t?.canChange === true,
+    )
     expect((await summary()).canChange).toBe(true)
   })
 
@@ -632,13 +622,27 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     const id = await p.clientLink
     const tile = async () =>
       (await p.client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.servers()))))[0]
-    expect((await waitFor(tile, (t) => t?.canChange === true))?.canChange).toBe(true)
+    expect(
+      (
+        await waitFor(
+          "the tile did not show that the client may change",
+          tile,
+          (t) => t?.canChange === true,
+        )
+      )?.canChange,
+    ).toBe(true)
 
     // The server turns the switch off: the tile follows at once, without a request of the client.
     await p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, false)))
-    expect((await waitFor(tile, (t) => t?.canChange === false))?.canChange).toBe(false)
+    expect(
+      (await waitFor("the tile did not follow the switch off", tile, (t) => t?.canChange === false))
+        ?.canChange,
+    ).toBe(false)
     await p.server.runtime.runPromise(Devices.use((d) => d.setCanChange(id, true)))
-    expect((await waitFor(tile, (t) => t?.canChange === true))?.canChange).toBe(true)
+    expect(
+      (await waitFor("the tile did not follow the switch on", tile, (t) => t?.canChange === true))
+        ?.canChange,
+    ).toBe(true)
     // The window of the client is told about each change of the tile.
     expect(p.client.events.filter((e) => e.event === "servers.changed").length).toBeGreaterThan(1)
   })
@@ -772,12 +776,21 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
       const p = await pair(switchOn)
       const server = value<Agent>(await p.onServer("agents.create", make(p.serverId, "Ada")))
       for (const [method, input] of own) {
-        expect(await p.raw(method, input)).toBe("not_allowed")
+        // The method is in the value, so a failure names the method (and the switch).
+        expect({ switchOn, method, code: await p.raw(method, input) }).toEqual({
+          switchOn,
+          method,
+          code: "not_allowed",
+        })
         // The handler of the window is not reached through the dispatcher of a linked device.
         const viaDispatch = await p.client.runtime.runPromise(
           Remote.use((r) => Effect.promise(() => r.invoke(p.serverId, method, input))),
         )
-        expect(codeOf(viaDispatch)).not.toBe("ok")
+        expect({ switchOn, method, ok: codeOf(viaDispatch) === "ok" }).toEqual({
+          switchOn,
+          method,
+          ok: false,
+        })
       }
       // No section was made, no knowledge of the agent was opened, no file was written.
       const lists = await sectionsOf(p)
@@ -861,11 +874,11 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     const pushes = () => p.client.events.filter((e) => e.event === "places.changed").length
     const before = pushes()
     await p.onServer("sections.rename", { id: team.id, name: "Crew" })
-    await waitFor(pushes, (n) => n > before)
+    await waitFor("no push after the rename of a section", pushes, (n) => n > before)
     expect(pushes()).toBeGreaterThan(before)
     const next = pushes()
     await p.onServer("places.move", { kind: "agent", id: bob.id, sectionId: team.id })
-    await waitFor(pushes, (n) => n > next)
+    await waitFor("no push after the move of a place", pushes, (n) => n > next)
     expect(pushes()).toBeGreaterThan(next)
     const after = value<PlaceSection[]>(await p.ask("places.list", { serverId: p.serverId }))
     const crew = after.find((s) => s.id === "agents")?.sections[0]
@@ -903,20 +916,20 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     const pushes = () => p.client.events.filter((e) => e.event === "places.changed").length
     const before = pushes()
     await p.onServer("agents.update", { id: ada.id, patch: { role: "Writer" } })
-    await waitFor(pushes, (n) => n > before)
+    await waitFor("no push after the change of the role line", pushes, (n) => n > before)
     expect(pushes()).toBeGreaterThan(before)
     expect((await roleOf(ada.id))?.role).toBe("Writer")
 
     // A change of the name is pushed too.
     const next = pushes()
     await p.onServer("agents.update", { id: ada.id, patch: { name: "Ada L" } })
-    await waitFor(pushes, (n) => n > next)
+    await waitFor("no push after the change of the name", pushes, (n) => n > next)
     expect((await roleOf(ada.id))?.name).toBe("Ada L")
 
     // Removing the role line removes the field, so the badge leaves.
     const last = pushes()
     await p.onServer("agents.update", { id: ada.id, patch: { role: "" } })
-    await waitFor(pushes, (n) => n > last)
+    await waitFor("no push after the removal of the role line", pushes, (n) => n > last)
     expect(await roleOf(ada.id)).not.toHaveProperty("role")
   }, 30_000)
 })

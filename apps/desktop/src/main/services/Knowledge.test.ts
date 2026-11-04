@@ -67,6 +67,7 @@ const callOf = (index: number, name: string, args: unknown) => ({
  */
 const server = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
@@ -387,6 +388,7 @@ describe("keys and tokens", () => {
     const s = await setup()
     const page = Bun.serve({
       port: 0,
+      hostname: "127.0.0.1",
       fetch: (req) =>
         new Response(
           new URL(req.url).pathname === "/leak"
@@ -1067,6 +1069,7 @@ describe("knowledge tools in a turn", () => {
     const s = await setup()
     const page = Bun.serve({
       port: 0,
+      hostname: "127.0.0.1",
       fetch: () =>
         new Response("<html><body><h1>Title</h1><p>Page text.</p></body></html>", {
           headers: { "content-type": "text/html" },

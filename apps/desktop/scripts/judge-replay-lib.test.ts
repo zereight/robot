@@ -544,6 +544,7 @@ const wordOf = (label: string) => {
 }
 const server = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     const body = (await req.json()) as Seen["body"]
     seen.push({ authorization: req.headers.get("authorization"), body })

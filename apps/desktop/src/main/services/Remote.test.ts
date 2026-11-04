@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { type ChatMessage, messageText } from "@robot/shared"
 import { Effect } from "effect"
+import { pairRuntimes } from "../link/pairing.testing.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
 import { Devices } from "./Devices.ts"
@@ -21,6 +22,7 @@ const sse = (lines: string[]) =>
   })
 const model = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     if (new URL(req.url).pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
     const body = (await req.json()) as { messages: { content: string }[] }
@@ -51,26 +53,7 @@ const waitFor = async <T>(read: () => Promise<T> | T, ok: (v: T) => boolean, ms 
 }
 
 /** B opens A: A shows the pairing, B joins, and A's user allows. */
-const link = async (a: Rt, b: Rt) => {
-  const pairing = await a.runtime.runPromise(Devices.use((d) => d.pairStart()))
-  const found = await b.runtime.runPromise(Remote.use((r) => r.probe({ link: pairing.link })))
-  const done = b.runtime.runPromise(Remote.use((r) => r.finish(found.session, false)))
-  await waitFor(
-    () => a.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.joins()))),
-    (j) => j.length > 0,
-  )
-  await a.runtime.runPromise(
-    Devices.use((d) =>
-      Effect.sync(() => d.joins()[0]).pipe(Effect.flatMap((j) => d.decide(j?.id ?? "", true))),
-    ),
-  )
-  const entry = await done
-  await waitFor(
-    () => b.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.stateOf(entry.id)))),
-    (state) => state === "online",
-  )
-  return entry
-}
+const link = async (a: Rt, b: Rt) => (await pairRuntimes(a, b)).entry
 
 const invoke = (b: Rt, serverId: string, method: string, input: unknown) =>
   b.runtime.runPromise(Remote.use((r) => Effect.promise(() => r.invoke(serverId, method, input))))

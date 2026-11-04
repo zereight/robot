@@ -3,9 +3,9 @@ import type { RpcResult, SearchPage } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "../services/Agents.ts"
 import { Database } from "../services/Database.ts"
-import { Devices } from "../services/Devices.ts"
 import { Remote } from "../services/Remote.ts"
 import { testRuntime } from "../services/testing.ts"
+import { pairRuntimes } from "./pairing.testing.ts"
 
 type Rt = ReturnType<typeof testRuntime>
 
@@ -44,19 +44,7 @@ const text = (value: string) => JSON.stringify([{ kind: "text", text: value }])
 const pair = async () => {
   const server = side("MacBook 2")
   const client = side("MacBook 1")
-  const pairing = await server.runtime.runPromise(Devices.use((d) => d.pairStart()))
-  const found = await client.runtime.runPromise(Remote.use((r) => r.probe({ link: pairing.link })))
-  const done = client.runtime.runPromise(Remote.use((r) => r.finish(found.session, false)))
-  const request = await waitFor(
-    () => server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.joins()[0]))),
-    (j) => j !== undefined,
-  )
-  await server.runtime.runPromise(Devices.use((d) => d.decide(request?.id ?? "", true, false)))
-  const entry = await done
-  await waitFor(
-    () => client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.stateOf(entry.id)))),
-    (state) => state === "online",
-  )
+  const { entry } = await pairRuntimes(server, client, { canChange: false })
   const serverId = entry.serverId
   const ask = (method: string, input: unknown): Promise<RpcResult<unknown>> =>
     client.runtime.runPromise(

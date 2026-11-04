@@ -86,6 +86,7 @@ describe("install Claude Code", () => {
   const serve = (checksum: string) => {
     const server = Bun.serve({
       port: 0,
+      hostname: "127.0.0.1",
       fetch(req) {
         const path = new URL(req.url).pathname
         if (path === "/latest") return new Response("1.2.3\n")
@@ -160,6 +161,7 @@ describe("install Codex", () => {
   const serve = (digest: string | undefined) => {
     const server = Bun.serve({
       port: 0,
+      hostname: "127.0.0.1",
       fetch(req) {
         const path = new URL(req.url).pathname
         if (path === "/repos/openai/codex/releases/latest")
