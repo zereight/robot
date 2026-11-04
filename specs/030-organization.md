@@ -113,7 +113,11 @@ More rules:
     rule allows. <A> is the second agent of the shortest chain from S to R.
   - **Equal chains**: when more than one first agent gives a chain of the same length, the lead of a
     channel of S comes first, then the main agent, then the other agents in the order of their
-    names, ignoring case.
+    names, ignoring case. "A channel of S" is a channel that S is a member of; the lead of a
+    channel is a member of it. A lead that S reaches only by rule 4 (the lead of a parent channel or
+    of a sub-channel) is in the last group, unless it also leads a channel that S is a member of.
+    Leads in the same group go by name too. Names are unique, ignoring case (002), so the order
+    of names is complete.
   - **No chain**: when S has no chain to R, the reason is "<R> is not on your path, and no agent
     can pass it on. Tell the user."
 - A refused send is not a hand-off of the org chart (029). It counts for no limit of 005.
