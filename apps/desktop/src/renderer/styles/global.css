@@ -92,3 +92,8 @@ h3 {
   /* A heading that wraps gets lines of near equal length, and no single word on the last line. */
   text-wrap: balance;
 }
+
+/* A paragraph does not end with one short word or one syllable alone on its last line. */
+p {
+  text-wrap: pretty;
+}
