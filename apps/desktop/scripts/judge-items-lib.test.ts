@@ -1624,10 +1624,15 @@ describe("the round trip with the replay", () => {
 describe("the command", () => {
   const script = resolve(import.meta.dirname, "judge-items.ts")
   const [root] = repositoryRoots() as [string]
+  // The working folder of a child process is not in the temp folder. Bun reads the folders above
+  // its working folder when it starts, and a temp folder with very many entries makes that take
+  // seconds (about 5 s for a million). Every path that a test hands over is absolute, so the
+  // default is the folder of the scripts.
+  const SCRIPTS = import.meta.dirname
   // The same Bun as the one that runs the tests, not the first "bun" on the PATH.
   const exec = async (
     args: string[],
-    cwd = tempDir(),
+    cwd = SCRIPTS,
     command: string[] = [process.execPath, script],
     env: Record<string, string> = {},
   ) => {
@@ -1770,7 +1775,7 @@ describe("the command", () => {
     const db = dbFile()
     const ok = await exec(
       ["--db", db, "--out", join(tempDir(), "items.jsonl")],
-      tempDir(),
+      SCRIPTS,
       undefined,
       env,
     )
@@ -1785,7 +1790,7 @@ describe("the command", () => {
     handle.close()
     const bad = await exec(
       ["--db", old, "--out", join(dir, "items.jsonl")],
-      tempDir(),
+      SCRIPTS,
       undefined,
       env,
     )
@@ -1799,7 +1804,7 @@ describe("the command", () => {
     w.close()
     const none = await exec(
       ["--db", w.file, "--out", join(dir, "none.jsonl")],
-      tempDir(),
+      SCRIPTS,
       undefined,
       env,
     )

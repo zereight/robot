@@ -5,9 +5,9 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs"
-import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import {
   CHECK_REPLY_LINE,
@@ -17,6 +17,7 @@ import {
   checkStateText,
   endChars,
 } from "@robot/shared"
+import { tempDir } from "../src/main/test-temp.ts"
 import {
   type Call,
   callsFor,
@@ -782,6 +783,25 @@ describe("the script", () => {
   const script = resolve(import.meta.dirname, "judge-replay.ts")
   // The same Bun as the one that runs the tests, not the first "bun" on the PATH. Each test that
   // starts a child process has a timeout of 30 s: on a busy machine the start of a process is slow.
+  //
+  // The working folder of a child process is not in the temp folder. Bun reads the folders above
+  // its working folder when it starts, and a temp folder with very many entries makes that take
+  // seconds (about 5 s for a million). Every path that a test hands over is absolute, so the
+  // default is the folder of the scripts. A test that checks that the script writes nothing in its
+  // working folder needs an empty one: `emptyCwd` makes it in the folder "build" of the app, which
+  // git ignores, and removes it after the tests.
+  const SCRIPTS = import.meta.dirname
+  const emptyCwds: string[] = []
+  const emptyCwd = () => {
+    const parent = resolve(SCRIPTS, "..", "build")
+    mkdirSync(parent, { recursive: true })
+    const dir = mkdtempSync(join(parent, "judge-replay-cwd-"))
+    emptyCwds.push(dir)
+    return dir
+  }
+  afterAll(() => {
+    for (const dir of emptyCwds) rmSync(dir, { recursive: true, force: true })
+  })
   const run = async (cwd: string, args: string[], env: Record<string, string>) => {
     const child = Bun.spawn([process.execPath, script, ...args], {
       cwd,
@@ -799,9 +819,9 @@ describe("the script", () => {
 
   test("writes the two reports to the folder that was given, and nothing else", async () => {
     flips.clear()
-    const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
-    const work = join(dir, "work")
-    mkdirSync(work)
+    const dir = tempDir("judge-replay-")
+    // The working folder: it must stay empty (see below).
+    const work = emptyCwd()
     writeFileSync(join(dir, "items.jsonl"), lines)
     const result = await run(
       work,
@@ -841,11 +861,13 @@ describe("the script", () => {
   }, 30_000)
 
   test("a file with faults, or no folder, writes nothing and shows no value", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
+    const dir = tempDir("judge-replay-")
     writeFileSync(join(dir, "bad.jsonl"), `${JSON.stringify({ id: "a", tag: "SECRET-VALUE" })}\n`)
     const env = { JUDGE_BASE_URL: endpoint.baseUrl, JUDGE_MODEL: "m" }
+    // The working folder must stay empty: a run with no --out writes nowhere, not even there.
+    const work = emptyCwd()
     const bad = await run(
-      dir,
+      work,
       ["run", "--items", join(dir, "bad.jsonl"), "--out", join(dir, "o")],
       env,
     )
@@ -854,15 +876,16 @@ describe("the script", () => {
     expect(bad.err).not.toContain("SECRET-VALUE")
     expect(existsSync(join(dir, "o"))).toBe(false)
     writeFileSync(join(dir, "ok.jsonl"), lines)
-    const noOut = await run(dir, ["run", "--items", join(dir, "ok.jsonl")], env)
+    const noOut = await run(work, ["run", "--items", join(dir, "ok.jsonl")], env)
     expect(noOut.code).toBe(1)
     expect(noOut.err).toContain("--out")
     expect(readdirSync(dir).sort()).toEqual(["bad.jsonl", "ok.jsonl"])
+    expect(readdirSync(work)).toEqual([])
   }, 30_000)
 
   test("an item with no label stops a run with its line and field, and counts reports the number", async () => {
     flips.clear()
-    const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
+    const dir = tempDir("judge-replay-")
     const rows = ITEMS.map((i) => JSON.stringify(i))
     // Two items lose their label: lines 2 and 5.
     for (const index of [1, 4]) {
@@ -872,7 +895,7 @@ describe("the script", () => {
     writeFileSync(join(dir, "mixed.jsonl"), rows.join("\n"))
     const env = { JUDGE_BASE_URL: endpoint.baseUrl, JUDGE_MODEL: "m" }
     const refused = await run(
-      dir,
+      SCRIPTS,
       ["run", "--items", join(dir, "mixed.jsonl"), "--out", join(dir, "o")],
       env,
     )
@@ -883,7 +906,7 @@ describe("the script", () => {
     expect(existsSync(join(dir, "o"))).toBe(false)
     expect(flips.size).toBe(0)
 
-    const counted = await run(dir, ["counts", "--items", join(dir, "mixed.jsonl")], {})
+    const counted = await run(SCRIPTS, ["counts", "--items", join(dir, "mixed.jsonl")], {})
     expect(counted.code).toBe(0)
     const counts = JSON.parse(counted.out) as { total: number; skipped: number; unlabeled: number }
     // The two unlabeled items are in no other count: not as skip, not as Pass, not as Fail.
@@ -895,11 +918,11 @@ describe("the script", () => {
       return JSON.stringify(rest)
     }).join("\n")
     writeFileSync(join(dir, "bare.jsonl"), bare)
-    const none = await run(dir, ["counts", "--items", join(dir, "bare.jsonl")], {})
+    const none = await run(SCRIPTS, ["counts", "--items", join(dir, "bare.jsonl")], {})
     expect(none.code).toBe(0)
     expect(JSON.parse(none.out)).toMatchObject({ total: 0, skipped: 0, unlabeled: 10 })
     const stop = await run(
-      dir,
+      SCRIPTS,
       ["run", "--items", join(dir, "bare.jsonl"), "--out", join(dir, "o")],
       env,
     )
@@ -908,9 +931,9 @@ describe("the script", () => {
   }, 30_000)
 
   test("counts shows the counts and the split and calls no service", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "judge-replay-"))
+    const dir = tempDir("judge-replay-")
     writeFileSync(join(dir, "ok.jsonl"), lines)
-    const result = await run(dir, ["counts", "--items", join(dir, "ok.jsonl")], {})
+    const result = await run(SCRIPTS, ["counts", "--items", join(dir, "ok.jsonl")], {})
     expect(result.code).toBe(0)
     const counts = JSON.parse(result.out) as { total: number; skipped: number }
     expect(counts).toMatchObject({ total: 9, skipped: 1 })
