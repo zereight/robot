@@ -14,6 +14,7 @@ import { formatElapsed } from "../chat/format.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
+import { TaskStateText } from "../tasks/TaskStateText.tsx"
 import { IconButton } from "../ui/controls.tsx"
 import { motionMs } from "../ui/Presence.tsx"
 import styles from "./activity.module.css"
@@ -85,7 +86,9 @@ export const AgentActivity = (props: { agent: Agent }) => {
                 <span class={styles.label}>{item.task.label}</span>
                 <span class={styles.meta}>
                   <span class={styles.dot} aria-hidden="true" />
-                  <span>{t(`tasks.state.${item.task.state}` as never)}</span>
+                  <span data-testid="activity-task-state">
+                    <TaskStateText task={item.task} />
+                  </span>
                   <Show when={item.task.startedAt !== null}>
                     <span class={styles.elapsed}>
                       {formatElapsed(now() - (item.task.startedAt ?? now()))}

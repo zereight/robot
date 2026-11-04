@@ -35,6 +35,23 @@ const put = (server: string | undefined, state: QuietState) => {
   setHeld(next)
 }
 
+/**
+ * The linked servers whose list this window asked for. A server tells its quiet turns when they
+ * start and end, so a window that opened after the start needs the list once.
+ */
+const asked = new Set<string>()
+const readServer = (server: string) => {
+  if (asked.has(server)) return
+  asked.add(server)
+  void window.robot
+    .invoke("quiet.list", undefined, server)
+    .then((result) => {
+      // A push that came meanwhile is newer than the read.
+      if (result.ok && !held().has(server)) put(server, result.value)
+    })
+    .catch(() => {})
+}
+
 /** Listens once. The window of the app calls it at start; a view that reads the state does too. */
 export const startQuiet = () => {
   if (started || typeof window === "undefined" || !window.robot) return
@@ -67,6 +84,7 @@ const shown = (
   find: (turns: readonly QuietTurn[]) => QuietTurn | undefined,
 ) => {
   startQuiet()
+  if (server !== undefined) readServer(server)
   const entry = held().get(server ?? LOCAL)
   const turn = entry && find(entry.turns)
   return entry && turn ? quietShown(turn, entry.receivedAt, now()) : undefined

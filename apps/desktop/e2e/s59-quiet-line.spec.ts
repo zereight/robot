@@ -84,6 +84,8 @@ test("a quiet turn reads the quiet line at half of a short limit; the failed row
   await expect(line.getByTestId("work-mark")).toHaveAttribute("data-still", "true")
   await expect(page.getByTestId("composer-stop")).toBeVisible()
   await expect(line.locator(":scope > span").nth(2)).toHaveText(/^\d+:\d\d$/)
+  // The card of the task in the activity panel of the chat reads the line too.
+  await expect(page.getByTestId("activity-task-state")).toHaveText(QUIET_EN)
   await shot(page, "s59-01-short-limit-chat")
   // The time changes once each second.
   await expect
@@ -207,6 +209,7 @@ test("the quiet line shows in the chat, the plan step, the Tasks page, the islan
     expect(secondsOf(text, QUIET_EN)).toBeGreaterThanOrEqual(90)
     expect(secondsOf(text, QUIET_EN)).toBeLessThanOrEqual(100)
     await expect(two.page.getByTestId("composer-stop")).toBeVisible()
+    await expect(two.page.getByTestId("activity-task-state")).toHaveText(QUIET_EN)
     await shot(two.page, "s59-10-chat-quiet-en")
 
     // ---- Nothing in the Today page, no notice, no action log entry --------------------------
