@@ -8,6 +8,7 @@ import {
   isNoteOnly,
   type MessagePart,
   messageText,
+  pictureType,
   startsGroup,
   userWords,
 } from "./chat.ts"
@@ -56,6 +57,34 @@ describe("chat", () => {
         ],
       }),
     ).toBe("ab")
+  })
+})
+
+describe("pictureType", () => {
+  test("names the type of the kinds of picture that show above a sent message", () => {
+    expect(pictureType("image.png")).toBe("image/png")
+    expect(pictureType("photo.jpg")).toBe("image/jpeg")
+    expect(pictureType("photo.jpeg")).toBe("image/jpeg")
+    expect(pictureType("move.gif")).toBe("image/gif")
+    expect(pictureType("pic.webp")).toBe("image/webp")
+  })
+
+  test("does not care for the case of the end, and takes the last end", () => {
+    expect(pictureType("SHOT.PNG")).toBe("image/png")
+    expect(pictureType("a.tar.png")).toBe("image/png")
+    expect(pictureType("a.png.exe")).toBeUndefined()
+  })
+
+  test("a file that is not such a picture has no type", () => {
+    for (const name of ["note.txt", "clip.mov", "vector.svg", "png", ".png.", "", "dir.png/file"])
+      expect(pictureType(name)).toBeUndefined()
+    // A name that is only an end is still a name with that end.
+    expect(pictureType(".png")).toBe("image/png")
+  })
+
+  test("a name that holds the name of an object property is no type", () => {
+    for (const name of ["a.__proto__", "a.constructor", "a.toString"])
+      expect(pictureType(name)).toBeUndefined()
   })
 })
 

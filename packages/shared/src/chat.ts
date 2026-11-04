@@ -339,6 +339,23 @@ export const messageText = (message: Pick<ChatMessage, "parts">) =>
 export const messageFiles = (message: Pick<ChatMessage, "parts">) =>
   message.parts.filter((p): p is FilePart => p.kind === "file")
 
+/** The kinds of file that show as a small picture above a sent message (spec 003, flow 4). */
+const PICTURE_TYPES = new Map([
+  ["png", "image/png"],
+  ["jpg", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["gif", "image/gif"],
+  ["webp", "image/webp"],
+])
+
+/**
+ * The type of a picture by the end of its file name, or undefined when the file is not a kind
+ * that shows as a picture. The name is the only thing that is checked: the window shows the
+ * bytes in an image box, which does not run anything.
+ */
+export const pictureType = (name: string): string | undefined =>
+  PICTURE_TYPES.get(/\.([^./\\]+)$/.exec(name)?.[1]?.toLowerCase() ?? "")
+
 /** Rows from one sender within this time join under one header. */
 export const GROUP_WINDOW_MS = 5 * 60 * 1000
 

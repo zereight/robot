@@ -54,6 +54,7 @@ import styles from "./chat.module.css"
 import { fileSize, formatTime, formatUntil } from "./format.ts"
 import { HandedOverText, HandoverCard } from "./Handover.tsx"
 import { Markdown } from "./Markdown.tsx"
+import { SentPictures } from "./SentPictures.tsx"
 
 export interface MessageRowProps {
   agent: Agent
@@ -1317,6 +1318,7 @@ const FullMessageRow = (props: MessageRowProps) => {
             when={isAgent()}
             fallback={
               <>
+                <SentPictures message={props.message} />
                 <Show when={messageSkill(props.message)}>
                   {(skill) => <SkillChip skill={skill()} />}
                 </Show>

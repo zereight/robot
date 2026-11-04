@@ -24,6 +24,7 @@ export const ROUTED_METHODS = [
       !m.startsWith("sync."),
   ),
   "attachments.save",
+  "attachments.picture",
 ] as const
 export type RoutedMethod = (typeof ROUTED_METHODS)[number]
 
