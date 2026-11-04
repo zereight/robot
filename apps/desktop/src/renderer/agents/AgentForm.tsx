@@ -66,6 +66,8 @@ export interface AgentFormValues {
   name: string
   role: string
   instructions: string
+  /** The switch "Read the handbook" (spec 002). On for a new agent. */
+  readHandbook: boolean
   face: FaceValue
   model: AgentModel | null
   /** The backup model (spec 006), or null for "None". */
@@ -136,6 +138,7 @@ export const AgentForm = (props: AgentFormProps) => {
     props.agent?.permission ?? "ask_risky",
   )
   const [memoryEnabled, setMemoryEnabled] = createSignal(props.agent?.memoryEnabled ?? true)
+  const [readHandbook, setReadHandbook] = createSignal(props.agent?.readHandbook ?? true)
 
   // What the model is: an API provider, or a vendor program. It decides which line shows under the
   // level, and whether "Read only" can be picked (spec 007).
@@ -326,6 +329,7 @@ export const AgentForm = (props: AgentFormProps) => {
         name: name().trim(),
         role: role().trim(),
         instructions: instructions(),
+        readHandbook: readHandbook(),
         face: face(),
         model: model(),
         backupModel: backupModel(),
@@ -512,6 +516,19 @@ export const AgentForm = (props: AgentFormProps) => {
       <Show when={!remote() ? props.agent : undefined}>
         {(agent) => <InstructionHistory agentId={agent().id} onRestored={setInstructions} />}
       </Show>
+      {/* The switch is under the instructions: the handbook comes before them (spec 002). */}
+      <div class={styles.field}>
+        <div class={styles.switchRow}>
+          <span class={styles.label}>{t("agents.field.handbook")}</span>
+          <Switch
+            label={t("agents.field.handbook")}
+            checked={readHandbook()}
+            onChange={setReadHandbook}
+            testId="agent-read-handbook"
+          />
+        </div>
+        <span class={styles.hint}>{t("agents.field.handbook.hint")}</span>
+      </div>
 
       <hr class={styles.divider} />
 

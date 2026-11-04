@@ -142,6 +142,21 @@ describe("a call of the settings tool", () => {
     expect(PROTECTED_PLACES.teams).toContain("Settings → Teams")
   })
 
+  test("the handbook, its switch and the instructions of a channel are things the agent may not change", () => {
+    for (const name of ["handbook", "read_handbook", "the_handbook"]) {
+      const refused = plan({ [name]: true })
+      expect(refused.kind).toBe("refused")
+      expect(refused.kind === "refused" && refused.reason).toContain("Nothing changed")
+      expect(refused.kind === "refused" && refused.reason).toContain("Settings → Handbook")
+      expect(refused.kind === "refused" && refused.reason).toContain("profile of the agent")
+    }
+    for (const name of ["channel_instructions", "channel"]) {
+      const refused = plan({ [name]: "Write a list." })
+      expect(refused.kind).toBe("refused")
+      expect(refused.kind === "refused" && refused.reason).toContain("settings of the channel")
+    }
+  })
+
   test("the effort must be a level of the model", () => {
     expect(plan({ effort: "high" })).toMatchObject({
       kind: "changes",

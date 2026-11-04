@@ -151,6 +151,9 @@ export const CLIENT_METHODS = [
   // The org chart of the server (spec 029, 012), as a ready model. It needs only the link: it is
   // read only, and a phone asks for it the same way (spec 011).
   "orgChart.model",
+  // The handbook of the server (spec 002, 012). A client reads it and its history with no switch.
+  "handbook.get",
+  "handbook.history",
   // Only with the switch "Can create and change agents" (spec 012). Each one checks it again.
   "agents.create",
   "agents.update",
@@ -164,6 +167,9 @@ export const CLIENT_METHODS = [
   "memory.add",
   "memory.update",
   "memory.delete",
+  // Change the handbook (spec 002, 012): save a text, or restore a version.
+  "handbook.save",
+  "handbook.restore",
   "models.available",
   "workflows.create",
   "workflows.update",
@@ -198,6 +204,9 @@ export const CHANGE_METHODS = [
   "memory.add",
   "memory.update",
   "memory.delete",
+  // Change the handbook (spec 002, 012): save a text, or restore a version.
+  "handbook.save",
+  "handbook.restore",
   "models.available",
   "workflows.create",
   "workflows.update",
@@ -224,6 +233,8 @@ export const PUSHED_EVENTS = [
   "notice",
   "revoked",
   "memory.changed",
+  // The handbook of the server changed (spec 002, 012): a client that shows it reads it again.
+  "handbook.changed",
   "workflows.changed",
   "workflows.run",
   // The org chart changed (spec 029, 012): the whole ready model, so a client reads nothing again.

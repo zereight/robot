@@ -458,6 +458,8 @@ export const en = {
   "chat.copyCode": "Copy code",
   "picture.load": "Load image",
   "picture.alt.empty": "Image",
+  "picture.enlarge": "Enlarge {name}",
+  "picture.close": "Close",
   "chat.edit": "Edit",
   "chat.edited": "(edited)",
   "chat.save": "Save",
@@ -960,6 +962,48 @@ export const en = {
   "agents.history.hide": "Hide",
   "agents.history.restore": "Restore",
   "agents.history.current": "Now",
+  // The handbook (spec 002) and the instructions of a channel (spec 004).
+  "settings.section.handbook": "Handbook",
+  "handbook.hint":
+    "One text that every agent of this server reads before its own instructions. Write who you are, what the work is for, and the ways of work that every agent follows.",
+  "handbook.order":
+    "An agent gets the texts in this order: the handbook, its own instructions, and in a channel the instructions of the channel. When two texts say different things, the later text wins. The rules of the app win over all three.",
+  "handbook.sent":
+    "The handbook is sent to the model provider of every agent that reads it. Do not write keys or passwords here.",
+  "handbook.label": "Handbook text",
+  "handbook.placeholder": "For example: Answer in Korean.",
+  "handbook.empty": "The handbook is empty. No agent gets a handbook.",
+  "handbook.save": "Save",
+  "handbook.saved": "Saved. It counts from the next turn.",
+  "handbook.remote": "This is the handbook of {name}.",
+  "handbook.readonly":
+    "{name} does not let this device change the handbook. Turn on “Can create and change agents” for this device in Settings → Devices on that computer.",
+  "handbook.offline": "{name} is offline. Open this page when it is online again.",
+  "handbook.history.title": "History ({count})",
+  "handbook.history.hint": "Each change is kept here. The last 20 versions stay.",
+  "handbook.history.empty": "No changes yet.",
+  "handbook.history.source.page": "Settings",
+  "handbook.history.source.device": "Linked device",
+  "handbook.history.source.restore": "Restore",
+  "handbook.history.source.import": "Import",
+  "handbook.history.open": "Open",
+  "handbook.history.hide": "Hide",
+  "handbook.history.restore": "Restore",
+  "handbook.history.current": "Now",
+  "handbook.history.blank": "The handbook was empty.",
+  "error.handbook_too_long": "The handbook holds at most 20,000 characters.",
+  "error.handbook_secret":
+    "This text looks like a key or a token. Take it out and save again. The handbook goes to the model provider of every agent that reads it.",
+  "error.channel_instructions_too_long":
+    "The instructions of a channel hold at most 4,000 characters.",
+  "error.channel_instructions_secret":
+    "These instructions look like they hold a key or a token. Take it out and save again.",
+  "agents.field.handbook": "Read the handbook",
+  "agents.field.handbook.hint":
+    "On: each turn of this agent starts with the handbook, before its instructions. Turn it off for an agent that must not get it.",
+  "channels.instructions": "Instructions",
+  "channels.instructions.hint":
+    "Every member and the lead read these in each turn of this channel, after their own instructions. Up to 4,000 characters.",
   "agents.memory.title": "Memory",
   "honest.line":
     "An agent gets better through its instructions, memory and knowledge, and through skills that you save. ROBot does not train the model.",

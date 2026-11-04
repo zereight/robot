@@ -47,6 +47,18 @@
   outline: 2px solid var(--c-focus);
   outline-offset: 1px;
 }
+/* The instructions of a channel: a few lines, and the user can pull it longer. */
+.textarea {
+  resize: vertical;
+  min-height: 72px;
+  user-select: text;
+}
+.textarea[aria-invalid="true"] {
+  border-color: var(--c-danger);
+}
+.hint [data-over="true"] {
+  color: var(--c-danger);
+}
 .memberSearch {
   margin-top: 6px;
 }

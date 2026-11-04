@@ -452,6 +452,8 @@ export const ko: Record<MessageKey, string> = {
   "chat.copyCode": "코드 복사",
   "picture.load": "이미지 불러오기",
   "picture.alt.empty": "이미지",
+  "picture.enlarge": "{name} 크게 보기",
+  "picture.close": "닫기",
   "chat.edit": "수정",
   "chat.edited": "(수정됨)",
   "chat.save": "저장",
@@ -950,6 +952,47 @@ export const ko: Record<MessageKey, string> = {
   "agents.history.hide": "닫기",
   "agents.history.restore": "복원",
   "agents.history.current": "현재",
+  // 핸드북(002)과 채널 지침(004)
+  "settings.section.handbook": "핸드북",
+  "handbook.hint":
+    "이 서버의 모든 에이전트가 자기 지침보다 먼저 읽는 글이에요. 내가 누구인지, 일이 무엇을 위한 것인지, 모든 에이전트가 따르는 작업 방식을 적어 주세요.",
+  "handbook.order":
+    "에이전트는 핸드북, 자기 지침, 채널에서는 채널 지침 순서로 글을 받아요. 두 글이 서로 다르게 말하면 나중 글이 이겨요. 앱의 규칙은 세 글보다 우선해요.",
+  "handbook.sent":
+    "핸드북은 이를 읽는 모든 에이전트의 모델 제공자에게 전송돼요. 키나 비밀번호는 적지 마세요.",
+  "handbook.label": "핸드북 내용",
+  "handbook.placeholder": "예: 한국어로 답해 주세요.",
+  "handbook.empty": "핸드북이 비어 있어요. 어떤 에이전트도 핸드북을 받지 않아요.",
+  "handbook.save": "저장",
+  "handbook.saved": "저장했어요. 다음 턴부터 적용돼요.",
+  "handbook.remote": "{name}의 핸드북이에요.",
+  "handbook.readonly":
+    "{name}이(가) 이 기기에서 핸드북을 바꾸는 것을 허용하지 않았어요. 그 컴퓨터의 설정 → 기기에서 이 기기의 “에이전트 만들기와 바꾸기 허용”을 켜 주세요.",
+  "handbook.offline": "{name}이(가) 오프라인이에요. 다시 온라인이 되면 이 페이지를 열어 주세요.",
+  "handbook.history.title": "기록 ({count})",
+  "handbook.history.hint": "바꿀 때마다 여기에 남아요. 최근 20개 버전이 남아요.",
+  "handbook.history.empty": "아직 바뀐 적이 없어요.",
+  "handbook.history.source.page": "설정",
+  "handbook.history.source.device": "연결된 기기",
+  "handbook.history.source.restore": "복원",
+  "handbook.history.source.import": "가져오기",
+  "handbook.history.open": "열기",
+  "handbook.history.hide": "닫기",
+  "handbook.history.restore": "복원",
+  "handbook.history.current": "현재",
+  "handbook.history.blank": "핸드북이 비어 있었어요.",
+  "error.handbook_too_long": "핸드북은 최대 20,000자까지 쓸 수 있어요.",
+  "error.handbook_secret":
+    "이 글은 키나 토큰처럼 보여요. 지우고 다시 저장해 주세요. 핸드북은 이를 읽는 모든 에이전트의 모델 제공자에게 전송돼요.",
+  "error.channel_instructions_too_long": "채널 지침은 최대 4,000자까지 쓸 수 있어요.",
+  "error.channel_instructions_secret":
+    "이 지침은 키나 토큰을 담은 것처럼 보여요. 지우고 다시 저장해 주세요.",
+  "agents.field.handbook": "핸드북 읽기",
+  "agents.field.handbook.hint":
+    "켜면 이 에이전트의 모든 턴이 지침보다 먼저 핸드북으로 시작해요. 핸드북을 받으면 안 되는 에이전트는 꺼 주세요.",
+  "channels.instructions": "지침",
+  "channels.instructions.hint":
+    "모든 멤버와 리드가 이 채널의 모든 턴에서 자기 지침 다음에 이 글을 읽어요. 최대 4,000자까지 쓸 수 있어요.",
   "agents.memory.title": "메모리",
   "honest.line":
     "에이전트는 지침, 메모리, 지식, 그리고 사용자가 저장한 스킬로 더 나아집니다. ROBot은 모델을 훈련하지 않습니다.",

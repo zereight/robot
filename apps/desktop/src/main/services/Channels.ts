@@ -21,9 +21,11 @@ import {
   type CheckAnswer,
   carriesProgramMark,
   changesLabel,
+  channelInstructionsTooLong,
   charLength,
   checkInstruction,
   checkStateText,
+  composeInstructions,
   createReadGuard,
   DONE_TEST_MAX,
   endOfTurn,
@@ -96,6 +98,7 @@ import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { withKeepGoing } from "./keepGoingTurn.ts"
 import { appendLog } from "./logs.ts"
@@ -195,6 +198,7 @@ interface ChannelRow {
   server_id: string
   name: string
   topic: string
+  instructions: string
   lead_agent_id: string | null
   place_section_id: string | null
   review_parts: number
@@ -233,6 +237,8 @@ interface AgentRow {
   workspace: string
   permission: PermissionLevel
   memory_enabled: number
+  read_handbook: number
+  server_id: string
 }
 
 const EMIT_EVERY_MS = 50
@@ -276,6 +282,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const settings = yield* SettingsStore
       const platform = yield* Platform
       const decision = yield* Decision
+      const handbook = yield* Handbook
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
       // A part that streams from the other computer (spec 019) is not ours to end.
@@ -285,7 +292,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -297,7 +304,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const agentRow = (id: string) =>
         db.get<AgentRow>(
           `SELECT id, name, instructions, archived_at, model_account_id, model_name, model_effort,
-             workspace, permission, memory_enabled FROM agent WHERE id = ?`,
+             workspace, permission, memory_enabled, read_handbook, server_id FROM agent WHERE id = ?`,
           id,
         )
       const hasActiveWork = (channelId: string) =>
@@ -334,6 +341,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           serverId: row.server_id,
           name: row.name,
           topic: row.topic,
+          instructions: row.instructions,
           leadId:
             row.lead_agent_id && memberIds.includes(row.lead_agent_id) ? row.lead_agent_id : null,
           memberIds,
@@ -499,9 +507,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         return turns
       }
 
+      // The handbook, then the instructions of the agent, then the instructions of the channel. The
+      // member and the lead both get them, in every turn of the channel (spec 002, 004). The fast
+      // pick and the check of the lead are requests of the app and get none of them.
       const channelSystem = (channel: ChannelRow, agent: AgentRow, extra = "") =>
         [
-          agent.instructions,
+          composeInstructions({
+            handbook: agent.read_handbook === 1 ? handbook.text(agent.server_id) : "",
+            own: agent.instructions,
+            channel: { name: channel.name, text: channel.instructions },
+          }),
           `You are ${agent.name}. You work in the channel "${channel.name}" with: ${memberRows(
             channel.id,
           )
@@ -1795,6 +1810,19 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       // --- service methods -------------------------------------------------
 
+      /**
+       * The instructions of a channel (spec 004): at most 4000 characters, and a text that looks
+       * like a secret is refused on save, with the reason.
+       */
+      const checkInstructions = (text: string) =>
+        Effect.gen(function* () {
+          if (channelInstructionsTooLong(text))
+            return yield* new AppError({ code: "channel_instructions_too_long" })
+          if (yield* handbook.holdsSecret(text))
+            return yield* new AppError({ code: "channel_instructions_secret" })
+          return text
+        })
+
       const checkName = (serverId: string, name: string, exceptId: string | null) =>
         Effect.suspend(() => {
           const length = charLength(name)
@@ -1878,6 +1906,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const topic = input.topic.trim()
         if (charLength(topic) > CHANNEL_TOPIC_MAX)
           return yield* new AppError({ code: "invalid_input" })
+        const instructions = yield* checkInstructions(input.instructions ?? "")
         const memberIds = [...new Set(input.memberIds)]
         yield* checkName(input.serverId, name, null)
         yield* checkMembers(input.serverId, memberIds, input.leadId)
@@ -1888,14 +1917,15 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const now = Date.now()
         db.transaction(() => {
           db.run(
-            `INSERT INTO channel (id, server_id, name, name_key, topic, lead_agent_id, place_section_id,
-              parent_channel_id, created_at, updated_at, last_read_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO channel (id, server_id, name, name_key, topic, instructions, lead_agent_id,
+              place_section_id, parent_channel_id, created_at, updated_at, last_read_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.serverId,
             name,
             name.toLocaleLowerCase(),
             topic,
+            instructions,
             input.leadId,
             sectionId,
             parentId,
@@ -1926,6 +1956,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const topic = patch.topic !== undefined ? patch.topic.trim() : row.topic
         if (charLength(topic) > CHANNEL_TOPIC_MAX)
           return yield* new AppError({ code: "invalid_input" })
+        // A text that is not changed is not checked again: a key stored later must not lock a
+        // channel whose text was saved before (spec 004).
+        const instructions =
+          patch.instructions !== undefined && patch.instructions !== row.instructions
+            ? yield* checkInstructions(patch.instructions)
+            : row.instructions
         const memberIds = patch.memberIds ? [...new Set(patch.memberIds)] : [...current.memberIds]
         const leadId =
           patch.leadId !== undefined
@@ -1955,11 +1991,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         }
         db.transaction(() => {
           db.run(
-            `UPDATE channel SET name = ?, name_key = ?, topic = ?, lead_agent_id = ?, place_section_id = ?,
-              review_parts = ?, parent_channel_id = ?, updated_at = ? WHERE id = ?`,
+            `UPDATE channel SET name = ?, name_key = ?, topic = ?, instructions = ?, lead_agent_id = ?,
+              place_section_id = ?, review_parts = ?, parent_channel_id = ?, updated_at = ? WHERE id = ?`,
             name,
             name.toLocaleLowerCase(),
             topic,
+            instructions,
             leadId,
             sectionId,
             // Turning it off changes no part that is in review already (spec 004).
@@ -2319,7 +2356,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id FROM channel
+                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )

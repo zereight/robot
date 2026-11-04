@@ -61,6 +61,7 @@ import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { AppError } from "./services/errors.ts"
+import { Handbook } from "./services/Handbook.ts"
 import { Handover } from "./services/Handover.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
 import { KeepAwake } from "./services/KeepAwake.ts"
@@ -844,6 +845,30 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ channelId: Schema.String }))(input).pipe(
       Effect.flatMap(({ channelId }) => Channels.use((c) => c.markRead(channelId))),
       done,
+    ),
+  // The handbook of a server (spec 002). The window of this computer saves with the source "page".
+  "handbook.get": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Handbook.use((h) => h.get(serverId))),
+    ),
+  "handbook.history": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Handbook.use((h) => h.history(serverId))),
+    ),
+  "handbook.save": (input) =>
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        text: Schema.String.check(Schema.isMaxLength(200_000)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ serverId, text }) => Handbook.use((h) => h.save(serverId, text, "page"))),
+    ),
+  "handbook.restore": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String, versionId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId, versionId }) =>
+        Handbook.use((h) => h.restore(serverId, versionId)),
+      ),
     ),
   "memory.list": (input) =>
     decode(Schema.Struct({ agentId: Schema.String, query: Schema.optionalKey(Schema.String) }))(

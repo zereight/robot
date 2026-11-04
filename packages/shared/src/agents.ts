@@ -51,6 +51,12 @@ export interface Agent {
   readonly name: string
   readonly role: string
   readonly instructions: string
+  /**
+   * The switch "Read the handbook" (spec 002, "Handbook"): on by default. With it on, each turn of
+   * the agent gets the handbook of the server before its own instructions. It syncs with the agent
+   * (spec 019).
+   */
+  readonly readHandbook: boolean
   readonly face: Face
   /** A data URL of the uploaded picture, when there is one. */
   readonly faceImage: string | null
@@ -112,6 +118,8 @@ export const AgentCreate = Schema.Struct({
   name: AgentName,
   role: AgentRole,
   instructions: Schema.String,
+  /** The switch "Read the handbook". Absent is on (spec 002). */
+  readHandbook: Schema.optionalKey(Schema.Boolean),
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
   /** The backup model (spec 006). Absent or null is "None". */
@@ -126,6 +134,7 @@ export const AgentPatch = Schema.Struct({
   name: Schema.optionalKey(AgentName),
   role: Schema.optionalKey(AgentRole),
   instructions: Schema.optionalKey(Schema.String),
+  readHandbook: Schema.optionalKey(Schema.Boolean),
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
   backupModel: Schema.optionalKey(Schema.NullOr(AgentModel)),
@@ -159,6 +168,7 @@ export const ClientAgentCreate = Schema.Struct({
   name: AgentName,
   role: AgentRole,
   instructions: ClientInstructions,
+  readHandbook: Schema.optionalKey(Schema.Boolean),
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(ClientModel)),
   backupModel: Schema.optionalKey(Schema.NullOr(ClientModel)),
@@ -170,6 +180,7 @@ export const ClientAgentPatch = Schema.Struct({
   name: Schema.optionalKey(AgentName),
   role: Schema.optionalKey(AgentRole),
   instructions: Schema.optionalKey(ClientInstructions),
+  readHandbook: Schema.optionalKey(Schema.Boolean),
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(ClientModel)),
   backupModel: Schema.optionalKey(Schema.NullOr(ClientModel)),
