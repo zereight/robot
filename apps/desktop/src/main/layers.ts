@@ -25,6 +25,7 @@ import { Memory } from "./services/Memory.ts"
 import { MemoryCheck } from "./services/MemoryCheck.ts"
 import { ModelHolds } from "./services/ModelHolds.ts"
 import { Notifier } from "./services/Notifier.ts"
+import { Organization } from "./services/Organization.ts"
 import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
@@ -76,6 +77,11 @@ export interface AppLayerOptions {
   readonly clock?: Clock
   /** The limits and the way to reach a connection (spec 018). Only tests set them. */
   readonly connections?: ConnectionsOptions
+  /**
+   * The main agent of a server (spec 002). The app has no switch for it yet, so it is none; only
+   * tests set it, for the hand-off rule (spec 030).
+   */
+  readonly mainAgent?: (serverId: string) => string | null
 }
 
 /** Every main process service, wired together. */
@@ -98,8 +104,12 @@ export const appLayer = (options: AppLayerOptions) => {
     PlaceMarks.layer,
     ModelHolds.layer,
   ).pipe(Layer.provideMerge(base))
+  // The part "Organization" reads the server, so it comes after the stores (spec 030).
+  const organization = Organization.layer(
+    options.mainAgent ? { mainAgent: options.mainAgent } : {},
+  ).pipe(Layer.provideMerge(stores))
   // After the stores: it reads the setting, the agents that work and the routines.
-  const keepAwake = KeepAwake.layer.pipe(Layer.provideMerge(stores))
+  const keepAwake = KeepAwake.layer.pipe(Layer.provideMerge(organization))
   const devices = Devices.layer({
     computerName: options.localServerName,
     ...(options.linkPort !== undefined ? { port: options.linkPort } : {}),

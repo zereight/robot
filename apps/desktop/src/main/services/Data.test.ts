@@ -25,6 +25,7 @@ import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
+import { Organization } from "./Organization.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
@@ -738,6 +739,19 @@ describe("export and import", () => {
       ["Product", null],
       ["Site", "Docs"],
     ])
+  })
+
+  test("the hand-off rule comes back with the archive (spec 030, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-rule.zip")
+    const a = app({ save: out })
+    await a.run(Organization.use((o) => o.setHandOff("channels")))
+    await a.run(Data.use((d) => d.export()))
+
+    // An empty profile holds the default until it imports the archive.
+    const b = app({ open: out })
+    expect(await b.run(Organization.use((o) => o.get))).toEqual({ handOff: "any" })
+    await b.run(Data.use((d) => d.import()))
+    expect(await b.run(Organization.use((o) => o.get))).toEqual({ handOff: "channels" })
   })
 
   test("an archive that holds a tree with a fourth level or a loop comes back repaired, with a muted line (spec 030, Repair)", async () => {

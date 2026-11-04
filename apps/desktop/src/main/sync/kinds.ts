@@ -14,6 +14,7 @@ import {
   ENDED_AS,
   FACE_HUES,
   FACE_SHAPES,
+  HAND_OFF_RULES,
   HANDBOOK_MAX,
   HANDBOOK_SOURCES,
   HANDOVER_LIMITS,
@@ -645,6 +646,51 @@ const account: KindDef = {
     ctx.db.run("DELETE FROM provider_account WHERE id = ?", id)
   },
   label: (f) => String(f.name ?? ""),
+}
+
+// ------------------------------------------------------------------------------ organization
+
+interface OrganizationRow {
+  hand_off: string
+  changed_at: number
+}
+
+/**
+ * The part "Organization" of the settings (spec 013, 030, 019): the hand-off rule. It is data of
+ * the agents, like the handbook: a change on one computer counts on the other after it syncs, and
+ * the later change wins. The profile has one row, always with the same id, so both computers
+ * name the same item. A profile with no row has the default rule, "Any agent", so a deletion from
+ * the other computer sets the default. A computer of an older step has no such item.
+ */
+const org: KindDef = {
+  kind: "org",
+  rank: 0,
+  fields: { handOff: { check: oneOf(HAND_OFF_RULES) } },
+  required: ["handOff"],
+  fixed: [],
+  count: (db) => q.count(db, "organization"),
+  ids: (db, after, limit) => q.ids(db, "organization", after, limit),
+  read: (ctx, id) => {
+    const r = ctx.db.get<OrganizationRow>("SELECT * FROM organization WHERE id = ?", id)
+    if (!r) return undefined
+    return { fields: { handOff: r.hand_off }, parent: null, wall: r.changed_at }
+  },
+  create: (ctx, id, f) => {
+    if (id !== "organization") return false
+    ctx.db.run(
+      "INSERT OR REPLACE INTO organization (id, hand_off, changed_at) VALUES (?, ?, ?)",
+      id,
+      f.handOff as string,
+      ctx.now(),
+    )
+    return true
+  },
+  write: (ctx, id, f) => {
+    if (f.handOff !== undefined)
+      ctx.db.run("UPDATE organization SET hand_off = ? WHERE id = ?", f.handOff as string, id)
+  },
+  remove: (ctx, id) => ctx.db.run("DELETE FROM organization WHERE id = ?", id),
+  label: (f) => String(f.handOff ?? ""),
 }
 
 // ------------------------------------------------------------------------------ agent
@@ -2396,6 +2442,7 @@ const wstep: KindDef = {
 /** Every kind, by name. */
 export const KINDS: Readonly<Record<SyncKind, KindDef>> = {
   account,
+  org,
   agent,
   channel,
   memory,

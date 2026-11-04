@@ -14,6 +14,7 @@ import { Context, Effect, Layer } from "effect"
 import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
+import { readHandOffRule } from "./handOff.ts"
 import { Providers } from "./Providers.ts"
 
 export interface OrgChartService {
@@ -43,6 +44,8 @@ const SOURCES = new Set<RpcEvent>([
   "tasks.changed",
   "providers.changed",
   "sync.changed",
+  // The legend of the chart names the hand-off rule (spec 029, 030).
+  "organization.changed",
 ])
 
 /** How often the loop looks for a change that came from an event, and at the clock. */
@@ -166,7 +169,16 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
             ? now + REFRESH_MS
             : Math.min(now + REFRESH_MS, oldest + ORG_HANDOFF_WINDOW_MS)
         // The main agent (spec 002, flow 7) has no switch in the app yet, so the root is "You".
-        return { snapshot: { mainAgentId: null, agents, channels, handoffs }, change }
+        return {
+          snapshot: {
+            mainAgentId: null,
+            agents,
+            channels,
+            handoffs,
+            handOffRule: readHandOffRule(db),
+          },
+          change,
+        }
       }
 
       // ------------------------------------------------------------------ Pushing

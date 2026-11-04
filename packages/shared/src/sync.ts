@@ -20,6 +20,7 @@ export const SYNC_KINDS = [
   "iversion",
   "hversion",
   "thread",
+  "org",
 ] as const
 export type SyncKind = (typeof SYNC_KINDS)[number]
 

@@ -2781,4 +2781,25 @@ export const ko: Record<MessageKey, string> = {
   "routines.runTokens": "토큰: {line}",
   "error.token_limit": "토큰 한도({detail})에 도달했어요.",
   "error.invalid_token_limit": "토큰 한도는 1,000에서 10,000,000 사이의 정수로 입력하세요.",
+  "settings.section.organization": "조직",
+  "organization.hint":
+    "이 서버의 에이전트가 함께 일하는 방식이에요. 전달 규칙은 에이전트가 메시지를 보낼 수 있는 상대를 정해요.",
+  "organization.handOff": "전달 규칙",
+  "organization.handOff.hint":
+    "내가 주는 일은 바뀌지 않아요. 일대일 채팅, 채널 일, 멘션, 루틴, 워크플로, 보드 카드는 전과 같이 가요.",
+  "organization.handOff.any": "아무 에이전트에게",
+  "organization.handOff.channels": "채널을 따라",
+  "organization.handOff.now.any": "모든 에이전트가 다른 모든 에이전트에게 메시지를 보낼 수 있어요.",
+  "organization.handOff.now.channels":
+    "에이전트는 같은 채널의 에이전트와 메인 에이전트에게 메시지를 보낼 수 있어요. 리드는 상위 채널의 리드와 하위 채널의 리드에게도 보낼 수 있어요. 메인 에이전트는 모든 에이전트에게 보낼 수 있어요.",
+  "organization.remote": "{name}의 “조직” 설정이에요.",
+  "organization.readonly":
+    "연결된 컴퓨터는 이 설정을 읽기만 하고 바꾸지 않아요. {name}에서 바꿔 주세요.",
+  "organization.offline":
+    "{name}이(가) 오프라인이에요. 다시 온라인이 되면 이 페이지를 열어 주세요.",
+  "organization.syncs": "이 설정은 다른 컴퓨터와 동기화돼요. 나중에 바꾼 쪽이 이겨요.",
+  "orgchart.legend.channels": "전달은 채널을 따라가요.",
+  "error.hand_off_path": "{detail}은(는) 보낼 수 있는 경로에 없어요. {next}에게 보내세요.",
+  "error.hand_off_none":
+    "{detail}은(는) 보낼 수 있는 경로에 없고, 대신 전달해 줄 에이전트도 없어요. 사용자에게 알리세요.",
 }

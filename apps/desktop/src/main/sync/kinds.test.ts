@@ -12,6 +12,7 @@ import { Agents } from "../services/Agents.ts"
 import { Channels } from "../services/Channels.ts"
 import { Database, type DatabaseService, openDatabase } from "../services/Database.ts"
 import { Handbook } from "../services/Handbook.ts"
+import { readHandOffRule } from "../services/handOff.ts"
 import { Routines } from "../services/Routines.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
@@ -2106,5 +2107,54 @@ describe("the parent channel crosses with the channel (spec 030, 019)", () => {
     b.db.run("UPDATE channel SET parent_channel_id = 'up' WHERE id = 'older'")
     KINDS.channel.write(b, "older", { topic: "New" })
     expect(KINDS.channel.read(b, "older")?.fields.parentChannel).toBe("up")
+  })
+})
+
+describe("the hand-off rule crosses as one item of the profile (spec 030, 019)", () => {
+  const op = (id: string, fields: Record<string, unknown>) => ({
+    k: "org",
+    i: id,
+    o: "dev-a",
+    f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+  })
+
+  test("each profile has one item, with the same id on both computers", async () => {
+    const a = await source()
+    expect(KINDS.org.ids(a.db, "", 10)).toEqual(["organization"])
+    expect(KINDS.org.count(a.db)).toBe(1)
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), "/tmp/kinds-org"), db: a.db }
+    expect(KINDS.org.read(ctxA, "organization")?.fields).toEqual({ handOff: "any" })
+  })
+
+  test("only the two known values pass the strict check", async () => {
+    expect(parseOp(op("organization", { handOff: "any" }), NOW)).toBeDefined()
+    expect(parseOp(op("organization", { handOff: "channels" }), NOW)).toBeDefined()
+    expect(parseOp(op("organization", { handOff: "all" }), NOW)).toBeUndefined()
+    expect(parseOp(op("organization", { handOff: 1 }), NOW)).toBeUndefined()
+    expect(parseOp(op("organization", { handOff: "any", other: "x" }), NOW)).toBeUndefined()
+    // An id that is not the item of the profile does not name a row.
+    const b = target(openDatabase(":memory:"), "/tmp/kinds-org-id")
+    expect(KINDS.org.create(b, "other", { handOff: "channels" })).toBe(false)
+  })
+
+  test("a change is written and read back; a deletion removes the row, and the rule is the default", async () => {
+    const b = target(openDatabase(":memory:"), "/tmp/kinds-org-write")
+    KINDS.org.write(b, "organization", { handOff: "channels" })
+    expect(KINDS.org.read(b, "organization")?.fields).toEqual({ handOff: "channels" })
+    KINDS.org.remove(b, "organization")
+    expect(KINDS.org.read(b, "organization")).toBeUndefined()
+    expect(readHandOffRule(b.db)).toBe("any")
+    // The row comes from a first copy again.
+    expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
+    expect(readHandOffRule(b.db)).toBe("channels")
+    // A change of the rule marks the item for sync in a sync pair.
+    b.db.run(
+      "INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at) VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1)",
+    )
+    b.db.run("DELETE FROM sync_dirty")
+    b.db.run("UPDATE organization SET hand_off = 'channels'")
+    expect(b.db.all("SELECT kind, id FROM sync_dirty")).toEqual([
+      { kind: "org", id: "organization" },
+    ])
   })
 })

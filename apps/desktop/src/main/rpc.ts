@@ -11,6 +11,7 @@ import {
   CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
+  HAND_OFF_RULES,
   isClientMethod,
   MEMORY_MODES,
   MESSAGE_MAX,
@@ -69,6 +70,7 @@ import { Knowledge } from "./services/Knowledge.ts"
 import { Memory, MemoryFilterSchema } from "./services/Memory.ts"
 import { MemoryCheck } from "./services/MemoryCheck.ts"
 import { Notifier } from "./services/Notifier.ts"
+import { Organization } from "./services/Organization.ts"
 import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
@@ -1475,6 +1477,17 @@ export const handlers: Handlers = {
     strict(Schema.Struct({ serverId: Id }))(input).pipe(
       Effect.flatMap(({ serverId }) => ownServer(serverId)),
       Effect.flatMap(() => OrgChart.use((o) => o.model())),
+    ),
+  // The part "Organization" (spec 013, 030). A linked computer reads it with only the link, and no
+  // request of a client changes it (spec 012): "organization.setHandOff" is not a client method.
+  "organization.get": (input) =>
+    strict(Schema.Struct({ serverId: Id }))(input).pipe(
+      Effect.flatMap(({ serverId }) => ownServer(serverId)),
+      Effect.flatMap(() => Organization.use((o) => o.get)),
+    ),
+  "organization.setHandOff": (input) =>
+    decode(Schema.Struct({ rule: Schema.Literals(HAND_OFF_RULES) }))(input).pipe(
+      Effect.flatMap(({ rule }) => Organization.use((o) => o.setHandOff(rule))),
     ),
   "usage.summary": (input) =>
     decode(
