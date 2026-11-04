@@ -12,10 +12,17 @@ beforeAll(() => {
 
 describe("the read-only mode of a program is found in its own help text", () => {
   test("a program whose help names the controls has the mode", async () => {
-    expect(await hasReadOnlyMode("claude_code", fake.claude)).toBe(true)
-    expect(await hasReadOnlyMode("codex", fake.codex)).toBe(true)
-    expect(await hasReadOnlyMode("muse", fake.muse)).toBe(true)
-    expect(await hasReadOnlyMode("pi", fake.pi)).toBe(true)
+    // The four programs are separate scripts: the checks share nothing and run together.
+    const [claude, codex, muse, pi] = await Promise.all([
+      hasReadOnlyMode("claude_code", fake.claude),
+      hasReadOnlyMode("codex", fake.codex),
+      hasReadOnlyMode("muse", fake.muse),
+      hasReadOnlyMode("pi", fake.pi),
+    ])
+    expect(claude).toBe(true)
+    expect(codex).toBe(true)
+    expect(muse).toBe(true)
+    expect(pi).toBe(true)
   })
 
   test("a program whose help lacks the controls has no mode", async () => {
@@ -23,10 +30,16 @@ describe("the read-only mode of a program is found in its own help text", () => 
     fake.setCodex({ noReadOnly: true })
     fake.setMuse({ noReadOnly: true })
     fake.setPi({ noReadOnly: true })
-    expect(await hasReadOnlyMode("claude_code", fake.claude)).toBe(false)
-    expect(await hasReadOnlyMode("codex", fake.codex)).toBe(false)
-    expect(await hasReadOnlyMode("muse", fake.muse)).toBe(false)
-    expect(await hasReadOnlyMode("pi", fake.pi)).toBe(false)
+    const [claude, codex, muse, pi] = await Promise.all([
+      hasReadOnlyMode("claude_code", fake.claude),
+      hasReadOnlyMode("codex", fake.codex),
+      hasReadOnlyMode("muse", fake.muse),
+      hasReadOnlyMode("pi", fake.pi),
+    ])
+    expect(claude).toBe(false)
+    expect(codex).toBe(false)
+    expect(muse).toBe(false)
+    expect(pi).toBe(false)
   })
 
   test("opencode has no mode: its help names none, and rules in its settings are not a mode", async () => {
@@ -48,11 +61,14 @@ describe("the read-only mode of a program is found in its own help text", () => 
       chmodSync(path, 0o755)
       return path
     }
-    expect(
-      await hasReadOnlyMode("codex", only("  --sandbox <MODE> read-only, workspace-write")),
-    ).toBe(true)
-    expect(await hasReadOnlyMode("codex", only("  --sandbox <MODE> workspace-write"))).toBe(false)
-    expect(await hasReadOnlyMode("codex", only("  read-only"))).toBe(false)
+    const [full, noReadOnly, bare] = await Promise.all([
+      hasReadOnlyMode("codex", only("  --sandbox <MODE> read-only, workspace-write")),
+      hasReadOnlyMode("codex", only("  --sandbox <MODE> workspace-write")),
+      hasReadOnlyMode("codex", only("  read-only")),
+    ])
+    expect(full).toBe(true)
+    expect(noReadOnly).toBe(false)
+    expect(bare).toBe(false)
   })
 
   test("a program that does not start, or is not there, has no mode: the app does not guess", async () => {

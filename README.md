@@ -120,6 +120,8 @@ bun run lint         # Biome
 bun run format       # Biome, with fixes
 bun run typecheck    # TypeScript, every workspace
 bun run test         # unit tests (bun test, files in parallel)
+bun run test:fast    # unit tests without the slow files of test-slow-files.txt
+bun run test:slow    # only the slow files; CI runs these, pre-push runs them when touched
 bun run check        # lint, typecheck, unit tests and the host checks in one go
 bun run host:check   # host: rustfmt, clippy and cargo test
 bun run e2e          # build, then Playwright drives the real app
@@ -136,8 +138,11 @@ harness does this for you.
 `bun install` sets `core.hooksPath` to `.githooks`. Two hooks run on your computer:
 
 - `pre-commit` runs Biome on the staged files. It writes no fixes.
-- `pre-push` runs `bun run check`. It does not run the end-to-end suite. When `cargo` is not in
-  PATH, it skips the host checks and says so; CI still runs them.
+- `pre-push` runs lint, typecheck, `test:fast` and the host checks in parallel, plus the
+  slow test files touched by the push. It does not run the end-to-end suite. A push that
+  changes only specs, top-level docs or CI config is not checked, and a push that changes
+  nothing under `host/` runs `cargo fmt --check` instead of the full host checks. When
+  `cargo` is not in PATH, it skips the host checks and says so; CI still runs them.
 
 `git commit --no-verify` and `git push --no-verify` skip them. CI runs the same checks, so a skipped
 hook only moves the failure to the pull request.

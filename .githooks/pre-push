@@ -1,14 +1,30 @@
 #!/bin/sh
-# "bun run check" before a push: lint, typecheck, unit tests and the host checks.
-# These are the same checks as the "check" job of CI. The end-to-end suite is not part of it.
-# Without cargo in PATH the host checks are skipped, and CI still runs them.
+# Fast gate before a push: lint, typecheck, the fast unit tests and the host checks run
+# in parallel. The slow unit tests (see test-slow-files.txt) run in CI only, which keeps
+# running the full suite; slow test files touched by the push itself also run here.
+# "bun run check" stays the full serial gate for local runs.
+# A push that changes only specs, top-level docs or CI config is not checked. docs/ is not
+# in that list: workflowFile.test.ts reads docs/workflow-file-format.md.
+# A push that changes nothing under host/ runs "cargo fmt --check" instead of the full
+# host checks. Without cargo in PATH the host checks are skipped, and CI still runs them.
 # A push that only deletes a branch or sends tags is not checked.
+# When the changed files cannot be listed, every check runs (never a silent skip).
 # "git push --no-verify" skips this hook.
 
+changed=""
+unknown=no
 push=no
-while read -r local_ref local_sha _remote_ref _remote_sha; do
+while read -r local_ref local_sha _remote_ref remote_sha; do
   case "$local_ref" in refs/tags/*) continue ;; esac
-  case "$local_sha" in *[!0]*) push=yes ;; esac
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac
+  push=yes
+  case "$remote_sha" in *[!0]*) ;; *) unknown=yes; continue ;; esac
+  names=$(git diff --name-only "$remote_sha" "$local_sha" 2>/dev/null) || {
+    unknown=yes
+    continue
+  }
+  changed="$changed
+$names"
 done
 
 [ "$push" = yes ] || exit 0
@@ -18,9 +34,85 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 0
 fi
 
-if command -v cargo >/dev/null 2>&1; then
-  exec bun run check
+if [ "$unknown" = no ]; then
+  if printf '%s\n' "$changed" | sed -e '/^$/d' | grep -qvE '^(\.github/|specs/|[^/]*\.md$)'; then
+    : # code changed: run the checks below
+  else
+    echo "pre-push: only specs/docs/config changed, checks skipped."
+    exit 0
+  fi
 fi
 
-echo "pre-push: cargo is not in PATH, so the host checks were skipped. CI still runs them." >&2
-bun run lint && bun run typecheck && bun run test
+host_cmd="bun run host:check"
+host_name="host"
+if [ "$unknown" = no ] && ! printf '%s\n' "$changed" | grep -qE '^host/'; then
+  host_cmd="cargo fmt --manifest-path host/Cargo.toml --check"
+  host_name="host(fmt)"
+fi
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "pre-push: cargo is not in PATH, so the host checks were skipped. CI still runs them." >&2
+  host_cmd="true"
+  host_name="host(skipped)"
+fi
+
+# Slow test files touched by this push run here too, so a change to a slow test is
+# checked before the push. Everything else slow runs in CI.
+slow_changed=""
+if [ "$unknown" = no ]; then
+  for f in $changed; do
+    case "$f" in
+      *.test.ts)
+        if grep -qxF "$f" test-slow-files.txt 2>/dev/null; then
+          slow_changed="$slow_changed $f"
+        fi
+        ;;
+    esac
+  done
+fi
+
+tmpdir=$(mktemp -d 2>/dev/null) || {
+  echo "pre-push: cannot make a temp dir, running the checks one by one." >&2
+  # shellcheck disable=SC2086: $slow_changed is a file list by construction.
+  bun run lint && bun run typecheck && bun run test:fast && {
+    [ -z "$slow_changed" ] || bun test --parallel --pass-with-no-tests $slow_changed
+  } && sh -c "$host_cmd"
+  exit $?
+}
+cleanup() { rm -rf "$tmpdir"; }
+trap cleanup EXIT INT TERM
+
+start=$(date +%s)
+bun run lint >"$tmpdir/lint.log" 2>&1 & lint_pid=$!
+bun run typecheck >"$tmpdir/typecheck.log" 2>&1 & typecheck_pid=$!
+bun run test:fast >"$tmpdir/test.log" 2>&1 & test_pid=$!
+if [ -n "$slow_changed" ]; then
+  # Word splitting is wanted: $slow_changed is a file list by construction.
+  # shellcheck disable=SC2086
+  bun test --parallel --pass-with-no-tests $slow_changed >"$tmpdir/slow.log" 2>&1 & slow_pid=$!
+fi
+sh -c "$host_cmd" >"$tmpdir/host.log" 2>&1 & host_pid=$!
+
+fail=0
+show() {
+  echo "--- $1 FAILED ---"
+  tail -n 40 "$tmpdir/$2.log"
+}
+wait "$lint_pid" || { fail=1; show lint lint; }
+wait "$typecheck_pid" || { fail=1; show typecheck typecheck; }
+wait "$test_pid" || { fail=1; show test:fast test; }
+if [ -n "$slow_changed" ]; then
+  wait "$slow_pid" || { fail=1; show "test:slow(touched)" slow; }
+fi
+wait "$host_pid" || { fail=1; show "$host_name" host; }
+end=$(date +%s)
+
+if [ "$fail" = 1 ]; then
+  trap - EXIT INT TERM
+  echo "pre-push: FAILED after $((end - start))s. Full logs in $tmpdir." >&2
+  exit 1
+fi
+if [ -n "$slow_changed" ]; then
+  echo "pre-push: lint, typecheck, test:fast, test:slow(touched), $host_name passed in $((end - start))s."
+else
+  echo "pre-push: lint, typecheck, test:fast, $host_name passed in $((end - start))s."
+fi
