@@ -52,7 +52,13 @@ export type TurnStarter = "user" | "routine" | "workflow" | "agent" | "program"
 
 /** The starter of a turn of a task, by the source of the task. */
 export const starterOf = (source: TaskSource): TurnStarter =>
-  source === "routine" ? "routine" : source === "workflow" ? "workflow" : "user"
+  source === "routine"
+    ? "routine"
+    : source === "workflow"
+      ? "workflow"
+      : source === "teams"
+        ? "program"
+        : "user"
 
 /**
  * The steps that ask again in a turn that holds outside content (spec 007):

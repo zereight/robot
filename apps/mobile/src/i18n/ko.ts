@@ -118,6 +118,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.bot": "BOT",
   "chat.you": "나",
   "chat.from": "{name}에서 보냄",
+  "chat.fromTeams": "Teams에서 보냄 · {name}",
   "chat.stopped": "멈춤",
   "chat.failed": "답장을 받지 못했어요.",
   "chat.retry": "다시 시도",

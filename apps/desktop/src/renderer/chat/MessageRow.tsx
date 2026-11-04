@@ -1277,6 +1277,13 @@ const FullMessageRow = (props: MessageRowProps) => {
                     </p>
                   )}
                 </Show>
+                <Show when={props.message.fromTeams}>
+                  {(sender) => (
+                    <p class={styles.fromDevice} data-testid="from-teams">
+                      {t("teams.mark.fromName", { name: sender() })}
+                    </p>
+                  )}
+                </Show>
                 <Show when={messageFiles(props.message).length > 0}>
                   <ul class={styles.chips} data-testid="message-files">
                     <For each={messageFiles(props.message)}>

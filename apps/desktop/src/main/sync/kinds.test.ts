@@ -1471,6 +1471,51 @@ describe("the outside mark of a place and the program mark of a message sync (sp
     expect(KINDS.agent.read(b, a.ada.id)?.fields.outside).toEqual(mark)
   })
 
+  test("the sender of a message from Teams syncs with the message and its channel job (spec 028)", async () => {
+    const a = await source()
+    const channelId = KINDS.channel.ids(a.db, "", 10)[0] ?? ""
+    a.db.run(
+      "INSERT INTO message (id, agent_id, author, parts, status, created_at, program_mark, teams_sender) VALUES ('m-1', ?, 'user', ?, 'done', ?, ?, 'Marta Kim')",
+      a.ada.id,
+      JSON.stringify([{ kind: "text", text: "From Teams" }]),
+      NOW,
+      JSON.stringify({ kind: "teams" }),
+    )
+    a.db.run(
+      "INSERT INTO channel_message (id, channel_id, author, kind, parts, status, created_at, program_mark, teams_sender) VALUES ('c-1', ?, 'user', 'text', ?, 'done', ?, ?, 'Marta Kim')",
+      channelId,
+      JSON.stringify([{ kind: "text", text: "A job" }]),
+      NOW,
+      JSON.stringify({ kind: "teams" }),
+    )
+    const dir = join(testRuntime().dataDir, "kinds-teams-sender")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const b = target(openDatabase(":memory:"), dir)
+    KINDS.agent.create(b, a.ada.id, copy(KINDS.agent.read(ctxA, a.ada.id)?.fields) as Fields)
+    const channel = copy(KINDS.channel.read(ctxA, channelId)?.fields) as Fields
+    for (const member of channel.members as string[])
+      if (member !== a.ada.id)
+        KINDS.agent.create(b, member, copy(KINDS.agent.read(ctxA, member)?.fields) as Fields)
+    KINDS.channel.create(b, channelId, channel)
+
+    const message = copy(KINDS.message.read(ctxA, "m-1")?.fields) as Fields
+    expect(message.teamsSender).toBe("Marta Kim")
+    expect(op("message", "m-1", message)).toBeDefined()
+    expect(KINDS.message.create(b, "m-1", message)).toBe(true)
+    expect(KINDS.message.read(b, "m-1")?.fields.teamsSender).toBe("Marta Kim")
+    const job = copy(KINDS.cmessage.read(ctxA, "c-1")?.fields) as Fields
+    expect(KINDS.cmessage.create(b, "c-1", job)).toBe(true)
+    expect(KINDS.cmessage.read(b, "c-1")?.fields.teamsSender).toBe("Marta Kim")
+    // A message of an older step has no sender, and a message of the user has none.
+    const { teamsSender: _drop, ...older } = message
+    expect(KINDS.message.create(b, "m-old", older)).toBe(true)
+    expect(KINDS.message.read(b, "m-old")?.fields.teamsSender).toBeNull()
+    // The strict check takes a text or null, and no long name.
+    for (const bad of [5, { name: "x" }, "x".repeat(2000)])
+      expect(op("message", "m-1", { ...message, teamsSender: bad })).toBeUndefined()
+    expect(op("message", "m-1", { ...message, teamsSender: null })).toBeDefined()
+  })
+
   test("the strict check takes only a source and a flag as the mark of a place", async () => {
     const a = await source()
     const dir = join(testRuntime().dataDir, "kinds-outside-check")

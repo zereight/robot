@@ -15,6 +15,8 @@ export interface ShownMessage extends RowMessage {
   readonly status: ChatMessage["status"]
   readonly error: ChatMessage["error"]
   readonly fromDevice: string | null
+  /** The name of the sender of a message from Teams (spec 028). The row shows the mark. */
+  readonly fromTeams?: string | undefined
   readonly unread?: ChatMessage["unread"]
 }
 
@@ -135,6 +137,11 @@ export const MessageRow = memo(
           {message.fromDevice && message.fromDevice !== props.ownDevice ? (
             <Text style={[styles.small, { color: palette.textMuted }]}>
               {t("chat.from", { name: message.fromDevice })}
+            </Text>
+          ) : null}
+          {message.fromTeams ? (
+            <Text style={[styles.small, { color: palette.textMuted }]}>
+              {t("chat.fromTeams", { name: message.fromTeams })}
             </Text>
           ) : null}
         </View>

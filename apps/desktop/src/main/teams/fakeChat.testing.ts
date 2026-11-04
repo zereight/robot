@@ -11,13 +11,18 @@ import { TEAMS_PAGE } from "./teamsPageSelectors.ts"
 // app by the selectors of `teamsPageSelectors.ts`, so a test runs the real scripts and the real
 // reading code. It shows nothing about the real Teams page.
 //
-// Later slices extend it: S102 reads the messages of the open chat; S103 accepts a typed message.
-// The data for both is here already (`messages`, `typed`).
+// S102 grew it: the messages of the open chat (sender, text, time, an identity, an own marker),
+// an edit, a delete, a reload of the page, and a clock that a test moves. It accepts a typed
+// message too (S103 types with it). The selectors for the messages are guesses, as all selectors.
 
 export interface FakeMessage {
+  /** The identity that the page gives to the message. It stays after an edit and a reload. */
+  readonly id: string
   readonly sender: string
-  readonly text: string
+  text: string
   readonly time: number
+  /** The page marks it as written by the user of this account. */
+  readonly own: boolean
 }
 
 export interface FakeRoom {
@@ -38,7 +43,11 @@ class StubElement {
     readonly text: string,
     private readonly inner: Record<string, StubElement> = {},
     private readonly onClick?: () => void,
+    private readonly attributes: Record<string, string> = {},
   ) {}
+  getAttribute(name: string): string | null {
+    return this.attributes[name] ?? null
+  }
   get innerText() {
     return this.text
   }
@@ -69,10 +78,17 @@ export class FakeChat {
   readonly loads: string[] = []
   /** The scripts the app ran in the page. */
   evaluations = 0
-  /** The texts the app typed into a chat. Empty until the slice that sends. */
+  /** The texts that were typed into a chat and accepted. The app types nothing in S102. */
   readonly typed: { chat: string; text: string }[] = []
-  /** The messages the app read. Empty until the slice that reads. */
+  /** The times the page was asked for the messages of the open chat. */
   messageReads = 0
+  /**
+   * The page gives an identity to each message. Set it to false to test a page that gives none:
+   * the app then keys a message by sender and time.
+   */
+  identities = true
+  /** The name that the page shows for the user of this account, on typed messages. */
+  selfName = "Marta Kim"
   /** Where the page shows now, or undefined while it is hidden. */
   placed: PageBounds | undefined
   /** Whether the input of the user reaches the page. */
@@ -82,25 +98,77 @@ export class FakeChat {
 
   private open = false
   private url = ""
+  private nextId = 1
+  private clockNow: (() => number) | undefined
+  private ownClock = 1_000_000
   private screen: Screen = "signIn"
   private evaluateFailures = 0
 
   // --- What a test does as the world ----------------------------------------------------
 
+  /** Gives the stand-in the clock of a test, so that its messages carry the time of the test. */
+  useClock(now: () => number) {
+    this.clockNow = now
+  }
+
+  /** The time of the stand-in now, in ms. A test moves it with `advance`. */
+  now(): number {
+    return this.clockNow ? this.clockNow() : this.ownClock
+  }
+
+  /** Moves the own clock on. It has no effect when a test gave the stand-in its clock. */
+  advance(ms: number) {
+    this.ownClock += ms
+  }
+
   /** Adds a chat to the chat list. */
-  addChat(title: string, messages: FakeMessage[] = []): FakeRoom {
-    const room: FakeRoom = { title, messages }
+  addChat(title: string, messages: Omit<FakeMessage, "id" | "own">[] = []): FakeRoom {
+    const room: FakeRoom = { title, messages: [] }
     this.rooms.push(room)
+    for (const m of messages) this.say(title, m.sender, m.text, m.time)
     return room
   }
 
-  /** A person writes in a chat. */
-  say(chat: string, sender: string, text: string, time = 0): FakeMessage {
+  /** A person writes in a chat. The time is the time of the stand-in now, if none is given. */
+  say(chat: string, sender: string, text: string, time = this.now(), own = false): FakeMessage {
     const room = this.rooms.find((r) => r.title === chat)
     if (!room) throw new Error(`The stand-in has no chat ${chat}`)
-    const message: FakeMessage = { sender, text, time }
+    const message: FakeMessage = { id: `m${this.nextId++}`, sender, text, time, own }
     room.messages.push(message)
     return message
+  }
+
+  /** A person edits a message. It keeps its identity and its place. */
+  edit(message: FakeMessage, text: string) {
+    message.text = text
+  }
+
+  /** A person deletes a message. */
+  remove(message: FakeMessage) {
+    for (const room of this.rooms) {
+      const index = room.messages.indexOf(message)
+      if (index >= 0) room.messages.splice(index, 1)
+    }
+  }
+
+  /**
+   * The Teams page reloads. The chats and their messages stay with the same identities, and the
+   * page shows no open chat until a chat is opened.
+   */
+  reload() {
+    this.loads.push(this.url)
+    this.openIndex = null
+  }
+
+  /**
+   * Accepts a text typed into the open chat, as the composer does: the text becomes a message of
+   * the user of this account. It throws when no chat is open, as a composer that is not there.
+   */
+  type(text: string): FakeMessage {
+    const room = this.openIndex === null ? undefined : this.rooms[this.openIndex]
+    if (!room) throw new Error("The stand-in has no open chat to type in")
+    this.typed.push({ chat: room.title, text })
+    return this.say(room.title, this.selfName, text, this.now(), true)
   }
 
   /** The user opens a chat in the page. */
@@ -174,6 +242,29 @@ export class FakeChat {
     return this.screen
   }
 
+  /** The elements of the messages of the open chat. */
+  private messageElements(): StubElement[] {
+    const room = this.openIndex === null ? undefined : this.rooms[this.openIndex]
+    if (!room) return []
+    return room.messages.map((m) => {
+      const inner: Record<string, StubElement> = {
+        [TEAMS_PAGE.messageText]: new StubElement(m.text),
+        [TEAMS_PAGE.messageTime]: new StubElement("", {}, undefined, {
+          datetime: new Date(m.time).toISOString(),
+        }),
+      }
+      // A message with no sender shows no name element, as a page that hides the name.
+      if (m.sender !== "") inner[TEAMS_PAGE.messageSender] = new StubElement(m.sender)
+      if (m.own) inner[TEAMS_PAGE.messageOwn] = new StubElement("")
+      return new StubElement(
+        m.text,
+        inner,
+        undefined,
+        this.identities ? { [TEAMS_PAGE.messageIdAttribute]: m.id } : {},
+      )
+    })
+  }
+
   private row(index: number): StubElement {
     const room = this.rooms[index] as FakeRoom
     const title = new StubElement(room.title)
@@ -197,7 +288,14 @@ export class FakeChat {
     return {
       document: {
         querySelector: (selector: string) => elements[selector] ?? null,
-        querySelectorAll: (selector: string) => (selector === TEAMS_PAGE.chatListItem ? rows : []),
+        querySelectorAll: (selector: string) => {
+          if (selector === TEAMS_PAGE.chatListItem) return rows
+          if (selector === TEAMS_PAGE.messageItem && screen === "teams") {
+            this.messageReads++
+            return this.messageElements()
+          }
+          return []
+        },
       },
       location: { href: this.networkUp ? this.url : "chrome-error://chromewebdata/" },
       navigator: { onLine: this.networkUp },

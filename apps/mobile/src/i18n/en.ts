@@ -117,6 +117,7 @@ export const en = {
   "chat.bot": "BOT",
   "chat.you": "You",
   "chat.from": "from {name}",
+  "chat.fromTeams": "From Teams · {name}",
   "chat.stopped": "Stopped",
   "chat.failed": "The reply failed.",
   "chat.retry": "Retry",

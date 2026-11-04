@@ -175,7 +175,7 @@ export class Today extends Context.Service<Today, TodayService>()("robot/main/To
           )
           .map((r) => {
             const where: TodayWhere | null =
-              r.source === "chat" || r.source === "handover"
+              r.source === "chat" || r.source === "handover" || r.source === "teams"
                 ? { kind: "direct", name: "" }
                 : r.source === "channel" && r.channel_name
                   ? { kind: "channel", name: r.channel_name }
