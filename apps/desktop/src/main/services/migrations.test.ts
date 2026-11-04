@@ -941,3 +941,101 @@ describe("the step of the mark of a message from another agent", () => {
     expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([{ kind: "task", id: "t" }])
   })
 })
+
+describe("the step of the handbook and the instructions of a channel (spec 002, 004, 019)", () => {
+  const HANDBOOK = migrations.findIndex((sql) => sql.includes("CREATE TABLE handbook_version"))
+  const server = `
+    INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+    INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+      workspace, section, knowledge_enabled, created_at, updated_at)
+      VALUES ('a', 's', 'Ada', 'ada', '', 'Be brief.', 0, 0, '/w', 'agents', 0, 1, 1);
+    INSERT INTO channel (id, server_id, name, name_key, topic, created_at, updated_at)
+      VALUES ('c', 's', 'Team', 'team', 'Talk', 1, 1);
+  `
+  const pair = `
+    INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+      VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+  `
+
+  test("it adds two columns that have a default and one table, once, and drops or changes nothing", () => {
+    expect(HANDBOOK).toBeGreaterThan(0)
+    expect(migrations.filter((sql) => sql.includes("CREATE TABLE handbook_version"))).toHaveLength(
+      1,
+    )
+    expect(migrations.filter((sql) => sql.includes("ADD COLUMN read_handbook"))).toHaveLength(1)
+    expect(
+      migrations.filter((sql) => sql.includes("ALTER TABLE channel ADD COLUMN instructions")),
+    ).toHaveLength(1)
+    const sql = migrations[HANDBOOK] ?? ""
+    // The triggers say "AFTER UPDATE ON"; no statement may change a row that exists.
+    expect(sql).not.toMatch(/DROP |^\s*DELETE FROM|^\s*UPDATE /im)
+    expect(sql).toContain("ADD COLUMN read_handbook INTEGER NOT NULL DEFAULT 1")
+    expect(sql).toContain("ADD COLUMN instructions TEXT NOT NULL DEFAULT ''")
+  })
+
+  test("an agent and a channel from before keep their rows: the switch is on, the instructions are empty, and the handbook is empty", () => {
+    const db = upTo(HANDBOOK)
+    db.exec(server)
+    db.exec(migrations[HANDBOOK] as string)
+    expect(db.prepare("SELECT id, instructions, read_handbook FROM agent").all()).toEqual([
+      { id: "a", instructions: "Be brief.", read_handbook: 1 },
+    ])
+    expect(db.prepare("SELECT id, topic, instructions FROM channel").all()).toEqual([
+      { id: "c", topic: "Talk", instructions: "" },
+    ])
+    expect(db.prepare("SELECT COUNT(*) AS n FROM handbook_version").get()).toEqual({ n: 0 })
+  })
+
+  test("a version needs a server, and only a version of a server that exists is kept", () => {
+    const db = upTo(HANDBOOK + 1)
+    db.exec(server)
+    expect(() =>
+      db
+        .prepare(
+          "INSERT INTO handbook_version (id, server_id, text, source, created_at) VALUES ('v', 'nowhere', 't', 'page', 1)",
+        )
+        .run(),
+    ).toThrow()
+    db.prepare(
+      "INSERT INTO handbook_version (id, server_id, text, source, created_at) VALUES ('v', 's', 't', 'page', 1)",
+    ).run()
+    expect(db.prepare("SELECT id FROM handbook_version").all()).toEqual([{ id: "v" }])
+  })
+
+  test("a version, the switch and the instructions of a channel mark themselves for sync, in a sync pair only", () => {
+    // Outside a sync pair nothing is marked.
+    const alone = upTo(HANDBOOK + 1)
+    alone.exec(server)
+    alone.exec("DELETE FROM sync_dirty")
+    alone.exec("UPDATE agent SET read_handbook = 0")
+    alone.exec("UPDATE channel SET instructions = 'Use lists.'")
+    expect(alone.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([])
+
+    const db = upTo(HANDBOOK + 1)
+    db.exec(server)
+    db.exec(pair)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE agent SET read_handbook = 0")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "agent", id: "a" },
+    ])
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE channel SET instructions = 'Use lists.'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "channel", id: "c" },
+    ])
+    db.exec("DELETE FROM sync_dirty")
+    db.exec(
+      "INSERT INTO handbook_version (id, server_id, text, source, created_at) VALUES ('v', 's', 't', 'page', 1)",
+    )
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "hversion", id: "v" },
+    ])
+    // A removal of a version (the oldest one goes past 20) is marked too.
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("DELETE FROM handbook_version WHERE id = 'v'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "hversion", id: "v" },
+    ])
+  })
+})

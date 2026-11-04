@@ -810,6 +810,9 @@ describe("the contents list", () => {
     expect(text).toContain("title:")
     expect(text).toContain("- Alpha: first")
     expect(text).not.toContain("write_article")
+    // A pasted path with spaces shows raw in the chat: a link needs no raw spaces.
+    expect(text).toContain("name an article by its title")
+    expect(text).toContain("Never paste the folder path or a file path")
   })
 })
 
