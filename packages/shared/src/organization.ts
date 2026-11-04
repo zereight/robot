@@ -138,12 +138,10 @@ const channelLinks = (p: Prepared, from: string) => {
 }
 
 /**
- * The agents that `from` may send to under the rule "Along the channels" (spec 030), in order of
- * name. The sender itself, archived agents and agents of another server are not in the list. The
- * main agent may send to every agent, and every agent may send to the main agent.
+ * The agents that `from` may send to, by the four allow rules (spec 030), as a map from the id of
+ * the receiver. The sender itself and archived agents are not in it.
  */
-export const allowedSends = (model: HandOffModel, from: string): SendTarget[] => {
-  const p = prepare(model)
+const sendsFrom = (p: Prepared, from: string): Map<string, SendTarget> => {
   const links = channelLinks(p, from)
   const out = new Map<string, SendTarget>()
   const put = (id: string, main: boolean) => {
@@ -164,21 +162,31 @@ export const allowedSends = (model: HandOffModel, from: string): SendTarget[] =>
     // Rule 2: every agent may send to the main agent.
     if (p.mainId !== null) put(p.mainId, true)
   }
-  return [...out.values()].sort((a, b) =>
+  return out
+}
+
+/**
+ * The agents that `from` may send to under the rule "Along the channels" (spec 030), in order of
+ * name. The sender itself, archived agents and agents of another server are not in the list. The
+ * main agent may send to every agent, and every agent may send to the main agent.
+ */
+export const allowedSends = (model: HandOffModel, from: string): SendTarget[] =>
+  [...sendsFrom(prepare(model), from).values()].sort((a, b) =>
     byName({ name: a.name, id: a.agentId }, { name: b.name, id: b.agentId }),
   )
-}
 
 /** True when the rule "Along the channels" lets `from` send a message to `to`. */
 export const handOffAllowed = (model: HandOffModel, from: string, to: string): boolean =>
   allowedSends(model, from).some((t) => t.agentId === to)
 
 /**
- * The agent that a refused sender is told to use: the first agent on the path to the receiver.
- * The path is the shortest chain of allowed sends that goes along the channels, with no stop at
- * the main agent. Its first agent is the lead of a channel of the sender when the chain starts
- * with one. When no chain exists, the first agent is the main agent. Null when there is none: the
- * sender must tell the user.
+ * The agent that a refused sender is told to use (spec 030): the second agent of the shortest
+ * chain from the sender to the receiver. A chain is a row of agents in which each agent may send to
+ * the next one by the four allow rules, so a chain may pass the main agent. Among the first agents
+ * that give a chain of the same length, the lead of a channel of the sender comes first, then the
+ * main agent, then the other agents in the order of their names, ignoring case. Null when the
+ * sender has no chain to the receiver: no agent can pass the work on, and the sender must tell the
+ * user.
  */
 export const firstOnPath = (
   model: HandOffModel,
@@ -186,40 +194,44 @@ export const firstOnPath = (
   to: string,
 ): { id: string; name: string } | null => {
   const p = prepare(model)
-  // Rules 1 and 4 link two agents both ways, so a search from the receiver gives every distance.
+  const nameOf = (id: string) => (p.agents.get(id) as HandOffAgent).name
+  // Who may send to whom, for every agent that is not archived. A sender and a receiver that is
+  // archived (or unknown) have no link, so no chain reaches them.
+  const out = new Map<string, readonly string[]>()
+  const into = new Map<string, string[]>()
+  for (const agent of p.agents.values()) {
+    if (!p.alive(agent.id)) continue
+    const next = [...sendsFrom(p, agent.id).keys()]
+    out.set(agent.id, next)
+    for (const id of next) into.set(id, [...(into.get(id) ?? []), agent.id])
+  }
+  // The number of sends from each agent to the receiver, by a search from the receiver backwards.
   const dist = new Map<string, number>([[to, 0]])
   const queue = [to]
   for (let i = 0; i < queue.length; i++) {
     const at = queue[i] as string
-    for (const next of channelLinks(p, at).keys()) {
-      if (dist.has(next)) continue
-      dist.set(next, (dist.get(at) as number) + 1)
-      queue.push(next)
+    for (const before of into.get(at) ?? []) {
+      if (dist.has(before)) continue
+      dist.set(before, (dist.get(at) as number) + 1)
+      queue.push(before)
     }
   }
   const mine = dist.get(from)
-  const asMain = () => {
-    if (p.mainId === null || p.mainId === from) return null
-    return { id: p.mainId, name: (p.agents.get(p.mainId) as HandOffAgent).name }
-  }
-  if (mine === undefined || mine === 0) return asMain()
-  // Every agent next to the sender that is one step closer to the receiver.
-  const firsts = [...channelLinks(p, from).keys()].filter((id) => dist.get(id) === mine - 1)
-  if (firsts.length === 0) return asMain()
-  // A lead of a channel of the sender comes first. Then the order of name.
+  // No chain, or the sender is the receiver.
+  if (mine === undefined || mine === 0) return null
+  // Every agent that the sender may send to and that is one send closer to the receiver.
+  const firsts = (out.get(from) ?? []).filter((id) => dist.get(id) === mine - 1)
+  // The leads of the channels of the sender (a channel of the sender is one that it is a member of).
   const leadsOfMine = new Set<string>()
   for (const channel of p.open) {
     if (!p.membersOf(channel).includes(from)) continue
     const lead = p.leadOf(channel)
     if (lead !== null && lead !== from) leadsOfMine.add(lead)
   }
-  const named = firsts.map((id) => ({ id, name: (p.agents.get(id) as HandOffAgent).name }))
-  named.sort((a, b) => {
-    const x = leadsOfMine.has(a.id) ? 0 : 1
-    const y = leadsOfMine.has(b.id) ? 0 : 1
-    return x - y || byName(a, b)
-  })
-  return named[0] as { id: string; name: string }
+  const tier = (id: string) => (leadsOfMine.has(id) ? 0 : id === p.mainId ? 1 : 2)
+  const named = firsts.map((id) => ({ id, name: nameOf(id) }))
+  named.sort((a, b) => tier(a.id) - tier(b.id) || byName(a, b))
+  return named[0] ?? null
 }
 
 /** What a refused send tells the sender (spec 030). */

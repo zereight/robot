@@ -159,14 +159,6 @@ describe("the four allow rules", () => {
 })
 
 describe("the refusal and the first agent on the path", () => {
-  test("A to P: send it to D", () => {
-    const r = refusal(org(), "A", "P")
-    expect(r?.next).toEqual({ id: "D", name: "D" })
-    expect(handOffRefusalText("P", r?.next?.name ?? null)).toBe(
-      "P is not on your path. Send it to D.",
-    )
-  })
-
   test("X in no channel to A: send it to M", () => {
     const r = refusal(org(), "X", "A")
     expect(r?.next).toEqual({ id: "M", name: "M" })
@@ -195,29 +187,165 @@ describe("the refusal and the first agent on the path", () => {
         channel("Site", { lead: "S", members: ["S", "Q"], parent: "Docs" }),
       ],
     })
-    // A (member of Docs) to Q (member of Site): D is the lead of a channel of A, and it is on the
-    // path, so it comes before the main agent, which is also a way.
-    expect(firstOnPath(model, "A", "Q")?.id).toBe("D")
-    // D (lead of Docs) to Q: the lead of the sub-channel is on the path.
-    expect(firstOnPath(model, "D", "Q")?.id).toBe("S")
-    // Up the tree: Q to A goes by S, then D.
-    expect(firstOnPath(model, "Q", "A")?.id).toBe("S")
+    // A (member of Docs) to Q (member of Site): the chain A, M, Q has 3 agents. The chain along the
+    // channels, A, D, S, Q, has 4, so the main agent is the first agent.
+    expect(firstOnPath(model, "A", "Q")?.id).toBe("M")
+    // With no main agent, the chain goes along the channels: D leads a channel of A.
+    const noMain = { ...model, mainAgentId: null }
+    expect(firstOnPath(noMain, "A", "Q")?.id).toBe("D")
+    // Up the tree: Q to A goes by S, the lead of a channel of Q, when there is no main agent
+    // (Q, S, D, A). With the main agent, the chain Q, M, A has 3 agents, so M is first.
+    expect(firstOnPath(noMain, "Q", "A")?.id).toBe("S")
+    expect(firstOnPath(model, "Q", "A")?.id).toBe("M")
+    // D (lead of Docs) to Q: S (lead of the sub-channel) and the main agent give a chain of the same
+    // length. S leads no channel of D, so the main agent comes first.
+    expect(firstOnPath(model, "D", "Q")?.id).toBe("M")
+    expect(firstOnPath(noMain, "D", "Q")?.id).toBe("S")
   })
 
-  test("a member of a channel of the sender can be first on the path", () => {
-    // B is in Docs and in Other (Z too). A to Z goes by B.
-    const model: HandOffModel = {
-      agents: ["M", "A", "B", "Z"].map((id) => agent(id)),
+  test("an archived receiver: no chain, so no agent can pass it on", () => {
+    const model = org({ agents: ["M", "P", "D", "A", "X"].map((id) => agent(id, id === "P")) })
+    expect(firstOnPath(model, "A", "P")).toBeNull()
+    expect(refusal(model, "A", "P")?.next).toBeNull()
+  })
+})
+
+// Spec 030, "A chain", "Equal chains" and "No chain": <A> is the second agent of the shortest chain.
+// Names are the ids here, so a name that sorts late or early is easy to set.
+describe("the first agent on the path is the second of the shortest chain", () => {
+  const named = (names: string[], rest: Omit<HandOffModel, "agents">): HandOffModel => ({
+    agents: names.map((id) => agent(id)),
+    ...rest,
+  })
+
+  test("a lead on the path: A of Docs to P of Product gives D", () => {
+    // A to D (rule 1), D to P (rule 4). The chain A, M, P has the same length, and D leads Docs.
+    const r = refusal(org(), "A", "P")
+    expect(r?.next).toEqual({ id: "D", name: "D" })
+    expect(handOffRefusalText("P", r?.next?.name ?? null)).toBe(
+      "P is not on your path. Send it to D.",
+    )
+  })
+
+  test("a tie of the lead and the main agent: the lead comes first, also when its name is later", () => {
+    // Bo (member of Docs, lead Zed) to Cy (member of Site, lead Zed): by Zed or by the main agent
+    // Ada. Zed leads a channel of Bo, so Zed comes before Ada, though "Ada" is first by name.
+    const model = named(["Ada", "Zed", "Bo", "Cy"], {
+      channels: [
+        channel("Docs", { lead: "Zed", members: ["Zed", "Bo"] }),
+        channel("Site", { lead: null, members: ["Zed", "Cy"] }),
+      ],
+      mainAgentId: "Ada",
+    })
+    expect(firstOnPath(model, "Bo", "Cy")?.id).toBe("Zed")
+  })
+
+  test("a tie of the main agent and a plain member: the main agent comes first, not the name", () => {
+    // Same setup, but Zed leads no channel. Zoe is the main agent; Abe is a plain member of Docs
+    // and of Site. Abe comes first by name, but the main agent comes before the other agents.
+    const model = named(["Zoe", "Abe", "Bo", "Cy"], {
+      channels: [
+        channel("Docs", { lead: null, members: ["Abe", "Bo"] }),
+        channel("Site", { lead: null, members: ["Abe", "Cy"] }),
+      ],
+      mainAgentId: "Zoe",
+    })
+    expect(firstOnPath(model, "Bo", "Cy")?.id).toBe("Zoe")
+  })
+
+  test("a tie of two plain members: the order of the names, ignoring case", () => {
+    // Bob and alice are plain members of a channel of the sender, and both are in a channel with
+    // the receiver. There is no main agent. By case, "Bob" < "alice"; ignoring case, alice first.
+    const model = named(["Sam", "Bob", "alice", "Zed"], {
+      channels: [
+        channel("One", { lead: null, members: ["Sam", "Bob", "alice"] }),
+        channel("Two", { lead: null, members: ["Bob", "alice", "Zed"] }),
+      ],
+      mainAgentId: null,
+    })
+    expect(firstOnPath(model, "Sam", "Zed")?.id).toBe("alice")
+  })
+
+  test("a tie of a lead of a channel of the sender and plain members: the lead, though it sorts last", () => {
+    const model = named(["Sam", "Ann", "Bea", "Zoe", "Zed"], {
+      channels: [
+        channel("One", { lead: "Zoe", members: ["Zoe", "Sam", "Ann", "Bea"] }),
+        channel("Two", { lead: null, members: ["Ann", "Bea", "Zoe", "Zed"] }),
+      ],
+      mainAgentId: null,
+    })
+    expect(firstOnPath(model, "Sam", "Zed")?.id).toBe("Zoe")
+  })
+
+  test("a chain through a fellow member only: no main agent, no lead", () => {
+    // A and B share Docs; B and Z share Other. B is the only way, and not a lead.
+    const model = named(["A", "B", "Z"], {
       channels: [
         channel("Docs", { lead: null, members: ["A", "B"] }),
         channel("Other", { lead: null, members: ["B", "Z"] }),
       ],
-      mainAgentId: "M",
-    }
-    expect(firstOnPath(model, "A", "Z")?.id).toBe("B")
+      mainAgentId: null,
+    })
+    expect(firstOnPath(model, "A", "Z")).toEqual({ id: "B", name: "B" })
+    expect(refusal(model, "A", "Z")?.next).toEqual({ id: "B", name: "B" })
   })
 
-  test("an unrelated channel: the path ends at the main agent", () => {
+  test("a chain of more than 3 agents goes along the channels, by the lead of the channel of the sender", () => {
+    // A, D, P, E: A and D share Docs; D leads Docs under Product; P leads Product; E is in Product.
+    const model = named(["A", "D", "P", "E"], {
+      channels: [
+        channel("Product", { lead: "P", members: ["P", "E"] }),
+        channel("Docs", { lead: "D", members: ["D", "A"], parent: "Product" }),
+      ],
+      mainAgentId: null,
+    })
+    expect(firstOnPath(model, "A", "E")?.id).toBe("D")
+  })
+
+  test("the shortest chain wins, whatever the names", () => {
+    // Bob has a longer way to Z (by Y); Carl has a shorter one. By name Bob is first.
+    const model = named(["Sam", "Bob", "Carl", "Y", "Z"], {
+      channels: [
+        channel("One", { lead: null, members: ["Sam", "Bob", "Carl"] }),
+        channel("Two", { lead: null, members: ["Bob", "Y"] }),
+        channel("Three", { lead: null, members: ["Y", "Z"] }),
+        channel("Four", { lead: null, members: ["Carl", "Z"] }),
+      ],
+      mainAgentId: null,
+    })
+    expect(firstOnPath(model, "Sam", "Z")?.id).toBe("Carl")
+  })
+
+  test("no chain: no main agent and no channel links the two", () => {
+    const model = named(["A", "B", "Y", "Z"], {
+      channels: [
+        channel("Docs", { lead: null, members: ["A", "B"] }),
+        channel("Other", { lead: null, members: ["Y", "Z"] }),
+      ],
+      mainAgentId: null,
+    })
+    expect(firstOnPath(model, "A", "Z")).toBeNull()
+    const r = refusal(model, "A", "Z")
+    expect(r?.next).toBeNull()
+    expect(handOffRefusalText("Z", r?.next?.name ?? null)).toBe(
+      "Z is not on your path, and no agent can pass it on. Tell the user.",
+    )
+    // An agent in no channel has no chain either.
+    expect(firstOnPath(org({ mainAgentId: null }), "X", "A")).toBeNull()
+  })
+
+  test("an archived channel and an archived main agent leave no chain", () => {
+    const model = org({
+      agents: ["M", "P", "D", "A", "X"].map((id) => agent(id, id === "M")),
+      channels: [
+        channel("Product", { lead: "P", members: ["P"] }),
+        channel("Docs", { lead: "D", members: ["D", "A"], parent: "Product", archived: true }),
+      ],
+    })
+    expect(firstOnPath(model, "A", "P")).toBeNull()
+  })
+
+  test("an unrelated channel: the chain passes the main agent", () => {
     const model = org({
       agents: ["M", "P", "D", "A", "Z", "O"].map((id) => agent(id)),
       channels: [
@@ -227,21 +355,6 @@ describe("the refusal and the first agent on the path", () => {
       ],
     })
     expect(firstOnPath(model, "A", "Z")?.id).toBe("M")
-  })
-
-  test("two ways of the same length: the lead of a channel of the sender first, then by name", () => {
-    const model: HandOffModel = {
-      agents: ["M", "A", "L", "B", "Z"].map((id) => agent(id)),
-      channels: [
-        channel("One", { lead: "L", members: ["L", "A"] }),
-        channel("Two", { lead: null, members: ["A", "B"] }),
-        channel("Three", { lead: null, members: ["L", "Z"] }),
-        channel("Four", { lead: null, members: ["B", "Z"] }),
-      ],
-      mainAgentId: "M",
-    }
-    // A reaches Z by L (lead of One) or by B (a member of Two): the lead comes first.
-    expect(firstOnPath(model, "A", "Z")?.id).toBe("L")
   })
 })
 
