@@ -92,3 +92,17 @@ h3 {
   /* A heading that wraps gets lines of near equal length, and no single word on the last line. */
   text-wrap: balance;
 }
+
+/* A paragraph does not end with one short word or one syllable alone on its last line. */
+p {
+  text-wrap: pretty;
+}
+
+/*
+ * Korean lines break between words, not inside a word. A piece that does not fit on a line alone
+ * (a long path) still breaks, so nothing runs out of its box.
+ */
+:lang(ko) p {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}

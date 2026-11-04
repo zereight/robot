@@ -766,7 +766,7 @@ describe("the language of the app", () => {
       "[ROBot] 완료했어요. 답변 텍스트는 없어요.",
       "[ROBot] plain reply",
       "[ROBot] 답변에 파일이나 그림이 2개 있어요. ROBot에서 열어 보세요.",
-      "[ROBot] Ada이(가) 끝내지 못했어요: 5분 동안 답이 없어요.",
+      "[ROBot] Ada가 끝내지 못했어요: 5분 동안 답이 없어요.",
       "[ROBot] 안녕하세요",
     ])
     await dispose(s)

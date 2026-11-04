@@ -1,4 +1,5 @@
 import { catalogues as desktopCatalogues } from "@robot/shared/i18n/index"
+import { resolveJosa } from "@robot/shared/i18n/josa"
 import { en, type MessageKey } from "./en.ts"
 import { ko } from "./ko.ts"
 
@@ -14,8 +15,10 @@ export type MessageParams = Readonly<Record<string, string | number>>
 
 const fill = (template: string, params?: MessageParams) =>
   params
-    ? template.replace(/\{(\w+)\}/g, (whole, name: string) =>
-        name in params ? String(params[name]) : whole,
+    ? resolveJosa(
+        template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+          name in params ? String(params[name]) : whole,
+        ),
       )
     : template
 

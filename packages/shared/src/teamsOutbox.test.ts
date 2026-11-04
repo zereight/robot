@@ -217,13 +217,13 @@ describe("the lines for Teams", () => {
     [
       { kind: "failed", name: "Ada", reason: "No answer for 5 minutes." },
       "Ada could not finish: No answer for 5 minutes.",
-      "Ada이(가) 끝내지 못했어요: No answer for 5 minutes.",
+      "Ada가 끝내지 못했어요: No answer for 5 minutes.",
     ],
-    [{ kind: "stopped", name: "Ada" }, "Ada was stopped.", "Ada이(가) 중지되었어요."],
+    [{ kind: "stopped", name: "Ada" }, "Ada was stopped.", "Ada가 중지되었어요."],
     [
       { kind: "waiting", name: "Ada" },
       "Ada waits for you in ROBot. Open the app to answer.",
-      "Ada이(가) ROBot에서 기다리고 있어요. 앱을 열어 답해 주세요.",
+      "Ada가 ROBot에서 기다리고 있어요. 앱을 열어 답해 주세요.",
     ],
     [
       { kind: "tooMany" },

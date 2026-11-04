@@ -25,7 +25,7 @@
 .itemMeta {
   color: var(--c-text-muted);
   font-size: var(--text-xs);
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 /* An e-mail address is read as one piece: it wraps only when the line is too narrow for it. */

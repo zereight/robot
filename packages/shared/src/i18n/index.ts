@@ -1,5 +1,6 @@
 import type { Locale } from "../settings.ts"
 import { en, type MessageKey } from "./en.ts"
+import { resolveJosa } from "./josa.ts"
 import { ko } from "./ko.ts"
 
 export type { MessageKey } from "./en.ts"
@@ -12,8 +13,10 @@ export type MessageParams = Readonly<Record<string, string | number>>
 export const translate = (locale: Locale, key: MessageKey, params?: MessageParams): string => {
   const template = catalogues[locale][key] ?? en[key]
   if (!params) return template
-  return template.replace(/\{(\w+)\}/g, (whole, name: string) =>
-    name in params ? String(params[name]) : whole,
+  return resolveJosa(
+    template.replace(/\{(\w+)\}/g, (whole, name: string) =>
+      name in params ? String(params[name]) : whole,
+    ),
   )
 }
 
