@@ -2,6 +2,7 @@ import {
   type Agent,
   type ChatMessage,
   catalogues,
+  connectionToolLabel,
   type FilePart,
   handoverOf,
   isNoteOnly,
@@ -86,6 +87,16 @@ const CompactFailedLine = (props: { code: string }) => {
   return (
     <p class={styles.compactFailed} data-testid="compact-failed">
       {t("chat.compact.failed", { reason: errorWords(t, props.code) })}
+    </p>
+  )
+}
+
+/** The muted line of a connection that was down when the turn started (spec 018, "States"). */
+const ConnectionDownLine = (props: { name: string }) => {
+  const { t } = useApp()
+  return (
+    <p class={styles.compactFailed} data-testid="connection-down">
+      {t("chat.note.connectionDown", { name: props.name })}
     </p>
   )
 }
@@ -261,7 +272,14 @@ const ToolCard = (props: {
         <span class={styles.toolLabel}>
           {props.part.name === "search_chats"
             ? t("chat.tool.searchChats")
-            : props.part.label || props.part.name}
+            : props.part.connection?.kind === "search"
+              ? t("chat.tool.searchTools", {
+                  words: props.part.connection.words,
+                  found: props.part.connection.found,
+                })
+              : props.part.connection?.kind === "call"
+                ? connectionToolLabel(props.part.connection.connection, props.part.connection.tool)
+                : props.part.label || props.part.name}
         </span>
         {/* A step that the permission level refused says so (spec 007). */}
         <span
@@ -1092,6 +1110,7 @@ const NoteLine = (props: { message: ChatMessage }) => {
     if (part.note === "watch_unchanged") return t("routines.note.unchanged", { name: part.routine })
     if (part.note === "compact_failed")
       return t("chat.compact.failed", { reason: errorWords(t, part.code) })
+    if (part.note === "connection_down") return t("chat.note.connectionDown", { name: part.name })
     return t(`starters.note.${part.what}.${part.why}` as MessageKey, {
       name: part.name,
       n: part.what === "routine" ? ROUTINES_MAX : SKILLS_MAX,
@@ -1302,6 +1321,13 @@ const FullMessageRow = (props: MessageRowProps) => {
                     when={part.kind === "note" && part.note === "compact_failed" ? part : undefined}
                   >
                     {(note) => <CompactFailedLine code={(note() as { code: string }).code} />}
+                  </Match>
+                  <Match
+                    when={
+                      part.kind === "note" && part.note === "connection_down" ? part : undefined
+                    }
+                  >
+                    {(note) => <ConnectionDownLine name={(note() as { name: string }).name} />}
                   </Match>
                   <Match when={part.kind === "tool"}>
                     <ToolStep

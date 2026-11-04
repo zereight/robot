@@ -10,6 +10,7 @@ import { BrowserProfiles } from "./services/BrowserProfiles.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
+import { Connections, type ConnectionsOptions } from "./services/Connections.ts"
 import { Data } from "./services/Data.ts"
 import { Database } from "./services/Database.ts"
 import { Decision } from "./services/Decision.ts"
@@ -69,6 +70,8 @@ export interface AppLayerOptions {
   readonly cacheHosts?: readonly string[]
   /** The clock of the Teams link (spec 028). Only tests set it, to move time by hand. */
   readonly clock?: Clock
+  /** The limits and the way to reach a connection (spec 018). Only tests set them. */
+  readonly connections?: ConnectionsOptions
 }
 
 /** Every main process service, wired together. */
@@ -111,8 +114,10 @@ export const appLayer = (options: AppLayerOptions) => {
     Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),
     Agents.layer,
   ).pipe(Layer.provideMerge(notifier))
+  // The connections use the rules, to remove the rules of a connection that is removed (spec 018).
+  const connections = Connections.layer(options.connections ?? {}).pipe(Layer.provideMerge(memory))
   // The settings tool changes agents, so agents come before the tools (spec 002).
-  const agentSettings = AgentSettings.layer.pipe(Layer.provideMerge(memory))
+  const agentSettings = AgentSettings.layer.pipe(Layer.provideMerge(connections))
   const knowledge = Knowledge.layer.pipe(Layer.provideMerge(agentSettings))
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))

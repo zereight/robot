@@ -1,4 +1,4 @@
-import type { MessagePart } from "@robot/shared"
+import { connectionToolLabel, type MessagePart } from "@robot/shared"
 import { useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { useApp } from "../state/context.tsx"
@@ -42,6 +42,14 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
       : tool.state === "waiting"
         ? palette.accent
         : palette.textMuted
+  // A call of a connection tool names the connection and the tool; a search of tools names its
+  // words and what it found (spec 018).
+  const label =
+    tool.connection?.kind === "call"
+      ? connectionToolLabel(tool.connection.connection, tool.connection.tool)
+      : tool.connection?.kind === "search"
+        ? t("tool.searchTools", { words: tool.connection.words, found: tool.connection.found })
+        : tool.label || tool.name
   const decision = tool.decision
     ? t(tool.decision.answer === "allow" ? "tool.allowedBy" : "tool.deniedBy", {
         name: tool.decision.by,
@@ -52,7 +60,7 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
       <Pressable
         testID={`tool.${tool.name}`}
         accessibilityRole="button"
-        accessibilityLabel={`${tool.label || tool.name}, ${state}`}
+        accessibilityLabel={`${label}, ${state}`}
         accessibilityHint={t("tool.details")}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
@@ -65,7 +73,7 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
       >
         <Text style={[styles.icon, { color: palette.textMuted }]}>{toolIcon(tool.name)}</Text>
         <Text numberOfLines={1} style={[styles.label, { color: palette.text }]}>
-          {tool.label || tool.name}
+          {label}
         </Text>
         <Text style={[styles.state, { color: tone }]}>{state}</Text>
       </Pressable>
@@ -80,7 +88,7 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
           {t("tool.answeredInChat")}
         </Text>
       ) : null}
-      <Sheet visible={open} onClose={() => setOpen(false)} title={tool.label || tool.name} tall>
+      <Sheet visible={open} onClose={() => setOpen(false)} title={label} tall>
         <Text style={[styles.meta, { color: palette.textMuted }]}>
           {tool.name} · {state}
         </Text>

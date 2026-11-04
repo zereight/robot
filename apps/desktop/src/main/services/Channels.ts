@@ -82,6 +82,7 @@ import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
 import { applyEvent } from "./Chat.ts"
+import { Connections } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -252,6 +253,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const providers = yield* Providers
       const tasks = yield* Tasks
       const tools = yield* Tools
+      const connections = yield* Connections
       const placeMarks = yield* PlaceMarks
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
@@ -654,6 +656,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             return yield* new AppError({ code: "provider_not_connected" })
           const useTools = o.tools === true
           const isRuntime = providers.isRuntime(o.agent.model_account_id)
+          // Only an agent whose model comes from an API provider gets connections (spec 018). A
+          // connection that does not start is left out, and the reply says so once.
+          const connected =
+            useTools && !isRuntime ? yield* connections.forTurn(o.agent.id) : undefined
+          if (connected && connected.down.length > 0) {
+            for (const name of connected.down)
+              parts.push({ kind: "note", note: "connection_down", name })
+            save("streaming")
+            emitMessage(id)
+          }
           const changePart = (
             callId: string,
             change: (p: Extract<MessagePart, { kind: "tool" }>) => MessagePart,
@@ -715,6 +727,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               placeMarks.holdSensitive({ kind: "channel", id: o.channel.id }, label),
             // The turn got the program mark in a step (a hit of "search chats").
             onProgram: markProgram,
+            ...(connected ? { connections: connected } : {}),
+            onConnection: (callId, connection) => changePart(callId, (p) => ({ ...p, connection })),
           }
           const events = yield* providers.events(
             o.agent.model_account_id,
@@ -725,6 +739,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 ? [
                     `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`,
                     CHAIN_LIMIT_RULE,
+                    connected?.rule() ?? "",
                     // An agent in a channel uses its own knowledge only.
                     knowledge.prompt(
                       o.agent.id,
@@ -742,6 +757,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                       memory: o.agent.memory_enabled === 1,
                       knowledge: knowledge.enabled(o.agent.id),
                     }),
+                    ...(connected ? { moreTools: () => connected.defs() } : {}),
                   }
                 : {}),
               signal: controller.signal,

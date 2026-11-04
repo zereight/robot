@@ -5,6 +5,7 @@ import {
   type StreamEvent,
   streamChat,
   type ToolCall,
+  type ToolDef,
   type Turn,
 } from "./chat.ts"
 import type { TurnInbox } from "./turn.ts"
@@ -56,6 +57,8 @@ export async function* runAgent(
    */
   resume?: ToolCall,
   inbox?: TurnInbox,
+  /** More tools for each request: the set can grow during the turn (spec 018, "Many tools"). */
+  moreTools?: () => readonly ToolDef[],
 ): AsyncGenerator<AgentEvent> {
   const turns: Turn[] = [...req.turns]
   let pending = resume
@@ -76,7 +79,8 @@ export async function* runAgent(
     if (pending) {
       calls.push(pending)
     } else {
-      for await (const event of streamChat({ ...req, turns })) {
+      const tools = moreTools ? [...(req.tools ?? []), ...moreTools()] : req.tools
+      for await (const event of streamChat({ ...req, turns, ...(tools ? { tools } : {}) })) {
         if (event.type === "toolcall")
           calls.push({ id: event.id, name: event.name, input: event.input })
         else if (event.type === "reply") blocks = event.blocks

@@ -84,6 +84,7 @@ import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
 import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
+import { Connections } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -458,6 +459,10 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       ...(existing?.kind === "tool" && existing.reason ? { reason: existing.reason } : {}),
       // An Allow rule let the step run: the card keeps saying so (spec 007).
       ...(existing?.kind === "tool" && existing.ruleAllowed ? { ruleAllowed: true as const } : {}),
+      // The connection and the tool of a call, or the words of a search of tools (spec 018).
+      ...(existing?.kind === "tool" && existing.connection
+        ? { connection: existing.connection }
+        : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -532,6 +537,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const activity = yield* Activity
       const tasks = yield* Tasks
       const tools = yield* Tools
+      const connections = yield* Connections
       const placeMarks = yield* PlaceMarks
       const memory = yield* Memory
       const knowledge = yield* Knowledge
@@ -1205,6 +1211,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           // The data changed since the restart, so the card cannot go on.
           if (resumed && !resume) return yield* new AppError({ code: "app_stopped" })
           const isRuntime = providers.isRuntime(agent.model_account_id)
+          // Only an agent whose model comes from an API provider gets connections (spec 018).
+          // A connection that does not start is left out, and the chat says so once (spec 018,
+          // "States"). The turn goes on without its tools.
+          const connected = isRuntime ? undefined : yield* connections.forTurn(agentId)
+          if (connected && connected.down.length > 0 && !resumed) {
+            for (const name of connected.down)
+              parts.push({ kind: "note", note: "connection_down", name })
+            save("streaming")
+            publish()
+          }
           // At 85 percent or more of the context, the app compacts first (spec 003). A turn that
           // goes on after a restart does not: its request is made already.
           if (!resumed && !isRuntime)
@@ -1234,6 +1250,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             agent.instructions,
             `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
             CHAIN_LIMIT_RULE,
+            connected?.rule() ?? "",
             // A task of a routine, a workflow or another agent can say that it was blocked.
             toldAboutBlocked(task) ? BLOCKED_RULE : "",
             // A new try reads which steps of the earlier try may have changed things (spec 005).
@@ -1313,7 +1330,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             onSensitive: (label) => placeMarks.holdSensitive(markPlace, label),
             // The turn got the program mark in a step (a hit of "search chats").
             onProgram: markProgram,
+            ...(connected ? { connections: connected } : {}),
+            onConnection: (callId, connection) => changePart(callId, (p) => ({ ...p, connection })),
           }
+          // A call that waited for the user through a restart may name a tool that the agent found.
+          if (resume?.call.name) connected?.reopen(resume.call.name)
           // A step of a workflow can ask for its own effort for this one turn. It is read for each
           // turn, so a retry decides again from the step and the model, not from the first try.
           // The levels come from the model list of the account, as for the effort of an agent. A
@@ -1340,6 +1361,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 // Changes from the chat are for agents of an API provider (spec 002).
                 settings: !isRuntime,
               }),
+              // The tools of the connections of the agent, and the ones it found by search.
+              ...(connected ? { moreTools: () => connected.defs() } : {}),
               // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
               // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
               // message of another agent) keeps the short one.

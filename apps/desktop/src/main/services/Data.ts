@@ -24,6 +24,7 @@ import { Context, Effect, Layer } from "effect"
 import { unzipSync } from "fflate"
 import { Agents } from "./Agents.ts"
 import { type ArchiveFile, writeZip } from "./archive.ts"
+import { Connections } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { DECISION_KEY } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -95,6 +96,24 @@ const knowledgeFiles = (workspace: string) => {
   return out
 }
 
+/**
+ * The entries of a connection (environment values or headers) with no secret value and no mark
+ * that a value is saved. A value of the keychain stays on the computer that holds it.
+ */
+const forgetSecretValues = (text: string): string => {
+  try {
+    const entries = JSON.parse(text) as { name?: unknown; secret?: unknown; value?: unknown }[]
+    if (!Array.isArray(entries)) return "[]"
+    return JSON.stringify(
+      entries.map((e) =>
+        e.secret === true ? { name: e.name, secret: true, saved: false } : { ...e, saved: false },
+      ),
+    )
+  } catch {
+    return "[]"
+  }
+}
+
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex")
 
 export class Data extends Context.Service<Data, DataService>()("robot/main/Data") {
@@ -109,6 +128,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
       const servers = yield* Servers
       const settings = yield* SettingsStore
       const savedSecrets = yield* SavedSecrets
+      const connections = yield* Connections
       const bus = yield* EventBus
 
       const writeArchive = Effect.fn("Data.writeArchive")(function* (target: string) {
@@ -120,6 +140,8 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           ...[secrets.get(DECISION_KEY)].filter((k): k is string => k !== null),
           // The values of saved secrets (spec 020) are hidden too, wherever a text holds one.
           ...savedSecrets.knownValues(),
+          // So are the values of the secrets of connections (spec 018).
+          ...connections.knownValues(),
         ]
 
         const work = mkdtempSync(join(tmpdir(), "robot-export-"))
@@ -147,6 +169,16 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
             // A saved secret keeps its name, agent, origin and way to send, never its value or the
             // name of the value in the keychain of this computer (spec 020).
             out.exec("UPDATE saved_secret SET value_ref = NULL; DELETE FROM saved_secret_drop")
+            // A connection keeps its settings and its plain values, never a secret value or the
+            // mark that this computer holds one (spec 018, 014).
+            for (const row of out.prepare("SELECT id, env, headers FROM tool_connection").all() as {
+              id: string
+              env: string
+              headers: string
+            }[])
+              out
+                .prepare("UPDATE tool_connection SET env = ?, headers = ? WHERE id = ?")
+                .run(forgetSecretValues(row.env), forgetSecretValues(row.headers), row.id)
             // Sync records belong to this pair of computers (spec 019). They are not exported.
             for (const table of [
               "sync_pair",
@@ -467,6 +499,26 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                  FROM imp.permission_rule WHERE agent_id IS NULL OR agent_id IN (SELECT id FROM agent)`,
                 local.id,
               )
+              // Connections come back turned off, with no tools read and no secret value (spec 018,
+              // 014). The archive is untrusted: the flags are made again here.
+              db.run(
+                `INSERT INTO tool_connection
+                   (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,
+                    agents, enabled, state, failure, tools, tools_more, tools_off, created_at)
+                 SELECT id, ?, name, name_key, kind, command, args, folder, env, address, headers,
+                        agents, 0, 'untested', NULL, '[]', 0, tools_off, created_at
+                 FROM imp.tool_connection`,
+                local.id,
+              )
+              for (const row of db.all<{ id: string; env: string; headers: string }>(
+                "SELECT id, env, headers FROM tool_connection",
+              ))
+                db.run(
+                  "UPDATE tool_connection SET env = ?, headers = ? WHERE id = ?",
+                  forgetSecretValues(row.env),
+                  forgetSecretValues(row.headers),
+                  row.id,
+                )
               // The log keeps the entries and the rules that decided them (spec 007, 014).
               db.run(`INSERT INTO action_log SELECT * FROM imp.action_log`)
               // The values stay in the keychain of the other computer: each secret shows
