@@ -6,6 +6,7 @@ import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { ChannelTools } from "./ChannelTools.ts"
 import { Connections } from "./Connections.ts"
+import { Database } from "./Database.ts"
 import { Servers } from "./Servers.ts"
 import { Skills } from "./Skills.ts"
 import { testRuntime } from "./testing.ts"
@@ -85,6 +86,18 @@ const setup = async () => {
   const profile = (agentId: string) => run(ChannelTools.use((c) => c.forAgent(agentId)))
   const setMembers = (id: string, memberIds: string[]) =>
     run(Channels.use((c) => c.update(id, { memberIds })))
+  /** Puts an agent on a vendor runtime (spec 006): its account is of a kind that a program serves. */
+  const onRuntime = (agentId: string) =>
+    run(
+      Database.use((d) =>
+        Effect.sync(() => {
+          d.run(
+            "INSERT INTO provider_account (id, kind, name, base_url, created_at) VALUES ('rt', 'claude_code', 'Claude Code', '', 1)",
+          )
+          d.run("UPDATE agent SET model_account_id = 'rt' WHERE id = ?", agentId)
+        }),
+      ),
+    )
   return {
     ...t,
     run,
@@ -100,6 +113,7 @@ const setup = async () => {
     set,
     profile,
     setMembers,
+    onRuntime,
   }
 }
 
@@ -303,6 +317,23 @@ describe("the profile of the agent: From <channel>", () => {
     // A skill of the own list is not from a channel.
     expect(lines.some((l) => l.id === own.id)).toBe(false)
     // Ada is in Product only, so she has the skill and not the connection.
+    expect((await s.profile(ada.id)).map((l) => l.name)).toEqual(["Release notes"])
+  })
+
+  test("an agent on a vendor runtime gets the skills of a channel as 017 says, and no connection, as 018 says", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    const product = await s.channel("Product", [ada.id])
+    const notes = await s.skill("Release notes")
+    const conn = await s.connection("Notes")
+    await s.set(product.id, "skill", notes.id, true)
+    await s.set(product.id, "connection", conn.id, true)
+    expect((await s.profile(ada.id)).map((l) => l.name)).toEqual(["Release notes", "Notes"])
+
+    await s.onRuntime(ada.id)
+    // The message that uses a skill carries its instructions, so a runtime gets the skill. A
+    // connection reaches only the agents that use the tools of the app: the line leaves with it.
+    expect(await s.skillsOf(ada.id)).toEqual(["Release notes"])
     expect((await s.profile(ada.id)).map((l) => l.name)).toEqual(["Release notes"])
   })
 

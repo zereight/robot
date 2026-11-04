@@ -205,6 +205,38 @@ describe("the count and the line at 80%", () => {
     expect((await s.limit(docs.id)).used).toBe(1_000)
   })
 
+  test("a task that came with a sync counts like a task of this computer, and it can stop a new task here (spec 019, 030)", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    const docs = await s.channel("Docs", [ada.id], { dailyTokenLimit: 50_000 })
+    // A row as the sync of tasks writes it: the source "channel", the channel, the tokens, and the
+    // start time of the other computer. The count reads the row, not the computer that ran it.
+    const synced = async (tokens: number) => {
+      const made = await s.run(
+        Tasks.use((x) =>
+          x.create({
+            agentId: ada.id,
+            prompt: "from MacBook 2",
+            source: "channel",
+            sourceId: docs.id,
+          }),
+        ),
+      )
+      await s.sql(
+        "UPDATE task SET state = 'done', started_at = ?, input_tokens = ?, output_tokens = 0 WHERE id = ?",
+        Date.now() - 60_000,
+        tokens,
+        made.id,
+      )
+    }
+    await synced(41_000)
+    expect(await s.limit(docs.id)).toMatchObject({ used: 41_000, state: "near", stoppedBy: null })
+    // With the tokens of this computer on top, the limit is used and the next task is blocked.
+    await s.mention(docs.id, "Ada", 10_000)
+    expect(await s.limit(docs.id)).toMatchObject({ used: 51_000, state: "over" })
+    expect((await s.mention(docs.id, "Ada", 100))?.state).toBe("blocked")
+  })
+
   test("at 80% the channel shows the line, and nothing is blocked yet", async () => {
     const s = await setup()
     const ada = await s.agent("Ada")
