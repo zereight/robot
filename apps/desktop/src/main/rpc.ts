@@ -611,9 +611,15 @@ export const handlers: Handlers = {
     ),
   "models.available": () => modelChoices,
   "agentFile.export": (input) =>
-    decode(Schema.Struct({ serverId: Schema.String, agentIds: Schema.Array(Schema.String) }))(
-      input,
-    ).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.export(data)))),
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        agentIds: Schema.Array(Schema.String),
+        channels: Schema.optionalKey(Schema.Boolean),
+        skills: Schema.optionalKey(Schema.Boolean),
+        handbook: Schema.optionalKey(Schema.Boolean),
+      }),
+    )(input).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.export(data)))),
   "agentFile.open": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => AgentFiles.use((f) => f.open(serverId))),
@@ -630,6 +636,9 @@ export const handlers: Handlers = {
             routines: Schema.Array(Schema.Int),
           }),
         ),
+        channels: Schema.optionalKey(Schema.Array(Schema.Int)),
+        skills: Schema.optionalKey(Schema.Array(Schema.Int)),
+        handbook: Schema.optionalKey(Schema.Boolean),
       }),
     )(input).pipe(Effect.flatMap((data) => AgentFiles.use((f) => f.import(data)))),
   "checklists.forAgent": (input) =>

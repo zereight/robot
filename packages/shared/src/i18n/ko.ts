@@ -1677,12 +1677,42 @@ export const ko: Record<MessageKey, string> = {
   "agentFile.export.limit": "파일 하나에는 에이전트를 최대 40개까지 담을 수 있어요.",
   "agentFile.export.submit": "내보내기…",
   "agentFile.exported": "에이전트 {count}개를 {path}에 저장했어요.",
+  "agentFile.exported.team":
+    "에이전트 {count}개, 채널 {channels}개, 스킬 {skills}개를 {path}에 저장했어요.",
+  "agentFile.exported.handbook": "파일에 핸드북이 들어 있어요.",
+  "agentFile.export.team.title": "파일에 더 넣기",
+  "agentFile.export.team.channels": "이 에이전트들의 채널",
+  "agentFile.export.team.channels.hint":
+    "멤버가 모두 선택된 채널이에요. 이름, 주제, 지침, “부분 검토”, 멤버, 리드를 저장하고 메시지는 저장하지 않아요.",
+  "agentFile.export.team.skills": "이 에이전트들의 스킬",
+  "agentFile.export.team.skills.hint":
+    "선택한 에이전트가 쓸 수 있는 스킬이에요. 모든 에이전트용 스킬도 포함해요. 이름, 지침, 에이전트를 저장하고, 가져온 스킬은 꺼진 채로 만들어져요.",
+  "agentFile.export.team.handbook": "핸드북",
+  "agentFile.export.team.handbook.hint":
+    "모든 에이전트가 읽는 글이에요. 가져올 때 체크한 경우에만 핸드북을 바꿔요.",
+  "agentFile.export.team.handbook.empty": "핸드북이 비어 있어요.",
+  "agentFile.export.team.found": "{count}개",
+  "agentFile.export.limit.channels":
+    "파일 하나에는 채널을 최대 40개까지 담을 수 있어요. 에이전트를 줄여 주세요.",
+  "agentFile.export.limit.skills":
+    "파일 하나에는 스킬을 최대 100개까지 담을 수 있어요. 에이전트를 줄여 주세요.",
   "agentFile.import.title": "에이전트 가져오기",
   "agentFile.import.renamed": "파일에 적힌 이름: {name}",
   "agentFile.import.model": "이 에이전트들이 모두 쓸 모델",
   "agentFile.import.submit": "에이전트 {count}개 가져오기",
+  "agentFile.import.submitTeam": "가져오기",
   "agentFile.import.stopped":
     "{name}에서 가져오기가 멈췄어요. 에이전트 {made}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
+  "agentFile.import.stopped.channel":
+    "채널 “{name}”에서 가져오기가 멈췄어요. 에이전트 {made}개와 채널 {channels}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
+  "agentFile.import.stopped.skill":
+    "스킬 “{name}”에서 가져오기가 멈췄어요. 에이전트 {made}개, 채널 {channels}개, 스킬 {skills}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
+  "agentFile.import.stopped.handbook":
+    "핸드북에서 가져오기가 멈췄어요. 에이전트 {made}개, 채널 {channels}개, 스킬 {skills}개는 이미 만들어졌고 그대로 남아요. 이유: {reason}",
+  "agentFile.imported": "에이전트 {agents}개, 루틴 {routines}개(멈춤)를 가져왔어요.",
+  "agentFile.imported.team":
+    "에이전트 {agents}개, 루틴 {routines}개(멈춤), 채널 {channels}개, 스킬 {skills}개(꺼짐)를 가져왔어요.",
+  "agentFile.imported.handbook": "핸드북을 바꿨어요.",
   "importReview.agents.intro":
     "가져올 부분에 체크하세요. ROBot은 새 에이전트만 만들고, 이미 있는 에이전트는 바꾸지 않아요.",
   "importReview.workflows.intro":
@@ -1704,6 +1734,29 @@ export const ko: Record<MessageKey, string> = {
   "importReview.counts.agents": "에이전트 {agents}개, 루틴 {routines}개(멈춤)를 만들어요.",
   "importReview.counts.workflows": "워크플로우 {workflows}개(꺼짐)를 만들어요.",
   "importReview.nothing": "체크한 항목이 없어요.",
+  "importReview.team.channels.title": "채널",
+  "importReview.team.skills.title": "스킬",
+  "importReview.team.handbook.title": "핸드북",
+  "importReview.channel.members": "멤버: {names}",
+  "importReview.channel.lead": "리드: {name}",
+  "importReview.channel.noLead": "리드 없음",
+  "importReview.channel.reviewParts": "“부분 검토”가 켜져 있어요",
+  "importReview.channel.needs": "체크하지 않은 멤버는 채널에서 빠져요.",
+  "importReview.skill.agents": "쓸 수 있는 에이전트: {names}",
+  "importReview.skill.off": "꺼진 채로 만들어져요. 켜기 전에 지침을 읽어 보세요.",
+  "importReview.handbook.replaces": "이 서버의 핸드북을 바꿔요. 이전 글은 핸드북 기록에 남아요.",
+  "importReview.handbook.length": "{count}자",
+  "importReview.handbook.showAll": "모두 보기",
+  "importReview.handbook.showLess": "접기",
+  "importReview.notImported.channel": "채널 “{owner}”",
+  "importReview.notImported.skill": "스킬 “{owner}”",
+  "importReview.reason.channel_no_member": "멤버가 아무도 체크되지 않았어요.",
+  "importReview.reason.skill_no_agent": "쓸 수 있는 에이전트가 아무도 체크되지 않았어요.",
+  "importReview.reason.skills_full": "이 서버에는 스킬이 이미 100개 있어서 더 담을 수 없어요.",
+  "importReview.counts.team":
+    "에이전트 {agents}개, 루틴 {routines}개(멈춤), 채널 {channels}개, 스킬 {skills}개(꺼짐)를 만들어요.",
+  "importReview.counts.handbook": "핸드북도 바꿔요.",
+  "importReview.counts.handbookOnly": "핸드북을 바꿔요.",
   "error.import_nothing_picked": "체크한 항목이 없어요. 가져올 부분을 하나 이상 체크하세요.",
   "checklist.sender": "ROBot",
   "checklist.title": "가져온 뒤 할 일",
@@ -1717,9 +1770,14 @@ export const ko: Record<MessageKey, string> = {
   "checklist.pick": "고르기",
   "checklist.done": "완료",
   "error.agent_file_format": "에이전트 파일이 아니에요.",
-  "error.agent_file_version": "이 파일은 형식 버전 {detail}이에요. 이 앱은 버전 1을 읽어요.",
+  "error.agent_file_version": "이 파일은 형식 버전 {detail}이에요. 이 앱은 버전 1과 2를 읽어요.",
   "error.agent_file_too_large": "파일이 10 MB보다 커요.",
   "error.agent_file_too_many": "파일 하나에는 에이전트를 최대 40개까지 담을 수 있어요.",
+  "error.agent_file_too_many_channels": "파일 하나에는 채널을 최대 40개까지 담을 수 있어요.",
+  "error.agent_file_too_many_skills": "파일 하나에는 스킬을 최대 100개까지 담을 수 있어요.",
+  "error.agent_file_duplicate_channel": "파일에 이름이 {detail}인 채널이 둘 있어요.",
+  "error.agent_file_duplicate_skill": "파일에 이름이 {detail}인 스킬이 둘 있어요.",
+  "error.agent_file_member": "파일에 없는 에이전트 이름이에요: {detail}",
   "error.agent_file_empty": "에이전트 파일에는 에이전트가 하나 이상 있어야 해요.",
   "error.agent_file_duplicate": "파일에 이름이 {detail}인 에이전트가 둘 있어요.",
   "error.agent_file_field": "값이 없거나 올바르지 않아요: {detail}",

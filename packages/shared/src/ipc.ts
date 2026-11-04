@@ -1,4 +1,4 @@
-import type { AgentFileImported, AgentFilePreview } from "./agentFile.ts"
+import type { AgentFileExported, AgentFileImported, AgentFilePreview } from "./agentFile.ts"
 import type { InstructionVersion, SettingsLineState } from "./agentSettings.ts"
 import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
 import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
@@ -316,19 +316,38 @@ export interface RpcMethods {
     output: undefined
   }
   "agents.setFaceImage": { input: { id: string; dataUrl: string | null }; output: Agent }
-  /** Asks where to save, then writes one agent file. `path` is null when cancelled. */
+  /**
+   * Asks where to save, then writes one agent file. `path` is null when cancelled. The three flags
+   * are the tick boxes "Channels of these agents", "Skills of these agents" and "Handbook" (spec
+   * 002); an absent flag is off. The output counts what the file holds.
+   */
   "agentFile.export": {
-    input: { serverId: string; agentIds: readonly string[] }
-    output: { path: string | null; count: number }
+    input: {
+      serverId: string
+      agentIds: readonly string[]
+      channels?: boolean
+      skills?: boolean
+      handbook?: boolean
+    }
+    output: AgentFileExported
   }
   /** Asks for an agent file and reads it. `null` when cancelled. Nothing is made yet. */
   "agentFile.open": { input: { serverId: string }; output: AgentFilePreview | null }
   /**
    * Makes the agents of the file that `agentFile.open` read that the user ticked, all with this
-   * model. Each new agent with something left to do gets a checklist.
+   * model, then the ticked channels and skills (off), and replaces the handbook when it is ticked
+   * (`channels` and `skills` are places in the file). Each new agent with something left to do
+   * gets a checklist.
    */
   "agentFile.apply": {
-    input: { serverId: string; model: AgentModel | null; pick: readonly AgentPick[] }
+    input: {
+      serverId: string
+      model: AgentModel | null
+      pick: readonly AgentPick[]
+      channels?: readonly number[]
+      skills?: readonly number[]
+      handbook?: boolean
+    }
     output: AgentFileImported
   }
   /** The checklist that an import left in the chat of this agent, or null (spec 014). */
