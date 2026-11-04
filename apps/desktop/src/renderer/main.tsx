@@ -5,6 +5,7 @@ import { AgentsProvider } from "./state/agents.tsx"
 import { AppProvider, loadInitial, useApp } from "./state/app.tsx"
 import { ChannelsProvider } from "./state/channels.tsx"
 import { DevicesProvider } from "./state/devices.tsx"
+import { OrgChartProvider } from "./state/orgChart.tsx"
 import { ProvidersProvider } from "./state/providers.tsx"
 import { TeamsProvider } from "./state/teams.tsx"
 import { TodayProvider } from "./state/today.tsx"
@@ -30,9 +31,11 @@ if (root) {
               <AgentsProvider>
                 <ChannelsProvider>
                   <TodayProvider>
-                    <TeamsProvider>
-                      <App />
-                    </TeamsProvider>
+                    <OrgChartProvider>
+                      <TeamsProvider>
+                        <App />
+                      </TeamsProvider>
+                    </OrgChartProvider>
                   </TodayProvider>
                 </ChannelsProvider>
               </AgentsProvider>

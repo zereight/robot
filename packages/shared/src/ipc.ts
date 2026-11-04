@@ -32,6 +32,7 @@ import type {
 } from "./link.ts"
 import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryProposal } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
+import type { OrgSnapshot } from "./orgChart.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
 import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
 import type {
@@ -654,6 +655,8 @@ export interface RpcMethods {
   }
   /** The Today page of this computer (spec 021). It reads local data only and sends nothing out. */
   "today.get": { input: undefined; output: TodaySnapshot }
+  /** The org chart of this computer (spec 029). It reads local data only and sends nothing out. */
+  "orgChart.get": { input: undefined; output: OrgSnapshot }
   /**
    * Message search (spec 001): one page of the messages of a server that hold every word of the
    * text, newest first. A linked server answers it; while the link is offline the answer comes
@@ -774,6 +777,8 @@ export interface RpcEvents {
   "island.state": IslandState
   /** The Today page changed: the whole page, so the window needs no second request. */
   "today.changed": TodaySnapshot
+  /** The org chart changed: the whole snapshot, so the window needs no second request (spec 029). */
+  "orgChart.changed": OrgSnapshot
   "app.openPlace": PlaceTarget
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
   "app.openPage": { page: "workflows" | "teams"; serverId?: string }

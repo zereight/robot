@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   type ActionDecider,
+  type AgentMessageKind,
   blockedError,
   isActive,
   isDecision,
@@ -109,6 +110,12 @@ export interface TaskInput {
    * a retry keep the kind of the task that made them, and any other task has none.
    */
   readonly teamsJob?: TeamsJobKind | null
+  /**
+   * Whether a task of the source "agent" is a send (the tool "send message") or the reply that
+   * comes back to the sender (spec 029). Without it the task has no mark: a retry of a task is no
+   * new send.
+   */
+  readonly agentMessage?: AgentMessageKind
   /**
    * The task is made as Failed with this error and never runs: a part of a channel job over the
    * limit of queued tasks (spec 005, "Queue").
@@ -712,8 +719,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
                message_id, state, created_at, asked_at, depth, progress, done_test, error_code,
-               error_detail, finished_at, teams_job)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?, ?)`,
+               error_detail, finished_at, teams_job, agent_message)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?, ?, ?)`,
             id,
             input.agentId,
             input.prompt,
@@ -732,6 +739,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             failed?.detail ?? null,
             failed ? now : null,
             teamsJob,
+            input.source === "agent" ? (input.agentMessage ?? null) : null,
           )
           if (!failed) {
             stops.set(id, Deferred.makeUnsafe<void>())

@@ -614,6 +614,53 @@ describe("the moments of a task sync with it (spec 005, 019)", () => {
   })
 })
 
+describe("the mark of a message from another agent syncs with the task (spec 029, 019)", () => {
+  const dirOf = () => join(testRuntime().dataDir, "kinds")
+  const opOf = (fields: Fields) =>
+    parseOp(
+      {
+        k: "task",
+        i: "task-1",
+        o: "dev-a",
+        f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+      },
+      NOW,
+    )
+
+  test("a send and a reply reach the copy as they are; a task with no mark crosses with null", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const plain = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(plain.agentMessage).toBeNull()
+    const ada = KINDS.agent.read(ctxA, a.ada.id)
+    for (const mark of ["send", "reply", null]) {
+      a.db.run("UPDATE task SET source = 'agent', agent_message = ? WHERE id = 'task-1'", mark)
+      const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+      expect(fields.agentMessage).toBe(mark)
+      const b = target(openDatabase(":memory:"), dirOf())
+      expect(KINDS.agent.create(b, a.ada.id, copy(ada?.fields) as Fields)).toBe(true)
+      expect(KINDS.task.create(b, "task-1", fields)).toBe(true)
+      expect(KINDS.task.read(b, "task-1")?.fields.agentMessage).toBe(mark)
+    }
+  })
+
+  test("the mark is set when the task is made and never changes after", () => {
+    expect(KINDS.task.fixed).toContain("agentMessage")
+    // A computer of an older step sends no mark. Its task still arrives, and is not a hand-off.
+    expect(KINDS.task.required).not.toContain("agentMessage")
+  })
+
+  test("only the two known words pass the strict check", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    for (const agentMessage of ["send", "reply", null])
+      expect(opOf({ ...fields, agentMessage }), String(agentMessage)).toBeDefined()
+    for (const agentMessage of ["Send", "handoff", "", 1, true, {}])
+      expect(opOf({ ...fields, agentMessage }), String(agentMessage)).toBeUndefined()
+  })
+})
+
 describe("the note of a starter syncs with its message (spec 002, 019)", () => {
   const note = {
     kind: "note",

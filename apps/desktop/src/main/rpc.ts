@@ -66,6 +66,7 @@ import { KeepAwake } from "./services/KeepAwake.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
+import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
 import { Places } from "./services/Places.ts"
 import { Platform } from "./services/Platform.ts"
@@ -1310,6 +1311,7 @@ export const handlers: Handlers = {
       done,
     ),
   "today.get": () => Today.use((t) => t.snapshot()),
+  "orgChart.get": () => OrgChart.use((o) => o.snapshot()),
   "usage.summary": (input) =>
     decode(
       Schema.Struct({

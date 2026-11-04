@@ -22,6 +22,7 @@ import { FirstRunDialog } from "./firstrun/FirstRun.tsx"
 import { describeError, type ErrorText } from "./lib/errors.ts"
 import { call } from "./lib/rpc.ts"
 import { NotificationsSection } from "./notifications/NotificationsSection.tsx"
+import { OrgChartPage } from "./orgchart/OrgChartPage.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
 import { ConnectionsSection } from "./settings/ConnectionsSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
@@ -174,6 +175,7 @@ export const App = () => {
           today: () => <TodayPage />,
           usage: () => <UsagePage />,
           tasks: () => <TasksPage />,
+          orgchart: () => <OrgChartPage />,
           workflows: () => <WorkflowsPage />,
         }}
         settingsSections={{

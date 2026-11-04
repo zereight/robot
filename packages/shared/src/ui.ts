@@ -7,7 +7,15 @@ export type PlaceKind = typeof PlaceKind.Type
 export const PlaceRef = Schema.Struct({ kind: PlaceKind, id: Schema.String })
 export type PlaceRef = typeof PlaceRef.Type
 
-export const Page = Schema.Literals(["chats", "today", "workflows", "tasks", "usage", "help"])
+export const Page = Schema.Literals([
+  "chats",
+  "today",
+  "workflows",
+  "tasks",
+  "orgchart",
+  "usage",
+  "help",
+])
 export type Page = typeof Page.Type
 
 export const PLACE_LIST_MIN = 200

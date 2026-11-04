@@ -979,4 +979,14 @@ export const migrations: readonly string[] = [
   ALTER TABLE tool_connection ADD COLUMN review_adopt INTEGER NOT NULL DEFAULT 0;
   UPDATE tool_connection SET review_adopt = 1;
   `,
+  `
+  -- The kind of a message from another agent that made a task (spec 029, "New data later"): 'send'
+  -- for the tool "send message", 'reply' for the answer that comes back to the sender. Both tasks
+  -- have the source 'agent' and name the other agent, so only this mark tells them apart. The org
+  -- chart counts the marks 'send'. NULL for every other task, for a retry, and for a task from
+  -- before this step: an old task is not counted, because it cannot be told from a reply. The mark
+  -- syncs with the task (spec 019): the dirty trigger of the task already watches every column.
+  ALTER TABLE task ADD COLUMN agent_message TEXT;
+  CREATE INDEX task_hand_off ON task (created_at) WHERE agent_message = 'send';
+  `,
 ]

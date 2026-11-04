@@ -31,6 +31,14 @@ export const TASK_SOURCES = [
 export type TaskSource = (typeof TASK_SOURCES)[number]
 
 /**
+ * What a message from another agent was (spec 029): "send" is the tool "send message", "reply" is
+ * the answer that comes back to the sender. Only a task with the source "agent" has one. The org
+ * chart counts the sends as hand-offs and leaves the replies out.
+ */
+export const AGENT_MESSAGE_KINDS = ["send", "reply"] as const
+export type AgentMessageKind = (typeof AGENT_MESSAGE_KINDS)[number]
+
+/**
  * The queue of an agent holds at most this many queued tasks (spec 005, "Queue"). A task that
  * waits for the user or for a task that it gave out does not count.
  */
