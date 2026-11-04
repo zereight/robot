@@ -20,13 +20,62 @@ export interface PageBounds {
  * screen gives it. Cookies and logins stay on this computer, with the browser profile of the agent
  * or with the agent when it has none.
  */
+/** One control of the page that the agent can use: a numbered line of the read list. */
+export interface BrowserControl {
+  /** The number of the control in the list, from 1. */
+  index: number
+  role: string
+  label: string
+}
+
+/** One of the controls that fit an unclear target: its line in the candidate list. */
+export interface BrowserCandidate {
+  /** The number of the control in the read list, from 1. The agent picks it by this number. */
+  index: number
+  role: string
+  label: string
+  /** The place of the control on the page, in px from the top left corner of the page. */
+  x: number
+  y: number
+}
+
+/** The short state that an action in the page (click, type) returns. */
+export interface BrowserActionState {
+  url: string
+  title: string
+  /** Whether the page still loads. */
+  loading: boolean
+  /** The control with the keyboard focus, as `role "label"`, or null. */
+  focus: string | null
+  /** The errors of the page since the last action. Reading them clears them. */
+  errors: string[]
+}
+
+/** What a click or a type gives back: the new state, no fit, or up to 5 candidates. */
+export type BrowserAct =
+  | { ok: true; state: BrowserActionState }
+  | { ok: false; reason: "none" }
+  | { ok: false; reason: "many"; candidates: BrowserCandidate[]; total: number }
+
 export interface BrowserPage {
   isOpen(): boolean
   /** Opens the page if needed and loads the address. */
   open(url: string): Promise<{ url: string; title: string }>
-  read(): Promise<{ url: string; title: string; text: string }>
-  click(selector: string): Promise<void>
-  type(selector: string, text: string): Promise<void>
+  /** Reads the text and the numbered controls of the page, with the count of all controls. */
+  read(): Promise<{
+    url: string
+    title: string
+    text: string
+    controls: BrowserControl[]
+    total: number
+  }>
+  /**
+   * Clicks the control that the target names: a number from the read list, or a CSS selector.
+   * A selector that fits more than one control clicks nothing and names candidates instead.
+   */
+  click(target: string): Promise<BrowserAct>
+  /** Types into the control that the target names, with the same fit rules as a click. */
+  type(target: string, text: string): Promise<BrowserAct>
   /**
    * Runs a script in the page and gives back its result. Only the app's own pages use it (the
    * Teams page, spec 028). No tool of an agent passes text of a model to it.

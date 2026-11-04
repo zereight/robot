@@ -26,9 +26,23 @@ import {
   WebContentsView,
 } from "electron"
 import { appendLog, readLogTail } from "./services/logs.ts"
-import type { BrowserPage, PageBounds, PlatformService } from "./services/Platform.ts"
+import type {
+  BrowserAct,
+  BrowserActionState,
+  BrowserPage,
+  PageBounds,
+  PlatformService,
+} from "./services/Platform.ts"
 import { createTeamsSurface, TEAMS_PAGE_KEY, type TeamsSurface } from "./teams/surface.ts"
 import { type Resolver, systemResolver } from "./web/fetch.ts"
+import {
+  type PageActAnswer,
+  type PageReadAnswer,
+  type PageStateAnswer,
+  pageActScript,
+  pageReadScript,
+  pageStateScript,
+} from "./web/pageControls.ts"
 import {
   BOX_SCRIPT,
   type BoxMeasure,
@@ -343,6 +357,20 @@ const electronBrowser = (
     return v.webContents
   }
   const run = async <T>(code: string): Promise<T> => need().executeJavaScript(code, true)
+  /** The short state after an action: address, title, load, focus and the new errors. */
+  const actionState = async (): Promise<BrowserActionState> => {
+    const wc = need()
+    const url = wc.getURL()
+    const title = wc.getTitle()
+    const loading = wc.isLoading()
+    try {
+      const seen = await run<PageStateAnswer>(pageStateScript())
+      return { url, title, loading, focus: seen.focus, errors: seen.errors }
+    } catch {
+      // The action moved to a new page: the state script has no document yet.
+      return { url, title, loading, focus: null, errors: [] }
+    }
+  }
   /** How much the page is drawn smaller than its own size, in the place that it has now. */
   let scaleNow = 1
   /**
@@ -725,7 +753,34 @@ const electronBrowser = (
         }
         // A debugger that does not answer must not keep the agent from the page.
         await Promise.race([emulating, new Promise((resolve) => setTimeout(resolve, 2_000))])
-        await v.webContents.loadURL(url)
+        // The agent gets the page when its document is ready, not at full load: text and
+        // controls read from then on, while pictures and late scripts still load behind.
+        await new Promise<void>((resolve, reject) => {
+          const wc = v.webContents
+          const before = wc.getURL()
+          let settled = false
+          const done = (error?: unknown) => {
+            if (settled) return
+            settled = true
+            wc.removeListener("dom-ready", onReady)
+            if (error === undefined) resolve()
+            else reject(error)
+          }
+          // A late frame of the last page may still say it is ready: only a ready with the
+          // new address, or the end of the load, opens the page.
+          const onReady = () => {
+            if (wc.getURL() !== before) done()
+          }
+          wc.on("dom-ready", onReady)
+          try {
+            wc.loadURL(url).then(
+              () => done(),
+              (error) => done(error),
+            )
+          } catch (error) {
+            done(error)
+          }
+        })
       } finally {
         returnFocusSoon()
       }
@@ -733,27 +788,27 @@ const electronBrowser = (
     },
     read: async () => {
       const wc = need()
-      const text = await run<string>("document.body ? document.body.innerText : ''")
+      const seen = await run<PageReadAnswer>(pageReadScript(PAGE_TEXT_MAX))
       return {
         url: wc.getURL(),
         title: wc.getTitle(),
-        text: text.slice(0, PAGE_TEXT_MAX),
+        text: seen.text,
+        controls: seen.controls,
+        total: seen.total,
       }
     },
     evaluate: <T>(code: string) => run<T>(code),
-    click: async (selector) => {
-      const found = await run<boolean>(
-        `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.click(); return true })()`,
-      )
+    click: async (target): Promise<BrowserAct> => {
+      const answer = await run<PageActAnswer>(pageActScript("click", target))
       returnFocusSoon()
-      if (!found) throw new Error(`No element matches ${selector}`)
+      if (!answer.ok) return answer as BrowserAct
+      return { ok: true, state: await actionState() }
     },
-    type: async (selector, text) => {
-      const found = await run<boolean>(
-        `(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return false; e.focus(); e.value = ${JSON.stringify(text)}; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true })()`,
-      )
+    type: async (target, text): Promise<BrowserAct> => {
+      const answer = await run<PageActAnswer>(pageActScript("type", target, text))
       returnFocusSoon()
-      if (!found) throw new Error(`No element matches ${selector}`)
+      if (!answer.ok) return answer as BrowserAct
+      return { ok: true, state: await actionState() }
     },
     place: (next) => {
       bounds = next
