@@ -94,10 +94,24 @@ test("motion: short, calm, and off with reduce motion", async () => {
   })
   await shot(page, "motion-03-dialog-100")
 
-  // Escape plays a short exit, then removes the dialog.
+  // Escape plays a short exit, then removes the dialog. The closing state lasts about 120 ms, and
+  // `expect` looks again after 100, 250, 500 ms and so on, so it can miss it. The page watches
+  // for it instead, and keeps the most elements that were closing at one time.
+  await page.evaluate(() => {
+    const w = window as unknown as { __closing: number }
+    w.__closing = 0
+    new MutationObserver(() => {
+      w.__closing = Math.max(w.__closing, document.querySelectorAll("[data-closing=true]").length)
+    }).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-closing"],
+    })
+  })
   await page.keyboard.press("Escape")
-  await expect(page.locator("[data-closing=true]")).toHaveCount(1)
   await expect(page.locator("[role=dialog]")).toHaveCount(0)
+  expect(await page.evaluate(() => (window as unknown as { __closing: number }).__closing)).toBe(1)
 
   // A new message comes in part by part (face, then words); the working badge opens its eyes and its glow pulses quietly.
   await sendMessage(page, "please go slow")
