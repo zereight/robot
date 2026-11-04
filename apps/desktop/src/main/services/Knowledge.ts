@@ -1003,7 +1003,7 @@ export class Knowledge extends Context.Service<Knowledge, KnowledgeService>()(
             ].join("\n\n")
           }
           return [
-            `Your knowledge is a folder of Markdown files, one file for each article: ${scanned.folder}. Read it with your file tools before you use it, and keep it current. A file starts with a header between two lines of --- that holds "title:", "summary:" and one "source:" line for each source file; then comes the body. Put a source file in the "${KNOWLEDGE_SOURCES}" folder inside it, and never change or delete a source. Name an article file after its title. Make at most ${KNOWLEDGE_TURN_CHANGES_MAX} article changes in one turn.`,
+            `Your knowledge is a folder of Markdown files, one file for each article: ${scanned.folder}. Read it with your file tools before you use it, and keep it current. A file starts with a header between two lines of --- that holds "title:", "summary:" and one "source:" line for each source file; then comes the body. Put a source file in the "${KNOWLEDGE_SOURCES}" folder inside it, and never change or delete a source. Name an article file after its title. In your replies, name an article by its title. Never paste the folder path or a file path. Make at most ${KNOWLEDGE_TURN_CHANGES_MAX} article changes in one turn.`,
             rules,
             list,
           ].join("\n\n")
