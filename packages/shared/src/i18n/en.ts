@@ -2209,6 +2209,7 @@ export const en = {
   "connections.form.entry.value": "Value",
   "connections.form.entry.secret": "Secret",
   "connections.form.entry.saved": "Saved. Type a new value to replace it.",
+  "connections.form.entry.savedTag": "Saved",
   "connections.form.entry.remove": "Remove",
   "connections.form.env.add": "Add environment value",
   "connections.form.headers.add": "Add header",

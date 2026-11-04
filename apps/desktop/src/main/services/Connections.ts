@@ -876,7 +876,9 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                     ? before.tools
                     : "[]",
                 probeResult ? (probeResult.more ? 1 : 0) : keepsTools ? before.tools_more : 0,
-                keepsTools || probeResult ? before.tools_off : "[]",
+                // A tool that the user turned off stays off, also when the tools are read again:
+                // a change of the address must not turn a tool on that the user switched off.
+                before.tools_off,
                 before.id,
               )
               for (const key of [...env.drops, ...headers.drops]) dropSecret(key)

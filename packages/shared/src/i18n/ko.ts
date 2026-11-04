@@ -2196,6 +2196,7 @@ export const ko: Record<MessageKey, string> = {
   "connections.form.entry.value": "값",
   "connections.form.entry.secret": "비밀 값",
   "connections.form.entry.saved": "저장됨. 바꾸려면 새 값을 입력하세요.",
+  "connections.form.entry.savedTag": "저장됨",
   "connections.form.entry.remove": "지우기",
   "connections.form.env.add": "환경 값 추가",
   "connections.form.headers.add": "헤더 추가",

@@ -601,6 +601,10 @@ const sessionOf = (transport: Transport): McpSession => ({
 
 /** Opens a session: starts the program or reaches the address, and runs the first exchange. */
 export const openMcp: McpOpener = async (spec, options) => {
+  // The form checks the address, but a connection can come from an import or from an older
+  // version: the client checks again, so an address that breaks the rules is never reached.
+  if (spec.kind === "web" && checkConnectionAddress(spec.url) !== null)
+    throw new McpError("refused", "The address is not allowed.")
   const transport = spec.kind === "program" ? startProgram(spec) : startWeb(spec)
   const abort = () => transport.close()
   options.signal?.addEventListener("abort", abort, { once: true })

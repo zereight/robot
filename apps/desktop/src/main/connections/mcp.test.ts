@@ -226,6 +226,14 @@ describe("a web address", () => {
     ).rejects.toMatchObject({ failure: "refused" })
   })
 
+  test("an address that breaks the rules is never reached, also when it comes from an import", async () => {
+    // Plain http to a host that is not this computer, and an address with a sign-in part.
+    for (const url of ["http://example.com/mcp", "https://user:pass@example.com/mcp", "ftp://x/y"])
+      await expect(
+        openMcp({ kind: "web", url, headers: {} }, { timeoutMs: 5_000 }),
+      ).rejects.toMatchObject({ failure: "refused" })
+  })
+
   test("a redirect to another host is not followed", async () => {
     const { port } = await http()
     await expect(

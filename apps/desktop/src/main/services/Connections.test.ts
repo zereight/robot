@@ -236,6 +236,22 @@ describe("adding, changing and removing a connection", () => {
     expect(await secret(`connection:${first.id}:env:TOKEN`)).toBeNull()
   })
 
+  test("a tool that is off stays off when the user changes how the app reaches the server", async () => {
+    const { connections } = setup()
+    const saved = await connections.save(saving())
+    await connections.test({ id: saved.id })
+    await connections.setTool(saved.id, "echo", false)
+    // The command changes and there is no Test: the tools are not known any more, the switch is.
+    const edited = await connections.save(saving({ command: "other-server" }, saved.id))
+    expect(edited.tools).toEqual([])
+    const again = await connections.test({ id: saved.id })
+    expect(again.ok && again.tools.find((t) => t.name === "echo")?.enabled).toBe(false)
+    // A name that is changed keeps it too.
+    await connections.save(saving({ command: "other-server", name: "Journal" }, saved.id))
+    const list = await connections.list()
+    expect(list[0]?.tools.find((t) => t.name === "echo")?.enabled).toBe(false)
+  })
+
   test("removing a connection deletes its secrets and its rules, and keeps the log", async () => {
     const { connections, run, secret, agent } = setup()
     const ada = await agent()

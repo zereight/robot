@@ -4,6 +4,7 @@ import type { Agent, DevicesState, PlaceSection, RpcResult, UserSection } from "
 import { Effect } from "effect"
 import { runRequest } from "../rpc.ts"
 import { Activity } from "../services/Activity.ts"
+import { Connections } from "../services/Connections.ts"
 import { Database } from "../services/Database.ts"
 import { Devices } from "../services/Devices.ts"
 import { Memory } from "../services/Memory.ts"
@@ -698,6 +699,29 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     ["skills.draft", { requestId: "r", source: { kind: "task", id: "x" } }],
     ["skills.draft", { requestId: "r", source: { kind: "memory", id: "x" } }],
     ["skills.draftCancel", { requestId: "r" }],
+    // Connections are added and changed on the computer only, and they never sync (spec 012, 018).
+    ["connections.list", undefined],
+    [
+      "connections.save",
+      {
+        connection: {
+          name: "Notes",
+          kind: "program",
+          command: "notes-server",
+          args: [],
+          folder: "",
+          env: [],
+          address: "",
+          headers: [],
+          agents: "all",
+        },
+        confirmed: true,
+      },
+    ],
+    ["connections.test", { id: "x" }],
+    ["connections.setEnabled", { id: "x", enabled: true }],
+    ["connections.setTool", { id: "x", tool: "echo", enabled: false }],
+    ["connections.delete", { id: "x" }],
     ["knowledge.list", { agentId: "x" }],
     ["knowledge.get", { agentId: "x", file: "a.md" }],
     ["knowledge.save", { agentId: "x", file: "a.md", text: "t" }],
@@ -737,6 +761,8 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
       // No section was made, no knowledge of the agent was opened, no file was written.
       const lists = await sectionsOf(p)
       expect(lists.flatMap((s) => s.sections)).toEqual([])
+      // No connection was made on the server by a request of a client.
+      expect(await p.server.runtime.runPromise(Connections.use((c) => c.list))).toEqual([])
       expect(value<Agent>(await p.onServer("agents.get", { id: server.id })).knowledgeEnabled).toBe(
         true,
       )

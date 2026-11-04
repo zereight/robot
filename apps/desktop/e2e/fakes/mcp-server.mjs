@@ -37,6 +37,11 @@ const tools = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "env_names",
+    description: "Tells how long each TEST_ value is, and which settings of the app it can see.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
     name: "weather_now",
     description: "The weather of a city right now.",
     inputSchema: { type: "object", properties: { city: { type: "string" } } },
@@ -87,6 +92,21 @@ const answer = (message) => {
           },
         ],
       })
+    // Names and lengths only: a secret value must not come back through the result.
+    if (name === "env_names") {
+      const own = Object.keys(process.env).filter((k) => /^(ROBOT_|ELECTRON_)/.test(k))
+      const set = Object.entries(process.env)
+        .filter(([k]) => k.startsWith("TEST_"))
+        .map(([k, v]) => `${k} has ${v.length} characters`)
+      return ok({
+        content: [
+          {
+            type: "text",
+            text: `${set.join("; ") || "No TEST_ value"}. Settings of the app seen: ${own.join(", ") || "none"}`,
+          },
+        ],
+      })
+    }
     if (name === "lookup") return ok({ content: [{ type: "text", text: `Found ${args.word}` }] })
     return ok({ content: [{ type: "text", text: `Echo: ${args.text ?? ""}` }] })
   }

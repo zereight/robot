@@ -23,6 +23,7 @@ import { describeError, type ErrorText } from "./lib/errors.ts"
 import { call } from "./lib/rpc.ts"
 import { NotificationsSection } from "./notifications/NotificationsSection.tsx"
 import { ProvidersSection } from "./providers/ProvidersSection.tsx"
+import { ConnectionsSection } from "./settings/ConnectionsSection.tsx"
 import { Shell } from "./shell/Shell.tsx"
 import { closeSkillForm, SkillFormDialog, skillForm } from "./skills/SkillForm.tsx"
 import { SkillsSection } from "./skills/SkillsSection.tsx"
@@ -178,6 +179,7 @@ export const App = () => {
           providers: () => <ProvidersSection />,
           devices: () => <DevicesSection />,
           notifications: () => <NotificationsSection />,
+          connections: () => <ConnectionsSection />,
           skills: () => <SkillsSection />,
         }}
       />
