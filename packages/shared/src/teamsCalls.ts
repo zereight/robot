@@ -189,6 +189,12 @@ export const TEAMS_LOG_EVENTS = [
   "queue_full",
   "target_failed",
   "gap_skipped_call",
+  // S103: what the link writes to Teams. The reason of "answer_made" is the kind of answer, and
+  // the reason of "message_dropped" is the reason of the record. No event holds a text.
+  "answer_made",
+  "message_dropped",
+  "send_failed",
+  "send_problem",
 ] as const
 export type TeamsLogEvent = (typeof TEAMS_LOG_EVENTS)[number]
 

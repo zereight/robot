@@ -4,42 +4,103 @@ import {
   callMayStart,
   checkCall,
   checkTeamsLink,
+  cutLineText,
   emptyTeamsFields,
   emptyTeamsView,
+  failureReason,
   holdsChatTitle,
+  isTeamsRecordReason,
+  type Locale,
+  lineText,
+  lineWord,
+  type MessagePart,
   markAllRead,
+  messageFiles,
+  messageText,
   newReadSet,
+  type OutboxTiming,
   patchTouchesLocked,
+  pickNext,
   readGap,
   recentCalls,
+  recentSends,
+  recordReasonWord,
+  redactSecrets,
+  resolveLocale,
+  retryDelayMs,
   senderOfMessage,
+  sendMayGo,
+  sendTooOld,
+  splitAnswer,
+  type Task,
   TEAMS_CONNECT_MAX_MS,
+  TEAMS_HOLD_TRIES,
   TEAMS_INPUT_MAX,
   TEAMS_LOOK_AGAIN_MS,
+  TEAMS_OUTBOX_MAX,
   TEAMS_READ_MS,
+  TEAMS_RECORDS_MAX,
   type TeamsChatMatch,
   type TeamsChatOpened,
   type TeamsFields,
+  type TeamsLine,
   type TeamsLinkView,
   type TeamsLogEvent,
   type TeamsLook,
   type TeamsMessage,
   type TeamsPatch,
+  type TeamsRecord,
+  type TeamsRecordReason,
   type TeamsState,
+  type TeamsTargetKind,
   takeUnread,
   tidyTeamsFields,
+  tooManyLineMayGo,
 } from "@robot/shared"
 import { Cause, Context, Effect, Layer } from "effect"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
+import { DECISION_KEY } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { appendLog, pruneLog } from "./logs.ts"
+import { Notifier } from "./Notifier.ts"
 import type { PageBounds } from "./Platform.ts"
 import { Platform } from "./Platform.ts"
+import { Providers, secretKey } from "./Providers.ts"
+import { SavedSecrets } from "./SavedSecrets.ts"
+import { Secrets } from "./Secrets.ts"
+import { SettingsStore } from "./Settings.ts"
 import { type Clock, realClock } from "./silence.ts"
+import { Tasks } from "./Tasks.ts"
+
+/** One message in the outbox: a part of an answer that waits to go to Teams (spec 028). */
+interface OutboxMessage extends OutboxTiming {
+  readonly id: number
+  /** The answer that the message belongs to. A wrong chat drops the whole answer. */
+  readonly answer: number
+  /** The text, with the marker. The secrets are replaced already. */
+  readonly text: string
+  /** The task whose result this is, or null for a line (a waiting line has none). */
+  readonly taskId: string | null
+  readonly placeKind: TeamsTargetKind | null
+  readonly placeId: string | null
+  tries: number
+  nextTryAt: number
+  /** When the first try failed, or null. A message that failed is dropped one hour later. */
+  firstFailedAt: number | null
+}
+
+interface RecordRow {
+  id: number
+  at: number
+  reason: string
+  place_kind: string | null
+  place_id: string | null
+  task_id: string | null
+}
 
 interface Row {
   target_kind: string | null
@@ -92,11 +153,11 @@ const LOG_KEEP_MS = 90 * 24 * 3_600_000
 const LOG_PRUNE_EVERY_MS = 24 * 3_600_000
 
 /**
- * The Teams link (spec 028): the form, the sign-in, the switch and the states (S101), and the
- * calls (S102). While the switch is on, the loop reads the new messages of the chat every 3
- * seconds, applies "Who may call" to each one, and gives a call to the agent or the channel of the
- * link as work. The link writes nothing to Teams in these slices: the answers and the outbox come
- * with the next slice.
+ * The Teams link (spec 028): the form, the sign-in, the switch and the states (S101), the calls
+ * (S102), and the answers and the outbox (S103). While the switch is on, the loop reads the new
+ * messages of the chat every 3 seconds, applies "Who may call" to each one, and gives a call to the
+ * agent or the channel of the link as work. When work that a message started ends or waits for the
+ * user, the link makes an answer, and the outbox sends it in order to the linked chat.
  *
  * The link belongs to this computer and this profile. Sync does not carry it, an export does not
  * hold it, and a linked device never sees it.
@@ -114,6 +175,12 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         const profiles = yield* BrowserProfiles
         const chat = yield* Chat
         const channels = yield* Channels
+        const tasks = yield* Tasks
+        const notifier = yield* Notifier
+        const settings = yield* SettingsStore
+        const providers = yield* Providers
+        const secrets = yield* Secrets
+        const savedSecrets = yield* SavedSecrets
         const clock = options.clock ?? realClock
         const surface = platform.teams()
 
@@ -141,6 +208,18 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           lastFinishedAt: null as number | null,
           /** When the calls of the last minute started work. */
           callStarts: [] as number[],
+          /** The answers that wait to go to Teams, in the order in which they were made. */
+          outbox: [] as OutboxMessage[],
+          /** When the messages of the last minute went out. */
+          sentAt: [] as number[],
+          /** The last time the line "Too many messages" was made, or null. */
+          tooManyAt: null as number | null,
+          /** The cards (agent and call) that got their waiting line. One line for each card. */
+          announced: new Set<string>(),
+          nextMessage: 1,
+          nextAnswer: 1,
+          /** The window was hidden: the loop looks at the page before the next send. */
+          loopFirst: false,
         }
 
         // ----------------------------------------------------------------- The link log
@@ -227,6 +306,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             }),
             botListWins: botListWins(fields.allow, fields.bots),
             signInProfileId,
+            records: recordsOf(),
           }
         }
         const changed = () => bus.emit("teams.changed", {})
@@ -268,11 +348,15 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           changed()
           void tick()
         }
-        /** The link stops: the state is Off and the Teams page closes. */
-        const stop = () => {
+        /**
+         * The link stops: the state is Off and the Teams page closes. The outbox is emptied, and
+         * each message in it gets a record with this reason (spec 028).
+         */
+        const stop = (why: TeamsRecordReason = "linkOff") => {
           run.generation++
           run.readSet = newReadSet()
           run.lastFinishedAt = null
+          emptyOutbox(why)
           setState("off")
           run.pageShown = false
           surface.place(undefined)
@@ -321,6 +405,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             case "signIn":
               setSignedIn(false)
               setState("signedOut")
+              // The state Signed out empties the outbox, and each message gets a record.
+              emptyOutbox("signedOut")
               // So is the first read after a sign-in that follows Signed out.
               run.baseline ??= "signed_out"
               // The loop goes on at the pace of a read: it must see the sign-in at once.
@@ -386,10 +472,286 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           if (before !== `${run.state}|${run.chat}|${run.lastReadAt}`) changed()
         }
 
+        // ----------------------------------------------------------------- Answers (S103)
+        /** The name of an agent or a channel, or null when it is gone. */
+        const placeNameOf = (kind: string | null, id: string | null): string | null => {
+          if (kind === null || id === null) return null
+          const found =
+            kind === "agent"
+              ? db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", id)
+              : db.get<{ name: string }>("SELECT name FROM channel WHERE id = ?", id)
+          return found?.name ?? null
+        }
+        /** The records of Settings, Teams: the newest 50. They hold no text of a message. */
+        const recordsOf = (): TeamsRecord[] =>
+          db
+            .all<RecordRow>(
+              "SELECT * FROM teams_record ORDER BY id DESC LIMIT ?",
+              TEAMS_RECORDS_MAX,
+            )
+            .flatMap((r) => {
+              if (!isTeamsRecordReason(r.reason)) return []
+              const placeKind =
+                r.place_kind === "agent" || r.place_kind === "channel" ? r.place_kind : null
+              return [
+                {
+                  id: r.id,
+                  at: r.at,
+                  reason: r.reason,
+                  placeKind,
+                  placeId: r.place_id,
+                  placeName: placeNameOf(placeKind, r.place_id),
+                  taskId: r.task_id,
+                },
+              ]
+            })
+        /**
+         * A record in Settings, Teams, and one line in the link log: an answer, or a part of it,
+         * did not go out. Neither holds a text. `quiet` leaves the "changed" event to the caller.
+         */
+        const addRecord = (
+          reason: TeamsRecordReason,
+          subject: Pick<OutboxMessage, "taskId" | "placeKind" | "placeId">,
+          quiet = false,
+        ) => {
+          db.run(
+            "INSERT INTO teams_record (at, reason, place_kind, place_id, task_id) VALUES (?, ?, ?, ?, ?)",
+            clock.now(),
+            reason,
+            subject.placeKind,
+            subject.placeId,
+            subject.taskId,
+          )
+          db.run(
+            "DELETE FROM teams_record WHERE id NOT IN (SELECT id FROM teams_record ORDER BY id DESC LIMIT ?)",
+            TEAMS_RECORDS_MAX,
+          )
+          record("message_dropped", recordReasonWord(reason))
+          if (!quiet) changed()
+        }
+        /** Empties the outbox. Each message in it gets a record with the reason. */
+        const emptyOutbox = (why: TeamsRecordReason) => {
+          const dropped = run.outbox.splice(0)
+          for (const item of dropped) addRecord(why, item, true)
+          if (dropped.length > 0) changed()
+        }
+        /**
+         * Why no answer is made now, or null when the link takes an answer. A link that is off, or
+         * signed out, makes none, and the work that ends then gets a record (spec 028). The spec
+         * names no reason for the state "Target missing": it takes "Link off".
+         */
+        const unavailable = (r: Row): TeamsRecordReason | null =>
+          r.enabled !== 1
+            ? "linkOff"
+            : run.state === "signedOut"
+              ? "signedOut"
+              : run.state === "targetMissing"
+                ? "linkOff"
+                : null
+
+        /** The keys and values that a text must not hold (spec 014), as the export hides them. */
+        const knownSecrets = (): string[] => [
+          ...Effect.runSync(providers.accounts)
+            .map((a) => secrets.get(secretKey(a.id)))
+            .filter((k): k is string => k !== null),
+          ...[secrets.get(DECISION_KEY)].filter((k): k is string => k !== null),
+          ...savedSecrets.knownValues(),
+        ]
+        const localeNow = (): Locale =>
+          resolveLocale(Effect.runSync(settings.get).language, platform.systemLocale())
+
+        /**
+         * Makes an answer from a text: the secrets go first (the existing redaction of the app), on
+         * the whole text, so that a key never breaks over two messages. Then the text is split, and
+         * the messages go to the outbox. An answer that does not fit in the outbox as a whole is
+         * dropped with the record "Outbox full". `word` is the kind of answer, for the link log.
+         */
+        const makeAnswer = (text: string, taskId: string | null, word: string) => {
+          const r = row()
+          if (!r) return
+          const fields = fieldsOf(r)
+          const subject = { taskId, placeKind: fields.targetKind, placeId: fields.targetId }
+          const safe = redactSecrets(text, knownSecrets())
+          const { messages } = splitAnswer(fields.marker, safe, cutLineText(localeNow()))
+          if (messages.length === 0) return
+          record("answer_made", word)
+          if (run.outbox.length + messages.length > TEAMS_OUTBOX_MAX)
+            return addRecord("outboxFull", subject)
+          const now = clock.now()
+          const answer = run.nextAnswer++
+          for (const body of messages)
+            run.outbox.push({
+              id: run.nextMessage++,
+              answer,
+              text: body,
+              ...subject,
+              tries: 0,
+              nextTryAt: now,
+              firstFailedAt: null,
+            })
+        }
+        /** One of the lines that the app writes in Teams (spec 028), in the language of the app. */
+        const makeLine = (line: TeamsLine, taskId: string | null = null) =>
+          makeAnswer(lineText(localeNow(), line), taskId, lineWord(line))
+
+        /** The reply text of a task and the number of files in its reply. */
+        const replyOf = (task: Task): { text: string; files: number } => {
+          const none = { text: "", files: 0 }
+          if (!task.messageId) return none
+          const found = db.get<{ parts: string }>(
+            "SELECT parts FROM message WHERE id = ?",
+            task.messageId,
+          )
+          if (!found) return none
+          try {
+            const message = { parts: JSON.parse(found.parts) as MessagePart[] }
+            return { text: messageText(message), files: messageFiles(message).length }
+          } catch {
+            return none
+          }
+        }
+
+        /**
+         * A task that a message from Teams started has ended (spec 028, "Answers"): done, failed,
+         * blocked or stopped. Only such a task makes an answer. The answer goes to the chat of the
+         * link, when the agent of the task is its target. A link that cannot take an answer makes
+         * a record instead.
+         */
+        const answerTask = (task: Task) => {
+          const r = row()
+          if (!r) return
+          const fields = fieldsOf(r)
+          if (fields.targetKind !== "agent" || fields.targetId !== task.agentId) return
+          // A task that a restart stopped shows "The app stopped" in the app. Teams gets nothing.
+          if (task.error?.code === "app_stopped") return
+          const why = unavailable(r)
+          if (why)
+            return addRecord(why, { taskId: task.id, placeKind: "agent", placeId: task.agentId })
+          const name = task.agentName
+          switch (task.state) {
+            case "done": {
+              const reply = replyOf(task)
+              if (reply.text.trim() !== "") makeAnswer(reply.text, task.id, "reply")
+              else makeLine({ kind: "noReply" }, task.id)
+              if (reply.files > 0) makeLine({ kind: "files", count: reply.files }, task.id)
+              return
+            }
+            case "failed":
+            case "blocked":
+              return makeLine(
+                { kind: "failed", name, reason: failureReason(localeNow(), task.error) },
+                task.id,
+              )
+            case "cancelled":
+              return makeLine({ kind: "stopped", name }, task.id)
+            default:
+              return
+          }
+        }
+        tasks.onEnd((task) => {
+          if (task.source === "teams") answerTask(task)
+        })
+
+        /**
+         * An approval or a question waits (spec 028, "Answers"). When it holds back work that a
+         * message from Teams started, or holds back a new message from Teams, Teams gets one line
+         * for the card. The line holds no text of the step or of the question.
+         */
+        const scanWaiting = (r: Row) => {
+          const fields = fieldsOf(r)
+          if (fields.targetKind !== "agent" || fields.targetId === null) return
+          const waiting = notifier
+            .waitingRequests()
+            .filter((w) => w.agentId === fields.targetId && w.from === null)
+          const live = new Set(waiting.map((w) => `${w.agentId}:${w.callId}`))
+          for (const key of run.announced) if (!live.has(key)) run.announced.delete(key)
+          if (waiting.length === 0 || unavailable(r) || !targetFound(fields)) return
+          for (const w of waiting) {
+            const key = `${w.agentId}:${w.callId}`
+            if (run.announced.has(key)) continue
+            const messageId = w.target.messageId
+            const started = messageId
+              ? db.get<{ source: string }>(
+                  "SELECT source FROM task WHERE message_id = ? ORDER BY created_at DESC LIMIT 1",
+                  messageId,
+                )?.source
+              : undefined
+            if (started !== "teams" && chat.teamsWaiting(w.agentId) === 0) continue
+            run.announced.add(key)
+            const name = placeNameOf("agent", w.agentId)
+            if (name !== null) makeLine({ kind: "waiting", name })
+          }
+        }
+
+        // ----------------------------------------------------------------- The outbox (S103)
+        /** A message that failed for one hour is dropped with the record "Not sent". */
+        const dropOld = (now: number) => {
+          const old = run.outbox.filter((m) => sendTooOld(m.firstFailedAt, now))
+          if (old.length === 0) return
+          run.outbox = run.outbox.filter((m) => !old.includes(m))
+          for (const m of old) addRecord("notSent", m, true)
+          changed()
+        }
+
+        /**
+         * Sends the messages of the outbox that may go now, in order (spec 028, "The outbox"). The
+         * link must be On and the Teams page hidden: while the user looks at the page, the answers
+         * wait. Each try reads the title of the open chat in the script that types: a chat with
+         * another title gets no text, and the whole answer is dropped. A failed try waits 5
+         * seconds, then twice as long up to 5 minutes. A message holds the later ones back until
+         * it has failed 3 tries in a row. At most 20 messages go out in one minute.
+         */
+        const sendStep = async (generation: number) => {
+          for (;;) {
+            if (generation !== run.generation) return
+            const r = row()
+            if (!r) return
+            if (r.enabled !== 1 || run.state !== "on" || run.pageShown) return
+            const fields = fieldsOf(r)
+            if (!targetFound(fields)) return
+            const now = clock.now()
+            const index = pickNext(run.outbox, now)
+            if (index === null || !sendMayGo(run.sentAt, now)) return
+            const message = run.outbox[index] as OutboxMessage
+            const result = await surface
+              .send(message.text, fields.chatTitle)
+              .catch(() => ({ kind: "failed" }) as const)
+            // The link stopped while the page took the text: the outbox was emptied already.
+            if (generation !== run.generation) return
+            const at = clock.now()
+            if (result.kind === "sent") {
+              run.outbox = run.outbox.filter((m) => m !== message)
+              run.sentAt = [...recentSends(run.sentAt, at), at]
+              continue
+            }
+            if (result.kind === "wrongChat") {
+              // The chat that is open has another title. Nothing was typed, and nothing is tried
+              // again: the whole answer is dropped.
+              const answer = run.outbox.filter((m) => m.answer === message.answer)
+              run.outbox = run.outbox.filter((m) => m.answer !== message.answer)
+              for (const m of answer) addRecord("wrongChat", m, true)
+              changed()
+              continue
+            }
+            message.tries++
+            message.firstFailedAt ??= at
+            message.nextTryAt = at + retryDelayMs(message.tries)
+            record("send_failed", `try_${message.tries}`)
+            if (message.tries === TEAMS_HOLD_TRIES) record("send_problem")
+          }
+        }
+
         // ----------------------------------------------------------------- The calls (S102)
-        /** Gives a call to the agent or the channel of the link. Gives the failure code, or null. */
-        const dispatch = async (fields: TeamsFields, text: string, sender: string) => {
-          if (fields.targetId === null) return "target_missing"
+        /**
+         * Gives a call to the agent or the channel of the link. Gives the failure (its code and its
+         * detail), or null.
+         */
+        const dispatch = async (
+          fields: TeamsFields,
+          text: string,
+          sender: string,
+        ): Promise<{ code: string; detail: string } | null> => {
+          if (fields.targetId === null) return { code: "target_missing", detail: "" }
           const teams = { kind: "teams" } as const
           const work: Effect.Effect<void, AppError> =
             fields.targetKind === "channel"
@@ -414,7 +776,9 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           const exit = await Effect.runPromiseExit(work)
           if (exit._tag === "Success") return null
           const failure = Cause.squash(exit.cause)
-          return failure instanceof AppError ? failure.code : "error"
+          return failure instanceof AppError
+            ? { code: failure.code, detail: failure.detail ?? "" }
+            : { code: "error", detail: "" }
         }
 
         /** One new message: "Who may call", the limit of calls, and then the work. */
@@ -422,11 +786,23 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           const call = checkCall(message, fields)
           if (!call.ok) return record("call_refused", call.reason)
           const now = clock.now()
-          if (!callMayStart(run.callStarts, now)) return record("call_over_limit")
+          if (!callMayStart(run.callStarts, now)) {
+            record("call_over_limit")
+            // Teams gets one line, and at most one such line each minute (spec 028).
+            if (tooManyLineMayGo(run.tooManyAt, now)) {
+              run.tooManyAt = now
+              makeLine({ kind: "tooMany" })
+            }
+            return
+          }
           if (generation !== run.generation) return
           const failed = await dispatch(fields, call.text, senderOfMessage(message.sender))
-          if (failed === "tasks_full") return record("queue_full")
-          if (failed) return record("target_failed", failed)
+          if (failed?.code === "tasks_full") {
+            record("queue_full")
+            const name = failed.detail || placeNameOf(fields.targetKind, fields.targetId) || ""
+            return makeLine({ kind: "queueFull", name })
+          }
+          if (failed) return record("target_failed", failed.code)
           run.callStarts = [...recentCalls(run.callStarts, now), now]
           record("call_started")
         }
@@ -459,9 +835,11 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             if (gap) skipped = takeUnread(run.readSet, read.messages)
             else markAllRead(run.readSet, read.messages)
             record("baseline", reason)
-            // The line for Teams about a call that the gap skipped comes with the next slice. The
-            // link log records that there was one.
-            if (gap && skipped.some((m) => checkCall(m, fields).ok)) record("gap_skipped_call")
+            // Teams gets one line about a call that the gap skipped. A start gets none.
+            if (gap && skipped.some((m) => checkCall(m, fields).ok)) {
+              record("gap_skipped_call")
+              makeLine({ kind: "gap" })
+            }
           } else {
             for (const message of takeUnread(run.readSet, read.messages)) {
               // The switch was turned off, or the link started again, while a call was handled.
@@ -501,13 +879,27 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           const r = row()
           if (!r) return
           const enabled = r.enabled === 1
-          if (enabled) connectTimeout(clock.now())
+          if (enabled) {
+            connectTimeout(clock.now())
+            scanWaiting(r)
+            dropOld(clock.now())
+          }
           if (run.busy) return
           if (!enabled && !run.pageShown) return
           run.busy = true
           try {
-            if (enabled) await loopStep(r)
-            else await watchStep()
+            if (enabled) {
+              // The user hid the Teams page: the link opens its chat again before it sends.
+              if (run.loopFirst) {
+                run.loopFirst = false
+                run.nextAt = 0
+                await loopStep(r)
+              }
+              // The send comes before the read: it reads the title of the open chat as it is, and
+              // does not find a chat that the read moved back just before.
+              await sendStep(run.generation)
+              await loopStep(r)
+            } else await watchStep()
           } catch {
             // A look that fails is not a state. The next look tries again.
           } finally {
@@ -650,6 +1042,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           hidePage: Effect.sync(() => {
             if (run.pageShown) {
               run.pageShown = false
+              run.loopFirst = true
               surface.place(undefined)
               surface.allowUserInput(false)
               // With the switch off, no Teams page runs.
@@ -688,7 +1081,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             yield* needRow()
             // The page closes first, so that nothing holds the saved data while it is deleted.
             save({ enabled: 0, signed_in: 0 })
-            stop()
+            stop("signedOut")
             yield* profiles.clearTeamsSignIn
             changed()
             return viewOf()
@@ -697,6 +1090,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           remove: Effect.fn("TeamsLink.remove")(function* () {
             stop()
             db.run("DELETE FROM teams_link WHERE id = 1")
+            // The records belong to the link: they go with it.
+            db.run("DELETE FROM teams_record")
             run.lastReadAt = null
             run.lastSavedAt = 0
             yield* profiles.removeTeamsProfile

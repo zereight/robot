@@ -12,8 +12,9 @@ import { TEAMS_PAGE } from "./teamsPageSelectors.ts"
 // reading code. It shows nothing about the real Teams page.
 //
 // S102 grew it: the messages of the open chat (sender, text, time, an identity, an own marker),
-// an edit, a delete, a reload of the page, and a clock that a test moves. It accepts a typed
-// message too (S103 types with it). The selectors for the messages are guesses, as all selectors.
+// an edit, a delete, a reload of the page, and a clock that a test moves. S103 grew it again: a
+// message box that takes typed text and a send button that posts it, a send that the page refuses,
+// and a header that shows a wrong chat title. The selectors are guesses, as all selectors.
 
 export interface FakeMessage {
   /** The identity that the page gives to the message. It stays after an edit and a reload. */
@@ -48,6 +49,7 @@ class StubElement {
   getAttribute(name: string): string | null {
     return this.attributes[name] ?? null
   }
+  focus() {}
   get innerText() {
     return this.text
   }
@@ -59,6 +61,25 @@ class StubElement {
   }
   click() {
     this.onClick?.()
+  }
+}
+
+/** The message box of the stand-in page: its text is the text that waits to be sent. */
+class StubComposer extends StubElement {
+  constructor(
+    private readonly read: () => string,
+    private readonly onFocus: () => void,
+  ) {
+    super("")
+  }
+  override get innerText() {
+    return this.read()
+  }
+  override get textContent() {
+    return this.read()
+  }
+  override focus() {
+    this.onFocus()
   }
 }
 
@@ -78,8 +99,19 @@ export class FakeChat {
   readonly loads: string[] = []
   /** The scripts the app ran in the page. */
   evaluations = 0
-  /** The texts that were typed into a chat and accepted. The app types nothing in S102. */
+  /** The texts that were typed into a chat and accepted (a typed message becomes a message). */
   readonly typed: { chat: string; text: string }[] = []
+  /** The times the send button was pressed. A refused press counts too. */
+  sendTries = 0
+  /** Each press of the send button, with the time of the stand-in and whether the page refused. */
+  readonly presses: { at: number; refused: boolean; text: string }[] = []
+  /**
+   * The header of the page shows this title, whatever chat is open, until it is set to null. A
+   * test uses it to show a wrong chat title.
+   */
+  headerTitle: string | null = null
+  /** The text in the message box now. The page clears it when it takes the message. */
+  composerText = ""
   /** The times the page was asked for the messages of the open chat. */
   messageReads = 0
   /**
@@ -97,6 +129,8 @@ export class FakeChat {
   private lastPassword: string | undefined
 
   private open = false
+  private composerFocused = false
+  private sendRefusals = 0
   private url = ""
   private nextId = 1
   private clockNow: (() => number) | undefined
@@ -209,6 +243,14 @@ export class FakeChat {
     this.screen = broken ? "broken" : this.signedIn ? "teams" : "signIn"
   }
 
+  /**
+   * The next `count` presses of the send button are refused: the page keeps the text in the
+   * message box and posts nothing, as a page that does not take the message.
+   */
+  refuseSends(count: number) {
+    this.sendRefusals = count
+  }
+
   /** The next `count` scripts fail, as when the page cannot be read. */
   failScripts(count: number) {
     this.evaluateFailures = count
@@ -273,21 +315,62 @@ export class FakeChat {
     })
   }
 
+  /** The send button is pressed: the page posts the text of the message box, or refuses. */
+  private pressSend() {
+    this.sendTries++
+    const refused = this.sendRefusals > 0
+    this.presses.push({ at: this.now(), refused, text: this.composerText })
+    if (refused) {
+      this.sendRefusals--
+      return
+    }
+    const text = this.composerText
+    this.composerText = ""
+    this.composerFocused = false
+    if (text.trim() !== "") this.type(text)
+  }
+
   /** The stub of `document`, `location` and `navigator` that the scripts of the app run on. */
   private world() {
     const screen = this.shows()
     const rows = screen === "teams" ? this.rooms.map((_, i) => this.row(i)) : []
+    const chatOpen = screen === "teams" && this.openIndex !== null
+    const headerTitle =
+      screen !== "teams"
+        ? null
+        : (this.headerTitle ??
+          (this.openIndex !== null ? (this.rooms[this.openIndex] as FakeRoom).title : null))
     const elements: Record<string, StubElement | null> = {
       [TEAMS_PAGE.signInForm]: screen === "signIn" ? new StubElement("") : null,
       [TEAMS_PAGE.appShell]: screen === "teams" ? new StubElement("") : null,
-      [TEAMS_PAGE.openChatTitle]:
-        screen === "teams" && this.openIndex !== null
-          ? new StubElement((this.rooms[this.openIndex] as FakeRoom).title)
-          : null,
+      [TEAMS_PAGE.openChatTitle]: headerTitle === null ? null : new StubElement(headerTitle),
+      [TEAMS_PAGE.messageBox]: chatOpen
+        ? new StubComposer(
+            () => this.composerText,
+            () => {
+              this.composerFocused = true
+            },
+          )
+        : null,
+      [TEAMS_PAGE.sendButton]: chatOpen ? new StubElement("", {}, () => this.pressSend()) : null,
     }
     return {
       document: {
         querySelector: (selector: string) => elements[selector] ?? null,
+        // The editing commands of the page, as far as the app uses them on the message box.
+        execCommand: (name: string, _ui?: boolean, value?: string) => {
+          if (name === "selectAll") return true
+          if (name === "delete") {
+            if (this.composerFocused) this.composerText = ""
+            return true
+          }
+          if (name === "insertText") {
+            if (!this.composerFocused) return false
+            this.composerText += value ?? ""
+            return true
+          }
+          return false
+        },
         querySelectorAll: (selector: string) => {
           if (selector === TEAMS_PAGE.chatListItem) return rows
           if (selector === TEAMS_PAGE.messageItem && screen === "teams") {
