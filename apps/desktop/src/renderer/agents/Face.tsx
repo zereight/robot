@@ -9,12 +9,13 @@ import {
 } from "@robot/shared"
 import { createEffect, For, Index, on, onMount, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
+import { resolvedTheme } from "../theme/current.ts"
 import { motionMs } from "../ui/Presence.tsx"
 import styles from "./face.module.css"
 import { bornRecently, type Reaction, reactions } from "./reactions.ts"
 
-/** The colour of the light of a hue, for a swatch in the agent form. */
-export const faceColour = (hue: number) => faceTones(hue).glow
+/** The colour of a hue in the theme that shows now, for a swatch in the agent form. */
+export const faceColour = (hue: number) => faceTones(hue, resolvedTheme()).glow
 
 const kebab = (name: string) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 
@@ -109,8 +110,8 @@ const play = (root: Element, kind: Reaction | "land") => {
 }
 
 /**
- * A round agent face: an uploaded picture, or a drawn character that glows in the dark in one of
- * ten hues, like the app mark.
+ * A round agent face: an uploaded picture, or a drawn character in one of ten hues. In the dark
+ * theme it glows, like the app mark. In the light theme it has dark features and no glow.
  * With `agentId` the face reacts once when that agent ends a reply, fails, or asks the user.
  * With `swap` a new shape comes in softly (for the preview in the agent form).
  */
@@ -123,7 +124,7 @@ export const Face = (props: {
   swap?: boolean
 }) => {
   let root: Element | undefined
-  const tones = () => faceTones(props.face.hue)
+  const tones = () => faceTones(props.face.hue, resolvedTheme())
   const mark = (el: Element) => {
     root = el
   }
@@ -162,7 +163,7 @@ export const Face = (props: {
           data-face-hue={props.face.hue}
         >
           <circle class={styles.skin} cx="32" cy="32" r="32" style={{ fill: tones().tile }} />
-          {/* A thin rim of light, so that the dark tile keeps its shape on a dark surface. */}
+          {/* A thin rim, so that the disc keeps its shape on a surface of its own tone. */}
           <circle
             class={styles.rim}
             cx="32"
@@ -177,7 +178,7 @@ export const Face = (props: {
           <For each={[props.face.shape]}>
             {(shape) => (
               <g class={props.swap ? styles.swap : undefined}>
-                <Index each={faceLayers(props.face.hue, props.size)}>
+                <Index each={faceLayers(props.face.hue, props.size, resolvedTheme())}>
                   {(layer) => <Layer shape={shape} layer={layer()} />}
                 </Index>
               </g>

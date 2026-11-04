@@ -2,9 +2,11 @@ import { expect, type Locator, type Page, test } from "@playwright/test"
 import { connectMock, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
-// Avatars (spec 002, "Avatars"): a very dark disc with a thin rim of light and features that
-// glow, in the family of the app mark. The glow is still, the number of layers follows the size
-// (so that a long list stays cheap), and the discs are the same in both themes.
+// Avatars (spec 002, "Avatars"): they follow the theme. In the dark theme a face is a very dark
+// disc with a thin rim of light and features that glow, in the family of the app mark. In the
+// light theme it is a light disc with dark features and no glow. The glow is still, the number of
+// layers follows the size (so that a long list stays cheap), and a change of the theme moves
+// nothing.
 
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -15,8 +17,10 @@ const rows = (page: Page) => page.locator("[data-place-row]")
 const rowNamed = (page: Page, name: string) =>
   rows(page).filter({ hasText: new RegExp(`^${name}$`) })
 
-// The tile of the app mark: the colour that the mark of the user and of a channel use as well.
+// The disc of the mark of the user and of a channel, in each theme. In the dark theme it is the
+// tile of the app mark. The app mark itself does not change with the theme.
 const MARK_TILE = "rgb(10, 8, 23)"
+const MARK_TILE_LIGHT = "rgb(225, 247, 239)"
 
 const rgb = (css: string): [number, number, number] =>
   (css.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number) as [number, number, number]
@@ -59,15 +63,69 @@ const makeAgent = async (page: Page, name: string, shape: number, hue: number) =
   await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
 }
 
+/**
+ * Sets the theme and returns the most looks that one avatar had on the way: the colours of its
+ * disc, its features and its rim, read on every frame. An avatar that changes at once has two
+ * looks: the old and the new. A soft change has more, one for each step. A change of the theme
+ * moves nothing (spec 002). The window of 450 ms is longer than the soft change of a new hue.
+ */
 const setTheme = async (page: Page, theme: "dark" | "light") => {
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-appearance").click()
+  await page.evaluate(() => {
+    const looks = new Map<Element, Set<string>>()
+    const read = (el: Element) => {
+      if (el instanceof SVGSVGElement) {
+        const layers = el.querySelectorAll(":scope > g > g")
+        const core = layers[layers.length - 1]
+        const [disc, rim] = el.querySelectorAll("circle")
+        return [
+          disc && getComputedStyle(disc).fill,
+          core && getComputedStyle(core).color,
+          rim && getComputedStyle(rim).stroke,
+        ].join(" ")
+      }
+      const style = getComputedStyle(el)
+      // The colour of an outline counts only when the outline is drawn (a picture). A disc has
+      // none, and its `outline-color` is the colour of the text, which the rest of the app changes.
+      const outline = style.outlineStyle === "none" ? "" : style.outlineColor
+      return [style.backgroundColor, style.boxShadow, outline].join(" ")
+    }
+    const sample = () => {
+      for (const el of document.querySelectorAll(
+        "svg[data-face-shape], img, [data-testid=user-mark], [data-testid=channel-mark]",
+      )) {
+        const seen = looks.get(el) ?? new Set<string>()
+        seen.add(read(el))
+        looks.set(el, seen)
+      }
+    }
+    const watch = { stop: false }
+    const loop = () => {
+      sample()
+      if (!watch.stop) requestAnimationFrame(loop)
+    }
+    requestAnimationFrame(loop)
+    Object.assign(window, {
+      __avatarWatch: () =>
+        new Promise<number>((done) =>
+          setTimeout(() => {
+            watch.stop = true
+            done(Math.max(0, ...[...looks.values()].map((seen) => seen.size)))
+          }, 450),
+        ),
+    })
+  })
   await page.getByTestId("setting-theme").locator(`label[data-value="${theme}"]`).click()
   await expect(page.locator("html")).toHaveAttribute("data-theme", theme)
+  const looks = await page.evaluate(() =>
+    (window as unknown as { __avatarWatch: () => Promise<number> }).__avatarWatch(),
+  )
   await page.getByTestId("settings-close").click()
+  return looks
 }
 
-test("avatars: dark discs of light, layers that follow the size, a still glow, the same in both themes", async () => {
+test("avatars: they follow the theme, layers that follow the size, a still glow, no motion when the theme changes", async () => {
   test.setTimeout(120_000)
   const mock = await startMockProvider()
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
@@ -155,14 +213,48 @@ test("avatars: dark discs of light, layers that follow the size, a still glow, t
   await rowNamed(page, "Ada").click()
   await shot(page, "avatars-01-dark")
 
-  // The same in the light theme: the discs stay dark, and the features stay light.
+  // The light theme: a light disc with dark features and no glow. The change moves nothing.
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
-  await setTheme(page, "light")
+  expect(await setTheme(page, "light")).toBeLessThanOrEqual(2)
   const light = await look(rowNamed(page, "Ada").locator("svg[data-face-shape]"))
-  expect(light.tile).toBe(small.tile)
-  expect(light.core).toBe(small.core)
+  expect(luminance(rgb(light.tile))).toBeGreaterThan(0.6)
+  expect(luminance(rgb(light.core))).toBeLessThan(0.05)
+  expect(contrast(light.core, light.tile)).toBeGreaterThanOrEqual(7)
+  // The core is the only layer: no glow, at any size.
+  expect(light.layers).toBe(1)
+  expect(light.eyes).toBe(1)
+  expect(light.parts).toBe(small.parts)
+  const lightBig = await look(page.getByTestId("chat-start").locator("svg[data-face-shape]"))
+  expect(lightBig.layers).toBe(1)
+  expect(contrast(lightBig.core, lightBig.tile)).toBeGreaterThanOrEqual(7)
+  // The mark of the user and of a channel: a light disc, a dark glyph, no wide copy of the glyph.
+  await expect(you).toHaveCSS("background-color", MARK_TILE_LIGHT)
+  await expect(channelMark).toHaveCSS("background-color", MARK_TILE_LIGHT)
+  await expect(you.locator(":scope > span")).toHaveCount(1)
+  expect(
+    contrast(
+      await you.locator("svg").evaluate((el) => getComputedStyle(el).color),
+      MARK_TILE_LIGHT,
+    ),
+  ).toBeGreaterThanOrEqual(7)
+  // A picture does not change. Its rim shows: it is a solid colour that is dark enough.
+  await rowNamed(page, "Bea").click()
+  const lightPicture = rowNamed(page, "Bea").locator("img")
+  await expect(lightPicture).toHaveCSS("outline-style", "solid")
+  expect(await lightPicture.evaluate((el) => getComputedStyle(el).outlineColor)).toMatch(
+    /^rgb\(\d+, \d+, \d+\)$/,
+  )
+  await rowNamed(page, "Ada").click()
+  await shot(page, "avatars-02-light")
+
+  // Back to the dark theme: the dark discs and the glow come back.
+  expect(await setTheme(page, "dark")).toBeLessThanOrEqual(2)
+  const again = await look(rowNamed(page, "Ada").locator("svg[data-face-shape]"))
+  expect(again.tile).toBe(small.tile)
+  expect(again.core).toBe(small.core)
+  expect(again.layers).toBe(small.layers)
   await expect(you).toHaveCSS("background-color", MARK_TILE)
   await expect(channelMark).toHaveCSS("background-color", MARK_TILE)
-  await shot(page, "avatars-02-light")
+  await expect(you.locator(":scope > span")).toHaveCount(2)
   await app.close()
 })

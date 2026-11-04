@@ -1,11 +1,14 @@
 import type { LucideProps } from "lucide-solid"
-import type { Component } from "solid-js"
+import { type Component, Show } from "solid-js"
+import { resolvedTheme } from "../theme/current.ts"
 import styles from "./avatarmark.module.css"
 
 /**
- * A round mark in the family of the app mark: a very dark disc, a thin rim of light, and a glyph
- * of light on it. The user has one, and a channel has one in place of a face. Like a face, it
- * glows without a blur filter: the glow is wider, fainter copies of the glyph and a second ring.
+ * A round mark in the family of the faces. In the dark theme it is a very dark disc with a thin
+ * rim of light and a glyph of light, as the app mark is. In the light theme it is a light disc with
+ * a dark glyph and no glow. The user has one, and a channel has one in place of a face. In the dark
+ * theme it glows without a blur filter: the glow is a wider, fainter copy of the glyph and a
+ * second ring.
  */
 export const AvatarMark = (props: {
   icon: Component<LucideProps>
@@ -21,9 +24,11 @@ export const AvatarMark = (props: {
       data-testid={props.testId}
       aria-hidden="true"
     >
-      <span class={styles.glow}>
-        <props.icon size={glyph()} strokeWidth={5} />
-      </span>
+      <Show when={resolvedTheme() === "dark"}>
+        <span class={styles.glow}>
+          <props.icon size={glyph()} strokeWidth={5} />
+        </span>
+      </Show>
       <span class={styles.core}>
         <props.icon size={glyph()} strokeWidth={2} />
       </span>

@@ -10,6 +10,7 @@ import {
 import type { ComponentType } from "react"
 import { Image } from "react-native"
 import Svg, { Circle, Ellipse, G, Path, Rect } from "react-native-svg"
+import { useApp } from "../state/context.tsx"
 
 const tags: Record<FacePart["tag"], ComponentType<Record<string, unknown>>> = {
   circle: Circle as ComponentType<Record<string, unknown>>,
@@ -36,8 +37,9 @@ const Layer = ({ shape, layer }: { readonly shape: number; readonly layer: FaceL
 )
 
 /**
- * A round agent face: the uploaded picture, or a drawn character that glows in the dark in its
- * hue, like the app mark. A picture has the same rim of light.
+ * A round agent face: the uploaded picture, or a drawn character in its hue. In the dark theme it
+ * glows, like the app mark. In the light theme it has dark features and no glow. A picture has the
+ * same rim.
  */
 export const Face = (props: {
   readonly face: FaceValue | null | undefined
@@ -45,8 +47,9 @@ export const Face = (props: {
   readonly size: number
   readonly label?: string | undefined
 }) => {
+  const { scheme } = useApp()
   const face = props.face ?? { shape: 0, hue: 0 }
-  const tones = faceTones(face.hue)
+  const tones = faceTones(face.hue, scheme)
   if (props.image?.startsWith("data:image/")) {
     return (
       <Image
@@ -73,9 +76,9 @@ export const Face = (props: {
       importantForAccessibility={props.label ? "yes" : "no-hide-descendants"}
     >
       <Circle cx="32" cy="32" r="32" fill={tones.tile} />
-      {/* A thin rim of light, so that the dark tile keeps its shape on a dark surface. */}
+      {/* A thin rim, so that the disc keeps its shape on a surface of its own tone. */}
       <Circle cx="32" cy="32" r="31.25" fill="none" stroke={tones.ring} strokeWidth={1.5} />
-      {faceLayers(face.hue, props.size).map((layer) => (
+      {faceLayers(face.hue, props.size, scheme).map((layer) => (
         <Layer key={layer.grow} shape={face.shape} layer={layer} />
       ))}
     </Svg>
