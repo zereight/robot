@@ -85,7 +85,7 @@ channel settings (004, 030), with the same rules.
 - **Menu of the root**: "Open profile". The node "You" has no menu.
 - **Menu of a channel node**: "Open channel", "Add member…" (a list of agents that are not
   archived and not members), "New agent in this channel" (the form of 002; after save the agent is a
-  member), "Put under…" (a list of the channels that the tree allows, see 030), "Move to the top"
+  member), "Put under…" (a list of the channels that the tree allows, without the parent now, see 030), "Move to the top"
   (only on a sub-channel), and "Channel settings". The node "No channel" has "New agent" only.
 - **Drag**: the user drags an agent node and drops it on a channel node: the agent moves to that
   channel, as "Move to channel…". With Option held, the agent is added and stays where it was, as

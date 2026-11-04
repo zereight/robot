@@ -149,8 +149,9 @@ describe("token limit", () => {
     expect(limitState(5200, 5000)).toBe("over")
   })
 
-  test("every program that the app starts reports tokens", () => {
+  test("every program that the app starts reports tokens, except Cursor", () => {
     for (const kind of ["claude_code", "codex", "muse", "pi", "opencode"])
       expect(programReportsTokens(kind)).toBe(true)
+    expect(programReportsTokens("cursor")).toBe(false)
   })
 })

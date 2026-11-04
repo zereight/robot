@@ -2,13 +2,16 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import {
+  buildTlaStarter,
   charLength,
   type Edge,
   type Step,
+  starterWorkflowName,
   WORKFLOW_FILE_MAX_BYTES,
   WORKFLOW_NAME_MAX,
   type WorkflowFileFailure,
   type WorkflowInput,
+  workflowStarterText,
 } from "@robot/shared"
 import { Effect, Exit, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
@@ -881,3 +884,114 @@ const untilEnded = async (app: App, runId: string) => {
   }
   throw new Error("the run did not end")
 }
+
+describe('a workflow from a starter (spec 010, "Starters")', () => {
+  /** Makes the workflow as the window does when the user presses Create. */
+  const fromStarter = async (app: App, agentId: string, locale: "en" | "ko" = "en") => {
+    const text = workflowStarterText(locale, "tla")
+    const taken = (await app.list()).map((w) => w.name)
+    return app.run(
+      Workflows.use((w) =>
+        w.create(
+          buildTlaStarter({
+            serverId: app.server.id,
+            name: starterWorkflowName(text.name, taken),
+            agentId,
+            text,
+          }),
+        ),
+      ),
+    )
+  }
+
+  for (const locale of ["en", "ko"] as const) {
+    test(`it is saved with six steps, five connections and one note, and the file holds the same (${locale})`, async () => {
+      const app = await setup()
+      const reviewer = await app.agent("Reviewer")
+      const made = await fromStarter(app, reviewer.id, locale)
+      expect(made.trigger).toEqual({ kind: "manual" })
+      expect(made.steps.map((s) => s.kind)).toEqual([
+        "agent",
+        "agent",
+        "condition",
+        "notify",
+        "agent",
+        "notify",
+      ])
+      expect(made.notes.map((n) => n.tone)).toEqual(["yellow"])
+
+      const path = join(app.dataDir, "starter.json")
+      await app.exportTo(path, [made.id])
+      const written = readFile(path)
+      const [flow] = written.workflows
+      expect(flow?.name).toBe(workflowStarterText(locale, "tla").name)
+      expect(flow?.steps.map((s) => s.kind)).toEqual([
+        "agent",
+        "agent",
+        "condition",
+        "notify",
+        "agent",
+        "notify",
+      ])
+      // Every agent step names the agent. Nothing was hidden as a secret.
+      expect(flow?.steps.filter((s) => s.kind === "agent").map((s) => s.agent)).toEqual([
+        "Reviewer",
+        "Reviewer",
+        "Reviewer",
+      ])
+      expect(JSON.stringify(written)).not.toContain("[redacted]")
+      expect(flow?.connections).toEqual([
+        { from: 1, to: 2 },
+        { from: 2, to: 3 },
+        { from: 3, to: 4, branch: "yes" },
+        { from: 3, to: 5, branch: "no" },
+        { from: 5, to: 6 },
+      ])
+      expect(flow?.steps[2]).toMatchObject({ mode: "contains", text: "TLC_RESULT: PASS" })
+    })
+
+    test(`the file imports into an empty app that has the agent: nothing is left out, and the workflow is the same (${locale})`, async () => {
+      const source = await setup()
+      const reviewer = await source.agent("Reviewer")
+      const made = await fromStarter(source, reviewer.id, locale)
+      const first = join(source.dataDir, "one.json")
+      await source.exportTo(first, [made.id])
+
+      const target = await setup()
+      const other = await target.agent("Reviewer")
+      const preview = await target.openFile(first)
+      expect(preview?.notImported).toEqual([])
+      expect(preview?.workflows.map((w) => [w.steps, w.notes, w.missingAgents])).toEqual([
+        [6, 1, []],
+      ])
+      await target.importFile(first)
+      const [imported] = await target.list()
+      expect(
+        imported?.steps
+          .filter((s) => s.kind === "agent")
+          .map((s) => s.kind === "agent" && s.agentId),
+      ).toEqual([other.id, other.id, other.id])
+      const second = join(target.dataDir, "two.json")
+      await target.exportTo(second, [imported?.id ?? ""])
+      expect(readFile(second)).toEqual(readFile(first))
+    })
+  }
+
+  test("a second workflow from the starter has the same name with a number", async () => {
+    const app = await setup()
+    const reviewer = await app.agent("Reviewer")
+    const one = await fromStarter(app, reviewer.id)
+    const two = await fromStarter(app, reviewer.id)
+    const three = await fromStarter(app, reviewer.id)
+    expect([one.name, two.name, three.name]).toEqual(["TLA+ check", "TLA+ check 2", "TLA+ check 3"])
+  })
+
+  test("the new workflow is on, is not running, and runs on this computer", async () => {
+    const app = await setup()
+    const reviewer = await app.agent("Reviewer")
+    const made = await fromStarter(app, reviewer.id)
+    expect(made.runsOn).toBeNull()
+    expect(made.running).toBe(false)
+    expect(made.enabled).toBe(true)
+  })
+})

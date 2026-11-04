@@ -1,4 +1,9 @@
-import type { MessageKey, Workflow, WorkflowFilePreview } from "@robot/shared"
+import {
+  type MessageKey,
+  starterMenuOff,
+  type Workflow,
+  type WorkflowFilePreview,
+} from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
 import { createEffect, createResource, createSignal, For, on, onCleanup, Show } from "solid-js"
 import type { ErrorText } from "../lib/errors.ts"
@@ -7,11 +12,12 @@ import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
 import { RoutinesView } from "../routines/RoutinesPage.tsx"
 import shell from "../shell/shell.module.css"
+import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
-import { Menu } from "../ui/Menu.tsx"
+import { Menu, type MenuItem } from "../ui/Menu.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { WorkflowEditor } from "./WorkflowEditor.tsx"
 import {
@@ -20,11 +26,15 @@ import {
   ImportWorkflowsDialog,
   WorkflowFileProblemDialog,
 } from "./WorkflowFileDialogs.tsx"
+import { WorkflowStarterDialog } from "./WorkflowStarterDialog.tsx"
 import styles from "./workflows.module.css"
 
-const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) => {
+const WorkflowList = (props: {
+  onOpen: (workflow: Workflow | null, options?: { frame?: boolean }) => void
+}) => {
   const { t } = useApp()
   const ui = useUi()
+  const agents = useAgents()
   // A linked server that comes back online is asked again. Its workflows are not cached (012).
   const [workflows, { refetch }] = createResource(
     () => (ui.serverOffline() ? undefined : ui.server()?.id),
@@ -62,6 +72,29 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
   const [exporting, setExporting] = createSignal(false)
   const [importPreview, setImportPreview] = createSignal<WorkflowFilePreview>()
   const [fileProblem, setFileProblem] = createSignal<ErrorText>()
+  const [starting, setStarting] = createSignal(false)
+
+  /**
+   * "New from a starter" (spec 010, "Starters"). It is off, with the reason, when no agent exists
+   * and for a linked computer without the switch "Can create and change agents".
+   */
+  const starterItem = (): MenuItem => {
+    const off = starterMenuOff({ canChange: ui.canChange(), agentCount: agents.agents().length })
+    return {
+      label: t("workflowStarter.menu"),
+      onSelect: () => setStarting(true),
+      testId: "wf-menu-starter",
+      ...(off
+        ? {
+            disabled: true,
+            reason:
+              off === "no_switch"
+                ? t("workflowStarter.menu.noSwitch", { name: ui.server()?.name ?? "" })
+                : t("workflowStarter.menu.noAgent"),
+          }
+        : {}),
+    }
+  }
 
   /** Asks for a workflow file. A readable file opens the dialog that lists its workflows. */
   const startImport = async () => {
@@ -97,6 +130,7 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
                     disabled: true,
                     testId: "wf-menu-open-on-server",
                   },
+                  starterItem(),
                 ]
               : [
                   {
@@ -109,6 +143,7 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
                     onSelect: () => void startImport(),
                     testId: "wf-menu-import-file",
                   },
+                  starterItem(),
                 ]
           }
         />
@@ -121,6 +156,17 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
       <Presence when={importPreview()}>
         {(preview) => (
           <ImportWorkflowsDialog preview={preview} onClose={() => setImportPreview(undefined)} />
+        )}
+      </Presence>
+      <Presence when={starting()}>
+        {() => (
+          <WorkflowStarterDialog
+            onClose={() => setStarting(false)}
+            onCreated={(workflow) => {
+              setStarting(false)
+              props.onOpen(workflow, { frame: true })
+            }}
+          />
         )}
       </Presence>
       <Presence when={fileProblem()}>
@@ -211,7 +257,7 @@ export const WorkflowsPage = () => {
   const { t } = useApp()
   const ui = useUi()
   const [tab, setTab] = createSignal<"routines" | "workflows">("routines")
-  const [open, setOpen] = createSignal<{ workflow: Workflow | null }>()
+  const [open, setOpen] = createSignal<{ workflow: Workflow | null; frame?: boolean }>()
   // The Today page asks for a routine or a workflow: the page shows the tab that holds it.
   createEffect(() => {
     const target = openTarget()
@@ -261,7 +307,11 @@ export const WorkflowsPage = () => {
                     </p>
                   }
                 >
-                  <WorkflowList onOpen={(workflow) => setOpen({ workflow })} />
+                  <WorkflowList
+                    onOpen={(workflow, options) =>
+                      setOpen({ workflow, ...(options?.frame ? { frame: true } : {}) })
+                    }
+                  />
                 </Show>
               }
             >
@@ -280,7 +330,13 @@ export const WorkflowsPage = () => {
           </>
         }
       >
-        {(o) => <WorkflowEditor workflow={o().workflow} onBack={() => setOpen(undefined)} />}
+        {(o) => (
+          <WorkflowEditor
+            workflow={o().workflow}
+            onBack={() => setOpen(undefined)}
+            {...(o().frame ? { frame: true } : {})}
+          />
+        )}
       </Show>
     </div>
   )

@@ -1438,6 +1438,15 @@ describe("memory in a sync (spec 008, 019)", () => {
     expect(parseOp(itemOp({ source: "undo" }), NOW)).toBeUndefined()
   })
 
+  test("the channel of a note is a field: an id or null passes; an empty id or a number does not", () => {
+    expect(parseOp(itemOp({ channelId: "chan-1" }), NOW)).toBeDefined()
+    expect(parseOp(itemOp({ channelId: null }), NOW)).toBeDefined()
+    expect(parseOp(itemOp({ channelId: "" }), NOW)).toBeUndefined()
+    expect(parseOp(itemOp({ channelId: 7 }), NOW)).toBeUndefined()
+    // A computer of an older step sends no such field, and its item is a general item.
+    expect(parseOp(itemOp({}), NOW)).toBeDefined()
+  })
+
   test("a text typed by hand may be longer than the tool takes, up to the limit of the user", () => {
     expect(parseOp(itemOp({ text: "x".repeat(MEMORY_TEXT_MAX + 1) }), NOW)).toBeDefined()
     expect(parseOp(itemOp({ text: "x".repeat(MEMORY_USER_TEXT_MAX) }), NOW)).toBeDefined()
@@ -1451,7 +1460,7 @@ describe("memory in a sync (spec 008, 019)", () => {
     }
     expect(Object.keys(KINDS.agent.fields)).not.toContain("memoryMode")
     expect(Object.keys(KINDS.memory.fields).sort()).toEqual(
-      ["agentId", "createdAt", "source", "text", "updatedAt"].sort(),
+      ["agentId", "channelId", "createdAt", "source", "text", "updatedAt"].sort(),
     )
   })
 })

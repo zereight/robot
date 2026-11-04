@@ -27,7 +27,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
 3. **Conversation**: message rows as on desktop, Markdown, tool cards (tap for details), the
    message box with attach (photos, files), stop, and reply.
 4. **Approvals**: approval and question cards can be answered in the conversation or from a
-   notification.
+   notification. A question card shows the look of the lead, its pass line and "Answered by
+   <lead>" with the reason (004). The button "Correct" is on the computer only in this version.
 5. **Needs you**: one list of what waits for the user on a server: approval cards, question cards,
    and failed channel parts. A failed part has "Retry" and "End the request", as on the computer
    (see 004). A question of a member that is with the lead (004) joins the list only when it

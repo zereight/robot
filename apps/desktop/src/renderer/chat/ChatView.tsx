@@ -3,6 +3,8 @@ import {
   behindWords,
   type ChatMessage,
   canAddThread,
+  messageFiles,
+  messageText,
   type PlaceRef,
   type QueuedLine,
   type QuietShown,
@@ -30,7 +32,7 @@ import { quietOfChatLine } from "../state/quiet.ts"
 import { useUi } from "../state/ui.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
-import { Composer } from "./Composer.tsx"
+import { Composer, type SendPreview } from "./Composer.tsx"
 import styles from "./chat.module.css"
 import { formatDay, formatElapsed } from "./format.ts"
 import { MessageRow } from "./MessageRow.tsx"
@@ -154,6 +156,33 @@ export const ChatView = (props: ChatViewProps) => {
   const [replyTo, setReplyTo] = createSignal<ChatMessage>()
   const [atBottom, setAtBottom] = createSignal(true)
   const [flashId, setFlashId] = createSignal<string>()
+  /** What this box just sent. Its saved echo slides up from the box (send-in). */
+  const [lastSent, setLastSent] = createSignal<{ text: string; files: number; at: number }>()
+  const recordSent = (preview: SendPreview) => {
+    setLastSent({ text: preview.text, files: preview.files.length, at: Date.now() })
+    setAtBottom(true)
+    queueMicrotask(scrollToBottom)
+  }
+  /** True for the saved echo of a message that this box sent. */
+  const isEcho = (message: ChatMessage) => {
+    const sent = lastSent()
+    return (
+      sent !== undefined &&
+      message.author === "user" &&
+      messageText(message) === sent.text &&
+      messageFiles(message).length === sent.files &&
+      message.createdAt >= sent.at - 2000 &&
+      message.createdAt <= sent.at + 15000
+    )
+  }
+  // A sent marker belongs to its chat. It never follows to another thread or agent.
+  createEffect(
+    on(
+      () => `${props.agent.id}|${props.threadId ?? ""}`,
+      () => setLastSent(undefined),
+      { defer: true },
+    ),
+  )
   // Messages made after the chat opened rise in; history stays still.
   const openedAt = Date.now()
   const [backTo, setBackTo] = createSignal<number>()
@@ -304,6 +333,7 @@ export const ChatView = (props: ChatViewProps) => {
                     canEdit={message.id === lastUserId() && !working() && !message.fromTeams}
                     flash={flashId() === message.id}
                     enter={message.createdAt >= openedAt}
+                    sent={isEcho(message)}
                     quoted={message.replyTo ? byId().get(message.replyTo) : undefined}
                     onReply={() => setReplyTo(message)}
                     onJumpTo={jumpTo}
@@ -394,6 +424,8 @@ export const ChatView = (props: ChatViewProps) => {
             setAtBottom(true)
             queueMicrotask(scrollToBottom)
           }}
+          onPreview={(preview) => recordSent(preview)}
+          onFailed={() => setLastSent(undefined)}
           onConnect={props.onConnect}
           onChooseModel={props.onChooseModel}
         />

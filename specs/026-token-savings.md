@@ -33,7 +33,7 @@ says this, and the settings page says it to the user.
 | --- | --- | --- | --- |
 | On an API account (006) | Yes | Yes, for every tool result | Yes |
 | On pi | At "Full access" only | Yes, for every tool result | Yes |
-| On Claude Code, Codex, opencode or Muse Code | No | Only for the tools of the app (the browser and "search chats") | No |
+| On Claude Code, Codex, opencode, Muse Code or Cursor | No | Only for the tools of the app (the browser and "search chats") | No |
 | On Pi-Bolt | Not in this version | Not in this version | Not in this version |
 
 - A vendor program runs its own tools and keeps its own context during a turn. ROBot cannot change
@@ -173,7 +173,7 @@ says this, and the settings page says it to the user.
 - Reading a long log with a cheaper model and keeping only checked lines. This sends logs to a
   second model, so it needs a model choice and a new exception in 000 and 014. Open for a later
   change.
-- Making a vendor program (Claude Code, Codex, opencode, Muse Code) use ROBot tools in place of its
+- Making a vendor program (Claude Code, Codex, opencode, Muse Code, Cursor) use ROBot tools in place of its
   own file and shell tools, to reach it with "Check with edit" and "Set big results aside". The
   program loses the tools its model was tuned for, and its own approvals. Decided against.
 - Passing a vendor program its own limits, for example a cap on the size of a tool result or the

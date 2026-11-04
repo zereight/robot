@@ -283,6 +283,21 @@
   flex-wrap: wrap;
 }
 
+/* A face or a name that opens the profile of an agent (the "Now" panel, the face by a message). */
+.profileButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  border-radius: var(--radius-s);
+  min-width: 0;
+}
+
 /* Chat placeholder */
 .headerName {
   display: flex;
@@ -373,6 +388,21 @@
 .memoryText {
   flex: 1;
   overflow-wrap: anywhere;
+}
+
+/* The text of an item, and under it the channel of a channel note. */
+.memoryBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The mark of a note whose agent is not a member of the channel. It is a state, so it is bolder. */
+.notMember {
+  color: var(--c-text);
+  font-weight: 500;
 }
 
 .proposal,

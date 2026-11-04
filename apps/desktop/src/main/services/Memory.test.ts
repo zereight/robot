@@ -532,3 +532,65 @@ describe("undo", () => {
     expect(await s.history()).toEqual([])
   })
 })
+
+describe("the tool of a memory check (spec 008)", () => {
+  const suggest = (s: Awaited<ReturnType<typeof setup>>, text: string) =>
+    s.memory((m) => m.suggest(s.agent.id, text))
+
+  test("it makes a proposal also with 'Save at once', marked as made by a check, with no chat", async () => {
+    const s = await setup()
+    expect(await s.memory((m) => m.mode(s.agent.id))).toBe("now")
+    const out = await suggest(s, "Prefers short answers")
+    expect(out.kind).toBe("suggested")
+    expect(await s.items()).toEqual([])
+    expect(await s.history()).toEqual([])
+    const [p] = await s.proposals()
+    expect(p).toMatchObject({ text: "Prefers short answers", fromCheck: true, place: null })
+  })
+
+  test("a proposal that the memory tool made in a chat is not marked as made by a check", async () => {
+    const s = await setup()
+    await s.setMode("ask")
+    await s.save("From a chat", { kind: "agent", id: s.agent.id, messageId: "m1" })
+    expect((await s.proposals()).map((p) => p.fromCheck)).toEqual([false])
+  })
+
+  test("a known fact, a text over 500 characters, a secret and an empty text make no proposal", async () => {
+    const s = await setup()
+    await s.memory((m) => m.add(s.agent.id, "Likes tea", "user"))
+    expect(kind(await suggest(s, "  likes TEA "))).toBe("known")
+    expect(kind(await suggest(s, "x".repeat(MEMORY_TEXT_MAX + 1)))).toBe("too_long")
+    expect(kind(await suggest(s, "key sk-live-1234567890abcdef1234567890abcdef"))).toBe("secret")
+    expect(kind(await suggest(s, "   "))).toBe("empty")
+    expect(await s.proposals()).toEqual([])
+    // The same fact twice: the second call adds nothing.
+    expect(kind(await suggest(s, "Lives in Busan"))).toBe("suggested")
+    expect(kind(await suggest(s, "lives in busan"))).toBe("known")
+    expect(await s.proposals()).toHaveLength(1)
+  })
+
+  test("at most 20 proposals wait: a new one replaces the oldest", async () => {
+    const s = await setup()
+    for (let i = 1; i <= MEMORY_PROPOSALS_MAX + 1; i++) await suggest(s, `Fact ${i}`)
+    const waiting = await s.proposals()
+    expect(waiting).toHaveLength(MEMORY_PROPOSALS_MAX)
+    expect(waiting[0]?.text).toBe("Fact 2")
+  })
+
+  test("it makes nothing with memory off", async () => {
+    const s = await setup()
+    await s.run(Agents.use((a) => a.update(s.agent.id, { memoryEnabled: false })))
+    expect(kind(await suggest(s, "Likes tea"))).toBe("off")
+  })
+
+  test("the user can save such a proposal like any other", async () => {
+    const s = await setup()
+    await suggest(s, "Lives in Busan")
+    const [p] = await s.proposals()
+    await s.memory((m) => m.accept(p?.id ?? ""))
+    expect((await s.items()).map((i) => [i.text, i.source])).toEqual([
+      ["Lives in Busan", "proposal"],
+    ])
+    expect(await s.proposals()).toEqual([])
+  })
+})

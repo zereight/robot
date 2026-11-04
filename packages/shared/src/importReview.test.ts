@@ -42,6 +42,41 @@ describe("fields that the import does not make", () => {
     ])
   })
 
+  test("a version 2 file: channels, skills and the handbook are defined; their unknown fields are not", () => {
+    const text = JSON.stringify({
+      format: "robot-agents",
+      version: 2,
+      handbook: "Text",
+      agents: [{ name: "Ada" }],
+      channels: [
+        { name: " Launch ", members: ["Ada"], lead: null, color: "red", reviewParts: true },
+      ],
+      skills: [{ name: "Sum", instructions: "x", agents: ["Ada"], icon: "i" }],
+      extra: 1,
+    })
+    expect(ignoredAgentFields(text)).toEqual([
+      { owner: null, field: "extra" },
+      { owner: "Launch", field: "color" },
+      { owner: "Sum", field: "icon" },
+    ])
+  })
+
+  test("a version 1 file: channels, skills and the handbook are not defined", () => {
+    const text = JSON.stringify({
+      format: "robot-agents",
+      version: 1,
+      agents: [{ name: "Ada" }],
+      channels: [],
+      skills: [],
+      handbook: "Text",
+    })
+    expect(ignoredAgentFields(text)).toEqual([
+      { owner: null, field: "channels" },
+      { owner: null, field: "skills" },
+      { owner: null, field: "handbook" },
+    ])
+  })
+
   test("a workflow file: the fields of each kind of step, the trigger, connections and notes", () => {
     const text = JSON.stringify({
       format: "robot-workflows",

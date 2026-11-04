@@ -120,8 +120,28 @@
   animation-delay: calc(var(--motion-stagger) * 2);
 }
 
+/* The echo of a message that the user just sent slides up from the message box. It travels
+   further than an arriving row, so the eye follows it from the box to the chat. A sent row always
+   enters too, so these selectors carry both marks and win over the enter rules. */
+.row[data-enter="true"][data-sent="true"] .content > * {
+  animation: send-in var(--motion-medium) var(--ease-out) backwards;
+}
+
+.row[data-enter="true"][data-sent="true"] .content > .head {
+  animation-delay: var(--motion-stagger);
+}
+
+.row[data-enter="true"][data-sent="true"] .content > .head + * {
+  animation-delay: calc(var(--motion-stagger) * 2);
+}
+
 .name {
   font-weight: 600;
+}
+
+/* The name of an agent is a button that opens its profile: it is underlined on hover. */
+.nameButton:hover .name {
+  text-decoration: underline;
 }
 
 .bot {
@@ -706,6 +726,13 @@
   from {
     opacity: 0;
     transform: translateY(6px);
+  }
+}
+
+@keyframes send-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
   }
 }
 

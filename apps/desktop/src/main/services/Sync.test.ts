@@ -19,6 +19,7 @@ import { Devices } from "./Devices.ts"
 import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
+import { MemoryCheck } from "./MemoryCheck.ts"
 import { Notifier } from "./Notifier.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
@@ -618,6 +619,85 @@ describe("two computers that were apart", () => {
     expect((await proposals(b)).length).toBe(0)
   })
 
+  test("a channel note crosses with its channel; a move follows; the delete of the channel takes the note on the other computer with no history row (spec 008, 019)", async () => {
+    const { a, b, agents } = await pair()
+    const id = agents[0]?.id ?? ""
+    const serverId = await localId(a)
+    const channel = await run(
+      a,
+      Channels.use((c) =>
+        c.create({ serverId, name: "Launch", topic: "", memberIds: [id], leadId: null }),
+      ),
+    )
+    // The channel crosses first, so the note finds it.
+    await waitFor(
+      () =>
+        run(
+          b,
+          Channels.use((c) => c.list(serverId)),
+        ),
+      (list) => list.length === 1,
+    )
+    await run(
+      a,
+      Memory.use((m) => m.save(id, "Launch is on Friday", undefined, channel.id)),
+    )
+    const channelOf = (rt: Rt) =>
+      run(
+        rt,
+        Memory.use((m) => m.list(id)),
+      ).then((list) => list.map((i) => [i.text, i.channel?.id ?? null]))
+    await waitFor(
+      () => channelOf(b),
+      (list) => list.length === 1,
+    )
+    expect(await channelOf(b)).toEqual([["Launch is on Friday", channel.id]])
+
+    // A move on the second computer crosses as a change of the item.
+    const [item] = await run(
+      b,
+      Memory.use((m) => m.list(id)),
+    )
+    await run(
+      b,
+      Memory.use((m) => m.move(item?.id ?? "", null)),
+    )
+    await waitFor(
+      () => channelOf(a),
+      (list) => list[0]?.[1] === null,
+    )
+    await run(
+      a,
+      Memory.use((m) => m.move(item?.id ?? "", channel.id)),
+    )
+    await waitFor(
+      () => channelOf(b),
+      (list) => list[0]?.[1] === channel.id,
+    )
+
+    // The delete of the channel on the first computer: the note is gone on both, and the second
+    // computer makes no history row for it.
+    await run(
+      a,
+      Channels.use((c) => c.remove(channel.id)),
+    )
+    await waitFor(
+      () => channelOf(b),
+      (list) => list.length === 0,
+    )
+    const rowsB = await run(
+      b,
+      Memory.use((m) => m.history(id)),
+    )
+    // Only the move that the user made there: the removal that sync brought makes no row.
+    expect(rowsB.map((r) => r.kind)).toEqual(["moved"])
+    const rowsA = await run(
+      a,
+      Memory.use((m) => m.history(id)),
+    )
+    expect(rowsA.some((r) => r.actor === "channel_deleted")).toBe(true)
+  })
+
   test("the handbook, the switch and the instructions of a channel cross; when both change the handbook apart, the later text wins and the other stays in the history (spec 002, 019)", async () => {
     const { a, b, agents } = await pair()
     const ada = agents[0]
@@ -716,6 +796,63 @@ describe("two computers that were apart", () => {
         )
       ).text,
     ).toBe("From A, later.")
+  })
+
+  test("the memory check is a choice of one computer, and each computer counts its own turns (spec 008, 019)", async () => {
+    const { a, b, agents } = await pair()
+    const id = agents[0]?.id ?? ""
+    const info = (rt: Rt) =>
+      run(
+        rt,
+        MemoryCheck.use((m) => m.info(id)),
+      )
+    // On the first computer: the choice goes on, and one turn is counted.
+    await run(
+      a,
+      MemoryCheck.use((m) => m.setOn(id, true)),
+    )
+    await run(
+      a,
+      Database.use((db) =>
+        Effect.sync(() => {
+          db.run(
+            "INSERT INTO task (id, agent_id, prompt, label, source, state, created_at) VALUES ('t1', ?, 'x', 'x', 'chat', 'done', 1)",
+            id,
+          )
+          db.run("INSERT INTO memory_check_turn (task_id, agent_id, at) VALUES ('t1', ?, 1)", id)
+        }),
+      ),
+    )
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+    // A change of the agent crosses. The choice and the count do not.
+    await run(
+      a,
+      Agents.use((x) => x.update(id, { role: "Reviews" })),
+    )
+    await waitFor(
+      () =>
+        run(
+          b,
+          Agents.use((x) => x.get(id)),
+        ),
+      (agent) => agent.role === "Reviews",
+    )
+    expect(await info(b)).toMatchObject({ on: false, count: 0 })
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+    // A change of the agent on the second computer does not turn the check off on the first.
+    await run(
+      b,
+      Agents.use((x) => x.update(id, { role: "Reviews code" })),
+    )
+    await waitFor(
+      () =>
+        run(
+          a,
+          Agents.use((x) => x.get(id)),
+        ),
+      (agent) => agent.role === "Reviews code",
+    )
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
   })
 
   test("a name stays unique when both computers give one name to different agents", async () => {

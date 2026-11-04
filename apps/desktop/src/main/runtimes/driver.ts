@@ -9,6 +9,7 @@ import {
   runClaude,
 } from "./claude.ts"
 import { codexLogin, codexProbe, codexSignIn, runCodex } from "./codex.ts"
+import { cursorLogin, cursorProbe, runCursor } from "./cursor.ts"
 import { MUSE_SIGN_IN_HOSTS, museLogin, museProbe, museSignIn, runMuse } from "./muse.ts"
 import { opencodeLogin, opencodeProbe, runOpencode } from "./opencode.ts"
 import { piLogin, piProbe, runPi } from "./pi.ts"
@@ -79,4 +80,5 @@ export const drivers: Record<RuntimeKind, Driver> = {
   },
   pi: { probe: piProbe, login: piLogin, run: runPi },
   opencode: { probe: opencodeProbe, login: opencodeLogin, run: runOpencode },
+  cursor: { probe: cursorProbe, login: cursorLogin, run: runCursor },
 }

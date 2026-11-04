@@ -164,9 +164,16 @@ export const CLIENT_METHODS = [
   "channels.create",
   "channels.update",
   "memory.list",
+  // The channels for the filter and for a move of a channel note (spec 008, 012).
+  "memory.scopes",
+  "memory.move",
   "memory.add",
   "memory.update",
   "memory.delete",
+  // The memory check of an agent (spec 008, 012): a client sees the choice with the link only, and
+  // changes it only with the switch.
+  "memory.check",
+  "memory.check.set",
   // Change the handbook (spec 002, 012): save a text, or restore a version.
   "handbook.save",
   "handbook.restore",
@@ -201,9 +208,12 @@ export const CHANGE_METHODS = [
   "channels.create",
   "channels.update",
   "memory.list",
+  "memory.scopes",
+  "memory.move",
   "memory.add",
   "memory.update",
   "memory.delete",
+  "memory.check.set",
   // Change the handbook (spec 002, 012): save a text, or restore a version.
   "handbook.save",
   "handbook.restore",
