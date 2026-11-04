@@ -4,6 +4,8 @@ import {
   catalogues,
   connectionToolLabel,
   type FilePart,
+  foldedToolsKey,
+  groupParts,
   handoverOf,
   isNoteOnly,
   type KnowledgeNote,
@@ -28,6 +30,7 @@ import {
   SKILLS_MAX,
   type SkillPart,
   type ToolAsk,
+  type ToolPart,
 } from "@robot/shared"
 import {
   BookOpen,
@@ -789,8 +792,6 @@ const FileChip = (props: { message: ChatMessage; file: FilePart; from: string | 
   )
 }
 
-type ToolPart = Extract<MessagePart, { kind: "tool" }>
-
 const FAILED_KEY: Record<string, MessageKey> = {
   read_article: "chat.knowledge.failed.read",
   write_article: "chat.knowledge.failed.write",
@@ -1170,6 +1171,38 @@ const ToolStep = (props: {
   )
 }
 
+/**
+ * A run of finished plain tool steps as one muted line, when the setting "Show tool steps" is
+ * off. The user opens it to read the cards.
+ */
+const ToolsFolded = (props: {
+  agent: Agent
+  message: ChatMessage
+  parts: readonly ToolPart[]
+  from: string | undefined
+  onCorrect?: (() => void) | undefined
+}) => {
+  const { t } = useApp()
+  return (
+    <details class={styles.toolsFolded} data-testid="tools-folded" data-count={props.parts.length}>
+      <summary data-testid="tools-folded-line">
+        {t(foldedToolsKey(props.parts.length), { count: props.parts.length })}
+      </summary>
+      <For each={props.parts}>
+        {(part) => (
+          <ToolStep
+            agent={props.agent}
+            message={props.message}
+            part={part}
+            from={props.from}
+            onCorrect={props.onCorrect}
+          />
+        )}
+      </For>
+    </details>
+  )
+}
+
 /** "Read at the next step" under a message that joined the turn, with Delete while it may go. */
 const UnreadLine = (props: { message: ChatMessage; unread: "waiting" | "handed" }) => {
   const { t } = useApp()
@@ -1291,6 +1324,83 @@ const compactedOf = (message: ChatMessage) =>
   message.parts.find(
     (p): p is Extract<MessagePart, { kind: "compacted" }> => p.kind === "compacted",
   )
+
+/** One part of an agent message: text, thinking, a muted line, or a tool step. */
+const PartView = (props: {
+  agent: Agent
+  message: ChatMessage
+  part: MessagePart
+  from: string | undefined
+  onCorrect?: (() => void) | undefined
+}) => (
+  <Switch>
+    <Match when={props.part.kind === "text"}>
+      <Markdown
+        text={(props.part as Extract<MessagePart, { kind: "text" }>).text}
+        scope={`message:${props.message.id}`}
+      />
+    </Match>
+    <Match when={props.part.kind === "thinking"}>
+      <Thinking
+        text={(props.part as Extract<MessagePart, { kind: "thinking" }>).text}
+        live={
+          props.message.status === "streaming" &&
+          props.message.parts[props.message.parts.length - 1] === props.part
+        }
+      />
+    </Match>
+    <Match
+      when={
+        props.part.kind === "note" && props.part.note === "compact_failed" ? props.part : undefined
+      }
+    >
+      {(note) => <CompactFailedLine code={(note() as { code: string }).code} />}
+    </Match>
+    <Match
+      when={
+        props.part.kind === "note" && props.part.note === "connection_down" ? props.part : undefined
+      }
+    >
+      {(note) => <ConnectionDownLine name={(note() as { name: string }).name} />}
+    </Match>
+    <Match
+      when={
+        props.part.kind === "note" && props.part.note === "connection_held" ? props.part : undefined
+      }
+    >
+      {(note) => <ConnectionHeldLine name={(note() as { name: string }).name} />}
+    </Match>
+    <Match
+      when={
+        props.part.kind === "note" && props.part.note === "backup_goes_on" ? props.part : undefined
+      }
+    >
+      {(note) => (
+        <BackupGoesOnLine
+          part={note() as Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }>}
+        />
+      )}
+    </Match>
+    <Match
+      when={props.part.kind === "note" && props.part.note === "kept_going" ? props.part : undefined}
+    >
+      {(note) => (
+        <KeptGoingLine
+          part={note() as Extract<MessagePart, { kind: "note"; note: "kept_going" }>}
+        />
+      )}
+    </Match>
+    <Match when={props.part.kind === "tool"}>
+      <ToolStep
+        agent={props.agent}
+        message={props.message}
+        part={props.part as Extract<MessagePart, { kind: "tool" }>}
+        from={props.from}
+        onCorrect={props.onCorrect}
+      />
+    </Match>
+  </Switch>
+)
 
 export const MessageRow = (props: MessageRowProps) => (
   <Show
@@ -1470,74 +1580,26 @@ const FullMessageRow = (props: MessageRowProps) => {
               </>
             }
           >
-            <For each={props.message.parts}>
-              {(part, index) => (
-                <Switch>
-                  <Match when={part.kind === "text"}>
-                    <Markdown
-                      text={(part as Extract<MessagePart, { kind: "text" }>).text}
-                      scope={`message:${props.message.id}`}
-                    />
-                  </Match>
-                  <Match when={part.kind === "thinking"}>
-                    <Thinking
-                      text={(part as Extract<MessagePart, { kind: "thinking" }>).text}
-                      live={
-                        props.message.status === "streaming" &&
-                        index() === props.message.parts.length - 1
-                      }
-                    />
-                  </Match>
-                  <Match
-                    when={part.kind === "note" && part.note === "compact_failed" ? part : undefined}
-                  >
-                    {(note) => <CompactFailedLine code={(note() as { code: string }).code} />}
-                  </Match>
-                  <Match
-                    when={
-                      part.kind === "note" && part.note === "connection_down" ? part : undefined
-                    }
-                  >
-                    {(note) => <ConnectionDownLine name={(note() as { name: string }).name} />}
-                  </Match>
-                  <Match
-                    when={
-                      part.kind === "note" && part.note === "connection_held" ? part : undefined
-                    }
-                  >
-                    {(note) => <ConnectionHeldLine name={(note() as { name: string }).name} />}
-                  </Match>
-                  <Match
-                    when={part.kind === "note" && part.note === "backup_goes_on" ? part : undefined}
-                  >
-                    {(note) => (
-                      <BackupGoesOnLine
-                        part={
-                          note() as Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }>
-                        }
-                      />
-                    )}
-                  </Match>
-                  <Match
-                    when={part.kind === "note" && part.note === "kept_going" ? part : undefined}
-                  >
-                    {(note) => (
-                      <KeptGoingLine
-                        part={note() as Extract<MessagePart, { kind: "note"; note: "kept_going" }>}
-                      />
-                    )}
-                  </Match>
-                  <Match when={part.kind === "tool"}>
-                    <ToolStep
-                      agent={props.agent}
-                      message={props.message}
-                      part={part as Extract<MessagePart, { kind: "tool" }>}
-                      from={fromOther()}
-                      onCorrect={props.onCorrect}
-                    />
-                  </Match>
-                </Switch>
-              )}
+            <For each={groupParts(props.message.parts, !app.settings.showToolSteps)}>
+              {(segment) =>
+                segment.kind === "tools" ? (
+                  <ToolsFolded
+                    agent={props.agent}
+                    message={props.message}
+                    parts={segment.parts}
+                    from={fromOther()}
+                    onCorrect={props.onCorrect}
+                  />
+                ) : (
+                  <PartView
+                    agent={props.agent}
+                    message={props.message}
+                    part={segment.part}
+                    from={fromOther()}
+                    onCorrect={props.onCorrect}
+                  />
+                )
+              }
             </For>
           </Show>
           <Show when={props.message.editedAt}>

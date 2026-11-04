@@ -3,8 +3,11 @@ import {
   askAllowsAlways,
   askKind,
   type ChatMessage,
+  foldedToolsKey,
+  groupParts,
   handedOverOf,
   handoverOf,
+  isFoldableTool,
   isNoteOnly,
   type MessagePart,
   messageText,
@@ -12,6 +15,7 @@ import {
   startsGroup,
   userWords,
 } from "./chat.ts"
+import { translate } from "./i18n/index.ts"
 
 const msg = (
   author: "user" | "agent",
@@ -148,5 +152,74 @@ describe("the handover card and its line (spec 003, 007)", () => {
     const next = msg("user", 1_700_000_000_000 + 1000)
     expect(startsGroup(first, next)).toBe(true)
     expect(startsGroup(msg("user", 1_700_000_000_000), next)).toBe(false)
+  })
+})
+
+describe("folded tool steps", () => {
+  type Tool = Extract<MessagePart, { kind: "tool" }>
+  let n = 0
+  const tool = (state: Tool["state"], extra: Partial<Tool> = {}): Tool => ({
+    kind: "tool",
+    id: `t${++n}`,
+    name: "read_file",
+    label: "a.txt",
+    state,
+    input: "",
+    output: "ok",
+    ...extra,
+  })
+  const text = (text: string): MessagePart => ({ kind: "text", text })
+
+  test("only a finished plain card folds", () => {
+    expect(isFoldableTool(tool("done"))).toBe(true)
+    expect(isFoldableTool(tool("running"))).toBe(false)
+    expect(isFoldableTool(tool("waiting"))).toBe(false)
+    expect(isFoldableTool(tool("failed"))).toBe(false)
+    expect(isFoldableTool(text("hi"))).toBe(false)
+  })
+
+  test("a card that waits, was refused, or carries a note stays open", () => {
+    expect(isFoldableTool(tool("done", { ask: { kind: "approval", summary: "rm x" } }))).toBe(false)
+    expect(isFoldableTool(tool("done", { refused: "rule" }))).toBe(false)
+    expect(isFoldableTool(tool("done", { reason: { code: "step_limit" } }))).toBe(false)
+    expect(isFoldableTool(tool("done", { decision: { answer: "allow", by: "Mac" } }))).toBe(false)
+    expect(isFoldableTool(tool("done", { knowledge: { kind: "read", title: "T" } }))).toBe(false)
+    expect(isFoldableTool(tool("done", { memory: { kind: "saved", historyId: "h" } }))).toBe(false)
+    expect(isFoldableTool(tool("done", { settings: { changes: [] } }))).toBe(false)
+  })
+
+  test("a card with a routine mark still folds", () => {
+    expect(isFoldableTool(tool("done", { ruleAllowed: true }))).toBe(true)
+    expect(isFoldableTool(tool("done", { checkAllowed: 0.9 }))).toBe(true)
+    expect(isFoldableTool(tool("done", { readOnlyTrusted: true }))).toBe(true)
+    expect(
+      isFoldableTool(tool("done", { connection: { kind: "call", connection: "C", tool: "t" } })),
+    ).toBe(true)
+  })
+
+  test("with fold off, every part is its own row", () => {
+    const parts = [tool("done"), text("hi"), tool("done")]
+    expect(groupParts(parts, false)).toEqual(parts.map((part) => ({ kind: "part", part })))
+    expect(groupParts([], true)).toEqual([])
+  })
+
+  test("with fold on, runs of finished plain cards form one row each", () => {
+    const [a, b, c, d] = [tool("done"), tool("done"), tool("done"), tool("done")]
+    const middle = text("hi")
+    const waiting = tool("waiting")
+    const parts = [a, b, middle, c, waiting, d]
+    expect(groupParts(parts, true)).toEqual([
+      { kind: "tools", parts: [a, b] },
+      { kind: "part", part: middle },
+      { kind: "tools", parts: [c] },
+      { kind: "part", part: waiting },
+      { kind: "tools", parts: [d] },
+    ])
+  })
+
+  test("one step reads in the singular, any other count in the plural", () => {
+    expect(translate("en", foldedToolsKey(1), { count: 1 })).toBe("1 tool step")
+    expect(translate("en", foldedToolsKey(2), { count: 2 })).toBe("2 tool steps")
+    expect(translate("ko", foldedToolsKey(1), { count: 1 })).toBe("도구 단계 1개")
   })
 })
