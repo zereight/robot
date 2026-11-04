@@ -95,6 +95,30 @@ export interface UsageOf {
 }
 
 /**
+ * Whole percents of `whole` for each part. The parts add up to 100 when they add up to `whole`:
+ * each part gets the rounded-down percent, and the parts with the largest remainders get one more.
+ * A part that is null has no share.
+ */
+const sharesOf = (parts: readonly (number | null)[], whole: number): (number | null)[] => {
+  const exact = parts.map((p) => (p === null || whole <= 0 ? null : (p / whole) * 100))
+  const floors = exact.map((e) => (e === null ? null : Math.floor(e)))
+  const given = floors.reduce<number>((sum, f) => sum + (f ?? 0), 0)
+  const summed = parts.reduce<number>((sum, p) => sum + (p ?? 0), 0)
+  let extra = summed === whole ? 100 - given : 0
+  const order = exact
+    .map((e, i) => ({ i, rest: e === null ? -1 : e - Math.floor(e) }))
+    .filter((x) => x.rest >= 0)
+    .sort((a, b) => b.rest - a.rest || a.i - b.i)
+  const result = [...floors]
+  for (const { i } of order) {
+    if (extra <= 0) break
+    result[i] = (result[i] ?? 0) + 1
+    extra -= 1
+  }
+  return result
+}
+
+/**
  * The total of a set of tasks and one line for each agent. The lines go largest total first; an
  * agent that reported nothing comes last, and its line shows "—" (spec 005). The total counts the
  * agents that reported only.
@@ -111,12 +135,21 @@ export const treeUsage = (tasks: readonly UsageOf[]): TreeUsage => {
     })
   }
   const whole = tokensOf(total)
-  const lines = [...byAgent.entries()].map(
-    ([agentId, { name, usage }]): AgentUsageLine => ({
+  const entries = [...byAgent.entries()].map(([agentId, { name, usage }]) => ({
+    agentId,
+    name,
+    usage,
+  }))
+  const shares = sharesOf(
+    entries.map((e) => (whole > 0 && hasUsage(e.usage) ? tokensOf(e.usage) : null)),
+    whole,
+  )
+  const lines = entries.map(
+    ({ agentId, name, usage }, i): AgentUsageLine => ({
       agentId,
       agentName: name,
       usage,
-      share: whole > 0 && hasUsage(usage) ? Math.round((tokensOf(usage) / whole) * 100) : null,
+      share: shares[i] ?? null,
     }),
   )
   // The largest total first. An agent with no report has no total and goes last.

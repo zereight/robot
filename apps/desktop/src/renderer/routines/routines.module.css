@@ -172,6 +172,8 @@
 .entryDetails {
   color: var(--c-text-muted);
   font-variant-numeric: tabular-nums;
+  /* A Korean line breaks between words, not inside one. A piece that does not fit still breaks. */
+  word-break: keep-all;
   overflow-wrap: anywhere;
 }
 

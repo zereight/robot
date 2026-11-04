@@ -70,7 +70,21 @@ describe("tree of a job", () => {
     ])
     expect(tree.total).toEqual(usage(7000, 1200))
     expect(tree.lines.map((l) => l.agentName)).toEqual(["Ada", "Bo", "Lead"])
-    expect(tree.lines.map((l) => l.share)).toEqual([43, 43, 15])
+    expect(tree.lines.map((l) => l.share)).toEqual([43, 43, 14])
+  })
+
+  test("the shares of the lines add up to 100 when every agent reported", () => {
+    for (const parts of [
+      [1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1],
+      [5, 3, 2],
+      [1, 99],
+      [7, 7, 7, 79],
+    ]) {
+      const tree = treeUsage(parts.map((n, i) => task(`a${i}`, `Agent ${i}`, usage(n, 0))))
+      const sum = tree.lines.reduce((total, l) => total + (l.share ?? 0), 0)
+      expect(sum).toBe(100)
+    }
   })
 
   test("an agent that reports nothing has a line with no numbers, comes last, and is not in the total", () => {
