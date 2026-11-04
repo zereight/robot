@@ -751,6 +751,56 @@ describe("export and import", () => {
     ])
   })
 
+  test("an archive that holds a tree with a fourth level or a loop comes back repaired, with a muted line (spec 030, Repair)", async () => {
+    const out = join(testPlatform().dataDir, "export-broken-tree.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const make = (name: string, parentId: string | null) =>
+      a.run(
+        Channels.use((c) =>
+          c.create({ serverId: local.id, name, topic: "", memberIds: [], leadId: null, parentId }),
+        ),
+      )
+    const product = await make("Product", null)
+    const docs = await make("Docs", product.id)
+    const site = await make("Site", docs.id)
+    const wiki = await make("Wiki", null)
+    const left = await make("Left", null)
+    const right = await make("Right", null)
+    // The app refuses both of these, but an archive can hold them: the data is changed by hand.
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    db.run("UPDATE channel SET parent_channel_id = ? WHERE id = ?", site.id, wiki.id)
+    db.run("UPDATE channel SET parent_channel_id = ? WHERE id = ?", right.id, left.id)
+    db.run("UPDATE channel SET parent_channel_id = ? WHERE id = ?", left.id, right.id)
+    // "Right" was made later than "Left" (the two were made in the same ms).
+    db.run("UPDATE channel SET created_at = 1000 WHERE id = ?", left.id)
+    db.run("UPDATE channel SET created_at = 2000 WHERE id = ?", right.id)
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const list = await b.run(Channels.use((c) => c.list(bLocal.id)))
+    const name = new Map(list.map((c) => [c.id, c.name]))
+    // "Wiki" would be on the fourth level, so it lost its parent. Of "Left" and "Right", the one that
+    // was made later lost its parent. Nothing else changed.
+    expect(list.map((c) => [c.name, c.parentId ? name.get(c.parentId) : null]).sort()).toEqual([
+      ["Docs", "Product"],
+      ["Left", "Right"],
+      ["Product", null],
+      ["Right", null],
+      ["Site", "Docs"],
+      ["Wiki", null],
+    ])
+    const lineOf = async (id: string) =>
+      (await b.run(Channels.use((c) => c.history(id)))).map((m) => m.parts)
+    expect(await lineOf(wiki.id)).toEqual([
+      [{ kind: "note", note: "tree_repaired", why: "levels" }],
+    ])
+    expect(await lineOf(right.id)).toEqual([[{ kind: "note", note: "tree_repaired", why: "loop" }]])
+    for (const id of [product.id, docs.id, site.id, left.id]) expect(await lineOf(id)).toEqual([])
+  })
+
   test("the notes and steps of a workflow come back; the links, the sync records and the computer of a workflow stay out of the archive (spec 014, 012, 019)", async () => {
     const out = join(testPlatform().dataDir, "export-link.zip")
     const a = app({ save: out })

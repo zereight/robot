@@ -711,6 +711,9 @@ export const en = {
   "channels.parent.loop": "This is a sub-channel of this channel.",
   "channels.parent.levels": "The tree would have more than 3 levels.",
   "channels.parent.option": "{name} — {reason}",
+  "channels.parent.cleared.loop": "The parent channel was cleared. The tree would have a loop.",
+  "channels.parent.cleared.levels":
+    "The parent channel was cleared. The tree would have more than 3 levels.",
   "channels.in": "In {parent}",
   "channels.in.open": "Open {parent}",
   "channels.save": "Save",

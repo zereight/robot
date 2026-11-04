@@ -705,6 +705,8 @@ export const ko: Record<MessageKey, string> = {
   "channels.parent.loop": "이 채널의 하위 채널이에요.",
   "channels.parent.levels": "트리가 3단계를 넘게 돼요.",
   "channels.parent.option": "{name} — {reason}",
+  "channels.parent.cleared.loop": "상위 채널을 비웠어요. 이대로면 트리에 순환이 생겨요.",
+  "channels.parent.cleared.levels": "상위 채널을 비웠어요. 이대로면 트리가 3단계를 넘게 돼요.",
   "channels.in": "{parent} 소속",
   "channels.in.open": "{parent} 열기",
   "channels.save": "저장",

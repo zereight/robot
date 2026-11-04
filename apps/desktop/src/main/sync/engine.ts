@@ -8,6 +8,7 @@ import {
   type SyncKind,
   TOMBSTONE_KEEP_MS,
 } from "@robot/shared"
+import { repairChannelTree } from "../services/channelTreeRepair.ts"
 import type { DatabaseService } from "../services/Database.ts"
 import { compareStamps, HybridClock, NO_STAMP, type Stamp, sameStamp, wireStamp } from "./clock.ts"
 import { type Ctx, type Fields, KIND_ORDER, KINDS, type KindDef, type Parent } from "./kinds.ts"
@@ -549,6 +550,9 @@ export class SyncEngine {
   apply(ops: readonly ParsedOp[], options: ApplyOptions): ApplyResult {
     const result: ApplyResult = { applied: 0, dropped: 0, touches: [] }
     this.#db.transaction(() => {
+      // A change of a channel that was made here and waits for its stamp gets it before the stamps
+      // of this batch count: the repair of the channel tree compares them (spec 030, "Repair").
+      if (ops.some((op) => op.kind === "channel")) this.#settleChannels()
       for (const op of ops) {
         this.#db.run("SAVEPOINT sync_op")
         try {
@@ -562,8 +566,62 @@ export class SyncEngine {
           console.error("sync: a change could not be applied", op.kind, String(error))
         }
       }
+      // A first copy is repaired when it is complete (`repairTree`): it holds the channels in parts.
+      if (
+        !options.snapshot &&
+        result.touches.some((t) => t.kind === "channel" && t.action !== "deleted")
+      ) {
+        result.touches.push(...this.#repairTree())
+      }
     })
     return result
+  }
+
+  // ------------------------------------------------------------------------------ channel tree
+
+  /**
+   * Repairs the channel tree after changes of the other computer (spec 030, "Repair", 019). Two
+   * changes that are right alone can make a loop or a fourth level. The parent field of the channel
+   * whose parent change is later is cleared, and the channel gets one muted line. Both computers
+   * hold the same stamps, so both choose the same channel. The cleared field is a change like any
+   * other: it waits to go out, and the other computer finds nothing to repair. Returns what the
+   * window needs to know.
+   */
+  repairTree(): Touch[] {
+    return this.#db.transaction(() => this.#repairTree())
+  }
+
+  /** Records the changes of channels that were made here and wait for their stamps. */
+  #settleChannels() {
+    for (const row of this.#db.all<{ id: string }>(
+      "SELECT id FROM sync_dirty WHERE kind = 'channel'",
+    ))
+      this.#settle("channel", row.id)
+  }
+
+  #repairTree(): Touch[] {
+    // Both computers must compare each parent change with the same stamp.
+    this.#settleChannels()
+    const changed = new Map(
+      this.#db
+        .all<{ id: string; l: number; c: number; n: string }>(
+          "SELECT id, l, c, n FROM sync_field WHERE kind = 'channel' AND field = 'parentChannel'",
+        )
+        .map((r) => [r.id, { l: r.l, c: r.c, n: r.n }]),
+    )
+    return repairChannelTree(this.#db, { mode: "sync", changed, now: this.#now }).flatMap((r) => [
+      { kind: "channel", id: r.channelId, action: "changed", parent: null } satisfies Touch,
+      ...(r.messageId
+        ? [
+            {
+              kind: "cmessage",
+              id: r.messageId,
+              action: "added",
+              parent: { kind: "channel", id: r.channelId },
+            } satisfies Touch,
+          ]
+        : []),
+    ])
   }
 
   #applyOne(op: ParsedOp, options: ApplyOptions, result: ApplyResult): boolean {

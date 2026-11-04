@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import {
+  type ChangeTime,
   higherChannels,
   lowerChannels,
   parentChoices,
   parentRefusal,
+  type RepairChannel,
+  repairAfterRestore,
+  repairAfterSync,
   type TreeChannel,
   treeLevels,
   treeParents,
@@ -114,5 +118,265 @@ describe("the rules of a new parent", () => {
       { id: "docs", refusal: undefined },
       { id: "site", refusal: "levels" },
     ])
+  })
+})
+
+// ------------------------------------------------------------------------------ repair
+
+describe("the repair after a restore (spec 030, Repair, case 1)", () => {
+  const rc = (id: string, parentId: string | null = null, extra: Partial<RepairChannel> = {}) => ({
+    id,
+    parentId,
+    createdAt: 1,
+    ...extra,
+  })
+
+  test("a tree that is right needs no repair", () => {
+    expect(repairAfterRestore([rc("p"), rc("d", "p"), rc("s", "d"), rc("o")])).toEqual([])
+    expect(repairAfterRestore([])).toEqual([])
+  })
+
+  test("a restore that puts a channel on the fourth level: its field is cleared, it is a top channel", () => {
+    // "Product" was archived. "Docs" > "Site" > "Wiki" is a tree of its own while it is archived.
+    // After the restore: Product > Docs > Site > Wiki. "Wiki" would be on the fourth level.
+    const channels = [rc("product"), rc("docs", "product"), rc("site", "docs"), rc("wiki", "site")]
+    expect(repairAfterRestore(channels)).toEqual([{ id: "wiki", reason: "levels" }])
+    // While "Product" is archived the same data has no break: "Docs" is a top channel.
+    const archived = channels.map((c) => (c.id === "product" ? { ...c, archived: true } : c))
+    expect(repairAfterRestore(archived)).toEqual([])
+  })
+
+  test("the check goes from the top down: the channels under a cleared one count from their new level", () => {
+    // Product > A > B > C > D > E > F: C is on level 4 and is cleared. D, E are on levels 2 and 3.
+    // F is on level 4 again, so it is cleared too.
+    const chain = [
+      rc("p"),
+      rc("a", "p"),
+      rc("b", "a"),
+      rc("c", "b"),
+      rc("d", "c"),
+      rc("e", "d"),
+      rc("f", "e"),
+    ]
+    expect(repairAfterRestore(chain)).toEqual([
+      { id: "c", reason: "levels" },
+      { id: "f", reason: "levels" },
+    ])
+    // Two channels on the fourth level of different branches are both cleared.
+    const wide = [rc("p"), rc("a", "p"), rc("b", "a"), rc("x", "b"), rc("y", "b")]
+    expect(repairAfterRestore(wide).map((r) => r.id)).toEqual(["x", "y"])
+  })
+
+  test("the repaired data has the rules of the tree: the same tree on any order of the channels", () => {
+    const channels = [
+      rc("p"),
+      rc("a", "p"),
+      rc("b", "a"),
+      rc("c", "b"),
+      rc("d", "c"),
+      rc("lab", "d"),
+      rc("z"),
+    ]
+    const result = (list: readonly RepairChannel[]) =>
+      repairAfterRestore(list)
+        .map((r) => r.id)
+        .sort()
+    expect(result(channels)).toEqual(["c"])
+    expect(result([...channels].reverse())).toEqual(["c"])
+    expect(result([...channels.slice(3), ...channels.slice(0, 3)])).toEqual(["c"])
+    const cleared = channels.map((c) => (c.id === "c" ? { ...c, parentId: null } : c))
+    expect(repairAfterRestore(cleared)).toEqual([])
+  })
+
+  test("an archived parent counts as no parent, so a channel under it is a top channel", () => {
+    const channels = [
+      rc("old", null, { archived: true }),
+      rc("a", "old"),
+      rc("b", "a"),
+      rc("c", "b"),
+    ]
+    // "A" is a top channel while "Old" is archived: A > B > C is 3 levels.
+    expect(repairAfterRestore(channels)).toEqual([])
+  })
+
+  test("a loop that a restore closes is broken like a loop after a sync", () => {
+    // "A" was archived with the parent "X". While it was archived, "X" was put under "B", and "B" was
+    // under "A". The restore makes the loop A > X > B > A. The change of "X" is the latest.
+    const loop = [
+      rc("a", "x", { parentChanged: { l: 1, c: 0, n: "d1" } }),
+      rc("x", "b", { parentChanged: { l: 9, c: 0, n: "d1" } }),
+      rc("b", "a", { parentChanged: { l: 2, c: 0, n: "d1" } }),
+    ]
+    expect(repairAfterRestore(loop)).toEqual([{ id: "x", reason: "loop" }])
+  })
+})
+
+describe("the repair after a sync (spec 030, Repair, case 2)", () => {
+  const at = (l: number, n = "d1"): ChangeTime => ({ l, c: 0, n })
+  const rc = (id: string, parentId: string | null, l: number, createdAt = 1): RepairChannel => ({
+    id,
+    parentId,
+    createdAt,
+    parentChanged: at(l),
+  })
+
+  test("a tree that is right needs no repair", () => {
+    expect(repairAfterSync([rc("p", null, 1), rc("d", "p", 2), rc("s", "d", 3)])).toEqual([])
+  })
+
+  test("a loop: the field of the channel with the later parent change is cleared", () => {
+    // Computer 1 put "Docs" under "Site" (time 5). Computer 2 put "Site" under "Docs" (time 7).
+    const loop = [rc("docs", "site", 5), rc("site", "docs", 7)]
+    expect(repairAfterSync(loop)).toEqual([{ id: "site", reason: "loop" }])
+    // The other way round: the later change is the one of "Docs".
+    expect(repairAfterSync([rc("docs", "site", 8), rc("site", "docs", 7)])).toEqual([
+      { id: "docs", reason: "loop" },
+    ])
+  })
+
+  test("the same time: the channel that was made later; the same creation time: the later id", () => {
+    expect(repairAfterSync([rc("docs", "site", 5, 100), rc("site", "docs", 5, 200)])).toEqual([
+      { id: "site", reason: "loop" },
+    ])
+    expect(repairAfterSync([rc("docs", "site", 5, 300), rc("site", "docs", 5, 200)])).toEqual([
+      { id: "docs", reason: "loop" },
+    ])
+    expect(repairAfterSync([rc("a", "b", 5, 100), rc("b", "a", 5, 100)])).toEqual([
+      { id: "b", reason: "loop" },
+    ])
+    // The counter decides before the creation time does: the later change has the larger counter.
+    const first: RepairChannel = { ...rc("a", "b", 5, 1), parentChanged: { l: 5, c: 1, n: "d1" } }
+    expect(repairAfterSync([first, rc("b", "a", 5, 999)])).toEqual([{ id: "a", reason: "loop" }])
+    // The computer that made a change does not make it later: the creation time decides.
+    const other: RepairChannel = { ...rc("b", "a", 5, 999), parentChanged: { l: 5, c: 0, n: "d0" } }
+    expect(repairAfterSync([rc("a", "b", 5, 1), other])).toEqual([{ id: "b", reason: "loop" }])
+  })
+
+  test("a channel that is its own parent is a loop of one", () => {
+    expect(repairAfterSync([rc("a", "a", 1), rc("b", null, 1)])).toEqual([
+      { id: "a", reason: "loop" },
+    ])
+  })
+
+  test("a loop with channels that hang from it: only one field is cleared, and no other is changed", () => {
+    // A > B > A is a loop. C is under A. "B" has the later change: it becomes a top channel with
+    // A under it, and C under A (3 levels).
+    const data = [rc("a", "b", 1), rc("b", "a", 2), rc("c", "a", 1)]
+    expect(repairAfterSync(data)).toEqual([{ id: "b", reason: "loop" }])
+  })
+
+  test("a fourth level: the channel with the latest parent change on the line is cleared", () => {
+    // P > A > B > C. The change of "C" (time 9) is the latest.
+    const line = [rc("p", null, 1), rc("a", "p", 2), rc("b", "a", 3), rc("c", "b", 9)]
+    expect(repairAfterSync(line)).toEqual([{ id: "c", reason: "levels" }])
+    // The change of "A" is the latest: "A" becomes a top channel, and A > B > C is 3 levels.
+    const second = [rc("p", null, 1), rc("a", "p", 9), rc("b", "a", 3), rc("c", "b", 4)]
+    expect(repairAfterSync(second)).toEqual([{ id: "a", reason: "levels" }])
+    // The change of "B" is the latest.
+    const third = [rc("p", null, 1), rc("a", "p", 2), rc("b", "a", 9), rc("c", "b", 4)]
+    expect(repairAfterSync(third)).toEqual([{ id: "b", reason: "levels" }])
+  })
+
+  test("a deeper tree is repaired one break after the other, nearest to the top first", () => {
+    // P > A > B > C > D. "C" is on level 4 and "D" on level 5. The latest change on the line of
+    // "C" is "C" itself: after it is cleared, C > D has 2 levels and nothing else is left.
+    const data = [
+      rc("p", null, 1),
+      rc("a", "p", 2),
+      rc("b", "a", 3),
+      rc("c", "b", 9),
+      rc("d", "c", 20),
+    ]
+    expect(repairAfterSync(data)).toEqual([{ id: "c", reason: "levels" }])
+  })
+
+  test("a parent that is archived or not there is no break and no repair", () => {
+    const data = [
+      rc("a", "gone", 1),
+      rc("b", "arch", 1),
+      { ...rc("arch", null, 1), archived: true },
+    ]
+    expect(repairAfterSync(data)).toEqual([])
+  })
+
+  test("two computers that get the two changes in a different order choose the same channel", () => {
+    // Both computers hold the same stamps, so both hold the same data after the changes arrived,
+    // whatever the order was. The result does not depend on the order of the list either.
+    const base = [rc("docs", null, 1), rc("site", null, 1), rc("other", null, 1)]
+    const change1 = (list: RepairChannel[]) =>
+      list.map((c) => (c.id === "docs" ? rc("docs", "site", 5) : c))
+    const change2 = (list: RepairChannel[]) =>
+      list.map((c) => (c.id === "site" ? rc("site", "docs", 7) : c))
+    const one = change2(change1(base))
+    const two = change1(change2(base))
+    expect(repairAfterSync(one)).toEqual(repairAfterSync(two))
+    expect(repairAfterSync(one)).toEqual([{ id: "site", reason: "loop" }])
+    expect(repairAfterSync([...one].reverse())).toEqual(repairAfterSync(one))
+  })
+})
+
+describe("the repair always ends in a tree that has the rules (spec 030, Repair)", () => {
+  // A small generator with a fixed seed: the same cases on every run.
+  const random = (seed: number) => () => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648
+    return seed / 2_147_483_648
+  }
+  const make = (next: () => number): RepairChannel[] => {
+    const n = 2 + Math.floor(next() * 9)
+    return Array.from({ length: n }, (_, i) => ({
+      id: `c${i}`,
+      parentId: next() < 0.8 ? `c${Math.floor(next() * n)}` : null,
+      createdAt: Math.floor(next() * 4),
+      parentChanged: {
+        l: Math.floor(next() * 4),
+        c: Math.floor(next() * 2),
+        n: next() < 0.5 ? "a" : "b",
+      },
+    }))
+  }
+  const shuffle = <T>(list: readonly T[], next: () => number) => {
+    const out = [...list]
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(next() * (i + 1))
+      ;[out[i], out[j]] = [out[j] as T, out[i] as T]
+    }
+    return out
+  }
+  const clear = (channels: readonly RepairChannel[], ids: readonly string[]) =>
+    channels.map((c) => (ids.includes(c.id) ? { ...c, parentId: null } : c))
+  const holds = (channels: readonly RepairChannel[]) => {
+    // The data reads as the tree as it is now: no field was set aside by the tolerant reading.
+    const parents = treeParents(channels)
+    return channels.every(
+      (c) =>
+        (parents.get(c.id) ?? null) === c.parentId || !channels.some((p) => p.id === c.parentId),
+    )
+  }
+
+  test("after a sync: a tree with no loop and at most 3 levels, the same for any order, nothing else changed", () => {
+    const next = random(7)
+    for (let i = 0; i < 300; i++) {
+      const channels = make(next)
+      const repairs = repairAfterSync(channels)
+      const ids = repairs.map((r) => r.id)
+      expect(new Set(ids).size).toBe(ids.length)
+      expect(holds(clear(channels, ids))).toBe(true)
+      expect(repairAfterSync(clear(channels, ids))).toEqual([])
+      const again = repairAfterSync(shuffle(channels, next))
+      expect(again.map((r) => r.id).sort()).toEqual([...ids].sort())
+    }
+  })
+
+  test("after a restore: the same", () => {
+    const next = random(11)
+    for (let i = 0; i < 300; i++) {
+      const channels = make(next)
+      const ids = repairAfterRestore(channels).map((r) => r.id)
+      expect(new Set(ids).size).toBe(ids.length)
+      expect(holds(clear(channels, ids))).toBe(true)
+      expect(repairAfterRestore(clear(channels, ids))).toEqual([])
+      const again = repairAfterRestore(shuffle(channels, next))
+      expect(again.map((r) => r.id).sort()).toEqual([...ids].sort())
+    }
   })
 })
