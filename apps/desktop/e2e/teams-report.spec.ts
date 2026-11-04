@@ -3,6 +3,7 @@ import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { join } from "node:path"
 import { expect, test } from "@playwright/test"
+import { BOX_SCRIPT } from "../src/main/web/pageDiagnostics.ts"
 import { freshUserData, launch, resizeWindow } from "./harness.ts"
 
 // The diagnostic report of the whole app (spec 014, 013, 028). It is made from Settings, Data, and
@@ -19,7 +20,9 @@ const startStandIn = async () => {
       return
     }
     res.writeHead(200, { "content-type": "text/html" })
-    res.end(`<title>Sign in</title><body style="margin:0">
+    // The page declares a drag area of the window over all of itself, with the weight of an
+    // important rule. A real page can do this (electron/electron#41002).
+    res.end(`<title>Sign in</title><body style="margin:0;-webkit-app-region:drag !important">
       <button style="position:fixed;left:0;top:0;width:300px;height:200px"
         onclick="fetch('/clicked')">zz-label-zz</button></body>`)
   })
@@ -95,6 +98,10 @@ test("diagnostic report: a press is counted by the window and by the document, f
     expect(report).toMatch(/"click": [1-9]/)
     expect(report).toMatch(/"screenDown": 1/)
     expect(report).toContain("went to the app screen under the page")
+    // The page declared a drag area of the window. The report says so, and the app cancelled it:
+    // the page sees no drag area of its own any more.
+    expect(report).toMatch(/"pageDrag": \{[^}]*"drag": [1-9]/)
+    expect(report).toContain("The page itself declares")
     // The app screen is counted too: the window gave it presses, and its document got them.
     expect(report).toMatch(/"page": "app"[\s\S]*?"nativeDown": [1-9]/)
     expect(report).toMatch(/"page": "app"[\s\S]*?"pointerDown": [1-9]/)
@@ -149,6 +156,40 @@ test("diagnostic report: nothing in the window drags by the place of the page, a
         }),
       )
       .toBeLessThan(40)
+
+    // The page of a site may declare a drag area, and so may a layer that the screen draws later.
+    // The page cancels its own: its computed area is none, whatever the page says.
+    const pageRegion = () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows()[0]
+        const top = win?.contentView.children.at(-1) as Electron.WebContentsView | undefined
+        return top?.webContents.executeJavaScript(
+          "getComputedStyle(document.body).getPropertyValue('-webkit-app-region')",
+        )
+      })
+    await expect.poll(pageRegion, { timeout: 10_000 }).toBe("none")
+
+    // A layer drawn after the guard that makes a drag area over the whole page. Without the guard
+    // the window would take every press on the page. The control takes the guards away and measures
+    // in one step, so no frame puts them back: the layer makes a drag area. Then the guard comes
+    // back to the end of the document, and the place of the page has none.
+    await page.evaluate(() => {
+      const layer = document.createElement("div")
+      layer.setAttribute("data-test-layer", "")
+      layer.style.cssText =
+        "position:fixed;inset:0;pointer-events:none;-webkit-app-region:drag;visibility:visible"
+      document.body.append(layer)
+    })
+    const control = (await page.evaluate(
+      `(() => { document.querySelectorAll("[data-native-guard]").forEach((g) => g.remove()); return ${BOX_SCRIPT} })()`,
+    )) as { dragPoints: number; samples: number }[]
+    expect(control[0]?.dragPoints).toBe(control[0]?.samples)
+    await expect
+      .poll(async () => {
+        const boxes = (await page.evaluate(BOX_SCRIPT)) as { dragPoints: number }[]
+        return boxes[0]?.dragPoints
+      })
+      .toBe(0)
 
     // The report is made while the page sits at the top, so it measures the box in its place.
     await page.evaluate(() => window.robot.invoke("app.diagnosticReport", undefined))

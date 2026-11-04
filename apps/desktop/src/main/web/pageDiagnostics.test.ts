@@ -8,6 +8,7 @@ import {
   findings,
   lineBudget,
   NATIVE_PAGE_ATTRIBUTE,
+  PAGE_NO_DRAG_CSS,
   type PageSnapshot,
   reportedPages,
 } from "./pageDiagnostics.ts"
@@ -172,6 +173,7 @@ const counts = {
   refusedDown: 0,
   refusedUp: 0,
   screenDown: 0,
+  screenMove: 0,
   nativeMove: 0,
   nativeWheel: 0,
   pointerDown: 0,
@@ -202,6 +204,8 @@ const teams = (
   windowFocused: true,
   loading: false,
   host: "teams.microsoft.com",
+  shownMs: 10_000,
+  pageDrag: null,
   counts: { ...counts, ...c },
   ...patch,
 })
@@ -213,6 +217,7 @@ const app = (patch: Partial<PageSnapshot> = {}, c: Partial<typeof counts> = {}):
   host: "",
   stackIndex: null,
   stackSize: null,
+  shownMs: 0,
   counts: { ...counts, ...c },
   ...patch,
 })
@@ -236,6 +241,7 @@ const box = (dragAreasOver: string[] = [], page: "teams" | "agent" = "teams"): B
   pixelRatio: 2,
   dragAreasOver,
   dragPoints: dragAreasOver.length > 0 ? 3 : 0,
+  samples: 64,
 })
 
 /** Presses and a click, as a screen that works counts them. */
@@ -247,14 +253,16 @@ describe("findings", () => {
   })
 
   test("nothing at all asks for a pointer over the page and clicks", () => {
-    expect(findings([teams()], [box()]).join("\n")).toContain("Nothing reached the page yet")
+    expect(findings([teams({ shownMs: 1_000 })], [box()]).join("\n")).toContain(
+      "Nothing reached the page yet",
+    )
   })
 
   test("a pointer that moves with no press points at what lies before the view", () => {
     const out = findings([teams({}, { nativeMove: 40 })], [box(["div.rail"])])
     expect(out.join("\n")).toContain("no press or touch reached it")
     expect(out.join("\n")).toContain("drag area of the window lies over the place")
-    expect(out.join("\n")).toContain("3 of 9 points")
+    expect(out.join("\n")).toContain("3 of 64 points")
     expect(out.join("\n")).toContain("div.rail")
   })
 
@@ -323,7 +331,7 @@ describe("findings", () => {
   })
 
   test("a page that never opened and never counted is left out, one that closed keeps its counts", () => {
-    const never = agent({ open: false, placed: null, view: null })
+    const never = agent({ open: false, placed: null, view: null, shownMs: 0 })
     const closed = teams(
       { open: false, placed: null, view: null },
       { nativeDown: 2, pointerDown: 2 },
@@ -337,6 +345,63 @@ describe("findings", () => {
       closed.page === "teams" ? { ...closed, counts: { ...closed.counts, screenDown: 1 } } : closed,
     ])
     expect(hit.join("\n")).toContain("1 press(es) went to the app screen under the page")
+  })
+})
+
+describe("findings: a page that was shown and got nothing", () => {
+  const gone = { open: false, placed: null, view: null, shownMs: 12_000 }
+
+  test("a page that closed with no input at all is still reported, with the time it was shown", () => {
+    // The page opened, had a place for 12 s, closed, and counted nothing.
+    expect(reportedPages([app(), teams(gone)]).map((p) => p.page)).toEqual(["app", "teams"])
+    const out = findings([app({}, working), teams(gone)])
+    expect(out.join("\n")).toContain(
+      "[Teams page] The page was shown for 12 s and its view got no event",
+    )
+    // It must not say that no page was opened.
+    expect(out.join("\n")).not.toContain("No browser page has been opened")
+  })
+
+  test("the app screen that got moves in the place of the page tells a covered page from a place that takes everything", () => {
+    const covered = findings([app({}, working), teams(gone, { screenMove: 40 })]).join("\n")
+    expect(covered).toContain("another view covers it")
+    const taken = findings([app({}, working), teams(gone)]).join("\n")
+    expect(taken).toContain("something outside both takes the events")
+  })
+
+  test("a short time asks for clicks instead of blaming the system", () => {
+    const out = findings([app({}, working), teams({ shownMs: 1_000 })], [box()]).join("\n")
+    expect(out).toContain("click a few times")
+    expect(out).not.toContain("got no event at all")
+  })
+
+  test("a page that declares drag areas of the window is named", () => {
+    const drag = { host: "login.example.com", drag: 3, noDrag: 0, scanned: 400, total: 400 }
+    const out = findings([app({}, working), teams({ pageDrag: drag }, working)], [box()]).join("\n")
+    expect(out).toContain("[Teams page] The page itself declares 3 drag area(s)")
+    expect(out).toContain("login.example.com")
+    // A page with none says nothing about it.
+    const none = { ...drag, drag: 0 }
+    expect(
+      findings([app({}, working), teams({ pageDrag: none }, working)], [box()]).join("\n"),
+    ).not.toContain("declares")
+  })
+
+  test("the box of a page that left the screen keeps its last numbers in the report", () => {
+    const out = findings(
+      [app({}, working), teams({ open: false, placed: null, view: null }, { nativeMove: 5 })],
+      [box(["div.rail"])],
+    ).join("\n")
+    expect(out).toContain("[Teams page] The page is not open now")
+  })
+
+  test("the count of moves in the place is only counted, not logged", () => {
+    const { written, write } = lines()
+    const diag = createInputDiagnostics(write)
+    diag.screenMove()
+    diag.screenMove()
+    expect(diag.counts().screenMove).toBe(2)
+    expect(written).toEqual([])
   })
 })
 
@@ -368,5 +433,11 @@ describe("report", () => {
 
   test("the script that measures the boxes looks for the mark that the screen puts on them", () => {
     expect(BOX_SCRIPT).toContain(`[${NATIVE_PAGE_ATTRIBUTE}]`)
+  })
+
+  test("the style sheet for web pages cancels every drag area, with the weight of an important rule", () => {
+    expect(PAGE_NO_DRAG_CSS).toContain("-webkit-app-region: initial !important")
+    // An explicit none computes to no-drag, a region for each element: it must not be used.
+    expect(PAGE_NO_DRAG_CSS).not.toMatch(/: (none|drag|no-drag)/)
   })
 })

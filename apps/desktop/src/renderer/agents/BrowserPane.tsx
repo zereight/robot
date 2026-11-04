@@ -8,6 +8,7 @@ import {
   onCleanup,
   Show,
 } from "solid-js"
+import { guardNativePage } from "../lib/nativePageGuard.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -44,20 +45,21 @@ const useBrowserPlace = (
       const rect = el?.getBoundingClientRect()
       const hidden =
         !rect || rect.width < 1 || rect.height < 1 || document.querySelector(COVERS) !== null
-      send(
-        hidden
-          ? null
-          : {
-              x: Math.round(rect.x),
-              y: Math.round(rect.y),
-              width: Math.round(rect.width),
-              height: Math.round(rect.height),
-            },
-      )
+      const place = hidden
+        ? null
+        : {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          }
+      send(place)
+      guardNativePage(`agent-${agentId}`, place)
       frame = requestAnimationFrame(measure)
     })
     onCleanup(() => {
       cancelAnimationFrame(frame)
+      guardNativePage(`agent-${agentId}`, null)
       void call("browser.place", { agentId, bounds: null }).catch(() => {})
     })
   })

@@ -26,6 +26,7 @@ import {
 } from "solid-js"
 import { formatDateTime, formatTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { guardNativePage } from "../lib/nativePageGuard.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { setOpenTarget } from "../state/target.ts"
@@ -70,11 +71,14 @@ const PageBox = () => {
       const rect = box?.getBoundingClientRect()
       const area = box?.parentElement?.closest("section")?.getBoundingClientRect()
       const covered = document.querySelector(COVERS) !== null
-      send(rect && area && !covered ? wholeBox(rect, area) : null)
+      const place = rect && area && !covered ? wholeBox(rect, area) : null
+      send(place)
+      guardNativePage("teams", place)
       frame = requestAnimationFrame(measure)
     })
     onCleanup(() => {
       cancelAnimationFrame(frame)
+      guardNativePage("teams", null)
       void call("teams.place", { bounds: null }).catch(() => {})
     })
   })

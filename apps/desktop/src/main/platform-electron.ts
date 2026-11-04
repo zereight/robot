@@ -37,6 +37,9 @@ import {
   createInputDiagnostics,
   type DiagWrite,
   lineBudget,
+  PAGE_DRAG_SCRIPT,
+  PAGE_NO_DRAG_CSS,
+  type PageDrag,
   type PageSnapshot,
 } from "./web/pageDiagnostics.ts"
 import { fitPage, PAGE_VIEW } from "./web/pageFit.ts"
@@ -78,7 +81,7 @@ const snapshots = new Map<string, () => PageSnapshot>()
  * Each page checks a press that the app screen got: did it land inside the place of the page? Then
  * the page is drawn there, but the system gave the press to the screen under it.
  */
-const screenPresses = new Map<string, (x: number, y: number) => void>()
+const screenPresses = new Map<string, (type: string, x: number, y: number) => void>()
 
 /** The host of an address, or an empty text. The report never holds a path or a query. */
 const hostOf = (url: string): string => {
@@ -130,8 +133,40 @@ const screenSnapshot = (): PageSnapshot => {
     windowFocused: win?.isFocused() ?? null,
     loading: wc?.isLoading() ?? null,
     host: wc ? hostOf(wc.getURL()) : "",
+    shownMs: 0,
+    pageDrag: null,
     counts: screenDiag.counts(),
   }
+}
+
+/** The boxes where the pages show, as the screen measured them the last time that it could. */
+let lastBoxes: BoxMeasure[] = []
+let boxTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Asks the app screen to measure the boxes of the pages. A screen that does not answer: none. */
+const measureBoxes = async (): Promise<BoxMeasure[]> => {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+  if (!win) return []
+  const measured = await Promise.race([
+    win.webContents.executeJavaScript(BOX_SCRIPT, true).catch(() => []) as Promise<BoxMeasure[]>,
+    new Promise<BoxMeasure[]>((resolve) => setTimeout(() => resolve([]), 1_500)),
+  ])
+  const measuredAt = new Date().toISOString()
+  return Array.isArray(measured) ? measured.map((box) => ({ ...box, measuredAt })) : []
+}
+
+/**
+ * Measures the boxes a moment after the place of a page stopped changing, and keeps the numbers for
+ * the report: the box is gone from the screen when the user makes the report.
+ */
+const noteBoxesSoon = () => {
+  clearTimeout(boxTimer)
+  boxTimer = setTimeout(() => {
+    void measureBoxes().then((boxes) => {
+      for (const box of boxes)
+        lastBoxes = [...lastBoxes.filter((known) => known.page !== box.page), box]
+    })
+  }, 700)
 }
 /**
  * Moves the page of an agent to another window. Each page has one. A page that the user holds
@@ -246,8 +281,8 @@ export const setMainWindow = (win: BrowserWindow) => {
   // Only counts: this never stops a press.
   win.webContents.on("before-mouse-event", (_, mouse) => {
     screenDiag.native(mouse.type, { x: mouse.x, y: mouse.y }, false)
-    if (mouse.type !== "mouseDown") return
-    for (const check of screenPresses.values()) check(mouse.x, mouse.y)
+    if (mouse.type !== "mouseDown" && mouse.type !== "mouseMove") return
+    for (const check of screenPresses.values()) check(mouse.type, mouse.x, mouse.y)
   })
   // The document of the app screen tells what reached it: the other half of the count above.
   win.webContents.ipc.on(SCREEN_INPUT_CHANNEL, (_, payload: unknown) => {
@@ -448,6 +483,7 @@ const electronBrowser = (
     if (!v) return
     view = undefined
     bounds = undefined
+    trackShown()
     lastPlaceKey = ""
     diag.state("closed", {})
     scaleNow = 1
@@ -494,6 +530,19 @@ const electronBrowser = (
   rehomers.set(agentId, rehome)
   /** The host of the last page that loaded: the report keeps it after the page closed. */
   let lastHost = ""
+  /** How long the page had a place on the screen since it opened. The report needs it. */
+  let shownMs = 0
+  let shownSince: number | undefined
+  const trackShown = () => {
+    const shown = live() !== undefined && bounds !== undefined && bounds !== null
+    if (shown && shownSince === undefined) shownSince = Date.now()
+    else if (!shown && shownSince !== undefined) {
+      shownMs += Date.now() - shownSince
+      shownSince = undefined
+    }
+  }
+  /** What the page declared about drag areas of the window, at the load with the most. */
+  let pageDrag: PageDrag | null = null
   /** The last place that was logged, so the log holds a line for each change and no more. */
   let lastPlaceKey = ""
   const logPlace = () => {
@@ -509,11 +558,13 @@ const electronBrowser = (
       zoom: screenOf()?.getZoomFactor() ?? null,
     })
   }
-  screenPresses.set(agentId, (x, y) => {
+  screenPresses.set(agentId, (type, x, y) => {
     const v = live()
     if (!v?.getVisible()) return
     const b = v.getBounds()
-    if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) diag.screen({ x, y })
+    if (x < b.x || x >= b.x + b.width || y < b.y || y >= b.y + b.height) return
+    if (type === "mouseDown") diag.screen({ x, y })
+    else diag.screenMove()
   })
   snapshots.set(agentId, () => {
     const v = live()
@@ -535,6 +586,8 @@ const electronBrowser = (
       windowFocused: host && !host.isDestroyed() ? host.isFocused() : null,
       loading: v ? v.webContents.isLoading() : null,
       host: v ? hostOf(v.webContents.getURL()) : lastHost,
+      shownMs: shownMs + (shownSince === undefined ? 0 : Date.now() - shownSince),
+      pageDrag,
       counts: diag.counts(),
     }
   })
@@ -575,6 +628,29 @@ const electronBrowser = (
           lastHost = hostOf(wc.getURL())
           diag.state("loaded", { host: lastHost })
           reportPage(wc)
+        })
+        // A web page is never a handle of the window (see PAGE_NO_DRAG_CSS). The page is counted
+        // first, so the report can say what it declared, then its drag areas are cancelled.
+        wc.on("dom-ready", () => {
+          void (async () => {
+            try {
+              const found = await wc.executeJavaScript(PAGE_DRAG_SCRIPT, true)
+              if (found && typeof found === "object") {
+                const next: PageDrag = {
+                  host: hostOf(wc.getURL()),
+                  drag: Number(found.drag) || 0,
+                  noDrag: Number(found.noDrag) || 0,
+                  scanned: Number(found.scanned) || 0,
+                  total: Number(found.total) || 0,
+                }
+                if (next.drag > 0 || next.noDrag > 0) diag.state("page_drag_areas", { ...next })
+                if (!pageDrag || next.drag > pageDrag.drag) pageDrag = next
+              }
+              await wc.insertCSS(PAGE_NO_DRAG_CSS, { cssOrigin: "user" })
+            } catch {
+              // A page that is gone, or that does not answer, has nothing to cancel.
+            }
+          })()
         })
         wc.on("did-navigate-in-page", (_, __, isMainFrame) => {
           if (isMainFrame) reportPage(wc)
@@ -625,6 +701,9 @@ const electronBrowser = (
           if (view === created) release()
         })
         diag.reset()
+        shownMs = 0
+        shownSince = undefined
+        pageDrag = null
         lastPlaceKey = ""
         created.setVisible(false)
         h.contentView.addChildView(created)
@@ -680,6 +759,9 @@ const electronBrowser = (
       bounds = next
       apply()
       logPlace()
+      trackShown()
+      // The report wants the drag areas of the screen over the place, also after the page is gone.
+      if (next) noteBoxesSoon()
     },
     allowUserInput: (allowed) => {
       // The Teams link says this again on each place and each tick while its page shows, so a
@@ -1066,16 +1148,13 @@ export const electronPlatform = (): PlatformService => {
     setTeamsProfile: (profileId) => platformSetBrowserProfile(TEAMS_PAGE_KEY, profileId),
     diagnosticReport: async () => {
       const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
-      // The screen measures the boxes of the native pages. A screen that does not answer must not
-      // stop the report.
-      const boxes = win
-        ? await Promise.race([
-            win.webContents.executeJavaScript(BOX_SCRIPT, true).catch(() => []) as Promise<
-              BoxMeasure[]
-            >,
-            new Promise<BoxMeasure[]>((resolve) => setTimeout(() => resolve([]), 1_500)),
-          ])
-        : []
+      // The screen measures the boxes of the native pages. A kind of page that has no box on the
+      // screen now keeps the numbers of the last time that it had one.
+      const fresh = await measureBoxes()
+      const boxes = [
+        ...fresh,
+        ...lastBoxes.filter((known) => !fresh.some((box) => box.page === known.page)),
+      ]
       const content = win?.webContents
       const text = buildReport({
         madeAt: new Date().toISOString(),

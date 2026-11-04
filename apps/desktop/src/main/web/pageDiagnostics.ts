@@ -23,6 +23,12 @@ export interface InputCounts {
    * lands there did not go to the page, although the page is drawn above that spot.
    */
   readonly screenDown: number
+  /**
+   * Pointer moves that the app screen under the page received inside the place of the page. With
+   * no move at the page view, they tell a page that the pointer cannot hit (another view covers
+   * it) from a place where nothing gets an event at all.
+   */
+  readonly screenMove: number
   /** Moves and wheel turns. Only counted: they come too often for a log. */
   readonly nativeMove: number
   readonly nativeWheel: number
@@ -112,6 +118,8 @@ export interface InputDiagnostics {
   hover(inside: boolean): void
   /** A press that the app screen received inside the place of this page. */
   screen(at: { x: number; y: number }): void
+  /** A pointer move that the app screen received inside the place of this page. */
+  screenMove(): void
   /** An input that reached the document of the page. */
   page(note: PageInputNote): void
   /** A change of the page (a place, a flag, a load). */
@@ -133,6 +141,7 @@ export const createInputDiagnostics = (
       refusedDown: 0,
       refusedUp: 0,
       screenDown: 0,
+      screenMove: 0,
       nativeMove: 0,
       nativeWheel: 0,
       pointerDown: 0,
@@ -175,6 +184,9 @@ export const createInputDiagnostics = (
     },
     hover: (inside) => {
       if (inside) c.hovered++
+    },
+    screenMove: () => {
+      c.screenMove++
     },
     screen: (at) => {
       c.screenDown++
@@ -232,7 +244,24 @@ export interface PageSnapshot {
   readonly loading: boolean | null
   /** The host of the address, never the path or the query. */
   readonly host: string
+  /** How long the page had a place on the screen since it opened, in ms. Always 0 for the screen. */
+  readonly shownMs: number
+  /**
+   * What the page declared about drag areas of the window, at the load where it declared the most.
+   * The app cancels them with a style sheet of its own, but the numbers stay. Null: no load yet.
+   */
+  readonly pageDrag: PageDrag | null
   readonly counts: InputCounts
+}
+
+/** The drag areas that a web page declared in its own style (`-webkit-app-region`). */
+export interface PageDrag {
+  readonly host: string
+  readonly drag: number
+  readonly noDrag: number
+  /** How many elements were looked at, and how many the document had. */
+  readonly scanned: number
+  readonly total: number
 }
 
 /** What the screen of the app measures around the place of one native page. */
@@ -245,15 +274,19 @@ export interface BoxMeasure {
   readonly pixelRatio: number
   /** Elements that still make a drag area of the window over the place. */
   readonly dragAreasOver: readonly string[]
-  /** How many of nine points of the place lie in a drag area (0 to 9). */
+  /** How many of the sampled points of the place lie in a drag area. */
   readonly dragPoints: number
+  /** How many points were sampled. */
+  readonly samples: number
+  /** When the screen measured this. Set by the app. A box that left the screen keeps its last numbers. */
+  readonly measuredAt?: string
 }
 
 const near = (a: number, b: number, slack = 2) => Math.abs(a - b) <= slack
 
 /** True when the place has taken or shown any input, so it has something to report. */
 const hasCounts = (c: InputCounts): boolean =>
-  c.nativeDown + c.nativeUp + c.nativeMove + c.nativeWheel + c.screenDown > 0 ||
+  c.nativeDown + c.nativeUp + c.nativeMove + c.nativeWheel + c.screenDown + c.screenMove > 0 ||
   c.pointerDown + c.click + c.touchStart > 0
 
 /**
@@ -264,7 +297,7 @@ const hasCounts = (c: InputCounts): boolean =>
 export const reportedPages = (pages: readonly PageSnapshot[]): PageSnapshot[] => {
   const rank = (p: PageSnapshot) => (p.page === "app" ? 0 : p.page === "teams" ? 1 : 2)
   return pages
-    .filter((p) => p.page === "app" || p.open || hasCounts(p.counts))
+    .filter((p) => p.page === "app" || p.open || p.shownMs > 0 || hasCounts(p.counts))
     .map((page, order) => ({ page, order }))
     .sort(
       (a, b) =>
@@ -286,17 +319,30 @@ const labelOf = (page: PageSnapshot, shown: readonly PageSnapshot[]): string => 
 const countFindings = (p: PageSnapshot, who: "screen" | "page"): string[] => {
   const out: string[] = []
   const c = p.counts
-  // The app screen is always where it is. A page gets input only when the screen gave it a place.
-  const placed = who === "screen" ? p.open : p.placed !== null
+  // The app screen is always where it is. A page gets input only when the screen gave it a place,
+  // or when it had one before it closed.
+  const placed = who === "screen" ? p.open : p.placed !== null || p.shownMs > 0
+  const seconds = Math.round(p.shownMs / 1000)
   const pressed = c.nativeDown + c.touchStart + c.pointerDown
   const moved = c.nativeMove + c.nativeWheel
-  if (placed && pressed === 0 && moved === 0)
-    out.push(
-      who === "screen"
-        ? "Nothing reached the app screen yet: no press, no touch and no pointer move. Click in the app a few times, then make the report again."
-        : "Nothing reached the page yet: no press, no touch and no pointer move. Move the pointer over the page and click a few times, then make the report again. If you did, something covers the page before its view.",
-    )
-  else if (placed && pressed === 0)
+  if (placed && pressed === 0 && moved === 0) {
+    if (who === "screen")
+      out.push(
+        "Nothing reached the app screen yet: no press, no touch and no pointer move. Click in the app a few times, then make the report again.",
+      )
+    else if (seconds < 3)
+      out.push(
+        "Nothing reached the page yet: no press, no touch and no pointer move. Move the pointer over the page and click a few times, then make the report again.",
+      )
+    else
+      out.push(
+        `The page was shown for ${seconds} s and its view got no event at all: no press, no touch and no pointer move. ${
+          c.screenMove > 0
+            ? `The app screen under it got ${c.screenMove} pointer moves inside the place of the page, so the pointer does not hit the page view: another view covers it.`
+            : "The app screen under it got no pointer move there either, so something outside both takes the events: a drag area of the window, another window, or the system."
+        }`,
+      )
+  } else if (placed && pressed === 0)
     out.push(
       `The pointer moved over ${who === "screen" ? "the app screen" : "the page"} (${moved} events) but no press or touch reached it. Something takes the press before the view: a drag area of the window, or the system.`,
     )
@@ -332,11 +378,20 @@ const placeFindings = (p: PageSnapshot, box: BoxMeasure | undefined): string[] =
     p.counts.screenDown > 0
       ? `${p.counts.screenDown} press(es) went to the app screen under the page, inside its place. The system hit the screen, not the page view, although the page is drawn above it.`
       : undefined
+  const drag = p.pageDrag
+  const pageDragLine =
+    drag && drag.drag > 0
+      ? `The page itself declares ${drag.drag} drag area(s) of the window (${drag.host || "no host"}; ${drag.scanned} of ${drag.total} elements looked at). A press in such an area drags the window and never reaches the page. The app cancels them with a style sheet of its own.`
+      : undefined
   if (!p.open) {
-    out.push("The page is not open now. The counts below are from its last time open.")
+    out.push(
+      `The page is not open now. The counts below are from its last time open, which had a place for ${Math.round(p.shownMs / 1000)} s.`,
+    )
+    if (pageDragLine) out.push(pageDragLine)
     if (underPage) out.push(underPage)
     return out
   }
+  if (pageDragLine) out.push(pageDragLine)
   if (!p.placed)
     out.push("The screen gave the page no place, so the page is hidden. Nothing can be clicked.")
   if (p.placed && p.view) {
@@ -353,7 +408,7 @@ const placeFindings = (p: PageSnapshot, box: BoxMeasure | undefined): string[] =
     out.push("Another view of the window is above the page. It takes the clicks.")
   if (box && box.dragAreasOver.length > 0)
     out.push(
-      `A drag area of the window lies over the place of the page (${box.dragAreasOver.join(", ")}; ${box.dragPoints} of 9 points). The system can take a press there as the start of a window drag.`,
+      `A drag area of the window lies over the place of the page (${box.dragAreasOver.join(", ")}; ${box.dragPoints} of ${box.samples} points). The system can take a press there as the start of a window drag.`,
     )
   if (underPage) out.push(underPage)
   return out
@@ -447,33 +502,45 @@ export const buildReport = (input: ReportInput): string => {
 export const NATIVE_PAGE_ATTRIBUTE = "data-native-page"
 
 /**
- * The script that the app screen runs for the report. It measures each box where a native page
- * shows and lists the elements that still make a drag area of the window at nine points of the
- * box. The window builds its drag area from the elements in the order of the document: a drag
- * element adds its rectangle and a no-drag element cuts it, so the last one at a point decides.
- * The script does the same. It changes nothing. It gives back a list of `BoxMeasure`, empty when
- * no box is on the screen.
+ * The script that the app screen runs for the report. It lists the drag areas of the document the
+ * way the window builds them: every element in the order of the document, the parent before its
+ * children, a drag element adds its rectangle and a no-drag element cuts it, so the last element at
+ * a point decides. Then it samples a grid of points over each box where a native page shows, and
+ * names the elements that still make a drag area there. It changes nothing. It gives back a list
+ * of `BoxMeasure`, empty when no box is on the screen.
  */
 export const BOX_SCRIPT = `(() => {
   try {
-    const regionOf = (el) => {
+    const modeOf = (el) => getComputedStyle(el).getPropertyValue("-webkit-app-region") || "none"
+    const regions = []
+    for (const el of document.querySelectorAll("*")) {
+      const mode = modeOf(el)
+      if (mode !== "drag" && mode !== "no-drag") continue
       const style = getComputedStyle(el)
-      return style.getPropertyValue("-webkit-app-region") || style.webkitAppRegion || "none"
+      if (style.visibility !== "visible" || style.display === "none") continue
+      const r = el.getBoundingClientRect()
+      const testid = el.getAttribute("data-testid")
+      regions.push({
+        drag: mode === "drag",
+        x: r.left, y: r.top, right: r.right, bottom: r.bottom,
+        name: el.tagName.toLowerCase() + (el.classList[0] ? "." + el.classList[0] : "") + (testid ? "#" + testid : ""),
+      })
     }
+    const covers = (g, px, py) => px >= g.x && px < g.right && py >= g.y && py < g.bottom
+    const GRID = 8
     return Array.from(document.querySelectorAll("[${NATIVE_PAGE_ATTRIBUTE}]")).map((box) => {
       const r = box.getBoundingClientRect()
-      const drag = new Set()
+      const names = new Set()
       let dragPoints = 0
-      for (const fy of [0.1, 0.5, 0.9]) {
-        for (const fx of [0.1, 0.5, 0.9]) {
-          const stack = document
-            .elementsFromPoint(r.left + r.width * fx, r.top + r.height * fy)
-            .filter((el) => regionOf(el) === "drag" || regionOf(el) === "no-drag")
-            .sort((a, b) => (a === b ? 0 : a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
-          const last = stack[stack.length - 1]
-          if (last && regionOf(last) === "drag") {
+      for (let i = 0; i < GRID; i++) {
+        for (let j = 0; j < GRID; j++) {
+          const px = r.left + (r.width * (i + 0.5)) / GRID
+          const py = r.top + (r.height * (j + 0.5)) / GRID
+          let last
+          for (const g of regions) if (covers(g, px, py)) last = g
+          if (last && last.drag) {
             dragPoints++
-            drag.add(last.tagName.toLowerCase() + (last.classList[0] ? "." + last.classList[0] : ""))
+            names.add(last.name)
           }
         }
       }
@@ -483,11 +550,43 @@ export const BOX_SCRIPT = `(() => {
         innerWidth: window.innerWidth,
         innerHeight: window.innerHeight,
         pixelRatio: window.devicePixelRatio,
-        dragAreasOver: Array.from(drag),
+        dragAreasOver: Array.from(names),
         dragPoints,
+        samples: GRID * GRID,
       }
     })
   } catch {
     return []
   }
 })()`
+
+/**
+ * The script that a web page runs once at each load, before the app cancels its drag areas: how
+ * many elements declare a drag area of the window, and how many cut one. It looks at no more than
+ * 8000 elements, reads no text, and changes nothing. It gives back a \`PageDrag\` without the host.
+ */
+export const PAGE_DRAG_SCRIPT = `(() => {
+  try {
+    const all = document.querySelectorAll("*")
+    const scanned = Math.min(all.length, 8000)
+    let drag = 0
+    let noDrag = 0
+    for (let i = 0; i < scanned; i++) {
+      const mode = getComputedStyle(all[i]).getPropertyValue("-webkit-app-region")
+      if (mode === "drag") drag++
+      else if (mode === "no-drag") noDrag++
+    }
+    return { drag, noDrag, scanned, total: all.length }
+  } catch {
+    return null
+  }
+})()`
+
+/**
+ * The style sheet that the app puts on every web page (as a user sheet, so it beats the page even
+ * when the page says \`!important\`). A web page is never a handle of the window: a drag area that
+ * a page declares would take the presses of the user before the page sees them (spec 007, 028).
+ * The value is \`initial\`, not \`none\`: this engine reads an explicit \`none\` as \`no-drag\`, which
+ * would still make a region for each element of the page.
+ */
+export const PAGE_NO_DRAG_CSS = "*, *::before, *::after { -webkit-app-region: initial !important; }"
