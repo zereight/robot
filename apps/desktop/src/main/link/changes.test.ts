@@ -7,6 +7,7 @@ import { Activity } from "../services/Activity.ts"
 import { Connections } from "../services/Connections.ts"
 import { Database } from "../services/Database.ts"
 import { Devices } from "../services/Devices.ts"
+import { Handbook } from "../services/Handbook.ts"
 import { Memory } from "../services/Memory.ts"
 import { Providers } from "../services/Providers.ts"
 import { Remote } from "../services/Remote.ts"
@@ -513,6 +514,8 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ["memory.add", { agentId: "x", text: "t" }],
       ["memory.update", { id: "x", text: "t" }],
       ["memory.delete", { id: "x" }],
+      ["handbook.save", { serverId: p.serverId, text: "Answer in Korean." }],
+      ["handbook.restore", { serverId: p.serverId, versionId: "x" }],
       ["models.available", undefined],
     ]
     for (const [method, input] of attempts) {
@@ -529,6 +532,107 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     ).toEqual([])
     // It can still read, as before.
     expect(codeOf(await p.ask("agents.list", { serverId: p.serverId, archived: false }))).toBe("ok")
+    // It reads the handbook and its history too (spec 002, 012), and the handbook did not change.
+    expect(codeOf(await p.ask("handbook.get", { serverId: p.serverId }))).toBe("ok")
+    expect(codeOf(await p.ask("handbook.history", { serverId: p.serverId }))).toBe("ok")
+    expect(
+      value<{ text: string }>(await p.onServer("handbook.get", { serverId: p.serverId })).text,
+    ).toBe("")
+  })
+
+  test("it reads the handbook with no switch, and saves and restores it only with the switch (spec 002, 012)", async () => {
+    const p = await pair(true)
+    const onServer = <T>(method: string, input: unknown) =>
+      p.onServer(method, input).then((r) => value<T>(r))
+    type Version = { id: string; text: string; source: string }
+    expect(
+      value<{ text: string }>(await p.ask("handbook.get", { serverId: p.serverId })).text,
+    ).toBe("")
+
+    // The client saves: the server holds the text and the history says that a device made it.
+    const saved = value<{ text: string }>(
+      await p.ask("handbook.save", { serverId: p.serverId, text: "Answer in Korean." }),
+    )
+    expect(saved.text).toBe("Answer in Korean.")
+    expect((await onServer<{ text: string }>("handbook.get", { serverId: p.serverId })).text).toBe(
+      "Answer in Korean.",
+    )
+    await p.ask("handbook.save", { serverId: p.serverId, text: "Answer in English." })
+    const history = value<Version[]>(await p.ask("handbook.history", { serverId: p.serverId }))
+    expect(history.map((v) => [v.text, v.source])).toEqual([
+      ["Answer in English.", "device"],
+      ["Answer in Korean.", "device"],
+    ])
+
+    // A restore from the client is a new version of the server, and the client reads it.
+    const first = history.at(-1)
+    const restored = value<{ text: string }>(
+      await p.ask("handbook.restore", { serverId: p.serverId, versionId: first?.id ?? "" }),
+    )
+    expect(restored.text).toBe("Answer in Korean.")
+    expect(
+      value<Version[]>(await p.ask("handbook.history", { serverId: p.serverId })).map((v) => [
+        v.text,
+        v.source,
+      ]),
+    ).toEqual([
+      ["Answer in Korean.", "restore"],
+      ["Answer in English.", "device"],
+      ["Answer in Korean.", "device"],
+    ])
+
+    // The server refuses what it refuses for the window of the server, with the reason.
+    expect(
+      codeOf(await p.ask("handbook.save", { serverId: p.serverId, text: "x".repeat(20_001) })),
+    ).toBe("handbook_too_long")
+    expect(
+      codeOf(
+        await p.ask("handbook.save", {
+          serverId: p.serverId,
+          text: "Use sk-abcdefghijklmnopqrstuvwxyz0123",
+        }),
+      ),
+    ).toBe("handbook_secret")
+    expect(
+      codeOf(await p.ask("handbook.restore", { serverId: p.serverId, versionId: "nothing" })),
+    ).toBe("version_not_found")
+    // A request that is too large, has the wrong type, an extra field or the id of another server.
+    expect(
+      codeOf(await p.ask("handbook.save", { serverId: p.serverId, text: "x".repeat(200_001) })),
+    ).toBe("invalid_input")
+    expect(codeOf(await p.ask("handbook.save", { serverId: p.serverId, text: 5 }))).toBe(
+      "invalid_input",
+    )
+    expect(
+      codeOf(await p.ask("handbook.save", { serverId: p.serverId, text: "ok", source: "page" })),
+    ).toBe("invalid_input")
+    expect(codeOf(await p.ask("handbook.save", { serverId: "another-server", text: "ok" }))).toBe(
+      "invalid_input",
+    )
+    expect(codeOf(await p.ask("handbook.get", { serverId: "another-server" }))).toBe(
+      "invalid_input",
+    )
+    expect(codeOf(await p.ask("handbook.get", { serverId: p.serverId, extra: 1 }))).toBe(
+      "invalid_input",
+    )
+    expect((await onServer<{ text: string }>("handbook.get", { serverId: p.serverId })).text).toBe(
+      "Answer in Korean.",
+    )
+
+    // The client hears a change of the handbook, from the window of the server too.
+    const heard = () => p.client.events.filter((e) => e.event === "handbook.changed").length
+    const before = heard()
+    await p.server.runtime.runPromise(
+      Handbook.use((h) => h.save(p.serverId, "From the server.", "page")),
+    )
+    await waitFor(
+      "the client did not hear the change",
+      async () => heard(),
+      (n) => n > before,
+    )
+    expect(
+      value<{ text: string }>(await p.ask("handbook.get", { serverId: p.serverId })).text,
+    ).toBe("From the server.")
   })
 
   test("a link that was paired with no answer to the switch has it off", async () => {
