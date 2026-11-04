@@ -226,6 +226,14 @@ export interface TasksService {
    */
   withoutSlot<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
   /**
+   * Runs `work` as a turn of a task that holds its agent and no slot (a lead that waits for its
+   * parts): the turn waits for a free slot, at the front of the order, uses that one slot while it
+   * runs, and frees it after (spec 005, "Queue"; spec 004, "Questions of members"). A task that
+   * has a slot already, or that does not run now, runs `work` at once. An interrupt while the turn
+   * waits leaves the queue and takes no slot.
+   */
+  withSlot<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
+  /**
    * "Run next" (spec 005): the queued task goes to the front of the order, before the tasks of
    * earlier picks. Only for a queued task of this computer.
    */
@@ -1354,6 +1362,24 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
                   ? Effect.promise(() => backToSlot(taskId, agentId))
                   : Effect.void,
               ),
+            )
+          }),
+        withSlot: (taskId, work) =>
+          Effect.suspend(() => {
+            const agentId = row(taskId)?.agent_id
+            if (
+              !agentId ||
+              !live.has(taskId) ||
+              slotted.has(taskId) ||
+              holders.get(agentId) !== taskId ||
+              stopping.has(taskId)
+            )
+              return work
+            // `enter` leaves the queue when the turn is interrupted; `freeSlot` frees a slot that
+            // was granted before the interrupt came.
+            return enter({ id: taskId, agentId, source: null, back: true, slot: true }).pipe(
+              Effect.flatMap(() => work),
+              Effect.ensuring(Effect.sync(() => freeSlot(taskId))),
             )
           }),
         runNext: (taskId) =>
