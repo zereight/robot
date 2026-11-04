@@ -83,6 +83,7 @@ const server = Bun.serve({
 const checks: unknown[] = []
 const decisionServer = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     checks.push(await req.json().catch(() => ({})))
     // Always sure. A test that expects no request fails on the count, not on this answer.
