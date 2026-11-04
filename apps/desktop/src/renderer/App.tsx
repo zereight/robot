@@ -175,7 +175,12 @@ export const App = () => {
           today: () => <TodayPage />,
           usage: () => <UsagePage />,
           tasks: () => <TasksPage />,
-          orgchart: () => <OrgChartPage />,
+          // Another server is another chart: the page opens again, so it frames the new chart.
+          orgchart: () => (
+            <Show when={ui.server()?.id} keyed>
+              {(_id) => <OrgChartPage />}
+            </Show>
+          ),
           workflows: () => <WorkflowsPage />,
         }}
         settingsSections={{

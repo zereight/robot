@@ -16,6 +16,11 @@ export interface EventBusService {
    * with it (the ids are the same on both).
    */
   window(event: RpcEvent, payload: unknown, server?: string): void
+  /**
+   * Sends an event to the linked devices only: it goes to the taps and to no window. The org chart
+   * uses it for the ready model (spec 029, 012), which a window of this computer does not read.
+   */
+  emitLinked<E extends RpcEvent>(event: E, payload: RpcEvents[E]): void
 }
 
 const make = (send: WindowSend): EventBusService => {
@@ -29,6 +34,9 @@ const make = (send: WindowSend): EventBusService => {
       taps.push(listener)
     },
     window: (event, payload, server) => send(event, payload, server),
+    emitLinked: (event, payload) => {
+      for (const tap of taps) tap(event, payload)
+    },
   }
 }
 

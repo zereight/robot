@@ -42,7 +42,7 @@ import {
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import type { AppServices } from "./layers.ts"
-import { modelChoices } from "./link/changes.ts"
+import { Id, modelChoices, ownServer, strict } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { ActionLog } from "./services/ActionLog.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
@@ -1312,6 +1312,13 @@ export const handlers: Handlers = {
     ),
   "today.get": () => Today.use((t) => t.snapshot()),
   "orgChart.get": () => OrgChart.use((o) => o.snapshot()),
+  // The ready model for a linked computer and the phone (spec 029, 012). A device with only the
+  // link may ask. It names this server; any other id, or any other field, is refused.
+  "orgChart.model": (input) =>
+    strict(Schema.Struct({ serverId: Id }))(input).pipe(
+      Effect.flatMap(({ serverId }) => ownServer(serverId)),
+      Effect.flatMap(() => OrgChart.use((o) => o.model())),
+    ),
   "usage.summary": (input) =>
     decode(
       Schema.Struct({

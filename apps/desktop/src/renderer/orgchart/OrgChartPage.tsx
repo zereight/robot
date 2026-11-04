@@ -16,6 +16,7 @@ import {
 } from "solid-js"
 import { NewAgentDialog } from "../agents/AgentDialogs.tsx"
 import { Face } from "../agents/Face.tsx"
+import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useOrgChart } from "../state/orgChart.tsx"
@@ -282,13 +283,15 @@ export const OrgChartPage = () => {
   }
 
   // ---------------------------------------------------------------- Go to an agent or a channel
+  // The place opens on the server whose chart is on the screen: this computer, or the linked
+  // server that the chart came from (spec 029, 012).
   const openProfile = (agentId: string) => {
     setMore(undefined)
     setProfileTarget(agentId)
-    ui.selectPlace({ kind: "agent", id: agentId }, ui.localServer()?.id)
+    ui.selectPlace({ kind: "agent", id: agentId }, ui.server()?.id)
   }
   const openChannel = (channelId: string) =>
-    ui.selectPlace({ kind: "channel", id: channelId }, ui.localServer()?.id)
+    ui.selectPlace({ kind: "channel", id: channelId }, ui.server()?.id)
 
   // ---------------------------------------------------------------- The tile "+<n> more"
   const [more, setMore] = createSignal<{ key: string; left: number; top: number }>()
@@ -579,6 +582,18 @@ export const OrgChartPage = () => {
 
   return (
     <div class={styles.page} ref={page} data-testid="org-page">
+      {/* A linked server that is not online: its name and no chart. The chart is not kept. */}
+      <Show when={chart.source() === "offline"}>
+        <p class={shell.pageNotice} data-testid="org-offline">
+          {t("link.state.offline", { name: ui.server()?.name ?? "" })}
+        </p>
+      </Show>
+      {/* A server of an older build has no org chart request (spec 012, "Messages"). */}
+      <Show when={chart.unsupported()}>
+        <p class={shell.pageNotice} data-testid="org-open-on-server">
+          {t("link.openOnServer", { name: ui.server()?.name ?? "" })}
+        </p>
+      </Show>
       <Show when={model()}>
         {(m) => (
           <Show
