@@ -733,6 +733,26 @@ describe("Today", () => {
     })
   })
 
+  test("the loop ends with the app: a change after the close does not read the closed database", async () => {
+    const s = await setup()
+    const bus = await s.run(EventBus.use((b) => Effect.succeed(b)))
+    const logged: string[] = []
+    const error = console.error
+    console.error = (...args: unknown[]) => {
+      logged.push(args.map(String).join(" "))
+    }
+    try {
+      await s.runtime.dispose()
+      // A loop that was still alive would see this change, read the page again, and fail on the
+      // closed database. The loop looks every 100 ms.
+      bus.emit("tasks.changed", { serverId: s.local.id })
+      await Bun.sleep(400)
+    } finally {
+      console.error = error
+    }
+    expect(logged.filter((line) => line.includes("today group could not be read"))).toEqual([])
+  })
+
   test("opening the page starts no turn and writes nothing", async () => {
     const s = await setup()
     const ada = await s.agent("Ada")

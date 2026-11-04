@@ -36,13 +36,15 @@ import { Workflows } from "./Workflows.ts"
 
 const KEY = "sk-export-test-0123456789abcdef"
 
-const app = (pick: { save?: string; open?: string } = {}) => {
+const app = (pick: { save?: string; saves?: readonly string[]; open?: string } = {}) => {
   const { platform, dataDir } = testPlatform()
+  // `saves` hands out one path for each call, in order. `save` gives the same path every time.
+  let next = 0
   const runtime = ManagedRuntime.make(
     appLayer({
       platform: {
         ...platform,
-        pickSavePath: async () => pick.save,
+        pickSavePath: async () => (pick.saves ? pick.saves[next++] : pick.save),
         pickArchive: async () => pick.open,
       },
       databaseFile: ":memory:",
@@ -294,8 +296,11 @@ describe("export and import", () => {
     const saved = process.env.TMPDIR
     process.env.TMPDIR = own
     try {
-      const out = join(testPlatform().dataDir, "twice.zip")
-      const a = app({ save: out })
+      // Each export has its own file, as in the app: the user picks one place for one export. Two
+      // writers on one file overwrite each other, and the archive is cut short.
+      const dir = testPlatform().dataDir
+      const outs = [join(dir, "twice-1.zip"), join(dir, "twice-2.zip")]
+      const a = app({ saves: outs })
       const local = await a.run(Servers.use((s) => s.local))
       await a.run(
         Agents.use((x) =>
@@ -307,7 +312,8 @@ describe("export and import", () => {
         a.run(Data.use((d) => d.export())),
       ])
       expect(results.every((r) => r !== null && "path" in r)).toBe(true)
-      expect(Object.keys(unzipSync(readFileSync(out)))).toContain("robot.db")
+      for (const out of outs)
+        expect(Object.keys(unzipSync(readFileSync(out)))).toContain("robot.db")
       expect(readdirSync(own).filter((n) => n.startsWith("robot-export-"))).toEqual([])
     } finally {
       if (saved === undefined) delete process.env.TMPDIR

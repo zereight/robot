@@ -47,6 +47,13 @@ const PAGE = { width: 1280, height: 800 }
  * Sends a real click to the page of the agent, like a mouse would, at a point of the page in CSS
  * px. The view draws the page smaller or larger than its own size, so the point of the mouse is
  * the point of the page times the scale of the view. Returns the page title after.
+ *
+ * The scale is read from the bounds of the view, and a view that is hidden has the size of the
+ * page itself, not the size that it has on the screen. The screen hides the view for a moment
+ * each time its place is set again (for example when the user takes control), so the click waits
+ * until the view shows. It reads the bounds and sends the click in one step, with no wait
+ * between: nothing can hide the view in between. A view that does not show in time gives
+ * "page not shown".
  */
 const clickPage = (app: ElectronApplication, at: { x: number; y: number }) =>
   app.evaluate(
@@ -55,10 +62,19 @@ const clickPage = (app: ElectronApplication, at: { x: number; y: number }) =>
       const view = win?.contentView.children.find(
         (child) => (child as unknown as { webContents?: unknown }).webContents,
       ) as unknown as
-        | { webContents: Electron.WebContents; getBounds(): { width: number } }
+        | {
+            webContents: Electron.WebContents
+            getBounds(): { width: number }
+            getVisible(): boolean
+          }
         | undefined
       if (!view) return "no page"
       const wc = view.webContents
+      for (let waited = 0; !view.getVisible(); waited += 20) {
+        if (waited >= 3_000) return "page not shown"
+        await new Promise((r) => setTimeout(r, 20))
+      }
+      // From here to the two input events there is no wait.
       const scale = view.getBounds().width / args.page.width
       const point = { x: Math.round(args.at.x * scale), y: Math.round(args.at.y * scale) }
       wc.sendInputEvent({ type: "mouseDown", ...point, button: "left", clickCount: 1 })

@@ -471,15 +471,17 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
         })
 
       // The schedules run in the loop; a check of a watch runs beside it, so that a slow check
-      // does not hold back the schedules.
-      yield* Effect.forkDetach(
+      // does not hold back the schedules. Both end with the layer: after that the database is
+      // closed, and a check of it fails.
+      const scope = yield* Effect.scope
+      yield* Effect.forkScoped(
         Effect.forever(
           Effect.sleep(LOOP_MS).pipe(
             Effect.andThen(
               Effect.suspend(() => {
                 const now = Date.now()
                 return scheduleTick(now).pipe(
-                  Effect.andThen(Effect.forkDetach(watchTick(now))),
+                  Effect.andThen(Effect.forkIn(watchTick(now), scope)),
                   Effect.catchCause(() => Effect.void),
                 )
               }),
