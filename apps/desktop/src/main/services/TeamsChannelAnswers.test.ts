@@ -643,6 +643,25 @@ describe("when the link is off or signed out", () => {
     await dispose(w.s)
   })
 
+  test("a paused link makes no answer for a channel: the job that ends gets the record 'Link paused'", async () => {
+    const w = await start()
+    w.s.chat.breakPage()
+    await w.s.pass(60_000)
+    expect((await w.s.view()).state).toBe("paused")
+    const task = await endJob(w, w.cy, "mention", [{ text: "Nobody reads this." }])
+    await w.s.pass(5000)
+    expect(w.s.typedTexts()).toEqual([])
+    const records = await w.s.records()
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      reason: "linkPaused",
+      placeKind: "channel",
+      placeId: w.channel.id,
+      taskId: task.id,
+    })
+    await dispose(w.s)
+  })
+
   test("a job from Teams that ends while the Teams page shows sends its answer after the page hides", async () => {
     const w = await start()
     await w.s.showPage()
