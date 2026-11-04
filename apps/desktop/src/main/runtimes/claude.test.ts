@@ -292,7 +292,38 @@ describe("claude stream", () => {
       },
       newStreamState(),
     )
-    expect(m).toEqual({ kind: "result", ok: true, text: "pong", input: 3173, output: 4 })
+    expect(m).toEqual({
+      kind: "result",
+      ok: true,
+      text: "pong",
+      input: 3173,
+      output: 4,
+      cached: 10,
+    })
+  })
+})
+
+describe("claude cost", () => {
+  const result = (extra: Record<string, unknown>) =>
+    mapClaudeMessage(
+      {
+        type: "result",
+        subtype: "success",
+        result: "ok",
+        usage: { input_tokens: 2, output_tokens: 4 },
+        ...extra,
+      },
+      newStreamState(),
+    )[0]
+
+  test("the cost that the program reports is kept in millionths of a dollar", () => {
+    expect(result({ total_cost_usd: 0.0123 })).toMatchObject({ kind: "result", costMicros: 12300 })
+  })
+
+  test("a result with no cost, and a result with no cache count, report neither", () => {
+    const m = result({}) as Record<string, unknown>
+    expect("costMicros" in m).toBe(false)
+    expect("cached" in m).toBe(false)
   })
 })
 

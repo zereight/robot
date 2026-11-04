@@ -202,7 +202,16 @@ export const mapCodexEvent = (message: unknown, state: CodexState): AgentEvent[]
     case "turn.completed": {
       state.done = true
       const usage = obj(msg.usage)
-      return [{ type: "usage", input: num(usage.input_tokens), output: num(usage.output_tokens) }]
+      return [
+        {
+          type: "usage",
+          input: num(usage.input_tokens),
+          output: num(usage.output_tokens),
+          ...(typeof usage.cached_input_tokens === "number"
+            ? { cached: usage.cached_input_tokens }
+            : {}),
+        },
+      ]
     }
     case "turn.failed":
       state.failed = str(obj(msg.error).message) || state.lastError || "The turn failed."

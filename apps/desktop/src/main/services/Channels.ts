@@ -27,6 +27,7 @@ import {
   createReadGuard,
   DONE_TEST_MAX,
   endOfTurn,
+  hasUsage,
   hasVisibleReply,
   holdOutside,
   holdProgram,
@@ -706,6 +707,11 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 event.input !== undefined ? earlierUsage.input + event.input : usage.input
               usage.output =
                 event.output !== undefined ? earlierUsage.output + event.output : usage.output
+              return
+            }
+            // What the turn used goes to the usage of its task (spec 005, "Usage of a task").
+            if (event.type === "spent") {
+              tasks.addSpent(o.taskId, event)
               return
             }
             // The list of steps is for the rule of "Keep going". The reply does not show it.
@@ -2187,11 +2193,26 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   state: t.state as TaskState,
                 }))
             : []
+          // The card of the lead shows the tokens of the whole job (spec 005, "Usage of a task"),
+          // also while the lead has not given out parts yet.
+          const running =
+            lead === null
+              ? undefined
+              : (job ??
+                db.get<{ id: string }>(
+                  `SELECT id FROM task WHERE source = 'channel' AND source_id = ? AND parent_id IS NULL
+                   AND agent_id = ? AND state IN ${ACTIVE} ORDER BY created_at DESC LIMIT 1`,
+                  channelId,
+                  lead,
+                ))
+          const total = running ? tasks.treeUsage(running.id).total : undefined
+          const usage = total && hasUsage(total) ? total : undefined
           return {
             members: memberRows(channelId).map((m) => ({
               agentId: m.id,
               state: states.get(m.id) ?? "offline",
               steps: m.id === lead ? steps : [],
+              ...(m.id === lead && usage ? { usage } : {}),
             })),
           }
         })

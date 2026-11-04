@@ -3,8 +3,10 @@ import {
   type AgentModel,
   changeText,
   dueRuns,
+  hasUsage,
   isActive,
   type Locale,
+  limitState,
   type OutsideSource,
   ROUTINE_FAILURES_MAX,
   ROUTINES_MAX,
@@ -19,8 +21,10 @@ import {
   runText,
   runTimes,
   type Schedule,
+  tokensOf,
   translate,
   validSchedule,
+  validTokenLimit,
   validWatch,
   type Watch,
   watchRunText,
@@ -74,6 +78,7 @@ interface Row {
   last_checked_at: number
   created_at: number
   runs_on: string | null
+  token_limit: number | null
 }
 
 interface StateRow {
@@ -190,6 +195,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           schedule,
           watch,
           model: modelOf(r),
+          tokenLimit: r.token_limit,
           place: placeOf(r),
           enabled: r.enabled === 1,
           createdAt: r.created_at,
@@ -516,9 +522,11 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             const id = randomUUID()
             const now = Date.now()
             const model = input.model ?? null
+            if (input.tokenLimit != null && !validTokenLimit(input.tokenLimit))
+              return yield* new AppError({ code: "invalid_token_limit" })
             db.run(
-              `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, watch, model_account_id, model_name, model_effort, channel_id, enabled, last_checked_at, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, watch, model_account_id, model_name, model_effort, channel_id, enabled, last_checked_at, created_at, updated_at, token_limit)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.serverId,
               input.agentId,
@@ -534,6 +542,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               now,
               now,
               now,
+              input.tokenLimit ?? null,
             )
             changed(input.serverId)
             return toRoutine(row(id) as Row)
@@ -551,11 +560,16 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             const agentId = patch.agentId ?? current.agent_id
             yield* checkInput(agentId, trigger, place)
             const model = patch.model === undefined ? modelOf(current) : patch.model
+            const tokenLimit =
+              patch.tokenLimit === undefined ? current.token_limit : patch.tokenLimit
+            if (tokenLimit !== null && !validTokenLimit(tokenLimit))
+              return yield* new AppError({ code: "invalid_token_limit" })
             const watchText = trigger.watch ? JSON.stringify(trigger.watch) : null
             const now = Date.now()
             db.run(
               `UPDATE routine SET agent_id = ?, name = ?, prompt = ?, schedule = ?, watch = ?, channel_id = ?, enabled = ?,
-                 model_account_id = ?, model_name = ?, model_effort = ?, last_checked_at = ?, updated_at = ? WHERE id = ?`,
+                 model_account_id = ?, model_name = ?, model_effort = ?, last_checked_at = ?, updated_at = ?,
+                 token_limit = ? WHERE id = ?`,
               agentId,
               patch.name?.trim() ?? current.name,
               patch.prompt ?? current.prompt,
@@ -569,6 +583,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               // Resuming or changing the schedule starts the check from now: nothing counts as missed.
               now,
               now,
+              tokenLimit,
               id,
             )
             // Resume, and an edit of the prompt, the trigger, the agent or the place, set the
@@ -630,25 +645,39 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                 created_at: number
                 error_code: string | null
                 error_detail: string | null
+                token_limit: number | null
               }>(
-                `SELECT id, state, created_at, error_code, error_detail FROM task
+                `SELECT id, state, created_at, error_code, error_detail, token_limit FROM task
                  WHERE source = 'routine' AND source_id = ? AND created_at BETWEEN ? AND ?`,
                 r.id,
                 from,
                 to,
               )
-              for (const t of done)
+              for (const t of done) {
+                // The run details (spec 005, 009): the tokens of all tasks of the run, and the
+                // 80 percent line of a run that has a limit.
+                const total = tasks.treeUsage(t.id).total
+                const limit =
+                  t.token_limit === null
+                    ? undefined
+                    : {
+                        tokens: t.token_limit,
+                        near: limitState(tokensOf(total), t.token_limit) === "near",
+                      }
                 out.push({
                   routineId: r.id,
                   routineName: r.name,
                   at: t.created_at,
                   state: t.state,
                   taskId: t.id,
-                  // A blocked run shows the reason of the block (spec 009).
-                  ...(t.state === "blocked" && t.error_code
+                  // A blocked or failed run shows its reason (spec 009).
+                  ...((t.state === "blocked" || t.state === "failed") && t.error_code
                     ? { reason: { code: t.error_code, detail: t.error_detail ?? "" } }
                     : {}),
+                  ...(hasUsage(total) ? { usage: total } : {}),
+                  ...(limit ? { limit } : {}),
                 })
+              }
               for (const s of db.all<{
                 at: number
                 kind: "missed" | "skipped" | "failed" | "recorded"

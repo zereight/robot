@@ -222,12 +222,20 @@ export const piArgs = (
 export interface PiState {
   input: number
   output: number
+  /** The input read from the cache, or null while the program has not reported it. */
+  cached: number | null
   /** The error of a model turn that failed. */
   error: string | null
   done: boolean
 }
 
-export const newPiState = (): PiState => ({ input: 0, output: 0, error: null, done: false })
+export const newPiState = (): PiState => ({
+  input: 0,
+  output: 0,
+  cached: null,
+  error: null,
+  done: false,
+})
 
 const resultText = (result: unknown) => {
   const content = obj(result).content
@@ -277,6 +285,7 @@ export const mapPiEvent = (message: unknown, state: PiState): AgentEvent[] => {
       const usage = obj(message.usage)
       state.input += num(usage.input) + num(usage.cacheRead) + num(usage.cacheWrite)
       state.output += num(usage.output)
+      if (typeof usage.cacheRead === "number") state.cached = (state.cached ?? 0) + usage.cacheRead
       if (message.stopReason === "error")
         state.error = str(message.errorMessage) || "The model turn failed."
       return []
@@ -361,7 +370,12 @@ export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       if (started) throw started
       throw piFailure(stderr.trim() || `The program ended with code ${code}.`)
     }
-    yield { type: "usage", input: state.input, output: state.output }
+    yield {
+      type: "usage",
+      input: state.input,
+      output: state.output,
+      ...(state.cached !== null ? { cached: state.cached } : {}),
+    }
   } finally {
     run.signal.removeEventListener("abort", stop)
     if (child.exitCode === null) {

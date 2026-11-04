@@ -81,7 +81,15 @@ export interface ReplyEvent {
 export type StreamEvent =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "thinking"; readonly text: string }
-  | { readonly type: "usage"; readonly input?: number; readonly output?: number }
+  | {
+      readonly type: "usage"
+      readonly input?: number
+      readonly output?: number
+      /** The part of the input that the provider read from its cache, when it reports it. */
+      readonly cached?: number
+      /** The cost that the provider reports, in millionths of a US dollar (spec 005). */
+      readonly costMicros?: number
+    }
   /** The model wants to call a tool. */
   | ({ readonly type: "toolcall" } & ToolCall)
 
@@ -278,7 +286,11 @@ async function* openAiStream(req: ChatRequest): AsyncGenerator<StreamEvent> {
           }[]
         }
       }[]
-      usage?: { prompt_tokens?: number; completion_tokens?: number } | null
+      usage?: {
+        prompt_tokens?: number
+        completion_tokens?: number
+        prompt_tokens_details?: { cached_tokens?: number } | null
+      } | null
       error?: { message?: string }
     }
     if (chunk.error)
@@ -297,12 +309,14 @@ async function* openAiStream(req: ChatRequest): AsyncGenerator<StreamEvent> {
       })
     }
     if (chunk.usage) {
+      const cached = chunk.usage.prompt_tokens_details?.cached_tokens
       yield {
         type: "usage",
         ...(chunk.usage.prompt_tokens !== undefined ? { input: chunk.usage.prompt_tokens } : {}),
         ...(chunk.usage.completion_tokens !== undefined
           ? { output: chunk.usage.completion_tokens }
           : {}),
+        ...(typeof cached === "number" ? { cached } : {}),
       }
     }
   }
@@ -440,10 +454,26 @@ export const inputCounter = () => {
   }
 }
 
+/**
+ * The cached part of the input of an Anthropic reply: the tokens read from the cache. It is the
+ * last count that an event named, or nothing while no event names it, so a provider that reports no
+ * cache counts shows no cached share (spec 005). Like the input, a field that a proxy sends as null
+ * counts as absent.
+ */
+export const cachedCounter = () => {
+  let read: number | undefined
+  return (usage: AnthropicUsage | undefined): number | undefined => {
+    const value = usage?.cache_read_input_tokens
+    if (typeof value === "number" && Number.isFinite(value)) read = value
+    return read
+  }
+}
+
 async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | ReplyEvent> {
   const body = await post(req, anthropicBody(req))
   const drafts = new Map<number, Draft>()
   const countInput = inputCounter()
+  const countCached = cachedCounter()
   for await (const event of readSse(body)) {
     const data = JSON.parse(event.data) as {
       type: string
@@ -472,7 +502,9 @@ async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | 
     switch (data.type) {
       case "message_start": {
         const input = countInput(data.message?.usage)
-        if (input !== undefined) yield { type: "usage", input }
+        const cached = countCached(data.message?.usage)
+        if (input !== undefined)
+          yield { type: "usage", input, ...(cached !== undefined ? { cached } : {}) }
         break
       }
       case "content_block_start": {
@@ -531,6 +563,7 @@ async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | 
       case "message_delta": {
         // The counts of this event are running totals, so they replace the ones of the start.
         const input = countInput(data.usage)
+        const cached = countCached(data.usage)
         const output =
           typeof data.usage?.output_tokens === "number" ? data.usage.output_tokens : undefined
         if (input !== undefined || output !== undefined)
@@ -538,6 +571,7 @@ async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | 
             type: "usage",
             ...(input !== undefined ? { input } : {}),
             ...(output !== undefined ? { output } : {}),
+            ...(cached !== undefined ? { cached } : {}),
           }
         break
       }

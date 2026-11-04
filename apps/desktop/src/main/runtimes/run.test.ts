@@ -112,7 +112,8 @@ describe("claude program", () => {
     const seen: unknown[] = []
     const events = await collect(runClaude(base(fake.claude, { onLimits: (l) => seen.push(l) })))
     expect(text(events)).toBe("Echo: Hello there")
-    expect(events.at(-1)).toEqual({ type: "usage", input: 15, output: 7 })
+    // The program reports the cached part of the input too (spec 005, "Usage of a task").
+    expect(events.at(-1)).toEqual({ type: "usage", input: 15, output: 7, cached: 10 })
     expect(seen[0]).toEqual([
       { window: "five_hour", used: 0.19, resetsAt: 1_900_000_000_000 },
       { window: "seven_day", used: 0.4, resetsAt: 1_900_500_000_000 },
@@ -171,7 +172,7 @@ describe("claude program", () => {
     expect(events[joined]).toEqual({ type: "joined", id: "8c0b1b8e-0000-4000-8000-000000000001" })
     expect(text(events.slice(joined))).toBe("Joined: Use b.txt instead")
     // The usage of both results counts.
-    expect(events.at(-1)).toEqual({ type: "usage", input: 18, output: 9 })
+    expect(events.at(-1)).toEqual({ type: "usage", input: 18, output: 9, cached: 10 })
     expect(watchers.size).toBe(0)
   })
 
@@ -313,7 +314,7 @@ describe("codex program", () => {
     )
     expect(text(events)).toBe("Echo: RUN: ls")
     expect(events.filter((e) => e.type === "tool")).toHaveLength(2)
-    expect(events.at(-1)).toEqual({ type: "usage", input: 20, output: 3 })
+    expect(events.at(-1)).toEqual({ type: "usage", input: 20, output: 3, cached: 10 })
     const call = fake.codexCalls().at(-1) as { args: string[]; prompt: string }
     expect(call.prompt).toContain("Be brief.")
     expect(call.args).toContain("workspace-write")

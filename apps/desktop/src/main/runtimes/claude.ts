@@ -297,6 +297,10 @@ export type Mapped =
       readonly text: string
       readonly input: number
       readonly output: number
+      /** The input that the program read from the cache of the model. Absent: not reported. */
+      readonly cached?: number
+      /** The cost that the program reports, in millionths of a US dollar. Absent: not reported. */
+      readonly costMicros?: number
     }
 
 export interface StreamState {
@@ -422,6 +426,14 @@ export const mapClaudeMessage = (message: unknown, state: StreamState): Mapped[]
             num(usage.cache_creation_input_tokens) +
             num(usage.cache_read_input_tokens),
           output: num(usage.output_tokens),
+          ...(typeof usage.cache_read_input_tokens === "number"
+            ? { cached: usage.cache_read_input_tokens }
+            : {}),
+          // The program reports the cost of the session so far, in US dollars. The app has no
+          // prices of its own (spec 005).
+          ...(typeof msg.total_cost_usd === "number" && Number.isFinite(msg.total_cost_usd)
+            ? { costMicros: Math.round(msg.total_cost_usd * 1_000_000) }
+            : {}),
         },
       ]
     }
@@ -572,7 +584,7 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   let rejected = false
   let result: Extract<Mapped, { kind: "result" }> | undefined
   /** The usage of the results before the last one, when messages of the user joined the turn. */
-  const earlier = { input: 0, output: 0 }
+  const earlier = { input: 0, output: 0, cached: undefined as number | undefined }
   /**
    * The messages of the user that the program has and did not begin to read. The program reads
    * them after the tool step that runs, or after its reply, as a new request. Until then the turn
@@ -635,6 +647,7 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
           if (result) {
             earlier.input += result.input
             earlier.output += result.output
+            if (result.cached !== undefined) earlier.cached = (earlier.cached ?? 0) + result.cached
           }
           result = mapped
           ended = true
@@ -658,10 +671,17 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
       )
     }
     if (!result.ok) throw claudeFailure(result.text, rejected ? limitsResetAt : null)
+    const cached =
+      earlier.cached === undefined && result.cached === undefined
+        ? undefined
+        : (earlier.cached ?? 0) + (result.cached ?? 0)
     yield {
       type: "usage",
       input: earlier.input + result.input,
       output: earlier.output + result.output,
+      ...(cached !== undefined ? { cached } : {}),
+      // The cost is the one of the session so far, so the last result holds all of it.
+      ...(result.costMicros !== undefined ? { costMicros: result.costMicros } : {}),
     }
   } finally {
     unwatch?.()

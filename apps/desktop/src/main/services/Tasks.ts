@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto"
 import {
   type ActionDecider,
   type AgentMessageKind,
+  addSpent as addToUsage,
   blockedError,
   isActive,
   isDecision,
@@ -13,6 +14,7 @@ import {
   isVerdict,
   type LoggedStep,
   lastChange,
+  limitState,
   messageText,
   type OutsideSource,
   queueRank,
@@ -27,17 +29,23 @@ import {
   retryNote,
   retryNoteForModel,
   type SensitiveLabel,
+  type SpentUsage,
   TASKS_QUEUED_MAX,
   type Task,
   type TaskDetail,
   type TaskProgress,
   type TaskSource,
   type TaskState,
+  type TaskUsage,
   type TeamsJobKind,
+  type TreeUsage,
   type TurnEnd,
   taskLabel,
+  tokensOf,
+  treeUsage,
   type Verdict,
   validChanges,
+  withDescendantsOf,
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Layer } from "effect"
 import { resumeOf } from "../providers/resume.ts"
@@ -81,6 +89,11 @@ interface TaskRow {
   ended_as: string | null
   decision: string | null
   decision_text: string | null
+  input_tokens: number | null
+  output_tokens: number | null
+  cached_tokens: number | null
+  cost_micros: number | null
+  token_limit: number | null
 }
 
 export interface TaskInput {
@@ -230,6 +243,14 @@ export interface TasksService {
   /** Records which message holds the reply of a task. */
   setMessage(taskId: string, messageId: string): void
   /**
+   * Adds what a turn used to the usage of a task (spec 005, "Usage of a task"). A field that is
+   * absent was not reported and stays as it is. When the run of a routine reaches its token limit,
+   * the run is stopped as a Stop of the user does, and it fails with the reason (spec 009).
+   */
+  addSpent(taskId: string, spent: SpentUsage): void
+  /** The usage of a task and every task below it, with one line for each agent. */
+  treeUsage(taskId: string): TreeUsage
+  /**
    * Saves the verdict of the lead for a part (spec 004, 005). A verdict is a field: the state of
    * the part does not change. It is saved only for a part that is done, has a done test, has no
    * verdict, and has no decision of the user. Gives true when it was saved.
@@ -319,6 +340,13 @@ const SELECT = `SELECT t.*, a.name AS agent_name,
   (SELECT m.thread_id FROM message m WHERE m.id = t.message_id) AS thread_id
   FROM task t JOIN agent a ON a.id = t.agent_id`
 
+const usageOf = (row: TaskRow): TaskUsage => ({
+  input: row.input_tokens,
+  output: row.output_tokens,
+  cached: row.cached_tokens,
+  costMicros: row.cost_micros,
+})
+
 const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   id: row.id,
   agentId: row.agent_id,
@@ -351,6 +379,8 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   endedAs: isEndedAs(row.ended_as) ? row.ended_as : null,
   decision: isDecision(row.decision) ? row.decision : null,
   decisionText: row.decision_text,
+  usage: usageOf(row),
+  tokenLimit: row.token_limit,
 })
 
 /** How often a task that waits for the other computer looks again. */
@@ -407,6 +437,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const made = new Map<string, number>()
       /** Tasks that were told to stop: they never take a slot again. */
       const stopping = new Set<string>()
+      /**
+       * The runs of a routine that reached their token limit, with the limit. The first task of such
+       * a run fails with the reason when it stops, and does not end as cancelled (spec 009).
+       */
+      const limitHits = new Map<string, number>()
       /** The agents of tasks that wait for a slot only, to tell the window when that changes. */
       let slotBound = new Set<string>()
       let counter = 0
@@ -727,11 +762,20 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             input.teamsJob === undefined
               ? teamsJobOf(input.parentId ?? input.retryOf)
               : input.teamsJob
+          // The first task of a run of a routine keeps the token limit that the run starts with
+          // (spec 009). A later edit of the routine does not change a run that went.
+          const tokenLimit =
+            input.source === "routine" && input.sourceId && !input.parentId
+              ? (db.get<{ token_limit: number | null }>(
+                  "SELECT token_limit FROM routine WHERE id = ?",
+                  input.sourceId,
+                )?.token_limit ?? null)
+              : null
           db.run(
             `INSERT INTO task (id, agent_id, prompt, label, source, source_id, parent_id, retry_of,
                message_id, state, created_at, asked_at, depth, progress, done_test, error_code,
-               error_detail, finished_at, teams_job, agent_message)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?, ?, ?)`,
+               error_detail, finished_at, teams_job, agent_message, token_limit)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.agentId,
             input.prompt,
@@ -751,6 +795,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             failed ? now : null,
             teamsJob,
             input.source === "agent" ? (input.agentMessage ?? null) : null,
+            tokenLimit,
           )
           if (!failed) {
             stops.set(id, Deferred.makeUnsafe<void>())
@@ -761,6 +806,18 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             bus.emit("channels.changed", { channelId: input.sourceId })
           return toTask(row(id) as TaskRow, remote)
         })
+
+      /**
+       * A task that was stopped ends as cancelled. The first task of a run that reached its token
+       * limit fails with the reason instead (spec 009): the run counts as a failed run.
+       */
+      const endStopped = (taskId: string, agentId: string) => {
+        const limit = limitHits.get(taskId)
+        limitHits.delete(taskId)
+        return limit === undefined
+          ? setState(taskId, agentId, "cancelled")
+          : setState(taskId, agentId, "failed", { code: "token_limit", detail: String(limit) })
+      }
 
       const run = <A, E, R>(
         taskId: string,
@@ -818,7 +875,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
                   return setState(taskId, agentId, "blocked", blockedError(end.reason))
                 return setState(taskId, agentId, end.state)
               }
-              if (Cause.hasInterruptsOnly(exit.cause)) return setState(taskId, agentId, "cancelled")
+              if (Cause.hasInterruptsOnly(exit.cause)) return endStopped(taskId, agentId)
               const failure = Cause.squash(exit.cause) as { code?: unknown; detail?: unknown }
               setState(taskId, agentId, "failed", {
                 code: typeof failure?.code === "string" ? failure.code : "unknown",
@@ -845,7 +902,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               stopping.add(taskId)
               freeSlot(taskId)
               yield* Deferred.succeed(signal, undefined)
-            } else setState(taskId, current.agent_id, "cancelled")
+            } else endStopped(taskId, current.agent_id)
           }
           for (const child of childRows(taskId)) yield* stop(child.id)
         })
@@ -1001,6 +1058,65 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           outside: step.outside,
           sensitive: step.sensitive,
         })
+      }
+
+      /** The first task of the run that this task belongs to: the task itself, or the top parent. */
+      const rootOf = (id: string): TaskRow | undefined => {
+        let top = row(id)
+        for (let up = top?.parent_id ? row(top.parent_id) : undefined; up; ) {
+          top = up
+          up = top.parent_id ? row(top.parent_id) : undefined
+        }
+        return top
+      }
+
+      /** The task and the tasks below it, with the name of the agent of each (spec 005). */
+      const treeOf = (rootId: string): TreeUsage => {
+        const ids = withDescendants(rootId)
+        const rows = ids.flatMap((id) => {
+          const found = row(id)
+          return found ? [found] : []
+        })
+        return treeUsage(
+          rows.map((r) => ({ agentId: r.agent_id, agentName: r.agent_name, usage: usageOf(r) })),
+        )
+      }
+
+      const addSpent = (taskId: string, spent: SpentUsage) => {
+        const current = row(taskId)
+        // The computer that runs a task counts it. The other computer gets the numbers by sync.
+        if (!current || current.origin !== null) return
+        const before = usageOf(current)
+        const next = addToUsage(before, spent)
+        if (
+          next.input === before.input &&
+          next.output === before.output &&
+          next.cached === before.cached &&
+          next.costMicros === before.costMicros
+        )
+          return
+        db.run(
+          `UPDATE task SET input_tokens = ?, output_tokens = ?, cached_tokens = ?, cost_micros = ?
+           WHERE id = ?`,
+          next.input,
+          next.output,
+          next.cached,
+          next.costMicros,
+          taskId,
+        )
+        changed(current.agent_id)
+        if (current.source === "channel" && current.source_id)
+          bus.emit("channels.changed", { channelId: current.source_id })
+        // The token limit of a run (spec 009): cached input counts as input, so the tokens of a
+        // tree are input plus output. A run that reaches the limit is stopped as a Stop of the
+        // user stops it. It stops once.
+        const root = rootOf(taskId)
+        if (!root || root.token_limit === null || limitHits.has(root.id) || isFinal(root.state))
+          return
+        const used = tokensOf(treeOf(root.id).total)
+        if (limitState(used, root.token_limit) !== "over") return
+        limitHits.set(root.id, root.token_limit)
+        Effect.runSync(stop(root.id))
       }
 
       const resultOf = (task: Task) => {
@@ -1220,6 +1336,8 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         },
         setMessage: (taskId, messageId) =>
           db.run("UPDATE task SET message_id = ? WHERE id = ?", messageId, taskId),
+        addSpent,
+        treeUsage: treeOf,
         judge: (taskId, verdict, reason) => {
           const current = row(taskId)
           // Only the computer that owns a task judges it (spec 019).
@@ -1317,12 +1435,24 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               }
             }
             visit(taskId)
+            // A task with child tasks shows the total of its tree (spec 005, "Usage of a task").
+            const tree =
+              children.length > 0
+                ? treeUsage(
+                    withDescendantsOf([task, ...children], task.id).map((t) => ({
+                      agentId: t.agentId,
+                      agentName: t.agentName,
+                      usage: t.usage,
+                    })),
+                  )
+                : null
             return Effect.succeed({
               task,
               children,
               result: resultOf(task),
               joined: joinedOf(task),
               leadName: leadNameOf(task),
+              tree,
             })
           }),
         children: (parentId) => childRows(parentId).map((r) => toTask(r, remote)),

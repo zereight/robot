@@ -4,6 +4,7 @@ import { cleanDoneTest } from "./check.ts"
 import type { PlaceOutside } from "./placeMarks.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
 import type { TaskState } from "./task.ts"
+import type { TaskUsage } from "./taskUsage.ts"
 
 export const CHANNEL_NAME_MAX = 60
 export const CHANNEL_TOPIC_MAX = 200
@@ -133,6 +134,11 @@ export interface MemberActivity {
   readonly state: MemberState
   /** The plan steps of a lead that has active work. Empty for the others. */
   readonly steps: readonly PlanStep[]
+  /**
+   * For the lead of a job that runs: the tokens of the whole job, the lead and its parts together
+   * (spec 005, "Usage of a task"). Absent for the others, and while no task reported any.
+   */
+  readonly usage?: TaskUsage
 }
 
 export interface ChannelActivity {

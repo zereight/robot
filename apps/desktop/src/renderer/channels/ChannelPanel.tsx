@@ -7,6 +7,7 @@ import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { quietOfTaskLine } from "../state/quiet.ts"
 import { useUi } from "../state/ui.tsx"
+import { usageLine } from "../tasks/usageText.ts"
 import { IconButton } from "../ui/controls.tsx"
 import { stateLabel } from "./ChannelView.tsx"
 import styles from "./channels.module.css"
@@ -34,7 +35,7 @@ const MAX_STAGGER = 5
 
 /** The "Now" panel: one card per member, and the plan steps under the lead. */
 export const ChannelPanel = (props: { channel: Channel }) => {
-  const { t } = useApp()
+  const { t, locale } = useApp()
   const ui = useUi()
   const agents = useAgents()
   const server = () => (ui.linked() ? ui.server()?.id : undefined)
@@ -69,6 +70,19 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                         {t(stateLabel(member.state))}
                       </span>
                     </div>
+                    {/* The tokens of the whole job, for the lead (spec 005, "Usage of a task"). */}
+                    <Show when={member.usage}>
+                      {(usage) => (
+                        <div
+                          class={styles.cardUsage}
+                          data-testid="lead-usage"
+                          data-input={usage().input ?? ""}
+                          data-output={usage().output ?? ""}
+                        >
+                          {t("taskUsage.lead", { line: usageLine(t, locale(), usage()) })}
+                        </div>
+                      )}
+                    </Show>
                     <Show when={member.steps.length > 0}>
                       <ol class={styles.steps} data-testid="plan-steps">
                         <For each={member.steps}>

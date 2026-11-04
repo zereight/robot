@@ -2,13 +2,17 @@ import {
   type Agent,
   type AgentModel,
   catalogues,
+  isRuntimeKind,
   type MessageKey,
+  programName,
+  programReportsTokens,
   ROUTINES_MAX,
   type Routine,
   type RoutineEntry,
   type RoutineInput,
   type Schedule,
   validSchedule,
+  validTokenLimit,
   validWatch,
   type Watch,
   watchNeedsConfirm,
@@ -30,8 +34,10 @@ import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
+import { useProviders } from "../state/providers.tsx"
 import { flashRow, openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
+import { usageLine } from "../tasks/usageText.ts"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -88,6 +94,7 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
   const ui = useUi()
   const agents = useAgents()
   const channels = useChannels()
+  const providers = useProviders()
   const _format = useFormat()
   const initial = props.routine?.schedule
   const [name, setName] = createSignal(props.routine?.name ?? "")
@@ -108,6 +115,10 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
   const [watchValid, setWatchValid] = createSignal(initialWatch ? validWatch(initialWatch) : false)
   const [ownModel, setOwnModel] = createSignal(props.routine?.model != null)
   const [model, setModel] = createSignal<AgentModel | null>(props.routine?.model ?? null)
+  // The token limit of one run (spec 009). The box holds the text; empty means no limit.
+  const [limitText, setLimitText] = createSignal(
+    props.routine?.tokenLimit == null ? "" : String(props.routine.tokenLimit),
+  )
   // A watch on a command or a tool runs at each check with no question: the user confirms.
   const [confirming, setConfirming] = createSignal(false)
   const [error, setError] = createSignal<ErrorText>()
@@ -118,8 +129,30 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
   // A server holds at most 50 routines, a paused one too. The form for a new routine says so and
   // does not save (spec 009). The main process refuses it as well, in case the list is old.
   const atLimit = () => props.routine === undefined && props.full === true
+  // The limit is a whole number from 1,000 to 10,000,000, or nothing (spec 009).
+  const limitValue = (): number | null | "invalid" => {
+    const text = limitText().trim().replaceAll(",", "")
+    if (text === "") return null
+    const n = Number(text)
+    return validTokenLimit(n) ? n : "invalid"
+  }
+  // The program that answers the run: the model of the routine, or the model of the agent. An API
+  // model reports tokens as the reply streams. A program reports them at the end of a turn, and one
+  // that reports none cannot use the limit (spec 009).
+  const program = () => {
+    const accountId = ownModel()
+      ? model()?.accountId
+      : agents.agents().find((a) => a.id === agentId())?.model?.accountId
+    const kind = accountId ? providers.byId(accountId)?.kind : undefined
+    return kind && isRuntimeKind(kind) ? kind : null
+  }
+  const limitOff = () => {
+    const kind = program()
+    return kind !== null && !programReportsTokens(kind)
+  }
   const canSave = () =>
     !atLimit() &&
+    (limitOff() || limitValue() !== "invalid") &&
     name().trim() &&
     prompt().trim() &&
     agentId() &&
@@ -141,6 +174,12 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
       ...(trigger() === "watch" && w ? { watch: w } : { schedule: schedule() }),
       place: place() === "agent" ? { kind: "agent" } : { kind: "channel", channelId: place() },
       model: ownModel() ? model() : null,
+      // A program that reports no tokens cannot use the limit: the field is off and sends none.
+      tokenLimit: limitOff()
+        ? null
+        : limitValue() === "invalid"
+          ? null
+          : (limitValue() as number | null),
     }
     try {
       if (props.routine) {
@@ -274,6 +313,49 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
             <ModelPicker value={model()} onChange={setModel} />
           </Show>
         </div>
+
+        {/* The most tokens one run may use. Off by default (spec 009, "Limits and safeguards"). */}
+        <label class={styles.field}>
+          <span>{t("routines.tokenLimit")}</span>
+          <input
+            class={styles.input}
+            type="text"
+            inputmode="numeric"
+            value={limitOff() ? "" : limitText()}
+            disabled={limitOff()}
+            aria-invalid={!limitOff() && limitValue() === "invalid"}
+            onInput={(e) => setLimitText(e.currentTarget.value)}
+            data-testid="routine-token-limit"
+          />
+          <Show
+            when={limitOff() && program()}
+            fallback={
+              <>
+                <span class={styles.hint} data-testid="routine-token-limit-hint">
+                  {t("routines.tokenLimit.hint")}
+                </span>
+                <Show when={program()}>
+                  {(kind) => (
+                    <span class={styles.hint} data-testid="routine-token-limit-late">
+                      {t("routines.tokenLimit.late", { program: programName(kind()) })}
+                    </span>
+                  )}
+                </Show>
+              </>
+            }
+          >
+            {(kind) => (
+              <span class={styles.hint} data-testid="routine-token-limit-silent">
+                {t("routines.tokenLimit.silent", { program: programName(kind()) })}
+              </span>
+            )}
+          </Show>
+          <Show when={!limitOff() && limitValue() === "invalid"}>
+            <span class={styles.error} role="alert" data-testid="routine-token-limit-error">
+              {t("error.invalid_token_limit")}
+            </span>
+          </Show>
+        </label>
 
         <Show when={confirming() ? watch() : undefined}>
           {(w) => (
@@ -424,6 +506,28 @@ const Calendar = (props: {
                       </span>
                     )}
                   </Show>
+                  {/* The run details (spec 005, 009): the tokens of all tasks of the run, and the line at
+                      80 percent of its token limit. */}
+                  <Show when={e.usage || e.limit?.near}>
+                    <div class={styles.entryDetails} data-testid="calendar-run-details">
+                      <Show when={e.usage}>
+                        {(usage) => (
+                          <div
+                            data-testid="calendar-run-tokens"
+                            data-input={usage().input ?? ""}
+                            data-output={usage().output ?? ""}
+                          >
+                            {t("routines.runTokens", {
+                              line: usageLine(t, app.locale(), usage()),
+                            })}
+                          </div>
+                        )}
+                      </Show>
+                      <Show when={e.limit?.near}>
+                        <div data-testid="calendar-limit-near">{t("routines.limitNear")}</div>
+                      </Show>
+                    </div>
+                  </Show>
                   <Show when={e.change}>
                     {(change) => (
                       <details class={styles.entryChange} data-testid="calendar-change">
@@ -444,6 +548,7 @@ const Calendar = (props: {
 
 export const RoutinesView = () => {
   const { t } = useApp()
+  const app = useApp()
   const ui = useUi()
   const format = useFormat()
   const words = useScheduleWords()
@@ -572,6 +677,15 @@ export const RoutinesView = () => {
                         ? words(r.schedule)
                         : ""}
                   </span>
+                  <Show when={r.tokenLimit}>
+                    {(limit) => (
+                      <span class={styles.hint} data-testid="routine-limit-line">
+                        {t("routines.tokenLimit.card", {
+                          count: new Intl.NumberFormat(app.locale()).format(limit()),
+                        })}
+                      </span>
+                    )}
+                  </Show>
                   <Show when={r.pausedAfterFailures}>
                     {(reason) => (
                       <span class={styles.paused} data-testid="routine-paused">

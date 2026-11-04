@@ -1,6 +1,8 @@
 import { Schema } from "effect"
 import { AgentModel } from "./agents.ts"
 import { EVERY_MIN_MINUTES, type RoutineEntryState, type Schedule } from "./schedule.ts"
+import type { TaskUsage } from "./taskUsage.ts"
+import { TOKEN_LIMIT_MAX, TOKEN_LIMIT_MIN } from "./taskUsage.ts"
 import { type Watch, WatchSchema } from "./watch.ts"
 
 export const ROUTINE_NAME_MAX = 60
@@ -26,6 +28,15 @@ export const ScheduleSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("cron"), expr: Schema.String }),
 ])
 
+/** The token limit of a routine: a whole number from 1000 to 10000000, or null for no limit (spec 009). */
+const TokenLimit = Schema.NullOr(
+  Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(TOKEN_LIMIT_MIN),
+    Schema.isLessThanOrEqualTo(TOKEN_LIMIT_MAX),
+  ),
+)
+
 export const RoutinePlace = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("agent") }),
   Schema.Struct({ kind: Schema.Literal("channel"), channelId: Schema.String }),
@@ -43,6 +54,8 @@ export const RoutineInput = Schema.Struct({
   place: RoutinePlace,
   /** The model and effort of the routine. Absent or null: "Same as the agent". */
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
+  /** The most tokens that one run may use. Absent or null: no limit (spec 009). */
+  tokenLimit: Schema.optionalKey(TokenLimit),
 })
 export type RoutineInput = typeof RoutineInput.Type
 
@@ -60,6 +73,7 @@ export const RoutinePatch = Schema.Struct({
   place: Schema.optionalKey(RoutinePlace),
   enabled: Schema.optionalKey(Schema.Boolean),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
+  tokenLimit: Schema.optionalKey(TokenLimit),
 })
 export type RoutinePatch = typeof RoutinePatch.Type
 
@@ -76,6 +90,8 @@ export interface Routine {
   readonly watch: Watch | null
   /** The model and effort of the routine, or null for "Same as the agent". */
   readonly model: AgentModel | null
+  /** The most tokens that one run may use, or null for no limit (spec 009). */
+  readonly tokenLimit: number | null
   readonly place: RoutinePlace
   readonly enabled: boolean
   readonly createdAt: number
@@ -100,6 +116,16 @@ export interface RoutineEntry {
   readonly reason?: RoutineFailure | null
   /** For a run "Recorded" of a watch with "Record only": the change that it saw. */
   readonly change?: string
+  /**
+   * The run details (spec 005, 009): the tokens of all tasks of the run. Only a run that made a
+   * task has them, and only when a task reported something.
+   */
+  readonly usage?: TaskUsage
+  /**
+   * For a run with a token limit: the limit, and whether the run used 80 percent of it. The
+   * limit is the one that the run started with.
+   */
+  readonly limit?: { readonly tokens: number; readonly near: boolean }
 }
 
 /** Why a run or a check failed: an error code and a detail. */

@@ -437,7 +437,7 @@ const toMessage = (row: MessageRow, unread?: "waiting" | "handed"): ChatMessage 
 
 /** Adds a stream event to the parts. Returns true when a new part starts (a part boundary). */
 export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => {
-  if (event.type === "usage" || event.type === "plan") return false
+  if (event.type === "usage" || event.type === "plan" || event.type === "spent") return false
   if (event.type === "joined") {
     // What the agent writes after a message of the user starts a new paragraph.
     const last = parts.at(-1)
@@ -1289,6 +1289,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 event.output !== undefined ? earlierUsage.output + event.output : usage.output
               return
             }
+            // What the turn used goes to the usage of its task (spec 005, "Usage of a task").
+            if (event.type === "spent") {
+              tasks.addSpent(task.id, event)
+              return
+            }
             // The list of steps is for the rule of "Keep going". The reply does not show it.
             if (event.type === "plan") {
               plan = event.steps
@@ -1357,7 +1362,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             // At 85 percent or more of the context, the app compacts first (spec 003). A turn that
             // goes on after a restart does not: its request is made already.
             if (!resumed && !isRuntime && attempt === "first")
-              yield* autoCompact(place, agent, reply.id, (code) => {
+              yield* autoCompact(place, agent, reply.id, task.id, (code) => {
                 parts.push({ kind: "note", note: "compact_failed", code })
                 save("streaming")
                 publish()
@@ -2274,7 +2279,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
        * Asks the model of the agent for the summary, and writes the line "Compacted". A compact
        * that is stopped or fails changes nothing (spec 003).
        */
-      const runCompact = (place: Place, agent: AgentModelRow, auto: boolean) =>
+      const runCompact = (place: Place, agent: AgentModelRow, auto: boolean, taskId?: string) =>
         Effect.gen(function* () {
           if (!agent.model_account_id || !agent.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
@@ -2325,6 +2330,9 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                     usage.input = event.input ?? usage.input
                     usage.output = event.output ?? usage.output
                   }
+                  // An automatic compact is part of the task of the turn: its tokens count in the
+                  // usage of that task and in the token limit of a run (spec 003, 005, 009).
+                  if (event.type === "spent" && taskId) tasks.addSpent(taskId, event)
                 }
                 return text.trim()
               },
@@ -2371,6 +2379,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         place: Place,
         agent: AgentModelRow,
         replyId: string,
+        taskId: string,
         failed: (code: string) => void,
       ) =>
         Effect.gen(function* () {
@@ -2386,7 +2395,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           })
           if (!go) return
           setCompacting(place, true)
-          yield* runCompact(place, agent, true).pipe(
+          yield* runCompact(place, agent, true, taskId).pipe(
             Effect.catch((error: AppError) =>
               Effect.sync(() => {
                 // A conversation of 2 turns or fewer has nothing to compact. That is no failure.
