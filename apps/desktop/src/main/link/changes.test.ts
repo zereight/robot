@@ -479,6 +479,31 @@ describe("a linked device that may create and change agents (spec 012)", () => {
         await p.ask("channels.update", { id: site.id, patch: { parentId: null } }),
       ).parentId,
     ).toBeNull()
+    // The picture of a channel (spec 004, 012): a square PNG of at most 256 px, with the switch.
+    const bytes = new Uint8Array(100)
+    bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
+    new DataView(bytes.buffer).setUint32(16, 256)
+    new DataView(bytes.buffer).setUint32(20, 256)
+    const picture = `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`
+    const withPicture = value<{ picture: string | null }>(
+      await p.ask("channels.setPicture", { id: channel.id, dataUrl: picture }),
+    )
+    expect(withPicture.picture).toBe(picture)
+    expect(
+      codeOf(
+        await p.ask("channels.setPicture", {
+          id: channel.id,
+          dataUrl: "data:image/gif;base64,AAAA",
+        }),
+      ),
+    ).toBe("channel_picture_invalid")
+    expect(codeOf(await p.ask("channels.setPicture", { id: channel.id, dataUrl: 5 }))).toBe(
+      "invalid_input",
+    )
+    const removed = value<{ picture: string | null }>(
+      await p.ask("channels.setPicture", { id: channel.id, dataUrl: null }),
+    )
+    expect(removed.picture).toBeNull()
 
     const item = value<{ id: string; text: string }>(
       await p.ask("memory.add", { agentId: a.id, text: "Likes tea" }),
@@ -667,6 +692,7 @@ describe("a linked device that may create and change agents (spec 012)", () => {
         { serverId: p.serverId, name: "Docs", topic: "", memberIds: [], leadId: null },
       ],
       ["channels.update", { id: "x", patch: { topic: "t" } }],
+      ["channels.setPicture", { id: "x", dataUrl: null }],
       ["memory.list", { agentId: "x" }],
       ["memory.scopes", { agentId: "x" }],
       ["memory.move", { id: "x", channelId: null }],

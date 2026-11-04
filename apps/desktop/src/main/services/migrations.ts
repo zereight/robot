@@ -1151,6 +1151,12 @@ export const migrations: readonly string[] = [
   ALTER TABLE channel ADD COLUMN parent_channel_id TEXT;
   `,
   `
+  -- The picture of a channel (spec 004, S88): a square PNG of at most 256 px and 1 MB as a data
+  -- address, or NULL. It is in the database, so an export keeps it, and the delete of a channel
+  -- removes it. It syncs with the channel (the dirty trigger of the channel watches every column).
+  ALTER TABLE channel ADD COLUMN picture TEXT;
+  `,
+  `
   -- The part "Organization" of the settings (spec 013, 030, S110). One row for the profile; its id
   -- is always 'organization', so both computers of a sync pair name the same row. \`hand_off\` is
   -- the hand-off rule: 'any' (the default, as every profile was before this step) or 'channels'.

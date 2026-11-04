@@ -19,6 +19,7 @@ import {
   HANDBOOK_SOURCES,
   HANDOVER_LIMITS,
   INSTRUCTION_SOURCES,
+  isChannelPicture,
   isOutsideSource,
   isPlaceOutside,
   isSensitiveLabel,
@@ -951,6 +952,7 @@ interface ChannelRow {
   lead_agent_id: string | null
   review_parts: number
   lead_answers: number
+  picture: string | null
   sensitive_mark: string | null
   outside_mark: string | null
   parent_channel_id: string | null
@@ -996,6 +998,9 @@ const channel: KindDef = {
     // "The lead answers questions" (spec 004, 019). A computer of an older step has none, and it
     // counts as on, the default.
     leadAnswers: { check: (v) => typeof v === "boolean" },
+    // The picture of the channel (spec 004, 019): a square PNG of at most 256 px and 1 MB as a data
+    // address, or none. A computer of an older step has none.
+    picture: { check: nullable(isChannelPicture) },
     // The mark of a sensitive read of the channel (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
     // The outside content that the next turns of the channel hold, with the program mark (spec 007).
@@ -1026,6 +1031,7 @@ const channel: KindDef = {
         lead: r.lead_agent_id,
         reviewParts: r.review_parts === 1,
         leadAnswers: r.lead_answers === 1,
+        picture: isChannelPicture(r.picture) ? r.picture : null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
         parentChannel: r.parent_channel_id,
@@ -1054,6 +1060,7 @@ const channel: KindDef = {
       lead_agent_id: f.lead,
       review_parts: f.reviewParts === true ? 1 : 0,
       lead_answers: f.leadAnswers === false ? 0 : 1,
+      picture: isChannelPicture(f.picture) ? f.picture : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
       parent_channel_id: typeof f.parentChannel === "string" ? f.parentChannel : null,
@@ -1077,6 +1084,7 @@ const channel: KindDef = {
     if (f.lead !== undefined) columns.lead_agent_id = f.lead
     if (typeof f.reviewParts === "boolean") columns.review_parts = f.reviewParts ? 1 : 0
     if (typeof f.leadAnswers === "boolean") columns.lead_answers = f.leadAnswers ? 1 : 0
+    if (f.picture !== undefined) columns.picture = isChannelPicture(f.picture) ? f.picture : null
     if (f.sensitive !== undefined)
       columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
     if (f.outside !== undefined)

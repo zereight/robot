@@ -17,6 +17,7 @@ import { useOrgChart } from "../../../src/orgchart/useOrgChart.ts"
 import { useApp, useServer } from "../../../src/state/context.tsx"
 import { type Palette, radius, space, text } from "../../../src/theme/palette.ts"
 import { AvatarMark } from "../../../src/ui/AvatarMark.tsx"
+import { ChannelMark } from "../../../src/ui/ChannelMark.tsx"
 import { Face } from "../../../src/ui/Face.tsx"
 import { Body, Button, ErrorLine, Notice, Screen } from "../../../src/ui/kit.tsx"
 import { Sheet } from "../../../src/ui/Sheet.tsx"
@@ -228,9 +229,11 @@ const BlockHeader = (props: { readonly link: string; readonly block: OrgBlock })
   const { t, palette } = useApp()
   const { block, link } = props
   const channelId = block.channelId
+  // The picture of the channel, from the channels that the phone holds (spec 004, 011).
+  const picture = useServer(link)?.data.channels?.find((c) => c.id === channelId)?.picture
   const content = (
     <>
-      {channelId !== null ? <AvatarMark glyph="#" size={32} /> : null}
+      {channelId !== null ? <ChannelMark picture={picture} size={32} /> : null}
       <View style={styles.rowText}>
         <Text style={[styles.blockTitle, { color: palette.text }]}>{blockName(t, block)}</Text>
         <Text style={[styles.blockLine, { color: palette.textMuted }]}>{blockLine(t, block)}</Text>

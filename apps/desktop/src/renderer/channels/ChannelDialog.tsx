@@ -2,6 +2,7 @@ import {
   type Agent,
   CHANNEL_INSTRUCTIONS_MAX,
   CHANNEL_NAME_MAX,
+  CHANNEL_PICTURE_EDGE,
   CHANNEL_TOPIC_MAX,
   type Channel,
   channelParent,
@@ -13,12 +14,14 @@ import {
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { squarePicture } from "../lib/image.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
+import { ChannelMark } from "../ui/ChannelMark.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
@@ -70,6 +73,36 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
+  // The picture applies at once, as the picture of an agent does (spec 004, 002). The channel
+  // that the dialog got is a snapshot, so the answer of the server is kept here.
+  const [picture, setPicture] = createSignal<string | null>(props.channel?.picture ?? null)
+  let fileInput: HTMLInputElement | undefined
+
+  /** The window cuts the image to a square of 256 px; the service checks it again. */
+  const upload = async (file: File | undefined) => {
+    if (!file || !props.channel) return
+    setError(undefined)
+    try {
+      const dataUrl = await squarePicture(file, CHANNEL_PICTURE_EDGE)
+      setPicture((await call("channels.setPicture", { id: props.channel.id, dataUrl })).picture)
+    } catch (e) {
+      setError(describeError(e))
+    } finally {
+      // The same file can be picked again.
+      if (fileInput) fileInput.value = ""
+    }
+  }
+  const removePicture = async () => {
+    if (!props.channel) return
+    setError(undefined)
+    try {
+      setPicture(
+        (await call("channels.setPicture", { id: props.channel.id, dataUrl: null })).picture,
+      )
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
 
   const valid = () =>
     charLength(name().trim()) >= 1 &&
@@ -322,6 +355,32 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             </span>
           </span>
         </label>
+        {/* The picture of a channel that exists. A client sets it with the switch (spec 012). */}
+        <Show when={props.channel}>
+          <div class={styles.field}>
+            <span class={styles.label}>{t("channels.picture")}</span>
+            <div class={styles.pictureRow}>
+              <ChannelMark picture={picture()} size={40} testId="channel-picture-preview" />
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                hidden
+                data-testid="channel-picture-file"
+                onChange={(e) => upload(e.currentTarget.files?.[0])}
+              />
+              <Button onClick={() => fileInput?.click()} data-testid="channel-picture-upload">
+                {t("channels.picture.upload")}
+              </Button>
+              <Show when={picture()}>
+                <Button onClick={removePicture} data-testid="channel-picture-remove">
+                  {t("channels.picture.remove")}
+                </Button>
+              </Show>
+            </div>
+            <span class={styles.hint}>{t("channels.picture.hint")}</span>
+          </div>
+        </Show>
         {/* The lead reads a question of a member first (spec 004, "Questions of members"). */}
         <Show when={props.channel}>
           <div class={styles.field}>

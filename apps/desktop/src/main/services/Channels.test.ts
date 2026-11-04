@@ -6,6 +6,7 @@ import { Effect } from "effect"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
+import { asOldShape } from "./channelTurns.testing.ts"
 import { Decision } from "./Decision.ts"
 import { Handbook } from "./Handbook.ts"
 import { Memory } from "./Memory.ts"
@@ -46,10 +47,12 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as {
-      messages: { role: string; content: string }[]
-      tools?: unknown[]
-    }
+    const body = asOldShape(
+      (await req.json()) as {
+        messages: { role: string; content: string }[]
+        tools?: unknown[]
+      },
+    )
     const lastMessage = body.messages.at(-1)
     if (lastMessage?.role === "tool")
       return sse([
