@@ -23,6 +23,7 @@ import {
   channelNameKey,
   channelsForFile,
   faceFromName,
+  HANDBOOK_FROM_FILE,
   HANDBOOK_MAX,
   ignoredAgentFields,
   nameKey,
@@ -74,7 +75,7 @@ export interface AgentFilesService {
    * Makes the agents of the file that `open` read that the user ticked, all with the one model.
    * A new agent with a routine gets a checklist in its chat. Then it makes the ticked channels
    * (`channels`, places in the file) and skills (`skills`), and with `handbook` it replaces the
-   * handbook of the server (spec 002, "Agent file"; spec 014, "Review before an import").
+   * handbook of the server (spec 002, "Agent file"; spec 014, the review before it).
    */
   import(input: {
     serverId: string
@@ -583,7 +584,9 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         // The handbook of the server is replaced. The old text stays in its history.
         let replaced = false
         if (input.handbook === true) {
-          const exit = yield* Effect.exit(handbook.save(input.serverId, loaded.handbook, "import"))
+          const exit = yield* Effect.exit(
+            handbook.save(input.serverId, loaded.handbook, HANDBOOK_FROM_FILE),
+          )
           if (Exit.isFailure(exit)) return yield* failed("handbook", "", exit.cause)
           replaced = true
         }
