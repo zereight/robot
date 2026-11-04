@@ -1,4 +1,11 @@
-import type { Agent, ChatMessage, MessagePart } from "@robot/shared"
+import {
+  type Agent,
+  type ChatMessage,
+  foldedToolsKey,
+  groupParts,
+  type MessagePart,
+  type PartSegment,
+} from "@robot/shared"
 import { memo, type ReactNode, useState } from "react"
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native"
 import { errorText, fileSizeText } from "../i18n/index.ts"
@@ -47,8 +54,9 @@ export const MessageRow = memo(
     readonly ownDevice: string | null
     readonly actions: RowActions
   }) => {
-    const { t, palette, locale, errorLine } = useApp()
+    const { t, palette, locale, errorLine, prefs } = useApp()
     const { message, agent } = props
+    const segments = groupParts(message.parts, !prefs.showToolSteps)
     const isAgent = message.author === "agent"
     const name = isAgent ? (agent?.name ?? "?") : t("chat.you")
     const time = new Date(message.createdAt).toLocaleTimeString(locale, {
@@ -103,9 +111,9 @@ export const MessageRow = memo(
               </Text>
             </Pressable>
           ) : null}
-          {message.parts.map((part, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: parts have no id; the order is stable.
-            <Part key={i} part={part} message={message} actions={props.actions} />
+          {segments.map((segment, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: segments have no id; the order is stable.
+            <Segment key={i} segment={segment} message={message} actions={props.actions} />
           ))}
           {message.status === "streaming" && message.parts.length === 0 ? (
             <ActivityIndicator style={styles.spinner} color={palette.textMuted} />
@@ -149,6 +157,42 @@ export const MessageRow = memo(
     )
   },
 )
+
+/**
+ * A run of finished plain tool steps as one muted line, when the switch "Show tool steps" is
+ * off. A tap opens it to read the cards. A folded run never holds a card that waits.
+ */
+const ToolsFolded = (props: { readonly tools: readonly ToolPart[] }) => {
+  const { t, palette } = useApp()
+  const [open, setOpen] = useState(false)
+  return (
+    <View style={styles.tool}>
+      <Pressable
+        testID="tools-folded"
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen(!open)}
+      >
+        <Text style={[styles.small, { color: palette.textMuted }]}>
+          {open ? "▾ " : "▸ "}
+          {t(foldedToolsKey(props.tools.length), { count: props.tools.length })}
+        </Text>
+      </Pressable>
+      {open ? props.tools.map((tool) => <ToolCard key={tool.id} tool={tool} />) : null}
+    </View>
+  )
+}
+
+const Segment = (props: {
+  readonly segment: PartSegment
+  readonly message: ShownMessage
+  readonly actions: RowActions
+}) =>
+  props.segment.kind === "tools" ? (
+    <ToolsFolded tools={props.segment.parts} />
+  ) : (
+    <Part part={props.segment.part} message={props.message} actions={props.actions} />
+  )
 
 const Part = (props: {
   readonly part: MessagePart
