@@ -202,6 +202,7 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     "teams.hidePage",
     "teams.place",
     "teams.useChat",
+    "teams.readSenders",
     "teams.signOut",
     "teams.remove",
     "places.move",

@@ -5,6 +5,7 @@ import {
   callMayStart,
   checkCall,
   checkTeamsLink,
+  cleanNames,
   countRead,
   countSend,
   cutLineText,
@@ -50,6 +51,7 @@ import {
   TEAMS_HOLD_TRIES,
   TEAMS_INPUT_MAX,
   TEAMS_LOOK_AGAIN_MS,
+  TEAMS_NAME_MAX,
   TEAMS_OUTBOX_MAX,
   TEAMS_READ_MS,
   TEAMS_RECORDS_MAX,
@@ -167,6 +169,12 @@ export interface TeamsLinkService {
   place(bounds: PageBounds | undefined): Effect.Effect<void>
   /** "Use this chat": reads the title of the open chat and puts it in the field "Chat title". */
   readonly useChat: Effect.Effect<TeamsLinkView, AppError>
+  /**
+   * "Find in the chat": the names of the senders that the open chat shows, each name once, in the
+   * order of their first message. It changes no field and keeps no name: the user decides which
+   * names join a list. It works while the switch is on, as the lists change at any time.
+   */
+  readonly readSenders: Effect.Effect<readonly string[], AppError>
   /** "Resume": a paused link starts again with a baseline read (spec 028). */
   readonly resume: Effect.Effect<TeamsLinkView, AppError>
   /**
@@ -1292,6 +1300,27 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           return r ? Effect.succeed(r) : Effect.fail(new AppError({ code: "teams_not_set_up" }))
         }
 
+        /**
+         * What "Use this chat" and "Find in the chat" need first: the Teams page is open, the user is
+         * signed in, the page is online, and a chat is open. Gives the title of the open chat, or
+         * says which of these is missing.
+         */
+        const openChatTitle = () =>
+          Effect.gen(function* () {
+            if (!surface.isOpen()) return yield* new AppError({ code: "teams_page_closed" })
+            const look = yield* Effect.promise(() => guarded(() => surface.look()))
+            if (look?.kind === "signIn") {
+              setSignedIn(false)
+              changed()
+              return yield* new AppError({ code: "teams_signed_out" })
+            }
+            if (look?.kind === "offline") return yield* new AppError({ code: "teams_offline" })
+            if (look?.kind !== "teams") return yield* new AppError({ code: "teams_unreadable" })
+            setSignedIn(true)
+            if (look.openTitle === null) return yield* new AppError({ code: "teams_no_chat_open" })
+            return look.openTitle
+          })
+
         const ensureProfile = Effect.gen(function* () {
           const profile = yield* profiles.teamsProfile
           platform.setTeamsProfile(profile.id)
@@ -1411,21 +1440,22 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
 
           useChat: Effect.fn("TeamsLink.useChat")(function* () {
             const r = yield* needRow()
-            if (!surface.isOpen()) return yield* new AppError({ code: "teams_page_closed" })
-            const look = yield* Effect.promise(() => guarded(() => surface.look()))
-            if (look?.kind === "signIn") {
-              setSignedIn(false)
-              changed()
-              return yield* new AppError({ code: "teams_signed_out" })
-            }
-            if (look?.kind === "offline") return yield* new AppError({ code: "teams_offline" })
-            if (look?.kind !== "teams") return yield* new AppError({ code: "teams_unreadable" })
-            setSignedIn(true)
-            if (look.openTitle === null) return yield* new AppError({ code: "teams_no_chat_open" })
+            const title = yield* openChatTitle()
             if (r.enabled === 1) return yield* new AppError({ code: "teams_locked" })
-            save({ chat_title: look.openTitle.slice(0, TEAMS_INPUT_MAX) })
+            save({ chat_title: title.slice(0, TEAMS_INPUT_MAX) })
             changed()
             return viewOf()
+          })(),
+
+          readSenders: Effect.fn("TeamsLink.readSenders")(function* () {
+            yield* needRow()
+            yield* openChatTitle()
+            const read = yield* Effect.promise(() => guarded(() => surface.readMessages()))
+            if (!read) return yield* new AppError({ code: "teams_unreadable" })
+            // A name that is too long for a list is not offered: it would only fail the form.
+            return cleanNames(read.messages.map((m) => m.sender)).filter(
+              (name) => name.length <= TEAMS_NAME_MAX,
+            )
           })(),
 
           resume: Effect.fn("TeamsLink.resume")(function* () {
