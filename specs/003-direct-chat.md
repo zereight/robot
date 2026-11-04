@@ -19,10 +19,40 @@ The user gives an agent work in plain language and sees what the agent does whil
   (a relative address or another scheme) shows its words as plain text, not as a link.
 - Tool use shows as a compact card inside the reply: an icon, a short label of what the agent did
   (read a file, ran a command, opened a page), and its result state. A click opens the details.
+  Finished steps can fold into one line per run (see "Folded tool steps").
 - Thinking, when the model gives it, folds into one muted line that the user can open.
 - Hover on a row shows actions: reply, copy, fork (see "Threads"), and for the user's own last
   message, edit. On a finished message of an agent it also shows "Read aloud" (027) and "Mark as
   unread" (see "Mark as unread").
+
+## Folded tool steps
+
+A long run of tool steps fills the chat. The user can fold it away.
+
+- The switch "Show tool steps" in Appearance (013) is on at first. When it is off, each run of
+  finished plain tool steps in a message shows as one muted line with the count. For example:
+  "2 tool steps", or "1 tool step" for one step. The user opens the line to read the cards, and
+  closes it again.
+- A run is steps with no other part between them. Text, thinking, files, muted lines and cards
+  that stay open split runs.
+- A step folds only when it finished with no mark: not running, not waiting, not failed, not
+  refused, and with no approval, question, decision, memory, knowledge or settings note. A step
+  that runs, waits, failed, was refused, or carries such a note always shows as its own card or
+  line.
+- The switch changes the chat at once, in direct chats, threads and channels.
+- Find in the chat (flow 10) does not look at the folded line, as it does not look at tool cards
+  or thinking.
+- Ways in: the switch is the only way to turn folding on or off. The user opens and closes a line
+  by a click or a tap on it.
+- Devices: each computer and each phone has its own switch, and uses it for every chat that it
+  shows. Each profile (022) has its own switch.
+- Runtimes: nothing changes for the agent. The switch changes only the view. It works the same for
+  every agent, with every model provider and vendor runtime (006).
+- Data: the switch is a setting of the open profile on its computer (013). It does not sync (019).
+  An export holds it, like the other settings (014). The switch on the phone stays on the phone
+  (011).
+- Seeing the state: the switch shows on or off, and it keeps its state after a restart. The line
+  shows the count of its steps.
 
 ## Flows
 
@@ -445,3 +475,8 @@ and its role line. Nothing moves.
   to the decision model holds the text of the field and does not hold the brief.
 - Delete the first chat. The card of the new thread still shows "From A" as plain text.
 - The Tasks page (005) lists the task of B with the source "Handover".
+- Turn off "Show tool steps". A reply with two finished reads in a row shows one folded line
+  with the count 2. Open the line: the two cards show. A reply with a text between two finished
+  reads shows two folded lines with the count 1 each.
+- With the switch off, a step that waits for an approval and a failed step still show as cards.
+  Turn the switch on: the cards show with no folded line.

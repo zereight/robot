@@ -74,7 +74,7 @@ What ACP does not give (read):
 Limits of the adapters (read):
 
 - `claude-agent-acp` needs `@anthropic-ai/claude-agent-sdk`, whose package license field reads
-  "SEE LICENSE IN README.md". `CLEANROOM.md` allows MIT, ISC, BSD and Apache-2.0 only. A person
+  "SEE LICENSE IN README.md". `AGENTS.md` allows MIT-compatible licenses only. A person
   must read the terms before the app depends on it.
 - `pi-acp` starts pi without the tool list, the skill switch, the context-file switch and the
   extra system text that the app sets today. The permission levels of the app would get weaker.

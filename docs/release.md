@@ -1,6 +1,6 @@
 # Release
 
-Role: Implementer. This page describes how ROBot desktop builds are made and published.
+This page describes how ROBot desktop builds are made and published.
 
 ## Builds
 

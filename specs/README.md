@@ -1,7 +1,7 @@
 # Behaviour specs
 
-Each spec describes one area of ROBot from the user's side. Implementers build from these files
-only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-contain).
+Each spec describes one area of ROBot from the user's side. It describes behaviour, never
+implementation (see [AGENTS.md](../AGENTS.md)).
 
 ## Index
 
@@ -75,6 +75,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M30 | 029, and the changes to 001, 011, 012, 014 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S106: the org chart |
 | M31 | The changes to 001, 002, 011, 012 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S107: the role label, the role badge and the filter of places by role |
 | M32 | 030, and the changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S108 to S112: edit on the org chart, sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel |
+| M33 | The changes to 003, 011 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S113: folded tool steps |
 
 ## Surfaces check
 

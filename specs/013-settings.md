@@ -19,7 +19,9 @@ The user sets the app up the way they like in one place.
   "Keep going"). "Dictation language" and "Reading speed" are in 027. "Show in the menu bar" is
   on or off; the default is off (see 015, "Menu bar item").
 - **Appearance**: theme (dark, light, system), text size (small, default, large), compact place
-  list on/off, reduce motion (follow the system by default).
+  list on/off, reduce motion (follow the system by default), and "Show tool steps" (on or off;
+  the default is on), which folds each run of finished plain tool steps into one muted line with
+  the count when off (see 003, "Folded tool steps").
 - **Providers**: see 006.
 - **Decision model**: the fast model for channel picks, computer use and permission checks. See
   "Decision model".
@@ -142,3 +144,5 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Turn off "Keep going on open steps": a stand-in runtime that ends with open steps ends its task.
   Turn it on: the same turn goes on.
 - Turn on "Show in the menu bar": the icon shows. Turn it off: the icon goes.
+- Turn off "Show tool steps": a chat with finished steps shows one folded line per run. Turn it
+  on: the cards show again.

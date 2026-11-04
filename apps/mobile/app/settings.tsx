@@ -74,6 +74,15 @@ export default function Settings() {
         />
       </Section>
 
+      <Section title={t("settings.chat")}>
+        <Toggle
+          testID="settings.showToolSteps"
+          label={t("settings.showToolSteps")}
+          value={prefs.showToolSteps}
+          onChange={(showToolSteps) => setPrefs((p) => ({ ...p, showToolSteps }))}
+        />
+      </Section>
+
       <Section title={t("settings.notifications")}>
         <Body muted style={styles.small}>
           {Platform.OS === "ios"

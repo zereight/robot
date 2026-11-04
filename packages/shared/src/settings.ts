@@ -117,6 +117,11 @@ export const Settings = Schema.Struct({
    * saved before this existed has none, and the default holds the computer while an agent works.
    */
   keepAwake: Schema.Literals(KEEP_AWAKE_MODES),
+  /**
+   * "Show tool steps" (Appearance): when off, finished plain tool steps fold into one line per
+   * run. A step that runs, waits, failed, was refused, or carries a note always stays open.
+   */
+  showToolSteps: Schema.Boolean,
 })
 export type Settings = typeof Settings.Type
 
@@ -158,6 +163,7 @@ export const defaultSettings: Settings = {
   keepGoing: true,
   agentsAtOnce: AGENTS_AT_ONCE_DEFAULT,
   keepAwake: KEEP_AWAKE_DEFAULT,
+  showToolSteps: true,
 }
 
 export type Locale = "en" | "ko"
