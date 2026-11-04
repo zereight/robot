@@ -19,6 +19,7 @@ import { Devices } from "./Devices.ts"
 import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
+import { MemoryCheck } from "./MemoryCheck.ts"
 import { Notifier } from "./Notifier.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
@@ -578,6 +579,147 @@ describe("two computers that were apart", () => {
     }
   })
 
+  describe("the channel tree is checked after the last batch of a sync (spec 030, Repair, When it runs)", () => {
+    // One consistent edit set of the other computer crosses in two batches: it moves "Y" to the top
+    // and puts "X" under "Y". The batch with the change of "X" comes first, and alone it makes a
+    // loop. The batches are written by hand to the entry of the link, so a test decides where the
+    // set is cut. The quiet time of the check is turned long, so the steps have room.
+    // These tests wait for the quiet time of the check. A test that sets its own limit keeps it,
+    // also when other files run in the same process.
+    const LONG = 30_000
+    const withQuiet = async (quiet: number, body: () => Promise<void>) => {
+      process.env.ROBOT_SYNC_REPAIR_MS = String(quiet)
+      try {
+        await body()
+      } finally {
+        delete process.env.ROBOT_SYNC_REPAIR_MS
+      }
+    }
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    const setup = async () => {
+      const { a, b } = await pair([])
+      const serverA = await localId(a)
+      const make = (name: string, parentId: string | null) =>
+        run(
+          a,
+          Channels.use((c) =>
+            c.create({ serverId: serverA, name, topic: "", memberIds: [], leadId: null, parentId }),
+          ),
+        )
+      // "Y" is under "X" on both computers.
+      const x = await make("X", null)
+      const y = await make("Y", x.id)
+      const serverB = await localId(b)
+      const tree = async () =>
+        Object.fromEntries(
+          (
+            await run(
+              b,
+              Channels.use((c) => c.list(serverB)),
+            )
+          ).map((c) => [c.name, c.parentId === null ? null : c.parentId === x.id ? "X" : "Y"]),
+        )
+      await waitFor(tree, (t) => t.Y === "X")
+      const aId = (await run(
+        b,
+        Sync.use((s) => Effect.sync(() => s.peerId())),
+      )) as string
+      const base = Date.now() + 5000
+      const change = (id: string, parent: string | null, l: number) => ({
+        k: "channel",
+        i: id,
+        o: aId,
+        f: { parentChannel: { v: parent, s: [l, 0, aId] } },
+      })
+      // "Y" goes to the top first; "X" goes under "Y" a little later.
+      const yToTop = change(y.id, null, base)
+      const xUnderY = change(x.id, y.id, base + 100)
+      const push = (ops: readonly unknown[]) =>
+        run(
+          b,
+          Sync.use((s) => Effect.promise(() => s.handle("sync.push", { ops }, aId))),
+        )
+      const lines = async (id: string) =>
+        (
+          await run(
+            b,
+            Channels.use((c) => c.history(id)),
+          )
+        ).map((m) => m.parts)
+      return { b, x, y, tree, push, lines, yToTop, xUnderY }
+    }
+
+    test(
+      "two batches that make a valid tree together: no repair, in the middle or at the end",
+      async () => {
+        const quiet = 1500
+        await withQuiet(quiet, async () => {
+          const s = await setup()
+          await s.push([s.xUnderY])
+          // Half of the set is a loop. The check has not run: it waits for the end of the flow.
+          expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+          await sleep(300)
+          expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+          await s.push([s.yToTop])
+          expect(await s.tree()).toEqual({ X: "Y", Y: null })
+          // The check runs after the quiet time, and finds a tree that is right.
+          await sleep(quiet + 800)
+          expect(await s.tree()).toEqual({ X: "Y", Y: null })
+          expect(await s.lines(s.x.id)).toEqual([])
+          expect(await s.lines(s.y.id)).toEqual([])
+        })
+      },
+      LONG,
+    )
+
+    test(
+      "each batch moves the check back, also a batch with no channel in it",
+      async () => {
+        // The quiet time is long, so that a pause of the test computer does not make a step late.
+        const quiet = 2500
+        await withQuiet(quiet, async () => {
+          const s = await setup()
+          await s.push([s.xUnderY])
+          await sleep(quiet * 0.5)
+          await s.push([])
+          // The first quiet time is over here (it ended at 1.0), but a batch came at 0.5, so the
+          // check is due at 1.5. The loop is still there.
+          await sleep(quiet * 0.6)
+          expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+          expect(await s.lines(s.x.id)).toEqual([])
+          await s.push([s.yToTop])
+          await sleep(quiet + 800)
+          expect(await s.tree()).toEqual({ X: "Y", Y: null })
+          expect(await s.lines(s.x.id)).toEqual([])
+          expect(await s.lines(s.y.id)).toEqual([])
+        })
+      },
+      LONG,
+    )
+
+    test(
+      "a break that stays is repaired after the quiet time: one field, one muted line",
+      async () => {
+        const quiet = 1500
+        await withQuiet(quiet, async () => {
+          const s = await setup()
+          await s.push([s.xUnderY])
+          // Not at once.
+          expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+          expect(await s.lines(s.x.id)).toEqual([])
+          // The change of "X" is the later one, so its field is cleared.
+          const done = await waitFor(s.tree, (t) => t.X === null, quiet + 6000)
+          expect(done).toEqual({ X: null, Y: "X" })
+          expect(await s.lines(s.x.id)).toEqual([
+            [{ kind: "note", note: "tree_repaired", why: "loop" }],
+          ])
+          expect(await s.lines(s.y.id)).toEqual([])
+        })
+      },
+      LONG,
+    )
+  })
+
   test("the same memory item edited on both: the newest text stays and the other text is saved as a new item", async () => {
     const { a, b, agents } = await pair()
     const ada = agents[0]
@@ -704,6 +846,85 @@ describe("two computers that were apart", () => {
     expect((await proposals(b)).length).toBe(0)
   })
 
+  test("a channel note crosses with its channel; a move follows; the delete of the channel takes the note on the other computer with no history row (spec 008, 019)", async () => {
+    const { a, b, agents } = await pair()
+    const id = agents[0]?.id ?? ""
+    const serverId = await localId(a)
+    const channel = await run(
+      a,
+      Channels.use((c) =>
+        c.create({ serverId, name: "Launch", topic: "", memberIds: [id], leadId: null }),
+      ),
+    )
+    // The channel crosses first, so the note finds it.
+    await waitFor(
+      () =>
+        run(
+          b,
+          Channels.use((c) => c.list(serverId)),
+        ),
+      (list) => list.length === 1,
+    )
+    await run(
+      a,
+      Memory.use((m) => m.save(id, "Launch is on Friday", undefined, channel.id)),
+    )
+    const channelOf = (rt: Rt) =>
+      run(
+        rt,
+        Memory.use((m) => m.list(id)),
+      ).then((list) => list.map((i) => [i.text, i.channel?.id ?? null]))
+    await waitFor(
+      () => channelOf(b),
+      (list) => list.length === 1,
+    )
+    expect(await channelOf(b)).toEqual([["Launch is on Friday", channel.id]])
+
+    // A move on the second computer crosses as a change of the item.
+    const [item] = await run(
+      b,
+      Memory.use((m) => m.list(id)),
+    )
+    await run(
+      b,
+      Memory.use((m) => m.move(item?.id ?? "", null)),
+    )
+    await waitFor(
+      () => channelOf(a),
+      (list) => list[0]?.[1] === null,
+    )
+    await run(
+      a,
+      Memory.use((m) => m.move(item?.id ?? "", channel.id)),
+    )
+    await waitFor(
+      () => channelOf(b),
+      (list) => list[0]?.[1] === channel.id,
+    )
+
+    // The delete of the channel on the first computer: the note is gone on both, and the second
+    // computer makes no history row for it.
+    await run(
+      a,
+      Channels.use((c) => c.remove(channel.id)),
+    )
+    await waitFor(
+      () => channelOf(b),
+      (list) => list.length === 0,
+    )
+    const rowsB = await run(
+      b,
+      Memory.use((m) => m.history(id)),
+    )
+    // Only the move that the user made there: the removal that sync brought makes no row.
+    expect(rowsB.map((r) => r.kind)).toEqual(["moved"])
+    const rowsA = await run(
+      a,
+      Memory.use((m) => m.history(id)),
+    )
+    expect(rowsA.some((r) => r.actor === "channel_deleted")).toBe(true)
+  })
+
   test("the handbook, the switch and the instructions of a channel cross; when both change the handbook apart, the later text wins and the other stays in the history (spec 002, 019)", async () => {
     const { a, b, agents } = await pair()
     const ada = agents[0]
@@ -802,6 +1023,63 @@ describe("two computers that were apart", () => {
         )
       ).text,
     ).toBe("From A, later.")
+  })
+
+  test("the memory check is a choice of one computer, and each computer counts its own turns (spec 008, 019)", async () => {
+    const { a, b, agents } = await pair()
+    const id = agents[0]?.id ?? ""
+    const info = (rt: Rt) =>
+      run(
+        rt,
+        MemoryCheck.use((m) => m.info(id)),
+      )
+    // On the first computer: the choice goes on, and one turn is counted.
+    await run(
+      a,
+      MemoryCheck.use((m) => m.setOn(id, true)),
+    )
+    await run(
+      a,
+      Database.use((db) =>
+        Effect.sync(() => {
+          db.run(
+            "INSERT INTO task (id, agent_id, prompt, label, source, state, created_at) VALUES ('t1', ?, 'x', 'x', 'chat', 'done', 1)",
+            id,
+          )
+          db.run("INSERT INTO memory_check_turn (task_id, agent_id, at) VALUES ('t1', ?, 1)", id)
+        }),
+      ),
+    )
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+    // A change of the agent crosses. The choice and the count do not.
+    await run(
+      a,
+      Agents.use((x) => x.update(id, { role: "Reviews" })),
+    )
+    await waitFor(
+      () =>
+        run(
+          b,
+          Agents.use((x) => x.get(id)),
+        ),
+      (agent) => agent.role === "Reviews",
+    )
+    expect(await info(b)).toMatchObject({ on: false, count: 0 })
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+    // A change of the agent on the second computer does not turn the check off on the first.
+    await run(
+      b,
+      Agents.use((x) => x.update(id, { role: "Reviews code" })),
+    )
+    await waitFor(
+      () =>
+        run(
+          a,
+          Agents.use((x) => x.get(id)),
+        ),
+      (agent) => agent.role === "Reviews code",
+    )
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
   })
 
   test("a name stays unique when both computers give one name to different agents", async () => {
@@ -1439,6 +1717,65 @@ describe("tasks, routines, workflows and files of two computers", () => {
         (x) => x === null,
       ),
     ).toBeNull()
+  })
+
+  test("a question that is with the lead on the other computer makes no notice here until the lead passes it (spec 004, 015, 021)", async () => {
+    const { a, b, ada } = await pair()
+    const card = (ask: Record<string, unknown>) =>
+      JSON.stringify([
+        {
+          kind: "tool",
+          id: "call-2",
+          name: "ask_user",
+          label: "Question",
+          state: "waiting",
+          input: "",
+          output: "",
+          ask: {
+            kind: "question",
+            question: "Use the EU sizes only?",
+            choices: ["Yes", "No"],
+            ...ask,
+          },
+        },
+      ])
+    await SQL(
+      b,
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('card-2', ?, 'agent', ?, 'streaming', ?)`,
+      ada.id,
+      card({ lead: { agentId: "lead-1", name: "Lia" } }),
+      Date.now(),
+    )
+    const attention = (rt: Rt) =>
+      run(
+        rt,
+        Notifier.use((n) => Effect.sync(() => n.island().waiting[0] ?? null)),
+      )
+    // The card arrives here with its line "Lia looks at it", and makes no notice.
+    await waitFor(
+      () =>
+        run(
+          a,
+          Database.use((db) =>
+            Effect.sync(() => db.get<{ id: string }>("SELECT id FROM message WHERE id = 'card-2'")),
+          ),
+        ),
+      (row) => row !== undefined,
+    )
+    await new Promise((r) => setTimeout(r, 400))
+    expect(await attention(a)).toBeNull()
+    // The lead passes it: the same card is a normal question for the user, and the notice comes.
+    await SQL(
+      b,
+      `UPDATE message SET parts = ? WHERE id = 'card-2'`,
+      card({ passed: { agentId: "lead-1", name: "Lia", kind: "not_sure", reason: "No fact." } }),
+    )
+    const notice = await waitFor(
+      () => attention(a),
+      (x) => x !== null,
+    )
+    expect(notice?.callId).toBe("call-2")
+    expect(notice?.kind).toBe("question")
   })
 
   test("a file of a message is copied from the computer where it was made, and an offline origin gives a plain error", async () => {

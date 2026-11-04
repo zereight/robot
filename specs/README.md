@@ -1,7 +1,7 @@
 # Behaviour specs
 
-Each spec describes one area of ROBot from the user's side. Implementers build from these files
-only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-contain).
+Each spec describes one area of ROBot from the user's side. It describes behaviour, never
+implementation (see [AGENTS.md](../AGENTS.md)).
 
 ## Index
 
@@ -38,6 +38,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | 028 | [Chat bridge: talk to one agent or one channel from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
 | 029 | [Org chart: the main agent, the channels with their members, leads and sub-channels, the state of each agent, the work that agents handed to each other, and edits of members, leads and parent channels; a read-only list on the phone](029-org-chart.md) | Draft |
 | 030 | [Organization: sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel](030-organization.md) | Draft |
+| 031 | [Channel starters and the goal dialog: a goal in a few words shows the starters that fit, and a channel with its agents is made from a fixed list](031-channel-starters.md) | Draft |
 
 ## Milestones
 
@@ -75,6 +76,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M30 | 029, and the changes to 001, 011, 012, 014 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S106: the org chart |
 | M31 | The changes to 001, 002, 011, 012 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S107: the role label, the role badge and the filter of places by role |
 | M32 | 030, and the changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S108 to S112: edit on the org chart, sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel |
+| M33 | The changes to 003, 011 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S113: folded tool steps |
 
 ## Surfaces check
 

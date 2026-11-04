@@ -22,6 +22,7 @@ import { setShownPlace } from "../../../../src/notices.ts"
 import { downloadAndOpen, uploadSource } from "../../../../src/platform/files.ts"
 import { useApp, useHubState, useServer } from "../../../../src/state/context.tsx"
 import { radius, space, text } from "../../../../src/theme/palette.ts"
+import { ChannelMark } from "../../../../src/ui/ChannelMark.tsx"
 import { Button, ErrorLine, Notice } from "../../../../src/ui/kit.tsx"
 import { Sheet } from "../../../../src/ui/Sheet.tsx"
 import { stateText } from "../../../../src/ui/states.ts"
@@ -173,7 +174,27 @@ export default function Conversation() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 44 : 0}
     >
-      <Stack.Screen options={{ title }} />
+      {/* A channel with a picture shows it in place of the `#` (spec 004, 011). */}
+      <Stack.Screen
+        options={{
+          title,
+          ...(kind === "channel" && channel?.picture
+            ? {
+                headerTitle: () => (
+                  <View style={styles.channelTitle} testID="channel.title">
+                    <ChannelMark picture={channel.picture} size={28} />
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.channelTitleText, { color: palette.text }]}
+                    >
+                      {channel.name}
+                    </Text>
+                  </View>
+                ),
+              }
+            : {}),
+        }}
+      />
       {view.state !== "online" ? (
         <View style={styles.banner}>
           <Notice
@@ -392,6 +413,8 @@ const Pick = (props: {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  channelTitle: { flexDirection: "row", alignItems: "center", gap: space.s, maxWidth: 240 },
+  channelTitleText: { fontSize: text.m, fontWeight: "600", flexShrink: 1 },
   banner: { paddingHorizontal: space.l, paddingTop: space.s },
   content: { paddingVertical: space.m },
   empty: { textAlign: "center", padding: space.xl, fontSize: text.s },

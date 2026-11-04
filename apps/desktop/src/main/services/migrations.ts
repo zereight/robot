@@ -1100,12 +1100,61 @@ export const migrations: readonly string[] = [
   ${dirtyTriggers("handbook_version", "hversion", plainId)}
   `,
   `
+  -- The memory check (spec 008, S64). The choice of an agent: 0 (off) is the default. It is a
+  -- choice of one computer, like the other memory switches (spec 019): no dirty trigger is made
+  -- here, and sync does not read the column.
+  ALTER TABLE agent ADD COLUMN memory_check INTEGER NOT NULL DEFAULT 0;
+  -- The turns that ended as done since the last check: their number is the count of the agent.
+  -- A restart keeps the rows, so it keeps the count. The check reads these turns when it starts,
+  -- and deletes the rows then. A task that sync brought from the other computer is not counted
+  -- here: each computer counts its own turns. The rows are not part of an import.
+  CREATE TABLE memory_check_turn (
+    task_id TEXT PRIMARY KEY REFERENCES task (id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    at INTEGER NOT NULL
+  );
+  CREATE INDEX memory_check_turn_agent ON memory_check_turn (agent_id, at);
+  -- 1 for a proposal that a memory check made (the tab shows "From a memory check").
+  ALTER TABLE memory_proposal ADD COLUMN from_check INTEGER NOT NULL DEFAULT 0;
+  `,
+  `
+  -- Channel notes (spec 008, 004, S65). A memory item may name one channel: it is then a note
+  -- that the agent reads only in turns of that channel. NULL is a general item. There is no
+  -- foreign key: the delete of a channel removes its notes in code, so that each one gets a
+  -- history row, and a channel that sync removes takes its notes with it. The column syncs
+  -- with the item (the dirty trigger of the table watches every column).
+  ALTER TABLE memory ADD COLUMN channel_id TEXT;
+  CREATE INDEX memory_channel ON memory (channel_id);
+  -- The channel that a proposal would make its item a note of, or NULL for a general item. It is
+  -- not the place where the proposal was made. Proposals do not sync (spec 019).
+  ALTER TABLE memory_proposal ADD COLUMN channel_id TEXT;
+  -- The channel of the item before and after a change, with the name of the channel at that
+  -- time (the channel may be gone later). A move is a change of kind 'moved'. The actor
+  -- 'channel_deleted' is the delete of a channel. History does not sync.
+  ALTER TABLE memory_history ADD COLUMN channel_before TEXT;
+  ALTER TABLE memory_history ADD COLUMN channel_after TEXT;
+  ALTER TABLE memory_history ADD COLUMN channel_name_before TEXT;
+  ALTER TABLE memory_history ADD COLUMN channel_name_after TEXT;
+  `,
+  `
+  -- "The lead answers questions" (spec 004, S74): a setting of the channel, on (1) by default. A
+  -- question of a member in a part goes to the lead first. It syncs with the channel (spec 019):
+  -- the dirty trigger of the channel already watches every column.
+  ALTER TABLE channel ADD COLUMN lead_answers INTEGER NOT NULL DEFAULT 1;
+  `,
+  `
   -- The parent channel (spec 030, S109). NULL is a top channel, as every channel was before this
   -- step, so existing data keeps its meaning. The column has no foreign key: a sync (019) can bring
   -- a sub-channel before its parent, and a parent that is gone counts as no parent. When the user
   -- removes a channel, the app clears the field of its sub-channels. It syncs with the channel: the
   -- dirty trigger of the channel already watches every column. An export keeps it (014).
   ALTER TABLE channel ADD COLUMN parent_channel_id TEXT;
+  `,
+  `
+  -- The picture of a channel (spec 004, S88): a square PNG of at most 256 px and 1 MB as a data
+  -- address, or NULL. It is in the database, so an export keeps it, and the delete of a channel
+  -- removes it. It syncs with the channel (the dirty trigger of the channel watches every column).
+  ALTER TABLE channel ADD COLUMN picture TEXT;
   `,
   `
   -- The tools and the daily token limit of a channel (spec 030, S112). \`channels\` is a JSON list of

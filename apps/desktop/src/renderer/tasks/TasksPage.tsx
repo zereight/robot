@@ -45,6 +45,7 @@ import { showToast } from "../ui/toast.ts"
 import { TaskStateText } from "./TaskStateText.tsx"
 import { TaskUsageView } from "./TaskUsageView.tsx"
 import styles from "./tasks.module.css"
+import { taskTitle } from "./title.ts"
 
 // A reason with no text of its own shows the general error text.
 const catalogueKeys = catalogues.en
@@ -220,7 +221,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
       <Show when={detail()}>
         {(d) => (
           <div class={styles.detail}>
-            <h2 class={styles.title}>{d().task.label}</h2>
+            <h2 class={styles.title}>{taskTitle(d().task, t)}</h2>
             <p class={styles.meta}>
               {d().task.agentName} · {t(`tasks.source.${d().task.source}` as MessageKey)} ·{" "}
               <span
@@ -284,6 +285,35 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 </>
               )}
             </Show>
+            {/* The questions of a part, with who answered each one (spec 004, 005). */}
+            <Show when={d().questions.length > 0}>
+              <h3>{t("tasks.questions")}</h3>
+              <ul class={styles.questions} data-testid="task-questions">
+                <For each={d().questions}>
+                  {(item) => (
+                    <li data-testid="task-question" data-by={item.by}>
+                      <span class={styles.text}>{item.question}</span>
+                      <span class={styles.questionBy} data-testid="task-question-by">
+                        {item.by === "user"
+                          ? t("tasks.question.user")
+                          : item.by === "lead"
+                            ? t("tasks.question.lead", { name: item.name ?? "" })
+                            : item.by === "with_lead"
+                              ? t("tasks.question.withLead", { name: item.name ?? "" })
+                              : item.by === "passed"
+                                ? t("tasks.question.passed", { name: item.name ?? "" })
+                                : t("tasks.question.open")}
+                      </span>
+                      <Show when={item.reason}>
+                        <span class={styles.questionReason} data-testid="task-question-reason">
+                          {item.reason}
+                        </span>
+                      </Show>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
             <Show when={d().joined.length > 0}>
               <h3>{t("tasks.joined")}</h3>
               <ul class={styles.joined} data-testid="task-joined">
@@ -323,7 +353,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                         <StateIcon state={node.task.state} />
                         <TaskStateText task={node.task} />
                       </span>{" "}
-                      {node.task.agentName}: {node.task.label}
+                      {node.task.agentName}: {taskTitle(node.task, t)}
                     </li>
                   )}
                 </For>
@@ -632,7 +662,7 @@ export const TasksPage = () => {
                         onClick={() => setOpenId(task.id)}
                         data-testid="task-open"
                       >
-                        {task.label}
+                        {taskTitle(task, t)}
                       </button>
                     </th>
                     <td>{t(`tasks.source.${task.source}` as MessageKey)}</td>

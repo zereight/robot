@@ -518,3 +518,62 @@ test("subscription: opencode lists its own models, has no sign-in in the app, an
   await shot(page, "s17-12-opencode-chat")
   await app.close()
 })
+
+test("subscription: Cursor lists its models, has no sign-in in the app, and applies changes in the sandbox", async () => {
+  test.setTimeout(120_000)
+  const fake = makeFakeRuntimes()
+  fake.setCursor({ signedIn: false })
+  const { app, page } = await launch(freshUserData(), {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+    ROBOT_CLAUDE_BIN: "none",
+    ROBOT_CODEX_BIN: "none",
+    ROBOT_MUSE_BIN: "none",
+    ROBOT_PI_BIN: "none",
+    ROBOT_OPENCODE_BIN: "none",
+    ROBOT_CURSOR_BIN: fake.cursor,
+  })
+  await resizeWindow(app, 1300, 900)
+
+  await openAddForm(page)
+  await page.getByTestId("provider-kind").selectOption("cursor")
+  await expect(page.getByTestId("runtime-status")).toHaveText("Not signed in.")
+  await expect(page.getByTestId("runtime-sign-in")).toHaveCount(0)
+  await expect(page.getByTestId("runtime-install")).toHaveCount(0)
+  await expect(page.getByTestId("runtime-sign-in-hint")).toContainText("inside Cursor")
+  await expect(page.getByTestId("provider-submit")).toBeDisabled()
+  await shot(page, "s17-13-cursor-needs-sign-in")
+
+  fake.setCursor({ signedIn: true, email: "ada@example.com" })
+  await page.getByTestId("runtime-recheck").click()
+  await expect(page.getByTestId("runtime-status")).toHaveText("Signed in as ada@example.com.")
+  await shot(page, "s17-14-cursor-ready")
+  await page.getByTestId("provider-submit").click()
+  await expect(page.getByTestId("provider-status")).toHaveText("Connected")
+  await page.getByTestId("settings-close").click()
+
+  await createAgent(page, "Cora")
+  await expect(page.getByTestId("chat-header-model")).toHaveText("composer-2.5")
+  await page.getByTestId("chat-header-model").click()
+  await expect(page.getByTestId("model-model").locator("option").first()).toHaveText("Composer 2.5")
+  await expect(page.getByTestId("model-effort")).toHaveCount(0)
+  await page.getByTestId("model-save").click()
+  await send(page, "hello cursor")
+  await settled(page)
+  await expect(page.getByTestId("message").last()).toContainText("Echo: hello cursor")
+  const turn = fake.cursorCalls().findLast((entry) => {
+    const args = entry.args
+    return Array.isArray(args) && args.includes("-p")
+  })
+  expect(turn).toMatchObject({
+    args: expect.arrayContaining(["--force", "--sandbox", "enabled", "--trust", "composer-2.5"]),
+  })
+  await shot(page, "s17-15-cursor-chat")
+
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("settings-nav-general").click()
+  await page.getByTestId("setting-language").locator('label[data-value="ko"]').click()
+  await page.getByTestId("settings-nav-providers").click()
+  await expect(page.getByTestId("provider-runtime-state")).toHaveText("사용 가능")
+  await shot(page, "s17-16-cursor-ko")
+  await app.close()
+})

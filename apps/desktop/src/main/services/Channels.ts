@@ -3,15 +3,20 @@ import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import {
   type AgentModel,
+  ASKING_MAX,
+  type AskingLine,
   askAllowsAlways,
   askKind,
   askStep,
   askSummary,
+  asksMember,
+  assignmentFits,
   BLOCKED_RULE,
   blockedReasonForAgent,
   CHAIN_LIMIT_RULE,
   CHANNEL_LIMIT_CODE,
   CHANNEL_NAME_MAX,
+  CHANNEL_SUMMARY_SYSTEM,
   CHANNEL_TOPIC_MAX,
   CHECK_MESSAGES,
   type Channel,
@@ -21,16 +26,22 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   type CheckAnswer,
+  type CheckMessage,
   carriesProgramMark,
   changesLabel,
   channelInstructionsTooLong,
   charLength,
+  checkChannelPicture,
   checkInstruction,
   checkStateText,
   composeInstructions,
+  contextShare,
   createReadGuard,
+  cutChars,
   DONE_TEST_MAX,
   endOfTurn,
+  firstReader,
+  fitSummary,
   hasUsage,
   hasVisibleReply,
   holdOutside,
@@ -40,17 +51,29 @@ import {
   isTaskProgress,
   KEEP_GOING_MAX,
   keepGoingMessage,
+  LEAD_LOOK_MS,
+  type LeadAnswer,
+  type LeadLookEnd,
   type ListedStep,
   LOOKS_MAX,
+  leadLookInstruction,
+  leadLookLog,
+  leadLookText,
   levelOnRuntime,
+  lineTokens,
   MESSAGE_MAX,
+  type MemberContext,
   type MemberState,
   type MessagePart,
   type MessageStatus,
+  type ModelInfo,
+  memberTurns,
   mentionsEveryone,
   mentionsUser,
   messageText,
+  NEWEST_UNKNOWN,
   needsVerdict,
+  newestWindow,
   newTurnMark,
   nudgeRefusal,
   type OutsideSource,
@@ -64,31 +87,42 @@ import {
   PLAN_STEPS_MAX,
   parentRefusal,
   parseCheck,
+  parseLeadLook,
   parseMentions,
   parsePlaceOutside,
   parsePlan,
   partText,
   planText,
+  type QuestionPass,
+  readerAfterPass,
   requestOpen,
   runningStepKind,
   runtimeModel,
+  type StopWhy,
+  SUMMARY_SOURCE_CUT,
+  SUMMARY_SOURCE_TOKENS,
   stepLabel,
   stillNotMet,
+  summaryRequest,
+  summaryWords,
   type Task,
   type TaskProgress,
   type TaskState,
   type TeamsJobKind,
+  type ToolAsk,
   type TurnMark,
   type TurnStarter,
   toldAboutBlocked,
   toolNameOf,
   validDailyLimit,
   verdictText,
+  type WindowLine,
+  withAssignment,
 } from "@robot/shared"
-import { Cause, Context, Effect, Exit, Layer, Stream } from "effect"
+import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { goOnTurns } from "../providers/resume.ts"
 import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
@@ -98,6 +132,7 @@ import { type Attempt, withBackup } from "./backupTurn.ts"
 import { applyEvent } from "./Chat.ts"
 import { Connections } from "./Connections.ts"
 import { limitStopping } from "./channelAccess.ts"
+import { NOT_REPAIR_LINE } from "./channelTreeRepair.ts"
 import { Database } from "./Database.ts"
 import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
@@ -106,6 +141,7 @@ import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { withKeepGoing } from "./keepGoingTurn.ts"
 import { appendLog } from "./logs.ts"
+import { Memory } from "./Memory.ts"
 import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
@@ -132,6 +168,8 @@ export interface ChannelsService {
   get(id: string): Effect.Effect<Channel, AppError>
   create(input: ChannelCreate): Effect.Effect<Channel, AppError>
   update(id: string, patch: ChannelPatch): Effect.Effect<Channel, AppError>
+  /** Sets the picture of a channel, or removes it with null (spec 004, "Picture"). */
+  setPicture(id: string, dataUrl: string | null): Effect.Effect<Channel, AppError>
   remove(id: string): Effect.Effect<void, AppError>
   history(channelId: string): Effect.Effect<readonly ChannelMessage[]>
   /** Posts a job. With a mention it goes to that member; else to the lead; else the user picks. */
@@ -206,6 +244,7 @@ interface ChannelRow {
   lead_agent_id: string | null
   place_section_id: string | null
   review_parts: number
+  lead_answers: number
   sensitive_mark: string | null
   outside_mark: string | null
   parent_channel_id: string | null
@@ -249,6 +288,9 @@ interface AgentRow {
 const EMIT_EVERY_MS = 50
 const SAVE_EVERY_MS = 500
 const HISTORY_TURNS = 40
+/** A member reads at most this many messages of a channel to find its window (spec 004). */
+const SCAN_MAX = 400
+const SCAN_PAGE = 100
 const RESULT_TEXT_MAX = 1200
 const LAST_MESSAGE_MAX = 140
 
@@ -259,6 +301,12 @@ const LEAD_RULES = (members: readonly string[]) =>
     `If it should be split, reply with ONLY one JSON object and no other text: {"plan":"one sentence","parts":[{"member":"<name>","label":"<a few words>","prompt":"<what this member does>","doneTest":"<optional: one line of up to ${DONE_TEST_MAX} characters that says what a finished part must hold>"}]}.`,
     `Use at most ${PLAN_STEPS_MAX} parts. Give each part to one of these members: ${members.join(", ")}.`,
   ].join("\n")
+
+/** The text of the newest turn: what the memory of an agent is matched against (spec 008). */
+const lastText = (turns: readonly Turn[]): string => {
+  const last = turns.at(-1)
+  return last ? last.content : ""
+}
 
 /** How long the app treats a lead as blocked when the usage limit gives no reset time. */
 const UNKNOWN_LIMIT_MS = 60_000
@@ -288,6 +336,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const platform = yield* Platform
       const decision = yield* Decision
       const handbook = yield* Handbook
+      const memory = yield* Memory
 
       // A reply that was streaming when the app closed keeps its parts and counts as stopped.
       // A part that streams from the other computer (spec 019) is not ours to end.
@@ -297,7 +346,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -335,10 +384,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const toChannel = (row: ChannelRow): Channel => {
         const memberIds = memberRows(row.id).map((m) => m.id)
+        // The muted line of a repaired tree is no message of an agent: it adds no unread count
+        // (spec 030, "Repair").
         const unread =
           db.get<{ n: number }>(
             `SELECT COUNT(*) AS n FROM channel_message m JOIN channel c ON c.id = m.channel_id
-             WHERE m.channel_id = ? AND m.author = 'agent' AND m.finished_at > c.last_read_at`,
+             WHERE m.channel_id = ? AND m.author = 'agent' AND m.finished_at > c.last_read_at
+               AND m.${NOT_REPAIR_LINE}`,
             row.id,
           )?.n ?? 0
         return {
@@ -354,6 +406,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           reviewParts: row.review_parts === 1,
           parentId: row.parent_channel_id,
           dailyTokenLimit: row.daily_token_limit,
+          picture:
+            db.get<{ picture: string | null }>("SELECT picture FROM channel WHERE id = ?", row.id)
+              ?.picture ?? null,
+          leadAnswers: row.lead_answers === 1,
           sensitive: isSensitiveLabel(row.sensitive_mark) ? row.sensitive_mark : null,
           outside: parsePlaceOutside(row.outside_mark),
           unread,
@@ -516,13 +572,30 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       // The handbook, then the instructions of the agent, then the instructions of the channel. The
       // member and the lead both get them, in every turn of the channel (spec 002, 004). The fast
       // pick and the check of the lead are requests of the app and get none of them.
-      const channelSystem = (channel: ChannelRow, agent: AgentRow, extra = "") =>
-        [
-          composeInstructions({
-            handbook: agent.read_handbook === 1 ? handbook.text(agent.server_id) : "",
-            own: agent.instructions,
-            channel: { name: channel.name, text: channel.instructions },
-          }),
+      // The agent also reads its memory: its general items and its notes for this channel, the ones
+      // that relate to the new message (spec 008). A note for another channel is not read here.
+      /** The handbook, the own instructions and the instructions of the channel, in that order. */
+      const instructionsOf = (channel: ChannelRow, agent: AgentRow) =>
+        composeInstructions({
+          handbook: agent.read_handbook === 1 ? handbook.text(agent.server_id) : "",
+          own: agent.instructions,
+          channel: { name: channel.name, text: channel.instructions },
+        })
+
+      /**
+       * `assignment` is the text of a member's part or job: it comes first, before the
+       * instructions (spec 004, "What a member reads"). The lead has none.
+       */
+      const channelSystem = (
+        channel: ChannelRow,
+        agent: AgentRow,
+        extra = "",
+        turns: readonly Turn[] = [],
+        assignment = "",
+      ) => {
+        const remembered = memory.forTurn(agent.id, lastText(turns), channel.id)
+        return [
+          withAssignment(assignment, instructionsOf(channel, agent)),
           `You are ${agent.name}. You work in the channel "${channel.name}" with: ${memberRows(
             channel.id,
           )
@@ -530,10 +603,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             .join(
               ", ",
             )}.${channel.topic ? ` Topic: ${channel.topic}.` : ""} Messages of others show as "[Name]: text". Write only your own reply.`,
+          remembered.length > 0
+            ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
+            : "",
           extra,
         ]
           .filter(Boolean)
           .join("\n\n")
+      }
 
       /**
        * Accounts whose usage limit is reached, with the time (ms) when it resets (spec 004). The
@@ -564,6 +641,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         tools?: boolean
         /** Who started the turn, and its outside content (spec 007). Plans and summaries need none. */
         turn?: TurnMark
+        /** The text that the knowledge of the agent is matched against. Default: the last turn. */
+        match?: string
+        /** The reply fails at once with this error code (the text of a member does not fit). */
+        refuse?: string
       }) {
         const id = randomUUID()
         const parts: MessagePart[] = []
@@ -777,6 +858,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const streamOn = (agent: AgentRow, attempt: Attempt) =>
           Effect.gen(function* () {
             if (attempt !== "first" || keeping) controller = new AbortController()
+            if (o.refuse) return yield* new AppError({ code: o.refuse })
             if (!agent.model_account_id || !agent.model_name)
               return yield* new AppError({ code: "provider_not_connected" })
             const useTools = o.tools === true
@@ -808,6 +890,20 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               // A question card or an approval card is a reply that the user sees.
               if (firstReply()) markReplied()
             }
+            /** A request that waits for the user: "Needs you" and the notification (spec 015, 021). */
+            const attend = (callId: string, ask: ToolAsk) =>
+              notifier.attention({
+                agentId: o.agent.id,
+                serverId: o.channel.server_id,
+                channelId: o.channel.id,
+                callId,
+                kind: askKind(ask),
+                always: askAllowsAlways(ask),
+                summary: askSummary(ask),
+                step: askStep(ask, toolNameOf(parts, callId)),
+                target: { kind: "channel", id: o.channel.id, messageId: id },
+                ...(ask.askedAt !== undefined ? { askedAt: ask.askedAt } : {}),
+              })
             const context: ToolContext = {
               agentId: o.agent.id,
               workspace: o.agent.workspace,
@@ -819,24 +915,65 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 // An answer needs a slot again (spec 005): the step goes on when the task has one.
                 const back = tasks.setWaiting(o.taskId, ask !== null)
                 if (ask) silence.waiting(true)
-                if (ask)
-                  notifier.attention({
-                    agentId: o.agent.id,
-                    serverId: o.channel.server_id,
-                    channelId: o.channel.id,
-                    callId,
-                    kind: askKind(ask),
-                    always: askAllowsAlways(ask),
-                    summary: askSummary(ask),
-                    step: askStep(ask, toolNameOf(parts, callId)),
-                    target: { kind: "channel", id: o.channel.id, messageId: id },
-                    ...(ask.askedAt !== undefined ? { askedAt: ask.askedAt } : {}),
-                  })
-                else notifier.clearAttention(o.agent.id, callId)
+                // The lead may read a question of a part first (spec 004, "Questions of
+                // members"). The card is then no request for the user: it is not in "Needs you" and
+                // makes no notification until the lead passes it.
+                const reader =
+                  ask?.kind === "question"
+                    ? readerOf({
+                        channelId: o.channel.id,
+                        member: o.agent,
+                        taskId: o.taskId,
+                        ask,
+                        outside: mark.source !== null,
+                        answered: parts.filter((p) => p.kind === "tool" && p.answeredByLead).length,
+                      })
+                    : null
+                if (ask && !reader) attend(callId, ask)
+                else if (!ask) {
+                  openLooks.get(`${o.agent.id}:${callId}`)?.stop()
+                  notifier.clearAttention(o.agent.id, callId)
+                }
                 changePart(callId, (p) => {
                   const { ask: _drop, ...rest } = p
-                  return ask ? { ...rest, state: "waiting", ask } : { ...rest, state: "running" }
+                  if (!ask) return { ...rest, state: "running" }
+                  return {
+                    ...rest,
+                    state: "waiting",
+                    ask:
+                      reader && ask.kind === "question"
+                        ? { ...ask, lead: { agentId: reader.lead.id, name: reader.lead.name } }
+                        : ask,
+                  }
                 })
+                if (reader && ask?.kind === "question")
+                  lookAtQuestion({
+                    channel: o.channel,
+                    member: o.agent,
+                    taskId: o.taskId,
+                    lead: reader.lead,
+                    found: reader.found,
+                    callId,
+                    ask,
+                    turnEnded: () => controller.signal.aborted,
+                    io: {
+                      pass: (passed) =>
+                        changePart(callId, (p) => {
+                          if (p.ask?.kind !== "question") return p
+                          const { lead: _lead, ...rest } = p.ask
+                          return { ...p, ask: { ...rest, passed } }
+                        }),
+                      plain: () =>
+                        changePart(callId, (p) => {
+                          if (p.ask?.kind !== "question") return p
+                          const { lead: _lead, ...rest } = p.ask
+                          return { ...p, ask: rest }
+                        }),
+                      answer: (answeredByLead) =>
+                        changePart(callId, (p) => ({ ...p, answeredByLead })),
+                      attend: (shown) => attend(callId, shown),
+                    },
+                  })
                 // The silent limit counts again when the task runs again.
                 return ask ? undefined : back.then(() => silence.waiting(false))
               },
@@ -880,7 +1017,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                       // An agent in a channel uses its own knowledge only.
                       knowledge.prompt(
                         o.agent.id,
-                        o.turns.at(-1)?.content ?? "",
+                        o.match ?? o.turns.at(-1)?.content ?? "",
                         isRuntime ? "files" : "tools",
                       ) ?? "",
                     ]
@@ -1096,24 +1233,197 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const background = (effect: Effect.Effect<unknown, unknown, never>) =>
         Effect.forkDetach(Effect.exit(effect)).pipe(Effect.asVoid)
 
-      /**
-       * The newest message of another agent among the messages that a turn of `agent` reads, as
-       * an outside source (spec 007): the turn reads it, so it holds outside content.
-       */
-      const otherVoice = (channelId: string, agent: AgentRow): OutsideSource | null => {
-        const row = db.get<{ name: string }>(
-          `SELECT a.name AS name FROM (
-             SELECT agent_id, author, created_at, rowid AS r FROM channel_message
-             WHERE channel_id = ? AND status IN ('done', 'stopped')
-             ORDER BY created_at DESC, rowid DESC LIMIT ${HISTORY_TURNS}
-           ) m JOIN agent a ON a.id = m.agent_id
-           WHERE m.author = 'agent' AND m.agent_id != ?
-           ORDER BY m.created_at DESC, m.r DESC LIMIT 1`,
-          channelId,
-          agent.id,
-        )
-        return row ? { kind: "agent", name: row.name } : null
+      // --- what a member reads (spec 004, "What a member reads") -----------------------------------
+
+      /** The size of the context of each model from the last look, by account and model. */
+      const sizes = new Map<string, number | null>()
+      /** The size of the context of the model of an agent, or null when it is not known. */
+      const contextSizeOf = (agent: AgentRow) =>
+        Effect.gen(function* () {
+          const accountId = agent.model_account_id
+          // A vendor program tells no size and keeps its own conversation (spec 006).
+          if (!accountId || !agent.model_name || providers.isRuntime(accountId)) return null
+          const key = `${accountId}|${agent.model_name}`
+          const listed = yield* providers
+            .models(accountId)
+            .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+          if (listed === undefined) return sizes.get(key) ?? null
+          const size = listed.find((m) => m.id === agent.model_name)?.contextWindow ?? null
+          sizes.set(key, size)
+          return size
+        })
+
+      /** One message of the channel as a member reads it, with what the other rules need. */
+      interface ChannelLine extends WindowLine {
+        readonly id: string
+        readonly speaker: string
+        readonly text: string
+        /** Written by the member that reads. */
+        readonly mine: boolean
       }
+
+      /**
+       * The messages of a channel, newest first, a page at a time. At most `SCAN_MAX` of them.
+       * `holding` keeps the rows whose saved text holds that text (a quick look, before the text
+       * is read).
+       */
+      const newestFirst = function* (channelId: string, holding?: string): Generator<MessageRow> {
+        for (let offset = 0; offset < SCAN_MAX; offset += SCAN_PAGE) {
+          const rows = db.all<MessageRow>(
+            `SELECT * FROM channel_message WHERE channel_id = ? AND status IN ('done', 'stopped')
+             ${holding ? "AND instr(parts, ?) > 0" : ""}
+             ORDER BY created_at DESC, rowid DESC LIMIT ${SCAN_PAGE} OFFSET ${offset}`,
+            ...(holding ? [channelId, holding] : [channelId]),
+          )
+          yield* rows
+          if (rows.length < SCAN_PAGE) return
+        }
+      }
+
+      /**
+       * The summary of the older messages of a channel, or null (spec 004). The model of the lead
+       * writes it at the lowest effort the model offers; a channel with no lead uses the model of
+       * the member. It is kept for the same older messages, so parts that start together and a
+       * retry share one call. A summary that cannot be written gives null: the part goes on with
+       * the newest messages and no summary.
+       */
+      const summaries = new Map<string, { key: string; done: Deferred.Deferred<string | null> }>()
+      const summaryOf = (
+        channel: ChannelRow,
+        member: AgentRow,
+        size: number,
+        older: readonly ChannelLine[],
+        taskId: string,
+      ) => {
+        const source: ChannelLine[] = []
+        let used = 0
+        for (const line of older) {
+          const cost = lineTokens({
+            role: line.role,
+            content: cutChars(line.text, SUMMARY_SOURCE_CUT),
+          })
+          if (used + cost > SUMMARY_SOURCE_TOKENS) break
+          used += cost
+          source.push(line)
+        }
+        if (source.length === 0) return Effect.succeed(null)
+        source.reverse()
+        const lead = channel.lead_agent_id ? agentRow(channel.lead_agent_id) : undefined
+        const writer = lead && lead.archived_at === null ? lead : member
+        const first = source[0] as ChannelLine
+        const last = source.at(-1) as ChannelLine
+        const key = [
+          first.id,
+          last.id,
+          source.length,
+          size,
+          writer.model_account_id,
+          writer.model_name,
+        ].join("|")
+        const known = summaries.get(channel.id)
+        if (known?.key === key) return Deferred.await(known.done)
+        const done = Deferred.makeUnsafe<string | null>()
+        summaries.set(channel.id, { key, done })
+        const write = Effect.gen(function* () {
+          if (leadBlocked(writer) || !writer.model_account_id || !writer.model_name) return null
+          const account = (yield* providers.list).find((a) => a.id === writer.model_account_id)
+          const listed = yield* providers
+            .models(writer.model_account_id)
+            .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+          const effort =
+            (account ? offeredEfforts(account.kind, writer.model_name, listed)[0] : undefined) ??
+            writer.model_effort
+          const text = yield* askLead(
+            writer,
+            CHANNEL_SUMMARY_SYSTEM,
+            summaryRequest(
+              channel.name,
+              source.map((line) => ({ speaker: line.speaker, text: line.text })),
+              summaryWords(size),
+            ),
+            { effort, taskId },
+          )
+          return fitSummary(text, size)
+        })
+        return write.pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause) ? Effect.failCause(cause) : Effect.succeed(null),
+          ),
+          Effect.onExit((exit) =>
+            Effect.sync(() => {
+              const text = Exit.isSuccess(exit) ? exit.value : null
+              // A summary that could not be written is tried again at the next turn.
+              if (text === null && summaries.get(channel.id)?.done === done)
+                summaries.delete(channel.id)
+              Deferred.doneUnsafe(done, Exit.succeed(text))
+            }),
+          ),
+        )
+      }
+
+      /**
+       * What a member reads of the channel: the messages that asked it, the summary of the older
+       * messages, and the newest messages (spec 004). The newest messages fill a quarter of the
+       * context of its model at most, or are the last 20 when the size is not known.
+       */
+      const memberContext = Effect.fn("Channels.memberContext")(function* (
+        channel: ChannelRow,
+        agent: AgentRow,
+        size: number | null,
+        taskId: string,
+      ) {
+        const members = memberRows(channel.id)
+        const names = members.map((m) => m.name)
+        const nameOf = new Map(members.map((m) => [m.id, m.name]))
+        const lineOf = (row: MessageRow): ChannelLine | null => {
+          const text = messageText({ parts: JSON.parse(row.parts) as MessagePart[] }).trim()
+          if (!text) return null
+          const speaker =
+            row.author === "user" ? "User" : (nameOf.get(row.agent_id ?? "") ?? "Agent")
+          const mine = row.author === "agent" && row.agent_id === agent.id
+          return {
+            id: row.id,
+            speaker,
+            text,
+            mine,
+            role: mine ? "assistant" : "user",
+            content: row.author === "user" || mine ? text : `[${speaker}]: ${text}`,
+          }
+        }
+        // The newest messages, and the older ones that the summary reads: the scan stops when
+        // both are found.
+        const lines: ChannelLine[] = []
+        let tokens = 0
+        const share = contextShare(size)
+        for (const row of newestFirst(channel.id)) {
+          const line = lineOf(row)
+          if (!line) continue
+          lines.push(line)
+          tokens += lineTokens(line)
+          if (
+            share === null
+              ? lines.length >= NEWEST_UNKNOWN
+              : tokens >= share + SUMMARY_SOURCE_TOKENS
+          )
+            break
+        }
+        // The messages that asked the member: a quick look for an `@` comes before the mention
+        // rule. The newest ASKING_MAX stay, oldest first.
+        const asking: AskingLine[] = []
+        for (const row of newestFirst(channel.id, "@")) {
+          const line = lineOf(row)
+          if (!line || line.mine || !asksMember(line.text, agent.name, names)) continue
+          asking.unshift({ speaker: line.speaker, text: line.text })
+          if (asking.length >= ASKING_MAX) break
+        }
+        const { newest, older } = newestWindow(lines, size)
+        const summary =
+          size !== null && older.length > 0
+            ? yield* summaryOf(channel, agent, size, older, taskId)
+            : null
+        const context: MemberContext = { asking, summary, newest }
+        return context
+      })
 
       /**
        * One agent answers in the channel: a task of its own, with the reply as its message.
@@ -1124,7 +1434,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         channel: ChannelRow,
         agent: AgentRow,
         task: Task,
-        extraTurn: string | null,
+        assignment: string,
         kind: ChannelMessageKind = "text",
         from: AgentRow | null = null,
         outside: OutsideSource | null = null,
@@ -1132,36 +1442,42 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         tasks.run(
           task.id,
           agent.id,
-          Effect.suspend(() => {
-            const turns = channelTurns(channel.id, agent)
-            if (extraTurn) turns.push({ role: "user", content: extraTurn })
+          Effect.gen(function* () {
+            // The text of the member (spec 004, "What a member reads"): the assignment, then the
+            // instructions, then what the channel holds. The assignment and the instructions must
+            // fit in the context; if they do not, the part fails with the reason.
+            const size = yield* contextSizeOf(agent)
+            const fits = assignmentFits(assignment, instructionsOf(channel, agent), size)
+            const turns: Turn[] = fits
+              ? memberTurns(assignment, yield* memberContext(channel, agent, size, task.id))
+              : [{ role: "user", content: assignment }]
             const starter: TurnStarter =
               task.source === "routine" ? "routine" : from ? "agent" : "user"
             // A turn of the channel holds a sensitive read from its start when an earlier turn of
             // any member read a credential place: the channel holds the mark (spec 007). This
             // covers a part that the lead gives after its own turn read one.
             const held = placeMarks.get({ kind: "channel", id: channel.id })
-            // A part that the lead gives is part of the job of the user: it holds outside content
-            // from its start only when the job came from an outside program or the lead read
-            // outside content first, and then the mark of the channel says so (spec 007, "Outside
-            // content"). A turn that answers a message reads the messages of other agents.
-            const turn = newTurnMark(
-              starter,
-              outside ?? (from ? null : otherVoice(channel.id, agent)),
-              held.sensitive,
-            )
+            // A turn of the channel holds outside content from its start only by the rules of
+            // spec 007: a source that starts it (`outside`), a message from another agent that
+            // starts it (`from`), or the mark of the channel, below. The messages that a member
+            // reads under spec 004, "What a member reads", are not "a message from another agent":
+            // the plan of the lead and the replies of other members make no mark by themselves.
+            // So a part that "Request changes" starts is a part like any other.
+            const turn = newTurnMark(starter, outside, held.sensitive)
             // The turn holds the program mark from its start when the channel does: the job came
             // from an outside program or Teams, or an earlier turn of any member held the mark
             // and no one cleared it (spec 007, "Program mark"). The first source stays.
             if (held.outside)
               (held.outside.program ? holdProgram : holdOutside)(turn, held.outside.source)
-            return streamReply({
+            return yield* streamReply({
               channel,
               agent,
               taskId: task.id,
               kind,
               tools: true,
               turn,
+              match: assignment,
+              ...(fits ? {} : { refuse: "channel_context_too_small" }),
               // A part of a plan, a routine or a workflow can say that it was blocked (spec 005).
               // A new try reads which steps of the earlier try may have changed things (spec 005).
               system: channelSystem(
@@ -1170,6 +1486,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 [toldAboutBlocked(task) ? BLOCKED_RULE : "", tasks.retryNoteForModel(task)]
                   .filter(Boolean)
                   .join("\n\n"),
+                [{ role: "user", content: assignment }],
+                assignment,
               ),
               turns,
             })
@@ -1279,7 +1597,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             retryOf,
             ...(teamsJob ? { teamsJob } : {}),
           })
-          yield* background(memberTurn(channel, agent, task, null))
+          yield* background(memberTurn(channel, agent, task, prompt))
         })
 
       /** The end of the newest reply of a part, as text. */
@@ -1323,7 +1641,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       // --- the check of the lead (spec 004, "Check by the lead") ---------------------------------
 
       /** One call of the model of the lead, with no tools and no chat. Gives the text it wrote. */
-      const askLead = (lead: AgentRow, system: string, content: string) =>
+      const askLead = (
+        lead: AgentRow,
+        system: string,
+        content: string,
+        options: { effort?: string | null; taskId?: string } = {},
+      ) =>
         Effect.gen(function* () {
           if (!lead.model_account_id || !lead.model_name)
             return yield* new AppError({ code: "provider_not_connected" })
@@ -1344,7 +1667,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             account.id,
             {
               model: lead.model_name,
-              effort: lead.model_effort,
+              effort: options.effort !== undefined ? options.effort : lead.model_effort,
               system,
               turns: [{ role: "user", content }],
               signal: controller.signal,
@@ -1361,6 +1684,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 for await (const event of closing(events, controller, watch)) {
                   watch.sense(event)
                   if (event.type === "text") text += event.text
+                  // The call of a task adds its tokens to the usage of that task (spec 005), and
+                  // so does a look at a question (spec 004, "Questions of members").
+                  else if (event.type === "spent" && options.taskId)
+                    tasks.addSpent(options.taskId, event)
                 }
                 return text
               },
@@ -1451,6 +1778,237 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         )
         emitMessage(id)
         placesChanged(channel.server_id)
+      }
+
+      // --- the lead answers questions of members (spec 004, "Questions of members") --------------
+
+      /** The time of a look: 2 minutes from the question. A test run can make it shorter. */
+      const lookLimitMs = () => Number(process.env.ROBOT_TEST_LEAD_LOOK_MS) || LEAD_LOOK_MS
+
+      /**
+       * The part that a question comes from, and the task of its lead (the job): the look is a turn
+       * of that task. Null when the task is no part of a plan.
+       */
+      const partJob = (taskId: string) => {
+        const part = db.get<{
+          label: string
+          done_test: string | null
+          parent_id: string | null
+          source: string
+        }>("SELECT label, done_test, parent_id, source FROM task WHERE id = ?", taskId)
+        if (part?.source !== "channel" || part.parent_id === null) return null
+        const job = db.get<{ id: string; agent_id: string; prompt: string }>(
+          "SELECT id, agent_id, prompt FROM task WHERE id = ?",
+          part.parent_id,
+        )
+        return job ? { label: part.label, doneTest: part.done_test, job } : null
+      }
+
+      /**
+       * Who reads a question of a member first (spec 004). It gives the lead and the job when the
+       * lead gets the question; null when the user does. `firstReader` holds the rules. The lead
+       * must also be the agent of the task of the job, so that the look is a turn of its task.
+       */
+      const readerOf = (q: {
+        readonly channelId: string
+        readonly member: AgentRow
+        readonly taskId: string
+        readonly ask: ToolAsk
+        readonly outside: boolean
+        readonly answered: number
+      }) => {
+        const found = partJob(q.taskId)
+        const channel = channelRow(q.channelId)
+        const lead = channel?.lead_agent_id ? agentRow(channel.lead_agent_id) : undefined
+        const reader = firstReader({
+          setting: channel?.lead_answers === 1,
+          card: q.ask.kind,
+          part: found !== null,
+          lead: lead
+            ? { id: lead.id, archived: lead.archived_at !== null, blocked: leadBlocked(lead) }
+            : null,
+          asker: q.member.id,
+          outside: q.outside,
+          answered: q.answered,
+        })
+        if (reader.kind !== "lead" || !lead || !found || found.job.agent_id !== lead.id) return null
+        return { lead, found }
+      }
+
+      /** What the lead reads for a look at a question: the text of the shared function, from the data. */
+      const lookText = (
+        channel: ChannelRow,
+        member: AgentRow,
+        found: NonNullable<ReturnType<typeof partJob>>,
+        ask: Extract<ToolAsk, { kind: "question" }>,
+      ) => {
+        const names = new Map(memberRows(channel.id).map((m) => [m.id, m.name]))
+        const recent = db
+          .all<MessageRow>(
+            `SELECT * FROM channel_message WHERE channel_id = ? AND status IN ('done', 'stopped')
+             ORDER BY created_at DESC, rowid DESC LIMIT ${CHECK_MESSAGES}`,
+            channel.id,
+          )
+          .reverse()
+        const plan = db.get<{ parts: string }>(
+          `SELECT parts FROM channel_message WHERE task_id = ? AND kind = 'plan'
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          found.job.id,
+        )
+        return leadLookText({
+          channel: channel.name,
+          topic: channel.topic || null,
+          instructions: channel.instructions,
+          job: found.job.prompt,
+          plan: plan ? messageText({ parts: JSON.parse(plan.parts) as MessagePart[] }) : null,
+          part: { label: found.label, doneTest: found.doneTest },
+          member: member.name,
+          question: ask.question,
+          choices: ask.choices,
+          messages: recent.map(
+            (row): CheckMessage => ({
+              who: row.author === "user" ? "User" : (names.get(row.agent_id ?? "") ?? "Agent"),
+              text: messageText({ parts: JSON.parse(row.parts) as MessagePart[] }),
+            }),
+          ),
+        })
+      }
+
+      /** What a look changes on the card and in the list of requests that wait for the user. */
+      interface LookIo {
+        /** The card becomes a normal question with the line of the lead. */
+        readonly pass: (pass: QuestionPass) => void
+        /** The card becomes a normal question with no line of the lead. */
+        readonly plain: () => void
+        /** The card says "Answered by <lead>". The answer goes to the member after it. */
+        readonly answer: (answer: LeadAnswer) => void
+        /** The question waits for the user: "Needs you" and the notification of a question. */
+        readonly attend: (ask: ToolAsk) => void
+      }
+
+      /** The looks that run now, by agent and call. */
+      const openLooks = new Map<
+        string,
+        { readonly channelId: string; readonly stop: () => void; readonly settingOff: () => void }
+      >()
+
+      /**
+       * One look of the lead at a question card (spec 004). The look is a turn of the task of the
+       * lead for the job: it waits for one slot, uses it while it runs, and counts its tokens in
+       * that task. It ends with an answer, a pass, or a stop (the user answered, the setting went
+       * off, the turn ended). The user can answer the card at any time: that answer wins. Each look
+       * writes one line to the log of channels, with no text of the question or of the answer.
+       */
+      const lookAtQuestion = (l: {
+        readonly channel: ChannelRow
+        readonly member: AgentRow
+        /** The task of the part. It shows "Running", not "Waiting for you", while the lead looks. */
+        readonly taskId: string
+        readonly lead: AgentRow
+        readonly found: NonNullable<ReturnType<typeof partJob>>
+        readonly callId: string
+        readonly ask: Extract<ToolAsk, { kind: "question" }>
+        readonly turnEnded: () => boolean
+        readonly io: LookIo
+      }) => {
+        const key = `${l.member.id}:${l.callId}`
+        const started = Date.now()
+        const ms = () => Date.now() - started
+        let ended = false
+        let cancelled = false
+        let why: StopWhy = "user_answer"
+        // The part waits, but not for the user (spec 004, 024).
+        tasks.setWithLead(l.taskId, true)
+        const release = () => tasks.setWithLead(l.taskId, false)
+        const end = (result: LeadLookEnd) => {
+          if (ended) return
+          ended = true
+          release()
+          openLooks.delete(key)
+          appendLog(platform.dataDir, "channels", leadLookLog(result))
+        }
+        const passToUser = (kind: QuestionPass["kind"], reason: string) => {
+          const pass: QuestionPass = { agentId: l.lead.id, name: l.lead.name, kind, reason }
+          // Who reads a passed question next is decided in one place. Today it is the user.
+          const next = readerAfterPass(pass)
+          if (next.kind === "user") {
+            // From here the part waits for the user: "Waiting for you" shows with the notification.
+            release()
+            l.io.pass(pass)
+            l.io.attend({ ...l.ask, passed: pass })
+          }
+          end({ result: "passed", kind, ms: ms() })
+        }
+        const text = lookText(l.channel, l.member, l.found, l.ask)
+        const decided = Effect.raceFirst(
+          tasks
+            .withSlot(
+              l.found.job.id,
+              askLead(l.lead, leadLookInstruction(), text, { taskId: l.found.job.id }),
+            )
+            .pipe(
+              Effect.map(
+                (reply) => parseLeadLook(reply, l.ask.choices) ?? ({ kind: "failure" } as const),
+              ),
+              // A lead that cannot answer passes the question at once (spec 004, "Time").
+              Effect.catchCause((cause) =>
+                Cause.hasInterruptsOnly(cause)
+                  ? Effect.failCause(cause)
+                  : Effect.succeed({ kind: "failure" } as const),
+              ),
+            ),
+          Effect.sleep(lookLimitMs()).pipe(Effect.as({ kind: "late" } as const)),
+        )
+        const fiber = Effect.runFork(
+          Effect.gen(function* () {
+            const outcome = yield* decided
+            // Nothing waits from here on, so the user cannot answer between the check and the act.
+            if (cancelled || !tools.isWaiting(l.member.id, l.callId))
+              return end({ result: "stopped", why, ms: ms() })
+            try {
+              if (outcome.kind === "answer") {
+                l.io.answer({ agentId: l.lead.id, name: l.lead.name, reason: outcome.reason })
+                Effect.runSync(tools.respond(l.member.id, l.callId, outcome.answer))
+                return end({ result: "answered", ms: ms() })
+              }
+              if (outcome.kind === "pass") return passToUser(outcome.passKind, outcome.reason)
+              return passToUser(outcome.kind, "")
+            } catch (e) {
+              // A look never leaves the question with the lead: it goes to the user.
+              console.error("lead look failed", e)
+              if (!ended && tools.isWaiting(l.member.id, l.callId)) passToUser("failure", "")
+              else end({ result: "stopped", why, ms: ms() })
+            }
+          }).pipe(
+            Effect.onExit((exit) =>
+              Effect.sync(() => {
+                if (Exit.isFailure(exit))
+                  end({ result: "stopped", why: l.turnEnded() ? "turn_ended" : why, ms: ms() })
+              }),
+            ),
+          ),
+        )
+        const cancel = () => {
+          cancelled = true
+          Effect.runFork(Fiber.interrupt(fiber))
+        }
+        openLooks.set(key, {
+          channelId: l.channel.id,
+          stop: cancel,
+          settingOff: () => {
+            why = "setting_off"
+            cancel()
+            release()
+            l.io.plain()
+            l.io.attend(l.ask)
+          },
+        })
+      }
+
+      /** The setting went off: every question that is with the lead passes to the user at once. */
+      const leadAnswersOff = (channelId: string) => {
+        for (const look of [...openLooks.values()])
+          if (look.channelId === channelId) look.settingOff()
       }
 
       /**
@@ -1575,13 +2133,19 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           lead.id,
           Effect.gen(function* () {
             const others = memberRows(channel.id).filter((m) => m.id !== lead.id)
+            const planTurns = channelTurns(channel.id, lead)
             const reply = yield* streamReply({
               channel,
               agent: lead,
               taskId: task.id,
               kind: "text",
-              system: channelSystem(channel, lead, LEAD_RULES(others.map((m) => m.name))),
-              turns: channelTurns(channel.id, lead),
+              system: channelSystem(
+                channel,
+                lead,
+                LEAD_RULES(others.map((m) => m.name)),
+                planTurns,
+              ),
+              turns: planTurns,
               hideRaw: true,
             })
             const plan: ParsedPlan | null = parsePlan(
@@ -1710,7 +2274,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               agent: lead,
               taskId: task.id,
               kind: "summary",
-              system: channelSystem(channel, lead),
+              system: channelSystem(channel, lead, "", turns),
               turns,
             })
             void summary
@@ -2040,8 +2604,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         db.transaction(() => {
           db.run(
             `UPDATE channel SET name = ?, name_key = ?, topic = ?, instructions = ?, lead_agent_id = ?,
-              place_section_id = ?, review_parts = ?, parent_channel_id = ?, daily_token_limit = ?,
-              updated_at = ? WHERE id = ?`,
+              place_section_id = ?, review_parts = ?, parent_channel_id = ?, lead_answers = ?,
+              daily_token_limit = ?, updated_at = ? WHERE id = ?`,
             name,
             name.toLocaleLowerCase(),
             topic,
@@ -2051,6 +2615,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             // Turning it off changes no part that is in review already (spec 004).
             patch.reviewParts === undefined ? row.review_parts : patch.reviewParts ? 1 : 0,
             parentId,
+            patch.leadAnswers === undefined ? row.lead_answers : patch.leadAnswers ? 1 : 0,
             dailyTokenLimit,
             Date.now(),
             id,
@@ -2058,8 +2623,36 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           if (patch.memberIds) writeMembers(id, memberIds)
         })
         const next = channelRow(id) as ChannelRow
+        // Turning "The lead answers questions" off sends a question that is with the lead to the
+        // user at once (spec 004).
+        if (row.lead_answers === 1 && next.lead_answers === 0) leadAnswersOff(id)
         changed(next)
         return toChannel(next)
+      })
+
+      /**
+       * The picture of a channel (spec 004). It is a square PNG of at most 256 px and 1 MB, as the
+       * window cuts it; the checks run here again, for a linked device and for a file. A change
+       * counts like any change of the channel: it syncs, and the place list and the header show it.
+       */
+      const setPicture = Effect.fn("Channels.setPicture")(function* (
+        id: string,
+        dataUrl: string | null,
+      ) {
+        const row = channelRow(id)
+        if (!row) return yield* new AppError({ code: "channel_not_found" })
+        if (dataUrl !== null) {
+          const check = checkChannelPicture(dataUrl)
+          if (!check.ok) return yield* new AppError({ code: check.code })
+        }
+        db.run(
+          "UPDATE channel SET picture = ?, updated_at = ? WHERE id = ?",
+          dataUrl,
+          Date.now(),
+          id,
+        )
+        changed(row)
+        return toChannel(row)
       })
 
       const stopAll = (channelId: string) =>
@@ -2083,6 +2676,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           id,
         )
         db.transaction(() => {
+          // The notes for the channel go first, while the rows still hold its name (spec 008).
+          Effect.runSync(memory.deleteChannel(id))
           db.run("DELETE FROM task WHERE source = 'channel' AND source_id = ?", id)
           db.run(
             "UPDATE channel SET parent_channel_id = NULL, updated_at = ? WHERE parent_channel_id = ?",
@@ -2406,7 +3001,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel
+                `SELECT id, server_id, name, topic, instructions, lead_agent_id, place_section_id, review_parts, lead_answers, sensitive_mark, outside_mark, parent_channel_id, daily_token_limit FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )
@@ -2415,6 +3010,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         get,
         create,
         update,
+        setPicture,
         remove,
         history: (channelId) =>
           Effect.sync(() =>
@@ -2444,8 +3040,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             if (row) placesChanged(row.server_id)
           }),
         lastMessage: (channelId) => {
+          // The muted line of a repaired tree does not replace the preview (spec 030, "Repair").
           const row = db.get<{ parts: string }>(
-            "SELECT parts FROM channel_message WHERE channel_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            `SELECT parts FROM channel_message WHERE channel_id = ? AND ${NOT_REPAIR_LINE}
+             ORDER BY created_at DESC, rowid DESC LIMIT 1`,
             channelId,
           )
           if (!row) return null

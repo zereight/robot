@@ -96,7 +96,16 @@ const StepStateText = (props: { step: Pick<RunStep, "state" | "taskId"> }) => {
   )
 }
 
-export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () => void }) => {
+export const WorkflowEditor = (props: {
+  workflow: Workflow | null
+  onBack: () => void
+  /**
+   * True for a workflow that was just made from a starter (spec 010, "Starters"). Its graph is
+   * wider than a narrow canvas, so the canvas opens with the whole graph in view. Any other
+   * workflow opens at the usual place and size.
+   */
+  frame?: boolean
+}) => {
   const { t } = useApp()
   const ui = useUi()
   /** The events of the server on screen only: runs that sync have the same id on both (012, 019). */
@@ -196,7 +205,42 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
     }
   }
 
+  /**
+   * Puts the whole graph, notes too, in view: the zoom that fits it, never above 100% and never
+   * below the lowest zoom. A graph that fits at 100% keeps the usual place and size.
+   */
+  const frameGraph = () => {
+    const rect = canvas?.getBoundingClientRect()
+    if (!rect || rect.width === 0 || rect.height === 0) return
+    const noteBoxes = canvas?.querySelectorAll<HTMLElement>('[data-testid="wf-note"]') ?? []
+    const boxes = [
+      ...graph.steps.map((s) => ({ x: s.x, y: s.y, w: NODE_W, h: NODE_H })),
+      ...graph.notes.map((n, i) => ({
+        x: n.x,
+        y: n.y,
+        w: NOTE_W,
+        h: noteBoxes[i]?.offsetHeight ?? NODE_H,
+      })),
+    ]
+    if (boxes.length === 0) return
+    const left = Math.min(...boxes.map((b) => b.x))
+    const top = Math.min(...boxes.map((b) => b.y))
+    const width = Math.max(...boxes.map((b) => b.x + b.w)) - left
+    const height = Math.max(...boxes.map((b) => b.y + b.h)) - top
+    const margin = 24
+    const zoom = Math.min(
+      1,
+      Math.max(
+        ZOOM_MIN,
+        Math.min((rect.width - 2 * margin) / width, (rect.height - 2 * margin) / height),
+      ),
+    )
+    if (zoom >= 1) return
+    setView({ zoom, x: margin - left * zoom, y: margin - top * zoom })
+  }
+
   onMount(() => {
+    if (props.frame) frameGraph()
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
       const v = view()

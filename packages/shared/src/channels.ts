@@ -40,6 +40,17 @@ export interface Channel {
    * is the default. A server of an older step sends none, which counts as off.
    */
   readonly dailyTokenLimit?: number | null
+  /**
+   * "The lead answers questions": a question of a member in a part goes to the lead first (spec
+   * 004, "Questions of members"). On by default. A channel with no lead shows it off with a muted
+   * line; the stored value stays, and the rule needs a lead anyway.
+   */
+  readonly leadAnswers: boolean
+  /**
+   * The picture of the channel (spec 004, "Picture"): a square PNG of at most 256 px as a data
+   * address, or null. It shows in place of the `#` mark.
+   */
+  readonly picture: string | null
   readonly unread: number
   readonly working: boolean
   /** The label of the first credential place that a turn of the channel read (spec 007). */
@@ -76,6 +87,7 @@ export const ChannelPatch = Schema.Struct({
   reviewParts: Schema.optionalKey(Schema.Boolean),
   parentId: ChannelCreate.fields.parentId,
   dailyTokenLimit: ChannelCreate.fields.dailyTokenLimit,
+  leadAnswers: Schema.optionalKey(Schema.Boolean),
 })
 export type ChannelPatch = typeof ChannelPatch.Type
 
@@ -111,6 +123,8 @@ export const ClientChannelPatch = Schema.Struct({
   leadId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
   parentId: ClientChannelCreate.fields.parentId,
   dailyTokenLimit: ClientChannelCreate.fields.dailyTokenLimit,
+  // A linked device with the switch "Can create and change agents" changes it (spec 004, 012).
+  leadAnswers: Schema.optionalKey(Schema.Boolean),
 })
 export type ClientChannelPatch = typeof ClientChannelPatch.Type
 

@@ -18,10 +18,12 @@ import {
   HANDBOOK_SOURCES,
   HANDOVER_LIMITS,
   INSTRUCTION_SOURCES,
+  isChannelPicture,
   isOutsideSource,
   isPlaceOutside,
   isSensitiveLabel,
   KNOWLEDGE_TITLE_MAX,
+  LEAD_REASON_MAX,
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
@@ -169,6 +171,30 @@ const ATTACHMENT_PATH = /^attachments\/[^/\\]{1,255}$/
 /** The text of an article in a card that asks: the body, with the lines of its header. */
 const ARTICLE_TEXT_MAX = 200_000
 
+/** The lead of a question card: its id and its name at that time (spec 004). */
+const leadRefCheck = (v: unknown): boolean =>
+  isObject(v) &&
+  shape(["agentId", "name"])(v) &&
+  str(100, 1)(v.agentId) &&
+  str(AGENT_NAME_MAX * 4)(v.name)
+
+/** A question that the lead passed: the kind of the pass is data for a later slice (spec 030). */
+const passCheck = (v: unknown): boolean =>
+  isObject(v) &&
+  shape(["agentId", "name", "kind", "reason"])(v) &&
+  str(100, 1)(v.agentId) &&
+  str(AGENT_NAME_MAX * 4)(v.name) &&
+  oneOf(["user_choice", "not_sure", "late", "failure"])(v.kind) &&
+  str(LEAD_REASON_MAX * 4)(v.reason)
+
+/** "Answered by <lead>" on a finished question card, with the reason (spec 004). */
+const leadAnswerCheck = (v: unknown): boolean =>
+  isObject(v) &&
+  shape(["agentId", "name", "reason"])(v) &&
+  str(100, 1)(v.agentId) &&
+  str(AGENT_NAME_MAX * 4)(v.name) &&
+  str(LEAD_REASON_MAX * 4)(v.reason)
+
 const askCheck = (v: unknown): boolean => {
   if (!isObject(v)) return false
   const timeOk = v.askedAt === undefined || int(v.askedAt)
@@ -189,11 +215,14 @@ const askCheck = (v: unknown): boolean => {
   if (v.kind === "question") {
     return (
       timeOk &&
-      shape(["kind", "question", "choices"], ["askedAt"])(v) &&
+      shape(["kind", "question", "choices"], ["askedAt", "lead", "passed"])(v) &&
       str(5000)(v.question) &&
       Array.isArray(v.choices) &&
       v.choices.length <= 50 &&
-      v.choices.every(str(1000))
+      v.choices.every(str(1000)) &&
+      // The lead that looks at the question, or that passed it (spec 004, "Questions of members").
+      (v.lead === undefined || leadRefCheck(v.lead)) &&
+      (v.passed === undefined || passCheck(v.passed))
     )
   }
   // A protected card (spec 020). It holds no value: the other computer shows "Answer this on".
@@ -430,6 +459,7 @@ const partCheck = (v: unknown): boolean => {
             "secret",
             "settings",
             "connection",
+            "answeredByLead",
           ],
         )(v) &&
         str(200, 1)(v.id) &&
@@ -445,6 +475,7 @@ const partCheck = (v: unknown): boolean => {
         (v.secret === undefined || oneOf(["saved", "cancelled"])(v.secret)) &&
         (v.settings === undefined || settingsNoteCheck(v.settings)) &&
         (v.connection === undefined || connectionNoteCheck(v.connection)) &&
+        (v.answeredByLead === undefined || leadAnswerCheck(v.answeredByLead)) &&
         (v.decision === undefined ||
           (isObject(v.decision) &&
             shape(["answer", "by"])(v.decision) &&
@@ -875,6 +906,8 @@ interface ChannelRow {
   instructions: string
   lead_agent_id: string | null
   review_parts: number
+  lead_answers: number
+  picture: string | null
   sensitive_mark: string | null
   outside_mark: string | null
   parent_channel_id: string | null
@@ -918,6 +951,12 @@ const channel: KindDef = {
     lead: { check: nullable(str(100, 1)) },
     // "Review parts" (spec 004). A computer of an older step has none, and it counts as off.
     reviewParts: { check: (v) => typeof v === "boolean" },
+    // "The lead answers questions" (spec 004, 019). A computer of an older step has none, and it
+    // counts as on, the default.
+    leadAnswers: { check: (v) => typeof v === "boolean" },
+    // The picture of the channel (spec 004, 019): a square PNG of at most 256 px and 1 MB as a data
+    // address, or none. A computer of an older step has none.
+    picture: { check: nullable(isChannelPicture) },
     // The mark of a sensitive read of the channel (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
     // The outside content that the next turns of the channel hold, with the program mark (spec 007).
@@ -950,6 +989,8 @@ const channel: KindDef = {
         instructions: r.instructions,
         lead: r.lead_agent_id,
         reviewParts: r.review_parts === 1,
+        leadAnswers: r.lead_answers === 1,
+        picture: isChannelPicture(r.picture) ? r.picture : null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
         parentChannel: r.parent_channel_id,
@@ -978,6 +1019,8 @@ const channel: KindDef = {
       instructions: typeof f.instructions === "string" ? f.instructions : "",
       lead_agent_id: f.lead,
       review_parts: f.reviewParts === true ? 1 : 0,
+      lead_answers: f.leadAnswers === false ? 0 : 1,
+      picture: isChannelPicture(f.picture) ? f.picture : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
       parent_channel_id: typeof f.parentChannel === "string" ? f.parentChannel : null,
@@ -1001,6 +1044,8 @@ const channel: KindDef = {
     if (typeof f.instructions === "string") columns.instructions = f.instructions
     if (f.lead !== undefined) columns.lead_agent_id = f.lead
     if (typeof f.reviewParts === "boolean") columns.review_parts = f.reviewParts ? 1 : 0
+    if (typeof f.leadAnswers === "boolean") columns.lead_answers = f.leadAnswers ? 1 : 0
+    if (f.picture !== undefined) columns.picture = isChannelPicture(f.picture) ? f.picture : null
     if (f.sensitive !== undefined)
       columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
     if (f.outside !== undefined)
@@ -1014,7 +1059,12 @@ const channel: KindDef = {
     update(ctx.db, "channel", "id = ?", [id], columns)
     if (f.members !== undefined) setMembers(ctx, id, f.members as string[])
   },
-  remove: (ctx, id) => ctx.db.run("DELETE FROM channel WHERE id = ?", id),
+  remove: (ctx, id) => {
+    // The notes for the channel go with it (spec 008, "Channel notes"). The other computer sends
+    // the removal of each note too, and makes no history row here (spec 019).
+    ctx.db.run("DELETE FROM memory WHERE channel_id = ?", id)
+    ctx.db.run("DELETE FROM channel WHERE id = ?", id)
+  },
   label: (f) => String(f.name ?? ""),
 }
 
@@ -1027,6 +1077,7 @@ interface MemoryRow {
   source: string
   created_at: number
   updated_at: number
+  channel_id: string | null
 }
 
 const memory: KindDef = {
@@ -1041,6 +1092,8 @@ const memory: KindDef = {
     source: { check: oneOf(["user", "agent", "proposal"]) },
     createdAt: { check: int },
     updatedAt: { check: int },
+    // The channel of a channel note, or null for a general item. A move changes it (spec 008, 019).
+    channelId: { check: nullable(str(100, 1)) },
   },
   required: ["agentId", "text", "source", "createdAt", "updatedAt"],
   fixed: ["agentId", "source", "createdAt"],
@@ -1056,6 +1109,7 @@ const memory: KindDef = {
         source: r.source,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
+        channelId: r.channel_id,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: r.updated_at,
@@ -1063,6 +1117,10 @@ const memory: KindDef = {
   },
   create: (ctx, id, f) => {
     if (!has(ctx.db, "agent", f.agentId as string)) return false
+    // A note for a channel that this computer does not hold (yet, or any more) waits: the channel
+    // comes first in the order of kinds, so a missing one is a channel that was deleted here.
+    const channelId = typeof f.channelId === "string" ? f.channelId : null
+    if (channelId !== null && !has(ctx.db, "channel", channelId)) return false
     insert(ctx.db, "memory", {
       id,
       agent_id: f.agentId,
@@ -1070,6 +1128,7 @@ const memory: KindDef = {
       source: f.source,
       created_at: f.createdAt,
       updated_at: f.updatedAt,
+      channel_id: channelId,
     })
     return true
   },
@@ -1077,6 +1136,11 @@ const memory: KindDef = {
     update(ctx.db, "memory", "id = ?", [id], {
       ...(f.text !== undefined ? { text: (f.text as string).trim() } : {}),
       ...(f.updatedAt !== undefined ? { updated_at: f.updatedAt } : {}),
+      // A move: a channel that this computer does not hold leaves the item where it is.
+      ...(f.channelId === null ||
+      (typeof f.channelId === "string" && has(ctx.db, "channel", f.channelId))
+        ? { channel_id: f.channelId }
+        : {}),
     }),
   remove: (ctx, id) => ctx.db.run("DELETE FROM memory WHERE id = ?", id),
   label: (f) => [...String(f.text ?? "")].slice(0, 60).join(""),

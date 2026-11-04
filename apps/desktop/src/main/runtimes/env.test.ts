@@ -40,6 +40,16 @@ describe("runtimeEnv", () => {
     ).toBeUndefined()
   })
 
+  test("cursor keeps its account key and drops a gateway key", () => {
+    const env = runtimeEnv(
+      { PATH: "/usr/bin", CURSOR_API_KEY: "k", OPENAI_API_KEY: "o" },
+      "/home/a",
+      "cursor",
+    )
+    expect(env.CURSOR_API_KEY).toBe("k")
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+  })
+
   test("the usual tool folders are added to a short PATH", () => {
     if (process.platform === "win32") return
     const env = runtimeEnv({ PATH: "/usr/bin" }, "/home/a")

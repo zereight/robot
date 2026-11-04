@@ -1,9 +1,21 @@
 import { useState } from "react"
-import { StyleSheet, Text, TextInput, View } from "react-native"
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from "react-native"
 import { useApp, useServer } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
 import { Button, ErrorLine } from "../ui/kit.tsx"
 import type { ToolPart } from "./MessageRow.tsx"
+
+/** The key of the line of a question that the lead passed (spec 004). */
+const passKey = (kind: "user_choice" | "not_sure" | "late" | "failure", reason: string) =>
+  kind === "late"
+    ? ("tool.leadPass.late" as const)
+    : kind === "failure"
+      ? ("tool.leadPass.failure" as const)
+      : reason !== ""
+        ? ("tool.leadPass.reason" as const)
+        : kind === "user_choice"
+          ? ("tool.leadPass.user_choice" as const)
+          : ("tool.leadPass.not_sure" as const)
 
 /**
  * The card of a step that waits for the user (spec 007, 011): an approval with Allow and Deny,
@@ -113,6 +125,28 @@ export const AskCard = (props: {
           <Text selectable style={[styles.summary, { color: palette.text }]}>
             {ask.question}
           </Text>
+          {/* The lead of the channel looks at the question; the user can still answer (spec 004). */}
+          {ask.lead ? (
+            <View
+              testID="ask.lead"
+              accessibilityRole="text"
+              accessibilityLiveRegion="polite"
+              style={styles.leadRow}
+            >
+              <ActivityIndicator size="small" color={palette.textMuted} />
+              <Text style={[styles.xs, { color: palette.textMuted }]}>
+                {t("tool.leadLooks", { name: ask.lead.name })}
+              </Text>
+            </View>
+          ) : null}
+          {ask.passed ? (
+            <Text testID="ask.passed" style={[styles.small, { color: palette.textMuted }]}>
+              {t(passKey(ask.passed.kind, ask.passed.reason), {
+                name: ask.passed.name,
+                reason: ask.passed.reason,
+              })}
+            </Text>
+          ) : null}
           {ask.choices.length > 0 ? (
             <View style={styles.choices}>
               {ask.choices.map((choice) => (
@@ -167,6 +201,7 @@ const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: radius.l, padding: space.m, gap: space.s },
   small: { fontSize: text.s, lineHeight: 19 },
   xs: { fontSize: text.xs },
+  leadRow: { flexDirection: "row", alignItems: "center", gap: space.s },
   body: { fontSize: text.m, lineHeight: 22 },
   summary: { fontSize: text.m, lineHeight: 22, fontWeight: "600" },
   mono: { fontFamily: "Menlo", fontSize: text.xs, lineHeight: 17 },

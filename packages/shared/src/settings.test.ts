@@ -47,6 +47,12 @@ describe("settings", () => {
     expect(resolveLocale("ko", "en-US")).toBe("ko")
   })
 
+  test("tool steps show at first, and the switch takes true or false", () => {
+    expect(defaultSettings.showToolSteps).toBe(true)
+    expect(Schema.is(SettingsPatch)({ showToolSteps: false })).toBe(true)
+    expect(Schema.is(SettingsPatch)({ showToolSteps: "no" })).toBe(false)
+  })
+
   test("agents working at once: a whole number from 1 to 8, 4 at first", () => {
     expect(defaultSettings.agentsAtOnce).toBe(4)
     for (const agentsAtOnce of [1, 8]) {

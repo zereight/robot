@@ -18,6 +18,7 @@ import {
   KNOWLEDGE_SOURCES,
   looksLikeSecret,
   REDACTED,
+  RUNTIME_KINDS,
   redactSecrets,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
@@ -526,9 +527,10 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
                 "INSERT INTO provider_model SELECT * FROM imp.provider_model WHERE account_id IN (SELECT id FROM imp.provider_account)",
               )
               // The sign-in of a vendor program belongs to the other computer. Connect again.
-              db.run(
-                "UPDATE provider_account SET off = 1 WHERE kind IN ('claude_code', 'codex', 'muse', 'pi', 'opencode')",
-              )
+              const runtimeKinds = RUNTIME_KINDS.filter((kind) => /^[a-z_]+$/.test(kind))
+                .map((kind) => `'${kind}'`)
+                .join(", ")
+              db.run(`UPDATE provider_account SET off = 1 WHERE kind IN (${runtimeKinds})`)
               // The threads come before the messages that point to them (spec 003, 014). A thread
               // holds its marks, so a handover comes back with the marks of its new thread.
               db.run("INSERT INTO thread SELECT * FROM imp.thread")

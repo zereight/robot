@@ -9,6 +9,7 @@ import {
   repairAfterRestore,
   repairAfterSync,
   type TreeChannel,
+  type TreeRepair,
   treeLevels,
   treeParents,
 } from "./channelTree.ts"
@@ -377,6 +378,267 @@ describe("the repair always ends in a tree that has the rules (spec 030, Repair)
       expect(repairAfterRestore(clear(channels, ids))).toEqual([])
       const again = repairAfterRestore(shuffle(channels, next))
       expect(again.map((r) => r.id).sort()).toEqual([...ids].sort())
+    }
+  })
+})
+
+// ------------------------------------------------------------------------------ refined text
+
+// Spec 030, "Repair": a break can come from a sync, from a restore or from an import. A loop is
+// broken at the channel with the latest parent change among the channels of the loop; a restore or
+// an import uses the changes that the fields carry. Ties: the channel made later, then the later
+// id. More than one break: one field for each break, nearest the top first, and a new check.
+describe("the repair of a loop after a restore or an import (spec 030, Repair)", () => {
+  const at = (l: number, c = 0, n = "d1"): ChangeTime => ({ l, c, n })
+  const rc = (
+    id: string,
+    parentId: string | null,
+    createdAt: number,
+    parentChanged?: ChangeTime,
+  ): RepairChannel => ({ id, parentId, createdAt, ...(parentChanged ? { parentChanged } : {}) })
+
+  test("the channel with the latest parent change among the channels of the loop is cleared", () => {
+    // The oldest channel holds the latest change: the creation time does not decide.
+    const loop = [
+      rc("a", "b", 300, at(5)),
+      rc("b", "c", 200, at(6)),
+      rc("c", "a", 100, at(9)),
+      rc("other", null, 400),
+    ]
+    expect(repairAfterRestore(loop)).toEqual([{ id: "c", reason: "loop" }])
+    // The same for a sync, and for any order of the list.
+    expect(repairAfterSync(loop)).toEqual([{ id: "c", reason: "loop" }])
+    expect(repairAfterRestore([...loop].reverse())).toEqual([{ id: "c", reason: "loop" }])
+  })
+
+  test("the computer that made the change does not make it later", () => {
+    const loop = [rc("a", "b", 100, at(5, 0, "z")), rc("b", "a", 200, at(5, 0, "a"))]
+    // The same time and counter: the channel made later.
+    expect(repairAfterRestore(loop)).toEqual([{ id: "b", reason: "loop" }])
+    // The counter is part of the time.
+    expect(repairAfterRestore([rc("a", "b", 100, at(5, 1)), rc("b", "a", 200, at(5, 0))])).toEqual([
+      { id: "a", reason: "loop" },
+    ])
+  })
+
+  test("with no change time at all (an import): the channel made later, then the later id", () => {
+    expect(repairAfterRestore([rc("a", "b", 100), rc("b", "a", 200)])).toEqual([
+      { id: "b", reason: "loop" },
+    ])
+    expect(repairAfterRestore([rc("a", "b", 200), rc("b", "a", 100)])).toEqual([
+      { id: "a", reason: "loop" },
+    ])
+    // Made at the same time: the later id, whatever the order of the list.
+    const same = [rc("m1", "m2", 100), rc("m2", "m3", 100), rc("m3", "m1", 100)]
+    expect(repairAfterRestore(same)).toEqual([{ id: "m3", reason: "loop" }])
+    expect(repairAfterRestore([...same].reverse())).toEqual([{ id: "m3", reason: "loop" }])
+  })
+
+  test("a channel with a change time is later than one with none", () => {
+    const loop = [rc("a", "b", 999), rc("b", "a", 1, at(1))]
+    expect(repairAfterRestore(loop)).toEqual([{ id: "b", reason: "loop" }])
+  })
+
+  test("a loop of one channel (its own parent) is broken", () => {
+    expect(repairAfterRestore([rc("a", "a", 1), rc("b", null, 1)])).toEqual([
+      { id: "a", reason: "loop" },
+    ])
+  })
+
+  test("a loop gets one repair, not one for each channel", () => {
+    const ring = (ids: readonly string[]) =>
+      ids.map((id, i) => rc(id, ids[(i + 1) % ids.length] as string, 1, at(i + 1)))
+    const three = ring(["a", "b", "c"])
+    expect(repairAfterRestore(three)).toEqual([{ id: "c", reason: "loop" }])
+    expect(repairAfterSync(three)).toEqual([{ id: "c", reason: "loop" }])
+    const cleared = three.map((c) => (c.id === "c" ? { ...c, parentId: null } : c))
+    expect(repairAfterRestore(cleared)).toEqual([])
+    // A loop of four: once the loop is broken, the line of four channels is a fourth level, and the
+    // check runs again (spec 030: one field for each break).
+    const four = ring(["a", "b", "c", "d"])
+    expect(repairAfterRestore(four)).toEqual([
+      { id: "d", reason: "loop" },
+      { id: "a", reason: "levels" },
+    ])
+  })
+
+  describe('acceptance: "A restore that closes a loop"', () => {
+    // "Docs" is under "Wiki", and "Site" is under "Docs". "Docs" is archived. "Wiki" is put under
+    // "Site": allowed, because "Docs" counts as no channel now. Then "Docs" is restored.
+    const make = (docsArchived: boolean): RepairChannel[] => [
+      { ...rc("wiki", "site", 10, at(30)), archived: false },
+      { ...rc("docs", "wiki", 20, at(10)), archived: docsArchived },
+      { ...rc("site", "docs", 30, at(20)), archived: false },
+    ]
+
+    test("while Docs is archived, Wiki can go under Site, and nothing is broken", () => {
+      const channels = make(true).map((c) => (c.id === "wiki" ? { ...c, parentId: null } : c))
+      // The rules of the tree let "Wiki" go under "Site": "Docs" counts as no channel.
+      expect(parentRefusal(channels, "wiki", "site")).toBeUndefined()
+      expect(repairAfterRestore(make(true))).toEqual([])
+      expect(Object.fromEntries(treeParents(make(true)))).toMatchObject({
+        wiki: "site",
+        site: null,
+        docs: "wiki",
+      })
+    })
+
+    test("the restore works, the field of Wiki is cleared, and the tree is Wiki > Docs > Site", () => {
+      const repairs = repairAfterRestore(make(false))
+      expect(repairs).toEqual([{ id: "wiki", reason: "loop" }])
+      const repaired = make(false).map((c) => (c.id === "wiki" ? { ...c, parentId: null } : c))
+      const parents = treeParents(repaired)
+      expect(Object.fromEntries(parents)).toEqual({ wiki: null, docs: "wiki", site: "docs" })
+      expect(Object.fromEntries(treeLevels(parents))).toEqual({ wiki: 1, docs: 2, site: 3 })
+      expect(repairAfterRestore(repaired)).toEqual([])
+    })
+  })
+
+  describe('acceptance: "Docs" under "Product", "Site" under "Docs", "Wiki" under "Site"', () => {
+    const make = (productArchived: boolean): RepairChannel[] => [
+      { ...rc("product", null, 1), archived: productArchived },
+      rc("docs", "product", 2),
+      rc("site", "docs", 3),
+      rc("wiki", "site", 4),
+    ]
+
+    test("while Product is archived, Wiki is on the third level and nothing is broken", () => {
+      const channels = make(true)
+      expect(repairAfterRestore(channels)).toEqual([])
+      const levels = treeLevels(treeParents(channels))
+      expect(levels.get("docs")).toBe(1)
+      expect(levels.get("wiki")).toBe(3)
+    })
+
+    test("the restore works, and the field of Wiki is cleared", () => {
+      expect(repairAfterRestore(make(false))).toEqual([{ id: "wiki", reason: "levels" }])
+    })
+  })
+})
+
+describe("more than one break (spec 030, Repair)", () => {
+  const at = (l: number): ChangeTime => ({ l, c: 0, n: "d1" })
+  const rc = (
+    id: string,
+    parentId: string | null,
+    l: number | undefined,
+    createdAt = 1,
+  ): RepairChannel => ({
+    id,
+    parentId,
+    createdAt,
+    ...(l === undefined ? {} : { parentChanged: at(l) }),
+  })
+  const applyAll = (channels: readonly RepairChannel[], repairs: readonly { id: string }[]) =>
+    channels.map((c) => (repairs.some((r) => r.id === c.id) ? { ...c, parentId: null } : c))
+
+  test("a loop is broken first, and the fourth level that this makes is checked again", () => {
+    // A <-> B is a loop. C is under A, and D is under C. B has the later change.
+    // After "B" is cleared: B > A > C > D. "D" is on the fourth level.
+    const data = [
+      rc("a", "b", 1),
+      rc("b", "a", 5),
+      rc("c", "a", 2),
+      rc("d", "c", 3),
+      rc("lone", null, undefined),
+    ]
+    const expected: TreeRepair[] = [
+      { id: "b", reason: "loop" },
+      { id: "d", reason: "levels" },
+    ]
+    expect(repairAfterSync(data)).toEqual(expected)
+    expect(repairAfterRestore(data)).toEqual(expected)
+    // When "A" has the later change, "A" is cleared, and the tree is right: one break only.
+    const other = data.map((c) => (c.id === "a" ? { ...c, parentChanged: at(9) } : c))
+    expect(repairAfterSync(other)).toEqual([{ id: "a", reason: "loop" }])
+    expect(repairAfterRestore(other)).toEqual([{ id: "a", reason: "loop" }])
+  })
+
+  test("two loops are two repairs, one field for each", () => {
+    const data = [
+      rc("a", "b", 1),
+      rc("b", "a", 2),
+      rc("x", "y", 3),
+      rc("y", "z", 4),
+      rc("z", "x", 5),
+    ]
+    for (const repair of [repairAfterSync, repairAfterRestore]) {
+      const repairs = repair(data)
+      expect(repairs.map((r) => r.reason)).toEqual(["loop", "loop"])
+      expect(repairs.map((r) => r.id).sort()).toEqual(["b", "z"])
+      expect(repair(applyAll(data, repairs))).toEqual([])
+    }
+  })
+
+  test("after a sync, the break nearest the top goes first, and the check runs again", () => {
+    // P > A > B > C > D > E. "C" is on level 4, "D" on 5, "E" on 6. The latest change of the line
+    // P, A, B, C is the one of "A": it becomes a top channel. A > B > C > D > E has "D" on level 4.
+    // The latest change of the line A, B, C, D is the one of "B". B > C > D > E is 4 levels:
+    // "E" is on level 4, and the line B, C, D, E has the latest change at "C". Then C > D > E.
+    const data = [
+      rc("p", null, 1),
+      rc("a", "p", 20),
+      rc("b", "a", 15),
+      rc("c", "b", 10),
+      rc("d", "c", 5),
+      rc("e", "d", 30),
+    ]
+    const repairs = repairAfterSync(data)
+    // Each field that is cleared was on the line of the channel that was too deep at that time.
+    expect(repairs).toEqual([
+      { id: "a", reason: "levels" },
+      { id: "b", reason: "levels" },
+      { id: "e", reason: "levels" },
+    ])
+    expect(repairAfterSync(applyAll(data, repairs))).toEqual([])
+  })
+
+  test("after a restore, the check goes from the top down and clears each fourth level", () => {
+    const chain = ["p", "a", "b", "c", "d", "e", "f", "g"].map((id, i, all) =>
+      rc(id, i === 0 ? null : (all[i - 1] as string), undefined),
+    )
+    // P A B | C D E | F G: "C" and "F" are cleared, and the tree is three groups of three.
+    const repairs = repairAfterRestore(chain)
+    expect(repairs).toEqual([
+      { id: "c", reason: "levels" },
+      { id: "f", reason: "levels" },
+    ])
+    const levels = treeLevels(treeParents(applyAll(chain, repairs)))
+    expect(Math.max(...levels.values())).toBe(3)
+  })
+
+  test("a break in one branch does not touch another branch", () => {
+    const data = [
+      rc("p", null, 1),
+      rc("a", "p", 2),
+      rc("b", "a", 3),
+      rc("c", "b", 4),
+      rc("q", null, 1),
+      rc("r", "q", 2),
+      rc("s", "r", 3),
+    ]
+    expect(repairAfterSync(data).map((r) => r.id)).toEqual(["c"])
+    expect(repairAfterRestore(data).map((r) => r.id)).toEqual(["c"])
+  })
+
+  test("the repairs are in the same order for any order of the channels", () => {
+    const data = [
+      rc("a", "b", 1),
+      rc("b", "a", 5),
+      rc("c", "a", 2),
+      rc("d", "c", 3),
+      rc("x", "y", 3),
+      rc("y", "x", 4),
+      rc("p", null, 1),
+      rc("q", "p", 2),
+      rc("r", "q", 3),
+      rc("s", "r", 4),
+    ]
+    for (const repair of [repairAfterSync, repairAfterRestore]) {
+      const want = repair(data)
+      expect(want.length).toBeGreaterThan(2)
+      expect(repair([...data].reverse())).toEqual(want)
+      expect(repair([...data.slice(5), ...data.slice(0, 5)])).toEqual(want)
     }
   })
 })

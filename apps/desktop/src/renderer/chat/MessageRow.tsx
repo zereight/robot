@@ -4,6 +4,8 @@ import {
   catalogues,
   connectionToolLabel,
   type FilePart,
+  foldedToolsKey,
+  groupParts,
   handoverOf,
   isNoteOnly,
   type KnowledgeNote,
@@ -15,6 +17,9 @@ import {
   messageSkill,
   messageText,
   type OutsideSource,
+  passLabelKey,
+  type QuestionLead,
+  type QuestionPass,
   ROUTINES_MAX,
   type SecretAsk,
   type SecretAuth,
@@ -25,6 +30,7 @@ import {
   SKILLS_MAX,
   type SkillPart,
   type ToolAsk,
+  type ToolPart,
 } from "@robot/shared"
 import {
   BookOpen,
@@ -32,6 +38,7 @@ import {
   Download,
   ExternalLink,
   GitBranch,
+  LoaderCircle,
   Pencil,
   Reply,
   Sparkles,
@@ -77,6 +84,11 @@ export interface MessageRowProps {
   onFork?: (() => void) | undefined
   /** Why Fork is off now, in words. */
   forkOff?: string | undefined
+  /**
+   * "Correct" on a question that the lead answered (spec 004, "Questions of members"): starts a
+   * reply in the message box with a mention of the member. None where the box is not a channel's.
+   */
+  onCorrect?: (() => void) | undefined
 }
 
 /** The words of an error code, or "Something went wrong" for a code with no words. */
@@ -300,6 +312,7 @@ const ToolCard = (props: {
   part: Extract<MessagePart, { kind: "tool" }>
   /** The name of the other computer when the task runs there (spec 019). */
   from: string | undefined
+  onCorrect?: (() => void) | undefined
 }) => {
   const app = useApp()
   const { t } = app
@@ -320,290 +333,346 @@ const ToolCard = (props: {
   /** A computer cannot change what an agent may always do on another computer (spec 019). */
   const mayAlways = () => !ui.linked() && props.from === undefined
   return (
-    <details class={styles.tool} data-testid="tool-card" open={props.part.state === "waiting"}>
-      <summary>
-        <Wrench size={14} />
-        <span class={styles.toolLabel}>
-          {props.part.name === "search_chats"
-            ? t("chat.tool.searchChats")
-            : props.part.connection?.kind === "search"
-              ? t("chat.tool.searchTools", {
-                  words: props.part.connection.words,
-                  found: props.part.connection.found,
-                })
-              : props.part.connection?.kind === "call"
-                ? connectionToolLabel(props.part.connection.connection, props.part.connection.tool)
-                : props.part.label || props.part.name}
-        </span>
-        {/* A step that the permission level refused says so (spec 007). */}
-        <span
-          class={styles.toolState}
-          data-state={props.part.refused ? "refused" : props.part.state}
-          data-testid="tool-state"
-        >
-          {props.part.refused
-            ? t(
-                props.part.refused === "address"
-                  ? "chat.tool.refusedAddress"
-                  : props.part.refused === "rule"
-                    ? "chat.tool.refusedRule"
-                    : "chat.tool.refusedReadOnly",
-              )
-            : t(`chat.tool.${props.part.state}` as MessageKey)}
-        </span>
-        {/* A step that an Allow rule let run says so (spec 007, "Permission rules"). */}
-        <Show when={props.part.ruleAllowed}>
-          <span class={styles.fromDevice} data-testid="tool-rule-allowed">
-            {t("chat.tool.ruleAllowed")}
-          </span>
-        </Show>
-        {/* A step that the check of "Ask when unsure" let run says so (spec 007). */}
-        <Show when={props.part.checkAllowed !== undefined}>
-          <span class={styles.fromDevice} data-testid="tool-check-allowed">
-            {t("chat.tool.checkAllowed")}
-          </span>
-        </Show>
-        {/* A call of a connection tool that its read-only mark let run says so (spec 018). */}
-        <Show when={props.part.readOnlyTrusted}>
-          <span class={styles.fromDevice} data-testid="tool-read-only-trusted">
-            {t("chat.tool.readOnlyTrusted")}
-          </span>
-        </Show>
-        <Show when={props.part.reason}>
-          {(reason) => (
-            <span class={styles.toolReason} data-testid="tool-reason" data-code={reason().code}>
-              {t(`error.${reason().code}` as MessageKey, { detail: reason().detail ?? "" })}
-            </span>
-          )}
-        </Show>
-        <Show when={props.from}>
-          {(from) => (
-            <span class={styles.fromDevice} data-testid="tool-origin">
-              {t("link.fromDevice", { name: from() })}
-            </span>
-          )}
-        </Show>
-        <Show when={props.part.answeredInChat}>
-          <span class={styles.fromDevice} data-testid="tool-answered-in-chat">
-            {t("chat.tool.answeredInChat")}
-          </span>
-        </Show>
-        <Show when={props.part.secret}>
-          {(result) => (
-            <span class={styles.fromDevice} data-testid="secret-result" data-result={result()}>
-              {result() === "saved" ? t("secret.card.saved") : t("secret.card.cancelled")}
-            </span>
-          )}
-        </Show>
-        <Show when={props.part.decision}>
-          {(decision) => (
-            <span
-              class={styles.fromDevice}
-              data-testid="tool-decision"
-              data-answer={decision().answer}
-            >
-              {decision().answer === "allow"
-                ? t("chat.decision.allowed", { name: decision().by })
-                : t("chat.decision.denied", { name: decision().by })}
-            </span>
-          )}
-        </Show>
-      </summary>
-      <div class={styles.toolBody}>
-        <Show when={props.part.ask}>
-          {(ask) => (
-            <div class={styles.ask} data-testid="ask-card">
-              <Show when={ask().askedAt}>
-                {(at) => (
-                  <div class={styles.time} data-testid="ask-time">
-                    {t("chat.tool.askedAt", { time: formatTime(app.locale(), at()) })}
-                  </div>
-                )}
-              </Show>
-              <Show when={away()}>
-                <div class={styles.fromDevice} role="status" data-testid="ask-origin-offline">
-                  {t("sync.originOffline", { name: props.from ?? "" })}
-                </div>
-              </Show>
-              <Show when={failure()}>
-                {(err) => (
-                  <div class={styles.fromDevice} role="alert" data-testid="ask-error">
-                    {t(err().key, err().params)}
-                  </div>
-                )}
-              </Show>
-              <Switch>
-                <Match when={ask().kind === "secret" ? (ask() as SecretAsk) : undefined}>
-                  {(secret) => (
-                    <SecretCard
-                      agent={props.agent}
-                      callId={props.part.id}
-                      ask={secret()}
-                      elsewhere={
-                        props.from ?? (ui.linked() ? (ui.server()?.name ?? "") : undefined)
-                      }
-                    />
-                  )}
-                </Match>
-                <Match when={ask().kind === "article" ? ask() : undefined}>
-                  {(article) => {
-                    const a = () => article() as Extract<ToolAsk, { kind: "article" }>
-                    return (
-                      <div data-testid="ask-article">
-                        <div>{t("chat.knowledge.protect", { title: a().title })}</div>
-                        <div class={styles.compare}>
-                          <section>
-                            <div class={styles.time}>{t("chat.knowledge.protect.now")}</div>
-                            <pre data-testid="ask-before">{a().before}</pre>
-                          </section>
-                          <section>
-                            <div class={styles.time}>{t("chat.knowledge.protect.new")}</div>
-                            <pre data-testid="ask-after">
-                              {a().after ?? t("chat.knowledge.protect.deleted")}
-                            </pre>
-                          </section>
-                        </div>
-                        <div class={styles.askActions}>
-                          <Button
-                            variant="primary"
-                            disabled={away()}
-                            onClick={() => respond("allow")}
-                            data-testid="ask-allow"
-                          >
-                            {t("chat.tool.allow")}
-                          </Button>
-                          <Button
-                            disabled={away()}
-                            onClick={() => respond("deny")}
-                            data-testid="ask-deny"
-                          >
-                            {t("chat.tool.deny")}
-                          </Button>
-                        </div>
-                      </div>
+    <>
+      <details class={styles.tool} data-testid="tool-card" open={props.part.state === "waiting"}>
+        <summary>
+          <Wrench size={14} />
+          <span class={styles.toolLabel}>
+            {props.part.name === "search_chats"
+              ? t("chat.tool.searchChats")
+              : props.part.connection?.kind === "search"
+                ? t("chat.tool.searchTools", {
+                    words: props.part.connection.words,
+                    found: props.part.connection.found,
+                  })
+                : props.part.connection?.kind === "call"
+                  ? connectionToolLabel(
+                      props.part.connection.connection,
+                      props.part.connection.tool,
                     )
-                  }}
-                </Match>
-                <Match when={ask().kind === "question" ? ask() : undefined}>
-                  {(question) => (
-                    <>
-                      <div>{(question() as { question: string }).question}</div>
-                      <div class={styles.askActions}>
-                        <For each={(question() as { choices: readonly string[] }).choices}>
-                          {(choice) => (
+                  : props.part.label || props.part.name}
+          </span>
+          {/* A step that the permission level refused says so (spec 007). */}
+          <span
+            class={styles.toolState}
+            data-state={props.part.refused ? "refused" : props.part.state}
+            data-testid="tool-state"
+          >
+            {props.part.refused
+              ? t(
+                  props.part.refused === "address"
+                    ? "chat.tool.refusedAddress"
+                    : props.part.refused === "rule"
+                      ? "chat.tool.refusedRule"
+                      : "chat.tool.refusedReadOnly",
+                )
+              : t(`chat.tool.${props.part.state}` as MessageKey)}
+          </span>
+          {/* A step that an Allow rule let run says so (spec 007, "Permission rules"). */}
+          <Show when={props.part.ruleAllowed}>
+            <span class={styles.fromDevice} data-testid="tool-rule-allowed">
+              {t("chat.tool.ruleAllowed")}
+            </span>
+          </Show>
+          {/* A step that the check of "Ask when unsure" let run says so (spec 007). */}
+          <Show when={props.part.checkAllowed !== undefined}>
+            <span class={styles.fromDevice} data-testid="tool-check-allowed">
+              {t("chat.tool.checkAllowed")}
+            </span>
+          </Show>
+          {/* A call of a connection tool that its read-only mark let run says so (spec 018). */}
+          <Show when={props.part.readOnlyTrusted}>
+            <span class={styles.fromDevice} data-testid="tool-read-only-trusted">
+              {t("chat.tool.readOnlyTrusted")}
+            </span>
+          </Show>
+          <Show when={props.part.reason}>
+            {(reason) => (
+              <span class={styles.toolReason} data-testid="tool-reason" data-code={reason().code}>
+                {t(`error.${reason().code}` as MessageKey, { detail: reason().detail ?? "" })}
+              </span>
+            )}
+          </Show>
+          <Show when={props.from}>
+            {(from) => (
+              <span class={styles.fromDevice} data-testid="tool-origin">
+                {t("link.fromDevice", { name: from() })}
+              </span>
+            )}
+          </Show>
+          <Show when={props.part.answeredInChat}>
+            <span class={styles.fromDevice} data-testid="tool-answered-in-chat">
+              {t("chat.tool.answeredInChat")}
+            </span>
+          </Show>
+          <Show when={props.part.secret}>
+            {(result) => (
+              <span class={styles.fromDevice} data-testid="secret-result" data-result={result()}>
+                {result() === "saved" ? t("secret.card.saved") : t("secret.card.cancelled")}
+              </span>
+            )}
+          </Show>
+          <Show when={props.part.decision}>
+            {(decision) => (
+              <span
+                class={styles.fromDevice}
+                data-testid="tool-decision"
+                data-answer={decision().answer}
+              >
+                {decision().answer === "allow"
+                  ? t("chat.decision.allowed", { name: decision().by })
+                  : t("chat.decision.denied", { name: decision().by })}
+              </span>
+            )}
+          </Show>
+        </summary>
+        <div class={styles.toolBody}>
+          <Show when={props.part.ask}>
+            {(ask) => (
+              <div class={styles.ask} data-testid="ask-card">
+                <Show when={ask().askedAt}>
+                  {(at) => (
+                    <div class={styles.time} data-testid="ask-time">
+                      {t("chat.tool.askedAt", { time: formatTime(app.locale(), at()) })}
+                    </div>
+                  )}
+                </Show>
+                <Show when={away()}>
+                  <div class={styles.fromDevice} role="status" data-testid="ask-origin-offline">
+                    {t("sync.originOffline", { name: props.from ?? "" })}
+                  </div>
+                </Show>
+                <Show when={failure()}>
+                  {(err) => (
+                    <div class={styles.fromDevice} role="alert" data-testid="ask-error">
+                      {t(err().key, err().params)}
+                    </div>
+                  )}
+                </Show>
+                <Switch>
+                  <Match when={ask().kind === "secret" ? (ask() as SecretAsk) : undefined}>
+                    {(secret) => (
+                      <SecretCard
+                        agent={props.agent}
+                        callId={props.part.id}
+                        ask={secret()}
+                        elsewhere={
+                          props.from ?? (ui.linked() ? (ui.server()?.name ?? "") : undefined)
+                        }
+                      />
+                    )}
+                  </Match>
+                  <Match when={ask().kind === "article" ? ask() : undefined}>
+                    {(article) => {
+                      const a = () => article() as Extract<ToolAsk, { kind: "article" }>
+                      return (
+                        <div data-testid="ask-article">
+                          <div>{t("chat.knowledge.protect", { title: a().title })}</div>
+                          <div class={styles.compare}>
+                            <section>
+                              <div class={styles.time}>{t("chat.knowledge.protect.now")}</div>
+                              <pre data-testid="ask-before">{a().before}</pre>
+                            </section>
+                            <section>
+                              <div class={styles.time}>{t("chat.knowledge.protect.new")}</div>
+                              <pre data-testid="ask-after">
+                                {a().after ?? t("chat.knowledge.protect.deleted")}
+                              </pre>
+                            </section>
+                          </div>
+                          <div class={styles.askActions}>
+                            <Button
+                              variant="primary"
+                              disabled={away()}
+                              onClick={() => respond("allow")}
+                              data-testid="ask-allow"
+                            >
+                              {t("chat.tool.allow")}
+                            </Button>
                             <Button
                               disabled={away()}
-                              onClick={() => respond(choice)}
-                              data-testid="ask-choice"
+                              onClick={() => respond("deny")}
+                              data-testid="ask-deny"
                             >
-                              {choice}
+                              {t("chat.tool.deny")}
                             </Button>
+                          </div>
+                        </div>
+                      )
+                    }}
+                  </Match>
+                  <Match when={ask().kind === "question" ? ask() : undefined}>
+                    {(question) => (
+                      <>
+                        <div>{(question() as { question: string }).question}</div>
+                        {/* The lead of the channel looks at the question (spec 004). The user can answer. */}
+                        <Show when={(question() as { lead?: QuestionLead }).lead}>
+                          {(lead) => (
+                            <div class={styles.leadLooks} role="status" data-testid="lead-looks">
+                              <LoaderCircle
+                                size={14}
+                                class={styles.leadSpin ?? ""}
+                                aria-hidden="true"
+                              />
+                              <span>{t("lead.looks", { name: lead().name })}</span>
+                            </div>
                           )}
-                        </For>
-                      </div>
-                      <form
-                        class={styles.askActions}
-                        onSubmit={(e) => {
-                          e.preventDefault()
-                          if (answer().trim()) respond(answer().trim())
-                        }}
-                      >
-                        <input
-                          class={styles.askInput}
-                          value={answer()}
-                          placeholder={t("chat.tool.answer")}
-                          aria-label={t("chat.tool.answer")}
-                          onInput={(e) => setAnswer(e.currentTarget.value)}
-                          data-testid="ask-input"
-                        />
-                        <Button
-                          type="submit"
-                          variant="primary"
-                          disabled={away()}
-                          data-testid="ask-send"
+                        </Show>
+                        {/* The lead passed the question: its reason, or the line about the time. */}
+                        <Show when={(question() as { passed?: QuestionPass }).passed}>
+                          {(passed) => (
+                            <div
+                              class={styles.leadPass}
+                              data-testid="lead-pass"
+                              data-kind={passed().kind}
+                            >
+                              {t(passLabelKey(passed()), {
+                                name: passed().name,
+                                reason: passed().reason,
+                              })}
+                            </div>
+                          )}
+                        </Show>
+                        <div class={styles.askActions}>
+                          <For each={(question() as { choices: readonly string[] }).choices}>
+                            {(choice) => (
+                              <Button
+                                disabled={away()}
+                                onClick={() => respond(choice)}
+                                data-testid="ask-choice"
+                              >
+                                {choice}
+                              </Button>
+                            )}
+                          </For>
+                        </div>
+                        <form
+                          class={styles.askActions}
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            if (answer().trim()) respond(answer().trim())
+                          }}
                         >
-                          {t("chat.tool.send")}
-                        </Button>
-                      </form>
-                    </>
-                  )}
-                </Match>
-                <Match when={ask().kind === "approval"}>
-                  <div>{t("chat.tool.approval")}</div>
-                  {/* A rule that the app cannot read meets the step (spec 007). */}
-                  <Show when={(ask() as { unreadable?: true }).unreadable}>
-                    <div class={styles.outside} role="note" data-testid="ask-unreadable">
-                      <strong>{t("chat.tool.unreadable")}</strong>
-                    </div>
-                  </Show>
-                  {/* The check of "Ask when unsure" was asked and did not allow the step (spec 007). */}
-                  <Show when={(ask() as { unsure?: true }).unsure}>
-                    <div class={styles.outside} role="note" data-testid="ask-unsure">
-                      <strong>{t("chat.tool.unsure")}</strong>
-                    </div>
-                  </Show>
-                  {/* A guarded step in a turn that holds outside content (spec 007). */}
-                  <Show when={(ask() as { outside?: OutsideSource }).outside}>
-                    {(source) => (
-                      <div class={styles.outside} role="note" data-testid="ask-outside">
-                        <strong>{t("outside.held")}</strong>
-                        <span data-testid="ask-outside-source">
-                          {t("outside.first", { source: outsideSourceText(t, source()) })}
-                        </span>
-                        <span class={styles.outsideHint}>{t("outside.hint")}</span>
-                      </div>
+                          <input
+                            class={styles.askInput}
+                            value={answer()}
+                            placeholder={t("chat.tool.answer")}
+                            aria-label={t("chat.tool.answer")}
+                            onInput={(e) => setAnswer(e.currentTarget.value)}
+                            data-testid="ask-input"
+                          />
+                          <Button
+                            type="submit"
+                            variant="primary"
+                            disabled={away()}
+                            data-testid="ask-send"
+                          >
+                            {t("chat.tool.send")}
+                          </Button>
+                        </form>
+                      </>
                     )}
-                  </Show>
-                  {/* A step that sends data out in a turn that read a credential place (spec 007). */}
-                  <Show when={(ask() as { sensitive?: SensitiveLabel }).sensitive}>
-                    {(label) => (
-                      <div class={styles.outside} role="note" data-testid="ask-sensitive">
-                        <strong>{t("sensitive.askLine")}</strong>
-                        <span data-testid="ask-sensitive-label">
-                          {t("sensitive.first", { label: sensitiveLabelText(t, label()) })}
-                        </span>
+                  </Match>
+                  <Match when={ask().kind === "approval"}>
+                    <div>{t("chat.tool.approval")}</div>
+                    {/* A rule that the app cannot read meets the step (spec 007). */}
+                    <Show when={(ask() as { unreadable?: true }).unreadable}>
+                      <div class={styles.outside} role="note" data-testid="ask-unreadable">
+                        <strong>{t("chat.tool.unreadable")}</strong>
                       </div>
-                    )}
-                  </Show>
-                  <pre>{(ask() as { summary: string }).summary}</pre>
-                  <div class={styles.askActions}>
-                    <Button
-                      variant="primary"
-                      disabled={away()}
-                      onClick={() => respond("allow")}
-                      data-testid="ask-allow"
-                    >
-                      {t("chat.tool.allow")}
-                    </Button>
-                    {/* A client cannot change what an agent may always do (spec 012). */}
-                    <Show when={mayAlways() && !(ask() as { once?: boolean }).once}>
-                      <Button onClick={() => respond("always")} data-testid="ask-always">
-                        {t("chat.tool.always")}
-                      </Button>
                     </Show>
-                    <Button
-                      disabled={away()}
-                      onClick={() => respond("deny")}
-                      data-testid="ask-deny"
-                    >
-                      {t("chat.tool.deny")}
-                    </Button>
-                  </div>
-                </Match>
-              </Switch>
-            </div>
-          )}
-        </Show>
-        <Show when={props.part.input}>
-          <div class={styles.time}>{t("chat.tool.input")}</div>
-          <pre>{props.part.input}</pre>
-        </Show>
-        <Show when={props.part.output}>
-          <div class={styles.time}>{t("chat.tool.output")}</div>
-          <pre>{props.part.output}</pre>
-        </Show>
-      </div>
-    </details>
+                    {/* The check of "Ask when unsure" was asked and did not allow the step (spec 007). */}
+                    <Show when={(ask() as { unsure?: true }).unsure}>
+                      <div class={styles.outside} role="note" data-testid="ask-unsure">
+                        <strong>{t("chat.tool.unsure")}</strong>
+                      </div>
+                    </Show>
+                    {/* A guarded step in a turn that holds outside content (spec 007). */}
+                    <Show when={(ask() as { outside?: OutsideSource }).outside}>
+                      {(source) => (
+                        <div class={styles.outside} role="note" data-testid="ask-outside">
+                          <strong>{t("outside.held")}</strong>
+                          <span data-testid="ask-outside-source">
+                            {t("outside.first", { source: outsideSourceText(t, source()) })}
+                          </span>
+                          <span class={styles.outsideHint}>{t("outside.hint")}</span>
+                        </div>
+                      )}
+                    </Show>
+                    {/* A step that sends data out in a turn that read a credential place (spec 007). */}
+                    <Show when={(ask() as { sensitive?: SensitiveLabel }).sensitive}>
+                      {(label) => (
+                        <div class={styles.outside} role="note" data-testid="ask-sensitive">
+                          <strong>{t("sensitive.askLine")}</strong>
+                          <span data-testid="ask-sensitive-label">
+                            {t("sensitive.first", { label: sensitiveLabelText(t, label()) })}
+                          </span>
+                        </div>
+                      )}
+                    </Show>
+                    <pre>{(ask() as { summary: string }).summary}</pre>
+                    <div class={styles.askActions}>
+                      <Button
+                        variant="primary"
+                        disabled={away()}
+                        onClick={() => respond("allow")}
+                        data-testid="ask-allow"
+                      >
+                        {t("chat.tool.allow")}
+                      </Button>
+                      {/* A client cannot change what an agent may always do (spec 012). */}
+                      <Show when={mayAlways() && !(ask() as { once?: boolean }).once}>
+                        <Button onClick={() => respond("always")} data-testid="ask-always">
+                          {t("chat.tool.always")}
+                        </Button>
+                      </Show>
+                      <Button
+                        disabled={away()}
+                        onClick={() => respond("deny")}
+                        data-testid="ask-deny"
+                      >
+                        {t("chat.tool.deny")}
+                      </Button>
+                    </div>
+                  </Match>
+                </Switch>
+              </div>
+            )}
+          </Show>
+          <Show when={props.part.input}>
+            <div class={styles.time}>{t("chat.tool.input")}</div>
+            <pre>{props.part.input}</pre>
+          </Show>
+          <Show when={props.part.output}>
+            <div class={styles.time}>{t("chat.tool.output")}</div>
+            <pre>{props.part.output}</pre>
+          </Show>
+        </div>
+      </details>
+      {/* The lead answered the question in place of the user (spec 004, "Questions of members"). */}
+      <Show when={props.part.answeredByLead}>
+        {(by) => (
+          <div class={styles.leadAnswer} data-testid="lead-answer">
+            <span class={styles.leadAnswerText} data-testid="lead-answer-text">
+              {props.part.output}
+            </span>
+            <span class={styles.leadAnswerBy} data-testid="lead-answered-by">
+              {t("lead.answeredBy", { name: by().name })}
+            </span>
+            <Show when={by().reason}>
+              <span class={styles.leadReason} data-testid="lead-reason">
+                {by().reason}
+              </span>
+            </Show>
+            <Show when={props.onCorrect}>
+              <Button onClick={() => props.onCorrect?.()} data-testid="lead-correct">
+                {t("lead.correct")}
+              </Button>
+            </Show>
+          </div>
+        )}
+      </Show>
+    </>
   )
 }
 
@@ -722,8 +791,6 @@ const FileChip = (props: { message: ChatMessage; file: FilePart; from: string | 
     </li>
   )
 }
-
-type ToolPart = Extract<MessagePart, { kind: "tool" }>
 
 const FAILED_KEY: Record<string, MessageKey> = {
   read_article: "chat.knowledge.failed.read",
@@ -1063,6 +1130,7 @@ const ToolStep = (props: {
   message: ChatMessage
   part: ToolPart
   from: string | undefined
+  onCorrect?: (() => void) | undefined
 }) => {
   const finished = () => props.part.state === "done" || props.part.state === "failed"
   const note = () => (finished() ? props.part.knowledge : undefined)
@@ -1077,7 +1145,14 @@ const ToolStep = (props: {
           fallback={
             <Show
               when={memory()}
-              fallback={<ToolCard agent={props.agent} part={props.part} from={props.from} />}
+              fallback={
+                <ToolCard
+                  agent={props.agent}
+                  part={props.part}
+                  from={props.from}
+                  onCorrect={props.onCorrect}
+                />
+              }
             >
               {(m) => <MemoryLine agent={props.agent} note={m()} from={props.from} />}
             </Show>
@@ -1093,6 +1168,38 @@ const ToolStep = (props: {
         <SettingsLine agent={props.agent} message={props.message} part={props.part} note={n()} />
       )}
     </Show>
+  )
+}
+
+/**
+ * A run of finished plain tool steps as one muted line, when the setting "Show tool steps" is
+ * off. The user opens it to read the cards.
+ */
+const ToolsFolded = (props: {
+  agent: Agent
+  message: ChatMessage
+  parts: readonly ToolPart[]
+  from: string | undefined
+  onCorrect?: (() => void) | undefined
+}) => {
+  const { t } = useApp()
+  return (
+    <details class={styles.toolsFolded} data-testid="tools-folded" data-count={props.parts.length}>
+      <summary data-testid="tools-folded-line">
+        {t(foldedToolsKey(props.parts.length), { count: props.parts.length })}
+      </summary>
+      <For each={props.parts}>
+        {(part) => (
+          <ToolStep
+            agent={props.agent}
+            message={props.message}
+            part={part}
+            from={props.from}
+            onCorrect={props.onCorrect}
+          />
+        )}
+      </For>
+    </details>
   )
 }
 
@@ -1217,6 +1324,83 @@ const compactedOf = (message: ChatMessage) =>
   message.parts.find(
     (p): p is Extract<MessagePart, { kind: "compacted" }> => p.kind === "compacted",
   )
+
+/** One part of an agent message: text, thinking, a muted line, or a tool step. */
+const PartView = (props: {
+  agent: Agent
+  message: ChatMessage
+  part: MessagePart
+  from: string | undefined
+  onCorrect?: (() => void) | undefined
+}) => (
+  <Switch>
+    <Match when={props.part.kind === "text"}>
+      <Markdown
+        text={(props.part as Extract<MessagePart, { kind: "text" }>).text}
+        scope={`message:${props.message.id}`}
+      />
+    </Match>
+    <Match when={props.part.kind === "thinking"}>
+      <Thinking
+        text={(props.part as Extract<MessagePart, { kind: "thinking" }>).text}
+        live={
+          props.message.status === "streaming" &&
+          props.message.parts[props.message.parts.length - 1] === props.part
+        }
+      />
+    </Match>
+    <Match
+      when={
+        props.part.kind === "note" && props.part.note === "compact_failed" ? props.part : undefined
+      }
+    >
+      {(note) => <CompactFailedLine code={(note() as { code: string }).code} />}
+    </Match>
+    <Match
+      when={
+        props.part.kind === "note" && props.part.note === "connection_down" ? props.part : undefined
+      }
+    >
+      {(note) => <ConnectionDownLine name={(note() as { name: string }).name} />}
+    </Match>
+    <Match
+      when={
+        props.part.kind === "note" && props.part.note === "connection_held" ? props.part : undefined
+      }
+    >
+      {(note) => <ConnectionHeldLine name={(note() as { name: string }).name} />}
+    </Match>
+    <Match
+      when={
+        props.part.kind === "note" && props.part.note === "backup_goes_on" ? props.part : undefined
+      }
+    >
+      {(note) => (
+        <BackupGoesOnLine
+          part={note() as Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }>}
+        />
+      )}
+    </Match>
+    <Match
+      when={props.part.kind === "note" && props.part.note === "kept_going" ? props.part : undefined}
+    >
+      {(note) => (
+        <KeptGoingLine
+          part={note() as Extract<MessagePart, { kind: "note"; note: "kept_going" }>}
+        />
+      )}
+    </Match>
+    <Match when={props.part.kind === "tool"}>
+      <ToolStep
+        agent={props.agent}
+        message={props.message}
+        part={props.part as Extract<MessagePart, { kind: "tool" }>}
+        from={props.from}
+        onCorrect={props.onCorrect}
+      />
+    </Match>
+  </Switch>
+)
 
 export const MessageRow = (props: MessageRowProps) => (
   <Show
@@ -1396,73 +1580,26 @@ const FullMessageRow = (props: MessageRowProps) => {
               </>
             }
           >
-            <For each={props.message.parts}>
-              {(part, index) => (
-                <Switch>
-                  <Match when={part.kind === "text"}>
-                    <Markdown
-                      text={(part as Extract<MessagePart, { kind: "text" }>).text}
-                      scope={`message:${props.message.id}`}
-                    />
-                  </Match>
-                  <Match when={part.kind === "thinking"}>
-                    <Thinking
-                      text={(part as Extract<MessagePart, { kind: "thinking" }>).text}
-                      live={
-                        props.message.status === "streaming" &&
-                        index() === props.message.parts.length - 1
-                      }
-                    />
-                  </Match>
-                  <Match
-                    when={part.kind === "note" && part.note === "compact_failed" ? part : undefined}
-                  >
-                    {(note) => <CompactFailedLine code={(note() as { code: string }).code} />}
-                  </Match>
-                  <Match
-                    when={
-                      part.kind === "note" && part.note === "connection_down" ? part : undefined
-                    }
-                  >
-                    {(note) => <ConnectionDownLine name={(note() as { name: string }).name} />}
-                  </Match>
-                  <Match
-                    when={
-                      part.kind === "note" && part.note === "connection_held" ? part : undefined
-                    }
-                  >
-                    {(note) => <ConnectionHeldLine name={(note() as { name: string }).name} />}
-                  </Match>
-                  <Match
-                    when={part.kind === "note" && part.note === "backup_goes_on" ? part : undefined}
-                  >
-                    {(note) => (
-                      <BackupGoesOnLine
-                        part={
-                          note() as Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }>
-                        }
-                      />
-                    )}
-                  </Match>
-                  <Match
-                    when={part.kind === "note" && part.note === "kept_going" ? part : undefined}
-                  >
-                    {(note) => (
-                      <KeptGoingLine
-                        part={note() as Extract<MessagePart, { kind: "note"; note: "kept_going" }>}
-                      />
-                    )}
-                  </Match>
-                  <Match when={part.kind === "tool"}>
-                    <ToolStep
-                      agent={props.agent}
-                      message={props.message}
-                      part={part as Extract<MessagePart, { kind: "tool" }>}
-                      from={fromOther()}
-                    />
-                  </Match>
-                </Switch>
-              )}
+            <For each={groupParts(props.message.parts, !app.settings.showToolSteps)}>
+              {(segment) =>
+                segment.kind === "tools" ? (
+                  <ToolsFolded
+                    agent={props.agent}
+                    message={props.message}
+                    parts={segment.parts}
+                    from={fromOther()}
+                    onCorrect={props.onCorrect}
+                  />
+                ) : (
+                  <PartView
+                    agent={props.agent}
+                    message={props.message}
+                    part={segment.part}
+                    from={fromOther()}
+                    onCorrect={props.onCorrect}
+                  />
+                )
+              }
             </For>
           </Show>
           <Show when={props.message.editedAt}>

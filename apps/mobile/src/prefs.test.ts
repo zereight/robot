@@ -28,6 +28,15 @@ describe("the settings of the phone", () => {
     expect(await readPrefs(storage)).toEqual({ ...defaultPrefs, closed: { a: ["x"] } })
   })
 
+  test("tool steps show at first, and an old file without the switch still reads", async () => {
+    expect(defaultPrefs.showToolSteps).toBe(true)
+    const storage = new MemoryStorage()
+    await storage.write("prefs.json", JSON.stringify({ language: "ko" }))
+    expect(await readPrefs(storage)).toEqual({ ...defaultPrefs, language: "ko" })
+    await storage.write("prefs.json", JSON.stringify({ showToolSteps: false }))
+    expect((await readPrefs(storage)).showToolSteps).toBe(false)
+  })
+
   test("settings are saved and read back", async () => {
     const storage = new MemoryStorage()
     const prefs = {
