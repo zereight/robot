@@ -144,6 +144,8 @@ const ConnectionInputSchema = Schema.Struct({
     Schema.Literal("all"),
     Schema.Array(Schema.String).check(Schema.isMaxLength(1000)),
   ]),
+  /** The channels in the list of the connection (spec 018, 030). */
+  channels: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
 })
 const SettingsLine = Schema.Struct({
   agentId: Schema.String,
@@ -1201,10 +1203,11 @@ export const handlers: Handlers = {
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
         agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
+        channelIds: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
       }),
     )(input).pipe(
-      Effect.flatMap(({ serverId, agentIds, ...skill }) =>
-        Skills.use((s) => s.create(serverId, skill, agentIds)),
+      Effect.flatMap(({ serverId, agentIds, channelIds, ...skill }) =>
+        Skills.use((s) => s.create(serverId, skill, agentIds, channelIds)),
       ),
     ),
   "skills.update": (input) =>
@@ -1215,10 +1218,11 @@ export const handlers: Handlers = {
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
         agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
+        channelIds: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
       }),
     )(input).pipe(
-      Effect.flatMap(({ id, agentIds, ...skill }) =>
-        Skills.use((s) => s.update(id, skill, agentIds)),
+      Effect.flatMap(({ id, agentIds, channelIds, ...skill }) =>
+        Skills.use((s) => s.update(id, skill, agentIds, channelIds)),
       ),
     ),
   "skills.duplicate": (input) =>

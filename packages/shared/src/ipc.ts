@@ -639,14 +639,25 @@ export interface RpcMethods {
   "skills.forAgent": { input: { agentId: string }; output: readonly Skill[] }
   /** The skills that are only for this agent. A delete of the agent deletes them too (002, 017). */
   "skills.onlyFor": { input: { agentId: string }; output: { count: number } }
-  /** `agentIds` is the list of agents that may use the skill, or `null` for all agents. */
+  /**
+   * `agentIds` is the list of agents that may use the skill, or `null` for all agents. `channelIds`
+   * are the channels in the list (spec 017, 030); they count only when `agentIds` is a list.
+   */
   "skills.create": {
-    input: SkillInput & { serverId: string; agentIds: readonly string[] | null }
+    input: SkillInput & {
+      serverId: string
+      agentIds: readonly string[] | null
+      channelIds?: readonly string[]
+    }
     output: Skill
   }
   /** Edit (spec 017, flow 2): every field of the form. The skill stays on or off as it was. */
   "skills.update": {
-    input: SkillInput & { id: string; agentIds: readonly string[] | null }
+    input: SkillInput & {
+      id: string
+      agentIds: readonly string[] | null
+      channelIds?: readonly string[]
+    }
     output: Skill
   }
   /** Duplicate (spec 017, flow 3): `suffix` is the word "copy" in the language of the window. */
