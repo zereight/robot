@@ -583,6 +583,9 @@ describe("two computers that were apart", () => {
     // and puts "X" under "Y". The batch with the change of "X" comes first, and alone it makes a
     // loop. The batches are written by hand to the entry of the link, so a test decides where the
     // set is cut. The quiet time of the check is turned long, so the steps have room.
+    // These tests wait for the quiet time of the check. A test that sets its own limit keeps it,
+    // also when other files run in the same process.
+    const LONG = 30_000
     const withQuiet = async (quiet: number, body: () => Promise<void>) => {
       process.env.ROBOT_SYNC_REPAIR_MS = String(quiet)
       try {
@@ -645,63 +648,75 @@ describe("two computers that were apart", () => {
       return { b, x, y, tree, push, lines, yToTop, xUnderY }
     }
 
-    test("two batches that make a valid tree together: no repair, in the middle or at the end", async () => {
-      const quiet = 1500
-      await withQuiet(quiet, async () => {
-        const s = await setup()
-        await s.push([s.xUnderY])
-        // Half of the set is a loop. The check has not run: it waits for the end of the flow.
-        expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
-        await sleep(300)
-        expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
-        await s.push([s.yToTop])
-        expect(await s.tree()).toEqual({ X: "Y", Y: null })
-        // The check runs after the quiet time, and finds a tree that is right.
-        await sleep(quiet + 800)
-        expect(await s.tree()).toEqual({ X: "Y", Y: null })
-        expect(await s.lines(s.x.id)).toEqual([])
-        expect(await s.lines(s.y.id)).toEqual([])
-      })
-    })
+    test(
+      "two batches that make a valid tree together: no repair, in the middle or at the end",
+      async () => {
+        const quiet = 1500
+        await withQuiet(quiet, async () => {
+          const s = await setup()
+          await s.push([s.xUnderY])
+          // Half of the set is a loop. The check has not run: it waits for the end of the flow.
+          expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+          await sleep(300)
+          expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+          await s.push([s.yToTop])
+          expect(await s.tree()).toEqual({ X: "Y", Y: null })
+          // The check runs after the quiet time, and finds a tree that is right.
+          await sleep(quiet + 800)
+          expect(await s.tree()).toEqual({ X: "Y", Y: null })
+          expect(await s.lines(s.x.id)).toEqual([])
+          expect(await s.lines(s.y.id)).toEqual([])
+        })
+      },
+      LONG,
+    )
 
-    test("each batch moves the check back, also a batch with no channel in it", async () => {
-      // The quiet time is long, so that a pause of the test computer does not make a step late.
-      const quiet = 2500
-      await withQuiet(quiet, async () => {
-        const s = await setup()
-        await s.push([s.xUnderY])
-        await sleep(quiet * 0.5)
-        await s.push([])
-        // The first quiet time is over here (it ended at 1.0), but a batch came at 0.5, so the
-        // check is due at 1.5. The loop is still there.
-        await sleep(quiet * 0.6)
-        expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
-        expect(await s.lines(s.x.id)).toEqual([])
-        await s.push([s.yToTop])
-        await sleep(quiet + 800)
-        expect(await s.tree()).toEqual({ X: "Y", Y: null })
-        expect(await s.lines(s.x.id)).toEqual([])
-        expect(await s.lines(s.y.id)).toEqual([])
-      })
-    })
+    test(
+      "each batch moves the check back, also a batch with no channel in it",
+      async () => {
+        // The quiet time is long, so that a pause of the test computer does not make a step late.
+        const quiet = 2500
+        await withQuiet(quiet, async () => {
+          const s = await setup()
+          await s.push([s.xUnderY])
+          await sleep(quiet * 0.5)
+          await s.push([])
+          // The first quiet time is over here (it ended at 1.0), but a batch came at 0.5, so the
+          // check is due at 1.5. The loop is still there.
+          await sleep(quiet * 0.6)
+          expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+          expect(await s.lines(s.x.id)).toEqual([])
+          await s.push([s.yToTop])
+          await sleep(quiet + 800)
+          expect(await s.tree()).toEqual({ X: "Y", Y: null })
+          expect(await s.lines(s.x.id)).toEqual([])
+          expect(await s.lines(s.y.id)).toEqual([])
+        })
+      },
+      LONG,
+    )
 
-    test("a break that stays is repaired after the quiet time: one field, one muted line", async () => {
-      const quiet = 1500
-      await withQuiet(quiet, async () => {
-        const s = await setup()
-        await s.push([s.xUnderY])
-        // Not at once.
-        expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
-        expect(await s.lines(s.x.id)).toEqual([])
-        // The change of "X" is the later one, so its field is cleared.
-        const done = await waitFor(s.tree, (t) => t.X === null, quiet + 6000)
-        expect(done).toEqual({ X: null, Y: "X" })
-        expect(await s.lines(s.x.id)).toEqual([
-          [{ kind: "note", note: "tree_repaired", why: "loop" }],
-        ])
-        expect(await s.lines(s.y.id)).toEqual([])
-      })
-    })
+    test(
+      "a break that stays is repaired after the quiet time: one field, one muted line",
+      async () => {
+        const quiet = 1500
+        await withQuiet(quiet, async () => {
+          const s = await setup()
+          await s.push([s.xUnderY])
+          // Not at once.
+          expect(await s.tree()).toEqual({ X: "Y", Y: "X" })
+          expect(await s.lines(s.x.id)).toEqual([])
+          // The change of "X" is the later one, so its field is cleared.
+          const done = await waitFor(s.tree, (t) => t.X === null, quiet + 6000)
+          expect(done).toEqual({ X: null, Y: "X" })
+          expect(await s.lines(s.x.id)).toEqual([
+            [{ kind: "note", note: "tree_repaired", why: "loop" }],
+          ])
+          expect(await s.lines(s.y.id)).toEqual([])
+        })
+      },
+      LONG,
+    )
   })
 
   test("the same memory item edited on both: the newest text stays and the other text is saved as a new item", async () => {
