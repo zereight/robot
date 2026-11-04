@@ -1,11 +1,17 @@
-import { pickChat, type TeamsChatOpened, type TeamsLook } from "@robot/shared"
+import {
+  pickChat,
+  type TeamsChatOpened,
+  type TeamsChatRead,
+  type TeamsLook,
+  type TeamsMessage,
+} from "@robot/shared"
 import type { PageBounds } from "../services/Platform.ts"
 import { TEAMS_PAGE, type TeamsPageSelectors } from "./teamsPageSelectors.ts"
 
 /**
- * The Teams page, as the Teams link sees it (spec 028). The link opens the chat and reads its
- * title and the sign-in, and nothing more in this slice: the surface has no way to read a message
- * and no way to type. Later slices add those methods here.
+ * The Teams page, as the Teams link sees it (spec 028). The link opens the chat, reads its title
+ * and the sign-in, and (S102) reads the messages of the open chat. The surface has no way to type:
+ * the slice that sends adds that method here.
  *
  * The real one runs scripts in a web view. A test gives the stand-in Teams (`fakeChat.testing.ts`).
  */
@@ -19,6 +25,12 @@ export interface TeamsSurface {
    * chat, holds the text. It types nothing and sends nothing.
    */
   openChat(title: string): Promise<TeamsChatOpened>
+  /**
+   * Reads the messages that the open chat shows, in the order that the chat shows them, and the
+   * title of the open chat. It changes nothing in the page. It rejects when the page cannot be
+   * read.
+   */
+  readMessages(): Promise<TeamsChatRead>
   /** Shows the page in a place of the app window, or hides it with `undefined`. */
   place(bounds: PageBounds | undefined): void
   /** Lets the input of the user reach the page (the user signs in by hand), or keeps it out. */
@@ -73,6 +85,39 @@ export const readScript = (sel: TeamsPageSelectors = TEAMS_PAGE): string => `(()
     openTitle: open === "" ? null : open,
     chatTitles: items.map((item) => text(first(sel.chatListItemTitle, item) || item)),
   }
+})()`
+
+/** What the script that reads the messages gives back. Plain data. */
+export interface RawMessagesRead {
+  readonly openTitle: string | null
+  readonly items: readonly {
+    readonly id: string | null
+    readonly sender: string
+    readonly text: string
+    readonly time: number | null
+    readonly own: boolean
+  }[]
+}
+
+/** The script that reads the messages of the open chat. It changes nothing in the page. */
+export const readMessagesScript = (sel: TeamsPageSelectors = TEAMS_PAGE): string => `(() => {
+  const sel = ${JSON.stringify(sel)}
+  const first = (selector, root) => (root || document).querySelector(selector)
+  const text = (el) => (el ? String(el.innerText || el.textContent || "").trim() : "")
+  const open = text(first(sel.openChatTitle))
+  const items = Array.from(document.querySelectorAll(sel.messageItem)).map((item) => {
+    const stamp = first(sel.messageTime, item)
+    const parsed = stamp ? Date.parse(String(stamp.getAttribute("datetime") || "")) : NaN
+    const id = item.getAttribute(sel.messageIdAttribute)
+    return {
+      id: id ? String(id) : null,
+      sender: text(first(sel.messageSender, item)),
+      text: text(first(sel.messageText, item)),
+      time: Number.isNaN(parsed) ? null : parsed,
+      own: first(sel.messageOwn, item) !== null,
+    }
+  })
+  return { openTitle: open === "" ? null : open, items }
 })()`
 
 /** The script that clicks a row of the chat list. It gives back false when the row is gone. */
@@ -196,10 +241,24 @@ export const createTeamsSurface = (
     throw new Error("The chat did not open.")
   }
 
+  const readMessages = async (): Promise<TeamsChatRead> => {
+    const raw = await driver.evaluate<RawMessagesRead>(readMessagesScript(sel))
+    if (!raw || !Array.isArray(raw.items)) throw new Error("The Teams page cannot be read.")
+    const messages: TeamsMessage[] = raw.items.map((item) => ({
+      id: item.id,
+      sender: item.sender,
+      text: item.text,
+      time: item.time,
+      own: item.own,
+    }))
+    return { openTitle: raw.openTitle, messages }
+  }
+
   return {
     isOpen: () => driver.isOpen(),
     look,
     openChat,
+    readMessages,
     place: (bounds) => driver.place(bounds),
     allowUserInput: (allowed) => driver.allowUserInput(allowed),
     close: () => {

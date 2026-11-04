@@ -231,6 +231,8 @@ export const testRuntime = (
   const events: { event: string; payload: unknown; server?: string }[] = []
   // The clock of the Teams link. A test moves it by hand (`advance`, `sleep`).
   const { clock, advance, sleep } = fakeClock()
+  // The messages of the stand-in Teams carry the time of this clock.
+  chat.useClock(clock.now)
   const runtime = ManagedRuntime.make(
     appLayer({
       platform,
