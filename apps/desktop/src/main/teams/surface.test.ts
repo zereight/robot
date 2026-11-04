@@ -10,6 +10,7 @@ import {
   isSignInAddress,
   type RawTeamsRead,
   readScript,
+  sendScript,
 } from "./surface.ts"
 import { TEAMS_PAGE } from "./teamsPageSelectors.ts"
 
@@ -276,5 +277,122 @@ describe("the read of the messages of the open chat (S102)", () => {
     const chat = new FakeChat()
     chat.addChat("Team A")
     expect(() => chat.type("hello")).toThrow()
+  })
+})
+
+describe("typing and sending (S103)", () => {
+  const room = async (chat: FakeChat) => {
+    chat.signedIn = true
+    chat.addChat("Team A")
+    chat.addChat("Team B")
+    await chat.surface.look()
+    await chat.surface.openChat("Team A")
+  }
+
+  test("types the text into the open chat and sends it: the stand-in gets one message", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    expect(await chat.surface.send("[ROBot] hello", "Team A")).toEqual({ kind: "sent" })
+    expect(chat.typed).toEqual([{ chat: "Team A", text: "[ROBot] hello" }])
+    expect(chat.sendTries).toBe(1)
+    // The page took the text out of the box.
+    expect(chat.composerText).toBe("")
+    expect((await chat.surface.readMessages()).messages.map((m) => [m.text, m.own])).toEqual([
+      ["[ROBot] hello", true],
+    ])
+  })
+
+  test("a text of several lines goes as one message, with its line breaks", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    await chat.surface.send("[ROBot] one\ntwo\n\nthree", "Team A")
+    expect(chat.typed.map((t) => t.text)).toEqual(["[ROBot] one\ntwo\n\nthree"])
+  })
+
+  test("the chat is opened when no chat is open, and then the text goes", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    chat.reload()
+    expect((await chat.surface.readMessages()).openTitle).toBeNull()
+    expect(await chat.surface.send("[ROBot] after a reload", "Team A")).toEqual({ kind: "sent" })
+    expect(chat.typed).toEqual([{ chat: "Team A", text: "[ROBot] after a reload" }])
+  })
+
+  test("the compare of the title is the one of the link: spaces and letter case do not count", async () => {
+    const chat = new FakeChat()
+    chat.signedIn = true
+    chat.addChat("Marta Kim (You)")
+    await chat.surface.look()
+    await chat.surface.openChat("marta   KIM")
+    expect(await chat.surface.send("[ROBot] x", "  marta   kim ")).toEqual({ kind: "sent" })
+  })
+
+  test("a chat with another title gets no text: nothing is typed and the box stays empty", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    chat.openByUser("Team B")
+    expect(await chat.surface.send("[ROBot] for A", "Team A")).toEqual({ kind: "wrongChat" })
+    expect(chat.typed).toEqual([])
+    expect(chat.sendTries).toBe(0)
+    expect(chat.composerText).toBe("")
+  })
+
+  test("a header that shows a wrong title gets no text either", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    chat.headerTitle = "Somebody else"
+    expect(await chat.surface.send("[ROBot] x", "Team A")).toEqual({ kind: "wrongChat" })
+    expect(chat.typed).toEqual([])
+    expect(chat.composerText).toBe("")
+  })
+
+  test("an empty chat title in the link holds no chat: nothing is typed", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    expect(await chat.surface.send("[ROBot] x", "   ")).toEqual({ kind: "wrongChat" })
+    expect(chat.typed).toEqual([])
+  })
+
+  test("a send that the page refuses is a failed try, and the box is cleared for the next try", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    chat.refuseSends(1)
+    expect(await chat.surface.send("[ROBot] first", "Team A")).toEqual({ kind: "failed" })
+    expect(chat.typed).toEqual([])
+    // The refused text did not stay in the box: the next try sends one text, not two.
+    expect(chat.composerText).toBe("")
+    expect(await chat.surface.send("[ROBot] first", "Team A")).toEqual({ kind: "sent" })
+    expect(chat.typed).toEqual([{ chat: "Team A", text: "[ROBot] first" }])
+    expect(chat.sendTries).toBe(2)
+  })
+
+  test("a page that cannot be read, or that has no network, is a failed try and types nothing", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    chat.failScripts(1)
+    expect(await chat.surface.send("[ROBot] x", "Team A")).toEqual({ kind: "failed" })
+    chat.dropNetwork()
+    expect(await chat.surface.send("[ROBot] x", "Team A")).toEqual({ kind: "failed" })
+    expect(chat.typed).toEqual([])
+    expect(chat.sendTries).toBe(0)
+  })
+
+  test("no chat that holds the title, or two that do, is a failed try", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    chat.reload()
+    expect(await chat.surface.send("[ROBot] x", "No such chat")).toEqual({ kind: "failed" })
+    chat.addChat("Team A again")
+    chat.reload()
+    expect(await chat.surface.send("[ROBot] x", "Team A")).toEqual({ kind: "failed" })
+    expect(chat.typed).toEqual([])
+  })
+
+  test("the send script holds no selector of its own: it takes them from the selectors module", () => {
+    const code = sendScript("x", "team a")
+    expect(code).toContain(JSON.stringify(TEAMS_PAGE.messageBox))
+    expect(code).toContain(JSON.stringify(TEAMS_PAGE.sendButton))
+    // The text of the message is data inside the script, not part of its code.
+    expect(sendScript('"; alert(1); "', "team a")).toContain(JSON.stringify('"; alert(1); "'))
   })
 })
