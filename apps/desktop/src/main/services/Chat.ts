@@ -36,6 +36,9 @@ import {
   holdProgram,
   isNoteOnly,
   isTaskProgress,
+  KEEP_GOING_MAX,
+  keepGoingMessage,
+  type ListedStep,
   type MarkPlace,
   type MessagePart,
   type MessageStatus,
@@ -93,6 +96,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge } from "./Knowledge.ts"
+import { withKeepGoing } from "./keepGoingTurn.ts"
 import { Memory } from "./Memory.ts"
 import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
@@ -433,7 +437,7 @@ const toMessage = (row: MessageRow, unread?: "waiting" | "handed"): ChatMessage 
 
 /** Adds a stream event to the parts. Returns true when a new part starts (a part boundary). */
 export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => {
-  if (event.type === "usage") return false
+  if (event.type === "usage" || event.type === "plan") return false
   if (event.type === "joined") {
     // What the agent writes after a message of the user starts a new paragraph.
     const last = parts.at(-1)
@@ -1150,6 +1154,13 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         // Whether the try that runs now got a sign back: the backup model goes on from the start, or
         // with a message that asks it to go on (spec 006).
         let attemptStarted = false
+        // The last list of steps that the program reported in this task, and the open steps that
+        // the turn now answers when the app asked the agent to go on (spec 005, "Keep going").
+        let plan: readonly ListedStep[] | null = null
+        let keeping: readonly string[] | null = null
+        // The tokens of the turns before this one: a turn that goes on adds to the usage of the
+        // task and does not replace it.
+        const earlierUsage = { input: 0, output: 0 }
         const silence = turnWatch({
           limitMinutes: (yield* settings.get).silentLimit,
           progress: (progress) => {
@@ -1249,8 +1260,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           Effect.sync(() => {
             silence.sense(event)
             if (event.type === "usage") {
-              usage.input = event.input ?? usage.input
-              usage.output = event.output ?? usage.output
+              usage.input =
+                event.input !== undefined ? earlierUsage.input + event.input : usage.input
+              usage.output =
+                event.output !== undefined ? earlierUsage.output + event.output : usage.output
+              return
+            }
+            // The list of steps is for the rule of "Keep going". The reply does not show it.
+            if (event.type === "plan") {
+              plan = event.steps
               return
             }
             if (event.type === "joined") {
@@ -1285,8 +1303,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
          */
         const streamOn = (agent: AgentModelRow, attempt: Attempt) =>
           Effect.gen(function* () {
-            if (attempt !== "first") controller = new AbortController()
-            const resumeNow = attempt === "first" ? resume : undefined
+            if (attempt !== "first" || keeping) controller = new AbortController()
+            const resumeNow = attempt === "first" && !keeping ? resume : undefined
             if (!agent.model_account_id || !agent.model_name) {
               return yield* new AppError({ code: "provider_not_connected" })
             }
@@ -1449,9 +1467,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 system,
                 // The backup model that goes on with a turn that ran steps gets the work so far and a
                 // short message that asks it to go on (spec 006). It is no message of the user.
+                // A turn that goes on because the list has open steps gets the same, with its own
+                // short message (spec 005, "Keep going"). That message has no row either.
                 turns:
-                  attempt === "goOn"
-                    ? goOnTurns(buildTurns(place, reply.id, withNotes), parts, { steps: isRuntime })
+                  attempt === "goOn" || keeping
+                    ? goOnTurns(buildTurns(place, reply.id, withNotes), parts, {
+                        steps: isRuntime,
+                        ...(keeping ? { message: keepGoingMessage(keeping) } : {}),
+                      })
                     : buildTurns(place, reply.id, withNotes),
                 tools: tools.defs({
                   memory: agent.memory_enabled === 1,
@@ -1535,30 +1558,59 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
          * a limit reason and the backup is ready, the main model is held until the reset time and
          * the turn goes on with the backup, in the same task (spec 006, "Backup model").
          */
-        const stream = withBackup({
-          agentId,
-          holds,
-          backup,
-          onBackup,
-          ready: backupReady,
-          started: () => attemptStarted,
-          run: (attempt) => {
-            if (attempt !== "first") attemptStarted = false
-            return streamOn(attempt === "first" ? agent : running, attempt)
+        let switched = false
+        const turnOnModel = () =>
+          withBackup({
+            agentId,
+            holds,
+            backup,
+            // A turn that goes on after the backup took over starts on the backup (spec 006).
+            onBackup: onBackup || switched,
+            ready: backupReady,
+            started: () => attemptStarted,
+            run: (attempt) => {
+              if (attempt !== "first") attemptStarted = false
+              return streamOn(running, attempt)
+            },
+            switchTo: ({ backup: next, fresh, resetsAt }) => {
+              switched = true
+              watch.end(parts)
+              closeOpenSteps()
+              if (fresh)
+                parts.push({
+                  kind: "note",
+                  note: "backup_goes_on",
+                  main: modelLabel(mainRow.model_account_id, mainRow.model_name),
+                  backup: modelLabel(next.accountId, next.model),
+                  until: resetsAt,
+                })
+              running = withModel(own, next)
+              db.run("UPDATE message SET model = ? WHERE id = ?", next.model, reply.id)
+              save("streaming")
+              publish()
+            },
+          })
+        /**
+         * The turn, and the turns that follow it while the list of steps has open steps (spec 005,
+         * "Keep going"). All of them are one task and one reply.
+         */
+        const stream = withKeepGoing({
+          enabled: Effect.map(settings.get, (s) => s.keepGoing),
+          run: (go) => {
+            keeping = go
+            if (go) {
+              attemptStarted = false
+              // The tokens of the turns before are kept; the new turn adds to them.
+              earlierUsage.input = usage.input
+              earlierUsage.output = usage.output
+            }
+            return turnOnModel()
           },
-          switchTo: ({ backup: next, fresh, resetsAt }) => {
-            watch.end(parts)
-            closeOpenSteps()
-            if (fresh)
-              parts.push({
-                kind: "note",
-                note: "backup_goes_on",
-                main: modelLabel(mainRow.model_account_id, mainRow.model_name),
-                backup: modelLabel(next.accountId, next.model),
-                until: resetsAt,
-              })
-            running = withModel(own, next)
-            db.run("UPDATE message SET model = ? WHERE id = ?", next.model, reply.id)
+          plan: () => plan,
+          blocked: () => endOfTurn(messageText({ parts }), { review: false }).state === "blocked",
+          waiting: () => parts.some((p) => p.kind === "tool" && p.state === "waiting"),
+          note: (n) => {
+            parts.push({ kind: "note", note: "kept_going", n, of: KEEP_GOING_MAX })
             save("streaming")
             publish()
           },

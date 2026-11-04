@@ -67,7 +67,14 @@ const STEP_LINES_MAX = 40
 export const goOnTurns = (
   base: readonly Turn[],
   parts: readonly MessagePart[],
-  options: { readonly steps: boolean },
+  options: {
+    readonly steps: boolean
+    /**
+     * The message that asks the model to go on. It is the message of the backup model when it is
+     * absent. "Keep going" gives its own (spec 005).
+     */
+    readonly message?: string
+  },
 ): Turn[] => {
   const turns: Turn[] = [...base]
   let text = ""
@@ -108,7 +115,7 @@ export const goOnTurns = (
     options.steps && steps.length > 0
       ? `\n\nSteps so far:\n${steps.slice(-STEP_LINES_MAX).join("\n")}`
       : ""
-  const message = `${GO_ON_MESSAGE}${listed}`
+  const message = `${options.message ?? GO_ON_MESSAGE}${listed}`
   const last = turns.at(-1)
   if (last && last.role === "user")
     turns[turns.length - 1] = { role: "user", content: `${last.content}\n\n${message}` }

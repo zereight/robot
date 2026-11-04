@@ -405,6 +405,7 @@ export const ko: Record<MessageKey, string> = {
   "backup.until": "{time}까지 백업",
   "backup.useMain": "지금 {model} 쓰기",
   "backup.header": "백업 모델 {model}",
+  "chat.note.keptGoing": "이어서 진행했어요 ({n}/{of})",
   "chat.note.backupGoesOn": "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}",
   "chat.note.backupGoesOnUntil":
     "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}. 한도는 {time}에 풀려요.",
@@ -499,6 +500,9 @@ export const ko: Record<MessageKey, string> = {
   "threads.busy.waiting": "이 스레드의 작업이 응답을 기다리고 있어요.",
   "threads.busy.queued": "이 스레드의 작업이 대기열에서 기다리고 있어요.",
   "threads.busy.messages": "이 스레드의 메시지가 메시지 대기열에서 기다리고 있어요.",
+  "settings.keepGoing": "열린 단계가 있으면 이어서 진행",
+  "settings.keepGoing.hint":
+    "에이전트가 턴을 끝냈는데 단계 목록에 끝나지 않은 단계가 있으면, ROBot이 한 요청에 최대 8번까지 이어서 하라고 요청해요. 단계 목록을 알려 주는 프로그램의 에이전트에서만 동작해요.",
   "settings.autoCompact": "긴 채팅 자동 압축",
   "settings.autoCompact.hint":
     "턴을 시작하기 전에 모델 컨텍스트의 85% 또는 400000토큰을 쓰는 채팅은 앞부분을 요약으로 바꿔요.",

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { createInterface } from "node:readline"
 import type { PermissionLevel } from "@robot/shared"
@@ -6,6 +7,7 @@ import { limitFailure, ProviderFailure } from "../providers/client.ts"
 import { codexBridgeArgs, type Staged, stage } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
+import { planFromItems } from "./plan.ts"
 import { execute } from "./proc.ts"
 import { spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
@@ -87,6 +89,12 @@ export interface CodexState {
   lastError: string
   done: boolean
   failed: string | null
+  /**
+   * Put before the id of each item. The program numbers its items from the start in each run, and
+   * a turn that goes on (spec 005, "Keep going") is a new run of the same reply: the cards of the
+   * earlier run must keep their ids. Empty in tests.
+   */
+  prefix: string
 }
 
 export const newCodexState = (): CodexState => ({
@@ -94,10 +102,11 @@ export const newCodexState = (): CodexState => ({
   lastError: "",
   done: false,
   failed: null,
+  prefix: "",
 })
 
-const call = (item: Json, name: string, input: unknown) => ({
-  id: str(item.id),
+const call = (item: Json, name: string, input: unknown, prefix = "") => ({
+  id: `${prefix}${str(item.id)}`,
   name,
   input: JSON.stringify(input),
 })
@@ -120,7 +129,7 @@ export const mapCodexEvent = (message: unknown, state: CodexState): AgentEvent[]
         case "reasoning":
           return finished && str(item.text) ? [{ type: "thinking", text: str(item.text) }] : []
         case "command_execution": {
-          const c = call(item, "shell", { command: str(item.command) })
+          const c = call(item, "shell", { command: str(item.command) }, state.prefix)
           if (!finished) return [{ type: "tool", state: "running", call: c }]
           const failed =
             item.status === "failed" || (item.exit_code !== undefined && item.exit_code !== 0)
@@ -141,13 +150,18 @@ export const mapCodexEvent = (message: unknown, state: CodexState): AgentEvent[]
             {
               type: "tool",
               state: item.status === "failed" ? "failed" : "done",
-              call: call(item, "file_change", { path: str(changes[0]?.path) }),
+              call: call(item, "file_change", { path: str(changes[0]?.path) }, state.prefix),
               output: paths.join("\n"),
             },
           ]
         }
         case "mcp_tool_call": {
-          const c = call(item, `${str(item.server)}.${str(item.tool)}`, item.arguments ?? {})
+          const c = call(
+            item,
+            `${str(item.server)}.${str(item.tool)}`,
+            item.arguments ?? {},
+            state.prefix,
+          )
           if (!finished) return [{ type: "tool", state: "running", call: c }]
           const failed = item.status === "failed" || obj(item.error).message !== undefined
           return [
@@ -165,14 +179,25 @@ export const mapCodexEvent = (message: unknown, state: CodexState): AgentEvent[]
                 {
                   type: "tool",
                   state: "done",
-                  call: call(item, "web_search", { query: str(item.query) }),
+                  call: call(item, "web_search", { query: str(item.query) }, state.prefix),
                   output: "",
                 },
               ]
             : []
+        case "todo_list": {
+          // The list of steps of the program (spec 006): the app reads it for "Keep going".
+          const steps = planFromItems(item.items)
+          return steps ? [{ type: "plan", steps }] : []
+        }
         default:
           return []
       }
+    }
+    case "item.updated": {
+      // The program changes its list while it works; the other items have no update that matters.
+      const item = obj(msg.item)
+      const steps = item.type === "todo_list" ? planFromItems(item.items) : null
+      return steps ? [{ type: "plan", steps }] : []
     }
     case "turn.completed": {
       state.done = true
@@ -230,6 +255,7 @@ export async function* runCodex(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   child.stdin.end(codexPrompt(run))
 
   const state = newCodexState()
+  state.prefix = `${randomBytes(3).toString("hex")}:`
   try {
     for await (const line of lines) {
       if (!line.trim()) continue

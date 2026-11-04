@@ -100,6 +100,8 @@ export const Settings = Schema.Struct({
   decisionModelName: Schema.String.check(Schema.isMaxLength(DECISION_MODEL_MAX)),
   /** "Compact long chats automatically" (spec 003, 013). On by default. */
   autoCompact: Schema.Boolean,
+  /** "Keep going on open steps" (spec 005, 013). On by default. */
+  keepGoing: Schema.Boolean,
   /** "Agents working at once" (spec 005, 013): how many tasks run at the same time. */
   agentsAtOnce: Schema.Int.check(
     Schema.isBetween({ minimum: AGENTS_AT_ONCE_MIN, maximum: AGENTS_AT_ONCE_MAX }),
@@ -146,6 +148,7 @@ export const defaultSettings: Settings = {
   decisionModel: "off",
   decisionModelName: DECISION_MODEL_DEFAULT,
   autoCompact: true,
+  keepGoing: true,
   agentsAtOnce: AGENTS_AT_ONCE_DEFAULT,
   keepAwake: KEEP_AWAKE_DEFAULT,
 }

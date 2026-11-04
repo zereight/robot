@@ -267,6 +267,14 @@ const General = () => {
           onChange={(autoCompact) => app.update({ autoCompact })}
         />
       </Row>
+      <Row label={t("settings.keepGoing")} hint={t("settings.keepGoing.hint")}>
+        <Switch
+          label={t("settings.keepGoing")}
+          testId="setting-keep-going"
+          checked={app.settings.keepGoing}
+          onChange={(keepGoing) => app.update({ keepGoing })}
+        />
+      </Row>
       <Row label={t("settings.silentLimit")} hint={t("settings.silentLimit.hint")}>
         <Segmented
           label={t("settings.silentLimit")}

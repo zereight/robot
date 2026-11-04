@@ -77,6 +77,8 @@
 
 .switch {
   position: relative;
+  /* A row with a long hint must not squeeze the switch into a dot. */
+  flex: none;
   width: 36px;
   height: 20px;
   border-radius: 10px;

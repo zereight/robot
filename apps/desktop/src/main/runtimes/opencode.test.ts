@@ -161,6 +161,37 @@ describe("opencode stream", () => {
     ])
     expect(state).toMatchObject({ input: 16, output: 3, error: null })
   })
+  test("the tool todowrite is the list of steps; a cancelled step is not open", () => {
+    const { out } = feed([
+      {
+        type: "tool_use",
+        part: {
+          id: "call_2",
+          tool: "todowrite",
+          state: {
+            status: "completed",
+            input: {
+              todos: [
+                { content: "Plan", status: "completed", priority: "high" },
+                { content: "Build", status: "in_progress", priority: "high" },
+                { content: "Old idea", status: "cancelled", priority: "low" },
+              ],
+            },
+            output: "ok",
+          },
+        },
+      },
+    ])
+    expect(out.map((e) => e.type)).toEqual(["tool", "plan", "tool"])
+    expect(out[1]).toEqual({
+      type: "plan",
+      steps: [
+        { label: "Plan", done: true },
+        { label: "Build", done: false },
+        { label: "Old idea", done: true },
+      ],
+    })
+  })
   test("the tokens of every step add up", () => {
     const step = { type: "step_finish", part: { tokens: { input: 4, output: 1, cache: {} } } }
     expect(feed([step, step]).state).toMatchObject({ input: 8, output: 2 })
