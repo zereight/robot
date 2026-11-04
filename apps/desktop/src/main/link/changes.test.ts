@@ -492,6 +492,68 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     ])
   })
 
+  test("it filters the items, lists the channels, and moves a channel note (spec 008, 012)", async () => {
+    const p = await pair(true)
+    const a = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    const channel = value<{ id: string }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Docs",
+        topic: "",
+        memberIds: [a.id],
+        leadId: null,
+      }),
+    )
+    const other = value<{ id: string }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Plans",
+        topic: "",
+        memberIds: [],
+        leadId: null,
+      }),
+    )
+    await p.server.runtime.runPromise(
+      Memory.use((m) => m.save(a.id, "Docs use plain words", undefined, channel.id)),
+    )
+    const general = value<{ id: string }>(
+      await p.ask("memory.add", { agentId: a.id, text: "Likes tea" }),
+    )
+    const texts = async (filter?: unknown) =>
+      value<{ text: string; channel: { id: string; member: boolean } | null }[]>(
+        await p.ask("memory.list", { agentId: a.id, ...(filter ? { filter } : {}) }),
+      ).map((i) => i.text)
+    expect(await texts({ kind: "general" })).toEqual(["Likes tea"])
+    expect(await texts({ kind: "channel", id: channel.id })).toEqual(["Docs use plain words"])
+    expect(await texts({ kind: "all" })).toHaveLength(2)
+    expect(codeOf(await p.ask("memory.list", { agentId: a.id, filter: { kind: "bogus" } }))).toBe(
+      "invalid_input",
+    )
+    expect(
+      value<{ id: string; notes: number; member: boolean }[]>(
+        await p.ask("memory.scopes", { agentId: a.id }),
+      ).map((c) => [c.id, c.notes, c.member]),
+    ).toEqual([[channel.id, 1, true]])
+    // A move to a channel the agent is a member of; not to one it is not a member of.
+    expect(
+      value<{ channel: { id: string } | null }>(
+        await p.ask("memory.move", { id: general.id, channelId: channel.id }),
+      ).channel?.id,
+    ).toBe(channel.id)
+    expect(codeOf(await p.ask("memory.move", { id: general.id, channelId: other.id }))).toBe(
+      "memory_not_member",
+    )
+    expect(
+      value<{ channel: unknown }>(await p.ask("memory.move", { id: general.id, channelId: null }))
+        .channel,
+    ).toBeNull()
+    expect(codeOf(await p.ask("memory.move", { id: general.id, channelId: null, extra: 1 }))).toBe(
+      "invalid_input",
+    )
+    const rows = await p.server.runtime.runPromise(Memory.use((m) => m.history(a.id)))
+    expect(rows.filter((r) => r.kind === "moved").map((r) => r.actor)).toEqual(["user", "user"])
+  })
+
   test("it sets the switch Read the handbook and the instructions of a channel, with the same limits as the server (spec 002, 004, 012)", async () => {
     const p = await pair(true)
     const off = value<Agent>(
@@ -591,9 +653,12 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ],
       ["channels.update", { id: "x", patch: { topic: "t" } }],
       ["memory.list", { agentId: "x" }],
+      ["memory.scopes", { agentId: "x" }],
+      ["memory.move", { id: "x", channelId: null }],
       ["memory.add", { agentId: "x", text: "t" }],
       ["memory.update", { id: "x", text: "t" }],
       ["memory.delete", { id: "x" }],
+      ["memory.check.set", { agentId: "x", on: true }],
       ["handbook.save", { serverId: p.serverId, text: "Answer in Korean." }],
       ["handbook.restore", { serverId: p.serverId, versionId: "x" }],
       ["models.available", undefined],
@@ -618,6 +683,45 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     expect(
       value<{ text: string }>(await p.onServer("handbook.get", { serverId: p.serverId })).text,
     ).toBe("")
+  })
+
+  test("it sees the choice of the memory check with the link only, and changes it only with the switch (spec 008, 012)", async () => {
+    // The switch is off: the client sees the choice and the count, and cannot change them.
+    const off = await pair(false)
+    const agent = value<Agent>(await off.onServer("agents.create", make(off.serverId, "Writer")))
+    const seen = value<{ on: boolean; count: number; every: number; program: string | null }>(
+      await off.ask("memory.check", { agentId: agent.id }),
+    )
+    expect(seen).toMatchObject({ on: false, count: 0, every: 10, program: null })
+    const refused = await off.ask("memory.check.set", { agentId: agent.id, on: true })
+    expect(codeOf(refused)).toBe("change_off")
+    expect(
+      value<{ on: boolean }>(await off.onServer("memory.check", { agentId: agent.id })).on,
+    ).toBe(false)
+    // "Check now" runs the model of the server: a client has no such request.
+    expect(await off.raw("memory.check.now", { agentId: agent.id })).toBe("not_allowed")
+
+    // The switch is on: the client turns the check on and off, and the server holds the choice.
+    const on = await pair(true)
+    const writer = value<Agent>(await on.ask("agents.create", make(on.serverId, "Writer")))
+    expect(codeOf(await on.ask("memory.check.set", { agentId: writer.id, on: true }))).toBe("ok")
+    expect(
+      value<{ on: boolean }>(await on.onServer("memory.check", { agentId: writer.id })).on,
+    ).toBe(true)
+    expect(value<{ on: boolean }>(await on.ask("memory.check", { agentId: writer.id })).on).toBe(
+      true,
+    )
+    expect(codeOf(await on.ask("memory.check.set", { agentId: writer.id, on: false }))).toBe("ok")
+    expect(
+      value<{ on: boolean }>(await on.onServer("memory.check", { agentId: writer.id })).on,
+    ).toBe(false)
+    // A field that the request does not list refuses it, and an unknown agent is refused.
+    expect(
+      codeOf(await on.ask("memory.check.set", { agentId: writer.id, on: true, extra: 1 })),
+    ).toBe("invalid_input")
+    expect(codeOf(await on.ask("memory.check.set", { agentId: "nope", on: true }))).toBe(
+      "agent_not_found",
+    )
   })
 
   test("it reads the handbook with no switch, and saves and restores it only with the switch (spec 002, 012)", async () => {

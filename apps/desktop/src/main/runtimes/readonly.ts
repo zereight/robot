@@ -19,6 +19,7 @@ import { execute } from "./proc.ts"
  * - opencode: none. Its help text names no mode that blocks changes. It blocks tools by rules in
  *   its settings, and a rule is not a mode that the help text names. The app uses those rules for
  *   "Ask for everything" and below, but "Read only" does not start (spec 007).
+ * - Cursor: `--mode ask`. The help text calls that mode read-only. Plan mode does not count.
  */
 export interface HelpCheck {
   /** The arguments that print a help text. */
@@ -38,6 +39,7 @@ export const READ_ONLY_HELP: Record<RuntimeKind, readonly HelpCheck[]> = {
   pi: [{ args: ["--help"], needs: [/(^|\s)--tools\b/m] }],
   // No check: a program with no check has no mode.
   opencode: [],
+  cursor: [{ args: ["--help"], needs: [/(^|\s)--mode\b/, /\bask\b/, /\bread-only\b/] }],
 }
 
 const HELP_MS = 15_000

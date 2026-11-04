@@ -217,6 +217,15 @@
   background: transparent;
 }
 
+/* Why an item is off. It stands under the item, apart from the button, so the dimmed look of a
+   disabled button does not fade it. */
+.menuReason {
+  padding: 0 10px 6px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
 /* A group of items under one heading. The check mark sits at the start of the current item. */
 .menuHeading {
   padding: 6px 10px 2px;

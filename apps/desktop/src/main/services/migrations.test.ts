@@ -1083,3 +1083,68 @@ describe("the step of the parent channel (spec 030)", () => {
     ])
   })
 })
+
+describe("the step for the memory check", () => {
+  /** The step that spec 008 added: the choice of an agent, the turns it counted, the source of a proposal. */
+  const CHECK = migrations.findIndex((sql) => sql.includes("ADD COLUMN memory_check"))
+
+  test("it comes after the steps that main had before it, so they run in their old places", () => {
+    const handbook = migrations.findIndex((sql) => sql.includes("CREATE TABLE handbook_version"))
+    expect(handbook).toBeGreaterThan(0)
+    expect(CHECK).toBeGreaterThan(handbook)
+  })
+
+  test("it adds the choice, the count table and the mark of a proposal; sync carries none of them", () => {
+    const sql = migrations[CHECK] ?? ""
+    expect(sql).toContain("ADD COLUMN memory_check INTEGER NOT NULL DEFAULT 0")
+    expect(sql).toContain("CREATE TABLE memory_check_turn")
+    expect(sql).toContain("ADD COLUMN from_check INTEGER NOT NULL DEFAULT 0")
+    // Spec 019: no trigger marks a row of the count table as changed.
+    expect(sql).not.toMatch(/CREATE TRIGGER/i)
+    expect(sql).not.toMatch(/sync_dirty/)
+  })
+
+  test("a database from before keeps its agents and proposals; every check is off and counts 0", () => {
+    const db = upTo(CHECK)
+    db.exec(`PRAGMA user_version = ${CHECK}`)
+    db.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, created_at, updated_at)
+        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1);
+      INSERT INTO memory_proposal (id, agent_id, text, created_at) VALUES ('p', 'a', 'Likes tea', 1);
+    `)
+    migrate(db)
+    expect(db.prepare("SELECT memory_check FROM agent").get()).toEqual({ memory_check: 0 })
+    expect(db.prepare("SELECT text, from_check FROM memory_proposal").get()).toEqual({
+      text: "Likes tea",
+      from_check: 0,
+    })
+    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_check_turn").get()).toEqual({ n: 0 })
+  })
+
+  test("a counted turn goes with its task and with its agent, and marks nothing for sync", () => {
+    const db = new DatabaseSync(":memory:")
+    db.exec("PRAGMA foreign_keys = ON")
+    migrate(db)
+    db.exec(`
+      INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+      INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+        workspace, section, created_at, updated_at)
+        VALUES ('a', 's', 'Ada', 'ada', '', '', 0, 0, '/w', 'agents', 1, 1);
+      INSERT INTO task (id, agent_id, prompt, label, source, state, created_at)
+        VALUES ('t1', 'a', 'x', 'x', 'chat', 'done', 1), ('t2', 'a', 'y', 'y', 'chat', 'done', 2);
+      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+    `)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec(`
+      INSERT INTO memory_check_turn (task_id, agent_id, at) VALUES ('t1', 'a', 1), ('t2', 'a', 2);
+    `)
+    expect(db.prepare("SELECT COUNT(*) AS n FROM sync_dirty").get()).toEqual({ n: 0 })
+    db.exec("DELETE FROM task WHERE id = 't1'")
+    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_check_turn").get()).toEqual({ n: 1 })
+    db.exec("DELETE FROM agent WHERE id = 'a'")
+    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_check_turn").get()).toEqual({ n: 0 })
+  })
+})

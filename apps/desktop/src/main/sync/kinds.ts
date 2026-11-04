@@ -1005,7 +1005,12 @@ const channel: KindDef = {
     update(ctx.db, "channel", "id = ?", [id], columns)
     if (f.members !== undefined) setMembers(ctx, id, f.members as string[])
   },
-  remove: (ctx, id) => ctx.db.run("DELETE FROM channel WHERE id = ?", id),
+  remove: (ctx, id) => {
+    // The notes for the channel go with it (spec 008, "Channel notes"). The other computer sends
+    // the removal of each note too, and makes no history row here (spec 019).
+    ctx.db.run("DELETE FROM memory WHERE channel_id = ?", id)
+    ctx.db.run("DELETE FROM channel WHERE id = ?", id)
+  },
   label: (f) => String(f.name ?? ""),
 }
 
@@ -1018,6 +1023,7 @@ interface MemoryRow {
   source: string
   created_at: number
   updated_at: number
+  channel_id: string | null
 }
 
 const memory: KindDef = {
@@ -1032,6 +1038,8 @@ const memory: KindDef = {
     source: { check: oneOf(["user", "agent", "proposal"]) },
     createdAt: { check: int },
     updatedAt: { check: int },
+    // The channel of a channel note, or null for a general item. A move changes it (spec 008, 019).
+    channelId: { check: nullable(str(100, 1)) },
   },
   required: ["agentId", "text", "source", "createdAt", "updatedAt"],
   fixed: ["agentId", "source", "createdAt"],
@@ -1047,6 +1055,7 @@ const memory: KindDef = {
         source: r.source,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
+        channelId: r.channel_id,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: r.updated_at,
@@ -1054,6 +1063,10 @@ const memory: KindDef = {
   },
   create: (ctx, id, f) => {
     if (!has(ctx.db, "agent", f.agentId as string)) return false
+    // A note for a channel that this computer does not hold (yet, or any more) waits: the channel
+    // comes first in the order of kinds, so a missing one is a channel that was deleted here.
+    const channelId = typeof f.channelId === "string" ? f.channelId : null
+    if (channelId !== null && !has(ctx.db, "channel", channelId)) return false
     insert(ctx.db, "memory", {
       id,
       agent_id: f.agentId,
@@ -1061,6 +1074,7 @@ const memory: KindDef = {
       source: f.source,
       created_at: f.createdAt,
       updated_at: f.updatedAt,
+      channel_id: channelId,
     })
     return true
   },
@@ -1068,6 +1082,11 @@ const memory: KindDef = {
     update(ctx.db, "memory", "id = ?", [id], {
       ...(f.text !== undefined ? { text: (f.text as string).trim() } : {}),
       ...(f.updatedAt !== undefined ? { updated_at: f.updatedAt } : {}),
+      // A move: a channel that this computer does not hold leaves the item where it is.
+      ...(f.channelId === null ||
+      (typeof f.channelId === "string" && has(ctx.db, "channel", f.channelId))
+        ? { channel_id: f.channelId }
+        : {}),
     }),
   remove: (ctx, id) => ctx.db.run("DELETE FROM memory WHERE id = ?", id),
   label: (f) => [...String(f.text ?? "")].slice(0, 60).join(""),

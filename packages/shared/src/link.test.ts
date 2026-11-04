@@ -146,8 +146,11 @@ describe("client requests", () => {
         "handbook.restore",
         "handbook.save",
         "memory.add",
+        "memory.check.set",
         "memory.delete",
         "memory.list",
+        "memory.move",
+        "memory.scopes",
         "memory.update",
         "models.available",
         "workflows.create",
@@ -185,6 +188,14 @@ describe("client requests", () => {
     for (const method of ["handbook.save", "handbook.restore"]) {
       expect(isChangeMethod(method)).toBe(true)
     }
+    // A client sees the choice of the memory check with the link only, and changes it only with the
+    // switch (spec 008, 012). "Check now" runs the model of the server, so a client has no such
+    // request.
+    expect(isClientMethod("memory.check")).toBe(true)
+    expect(isChangeMethod("memory.check")).toBe(false)
+    expect(isClientMethod("memory.check.set")).toBe(true)
+    expect(isChangeMethod("memory.check.set")).toBe(true)
+    expect(isClientMethod("memory.check.now")).toBe(false)
     // A client hears about workflows and runs.
     expect(PUSHED_EVENTS).toContain("workflows.changed")
     expect(PUSHED_EVENTS).toContain("workflows.run")

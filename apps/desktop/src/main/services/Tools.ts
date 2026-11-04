@@ -408,21 +408,33 @@ const DEFS: Record<string, ToolDef> = {
   },
   browser_read: {
     name: "browser_read",
-    description: "Read the text of the page that is open in the browser.",
+    description: "Read the text and the numbered controls of the page that is open in the browser.",
     schema: object({}, []),
   },
   browser_click: {
     name: "browser_click",
-    description: "Click the element that matches a CSS selector on the open page.",
-    schema: object({ selector: str("A CSS selector.") }, ["selector"]),
+    description:
+      "Click a control on the open page. Give its number from browser_read, or a CSS selector. A selector that fits more than one control clicks nothing and lists up to 5 candidates to pick from. Answers with a short state of the page; set controls to also get the numbered list.",
+    schema: object(
+      {
+        selector: str("The number of a control from browser_read, or a CSS selector."),
+        controls: { type: "boolean", description: "Also list the numbered controls of the page." },
+      },
+      ["selector"],
+    ),
   },
   browser_type: {
     name: "browser_type",
-    description: "Type text into the field that matches a CSS selector on the open page.",
-    schema: object({ selector: str("A CSS selector."), text: str("The text.") }, [
-      "selector",
-      "text",
-    ]),
+    description:
+      "Type text into a control on the open page. Give its number from browser_read, or a CSS selector, with the same fit rules as a click. Answers with a short state of the page; set controls to also get the numbered list.",
+    schema: object(
+      {
+        selector: str("The number of a control from browser_read, or a CSS selector."),
+        text: str("The text."),
+        controls: { type: "boolean", description: "Also list the numbered controls of the page." },
+      },
+      ["selector", "text"],
+    ),
   },
   browser_close: {
     name: "browser_close",
@@ -461,8 +473,18 @@ const DEFS: Record<string, ToolDef> = {
   save_memory: {
     name: "save_memory",
     description:
-      "Save one short, lasting fact (a preference, a name, a decision) to your memory. Use at most 500 characters. Never save a password, a key or a token. The user may decide first whether the fact is kept.",
-    schema: object({ text: str("The fact, in one sentence.") }, ["text"]),
+      "Save one short, lasting fact (a preference, a name, a decision) to your memory. Use at most 500 characters. Never save a password, a key or a token. The user may decide first whether the fact is kept. In a channel, set for_channel to true when the fact holds only for that channel: you then read it in that channel and nowhere else.",
+    schema: object(
+      {
+        text: str("The fact, in one sentence."),
+        for_channel: {
+          type: "boolean",
+          description:
+            "Only in a channel: true keeps the fact as a note for this channel. Leave it out for a fact that holds everywhere.",
+        },
+      },
+      ["text"],
+    ),
   },
   read_article: {
     name: "read_article",
@@ -646,6 +668,17 @@ const cut = (value: string, max: number) =>
   value.length > max
     ? `${value.slice(0, max)}\n[cut: ${value.length - max} more characters]`
     : value
+
+/** The controls of a read list: one control on one line, with the count that the cap hides. */
+const formatControls = (
+  controls: { index: number; role: string; label: string }[],
+  total: number,
+) => {
+  if (total === 0) return "Controls: none"
+  const lines = controls.map((c) => `[${c.index}] ${c.role} "${c.label}"`)
+  if (total > controls.length) lines.push(`... and ${total - controls.length} more`)
+  return `Controls:\n${lines.join("\n")}`
+}
 
 /** What the model reads when a step with a saved secret is refused (spec 020). */
 const SECRET_REFUSALS: Record<SecretAddressError, string> = {
@@ -1403,11 +1436,46 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           if (call.name === "browser_read") {
             const read = await page.read()
             holdOutside(ctx.turn, { kind: "page", host: hostOf(read.url) })
-            return { output: `${read.url}\nTitle: ${read.title}\n\n${read.text}`, failed: false }
+            return {
+              output: `${read.url}\nTitle: ${read.title}\n\n${read.text}\n\n${formatControls(read.controls, read.total)}`,
+              failed: false,
+            }
           }
-          if (call.name === "browser_click") await page.click(text(args, "selector"))
-          else await page.type(text(args, "selector"), text(args, "text"))
-          return { output: "Done.", failed: false }
+          // An action returns a short state, so the agent rarely needs to read again. An
+          // unclear target fails with candidates, and the agent picks one by its number.
+          const target = text(args, "selector")
+          const act =
+            call.name === "browser_click"
+              ? await page.click(target)
+              : await page.type(target, text(args, "text"))
+          if (!act.ok && act.reason === "many") {
+            const lines = act.candidates.map(
+              (c) => `[${c.index}] ${c.role} "${c.label}" at ${c.x},${c.y}`,
+            )
+            return {
+              output: `Not done: "${target}" fits ${act.total} controls. Pick one by its number:\n${lines.join("\n")}`,
+              failed: true,
+            }
+          }
+          if (!act.ok)
+            return {
+              output: `Not done: no control fits "${target}". Read the page with browser_read to see the controls and their numbers.`,
+              failed: true,
+            }
+          const state = act.state
+          const lines = [
+            call.name === "browser_click" ? "Clicked." : "Typed.",
+            `Address: ${state.url}`,
+            `Title: ${state.title}`,
+            `Loading: ${state.loading ? "yes" : "no"}`,
+            `Focus: ${state.focus ?? "none"}`,
+            `Page errors: ${state.errors.length === 0 ? "none" : state.errors.join("; ")}`,
+          ]
+          if (args.controls === true) {
+            const read = await page.read()
+            lines.push("", formatControls(read.controls, read.total))
+          }
+          return { output: lines.join("\n"), failed: false }
         } finally {
           ctx.signal.removeEventListener("abort", stop)
         }
@@ -1617,9 +1685,18 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         ctx: ToolContext,
         call: ToolCall,
         value: string,
+        forChannel: boolean,
       ): Promise<ToolOutcome> => {
-        const plan = await Effect.runPromise(memory.plan(ctx.agentId, value))
-        const make = () => Effect.runPromise(memory.save(ctx.agentId, value, ctx.origin))
+        // A note belongs to the channel of the turn (spec 008, flow 6). Outside a channel there is none.
+        if (forChannel && ctx.origin?.kind !== "channel")
+          return {
+            output:
+              "Not saved: this is not a channel, so there is no channel note. Save the fact without for_channel.",
+            failed: true,
+          }
+        const channelId = forChannel ? ctx.origin?.id : undefined
+        const plan = await Effect.runPromise(memory.plan(ctx.agentId, value, channelId))
+        const make = () => Effect.runPromise(memory.save(ctx.agentId, value, ctx.origin, channelId))
         // A save at once is a guarded step (spec 007, "Outside content"): in a turn that holds
         // outside content it asks first, so a web page cannot put a lasting order into memory.
         // A proposal is not memory and needs no card, and a refused text asks nothing.
@@ -1630,7 +1707,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         switch (result.kind) {
           case "saved":
             ctx.onMemory(call.id, { kind: "saved", historyId: result.historyId })
-            return { output: "Saved to memory.", failed: false }
+            return {
+              output: channelId
+                ? "Saved to memory as a note for this channel."
+                : "Saved to memory.",
+              failed: false,
+            }
           case "suggested":
             ctx.onMemory(call.id, { kind: "suggested", proposalId: result.proposal.id })
             return {
@@ -1654,6 +1736,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return { output: "Not saved: the text is empty.", failed: true }
           case "off":
             return { output: "Not saved: memory is off for you.", failed: true }
+          case "not_member":
+            return { output: "Not saved: you are not a member of this channel.", failed: true }
         }
       }
 
@@ -2232,7 +2316,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return { output: found.output, failed: found.failed }
           }
           case "save_memory":
-            return await saveMemory(ctx, call, text(args, "text"))
+            return await saveMemory(ctx, call, text(args, "text"), args.for_channel === true)
           case "settings":
             return await settingsTool(ctx, call, args)
           case "read_article":

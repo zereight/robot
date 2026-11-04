@@ -438,3 +438,47 @@ test("browser: a smaller or larger window changes the scale of the page, not its
   await app.close()
   site.close()
 })
+
+test("browser: a click returns a short state, an unclear target lists candidates, a read lists numbered controls", async () => {
+  test.setTimeout(90_000)
+  const site = createServer((_, res) => {
+    res.writeHead(200, { "content-type": "text/html" })
+    res.end(
+      `<title>T</title><body><button class="pick" onclick="document.title='got-1'">B1</button><button class="pick" onclick="document.title='got-2'">B2</button></body>`,
+    )
+  })
+  await new Promise<void>((r) => site.listen(0, "127.0.0.1", r))
+  const url = `http://127.0.0.1:${(site.address() as AddressInfo).port}/`
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1300, 860)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await createAgent(page, "Ada")
+  await send(page, `TOOL browser_open ${JSON.stringify({ url })}`)
+  await expect(page.getByTestId("browser-card")).toBeVisible({ timeout: 15_000 })
+
+  // The chat shows the first 80 characters of each tool answer (mock-provider), so every
+  // check below reads a prefix of the new output.
+  await send(page, `TOOL browser_click ${JSON.stringify({ selector: ".pick" })}`)
+  await expect(page.getByTestId("message").last()).toContainText("fits 2 controls", {
+    timeout: 15_000,
+  })
+  await expect(page.getByTestId("message").last()).toContainText('[1] button "B1"')
+
+  // The agent picks the first candidate by its number. The click lands on B1: the title says so.
+  await send(page, `TOOL browser_click ${JSON.stringify({ selector: "1" })}`)
+  await expect(page.getByTestId("message").last()).toContainText("Clicked.", { timeout: 15_000 })
+  await expect(page.getByTestId("message").last()).toContainText("Address:")
+  await expect(page.getByTestId("message").last()).toContainText("Loading:")
+
+  // The read lists the numbered controls after the text, in the same answer.
+  await send(page, "TOOL browser_read {}")
+  await expect(page.getByTestId("message").last()).toContainText("Title: got-1", {
+    timeout: 15_000,
+  })
+  await expect(page.getByTestId("message").last()).toContainText("Controls:")
+  await expect(page.getByTestId("message").last()).toContainText('[1] button "B1"')
+  await shot(page, "s11-04-browser-short-state")
+  await app.close()
+  site.close()
+})

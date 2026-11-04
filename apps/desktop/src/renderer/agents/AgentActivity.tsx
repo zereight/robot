@@ -15,6 +15,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { TaskStateText } from "../tasks/TaskStateText.tsx"
+import { taskTitle } from "../tasks/title.ts"
 import { IconButton } from "../ui/controls.tsx"
 import { motionMs } from "../ui/Presence.tsx"
 import styles from "./activity.module.css"
@@ -83,7 +84,7 @@ export const AgentActivity = (props: { agent: Agent }) => {
                 data-leaving={item.leaving}
                 data-testid="activity-task"
               >
-                <span class={styles.label}>{item.task.label}</span>
+                <span class={styles.label}>{taskTitle(item.task, t)}</span>
                 <span class={styles.meta}>
                   <span class={styles.dot} aria-hidden="true" />
                   <span data-testid="activity-task-state">

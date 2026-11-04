@@ -31,17 +31,21 @@ the teams on the chart.
      becomes a top channel, and the channels under it count from their new level. After a sync, it
      clears the field of the channel with the latest parent change on that line of four channels.
   2. **A loop.** The app clears the parent field of the channel with the latest parent change among
-     the channels of the loop. A restore or an import has no parent change of its own, so it uses
-     the changes that the fields carry.
+     the channels of the loop. A restore uses the times that the parent fields carry. An import
+     carries no time of change, because an export holds no sync records (014), so it uses the tie
+     order below alone.
   - **Which change is later**: the time that sync (019) gives to the change, whichever computer
     made it. When the times are equal, the channel that was made later. When that is equal too, the
     channel with the later id. Both computers choose the same channel, so they end with the same
     tree.
   - **More than one break**: the app clears one field for each break, nearest the top first, and
     checks again, until the tree holds the rules.
-  - **When it runs**: on the computer that finds the break first, after the sync has applied all
-    the changes that it has. A set of changes that makes a valid tree is not cut in the middle. The
-    repaired field syncs, and the other computer finds nothing to repair.
+  - **When it runs**: on the computer that finds the break first. After a sync, it waits until no
+    change has come from the other computer for about 1 second, and each new change moves the wait
+    back. The sync sends no sign of its end, and a computer of an older step must still work with
+    this one (019). A set of changes that comes together is not cut in the middle. The repair also
+    runs at the end of a first copy (019), after a restore, after an import, and at the start of the
+    app. The repaired field syncs, and the other computer finds nothing to repair.
   - **The line**: each repair posts one muted line in the channel whose field was cleared: "The
     parent channel was cleared. The tree would have a loop." or "The parent channel was cleared.
     The tree would have more than 3 levels." It makes no notification and has no Undo, because a
@@ -109,7 +113,11 @@ More rules:
     rule allows. <A> is the second agent of the shortest chain from S to R.
   - **Equal chains**: when more than one first agent gives a chain of the same length, the lead of a
     channel of S comes first, then the main agent, then the other agents in the order of their
-    names, ignoring case.
+    names, ignoring case. "A channel of S" is a channel that S is a member of; the lead of a
+    channel is a member of it. A lead that S reaches only by rule 4 (the lead of a parent channel or
+    of a sub-channel) is in the last group, unless it also leads a channel that S is a member of.
+    Leads in the same group go by name too. Names are unique, ignoring case (002), so the order
+    of names is complete.
   - **No chain**: when S has no chain to R, the reason is "<R> is not on your path, and no agent
     can pass it on. Tell the user."
 - A refused send is not a hand-off of the org chart (029). It counts for no limit of 005.

@@ -45,6 +45,7 @@ import { showToast } from "../ui/toast.ts"
 import { TaskStateText } from "./TaskStateText.tsx"
 import { TaskUsageView } from "./TaskUsageView.tsx"
 import styles from "./tasks.module.css"
+import { taskTitle } from "./title.ts"
 
 // A reason with no text of its own shows the general error text.
 const catalogueKeys = catalogues.en
@@ -220,7 +221,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
       <Show when={detail()}>
         {(d) => (
           <div class={styles.detail}>
-            <h2 class={styles.title}>{d().task.label}</h2>
+            <h2 class={styles.title}>{taskTitle(d().task, t)}</h2>
             <p class={styles.meta}>
               {d().task.agentName} · {t(`tasks.source.${d().task.source}` as MessageKey)} ·{" "}
               <span
@@ -323,7 +324,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                         <StateIcon state={node.task.state} />
                         <TaskStateText task={node.task} />
                       </span>{" "}
-                      {node.task.agentName}: {node.task.label}
+                      {node.task.agentName}: {taskTitle(node.task, t)}
                     </li>
                   )}
                 </For>
@@ -632,7 +633,7 @@ export const TasksPage = () => {
                         onClick={() => setOpenId(task.id)}
                         data-testid="task-open"
                       >
-                        {task.label}
+                        {taskTitle(task, t)}
                       </button>
                     </th>
                     <td>{t(`tasks.source.${task.source}` as MessageKey)}</td>
