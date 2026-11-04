@@ -135,7 +135,8 @@ test("motion: short, calm, and off with reduce motion", async () => {
   await page.getByTestId("settings-close").click()
   await expect(page.getByTestId("settings")).toHaveCount(0)
 
-  // Spec 000: every motion is under 300 ms. Only the "Working…" line loops (spec 003).
+  // Spec 000: every motion is under 300 ms. Two motions loop while work goes on: the light of the
+  // working badge (spec 003) and the working dot of a place (spec 001).
   const seen = await seenMotion(page)
   const names = new Set(seen.map((m) => m.name))
   for (const expected of [
@@ -156,8 +157,14 @@ test("motion: short, calm, and off with reduce motion", async () => {
   }
   const tooLong = seen.filter((m) => !m.infinite && m.duration >= 300)
   expect(tooLong, JSON.stringify(tooLong.slice(0, 3))).toEqual([])
+  // Spec 000 names two endless shapes: a breath (the badge light of 003, the working dot of 001) and
+  // a turn (a spinner of 004). The dot must really loop here, and no other motion may loop. A style
+  // sheet that the build renames adds a suffix to each name, so a name is a part of a name.
   const loops = new Set(seen.filter((m) => m.infinite).map((m) => m.name))
-  expect([...loops].every((n) => n.includes("pulse"))).toBe(true)
+  const endless = (n: string) =>
+    n.includes("dot-pulse") || n.includes("mark-pulse") || n.includes("spin")
+  expect([...loops].every(endless), JSON.stringify([...loops]))
+  expect([...loops].some((n) => n.includes("dot-pulse"))).toBe(true)
 
   // Reduce motion on: nothing moves and closing is immediate.
   await page.getByTestId("open-settings").click()

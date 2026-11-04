@@ -70,7 +70,7 @@ can see and edit: its instructions, its memory, its knowledge, and the skills th
 | **Notifications** | System notifications by kind, with mutes. A status island on the screen shows agents at work and lets you answer an approval. Keep the computer awake while agents work. |
 | **Teams link** (experimental) | Talk to one agent or one channel from a Microsoft Teams chat. The app reads the chat in a page where you signed in by hand, and writes the answers to the same chat. It is off until you turn it on. It has been checked against a stand-in page only, not against the real Teams page. |
 | **Window and settings** | Server rail, place list with search (Cmd+K), your own sections, unread counts, a working dot, role badges, a resizable list and an activity panel. English or Korean (or follow the system), dark, light or system theme, three text sizes, reduce motion, start at login, workspace folder, third-party licences. |
-| **Motion** | Calm enter and exit motion, every motion under 300 ms. Reduce motion turns all of it off. |
+| **Motion** | Calm enter and exit motion, every motion under 300 ms. A working agent shows two motions that do not end: its badge light breathes, and its dot in the place list breathes. Reduce motion turns all of it off. |
 | **Local data** | One SQLite database in your app data folder. A reply is saved while it streams, so a crash loses at most the last part. Keys go to the system keychain. Export and import your data; keys and secrets stay out of the export. |
 
 ### Not built yet

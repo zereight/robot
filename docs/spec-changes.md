@@ -100,6 +100,7 @@ These are in the code today and the specs now say something else.
 | 017, 018, 030 | The agents of a skill or a connection are "All agents" or a list of agents. | The list can also hold channels. A channel gives the skill or connection to its members and to the members of its lower channels. |
 | 005, 006, 030 | A channel has no limit of its own. | A channel can have a daily token limit. At the limit, new tasks of the channel and its lower channels end as Blocked. |
 | 003, 011, 013 | Finished tool steps always show as one card each. | The switch "Show tool steps" (on at first) can be turned off. Then each run of finished plain steps folds into one muted line with the count. The user opens the line to read the cards. A step that runs, waits, failed, was refused, or carries a note always shows as its own card or line. |
+| 000, 001, 003, 011 | The working dot of a place, of a collapsed header and on the phone is still while the work runs. Only the light of the badge in the chat moves without end. | The dot breathes while the work runs: the dot and its ring grow and fade, in 1.4 s, without end, as the light of the badge does. The badge and the dot are the two motions that do not end. With reduce motion, nothing moves. |
 
 ## Slices
 
@@ -200,6 +201,7 @@ These are in the code today and the specs now say something else.
 | S111 | Ask up the line: the switch, the kind of a pass, the line of higher leads and the main agent, the times of 2 and 5 minutes, the card with its pass lines, the task "Question from <channel>" in the queue, the line in the channel log. | 030, 004, 005, 015, 021, 024 |
 | S112 | Tools and limit of a channel: channels in the agent lists of skills and connections, the part "Tools of this channel", "From <channel>" in the profile, the daily token limit with the line at 80%, Blocked at the limit, the limit of a parent channel, the row on the usage page, sync and export. Not built in S112: the daily token limit and the channels of a skill list in an agent file (needs S67, the file has no channels and no skills yet); the rule "an archived channel gives nothing" lives in the shared function and has no service test until S19 gives channels an archive state. | 030, 017, 018, 005, 006, 019, 014, 002 |
 | S113 | Folded tool steps: the switch "Show tool steps" in Appearance and on the phone, one muted line with the count per run of finished plain steps, open and close in place, waiting, failed, refused and noted steps always open. | 003, 011, 013 |
+| S114 | A working dot that breathes: the dot of a place and of a collapsed header on the desktop and on the phone, the loop of 1.4 s, the still dot with reduce motion, and the motion test that allows this one loop next to the badge light. | 000, 001, 003, 011 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.

@@ -86,6 +86,12 @@ tag, so the user reads their work as they read messages from colleagues.
   the app mark glows, an avatar glows in the dark theme (see 002, "Avatars"), and so does the
   badge of the app mark on a working agent (see 003, "States"). Light is not used to decorate a
   surface, a button or a text. Light that does not belong to the app mark or to an avatar needs a change of this spec.
+- A motion that ends takes less than 300 ms. A motion that does not end shows one thing only:
+  that work goes on. It has one of two shapes. A **breath** is a mark that glows, grows a little
+  and fades, in 1.4 s: the light of the badge of a working agent (003, "States") and the working
+  dot of a place (001, "Place rows"). A **turn** is a mark that goes round: the spinner of a
+  running step and of the look of the lead (004). A breath has no direction. No other part
+  repeats a motion. With reduce motion, nothing moves.
 
 ## Out of scope
 

@@ -241,7 +241,7 @@
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--c-success);
-  animation: pop-in var(--motion-medium) var(--ease-out);
+  animation: dot-pulse 1.4s ease-in-out infinite;
 }
 
 /* A section of the user: 12 px further in, for the header and for its places. */
@@ -508,6 +508,8 @@
   place-items: center;
 }
 
+/* The dot of a place that works breathes while the work runs (spec 000, 001). The breath is its
+   only motion, so its first frame is also the way it comes in. */
 .workingDot {
   position: absolute;
   right: -2px;
@@ -519,7 +521,13 @@
   box-shadow:
     0 0 0 2px var(--c-sidebar),
     0 0 0 4px color-mix(in srgb, var(--c-success) 30%, transparent);
-  animation: pop-in var(--motion-medium) var(--ease-out);
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+
+/* With reduce motion the dot is still, as the light of the badge is (spec 000). */
+:root[data-reduce-motion="true"] .workingDot,
+:root[data-reduce-motion="true"] .headerDot {
+  animation: none;
 }
 
 .badge {
@@ -814,6 +822,20 @@
   from {
     opacity: 0;
     transform: scale(0.6);
+  }
+}
+
+/* The breath of a working dot (spec 000, 001): the dot and its ring grow a little and fade, and
+   come back. It shows that work goes on and it has no end. */
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
