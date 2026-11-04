@@ -8,6 +8,7 @@ import {
   interpretRead,
   isOfflineError,
   isSignInAddress,
+  isTeamsAddress,
   type RawTeamsRead,
   readScript,
   sendScript,
@@ -19,6 +20,7 @@ const raw = (over: Partial<RawTeamsRead> = {}): RawTeamsRead => ({
   online: true,
   signInForm: false,
   shell: true,
+  landmarks: false,
   openTitle: null,
   chatTitles: [],
   ...over,
@@ -51,6 +53,37 @@ describe("what a read of the page says", () => {
 
   test("a page with neither the app nor a form cannot be read", () => {
     expect(interpretRead(raw({ shell: false }))).toEqual({ kind: "unreadable" })
+  })
+
+  test("a signed-in Teams page whose shell selector does not match still shows Teams", () => {
+    // The selector of the shell is a guess. The Teams host with the regions of a loaded app is
+    // the app, with the title of the open chat when the page has one.
+    expect(interpretRead(raw({ shell: false, landmarks: true, openTitle: "Marta" }))).toEqual({
+      kind: "teams",
+      openTitle: "Marta",
+    })
+    // The regions on a page of another host prove nothing.
+    expect(
+      interpretRead(raw({ shell: false, landmarks: true, url: "https://example.com/" })),
+    ).toEqual({ kind: "unreadable" })
+    // A sign-in form, or a sign-in host, still wins over the regions.
+    expect(interpretRead(raw({ shell: false, landmarks: true, signInForm: true }))).toEqual({
+      kind: "signIn",
+    })
+    expect(
+      interpretRead(
+        raw({ shell: false, landmarks: true, url: "https://login.microsoftonline.com/x" }),
+      ),
+    ).toEqual({ kind: "signIn" })
+  })
+
+  test("the hosts of the Teams app", () => {
+    expect(isTeamsAddress("https://teams.cloud.microsoft/v2/")).toBe(true)
+    expect(isTeamsAddress("https://teams.microsoft.com/")).toBe(true)
+    expect(isTeamsAddress("https://x.teams.microsoft.com/")).toBe(true)
+    expect(isTeamsAddress("https://teams.microsoft.com.example.com/")).toBe(false)
+    expect(isTeamsAddress("https://login.microsoftonline.com/")).toBe(false)
+    expect(isTeamsAddress("not an address")).toBe(false)
   })
 
   test("the hosts of the sign-in", () => {
