@@ -1,5 +1,7 @@
 import {
   type AgentState,
+  buildChart,
+  type ChartModel,
   ORG_HANDOFF_WINDOW_MS,
   type OrgAgent,
   type OrgChannel,
@@ -21,8 +23,14 @@ export interface OrgChartService {
    */
   snapshot(now?: number): Effect.Effect<OrgSnapshot>
   /**
+   * The same chart as a ready model (spec 029, 012): the nodes in the order of the page, the
+   * counts, the states, the lines and the labels of running tasks cut at 90 characters. A linked
+   * computer and the phone get this. It holds no prompt, no message and no file content.
+   */
+  model(now?: number): Effect.Effect<ChartModel>
+  /**
    * Looks at the chart again as the clock passes: a hand-off that leaves the window of 7 days. It
-   * pushes the chart when it changed, as the loop does. Tests call it by hand with a fake clock.
+   * pushes the chart when it changed, as the loop does: to the window, and to the linked devices. Tests call it by hand with a fake clock.
    */
   check(now: number): Effect.Effect<void>
 }
@@ -155,7 +163,11 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
       }
 
       // ------------------------------------------------------------------ Pushing
+      // What the window of this computer has: its last read or push.
       let pushed = ""
+      // What the linked devices were told last. A read by the window never changes it, so a window
+      // that reads between a change and the next look cannot keep the push from a linked device.
+      let pushedLinked = ""
       let change = 0
       let dirty = false
 
@@ -163,9 +175,15 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
         const built = build(now)
         change = built.change
         const sig = JSON.stringify(built.snapshot)
-        if (sig === pushed) return
-        pushed = sig
-        bus.emit("orgChart.changed", built.snapshot)
+        if (sig !== pushed) {
+          pushed = sig
+          bus.emit("orgChart.changed", built.snapshot)
+        }
+        if (sig !== pushedLinked) {
+          pushedLinked = sig
+          // The ready model goes to the linked devices only (spec 029, 012). No window gets it.
+          bus.emitLinked("orgChart.model", buildChart(built.snapshot))
+        }
       }
 
       bus.tap((event) => {
@@ -192,6 +210,14 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
             change = built.change
             pushed = JSON.stringify(built.snapshot)
             return built.snapshot
+          }),
+        // A read for a client changes nothing that the push loop compares with, so a client that
+        // asks never keeps the window of this computer, or another client, from getting a push.
+        model: (now = Date.now()) =>
+          Effect.sync(() => {
+            const built = build(now)
+            if (change === 0) change = built.change
+            return buildChart(built.snapshot)
           }),
         check,
       })

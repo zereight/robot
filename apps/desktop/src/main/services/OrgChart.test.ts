@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync } from "node:fs"
-import { buildChart, ORG_HANDOFF_WINDOW_MS, type OrgSnapshot } from "@robot/shared"
+import { buildChart, type ChartModel, ORG_HANDOFF_WINDOW_MS, type OrgSnapshot } from "@robot/shared"
 import { Effect } from "effect"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
@@ -159,9 +159,20 @@ const setup = async (options: { connected?: boolean } = {}) => {
   const snapshot = (now = NOW) => run(OrgChart.use((o) => o.snapshot(now)))
   const pushed = () =>
     t.events.filter((e) => e.event === "orgChart.changed").map((e) => e.payload as OrgSnapshot)
+  // What the linked devices are told: the taps of the bus, which no window gets (spec 029, 012).
+  const toLinked: ChartModel[] = []
+  void run(
+    EventBus.use((bus) =>
+      Effect.sync(() =>
+        bus.tap((event, payload) => {
+          if (event === "orgChart.model") toLinked.push(payload as ChartModel)
+        }),
+      ),
+    ),
+  )
   const emit = () =>
     run(EventBus.use((bus) => Effect.sync(() => bus.emit("tasks.changed", { serverId: local.id }))))
-  return { t, run, db, local, account, agent, task, snapshot, pushed, emit }
+  return { t, run, db, local, account, agent, task, snapshot, pushed, toLinked, emit }
 }
 
 describe("agents, channels and states", () => {
@@ -400,5 +411,72 @@ describe("pushing the chart", () => {
     await s.run(OrgChart.use((o) => o.check(at + ORG_HANDOFF_WINDOW_MS + MINUTE)))
     expect(s.pushed()).toHaveLength(1)
     expect(s.pushed()[0]?.handoffs).toEqual([])
+  })
+})
+
+describe("the ready model for a linked computer and the phone (spec 029, 012)", () => {
+  test("it is the chart of the snapshot, with the labels cut, and holds no task besides its label", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada", "Writes docs")
+    await s.agent("Bo")
+    s.task(ada.id, {
+      source: "chat",
+      state: "running",
+      label: `Draft the release notes ${"x".repeat(100)}`,
+      mark: null,
+    })
+    await s.run(Activity.use((a) => Effect.sync(() => a.setWorking(ada.id, s.local.id, true))))
+    const model = await s.run(OrgChart.use((o) => o.model(NOW)))
+    expect(model).toEqual(buildChart(await s.snapshot(NOW)))
+    const node = model.channels[0]?.nodes.find((n) => n.name === "Ada")
+    expect([...(node?.label ?? "")]).toHaveLength(90)
+    expect(node?.role).toBe("Writes docs")
+    // The prompt of the task, written by hand as "p", is not in the model, and no task id is.
+    const text = JSON.stringify(model)
+    expect(text).not.toContain('"prompt"')
+    expect(text).not.toContain("task-")
+  })
+
+  test("a read for a client keeps the window of this computer from losing a push", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    await s.snapshot()
+    await s.run(Agents.use((a) => a.update(ada.id, { name: "Ada Lovelace" })))
+    // A client asks before the loop looked: this must not count as a push to the window.
+    const model = await s.run(OrgChart.use((o) => o.model(NOW)))
+    expect(model.channels[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    expect(s.pushed()).toHaveLength(1)
+    expect(s.pushed()[0]?.agents.map((a) => a.name)).toEqual(["Ada Lovelace"])
+  })
+
+  test("a change is told to the linked devices as the ready model, and no window gets the model", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    await s.run(Agents.use((a) => a.update(ada.id, { name: "Ada Lovelace" })))
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    expect(s.toLinked).toHaveLength(1)
+    expect(s.toLinked[0]?.channels[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
+    expect(s.toLinked[0]).toEqual(buildChart(s.pushed()[0] as OrgSnapshot))
+    // The window gets the snapshot only. The model is no event of a window.
+    expect(s.t.events.some((e) => e.event === "orgChart.model")).toBe(false)
+    // A look with no change tells nobody.
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    expect(s.toLinked).toHaveLength(1)
+  })
+
+  test("a read by the window between a change and the next look does not keep the push from a linked device", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    await s.snapshot()
+    await s.run(Agents.use((a) => a.update(ada.id, { name: "Ada Lovelace" })))
+    // The window of this computer reads the new chart before the loop looked at it.
+    expect((await s.snapshot()).agents.map((a) => a.name)).toEqual(["Ada Lovelace"])
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    // The window has the chart from its own read, so it gets no second copy.
+    expect(s.pushed()).toHaveLength(0)
+    // The linked devices were never told, so they get it.
+    expect(s.toLinked).toHaveLength(1)
+    expect(s.toLinked[0]?.channels[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
   })
 })
