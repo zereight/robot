@@ -1183,4 +1183,14 @@ export const migrations: readonly string[] = [
   ALTER TABLE tool_connection ADD COLUMN channels TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE channel ADD COLUMN daily_token_limit INTEGER;
   `,
+  `
+  -- The switch "Ask up the line" (spec 030, 013), in the row of the part "Organization": 0 (off)
+  -- is the default, as every profile was before this step. It syncs with the row (kind "org": the
+  -- dirty trigger of the table watches every column), and the later change wins (spec 019). An
+  -- export keeps it (spec 014). \`changed_at\` is the time of the last change of the row.
+  ALTER TABLE organization ADD COLUMN ask_up_the_line INTEGER NOT NULL DEFAULT 0
+    CHECK (ask_up_the_line IN (0, 1));
+  -- The look of an agent on the line is a task with the source "question" (spec 030, 005): the
+  -- source column holds text, so no other change is needed.
+  `,
 ]

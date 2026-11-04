@@ -14,14 +14,21 @@ export const isHandOffRule = (value: unknown): value is HandOffRule =>
   typeof value === "string" && (HAND_OFF_RULES as readonly string[]).includes(value)
 
 /**
- * The part "Organization" of the settings (spec 013, 030): data of the agents of a server. The
- * switch "Ask up the line" joins it in a later slice.
+ * The part "Organization" of the settings (spec 013, 030): data of the agents of a server. It holds
+ * the hand-off rule and the switch "Ask up the line" (off at first).
  */
 export interface Organization {
   readonly handOff: HandOffRule
+  /** "Ask up the line": a question that the lead passes can go to higher agents (spec 030). */
+  readonly askUpTheLine: boolean
 }
 
-export const DEFAULT_ORGANIZATION: Organization = { handOff: DEFAULT_HAND_OFF_RULE }
+export const DEFAULT_ASK_UP_THE_LINE = false
+
+export const DEFAULT_ORGANIZATION: Organization = {
+  handOff: DEFAULT_HAND_OFF_RULE,
+  askUpTheLine: DEFAULT_ASK_UP_THE_LINE,
+}
 
 // ---------------------------------------------------------------------------------------------
 // Who may send to whom

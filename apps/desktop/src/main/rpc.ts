@@ -1515,7 +1515,8 @@ export const handlers: Handlers = {
       Effect.flatMap(({ serverId }) => ChannelTools.use((c) => c.usage(serverId))),
     ),
   // The part "Organization" (spec 013, 030). A linked computer reads it with only the link, and no
-  // request of a client changes it (spec 012): "organization.setHandOff" is not a client method.
+  // request of a client changes it (spec 012): "organization.setHandOff" and
+  // "organization.setAskUpTheLine" are not client methods.
   "organization.get": (input) =>
     strict(Schema.Struct({ serverId: Id }))(input).pipe(
       Effect.flatMap(({ serverId }) => ownServer(serverId)),
@@ -1524,6 +1525,10 @@ export const handlers: Handlers = {
   "organization.setHandOff": (input) =>
     decode(Schema.Struct({ rule: Schema.Literals(HAND_OFF_RULES) }))(input).pipe(
       Effect.flatMap(({ rule }) => Organization.use((o) => o.setHandOff(rule))),
+    ),
+  "organization.setAskUpTheLine": (input) =>
+    decode(Schema.Struct({ on: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ on }) => Organization.use((o) => o.setAskUpTheLine(on))),
     ),
   "usage.summary": (input) =>
     decode(

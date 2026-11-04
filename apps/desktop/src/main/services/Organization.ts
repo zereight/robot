@@ -7,7 +7,7 @@ import {
 import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
-import { loadHandOffModel, readHandOffRule } from "./handOff.ts"
+import { loadHandOffModel, readAskUpTheLine, readHandOffRule } from "./handOff.ts"
 import { Servers } from "./Servers.ts"
 
 export interface OrganizationOptions {
@@ -16,6 +16,12 @@ export interface OrganizationOptions {
    * agent yet, so the answer is null; the work that adds the switch fills this. Tests give one.
    */
   readonly mainAgent?: (serverId: string) => string | null
+  /**
+   * The name of the main agent, for the end-to-end run only (spec 002): the app has no switch for
+   * the main agent yet, so a test names one. The agent of that name on the server counts as the
+   * main agent. `mainAgent` wins when both are given.
+   */
+  readonly mainAgentName?: string
 }
 
 export interface OrganizationService {
@@ -26,6 +32,19 @@ export interface OrganizationService {
    * before it ends as it started. A value equal to the rule changes nothing.
    */
   setHandOff(rule: HandOffRule): Effect.Effect<OrganizationState>
+  /**
+   * Turns the switch "Ask up the line" on or off (spec 030). A change counts from the next pass of
+   * a lead; a look that is on the line when it goes off stops (see `onAskUpTheLine`). A value equal
+   * to the switch changes nothing.
+   */
+  setAskUpTheLine(on: boolean): Effect.Effect<OrganizationState>
+  /** The switch "Ask up the line" now, read at once. The line reads it at each pass. */
+  askUpTheLine(): boolean
+  /**
+   * Calls `listener` after the switch "Ask up the line" went off, here or by sync (spec 030). The
+   * channels use it to stop the looks that are on the line.
+   */
+  onAskUpTheLineOff(listener: () => void): void
   /** The hand-off rule now, read at once. The tools read it at the time of each send. */
   rule(): HandOffRule
   /** The main agent of a server, or null. An archived main agent counts as none. */
@@ -50,9 +69,32 @@ export class Organization extends Context.Service<Organization, OrganizationServ
         const bus = yield* EventBus
         const servers = yield* Servers
 
-        const read = (): OrganizationState => ({ handOff: readHandOffRule(db) })
+        const read = (): OrganizationState => ({
+          handOff: readHandOffRule(db),
+          askUpTheLine: readAskUpTheLine(db),
+        })
+        const offListeners: (() => void)[] = []
+        // A change by sync also moves the switch. The bus tells the same event for it.
+        let wasOn = readAskUpTheLine(db)
+        const noteSwitch = () => {
+          const now = readAskUpTheLine(db)
+          const wentOff = wasOn && !now
+          wasOn = now
+          if (wentOff) for (const listener of offListeners) listener()
+        }
+        bus.tap((event) => {
+          if (event === "organization.changed") noteSwitch()
+        })
         const mainAgent = (serverId: string): string | null => {
-          const id = options.mainAgent?.(serverId) ?? null
+          const id =
+            options.mainAgent?.(serverId) ??
+            (options.mainAgentName === undefined
+              ? null
+              : (db.get<{ id: string }>(
+                  "SELECT id FROM agent WHERE server_id = ? AND name = ? AND archived_at IS NULL",
+                  serverId,
+                  options.mainAgentName,
+                )?.id ?? null))
           if (id === null) return null
           const row = db.get<{ archived_at: number | null }>(
             "SELECT archived_at FROM agent WHERE id = ? AND server_id = ?",
@@ -80,6 +122,24 @@ export class Organization extends Context.Service<Organization, OrganizationServ
               }
               return read()
             }),
+          setAskUpTheLine: (on) =>
+            Effect.gen(function* () {
+              if (readAskUpTheLine(db) !== on) {
+                db.run(
+                  `INSERT INTO organization (id, ask_up_the_line, changed_at) VALUES ('organization', ?, ?)
+                   ON CONFLICT (id) DO UPDATE SET ask_up_the_line = excluded.ask_up_the_line,
+                     changed_at = excluded.changed_at`,
+                  on ? 1 : 0,
+                  Date.now(),
+                )
+                bus.emit("organization.changed", { serverId: (yield* servers.local).id })
+              }
+              return read()
+            }),
+          askUpTheLine: () => readAskUpTheLine(db),
+          onAskUpTheLineOff: (listener) => {
+            offListeners.push(listener)
+          },
           rule: () => readHandOffRule(db),
           mainAgent,
           model: (serverId) => loadHandOffModel(db, serverId, mainAgent(serverId)),

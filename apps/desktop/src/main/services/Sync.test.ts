@@ -1236,6 +1236,67 @@ describe("two computers that were apart", () => {
       ),
     ).toBe("channels")
   })
+
+  test("the switch 'Ask up the line' crosses like the rule; the later change wins; the rule stays (spec 030, 019)", async () => {
+    const { a, b } = await pair()
+    const state = (rt: Rt) =>
+      run(
+        rt,
+        Organization.use((o) => o.get),
+      )
+    const line = (rt: Rt) => state(rt).then((x) => x.askUpTheLine)
+    const set = (rt: Rt, on: boolean) =>
+      run(
+        rt,
+        Organization.use((o) => o.setAskUpTheLine(on)),
+      )
+    expect(await line(a)).toBe(false)
+    expect(await line(b)).toBe(false)
+
+    // The switch that is turned on at one computer counts on the other after it syncs.
+    await set(a, true)
+    expect(
+      await waitFor(
+        () => line(b),
+        (v) => v === true,
+      ),
+    ).toBe(true)
+    expect(await state(b)).toEqual({ handOff: "any", askUpTheLine: true })
+
+    // A change of the rule on the other computer leaves the switch as it is.
+    await run(
+      b,
+      Organization.use((o) => o.setHandOff("channels")),
+    )
+    expect(
+      await waitFor(
+        () => state(a),
+        (v) => v.handOff === "channels",
+      ),
+    ).toEqual({ handOff: "channels", askUpTheLine: true })
+
+    // Both change it while apart: the later change wins on both computers. Computer 2 turns it
+    // off first; computer 1 turns it off and on again later, so its change is the later one.
+    await apart(a, b)
+    await set(b, false)
+    await settle()
+    await settle()
+    await set(a, false)
+    await set(a, true)
+    await together(a, b)
+    expect(
+      await waitFor(
+        () => line(a),
+        (v) => v === true,
+      ),
+    ).toBe(true)
+    expect(
+      await waitFor(
+        () => line(b),
+        (v) => v === true,
+      ),
+    ).toBe(true)
+  })
 })
 
 describe("tasks, routines, workflows and files of two computers", () => {

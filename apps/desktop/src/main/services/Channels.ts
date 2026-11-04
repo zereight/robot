@@ -44,6 +44,7 @@ import {
   fitSummary,
   hasUsage,
   hasVisibleReply,
+  higherChannels,
   holdOutside,
   holdProgram,
   isFinal,
@@ -53,13 +54,18 @@ import {
   keepGoingMessage,
   LEAD_LOOK_MS,
   type LeadAnswer,
+  type LeadLookAnswer,
   type LeadLookEnd,
+  LINE_MS,
+  type LineAgent,
   type ListedStep,
   LOOKS_MAX,
   leadLookInstruction,
   leadLookLog,
   leadLookText,
   levelOnRuntime,
+  lineLookInstruction,
+  lineLookMs,
   lineTokens,
   MESSAGE_MAX,
   type MemberContext,
@@ -81,6 +87,7 @@ import {
   type ParsedPlan,
   type PartChip,
   type PartInfo,
+  type PassKind,
   type PermissionLevel,
   PICK_RECENT_MAX,
   type PickInput,
@@ -624,8 +631,12 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         if (accountId && failure instanceof ProviderFailure && failure.code === "provider_limit")
           limitedUntil.set(accountId, failure.resetsAt ?? Date.now() + UNKNOWN_LIMIT_MS)
       }
-      const leadBlocked = (lead: AgentRow) => {
-        const until = lead.model_account_id ? limitedUntil.get(lead.model_account_id) : undefined
+      /**
+       * True while the agent is blocked by a usage limit (spec 004). This is the one place that
+       * decides it: the lead, a look of the line (spec 030) and the check of the lead all ask here.
+       */
+      const blockedByUsageLimit = (agent: AgentRow) => {
+        const until = agent.model_account_id ? limitedUntil.get(agent.model_account_id) : undefined
         return until !== undefined && until > Date.now()
       }
 
@@ -959,11 +970,26 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                     ask,
                     turnEnded: () => controller.signal.aborted,
                     io: {
-                      pass: (passed) =>
+                      looks: (agent, passes) =>
+                        changePart(callId, (p) =>
+                          p.ask?.kind !== "question"
+                            ? p
+                            : { ...p, ask: { ...p.ask, lead: agent, passes } },
+                        ),
+                      toUser: (passes, late) =>
                         changePart(callId, (p) => {
                           if (p.ask?.kind !== "question") return p
                           const { lead: _lead, ...rest } = p.ask
-                          return { ...p, ask: { ...rest, passed } }
+                          const last = passes[passes.length - 1]
+                          return {
+                            ...p,
+                            ask: {
+                              ...rest,
+                              ...(last ? { passed: last } : {}),
+                              passes,
+                              ...(late ? { lineLate: true } : {}),
+                            },
+                          }
                         }),
                       plain: () =>
                         changePart(callId, (p) => {
@@ -1329,7 +1355,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const done = Deferred.makeUnsafe<string | null>()
         summaries.set(channel.id, { key, done })
         const write = Effect.gen(function* () {
-          if (leadBlocked(writer) || !writer.model_account_id || !writer.model_name) return null
+          if (blockedByUsageLimit(writer) || !writer.model_account_id || !writer.model_name)
+            return null
           const account = (yield* providers.list).find((a) => a.id === writer.model_account_id)
           const listed = yield* providers
             .models(writer.model_account_id)
@@ -1786,8 +1813,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       // --- the lead answers questions of members (spec 004, "Questions of members") --------------
 
+      /** What a look decided. `late` is the time limit, and `failure` a look that could not answer. */
+      type LookOutcome = LeadLookAnswer | { readonly kind: "late" } | { readonly kind: "failure" }
+
       /** The time of a look: 2 minutes from the question. A test run can make it shorter. */
       const lookLimitMs = () => Number(process.env.ROBOT_TEST_LEAD_LOOK_MS) || LEAD_LOOK_MS
+      /** The 5 minutes of the whole line, after the pass of the lead. A test run can make it shorter. */
+      const lineLimitMs = () => Number(process.env.ROBOT_TEST_LINE_MS) || LINE_MS
 
       /**
        * The part that a question comes from, and the task of its lead (the job): the look is a turn
@@ -1829,7 +1861,11 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           card: q.ask.kind,
           part: found !== null,
           lead: lead
-            ? { id: lead.id, archived: lead.archived_at !== null, blocked: leadBlocked(lead) }
+            ? {
+                id: lead.id,
+                archived: lead.archived_at !== null,
+                blocked: blockedByUsageLimit(lead),
+              }
             : null,
           asker: q.member.id,
           outside: q.outside,
@@ -1839,12 +1875,17 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         return { lead, found }
       }
 
-      /** What the lead reads for a look at a question: the text of the shared function, from the data. */
+      /**
+       * What an agent reads for a look at a question: the text of the shared function, from the
+       * data. The lead reads the question and the channel; an agent of the line (spec 030) also
+       * reads the reason of each pass before it.
+       */
       const lookText = (
         channel: ChannelRow,
         member: AgentRow,
         found: NonNullable<ReturnType<typeof partJob>>,
         ask: Extract<ToolAsk, { kind: "question" }>,
+        passes: readonly QuestionPass[] = [],
       ) => {
         const names = new Map(memberRows(channel.id).map((m) => [m.id, m.name]))
         const recent = db
@@ -1875,16 +1916,62 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               text: messageText({ parts: JSON.parse(row.parts) as MessagePart[] }),
             }),
           ),
+          passes,
+        })
+      }
+
+      /**
+       * The agents that may be on the line above a channel (spec 030, "Ask up the line"): the lead
+       * of each higher channel, from the nearest to the top channel, then the main agent. Whether
+       * one of them looks is decided in `readerAfterPass`, with the facts of that moment.
+       */
+      const lineCandidates = (channel: ChannelRow): LineAgent[] => {
+        const channels = db.all<{
+          id: string
+          parent_channel_id: string | null
+          lead_agent_id: string | null
+        }>(
+          "SELECT id, parent_channel_id, lead_agent_id FROM channel WHERE server_id = ?",
+          channel.server_id,
+        )
+        const leads = new Map(channels.map((c) => [c.id, c.lead_agent_id]))
+        const ids = [
+          ...higherChannels(
+            channels.map((c) => ({ id: c.id, parentId: c.parent_channel_id })),
+            channel.id,
+          ).map((id) => leads.get(id) ?? null),
+          organization.mainAgent(channel.server_id),
+        ]
+        return ids.flatMap((id) => {
+          const agent = id ? agentRow(id) : undefined
+          return agent && agent.server_id === channel.server_id
+            ? [
+                {
+                  id: agent.id,
+                  name: agent.name,
+                  archived: agent.archived_at !== null,
+                  blocked: blockedByUsageLimit(agent),
+                },
+              ]
+            : []
         })
       }
 
       /** What a look changes on the card and in the list of requests that wait for the user. */
       interface LookIo {
-        /** The card becomes a normal question with the line of the lead. */
-        readonly pass: (pass: QuestionPass) => void
-        /** The card becomes a normal question with no line of the lead. */
+        /** The card says "<agent> looks at it", with one line for each pass before it (spec 030). */
+        readonly looks: (
+          agent: { readonly agentId: string; readonly name: string },
+          passes: readonly QuestionPass[],
+        ) => void
+        /**
+         * The card becomes a normal question for the user, with the line of each pass. `late` adds
+         * the line "No agent on the line answered in time." (spec 030).
+         */
+        readonly toUser: (passes: readonly QuestionPass[], late: boolean) => void
+        /** The card becomes a normal question with no line of an agent that looks. */
         readonly plain: () => void
-        /** The card says "Answered by <lead>". The answer goes to the member after it. */
+        /** The card says "Answered by <agent>". The answer goes to the member after it. */
         readonly answer: (answer: LeadAnswer) => void
         /** The question waits for the user: "Needs you" and the notification of a question. */
         readonly attend: (ask: ToolAsk) => void
@@ -1893,20 +1980,30 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       /** The looks that run now, by agent and call. */
       const openLooks = new Map<
         string,
-        { readonly channelId: string; readonly stop: () => void; readonly settingOff: () => void }
+        {
+          readonly channelId: string
+          readonly stop: () => void
+          readonly settingOff: () => void
+          /** The switch "Ask up the line" went off: a look on the line stops (spec 030). */
+          readonly lineOff: () => void
+        }
       >()
 
       /**
-       * One look of the lead at a question card (spec 004). The look is a turn of the task of the
-       * lead for the job: it waits for one slot, uses it while it runs, and counts its tokens in
-       * that task. It ends with an answer, a pass, or a stop (the user answered, the setting went
-       * off, the turn ended). The user can answer the card at any time: that answer wins. Each look
-       * writes one line to the log of channels, with no text of the question or of the answer.
+       * The looks at one question card (spec 004, "Questions of members"; spec 030, "Ask up the
+       * line"). The lead looks first. The look of the lead is a turn of the task of the lead for the
+       * job: it waits for one slot, uses it while it runs, and counts its tokens in that task. A
+       * pass goes to `readerAfterPass`, which names the next agent on the line or the user. The
+       * look of an agent of the line is a short task of that agent with the source "question": it
+       * waits in the queue as a normal source, uses one slot, and counts its tokens in that task. A
+       * look ends with an answer, a pass, or a stop (the user answered, the switch went off, the
+       * turn ended). The user can answer the card at any time: that answer wins. Each look writes one
+       * line to the log of channels, with no text of the question or of the answer.
        */
       const lookAtQuestion = (l: {
         readonly channel: ChannelRow
         readonly member: AgentRow
-        /** The task of the part. It shows "Running", not "Waiting for you", while the lead looks. */
+        /** The task of the part. It shows "Running", not "Waiting for you", while the question is on the line. */
         readonly taskId: string
         readonly lead: AgentRow
         readonly found: NonNullable<ReturnType<typeof partJob>>
@@ -1916,82 +2013,208 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         readonly io: LookIo
       }) => {
         const key = `${l.member.id}:${l.callId}`
-        const started = Date.now()
-        const ms = () => Date.now() - started
-        let ended = false
+        let finished = false
         let cancelled = false
         let why: StopWhy = "user_answer"
+        /** The passes so far, oldest first. The first one is the pass of the lead. */
+        const passes: QuestionPass[] = []
+        /** The agent that looks now, and its place on the line: 0 is the lead. */
+        let looker: AgentRow = l.lead
+        let place = 0
+        let started = Date.now()
+        let logged = false
+        /** The time of the pass of the lead: the 5 minutes of the line count from here. */
+        let leadPassedAt = 0
         // The part waits, but not for the user (spec 004, 024).
         tasks.setWithLead(l.taskId, true)
         const release = () => tasks.setWithLead(l.taskId, false)
-        const end = (result: LeadLookEnd) => {
-          if (ended) return
-          ended = true
+        const logLook = (
+          result:
+            | { readonly result: "answered" }
+            | { readonly result: "passed"; readonly kind: PassKind }
+            | { readonly result: "stopped"; readonly why: StopWhy },
+        ) => {
+          if (logged) return
+          logged = true
+          appendLog(
+            platform.dataDir,
+            "channels",
+            leadLookLog(
+              { ...result, ms: Date.now() - started } as LeadLookEnd,
+              place === 0 ? undefined : place,
+            ),
+          )
+        }
+        const finish = () => {
+          if (finished) return
+          finished = true
           release()
           openLooks.delete(key)
-          appendLog(platform.dataDir, "channels", leadLookLog(result))
         }
-        const passToUser = (kind: QuestionPass["kind"], reason: string) => {
-          const pass: QuestionPass = { agentId: l.lead.id, name: l.lead.name, kind, reason }
-          // Who reads a passed question next is decided in one place. Today it is the user.
-          const next = readerAfterPass(pass)
-          if (next.kind === "user") {
-            // From here the part waits for the user: "Waiting for you" shows with the notification.
-            release()
-            l.io.pass(pass)
-            l.io.attend({ ...l.ask, passed: pass })
-          }
-          end({ result: "passed", kind, ms: ms() })
+        const toUser = (late: boolean) => {
+          // From here the part waits for the user: "Waiting for you" shows with the notification.
+          release()
+          const last = passes[passes.length - 1]
+          l.io.toUser(passes, late)
+          l.io.attend({
+            ...l.ask,
+            ...(last ? { passed: last } : {}),
+            passes,
+            ...(late ? { lineLate: true } : {}),
+          })
         }
-        const text = lookText(l.channel, l.member, l.found, l.ask)
-        const decided = Effect.raceFirst(
-          tasks
-            .withSlot(
-              l.found.job.id,
-              askLead(l.lead, leadLookInstruction(), text, { taskId: l.found.job.id }),
-            )
-            .pipe(
-              Effect.map(
-                (reply) => parseLeadLook(reply, l.ask.choices) ?? ({ kind: "failure" } as const),
-              ),
-              // A lead that cannot answer passes the question at once (spec 004, "Time").
+        const decide = (agent: AgentRow): Effect.Effect<LookOutcome> => {
+          const parse = (reply: string): LookOutcome =>
+            parseLeadLook(reply, l.ask.choices) ?? { kind: "failure" }
+          // A look that cannot answer passes the question at once (spec 004, "Time"). An interrupt
+          // (the user answered, the turn ended) stays an interrupt.
+          const orFailure = (
+            look: Effect.Effect<LookOutcome, unknown>,
+          ): Effect.Effect<LookOutcome> =>
+            look.pipe(
               Effect.catchCause((cause) =>
                 Cause.hasInterruptsOnly(cause)
-                  ? Effect.failCause(cause)
-                  : Effect.succeed({ kind: "failure" } as const),
+                  ? Effect.interrupt
+                  : Effect.succeed<LookOutcome>({ kind: "failure" }),
               ),
-            ),
-          Effect.sleep(lookLimitMs()).pipe(Effect.as({ kind: "late" } as const)),
-        )
+            )
+          if (place === 0)
+            return Effect.raceFirst(
+              tasks
+                .withSlot(
+                  l.found.job.id,
+                  askLead(
+                    agent,
+                    leadLookInstruction(),
+                    lookText(l.channel, l.member, l.found, l.ask),
+                    { taskId: l.found.job.id },
+                  ),
+                )
+                .pipe(Effect.map(parse), orFailure),
+              Effect.sleep(lookLimitMs()).pipe(Effect.as<LookOutcome>({ kind: "late" })),
+            )
+          // An agent of the line: a short task of that agent, in the queue as a normal source. The
+          // time of 2 minutes includes the wait (spec 030).
+          const budget = lineLookMs(Date.now() - leadPassedAt, {
+            lookMs: lookLimitMs(),
+            lineMs: lineLimitMs(),
+          })
+          return Effect.gen(function* () {
+            if (tasks.queueFull(agent.id)) return { kind: "failure" } as const
+            const task = yield* tasks.create({
+              agentId: agent.id,
+              prompt: `Question of ${l.member.name}: ${l.ask.question}`.slice(0, 600),
+              label: l.channel.name,
+              source: "question",
+              sourceId: l.channel.id,
+              depth: tasks.depthOf(l.taskId),
+            })
+            return yield* Effect.raceFirst(
+              tasks
+                .run(
+                  task.id,
+                  agent.id,
+                  askLead(
+                    agent,
+                    lineLookInstruction(),
+                    lookText(l.channel, l.member, l.found, l.ask, passes),
+                    { taskId: task.id },
+                  ),
+                )
+                .pipe(Effect.map(parse), orFailure),
+              Effect.sleep(budget).pipe(Effect.as<LookOutcome>({ kind: "late" })),
+            )
+          })
+        }
         const fiber = Effect.runFork(
           Effect.gen(function* () {
-            const outcome = yield* decided
-            // Nothing waits from here on, so the user cannot answer between the check and the act.
-            if (cancelled || !tools.isWaiting(l.member.id, l.callId))
-              return end({ result: "stopped", why, ms: ms() })
-            try {
-              if (outcome.kind === "answer") {
-                l.io.answer({ agentId: l.lead.id, name: l.lead.name, reason: outcome.reason })
-                Effect.runSync(tools.respond(l.member.id, l.callId, outcome.answer))
-                return end({ result: "answered", ms: ms() })
+            while (true) {
+              started = Date.now()
+              logged = false
+              const outcome = yield* decide(looker)
+              // Nothing waits from here on, so the user cannot answer between the check and the act.
+              if (cancelled || !tools.isWaiting(l.member.id, l.callId)) {
+                logLook({ result: "stopped", why })
+                return finish()
               }
-              if (outcome.kind === "pass") return passToUser(outcome.passKind, outcome.reason)
-              return passToUser(outcome.kind, "")
-            } catch (e) {
-              // A look never leaves the question with the lead: it goes to the user.
-              console.error("lead look failed", e)
-              if (!ended && tools.isWaiting(l.member.id, l.callId)) passToUser("failure", "")
-              else end({ result: "stopped", why, ms: ms() })
+              if (outcome.kind === "answer") {
+                l.io.answer({
+                  agentId: looker.id,
+                  name: looker.name,
+                  reason: outcome.reason,
+                  ...(passes.length > 0 ? { passes: [...passes] } : {}),
+                })
+                Effect.runSync(tools.respond(l.member.id, l.callId, outcome.answer))
+                logLook({ result: "answered" })
+                return finish()
+              }
+              const pass: QuestionPass =
+                outcome.kind === "pass"
+                  ? {
+                      agentId: looker.id,
+                      name: looker.name,
+                      kind: outcome.passKind,
+                      reason: outcome.reason,
+                    }
+                  : { agentId: looker.id, name: looker.name, kind: outcome.kind, reason: "" }
+              passes.push(pass)
+              logLook({ result: "passed", kind: pass.kind })
+              if (place === 0) leadPassedAt = Date.now()
+              // Who reads a passed question next is decided in one place (spec 030).
+              const next = readerAfterPass({
+                setting: organization.askUpTheLine(),
+                card: l.ask.kind,
+                asker: l.member.id,
+                candidates: lineCandidates(l.channel),
+                passes,
+                sinceLeadPass: Date.now() - leadPassedAt,
+                lineMs: lineLimitMs(),
+              })
+              if (next.kind === "user") {
+                toUser(next.why === "line_late")
+                return finish()
+              }
+              const agent = agentRow(next.agent.id)
+              if (!agent) {
+                toUser(false)
+                return finish()
+              }
+              looker = agent
+              place += 1
+              l.io.looks({ agentId: agent.id, name: agent.name }, passes)
             }
           }).pipe(
+            // An interrupt (the user answered, the switch went off, the turn ended) ends the look.
+            // Any other failure never leaves the question with an agent: it goes to the user.
+            Effect.catchCause((cause) =>
+              Cause.hasInterruptsOnly(cause)
+                ? Effect.failCause(cause)
+                : Effect.sync(() => {
+                    console.error("lead look failed", Cause.squash(cause))
+                    if (!finished && tools.isWaiting(l.member.id, l.callId)) {
+                      passes.push({
+                        agentId: looker.id,
+                        name: looker.name,
+                        kind: "failure",
+                        reason: "",
+                      })
+                      logLook({ result: "passed", kind: "failure" })
+                      toUser(false)
+                    } else logLook({ result: "stopped", why })
+                    finish()
+                  }),
+            ),
             Effect.onExit((exit) =>
               Effect.sync(() => {
-                if (Exit.isFailure(exit))
-                  end({ result: "stopped", why: l.turnEnded() ? "turn_ended" : why, ms: ms() })
+                if (Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)) {
+                  logLook({ result: "stopped", why: l.turnEnded() ? "turn_ended" : why })
+                  finish()
+                }
               }),
             ),
           ),
         )
+
         const cancel = () => {
           cancelled = true
           Effect.runFork(Fiber.interrupt(fiber))
@@ -2002,18 +2225,33 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           settingOff: () => {
             why = "setting_off"
             cancel()
-            release()
+            finish()
             l.io.plain()
             l.io.attend(l.ask)
+          },
+          lineOff: () => {
+            // Only a look of an agent of the line stops. The look of the lead goes on: its pass
+            // reads the switch and goes to the user (spec 030).
+            if (place === 0) return
+            why = "line_off"
+            cancel()
+            finish()
+            toUser(false)
           },
         })
       }
 
-      /** The setting went off: every question that is with the lead passes to the user at once. */
+      /** The setting went off: every question that is with the lead or on the line passes to the user at once. */
       const leadAnswersOff = (channelId: string) => {
         for (const look of [...openLooks.values()])
           if (look.channelId === channelId) look.settingOff()
       }
+
+      // The switch "Ask up the line" went off, here or by sync: the questions on the line pass to
+      // the user at once, with the lines of the passes so far (spec 030).
+      organization.onAskUpTheLineOff(() => {
+        for (const look of [...openLooks.values()]) look.lineOff()
+      })
 
       /**
        * One look of the lead (spec 004). It reads the state, gives verdicts, and then nudges, asks
@@ -2237,7 +2475,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               if (
                 !current ||
                 current.archived_at !== null ||
-                leadBlocked(current) ||
+                blockedByUsageLimit(current) ||
                 channelPartsOpen(channel.id)
               )
                 break

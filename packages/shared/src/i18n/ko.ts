@@ -1062,6 +1062,8 @@ export const ko: Record<MessageKey, string> = {
   "memory.check.started": "점검이 에이전트의 대기열에 들어갔어요.",
   "memory.proposals.fromCheck": "출처: 메모리 점검",
   "tasks.source.memory_check": "메모리 점검",
+  "tasks.source.question": "채널의 질문",
+  "tasks.source.questionFrom": "{channel}의 질문",
   "error.memory_check_unavailable": "이 프로그램은 메모리 점검을 쓸 수 없어요.",
   "error.memory_check_off": "지금은 점검을 시작할 수 없어요. 선택과 횟수를 확인해 주세요.",
   "error.memory_off": "이 에이전트는 메모리가 꺼져 있어요.",
@@ -2138,6 +2140,7 @@ export const ko: Record<MessageKey, string> = {
   "lead.pass.failure": "{name}이(가) 답하지 못했어요.",
   "lead.pass.user_choice": "{name}: 사용자만 고를 수 있어요.",
   "lead.pass.not_sure": "{name}: 확실하지 않아요.",
+  "lead.lineLate": "위쪽 에이전트 중 제때 답한 에이전트가 없어요.",
   "tasks.questions": "부분의 질문",
   "tasks.question.user": "사용자가 답했어요",
   "tasks.question.lead": "{name}이(가) 답했어요",
@@ -2159,6 +2162,7 @@ export const ko: Record<MessageKey, string> = {
   "moments.given.workflow": "맡김: 워크플로",
   "moments.given.agent": "맡김: 다른 에이전트",
   "moments.given.memory_check": "맡김: 메모리 점검",
+  "moments.given.question": "맡김: 멤버의 질문",
   "moments.started": "시작",
   "moments.ended.done": "끝남: 완료",
   "moments.ended.failed": "끝남: 실패",
@@ -2821,6 +2825,12 @@ export const ko: Record<MessageKey, string> = {
   "organization.offline":
     "{name}이(가) 오프라인이에요. 다시 온라인이 되면 이 페이지를 열어 주세요.",
   "organization.syncs": "이 설정은 다른 컴퓨터와 동기화돼요. 나중에 바꾼 쪽이 이겨요.",
+  "organization.askUpTheLine": "위로 물어보기",
+  "organization.askUpTheLine.hint":
+    "채널의 리드가 멤버의 질문을 넘기면, 상위 채널의 리드들과 메인 에이전트가 먼저 살펴본 뒤에 사용자에게 와요. 사용자만 고를 수 있는 선택은 바로 사용자에게 와요. 승인은 항상 사용자에게 와요.",
+  "organization.askUpTheLine.now.on":
+    "리드가 넘긴 질문은 먼저 위쪽 에이전트에게 갈 수 있어요. 에이전트마다 2분, 전체는 5분이에요.",
+  "organization.askUpTheLine.now.off": "리드가 넘긴 질문은 사용자에게 와요.",
   "orgchart.legend.channels": "전달은 채널을 따라가요.",
   "error.hand_off_path": "{detail}은(는) 보낼 수 있는 경로에 없어요. {next}에게 보내세요.",
   "error.hand_off_none":

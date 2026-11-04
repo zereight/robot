@@ -945,6 +945,16 @@
   font-size: var(--text-s);
 }
 
+/* The passes before the answer of an agent on the line (spec 030), one line each. */
+.leadAnswerPasses {
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
 .leadAnswerText {
   font-weight: 600;
   overflow-wrap: anywhere;

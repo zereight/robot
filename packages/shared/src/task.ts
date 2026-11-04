@@ -21,6 +21,9 @@ export type TaskState = (typeof TASK_STATES)[number]
  * message from Teams to the direct chat of an agent (spec 028): its depth is 0, and it is a normal
  * source in the queue (spec 005). "memory_check" is the short turn that finds facts that an agent
  * did not save (spec 008): its depth is 0, it posts no message, and it is last in the queue.
+ * "question" is the look of an agent on the line at a question of a member (spec 030, "Ask up the
+ * line"): its source id is the channel of the question, its depth is the depth of the part that
+ * asks, and it is a normal source in the queue.
  */
 export const TASK_SOURCES = [
   "chat",
@@ -31,6 +34,7 @@ export const TASK_SOURCES = [
   "handover",
   "teams",
   "memory_check",
+  "question",
 ] as const
 export type TaskSource = (typeof TASK_SOURCES)[number]
 

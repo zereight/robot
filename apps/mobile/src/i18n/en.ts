@@ -235,6 +235,7 @@ export const en = {
   "tool.leadPass.failure": "{name} could not answer.",
   "tool.leadPass.user_choice": "{name}: Only you can choose.",
   "tool.leadPass.not_sure": "{name}: Not sure.",
+  "tool.leadPass.lineLate": "No agent on the line answered in time.",
   "tool.answeredByLead": "Answered by {name}",
   "tool.askedAt": "Asked at {time}",
   "tool.outside": "This turn holds outside content. Check the step before you allow it.",

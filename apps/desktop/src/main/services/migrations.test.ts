@@ -1188,6 +1188,53 @@ describe("the step of the part Organization (spec 030, S110)", () => {
   })
 })
 
+describe("the step of the switch 'Ask up the line' (spec 030, S111)", () => {
+  const LINE = migrations.findIndex((sql) => sql.includes("ADD COLUMN ask_up_the_line"))
+
+  test("it adds one column, once, and drops or changes nothing", () => {
+    expect(LINE).toBeGreaterThan(0)
+    expect(migrations.filter((sql) => sql.includes("ADD COLUMN ask_up_the_line"))).toHaveLength(1)
+    const sql = migrations[LINE] ?? ""
+    expect(sql).not.toMatch(/DROP |DELETE |UPDATE |INSERT /i)
+    expect(sql).toContain(
+      "ALTER TABLE organization ADD COLUMN ask_up_the_line INTEGER NOT NULL DEFAULT 0",
+    )
+  })
+
+  test("a profile from before keeps its rule, and the switch is off", () => {
+    const db = upTo(LINE)
+    db.exec("UPDATE organization SET hand_off = 'channels', changed_at = 7")
+    db.exec(migrations[LINE] as string)
+    expect(
+      db.prepare("SELECT id, hand_off, ask_up_the_line, changed_at FROM organization").all(),
+    ).toEqual([{ id: "organization", hand_off: "channels", ask_up_the_line: 0, changed_at: 7 }])
+  })
+
+  test("the switch takes 0 and 1 only", () => {
+    const db = upTo(LINE + 1)
+    db.exec("UPDATE organization SET ask_up_the_line = 1")
+    expect(db.prepare("SELECT ask_up_the_line FROM organization").get()).toEqual({
+      ask_up_the_line: 1,
+    })
+    expect(() => db.exec("UPDATE organization SET ask_up_the_line = 2")).toThrow()
+  })
+
+  test("a change of the switch marks the row for sync, in a sync pair only", () => {
+    const db = upTo(LINE + 1)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE organization SET ask_up_the_line = 1")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([])
+    db.exec(`
+      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+    `)
+    db.exec("UPDATE organization SET ask_up_the_line = 0")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "org", id: "organization" },
+    ])
+  })
+})
+
 describe("the step of the tools and the daily token limit of a channel (spec 030)", () => {
   const LIMIT = migrations.findIndex((sql) => sql.includes("ADD COLUMN daily_token_limit"))
   const server = `
