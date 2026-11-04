@@ -505,7 +505,8 @@ export class Today extends Context.Service<Today, TodayService>()("robot/main/To
           push(now)
         })
 
-      yield* Effect.forkDetach(
+      // The loop ends with the layer: after that the database is closed, and a look at it fails.
+      yield* Effect.forkScoped(
         Effect.forever(
           Effect.sleep(STEP_MS).pipe(Effect.andThen(Effect.suspend(() => check(Date.now())))),
         ),

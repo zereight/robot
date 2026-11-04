@@ -861,9 +861,11 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       // ------------------------------------------------------------------ the pump
       let running = false
       let again = false
+      /** True after the layer closed. The database is closed too, so no step can run or be logged. */
+      let closed = false
       let timer: ReturnType<typeof setTimeout> | undefined
       function schedule(ms = 150) {
-        if (!active || timer) return
+        if (!active || closed || timer) return
         timer = setTimeout(() => {
           timer = undefined
           void pump()
@@ -894,6 +896,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       interval.unref?.()
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
+          closed = true
           clearInterval(interval)
           if (timer) clearTimeout(timer)
           for (const r of pending.values()) {
@@ -915,9 +918,10 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
             try {
               await step()
             } catch (error) {
-              console.error("sync step failed", error)
+              // A step that was still running when the layer closed fails on the closed database.
+              if (!closed) console.error("sync step failed", error)
             }
-          } while (again)
+          } while (again && !closed)
         } finally {
           running = false
         }
