@@ -279,6 +279,9 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
             case "agent":
               once("agents", () => bus.emit("agents.changed", { serverId }))
               once("places", () => bus.emit("places.changed", { serverId }))
+              // A deleted agent also leaves the skills of this computer (spec 017).
+              if (t.action === "deleted")
+                once("skills", () => bus.emit("skills.changed", { serverId }))
               break
             case "channel":
               once(`channel:${t.id}`, () => bus.emit("channels.changed", { channelId: t.id }))

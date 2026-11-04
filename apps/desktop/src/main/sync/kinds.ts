@@ -54,6 +54,7 @@ import {
   WORKFLOW_STEPS_MAX,
 } from "@robot/shared"
 import { Schema } from "effect"
+import { releaseSkills } from "../services/agentSkills.ts"
 import type { DatabaseService } from "../services/Database.ts"
 
 /** A value that can be written as JSON. */
@@ -788,6 +789,9 @@ const agent: KindDef = {
     const row = ctx.db.get<AgentRow>("SELECT * FROM agent WHERE id = ?", id)
     if (!row) return
     if (row.face_image) rmSync(join(ctx.facesDir, row.face_image), { force: true })
+    // The agent leaves the skills of this computer, as after a delete here (spec 017). Skills do
+    // not sync, so each computer cleans its own.
+    releaseSkills(ctx.db, id)
     // Sync never deletes files: the workspace folder stays where it is.
     ctx.db.run("DELETE FROM agent WHERE id = ?", id)
   },

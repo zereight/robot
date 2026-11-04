@@ -1433,6 +1433,8 @@ export const ko: Record<MessageKey, string> = {
   "sync.kind.wstep": "워크플로 단계",
   "agents.delete.sync":
     "{name}이(가) 이 컴퓨터와 동기화하고 있어서 에이전트가 {name}에서도 삭제돼요. 그쪽 작업 폴더는 그대로 남아요.",
+  "agents.delete.skills.one": "{name}만 쓰는 스킬 1개도 함께 삭제돼요.",
+  "agents.delete.skills.many": "{name}만 쓰는 스킬 {count}개도 함께 삭제돼요.",
   "channels.delete.sync":
     "{name}이(가) 이 컴퓨터와 동기화하고 있어서 채널과 메시지가 {name}에서도 삭제돼요.",
   "tasks.col.computer": "컴퓨터",

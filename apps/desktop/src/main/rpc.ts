@@ -1119,6 +1119,11 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
       Effect.flatMap(({ agentId }) => Skills.use((s) => s.forAgent(agentId))),
     ),
+  "skills.onlyFor": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Skills.use((s) => s.onlyFor(agentId))),
+      Effect.map((count) => ({ count })),
+    ),
   "skills.create": (input) =>
     decode(
       Schema.Struct({

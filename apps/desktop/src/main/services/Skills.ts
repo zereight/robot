@@ -9,6 +9,7 @@ import {
   skillProblems,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
+import { skillsOnlyFor } from "./agentSkills.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -68,6 +69,11 @@ export interface SkillsService {
   ): Effect.Effect<Skill, AppError>
   /** A skill that the agent may use now: it exists, it is on, and it is for this agent. */
   usable(agentId: string, skillId: string): Effect.Effect<Skill, AppError>
+  /**
+   * How many skills a delete of the agent deletes too: those that are only for this agent (spec
+   * 002, flow 9; spec 017). The confirm text of the delete says this number.
+   */
+  onlyFor(agentId: string): Effect.Effect<number>
 }
 
 export class Skills extends Context.Service<Skills, SkillsService>()("robot/main/Skills") {
@@ -203,6 +209,7 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
               return yield* new AppError({ code: "skill_unavailable" })
             return skill
           }),
+        onlyFor: (agentId) => Effect.sync(() => skillsOnlyFor(db, agentId)),
       })
     }),
   )

@@ -1446,6 +1446,8 @@ export const en = {
   "sync.kind.wstep": "Workflow step",
   "agents.delete.sync":
     "{name} syncs with this computer, so the agent is also deleted on {name}. The workspace folder there stays where it is.",
+  "agents.delete.skills.one": "1 skill that is only for {name} is deleted too.",
+  "agents.delete.skills.many": "{count} skills that are only for {name} are deleted too.",
   "channels.delete.sync":
     "{name} syncs with this computer, so the channel and its messages are also deleted on {name}.",
   "tasks.col.computer": "Computer",

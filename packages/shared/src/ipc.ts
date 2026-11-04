@@ -573,6 +573,8 @@ export interface RpcMethods {
   "skills.list": { input: { serverId: string }; output: readonly Skill[] }
   /** The skills that an agent may use now: on, and for this agent or for all agents. */
   "skills.forAgent": { input: { agentId: string }; output: readonly Skill[] }
+  /** The skills that are only for this agent. A delete of the agent deletes them too (002, 017). */
+  "skills.onlyFor": { input: { agentId: string }; output: { count: number } }
   /** `agentIds` is the list of agents that may use the skill, or `null` for all agents. */
   "skills.create": {
     input: SkillInput & { serverId: string; agentIds: readonly string[] | null }

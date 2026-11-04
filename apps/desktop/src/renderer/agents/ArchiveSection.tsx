@@ -23,15 +23,42 @@ export const ArchiveSection = () => {
   )
   onCleanup(window.robot.on("agents.changed", () => void refetch()))
   const [confirm, setConfirm] = createSignal<Agent>()
+  // How many skills a delete of the confirmed agent deletes too: those that are only for it (017).
+  const [skills, setSkills] = createSignal(0)
   const [error, setError] = createSignal<ErrorText>()
+
+  const countSkills = async (agent: Agent) =>
+    setSkills((await call("skills.onlyFor", { agentId: agent.id })).count)
+  // The number is read before the dialog opens, so the text never shows a wrong count. It is read
+  // again when the skills change while the dialog is open, but not during the delete itself: the
+  // delete changes the skills, and the dialog closes with the text that the user confirmed.
+  let deleting = false
+  const ask = async (agent: Agent) => {
+    setError(undefined)
+    try {
+      await countSkills(agent)
+      setConfirm(agent)
+    } catch (e) {
+      setError(describeError(e))
+    }
+  }
+  onCleanup(
+    window.robot.on("skills.changed", () => {
+      const open = confirm()
+      if (open && !deleting) void countSkills(open).catch(() => undefined)
+    }),
+  )
 
   const remove = async (agent: Agent) => {
     setError(undefined)
+    deleting = true
     try {
       await call("agents.delete", { id: agent.id })
       setConfirm(undefined)
     } catch (e) {
       setError(describeError(e))
+    } finally {
+      deleting = false
     }
   }
 
@@ -56,13 +83,20 @@ export const ArchiveSection = () => {
                 >
                   {t("agents.restore")}
                 </Button>
-                <Button onClick={() => setConfirm(agent)} data-testid="archive-delete">
+                <Button onClick={() => void ask(agent)} data-testid="archive-delete">
                   {t("agents.delete")}
                 </Button>
               </li>
             )}
           </For>
         </ul>
+      </Show>
+      <Show when={confirm() ? undefined : error()}>
+        {(err) => (
+          <div class={styles.error} role="alert" data-testid="archive-error">
+            {t(err().key, err().params)}
+          </div>
+        )}
       </Show>
       <Presence when={confirm()}>
         {(agent) => (
@@ -77,6 +111,14 @@ export const ArchiveSection = () => {
               {(name) => (
                 <p data-testid="delete-sync-line">{t("agents.delete.sync", { name: name() })}</p>
               )}
+            </Show>
+            <Show when={skills() > 0}>
+              <p data-testid="delete-skills-line">
+                {t(skills() === 1 ? "agents.delete.skills.one" : "agents.delete.skills.many", {
+                  name: agent.name,
+                  count: skills(),
+                })}
+              </p>
             </Show>
             <Show when={error()}>
               {(err) => (
