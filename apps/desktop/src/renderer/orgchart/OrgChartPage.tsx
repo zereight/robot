@@ -1,5 +1,14 @@
-import { type AgentState, type ChartAgent, type ChartModel, litBy, ROOT_KEY } from "@robot/shared"
-import { Minus, Plus, User } from "lucide-solid"
+import {
+  type AgentState,
+  type ChartAgent,
+  type ChartChannel,
+  type ChartModel,
+  copyKey,
+  litBy,
+  NO_CHANNEL_KEY,
+  ROOT_KEY,
+} from "@robot/shared"
+import { Ellipsis, Minus, Plus, User } from "lucide-solid"
 import {
   createEffect,
   createMemo,
@@ -27,6 +36,8 @@ import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { ChannelMark } from "../ui/ChannelMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { createChartEdit, DROP_AREA_KEY } from "./ChartEdit.tsx"
+import { edgeStep } from "./edit.ts"
 import { type ChartLayout, layoutChart } from "./layout.ts"
 import {
   agentLabel,
@@ -103,7 +114,10 @@ const Legend = (props: { capped: boolean }) => {
   )
 }
 
-/** The org chart (spec 029). It only shows: it changes nothing and starts nothing. */
+/**
+ * The org chart (spec 029). It starts nothing. It changes only the members and the lead of a
+ * channel, and only when the user edits (see ChartEdit.tsx).
+ */
 export const OrgChartPage = () => {
   const app = useApp()
   const { t } = app
@@ -112,9 +126,12 @@ export const OrgChartPage = () => {
   const channels = useChannels()
   const chart = useOrgChart()
   const model = chart.model
+  // The layout does not change during the drag of a node (spec 029): it waits until the drag ends.
+  const [nodeDrag, setNodeDrag] = createSignal(false)
 
   const unit = createMemo(() => TEXT_SIZES[app.settings.textSize])
-  const structure = createMemo(() => {
+  const structure = createMemo<string>((was) => {
+    if (nodeDrag() && was !== undefined) return was
     const m = model()
     return m && !m.empty ? structureKey(m) : ""
   })
@@ -161,11 +178,14 @@ export const OrgChartPage = () => {
     }
     return litBy(m, key)
   })
+  // During a drag nothing dims, so that every ring shows clearly.
   const nodeDim = (key: string) => {
+    if (edit.dragging()) return false
     const l = lit()
     return l !== undefined && !l.nodes.has(key)
   }
   const lineDim = (id: string) => {
+    if (edit.dragging()) return false
     const l = lit()
     return l !== undefined && !l.lines.has(id)
   }
@@ -256,6 +276,7 @@ export const OrgChartPage = () => {
   // Dragging the empty canvas moves the view. A node does not move.
   let drag: { id: number; x: number; y: number; view: View } | undefined
   const onPointerDown = (event: PointerEvent) => {
+    edit.dropKept()
     const el = canvas()
     if (event.button !== 0 || !el) return
     const target = event.target as Element
@@ -295,6 +316,76 @@ export const OrgChartPage = () => {
   }
   const openChannel = (channelId: string) =>
     ui.selectPlace({ kind: "channel", id: channelId }, ui.server()?.id)
+
+  // ---------------------------------------------------------------- Edit on the chart
+  const edit = createChartEdit({
+    channelNode: (key) => channelNodes().get(key),
+    openProfile,
+    openChannel,
+    focusAgent: (agentId, channelId) => setBorn({ agentId, channelId }),
+  })
+  // A drag never moves the view by itself: from its start the view is the user's, so that no
+  // change of the chart frames it again (spec 029).
+  createEffect(() => {
+    const on = edit.dragging() !== undefined
+    if (on) own = true
+    setNodeDrag(on)
+  })
+
+  // Edge scroll: while a drag holds the pointer within EDGE_PX of an edge of the canvas, the view
+  // moves in that direction. Not on the drop area "No channel" (spec 029).
+  createEffect(() => {
+    if (!nodeDrag()) return
+    let frame = 0
+    let last = performance.now()
+    const tick = (now: number) => {
+      const ms = Math.min(now - last, 50)
+      last = now
+      const drag = untrack(edit.dragging)
+      const el = untrack(canvas)
+      if (drag && el) {
+        const { dx, dy } = edgeStep(
+          drag,
+          el.getBoundingClientRect(),
+          ms,
+          drag.over === DROP_AREA_KEY,
+        )
+        if (dx !== 0 || dy !== 0) {
+          const v = untrack(view)
+          setView({ ...v, x: v.x + dx, y: v.y + dy }, false)
+          edit.pointerStays()
+        }
+      }
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    onCleanup(() => cancelAnimationFrame(frame))
+  })
+
+  // After "New agent" or "New agent in this channel" the focus goes to the node of the new agent:
+  // its copy in that channel, or the root when it is the main agent. It waits until the form has
+  // closed and the chart shows that node. A copy in "No channel" before the agent joins the
+  // channel does not count.
+  const [born, setBorn] = createSignal<{ agentId: string; channelId: string | null }>()
+  createEffect(() => {
+    const b = born()
+    if (!b || edit.creating()) return
+    const nodes = agentNodes()
+    const wanted = copyKey(b.channelId ? `c:${b.channelId}` : NO_CHANNEL_KEY, b.agentId)
+    const key = nodes.has(wanted)
+      ? wanted
+      : nodes.get(ROOT_KEY)?.agentId === b.agentId
+        ? ROOT_KEY
+        : undefined
+    if (!key || !nodeKeys().includes(key)) return
+    setBorn(undefined)
+    edit.dropKept()
+    queueMicrotask(() =>
+      page
+        ?.querySelector<HTMLElement>(`[data-node][data-key="${CSS.escape(key)}"]`)
+        ?.focus({ preventScroll: true }),
+    )
+  })
 
   // ---------------------------------------------------------------- The tile "+<n> more"
   const [more, setMore] = createSignal<{ key: string; left: number; top: number }>()
@@ -343,7 +434,7 @@ export const OrgChartPage = () => {
   // the list behind "+<n> more" first.
   onMount(() => {
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return
+      if (event.key !== "Escape" || edit.menuOpen()) return
       if (more()) closeMore()
       else setCleared(true)
     }
@@ -351,7 +442,7 @@ export const OrgChartPage = () => {
     onCleanup(() => window.removeEventListener("keydown", onEscape))
   })
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.metaKey || event.ctrlKey || event.altKey || more()) return
+    if (event.metaKey || event.ctrlKey || event.altKey || more() || edit.menuOpen()) return
     if (event.key === "+" || event.key === "=") {
       event.preventDefault()
       zoomBy(ZOOM_STEP)
@@ -398,6 +489,29 @@ export const OrgChartPage = () => {
     ),
   )
 
+  // A change from a menu gives the focus back to its node when the chart changes. A node that
+  // moves to a new place in the page can lose the focus; a node that goes gives it to its channel
+  // node, or to the canvas.
+  let keptParent: string | null = null
+  createEffect(
+    on(
+      [model, nodeKeys],
+      () => {
+        const key = edit.kept()
+        if (!key) return
+        keptParent = placed().get(key)?.parent ?? keptParent
+        queueMicrotask(() => {
+          const active = document.activeElement
+          if (active && active !== document.body && active.isConnected) return
+          const find = (k: string | null) =>
+            k ? page?.querySelector<HTMLElement>(`[data-node][data-key="${CSS.escape(k)}"]`) : null
+          ;(find(key) ?? find(keptParent) ?? canvas())?.focus({ preventScroll: true })
+        })
+      },
+      { defer: true },
+    ),
+  )
+
   // ---------------------------------------------------------------- The nodes
   const rectStyle = (key: string): JSX.CSSProperties => {
     const r = placed().get(key)?.rect
@@ -431,9 +545,29 @@ export const OrgChartPage = () => {
               data-state={n().state}
               data-lead={n().isLead}
               data-dim={nodeDim(props.nodeKey)}
+              data-dragged={edit.dragging()?.key === props.nodeKey}
               data-testid={isRoot ? "org-root" : "org-node"}
               aria-label={agentLabel(t, n())}
-              onClick={() => openProfile(n().agentId)}
+              aria-haspopup="menu"
+              onClick={() => {
+                if (!edit.takeClick()) openProfile(n().agentId)
+              }}
+              onPointerDown={(event) => {
+                if (!isRoot) edit.pressAgent(event, n())
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                edit.openAgentMenu(n(), isRoot, event.currentTarget, {
+                  x: event.clientX,
+                  y: event.clientY,
+                })
+              }}
+              onKeyDown={(event) => {
+                if (!edit.isMenuKey(event)) return
+                event.preventDefault()
+                event.stopPropagation()
+                edit.openAgentMenu(n(), isRoot, event.currentTarget)
+              }}
               {...pointing(props.nodeKey)}
             >
               <span class={styles.identity}>
@@ -518,11 +652,24 @@ export const OrgChartPage = () => {
             data-key={props.nodeKey}
             data-channel-id={c().channelId ?? ""}
             data-dim={nodeDim(props.nodeKey)}
+            data-ring={edit.ringOf(props.nodeKey)}
+            data-over={edit.dragging()?.over === props.nodeKey}
             data-testid="org-channel"
             aria-label={channelLabel(t, c())}
+            aria-haspopup={edit.hasMenu(c()) ? "menu" : undefined}
             onClick={() => {
               const id = c().channelId
-              if (id) openChannel(id)
+              if (!edit.takeClick() && id) openChannel(id)
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              edit.openChannelMenu(c(), event.currentTarget, { x: event.clientX, y: event.clientY })
+            }}
+            onKeyDown={(event) => {
+              if (!edit.isMenuKey(event)) return
+              event.preventDefault()
+              event.stopPropagation()
+              edit.openChannelMenu(c(), event.currentTarget)
             }}
             {...pointing(props.nodeKey)}
           >
@@ -581,6 +728,62 @@ export const OrgChartPage = () => {
 
   const kindOf = (key: string) => untrack(() => placed().get(key)?.kind)
 
+  /**
+   * The "…" button of a node. It stays in the page and shows on the node that has the pointer or
+   * the focus, so that the pointer can go from the node onto it. It is no Tab stop: the menu key
+   * or Shift+F10 opens the same menu from the keyboard.
+   */
+  const NodeMenuButton = (props: { nodeKey: string }) => {
+    const kind = kindOf(props.nodeKey)
+    const agentNode = () => (kind === "more" ? undefined : agentNodes().get(props.nodeKey))
+    const channelNode = () => (kind === "channel" ? channelNodes().get(props.nodeKey) : undefined)
+    const name = () =>
+      agentNode()?.name ?? (channelNode() ? channelTitle(t, channelNode() as ChartChannel) : "")
+    const has = () =>
+      kind === "channel"
+        ? edit.hasMenu(channelNode())
+        : kind !== "more" && agentNode() !== undefined
+    const style = (): JSX.CSSProperties => {
+      const r = placed().get(props.nodeKey)?.rect
+      return r ? { left: `${r.x + r.w - 28}px`, top: `${r.y + 4}px` } : { display: "none" }
+    }
+    return (
+      <Show when={has()}>
+        <button
+          type="button"
+          tabindex="-1"
+          class={styles.nodeMenu}
+          style={style()}
+          data-control=""
+          data-shown={
+            edit.dragging() === undefined &&
+            (hover() === props.nodeKey || focus() === props.nodeKey)
+          }
+          data-key={props.nodeKey}
+          data-testid="org-node-menu"
+          aria-label={t("orgchart.edit.more", { name: name() })}
+          aria-haspopup="menu"
+          onPointerEnter={() => setHover(props.nodeKey)}
+          onPointerLeave={() => setHover((now) => (now === props.nodeKey ? undefined : now))}
+          onClick={(event) => {
+            const opener =
+              page?.querySelector<HTMLElement>(
+                `[data-node][data-key="${CSS.escape(props.nodeKey)}"]`,
+              ) ?? undefined
+            const at = event.currentTarget.getBoundingClientRect()
+            const point = { x: at.left, y: at.bottom + 4 }
+            const a = agentNode()
+            const c = channelNode()
+            if (c && opener) edit.openChannelMenu(c, opener, point)
+            else if (a && opener) edit.openAgentMenu(a, props.nodeKey === ROOT_KEY, opener, point)
+          }}
+        >
+          <Ellipsis size={14} />
+        </button>
+      </Show>
+    )
+  }
+
   // ---------------------------------------------------------------- The page
   const [creating, setCreating] = createSignal(false)
 
@@ -623,8 +826,13 @@ export const OrgChartPage = () => {
               class={styles.viewport}
               tabindex="-1"
               aria-label={t("page.orgchart")}
-              aria-description={t("orgchart.canvas.hint")}
+              aria-description={
+                edit.canEdit()
+                  ? `${t("orgchart.canvas.hint")} ${t("orgchart.edit.hint")}`
+                  : t("orgchart.canvas.hint")
+              }
               data-dragging={dragging()}
+              data-drag-node={edit.dragging() !== undefined}
               data-testid="org-canvas"
               onKeyDown={onKeyDown}
               onPointerDown={onPointerDown}
@@ -758,7 +966,10 @@ export const OrgChartPage = () => {
                     </Show>
                   )}
                 </For>
+                <For each={nodeKeys()}>{(key) => <NodeMenuButton nodeKey={key} />}</For>
               </div>
+              <edit.NoticeLine />
+              <edit.DropArea />
               <div
                 ref={controls}
                 class={styles.controls}
@@ -856,6 +1067,7 @@ export const OrgChartPage = () => {
       <Presence when={creating()}>
         {() => <NewAgentDialog onClose={() => setCreating(false)} />}
       </Presence>
+      <edit.Overlays />
     </div>
   )
 }

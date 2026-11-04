@@ -164,6 +164,27 @@ const answer = (body: ChatBody): Plan => {
   // The check of a lead (spec 004): the system text says that the work has stopped.
   if (String(body.messages[0]?.content ?? "").includes("The work in the channel has stopped"))
     return { chunks: [checkAnswer(last)], delay: 0 }
+  // A look of the lead at a question of a member (spec 004, "Questions of members").
+  if (String(body.messages[0]?.content ?? "").includes("A member asks a question"))
+    return leadLook(last)
+  // A lead that gives one part to Bo (spec 004). The words after "ASKS" in the job tell Bo which
+  // questions to ask, one after the other (see `askWords`). "split lead approval" gives Bo a step
+  // that needs an approval instead.
+  if (text.includes("split lead")) {
+    const asks = /ASKS(?: (?:answer|pass|slow|hang|fail))+/.exec(text)?.[0] ?? "ASKS answer"
+    const prompt = text.includes("approval")
+      ? 'Run the step. TOOL run_command {"command":"sudo ls"}'
+      : `Pick the sizes. ${asks}`
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "One part for Bo",
+          parts: [{ member: "Bo", label: "Pick the sizes", prompt, doneTest: "Names the sizes" }],
+        }),
+      ],
+      delay: 0,
+    }
+  }
   // A lead that splits a job into two parts with a done test each. The members are Bo and Cy.
   if (text.includes("split verdicts") || text.includes("split stubborn"))
     return {
@@ -328,6 +349,41 @@ const answer = (body: ChatBody): Plan => {
 }
 
 /**
+ * A stand-in lead for a look at a question (spec 004). The word in square brackets in the question
+ * tells what it does: [answer] picks the first choice, [pass] passes the question, [slow] answers
+ * after 3 seconds, [hang] does not answer for 30 seconds, and [fail] fails.
+ */
+const leadLook = (state: string): Plan => {
+  const question = /Question of [^\n]*:\n([^\n]*)/.exec(state)?.[1] ?? ""
+  const how = /\[(\w+)\]/.exec(question)?.[1] ?? "answer"
+  if (how === "fail") return { status: 500 }
+  const reply =
+    how === "pass"
+      ? { action: "pass", kind: "user_choice", reason: "A matter of taste." }
+      : { action: "answer", choice: 1, reason: "The shop ships to the EU only." }
+  return {
+    chunks: [JSON.stringify(reply)],
+    delay: 0,
+    pause: how === "slow" ? 3000 : how === "hang" ? 30_000 : 0,
+  }
+}
+
+/**
+ * The words after "ASKS" in a message of the user: the member asks one question for each word,
+ * one after the other, and each question holds its word in square brackets (see `leadLook`).
+ */
+const askWords = (text: string) =>
+  /ASKS((?: (?:answer|pass|slow|hang|fail))+)/.exec(text)?.[1]?.trim().split(" ") ?? []
+
+const askCall = (words: readonly string[], index: number) => ({
+  name: "ask_user",
+  args: JSON.stringify({
+    question: `Question ${index + 1} [${words[index]}]: use the EU sizes only?`,
+    choices: ["Yes", "No"],
+  }),
+})
+
+/**
  * A stand-in lead for the check of a channel. It reads the parts to judge: a reply that says
  * "Only two" is Not met, any other reply is Met. With two parts it nudges the first part that is
  * Not met. With more parts it asks one question when the job is "stubborn", else it does nothing.
@@ -393,6 +449,8 @@ const toolCalls = (body: ChatBody) => {
   // Turns without an answer are merged, so the last request in the text counts.
   const match = [...last.content.matchAll(/TOOL (\w+) (\{.*\})/g)].at(-1)
   if (match) return [{ name: match[1] as string, args: match[2] as string }]
+  const words = askWords(last.content)
+  if (words.length > 0) return [askCall(words, 0)]
   const long = longWork(body)
   if (long.length > 0) return long
   return knowledgeRead(body)
@@ -573,6 +631,24 @@ const openAiReply = async (
     const users = usersOf(body)
     // The request of this turn is the last message of the user.
     const lastAsk = users.at(-1) ?? ""
+    // A member that asks its questions one after the other: the next one, with an id of its own.
+    const words = askWords(lastAsk)
+    const answered = body.messages
+      .slice(body.messages.map((m) => m.role).lastIndexOf("user") + 1)
+      .filter((m) => m.role === "tool").length
+    if (words.length > answered) {
+      res.writeHead(200, { "content-type": "text/event-stream" })
+      const next = askCall(words, answered)
+      const first = {
+        index: 0,
+        id: `ask_${answered + 1}`,
+        function: { name: next.name, arguments: "" },
+      }
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [first] } }] })}\n\n`)
+      const rest = { index: 0, function: { arguments: next.args } }
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
+      return res.end("data: [DONE]\n\n")
+    }
     // A task that never ends: some text, then the next call, with an id of its own.
     if (lastAsk.includes("ENDLESS")) {
       res.writeHead(200, { "content-type": "text/event-stream" })

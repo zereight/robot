@@ -3,8 +3,9 @@
 ## Purpose
 
 The user opens one page and sees how the agents are organized: who is the main agent, which agents
-work together in which channel, who leads, who handed work to whom, and what each agent does now.
-The page only shows. It changes nothing.
+work together in which channel, which channel sits inside which, who leads, who handed work to
+whom, and what each agent does now. The user can also change the teams on the chart: members, the
+lead and the parent channel (see "Edit on the chart" and 030).
 
 ## Concepts
 
@@ -14,7 +15,8 @@ The page only shows. It changes nothing.
 - **Root**: the top node. It is the main agent (002). When no agent is the main agent, or the main
   agent is archived, the root is the node "You", with a person icon and no profile.
 - **Channel node**: one node for each channel (004) that is not archived and has at least one member
-  that is not archived. It shows the name of the channel, its picture, the number of its members,
+  that is not archived, or that has a lower channel (030) with a channel node. It shows the name of
+  the channel, its picture, the number of its members,
   and the number of members in each state (see "Channel node").
 - **Channel node "No channel"**: one more channel node, last. It holds every agent that is not
   archived and is in no channel node. With no such agent, it is not drawn.
@@ -37,17 +39,19 @@ The page only shows. It changes nothing.
 - **Hand-off line**: a dashed line with an arrowhead from the home node of the sender to the home
   node of the receiver. A number on it gives how many hand-offs went that way. A line has one
   direction. When both agents handed work to each other, the chart draws two lines.
-- **Structure line**: a thin, muted line with no arrowhead from the root to a channel node, and from
-  a channel node to its lead, or to its members when it has no lead. It has no meaning besides
-  "belongs to".
+- **Structure line**: a thin, muted line with no arrowhead from the root to a top channel node, from
+  a channel node to the channel nodes of its sub-channels (030), and from a channel node to its
+  lead, or to its members when it has no lead. It has no meaning besides "belongs to".
 
 ## The page
 
 - A header line: the title "Org chart", and a small legend that names the three kinds of line:
   "Gives parts" (lead line), "Handed work in the last 7 days" (hand-off line), and "Belongs to"
-  (structure line).
-- Below, the canvas. The root is at the top. The channel nodes sit in rows under it. The agents of a
-  channel node sit under the channel node. In a channel node with a lead, the lead sits first and
+  (structure line). With the hand-off rule "Along the channels" (030), the legend ends with the
+  muted line "Hand-offs follow the channels."
+- Below, the canvas. The root is at the top. The top channel nodes sit in rows under it. The channel
+  nodes of sub-channels sit under the channel node of their parent, one level lower. The agents of
+  a channel node sit under the channel node. In a channel node with a lead, the lead sits first and
   the other members sit under the lead.
 - Controls at the bottom right: zoom in, zoom out, and "Fit to view". Dragging the empty canvas
   moves the view. The wheel and a pinch on a trackpad zoom. "Fit to view" frames all nodes with room
@@ -61,7 +65,66 @@ The page only shows. It changes nothing.
   nothing. A click on a line does nothing.
 - Pointing at a hand-off line shows the text "<sender> handed <n> tasks to <receiver> in the last 7
   days."
-- The canvas has no menu, no drag of nodes and no edit. A node stays where the layout puts it.
+- A node stays where the layout puts it. A drag (see "Edit on the chart") changes the data, and the
+  layout then puts the node in its new place.
+
+### Edit on the chart
+
+The chart changes members, the lead and the parent channel. These are the same changes as in the
+channel settings (004, 030), with the same rules.
+
+- **Menu of an agent node**: a right-click, the menu key, or the "…" button that shows on a
+  focused or pointed node opens it. It holds:
+  - "Open profile".
+  - "Make lead of <channel>", or "Remove as lead" on a lead. Not in "No channel".
+  - "Add to channel…": a list of the channels that are not archived and where the agent is no
+    member.
+  - "Move to channel…": the same list. The agent leaves this channel and joins the picked one. Not
+    in "No channel": there it is "Add to channel…" only.
+  - "Remove from <channel>". Not in "No channel".
+- **Menu of the root**: "Open profile". The node "You" has no menu.
+- **Menu of a channel node**: "Open channel", "Add member…" (a list of agents that are not
+  archived and not members), "New agent in this channel" (the form of 002; after save the agent is a
+  member), "Put under…" (a list of the channels that the tree allows, without the parent now, see 030), "Move to the top"
+  (only on a sub-channel), and "Channel settings". The node "No channel" has "New agent" only.
+- **Drag**: the user drags an agent node and drops it on a channel node: the agent moves to that
+  channel, as "Move to channel…". With Option held, the agent is added and stays where it was, as
+  "Add to channel…". Dropped on "No channel": the agent is removed from the channel it came from.
+  The user drags a channel node and drops it on another channel node: it is put under it, as "Put
+  under…". Dropped on the root: it moves to the top. During a drag, a node where a drop is allowed
+  shows a ring. A node where it is not allowed shows no ring, and a drop there changes nothing. A
+  drop on the empty canvas changes nothing. Escape ends a drag with no change.
+- A drag never moves the view by itself. The layout does not change during a drag. A change of
+  the data that comes during a drag shows when the drag ends. The drop is checked against the data
+  of that moment.
+- Edge scroll: when the pointer is on the canvas, within 40 px of an edge, and not on the drop area
+  "No channel", the view moves in that direction while the pointer stays there. The speed grows
+  toward the edge, up to 720 px a second at the edge.
+- During the drag of an agent node that is in a channel, a drop area "No channel" shows at the
+  bottom left of the canvas. It is drawn over the canvas and over the controls of the view. It is not a node
+  of the layout, and it stays in place when the view moves. A drop on it does what a drop on the
+  channel node "No channel" does. When the channel node "No channel" is drawn, it takes the drop
+  too. The area goes when the drag ends.
+- **Refusals**: a change that the rules of 004 or 030 do not allow is refused with a short line at
+  the bottom of the canvas. A member that works cannot leave its channel: "<agent> works in
+  <channel>. Wait for its part to end, or stop it." A tree that breaks the rules of 030 gives the
+  reason of 030.
+- A move of the lead out of its channel leaves that channel with no lead.
+- "New agent in this channel" and "New agent": after the save the chart stays open, and the focus
+  goes to the node of the new agent in that channel. When the agent is made but cannot join the
+  channel, the refusal line gives the reason, and the focus goes to its node in "No channel". The
+  profile does not open.
+- **Lines at the bottom**: one line shows at a time. A new line takes the place of the line that
+  shows. A refusal line shows for 10 seconds and has no "Undo".
+- **Undo**: each change shows the line "<what changed>." with "Undo" at the bottom of the canvas for
+  10 seconds. After an Undo, the line "Undone." shows for 3 seconds. Undo puts back the
+  members, the lead and the parent channel as they were before that
+  change. Undo is refused with a reason when the change cannot go back, for example when the agent
+  works now in the new channel. Cmd+Z does the same while the line shows.
+- No change on the chart needs a confirm. The chart cannot archive, delete or rename an agent or a
+  channel.
+- Each change is the same change as in the settings: it syncs (019), the activity panel and the
+  place list show it, and the chart shows it within 1 second. The view and the zoom stay.
 
 ### Channel node
 
@@ -76,8 +139,9 @@ The page only shows. It changes nothing.
 
 ### Order
 
-- Channel nodes are in the order of the channel names, ignoring case. A tie goes by the time the
-  channel was made, the older first. The channel node "No channel" is last. The order does not
+- Channel nodes on one level under one parent are in the order of the channel names, ignoring case.
+  A tie goes by the time the channel was made, the older first. A sub-channel follows the agents of
+  its parent in the order of the page. The channel node "No channel" is last. The order does not
   depend on the sections of the place list (001), because those belong to one computer.
 - Inside "No channel", agents are in the order of their names, ignoring case.
 
@@ -119,9 +183,11 @@ The page only shows. It changes nothing.
 ## Keyboard and screen reader
 
 - Tab and Shift+Tab move the focus through the nodes in this order: the root, then each channel node
-  followed by its agent nodes, in the order of the page. A "+<n> more" tile is a stop too.
+  followed by its agent nodes and then the channel nodes of its sub-channels, in the order of the
+  page. A "+<n> more" tile is a stop too.
 - Enter or Space on a focused node does what a click does. Escape clears the dim. The keys "+" and
-  "-" zoom, and "0" fits the view.
+  "-" zoom, and "0" fits the view. The menu key or Shift+F10 opens the menu of the focused node.
+  Each drag has a menu item that does the same, so the keyboard can do every edit.
 - The accessible name of an agent node gives the name, the role line, the state, the mark "Lead",
   the label of its task, and the words "Also in <channel>" for each other copy. When the agent has
   hand-offs, the name adds "Handed work to <n> agents" and "Got work from <n> agents" for the agents
@@ -148,8 +214,9 @@ The page only shows. It changes nothing.
 
 ## Rules
 
-- The page is read-only. It starts no turn of an agent, makes no task, changes no channel and no
-  agent, and sends nothing off the computer.
+- The page starts no turn of an agent, makes no task, and sends nothing off the computer. It changes
+  only the members, the lead and the parent channel, and only when the user edits (see "Edit on the
+  chart").
 - The chart shows no message text. It shows the names and role lines of agents, the names and
   pictures of channels, states, and the labels of running tasks, which the board (024) already
   shows.
@@ -166,7 +233,9 @@ The page only shows. It changes nothing.
   does not list the page in this version. There is no key for it. A channel header and an agent
   profile have no link to it.
 - **Devices**: the computer shows the full chart. A linked computer (012) shows the same full chart
-  of its server, read-only. It needs only the link. The phone (011) shows a list instead of a canvas
+  of its server. It needs only the link to read it. It can edit only with the switch "Can create
+  and change agents". Without it, the chart has no menu items that change data and no drag. The
+  phone (011) shows a list instead of a canvas
   (see "Phone"). A second profile (022) has its own chart and never shows the agents of another
   profile.
 - **Linked computer, offline**: the page shows the line "<server name> is offline." and no chart.
@@ -174,18 +243,20 @@ The page only shows. It changes nothing.
 - **Runtimes**: agents on the tools of the app and agents on each vendor runtime (006) look the same
   and count the same. Agents get no tool to read the chart in this version. The tool "list agents"
   (007) stays as it is.
-- **Ways out**: the page changes nothing, so it has nothing to undo. The user leaves it by opening
-  another page.
+- **Ways out**: each edit has Undo for 10 seconds, and the channel settings can change it back at
+  any time. The user leaves the page by opening another page.
 - **Seeing the state**: states and labels are live. After a restart the page draws from the stored
   agents, channels and tasks, so it shows the same chart.
 - **Data**: see "Data".
-- **Words**: Org chart, Handed work (this spec calls one a hand-off), Lead (004), and the legend
-  words (see the glossary). The chart does not use the words "boss", "manager", "employee", "hire"
+- **Words**: Org chart, Handed work (this spec calls one a hand-off), Lead (004), the legend
+  words, and the words of 030 (see the glossary). The chart does not use the words "boss",
+  "manager", "employee", "hire"
   or "report to".
 
 ## Data
 
-The chart stores nothing. It is drawn from agents, channels and tasks.
+The chart stores nothing of its own. It is drawn from agents, channels and tasks. An edit on the
+chart changes channels only (004, 030).
 
 - **Sync (019)**: agents, channels and tasks already sync, so nothing is added to the lists "Syncs"
   and "Does not sync". Each computer draws the chart from its own copy. Two computers that are up to
@@ -208,10 +279,12 @@ The chart stores nothing. It is drawn from agents, channels and tasks.
 
 The phone shows the chart as a list, in a screen "Org chart". It cannot draw the canvas.
 
-- The list is read-only. It works when the server is online. With the server offline, it shows the
+- The list is read-only. The phone cannot edit the chart in this version. It works when the server
+  is online. With the server offline, it shows the
   line "<server name> is offline." and no list.
 - The first row is the root: the main agent with the mark "Main agent", or "You".
-- Then one block for each channel node, in the order of the page. A block has a header with the name
+- Then one block for each channel node, in the order of the page. The block of a sub-channel is
+  indented one step under the block of its parent. A block has a header with the name
   of the channel, the number of members, and the counts by state. Under it, a row for each agent
   node that the page would draw: face, name, state, the mark "Lead" for the lead, and the label of
   the task for a working agent. The lead is first. A channel node of more than 12 shows the first
@@ -227,9 +300,10 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
 
 ## Out of scope
 
-- Edit on the chart: draw a line to add a member or a lead, drag an agent to another channel, make
-  an agent from the chart, move to another team, delete. Open for a later change.
+- Draw a line to add a member or a lead. Archive, delete or rename from the chart. Edit on the
+  phone. Open for a later change.
 - A reporting line: "reports to" on an agent, or a tree of bosses. The glossary avoids these words.
+  The tree of the chart is the tree of channels (030).
 - Saved positions, a layout of the user, a radial layout, outlines around teams, a minimap, a lock.
 - Skills, connections and the model around a node.
 - An activity feed or a browser view on the chart. The activity panel (001), Today (021) and the
@@ -277,8 +351,9 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
   controls.
 - Tab through the page: the focus visits the root, then each channel node and its agents, in order.
   Enter on an agent opens the profile. Escape clears the dim.
-- Open the page from a linked computer: the chart of that server shows, with no edit control and
-  with no switch needed. With the server off, the line "<server name> is offline." shows.
+- Open the page from a linked computer without the switch "Can create and change agents": the chart
+  of that server shows, with no edit control. With the server off, the line "<server name> is
+  offline." shows.
 - On the phone: the screen "Org chart" lists the root, the channel nodes and the hand-offs. A tap on
   an agent row opens its chat. A tap on a block header opens the channel.
 - Two computers sync. The chart on both shows the same channel nodes, leads and counts. A hand-off
@@ -289,5 +364,15 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
   shows the channel as a channel node with its lead, and no hand-off line.
 - Open and close the page many times: no turn starts, no task is made, and nothing is sent off the
   computer.
+- Channel "Docs" under "Product": the channel node of "Docs" sits under the node of "Product", with
+  a structure line between them. The root has no line to "Docs".
+- Drag agent B from "Docs" onto "Ops": B is a member of "Ops" and not of "Docs", and the line "Moved
+  B to Ops." shows with "Undo". Undo: B is back in "Docs" only. Drag with Option: B is in both.
+- Open the menu of B with the keyboard and pick "Make lead of Docs": B has the mark "Lead" and the
+  lead lines.
+- Drag "Product" onto "Docs", its own sub-channel: no ring shows, and the drop changes nothing.
+- Drag agent A that works on a part of "Docs" to "Ops": the line "A works in Docs. Wait for its
+  part to end, or stop it." shows, and nothing changes.
+- A linked computer with "Can create and change agents": a move on the chart works.
 - Switch to the Korean interface: the title, the legend, the counts, the marks and the lines of the
   empty states are Korean. Names and task labels do not change.

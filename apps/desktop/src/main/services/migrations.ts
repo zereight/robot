@@ -1137,6 +1137,12 @@ export const migrations: readonly string[] = [
   ALTER TABLE memory_history ADD COLUMN channel_name_after TEXT;
   `,
   `
+  -- "The lead answers questions" (spec 004, S74): a setting of the channel, on (1) by default. A
+  -- question of a member in a part goes to the lead first. It syncs with the channel (spec 019):
+  -- the dirty trigger of the channel already watches every column.
+  ALTER TABLE channel ADD COLUMN lead_answers INTEGER NOT NULL DEFAULT 1;
+  `,
+  `
   -- The picture of a channel (spec 004, S88): a square PNG of at most 256 px and 1 MB as a data
   -- address, or NULL. It is in the database, so an export keeps it, and the delete of a channel
   -- removes it. It syncs with the channel (the dirty trigger of the channel watches every column).

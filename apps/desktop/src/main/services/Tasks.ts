@@ -17,8 +17,10 @@ import {
   type LoggedStep,
   lastChange,
   limitState,
+  type MessagePart,
   messageText,
   type OutsideSource,
+  questionsOf,
   queueRank,
   RECENT_WORK_MAX,
   type RecentPlace,
@@ -36,6 +38,7 @@ import {
   type Task,
   type TaskDetail,
   type TaskProgress,
+  type TaskQuestion,
   type TaskSource,
   type TaskState,
   type TaskUsage,
@@ -220,11 +223,26 @@ export interface TasksService {
    */
   setWaiting(taskId: string, waiting: boolean): Promise<void>
   /**
+   * Says that the question that a waiting task asked is with the lead of the channel (spec 004,
+   * "Questions of members"), or no longer. In that time the task shows "Running", and shows
+   * "Waiting for you" only when the question passes to the user (spec 024). Going on (a task that
+   * is not waiting any more) clears it too.
+   */
+  setWithLead(taskId: string, on: boolean): void
+  /**
    * Runs `work` while a task waits for the tasks that it gave out (spec 005, "Queue"). The task
    * uses no slot, and its agent stays held. After `work`, the task takes a slot again, at the
    * front of the order.
    */
   withoutSlot<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
+  /**
+   * Runs `work` as a turn of a task that holds its agent and no slot (a lead that waits for its
+   * parts): the turn waits for a free slot, at the front of the order, uses that one slot while it
+   * runs, and frees it after (spec 005, "Queue"; spec 004, "Questions of members"). A task that
+   * has a slot already, or that does not run now, runs `work` at once. An interrupt while the turn
+   * waits leaves the queue and takes no slot.
+   */
+  withSlot<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>): Effect.Effect<A, E, R>
   /**
    * "Run next" (spec 005): the queued task goes to the front of the order, before the tasks of
    * earlier picks. Only for a queued task of this computer.
@@ -365,7 +383,7 @@ const usageOf = (row: TaskRow): TaskUsage => ({
   costMicros: row.cost_micros,
 })
 
-const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
+const toTask = (row: TaskRow, remote?: RemoteTasks, withLead = false): Task => ({
   id: row.id,
   agentId: row.agent_id,
   agentName: row.agent_name,
@@ -377,7 +395,9 @@ const toTask = (row: TaskRow, remote?: RemoteTasks): Task => ({
   retryOf: row.retry_of,
   messageId: row.message_id,
   ...(row.thread_id ? { threadId: row.thread_id } : {}),
-  state: row.state,
+  // A part whose question is with the lead shows "Running", not "Waiting for you" (spec 024). The
+  // task keeps its agent and uses no slot in that time; only the state that people see is this.
+  state: withLead && row.state === "waiting" ? "running" : row.state,
   error: row.error_code ? { code: row.error_code, detail: row.error_detail ?? "" } : null,
   createdAt: row.created_at,
   startedAt: row.started_at,
@@ -439,6 +459,13 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const endListeners: ((task: Task) => unknown)[] = []
       const spaceListeners: ((agentId: string) => void)[] = []
       let remote: RemoteTasks | undefined
+      /**
+       * The tasks whose question card is with the lead now (spec 004, "Questions of members"). Such
+       * a task waits, but not for the user, so it shows as running. It is in memory only: a look
+       * never outlives the turn.
+       */
+      const withLead = new Set<string>()
+      const asTask = (r: TaskRow): Task => toTask(r, remote, withLead.has(r.id))
 
       // --- The queue (spec 005, "Queue") ---------------------------------------------------------
       // Each agent runs one task at a time, and at most `limit` tasks run at the same time. A task
@@ -712,7 +739,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           if (ended)
             for (const listener of endListeners) {
               try {
-                if (listener(toTask(ended, remote)) === true) told = true
+                if (listener(asTask(ended)) === true) told = true
               } catch (e) {
                 console.error("task end listener failed", e)
               }
@@ -885,7 +912,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           changed(input.agentId)
           if (input.source === "channel" && input.sourceId)
             bus.emit("channels.changed", { channelId: input.sourceId })
-          return toTask(row(id) as TaskRow, remote)
+          return asTask(row(id) as TaskRow)
         })
 
       /**
@@ -1042,7 +1069,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             const note = noteFor(taskId, options)
             if (note) return Effect.succeed({ started: false, note })
           }
-          return handler(toTask(current, remote)).pipe(Effect.as<RetryResult>({ started: true }))
+          return handler(asTask(current)).pipe(Effect.as<RetryResult>({ started: true }))
         })
 
       /** The task in review that the user decides on, or the reason why the user cannot. */
@@ -1093,7 +1120,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
           const handler = changesHandlers.get(current.source)
           if (!handler) return yield* new AppError({ code: "cannot_request_changes" })
           // The new part exists before the old one is done, so the request is never without an open part.
-          yield* handler(toTask(current, remote), value)
+          yield* handler(asTask(current), value)
           decided(current.id, "changes", value)
           setState(current.id, current.agent_id, "done")
         })
@@ -1221,6 +1248,20 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             )?.name ?? null)
           : null
 
+      /**
+       * The questions that a part asked, with who answered each one (spec 005, "Tasks page"; spec
+       * 004). Only a part of a channel job has them.
+       */
+      const questionsOfTask = (task: Task): readonly TaskQuestion[] =>
+        task.source === "channel" && task.parentId
+          ? db
+              .all<{ parts: string }>(
+                "SELECT parts FROM channel_message WHERE task_id = ? AND author = 'agent' ORDER BY created_at, rowid",
+                task.id,
+              )
+              .flatMap((r) => questionsOf(JSON.parse(r.parts) as MessagePart[]))
+          : []
+
       /** The messages that the user sent into the turn of the task (spec 003). */
       const joinedOf = (task: Task) =>
         task.messageId
@@ -1305,7 +1346,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
 
       /** A task with what it waits behind, when it is queued on this computer. */
       const withBehind = (r: TaskRow): Task => {
-        const task = toTask(r, remote)
+        const task = asTask(r)
         return r.state === "queued" && r.origin === null ? { ...task, behind: placeOf(r) } : task
       }
 
@@ -1317,7 +1358,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             agentId,
           )
           .map((r) => {
-            const task = toTask(r, remote)
+            const task = asTask(r)
             // The agent runs one task at a time, so the request that waits is the one of this task.
             const request =
               task.state === "waiting" ? waiting.find((w) => w.agentId === agentId) : undefined
@@ -1337,11 +1378,19 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         waitingAfterRestart: () =>
           keepIds.flatMap((id) => {
             const r = row(id)
-            return r ? [toTask(r, remote)] : []
+            return r ? [asTask(r)] : []
           }),
+        setWithLead: (taskId, on) => {
+          const current = row(taskId)
+          if (on ? current?.state !== "waiting" : !withLead.has(taskId)) return
+          if (on) withLead.add(taskId)
+          else withLead.delete(taskId)
+          if (current) changed(current.agent_id)
+        },
         setWaiting: (taskId, waiting) => {
           const current = row(taskId)
           if (!current) return Promise.resolve()
+          if (!waiting) withLead.delete(taskId)
           if (waiting) {
             // A task that waits for the user uses no slot (spec 005). Its agent stays held.
             if (current.state === "running" || current.state === "waiting")
@@ -1366,6 +1415,24 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
                   ? Effect.promise(() => backToSlot(taskId, agentId))
                   : Effect.void,
               ),
+            )
+          }),
+        withSlot: (taskId, work) =>
+          Effect.suspend(() => {
+            const agentId = row(taskId)?.agent_id
+            if (
+              !agentId ||
+              !live.has(taskId) ||
+              slotted.has(taskId) ||
+              holders.get(agentId) !== taskId ||
+              stopping.has(taskId)
+            )
+              return work
+            // `enter` leaves the queue when the turn is interrupted; `freeSlot` frees a slot that
+            // was granted before the interrupt came.
+            return enter({ id: taskId, agentId, source: null, back: true, slot: true }).pipe(
+              Effect.flatMap(() => work),
+              Effect.ensuring(Effect.sync(() => freeSlot(taskId))),
             )
           }),
         runNext: (taskId) =>
@@ -1516,7 +1583,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             const children: Task[] = []
             const visit = (parentId: string) => {
               for (const child of childRows(parentId)) {
-                children.push(toTask(child, remote))
+                children.push(asTask(child))
                 visit(child.id)
               }
             }
@@ -1539,9 +1606,10 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               joined: joinedOf(task),
               leadName: leadNameOf(task),
               tree,
+              questions: questionsOfTask(task),
             })
           }),
-        children: (parentId) => childRows(parentId).map((r) => toTask(r, remote)),
+        children: (parentId) => childRows(parentId).map((r) => asTask(r)),
       })
     }),
   )

@@ -285,6 +285,35 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 </>
               )}
             </Show>
+            {/* The questions of a part, with who answered each one (spec 004, 005). */}
+            <Show when={d().questions.length > 0}>
+              <h3>{t("tasks.questions")}</h3>
+              <ul class={styles.questions} data-testid="task-questions">
+                <For each={d().questions}>
+                  {(item) => (
+                    <li data-testid="task-question" data-by={item.by}>
+                      <span class={styles.text}>{item.question}</span>
+                      <span class={styles.questionBy} data-testid="task-question-by">
+                        {item.by === "user"
+                          ? t("tasks.question.user")
+                          : item.by === "lead"
+                            ? t("tasks.question.lead", { name: item.name ?? "" })
+                            : item.by === "with_lead"
+                              ? t("tasks.question.withLead", { name: item.name ?? "" })
+                              : item.by === "passed"
+                                ? t("tasks.question.passed", { name: item.name ?? "" })
+                                : t("tasks.question.open")}
+                      </span>
+                      <Show when={item.reason}>
+                        <span class={styles.questionReason} data-testid="task-question-reason">
+                          {item.reason}
+                        </span>
+                      </Show>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </Show>
             <Show when={d().joined.length > 0}>
               <h3>{t("tasks.joined")}</h3>
               <ul class={styles.joined} data-testid="task-joined">

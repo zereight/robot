@@ -1492,6 +1492,65 @@ describe("tasks, routines, workflows and files of two computers", () => {
     ).toBeNull()
   })
 
+  test("a question that is with the lead on the other computer makes no notice here until the lead passes it (spec 004, 015, 021)", async () => {
+    const { a, b, ada } = await pair()
+    const card = (ask: Record<string, unknown>) =>
+      JSON.stringify([
+        {
+          kind: "tool",
+          id: "call-2",
+          name: "ask_user",
+          label: "Question",
+          state: "waiting",
+          input: "",
+          output: "",
+          ask: {
+            kind: "question",
+            question: "Use the EU sizes only?",
+            choices: ["Yes", "No"],
+            ...ask,
+          },
+        },
+      ])
+    await SQL(
+      b,
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('card-2', ?, 'agent', ?, 'streaming', ?)`,
+      ada.id,
+      card({ lead: { agentId: "lead-1", name: "Lia" } }),
+      Date.now(),
+    )
+    const attention = (rt: Rt) =>
+      run(
+        rt,
+        Notifier.use((n) => Effect.sync(() => n.island().waiting[0] ?? null)),
+      )
+    // The card arrives here with its line "Lia looks at it", and makes no notice.
+    await waitFor(
+      () =>
+        run(
+          a,
+          Database.use((db) =>
+            Effect.sync(() => db.get<{ id: string }>("SELECT id FROM message WHERE id = 'card-2'")),
+          ),
+        ),
+      (row) => row !== undefined,
+    )
+    await new Promise((r) => setTimeout(r, 400))
+    expect(await attention(a)).toBeNull()
+    // The lead passes it: the same card is a normal question for the user, and the notice comes.
+    await SQL(
+      b,
+      `UPDATE message SET parts = ? WHERE id = 'card-2'`,
+      card({ passed: { agentId: "lead-1", name: "Lia", kind: "not_sure", reason: "No fact." } }),
+    )
+    const notice = await waitFor(
+      () => attention(a),
+      (x) => x !== null,
+    )
+    expect(notice?.callId).toBe("call-2")
+    expect(notice?.kind).toBe("question")
+  })
+
   test("a file of a message is copied from the computer where it was made, and an offline origin gives a plain error", async () => {
     const { a, b, ada } = await pair()
     mkdirSync(join(ada.workspace, "attachments"), { recursive: true })

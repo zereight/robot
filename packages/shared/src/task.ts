@@ -1,4 +1,5 @@
 import type { Verdict } from "./check.ts"
+import type { TaskQuestion } from "./leadAnswers.ts"
 import type { TaskUsage, TreeUsage } from "./taskUsage.ts"
 import type { RecentPlace } from "./work.ts"
 
@@ -304,6 +305,11 @@ export interface TaskDetail {
    * with no child task (spec 005, "Usage of a task").
    */
   readonly tree: TreeUsage | null
+  /**
+   * The questions that the part asked, with who answered each one: the user, or the lead with its
+   * reason (spec 005, "Tasks page"; spec 004). Empty for a task that is no part.
+   */
+  readonly questions: readonly TaskQuestion[]
 }
 
 /** One line of a prompt, cut to a label. */

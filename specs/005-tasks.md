@@ -117,6 +117,9 @@ cost of many tasks.
 
 ## Blocked
 
+- The app itself ends a task of a channel as Blocked, with no turn, when the daily token limit of
+  that channel or of a higher channel is used (030). The reason names that channel.
+
 - A task from a part of a plan, a message of another agent, a routine or a workflow tells its
   agent this: if you could not do the work, end the reply with a last line that starts with
   "Blocked:" and gives the reason in one sentence. Write that line in no other case. A task from
@@ -310,7 +313,7 @@ stops the turn.
   the slots described below.
   1. The tasks that the user picked with "Run next", the latest pick first.
   2. The tasks of normal sources, the oldest first. These are a chat, a channel, another agent, an
-     outside program and Teams.
+     outside program, Teams, and a question from a channel (030, "Ask up the line").
   3. The tasks of background sources, the oldest first. These are a routine and a workflow.
   4. A memory check. It starts only when its agent has no other task that runs or waits (008).
 - A new task never stops a task that runs. It only takes its place in the order. A task of a

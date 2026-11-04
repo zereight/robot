@@ -130,3 +130,22 @@ Two choices the user did not make, which spec 029 settles and the user may chang
 - **A linked computer** shows the full chart, read-only. Today, the board and the usage page show
   "Open this on <server name>" there, but the chart needs only data that a client can already read.
 - **An agent in two channels** has a node in each channel. Its hand-off lines use one home node.
+
+## Decisions of the user (2026-11-04, later)
+
+The user asked how to run the agents like a real org chart, and chose all five steps of the
+proposal. Spec 030 holds them, and 029 changes with them.
+
+1. **Edit on the chart**: members, the lead and the parent channel change on the chart, with Undo.
+   This replaces decision 2 ("read-only") for the computer and for a linked computer with the
+   switch. The phone stays read-only.
+2. **Hand-off rule**: "Along the channels" limits "send message" to the path of the channels. The
+   default stays "Any agent", so that no flow of today breaks. The default is the author's choice.
+3. **Ask up the line**: a pass of the lead goes to the higher leads and the main agent before the
+   user. Off by default. The author's choice.
+4. **Tools and limit of a channel**: skills, connections and a daily token limit per channel.
+5. **Sub-channels**: a channel can sit inside another channel, at most 3 levels.
+
+Decision 1 above holds: there is no "Reports to" field and no tree of bosses. The tree is the tree
+of channels. The interface does not say "team", because the settings part "Teams" is the link to
+Microsoft Teams (028).

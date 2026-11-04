@@ -37,6 +37,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const [leadId, setLeadId] = createSignal<string | null>(props.channel?.leadId ?? null)
   const [sectionId, setSectionId] = createSignal<string | null>(props.channel?.sectionId ?? null)
   const [reviewParts, setReviewParts] = createSignal(props.channel?.reviewParts ?? false)
+  const [leadAnswers, setLeadAnswers] = createSignal(props.channel?.leadAnswers ?? true)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
@@ -108,6 +109,8 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             leadId: leadId(),
             // A client cannot set it (spec 012). Turning it off changes no part in review.
             ...(ui.linked() ? {} : { reviewParts: reviewParts() }),
+            // A client sets it only with the switch "Can create and change agents" (spec 012).
+            leadAnswers: leadAnswers(),
             ...sectionField(),
           },
         })
@@ -312,6 +315,25 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
               </Show>
             </div>
             <span class={styles.hint}>{t("channels.picture.hint")}</span>
+          </div>
+        </Show>
+        {/* The lead reads a question of a member first (spec 004, "Questions of members"). */}
+        <Show when={props.channel}>
+          <div class={styles.field}>
+            <span class={styles.label}>{t("channels.leadAnswers")}</span>
+            <Switch
+              label={t("channels.leadAnswers")}
+              checked={leadId() !== null && leadAnswers()}
+              disabled={leadId() === null}
+              onChange={setLeadAnswers}
+              testId="channel-lead-answers"
+            />
+            <span class={styles.hint}>{t("channels.leadAnswers.hint")}</span>
+            <Show when={leadId() === null}>
+              <span class={styles.hint} data-testid="channel-lead-answers-no-lead">
+                {t("channels.leadAnswers.noLead")}
+              </span>
+            </Show>
           </div>
         </Show>
         <Show when={props.channel && !ui.linked()}>
