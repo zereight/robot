@@ -17,6 +17,7 @@ import { CurrentActor } from "../services/actor.ts"
 import { Channels } from "../services/Channels.ts"
 import { Devices } from "../services/Devices.ts"
 import { AppError } from "../services/errors.ts"
+import { Handbook } from "../services/Handbook.ts"
 import { Memory } from "../services/Memory.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
@@ -39,6 +40,13 @@ export const strict =
 
 export const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100))
 const ById = Schema.Struct({ id: Id })
+
+/** A request that only needs a known device: reads that the link allows without the switch. */
+const actorOrFail = E.gen(function* () {
+  const actor = yield* CurrentActor
+  if (!actor) return yield* new AppError({ code: "not_allowed" })
+  return actor
+})
 
 /**
  * The device that asks, once the switch is on for it. The switch is read at each request, so a
@@ -105,12 +113,58 @@ export const modelChoices = E.gen(function* () {
   return out
 })
 
+/** The most text that a linked device may send as the handbook; the service checks the limit. */
+const HANDBOOK_REQUEST_MAX = 200_000
+const ByServer = Schema.Struct({ serverId: Id })
+
 const memoryText = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(MEMORY_TEXT_MAX * 2),
 )
 
 export const changeHandlers: Record<string, ChangeHandler> = {
+  // A linked device reads the handbook and its history with the link only (spec 002, 012).
+  "handbook.get": (input) =>
+    E.gen(function* () {
+      yield* actorOrFail
+      const { serverId } = yield* strict(ByServer)(input)
+      yield* ownServer(serverId)
+      return yield* Handbook.use((h) => h.get(serverId))
+    }),
+
+  "handbook.history": (input) =>
+    E.gen(function* () {
+      yield* actorOrFail
+      const { serverId } = yield* strict(ByServer)(input)
+      yield* ownServer(serverId)
+      return yield* Handbook.use((h) => h.history(serverId))
+    }),
+
+  // It changes the handbook only with the switch "Can create and change agents" (spec 002, 012).
+  "handbook.save": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const { serverId, text } = yield* strict(
+        Schema.Struct({
+          serverId: Id,
+          text: Schema.String.check(Schema.isMaxLength(HANDBOOK_REQUEST_MAX)),
+        }),
+      )(input)
+      yield* ownServer(serverId)
+      return yield* Handbook.use((h) => h.save(serverId, text, "device"))
+    }),
+
+  "handbook.restore": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const { serverId, versionId } = yield* strict(Schema.Struct({ serverId: Id, versionId: Id }))(
+        input,
+      )
+      yield* ownServer(serverId)
+      // The text of a restore comes from a version that is on the server, so it is not "device".
+      return yield* Handbook.use((h) => h.restore(serverId, versionId))
+    }),
+
   "agents.create": (input) =>
     E.gen(function* () {
       yield* allowed

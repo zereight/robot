@@ -1076,4 +1076,27 @@ export const migrations: readonly string[] = [
   -- names its columns and does not read this one), like the review of tools.
   ALTER TABLE tool_connection ADD COLUMN trust_read_only INTEGER NOT NULL DEFAULT 0;
   `,
+  `
+  -- The handbook and the instructions of a channel (spec 002, 004, S66).
+  -- \`read_handbook\` is the switch "Read the handbook" of an agent: 1 (on) is the default. It
+  -- syncs with the agent (spec 019, the dirty trigger of the agent watches every column).
+  ALTER TABLE agent ADD COLUMN read_handbook INTEGER NOT NULL DEFAULT 1;
+  -- The instructions of a channel (up to 4000 characters, empty by default). They sync with the
+  -- channel and an export keeps them (spec 004, 019, 014).
+  ALTER TABLE channel ADD COLUMN instructions TEXT NOT NULL DEFAULT '';
+  -- The handbook of a server is its newest version; the older ones are its history (the last 20
+  -- stay). A server that has no row has an empty handbook. When two computers change it before
+  -- they sync, both versions arrive and the newest one is the handbook, so the later change wins
+  -- and the other text stays in the history (spec 019). The versions sync (kind "hversion") and an
+  -- export keeps them with keys hidden (spec 014).
+  CREATE TABLE handbook_version (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES server (id),
+    text TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX handbook_version_server ON handbook_version (server_id, created_at);
+  ${dirtyTriggers("handbook_version", "hversion", plainId)}
+  `,
 ]

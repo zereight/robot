@@ -101,6 +101,8 @@ export type ProtectedPlace =
   | "archive"
   | "other_agent"
   | "teams"
+  | "handbook"
+  | "channel_instructions"
 
 export const PROTECTED_PLACES: Readonly<Record<ProtectedPlace, string>> = {
   permission: "The permission level: the user changes it in the profile of the agent.",
@@ -119,6 +121,10 @@ export const PROTECTED_PLACES: Readonly<Record<ProtectedPlace, string>> = {
     "Archive and delete: the user archives an agent in its profile, and deletes it in Settings → Archive.",
   other_agent: "Other agents: the user changes them in their own profiles.",
   teams: "The Teams link: the user turns it on or off in Settings → Teams.",
+  handbook:
+    "The handbook and the switch “Read the handbook”: the user changes the handbook in Settings → Handbook, and the switch in the profile of the agent.",
+  channel_instructions:
+    "The instructions of a channel: the user changes them in the settings of the channel.",
 }
 
 /** The names that a model may give to a protected thing, and the place for each. */
@@ -164,6 +170,16 @@ const PROTECTED_NAMES: Readonly<Record<string, ProtectedPlace>> = {
   link: "teams",
   chat_bridge: "teams",
   bridge: "teams",
+  handbook: "handbook",
+  the_handbook: "handbook",
+  read_handbook: "handbook",
+  read_the_handbook: "handbook",
+  handbook_text: "handbook",
+  channel_instructions: "channel_instructions",
+  channel_instruction: "channel_instructions",
+  channel_prompt: "channel_instructions",
+  channel: "channel_instructions",
+  channels: "channel_instructions",
 }
 
 /** The names of the arguments of the settings tool. */

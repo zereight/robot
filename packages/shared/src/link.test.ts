@@ -143,6 +143,8 @@ describe("client requests", () => {
         "agents.useMain",
         "channels.create",
         "channels.update",
+        "handbook.restore",
+        "handbook.save",
         "memory.add",
         "memory.delete",
         "memory.list",
@@ -173,6 +175,15 @@ describe("client requests", () => {
     ]) {
       expect(isClientMethod(method)).toBe(true)
       expect(isChangeMethod(method)).toBe(false)
+    }
+    // A client reads the handbook and its history with the link only; it changes the handbook with
+    // the switch (spec 002, 012).
+    for (const method of ["handbook.get", "handbook.history"]) {
+      expect(isClientMethod(method)).toBe(true)
+      expect(isChangeMethod(method)).toBe(false)
+    }
+    for (const method of ["handbook.save", "handbook.restore"]) {
+      expect(isChangeMethod(method)).toBe(true)
     }
     // A client hears about workflows and runs.
     expect(PUSHED_EVENTS).toContain("workflows.changed")

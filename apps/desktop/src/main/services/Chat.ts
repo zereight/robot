@@ -24,6 +24,7 @@ import {
   carriesProgramMark,
   compactCut,
   compactDue,
+  composeInstructions,
   createReadGuard,
   endOfTurn,
   type FilePart,
@@ -97,6 +98,7 @@ import { Connections } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { withKeepGoing } from "./keepGoingTurn.ts"
 import { Memory } from "./Memory.ts"
@@ -164,6 +166,7 @@ interface AgentModelRow {
   workspace: string
   permission: PermissionLevel
   memory_enabled: number
+  read_handbook: number
 }
 
 /** Where the task of a message comes from, when it is not the chat itself (a routine). */
@@ -569,6 +572,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const placeMarks = yield* PlaceMarks
       const holds = yield* ModelHolds
       const memory = yield* Memory
+      const handbook = yield* Handbook
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
       const skills = yield* Skills
@@ -667,7 +671,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const agentRow = (agentId: string) =>
         db.get<AgentModelRow>(
-          "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort, backup_account_id, backup_model, backup_effort, workspace, permission, memory_enabled FROM agent WHERE id = ?",
+          "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort, backup_account_id, backup_model, backup_effort, workspace, permission, memory_enabled, read_handbook FROM agent WHERE id = ?",
           agentId,
         )
       /** The backup model of an agent, or null for "None" (spec 006). */
@@ -1412,8 +1416,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               asked ? messageText(asked) : "",
               isRuntime ? "files" : "tools",
             )
+            // The handbook comes before the instructions of the agent when the agent reads it. The
+            // text is read now, so a change counts from this turn on and a turn keeps its text
+            // (spec 002, "Handbook").
             const system = [
-              agent.instructions,
+              composeInstructions({
+                handbook: agent.read_handbook === 1 ? handbook.text(agent.server_id) : "",
+                own: agent.instructions,
+              }),
               `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
               CHAIN_LIMIT_RULE,
               connected?.rule() ?? "",
