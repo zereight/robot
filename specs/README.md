@@ -1,7 +1,7 @@
 # Behaviour specs
 
-Each spec describes one area of ROBot from the user's side. Implementers build from these files
-only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-contain).
+Each spec describes one area of ROBot from the user's side. It describes behaviour, never
+implementation (see [AGENTS.md](../AGENTS.md)).
 
 ## Index
 
