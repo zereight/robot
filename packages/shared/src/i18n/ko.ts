@@ -2098,6 +2098,7 @@ export const ko: Record<MessageKey, string> = {
   "teams.line.gap":
     "ROBot이 한동안 이 채팅을 읽지 못했어요. 그때 온 메시지에는 답하지 못했어요. 다시 보내 주세요.",
   "teams.line.cut": "나머지는 ROBot에서 볼 수 있어요.",
+  "teams.line.member": "{name}: {text}",
   "teams.records.title": "나가지 못한 답변",
   "teams.records.hint": "최근 50개예요. 기록에는 메시지 내용이 없어요.",
   "teams.records.empty": "버려진 답변이 없어요.",

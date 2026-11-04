@@ -2111,6 +2111,7 @@ export const en = {
   "teams.line.gap":
     "ROBot did not read this chat for a while. Messages from that time got no answer. Send them again.",
   "teams.line.cut": "The rest is in ROBot.",
+  "teams.line.member": "{name}: {text}",
   "teams.records.title": "Answers that did not go out",
   "teams.records.hint": "The newest 50. A record holds no text of a message.",
   "teams.records.empty": "No answer was dropped.",
