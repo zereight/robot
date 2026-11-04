@@ -1,4 +1,4 @@
-import type { TaskState } from "./task.ts"
+import { blockedReasonForAgent, type TaskState } from "./task.ts"
 
 // ---------------------------------------------------------------------------------------------
 // The done test, the verdict and the check of the lead (spec 004, 005).
@@ -280,7 +280,7 @@ export const checkStateText = (state: CheckStateData) => {
   for (const [i, p] of state.parts.entries()) {
     const how =
       p.state === "blocked"
-        ? `blocked (reason: ${p.error?.detail || "none given"})`
+        ? `blocked (reason: ${blockedReasonForAgent(p.error) || "none given"})`
         : p.state === "failed"
           ? `failed (${p.error?.code ?? "unknown"})`
           : p.state === "cancelled"

@@ -12,6 +12,7 @@ import { Dialog } from "../ui/Dialog.tsx"
 import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
 import styles from "./agents.module.css"
 import { BrowserProfileField } from "./BrowserProfileField.tsx"
+import { ChannelToolsLines } from "./ChannelToolsLines.tsx"
 import { createAgent } from "./createAgent.ts"
 import { Face } from "./Face.tsx"
 import { RecentWork } from "./RecentWork.tsx"
@@ -301,6 +302,8 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
         </Show>
         {/* The last tasks of this agent. A device that cannot change the agent sees them too. */}
         <RecentWork agent={props.agent} onNavigate={props.onClose} />
+        {/* The skills and connections that this agent has from channels (spec 030). */}
+        <ChannelToolsLines agent={props.agent} />
       </div>
       <Show when={tab() === "knowledge"}>
         {/* Knowledge belongs to the computer that runs the agent: a client does not open it. */}

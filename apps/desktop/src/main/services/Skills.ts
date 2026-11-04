@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   copySkillName,
+  mayUseTool,
   numberedSkillName,
   SKILLS_MAX,
   type Skill,
@@ -11,6 +12,7 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { skillsOnlyFor } from "./agentSkills.ts"
+import { audienceOf, givingFor, idList } from "./channelAccess.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -22,6 +24,8 @@ interface SkillRow {
   description: string
   instructions: string
   agents: string | null
+  /** A JSON list of channel ids (spec 030): the channels in the list of the skill. */
+  channels: string
   enabled: number
   created_at: number
 }
@@ -32,6 +36,7 @@ const toSkill = (row: SkillRow): Skill => ({
   description: row.description,
   instructions: row.instructions,
   agentIds: row.agents === null ? null : (JSON.parse(row.agents) as string[]),
+  channelIds: row.agents === null ? [] : idList(row.channels),
   enabled: row.enabled === 1,
   createdAt: row.created_at,
 })
@@ -59,6 +64,7 @@ export interface SkillsService {
     serverId: string,
     input: SkillInput,
     agentIds: readonly string[] | null,
+    channelIds?: readonly string[],
   ): Effect.Effect<Skill, AppError>
   /**
    * Edit (spec 017, flow 2): changes every field of a skill. It stays on or off as it was. The
@@ -69,6 +75,7 @@ export interface SkillsService {
     id: string,
     input: SkillInput,
     agentIds: readonly string[] | null,
+    channelIds?: readonly string[],
   ): Effect.Effect<Skill, AppError>
   /**
    * Duplicate (spec 017, flow 3): a copy with the same fields. `suffix` is the word "copy" in the
@@ -79,7 +86,10 @@ export interface SkillsService {
   setEnabled(id: string, enabled: boolean): Effect.Effect<Skill, AppError>
   /** Deletes a skill. Old messages that used it keep their chip and their copy. */
   remove(id: string): Effect.Effect<void, AppError>
-  /** The skills that an agent may use now: on, and for this agent or for all agents. */
+  /**
+   * The skills that an agent may use now: on, and for all agents, for this agent, or for a channel
+   * that gives it (spec 017, 030).
+   */
   forAgent(agentId: string): Effect.Effect<readonly Skill[]>
   /** True when a skill of the server has this name, ignoring case and a slash at the start. */
   nameTaken(serverId: string, name: string): boolean
@@ -106,7 +116,7 @@ export interface SkillsService {
   ): Effect.Effect<Skill, AppError>
   /** How many more skills a server can hold (the limit is 100). */
   room(serverId: string): Effect.Effect<number>
-  /** A skill that the agent may use now: it exists, it is on, and it is for this agent. */
+  /** A skill that the agent may use now: it exists, it is on, and it is for this agent (also by a channel). */
   usable(agentId: string, skillId: string): Effect.Effect<Skill, AppError>
   /**
    * How many skills a delete of the agent deletes too: those that are only for this agent (spec
@@ -144,7 +154,11 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
         serverId: string,
         input: SkillInput,
         agentIds: readonly string[] | null,
-        options?: { readonly numbered?: boolean; readonly enabled?: boolean },
+        options?: {
+          readonly numbered?: boolean
+          readonly enabled?: boolean
+          readonly channelIds?: readonly string[]
+        },
       ) =>
         Effect.gen(function* () {
           const problem = skillProblems(input)[0]
@@ -161,8 +175,8 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
           if (count >= SKILLS_MAX) return yield* new AppError({ code: "skills_full" })
           const id = randomUUID()
           db.run(
-            `INSERT INTO skill (id, server_id, name, name_key, description, instructions, agents, enabled, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO skill (id, server_id, name, name_key, description, instructions, agents, channels, enabled, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             serverId,
             name,
@@ -170,6 +184,7 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
             input.description.trim(),
             input.instructions,
             agentIds === null ? null : JSON.stringify(agentIds),
+            JSON.stringify(agentIds === null ? [] : (options?.channelIds ?? [])),
             options?.enabled === false ? 0 : 1,
             Date.now(),
           )
@@ -185,11 +200,11 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
               .map(toSkill)
               .sort((a, b) => a.name.localeCompare(b.name)),
           ),
-        create: (serverId, input, agentIds) =>
+        create: (serverId, input, agentIds, channelIds = []) =>
           Effect.gen(function* () {
             if (!db.get("SELECT 1 FROM server WHERE id = ?", serverId))
               return yield* new AppError({ code: "server_not_found" })
-            // A list of agents holds agents of this server and is not empty (spec 017).
+            // A list holds agents and channels of this server and is not empty (spec 017, 030).
             if (agentIds !== null) {
               const unique = [...new Set(agentIds)]
               const known = unique.filter((id) =>
@@ -199,13 +214,21 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
                   serverId,
                 ),
               )
-              if (unique.length === 0 || known.length !== unique.length)
+              const channels = [...new Set(channelIds)]
+              const knownChannels = channels.filter((id) =>
+                db.get("SELECT 1 FROM channel WHERE id = ? AND server_id = ?", id, serverId),
+              )
+              if (
+                unique.length + channels.length === 0 ||
+                known.length !== unique.length ||
+                knownChannels.length !== channels.length
+              )
                 return yield* new AppError({ code: "skill_agents_invalid", detail: "agents" })
-              return yield* insert(serverId, input, known)
+              return yield* insert(serverId, input, known, { channelIds: knownChannels })
             }
             return yield* insert(serverId, input, null)
           }),
-        update: (id, input, agentIds) =>
+        update: (id, input, agentIds, channelIds = []) =>
           Effect.gen(function* () {
             const row = db.get<SkillRow>("SELECT * FROM skill WHERE id = ?", id)
             if (!row) return yield* new AppError({ code: "skill_unavailable" })
@@ -220,6 +243,7 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
             )
             if (other) return yield* new AppError({ code: "skill_name_taken", detail: "name" })
             let list: string[] | null = null
+            let kept: string[] = []
             if (agentIds !== null) {
               const was = namedAgents(row.agents)
               const unique = [...new Set(agentIds)]
@@ -247,17 +271,39 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
               const strange = unique.filter(
                 (agentId) => !list?.includes(agentId) && !was.includes(agentId),
               )
-              if (list.length === 0 || strange.length > 0)
+              // A channel of this server may be in the list. One that the skill names and that is
+              // gone stays out: it gave nothing, and the form does not show it.
+              const channels = [...new Set(channelIds)]
+              const wasChannels = idList(row.channels)
+              const channelsKnown = channels.filter((channelId) =>
+                db.get(
+                  "SELECT 1 FROM channel WHERE id = ? AND server_id = ?",
+                  channelId,
+                  row.server_id,
+                ),
+              )
+              const strangeChannels = channels.filter(
+                (channelId) =>
+                  !channelsKnown.includes(channelId) && !wasChannels.includes(channelId),
+              )
+              if (
+                list.length + channelsKnown.length === 0 ||
+                strange.length > 0 ||
+                strangeChannels.length > 0
+              )
                 return yield* new AppError({ code: "skill_agents_invalid", detail: "agents" })
+              kept = channelsKnown
             }
             db.run(
-              `UPDATE skill SET name = ?, name_key = ?, description = ?, instructions = ?, agents = ?
+              `UPDATE skill SET name = ?, name_key = ?, description = ?, instructions = ?, agents = ?,
+                 channels = ?
                WHERE id = ?`,
               name,
               skillNameKey(name),
               input.description.trim(),
               input.instructions,
               list === null ? null : JSON.stringify(list),
+              JSON.stringify(list === null ? [] : kept),
               id,
             )
             changed(row.server_id)
@@ -279,7 +325,7 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
                 instructions: source.instructions,
               },
               source.agentIds,
-              { enabled: false },
+              { enabled: false, channelIds: source.channelIds },
             )
           }),
         setEnabled: (id, enabled) =>
@@ -301,10 +347,12 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
           Effect.sync(() => {
             const serverId = serverOf(agentId)
             if (!serverId) return []
+            // The channels that give their skills to this agent in this turn (spec 030).
+            const giving = givingFor(db, agentId)
             return db
               .all<SkillRow>("SELECT * FROM skill WHERE server_id = ? AND enabled = 1", serverId)
+              .filter((row) => mayUseTool(audienceOf(row), agentId, giving))
               .map(toSkill)
-              .filter((skill) => skill.agentIds === null || skill.agentIds.includes(agentId))
               .sort((a, b) => a.name.localeCompare(b.name))
           }),
         nameTaken,
@@ -342,9 +390,10 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
             const row = db.get<SkillRow>("SELECT * FROM skill WHERE id = ?", skillId)
             const skill = row ? toSkill(row) : undefined
             if (
+              !row ||
               !skill?.enabled ||
-              row?.server_id !== serverOf(agentId) ||
-              (skill.agentIds !== null && !skill.agentIds.includes(agentId))
+              row.server_id !== serverOf(agentId) ||
+              !mayUseTool(audienceOf(row), agentId, givingFor(db, agentId))
             )
               return yield* new AppError({ code: "skill_unavailable" })
             return skill

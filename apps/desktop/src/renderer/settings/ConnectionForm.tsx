@@ -21,6 +21,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useChannels } from "../state/channels.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import styles from "./connections.module.css"
@@ -79,6 +80,7 @@ export const ConnectionFormDialog = (props: {
 }) => {
   const { t } = useApp()
   const agents = useAgents()
+  const channels = useChannels()
   const was = props.connection
   const fromView = (list: ToolConnection["env"]): Entry[] =>
     list.map((e) => ({
@@ -100,6 +102,10 @@ export const ConnectionFormDialog = (props: {
   const [all, setAll] = createSignal(was ? was.agents === "all" : true)
   const [chosen, setChosen] = createSignal<readonly string[]>(
     was && was.agents !== "all" ? was.agents : [],
+  )
+  // The channels in the list (spec 018, 030). A channel that is gone is left out.
+  const [chosenChannels, setChosenChannels] = createSignal<readonly string[]>(
+    (was?.channels ?? []).filter((id) => channels.byId(id) !== undefined),
   )
   const [confirmed, setConfirmed] = createSignal(false)
   const [touched, setTouched] = createSignal<ReadonlySet<Field>>(new Set())
@@ -135,6 +141,7 @@ export const ConnectionFormDialog = (props: {
     address: address(),
     headers: kind() === "web" ? entriesOf(headers()) : [],
     agents: all() ? "all" : chosen(),
+    channels: all() ? [] : chosenChannels(),
   })
 
   // A Test shows the form as it was. A change makes it old, so it goes.
@@ -191,7 +198,8 @@ export const ConnectionFormDialog = (props: {
           kind() === "program" ? "connection_env_value_missing" : "connection_header_value_missing",
         ),
       }
-    if (!all() && chosen().length === 0) return { field: "agents", text: text("connection_agents") }
+    if (!all() && chosen().length + chosenChannels().length === 0)
+      return { field: "agents", text: text("connection_agents") }
     return undefined
   }
 
@@ -480,6 +488,31 @@ export const ConnectionFormDialog = (props: {
                         data-agent={agent.name}
                       />
                       <span>{agent.name}</span>
+                    </label>
+                  </li>
+                )}
+              </For>
+              <For each={channels.channels()}>
+                {(channel) => (
+                  <li>
+                    <label class={styles.agentRow}>
+                      <input
+                        type="checkbox"
+                        checked={chosenChannels().includes(channel.id)}
+                        onChange={() =>
+                          setChosenChannels(
+                            chosenChannels().includes(channel.id)
+                              ? chosenChannels().filter((x) => x !== channel.id)
+                              : [...chosenChannels(), channel.id],
+                          )
+                        }
+                        data-testid="connection-channel"
+                        data-channel={channel.name}
+                      />
+                      <span>{channel.name}</span>
+                      <span class={styles.channelMark} data-testid="connection-channel-mark">
+                        {t("tools.channelMark")}
+                      </span>
                     </label>
                   </li>
                 )}

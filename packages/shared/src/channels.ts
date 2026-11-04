@@ -36,6 +36,11 @@ export interface Channel {
    */
   readonly parentId: string | null
   /**
+   * The daily token limit (spec 030): 10,000 to 100,000,000 tokens, or null when it is off, which
+   * is the default. A server of an older step sends none, which counts as off.
+   */
+  readonly dailyTokenLimit?: number | null
+  /**
    * "The lead answers questions": a question of a member in a part goes to the lead first (spec
    * 004, "Questions of members"). On by default. A channel with no lead shows it off with a muted
    * line; the stored value stays, and the rule needs a lead anyway.
@@ -67,6 +72,8 @@ export const ChannelCreate = Schema.Struct({
   sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** The parent channel (spec 030). Absent or null: a top channel. */
   parentId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** The daily token limit (spec 030). Absent or null: off. The service checks the range. */
+  dailyTokenLimit: Schema.optionalKey(Schema.NullOr(Schema.Number)),
 })
 export type ChannelCreate = typeof ChannelCreate.Type
 
@@ -79,6 +86,7 @@ export const ChannelPatch = Schema.Struct({
   sectionId: ChannelCreate.fields.sectionId,
   reviewParts: Schema.optionalKey(Schema.Boolean),
   parentId: ChannelCreate.fields.parentId,
+  dailyTokenLimit: ChannelCreate.fields.dailyTokenLimit,
   leadAnswers: Schema.optionalKey(Schema.Boolean),
 })
 export type ChannelPatch = typeof ChannelPatch.Type
@@ -100,6 +108,8 @@ export const ClientChannelCreate = Schema.Struct({
   leadId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(100))),
   /** A client with "Can create and change agents" can set the parent channel (spec 012, 030). */
   parentId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
+  /** The daily token limit (spec 012, 030): the same switch lets a client change it. */
+  dailyTokenLimit: ChannelCreate.fields.dailyTokenLimit,
 })
 export type ClientChannelCreate = typeof ClientChannelCreate.Type
 
@@ -112,6 +122,7 @@ export const ClientChannelPatch = Schema.Struct({
   memberIds: Schema.optionalKey(ClientMemberIds),
   leadId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
   parentId: ClientChannelCreate.fields.parentId,
+  dailyTokenLimit: ClientChannelCreate.fields.dailyTokenLimit,
   // A linked device with the switch "Can create and change agents" changes it (spec 004, 012).
   leadAnswers: Schema.optionalKey(Schema.Boolean),
 })

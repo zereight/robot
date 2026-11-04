@@ -741,6 +741,70 @@ describe("export and import", () => {
     ])
   })
 
+  test("the daily token limit and the channels in the lists of skills and connections come back (spec 030, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-channel-tools.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const product = await a.run(
+      Channels.use((c) =>
+        c.create({
+          serverId: local.id,
+          name: "Product",
+          topic: "",
+          memberIds: [],
+          leadId: null,
+          dailyTokenLimit: 50_000,
+        }),
+      ),
+    )
+    const docs = await a.run(
+      Channels.use((c) =>
+        c.create({
+          serverId: local.id,
+          name: "Docs",
+          topic: "",
+          memberIds: [],
+          leadId: null,
+          parentId: product.id,
+        }),
+      ),
+    )
+    const skill = await a.run(
+      Skills.use((s) =>
+        s.create(
+          local.id,
+          { name: "Release notes", description: "", instructions: "Do it." },
+          [],
+          [product.id],
+        ),
+      ),
+    )
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    db.run(
+      `INSERT INTO tool_connection
+         (id, server_id, name, name_key, kind, command, agents, channels, enabled, state, created_at)
+       VALUES ('c1', ?, 'Notes', 'notes', 'program', 'notes-server', '[]', ?, 1, 'connected', 1)`,
+      local.id,
+      JSON.stringify([docs.id]),
+    )
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const channels = await b.run(Channels.use((c) => c.list(bLocal.id)))
+    expect(channels.map((c) => [c.name, c.dailyTokenLimit]).sort()).toEqual([
+      ["Docs", null],
+      ["Product", 50_000],
+    ])
+    const skills = await b.run(Skills.use((s) => s.list(bLocal.id)))
+    expect(skills.find((x) => x.id === skill.id)?.channelIds).toEqual([product.id])
+    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(bDb.all("SELECT id, agents, channels, enabled FROM tool_connection")).toEqual([
+      { id: "c1", agents: "[]", channels: JSON.stringify([docs.id]), enabled: 0 },
+    ])
+  })
+
   test("the hand-off rule comes back with the archive (spec 030, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-rule.zip")
     const a = app({ save: out })

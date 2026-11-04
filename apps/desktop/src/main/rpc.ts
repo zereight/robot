@@ -54,6 +54,7 @@ import type { Actor } from "./services/actor.ts"
 import { CurrentActor } from "./services/actor.ts"
 import { BrowserProfiles } from "./services/BrowserProfiles.ts"
 import { Channels } from "./services/Channels.ts"
+import { ChannelTools } from "./services/ChannelTools.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
 import { Connections } from "./services/Connections.ts"
@@ -148,6 +149,8 @@ const ConnectionInputSchema = Schema.Struct({
     Schema.Literal("all"),
     Schema.Array(Schema.String).check(Schema.isMaxLength(1000)),
   ]),
+  /** The channels in the list of the connection (spec 018, 030). */
+  channels: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
 })
 const SettingsLine = Schema.Struct({
   agentId: Schema.String,
@@ -1272,10 +1275,11 @@ export const handlers: Handlers = {
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
         agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
+        channelIds: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
       }),
     )(input).pipe(
-      Effect.flatMap(({ serverId, agentIds, ...skill }) =>
-        Skills.use((s) => s.create(serverId, skill, agentIds)),
+      Effect.flatMap(({ serverId, agentIds, channelIds, ...skill }) =>
+        Skills.use((s) => s.create(serverId, skill, agentIds, channelIds)),
       ),
     ),
   "skills.update": (input) =>
@@ -1286,10 +1290,11 @@ export const handlers: Handlers = {
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
         agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
+        channelIds: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
       }),
     )(input).pipe(
-      Effect.flatMap(({ id, agentIds, ...skill }) =>
-        Skills.use((s) => s.update(id, skill, agentIds)),
+      Effect.flatMap(({ id, agentIds, channelIds, ...skill }) =>
+        Skills.use((s) => s.update(id, skill, agentIds, channelIds)),
       ),
     ),
   "skills.duplicate": (input) =>
@@ -1477,6 +1482,37 @@ export const handlers: Handlers = {
     strict(Schema.Struct({ serverId: Id }))(input).pipe(
       Effect.flatMap(({ serverId }) => ownServer(serverId)),
       Effect.flatMap(() => OrgChart.use((o) => o.model())),
+    ),
+  // The tools of a channel and its daily token limit (spec 030). A linked device reads the first
+  // three with the link only; its input is checked as strictly as any request of a client.
+  "channelTools.list": (input) =>
+    strict(Schema.Struct({ channelId: Id }))(input).pipe(
+      Effect.flatMap(({ channelId }) => ChannelTools.use((c) => c.forChannel(channelId))),
+    ),
+  "channelTools.set": (input) =>
+    decode(
+      Schema.Struct({
+        channelId: Schema.String,
+        kind: Schema.Literals(["skill", "connection"]),
+        id: Schema.String,
+        on: Schema.Boolean,
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ channelId, kind, id, on }) =>
+        ChannelTools.use((c) => c.set(channelId, kind, id, on)),
+      ),
+    ),
+  "channelTools.forAgent": (input) =>
+    strict(Schema.Struct({ agentId: Id }))(input).pipe(
+      Effect.flatMap(({ agentId }) => ChannelTools.use((c) => c.forAgent(agentId))),
+    ),
+  "channels.limit": (input) =>
+    strict(Schema.Struct({ channelId: Id }))(input).pipe(
+      Effect.flatMap(({ channelId }) => ChannelTools.use((c) => c.limit(channelId))),
+    ),
+  "usage.channels": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => ChannelTools.use((c) => c.usage(serverId))),
     ),
   // The part "Organization" (spec 013, 030). A linked computer reads it with only the link, and no
   // request of a client changes it (spec 012): "organization.setHandOff" is not a client method.

@@ -594,6 +594,52 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     expect(rows.filter((r) => r.kind === "moved").map((r) => r.actor)).toEqual(["user", "user"])
   })
 
+  test("it sets the daily token limit of a channel and reads the tools and the limit; it never changes the tools of a channel (spec 030, 012)", async () => {
+    const p = await pair(true)
+    const a = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    const channel = value<{ id: string; dailyTokenLimit: number | null }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Docs",
+        topic: "",
+        memberIds: [a.id],
+        leadId: null,
+        dailyTokenLimit: 20_000,
+      }),
+    )
+    expect(channel.dailyTokenLimit).toBe(20_000)
+    expect(
+      value<{ dailyTokenLimit: number | null }>(
+        await p.ask("channels.update", { id: channel.id, patch: { dailyTokenLimit: 60_000 } }),
+      ).dailyTokenLimit,
+    ).toBe(60_000)
+    // The same checks as on the server: a number out of range changes nothing.
+    expect(
+      codeOf(await p.ask("channels.update", { id: channel.id, patch: { dailyTokenLimit: 5 } })),
+    ).toBe("invalid_daily_limit")
+    expect(
+      value<{ dailyTokenLimit: number | null }>(
+        await p.ask("channels.update", { id: channel.id, patch: { dailyTokenLimit: null } }),
+      ).dailyTokenLimit,
+    ).toBeNull()
+
+    // The part "Tools of this channel", the lines "From <channel>" and the limit are read only.
+    for (const method of ["channelTools.list", "channels.limit"] as const) {
+      expect(codeOf(await p.ask(method, { channelId: channel.id }))).toBe("ok")
+    }
+    expect(codeOf(await p.ask("channelTools.forAgent", { agentId: a.id }))).toBe("ok")
+    expect(codeOf(await p.ask("channels.limit", { channelId: channel.id, extra: 1 }))).toBe(
+      "invalid_input",
+    )
+    // A client cannot change the tools of a channel, and it has no usage page (spec 012).
+    for (const [method, input] of [
+      ["channelTools.set", { channelId: channel.id, kind: "skill", id: "x", on: true }],
+      ["usage.channels", { serverId: p.serverId }],
+    ] as const) {
+      expect(await p.raw(method, input)).toBe("not_allowed")
+    }
+  })
+
   test("it sets the switch Read the handbook and the instructions of a channel, with the same limits as the server (spec 002, 004, 012)", async () => {
     const p = await pair(true)
     const off = value<Agent>(
