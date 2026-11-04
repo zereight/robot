@@ -7,8 +7,17 @@ import { type CheckedFetch, checkedFetch, type LocalAsk, type Resolver } from ".
 /** A test server on this computer. Its paths answer as the tests need. */
 let server: Server
 let port = 0
-/** The requests that reached the server: the host header and the path. */
+/**
+ * The requests that reached the server: the host header and the path. Every request to this
+ * server is one that the test waits for (an answer, or a refusal before any connection). A request
+ * that a test abandons (a timeout, Stop) goes to `holdServer`. The client destroys such a request
+ * at once, but its bytes can still reach a server after the test has ended, and then the entry
+ * would show in the record of the test that runs at that time.
+ */
 const seen: string[] = []
+/** A second test server, with no record, for the requests that a test abandons. */
+let holdServer: Server
+let holdPort = 0
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -47,9 +56,6 @@ beforeAll(async () => {
     } else if (path === "/big") {
       res.writeHead(200, { "content-type": "text/plain" })
       res.end("x".repeat(5000))
-    } else if (path === "/slow") {
-      res.writeHead(200, { "content-type": "text/plain" })
-      res.write("start")
     } else {
       res.writeHead(404, { "content-type": "text/plain" })
       res.end("nothing")
@@ -57,11 +63,20 @@ beforeAll(async () => {
   })
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
   port = (server.address() as AddressInfo).port
+  // The answer starts and never ends, so a fetch ends by its timeout or by Stop.
+  holdServer = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/plain" })
+    res.write("start")
+  })
+  await new Promise<void>((done) => holdServer.listen(0, "127.0.0.1", done))
+  holdPort = (holdServer.address() as AddressInfo).port
 })
 
 afterAll(() => {
-  server.closeAllConnections()
-  server.close()
+  for (const s of [server, holdServer]) {
+    s.closeAllConnections()
+    s.close()
+  }
 })
 
 /** A resolver with a fixed table. A name that is not in it fails like a name that does not exist. */
@@ -146,14 +161,14 @@ describe("checkedFetch: a page", () => {
   })
 
   test("a server that does not answer in time fails with the reason", async () => {
-    const result = await run(`http://127.0.0.1:${port}/slow`, { timeoutMs: 150 })
+    const result = await run(`http://127.0.0.1:${holdPort}/slow`, { timeoutMs: 150 })
     expect(result).toEqual({ kind: "failed", reason: "timeout" })
   })
 
   test("Stop ends the fetch", async () => {
     const stop = new AbortController()
     const pending = checkedFetch({
-      url: `http://127.0.0.1:${port}/slow`,
+      url: `http://127.0.0.1:${holdPort}/slow`,
       signal: stop.signal,
       allowLocal: async () => true,
     })
