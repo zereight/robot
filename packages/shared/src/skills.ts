@@ -65,6 +65,29 @@ export const skillProblems = (input: SkillInput): readonly SkillProblem[] => {
   return problems
 }
 
+/** What a delete of an agent does to one skill (spec 017, "Rules"). */
+export type SkillAfterAgentDelete =
+  | { readonly kind: "same" }
+  | { readonly kind: "shorter"; readonly agentIds: readonly string[] }
+  | { readonly kind: "delete" }
+
+/**
+ * What happens to a skill when the agent `agentId` is deleted. A skill for all agents, and a skill
+ * that does not name the agent, stay as they are. The agent leaves the list of the others. A skill
+ * that was only for this agent is deleted: no agent that still exists is left in its list.
+ * `exists` tells whether an agent is still there, in the archive or not; an id of an agent that
+ * went before this rule counts as gone.
+ */
+export const skillAfterAgentDelete = (
+  agentIds: readonly string[] | null,
+  agentId: string,
+  exists: (id: string) => boolean,
+): SkillAfterAgentDelete => {
+  if (agentIds === null || !agentIds.includes(agentId)) return { kind: "same" }
+  const rest = agentIds.filter((id) => id !== agentId)
+  return rest.some(exists) ? { kind: "shorter", agentIds: rest } : { kind: "delete" }
+}
+
 /** What the agent reads before the text of a message with a skill chip. */
 export const skillLead = (name: string, instructions: string) =>
   `Use the skill "${name}". Its instructions:\n${instructions}`

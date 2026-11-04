@@ -17,6 +17,7 @@ import {
 import { Context, Effect, Layer } from "effect"
 import { Activity } from "./Activity.ts"
 import { CurrentActor } from "./actor.ts"
+import { releaseSkills } from "./agentSkills.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -321,7 +322,15 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           catch: (e) => new AppError({ code: "trash_failed", detail: String(e) }),
         })
         if (row.face_image) rmSync(join(facesDir, row.face_image), { force: true })
-        db.run("DELETE FROM agent WHERE id = ?", id)
+        // The agent leaves the list of every skill, and a skill that was only for it goes too
+        // (spec 017). Both happen in one step with the delete of the agent.
+        const skills = db.transaction(() => {
+          const released = releaseSkills(db, id)
+          db.run("DELETE FROM agent WHERE id = ?", id)
+          return released
+        })
+        if (skills.deleted + skills.shortened > 0)
+          bus.emit("skills.changed", { serverId: row.server_id })
         changed(row.server_id)
       })
 

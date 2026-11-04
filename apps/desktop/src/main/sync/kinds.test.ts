@@ -948,6 +948,51 @@ describe("one item of every kind is made from its first copy", () => {
   })
 })
 
+describe("an agent that is deleted on the other computer leaves the skills here (spec 017, 019)", () => {
+  /** The copy of the agent on this computer, with three skills: only for it, shared, and for all. */
+  const copyWithSkills = async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-skills")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const b = target(openDatabase(":memory:"), dir)
+    for (const id of [a.ada.id, a.bo.id]) {
+      expect(KINDS.agent.create(b, id, copy(KINDS.agent.read(ctxA, id)?.fields) as Fields)).toBe(
+        true,
+      )
+    }
+    const skill = (id: string, agents: string[] | null) =>
+      b.db.run(
+        `INSERT INTO skill (id, server_id, name, name_key, instructions, agents, created_at)
+         VALUES (?, 'srv-b', ?, ?, 'Do it.', ?, 0)`,
+        id,
+        id,
+        id,
+        agents === null ? null : JSON.stringify(agents),
+      )
+    skill("only", [a.ada.id])
+    skill("shared", [a.ada.id, a.bo.id])
+    skill("all", null)
+    const agentsOf = (id: string) =>
+      b.db.get<{ agents: string | null }>("SELECT agents FROM skill WHERE id = ?", id)?.agents
+    return { a, b, agentsOf }
+  }
+
+  test("a skill that was only for the agent goes, and the agent leaves the others", async () => {
+    const { a, b, agentsOf } = await copyWithSkills()
+    KINDS.agent.remove(b, a.ada.id)
+    expect(KINDS.agent.read(b, a.ada.id)).toBeUndefined()
+    expect(b.db.all("SELECT id FROM skill ORDER BY id")).toEqual([{ id: "all" }, { id: "shared" }])
+    expect(agentsOf("shared")).toBe(JSON.stringify([a.bo.id]))
+    expect(agentsOf("all")).toBeNull()
+  })
+
+  test("a removal of an agent that is not here changes no skill", async () => {
+    const { b } = await copyWithSkills()
+    KINDS.agent.remove(b, "not-an-agent")
+    expect(b.db.all("SELECT id FROM skill")).toHaveLength(3)
+  })
+})
+
 describe("the notes and the steps of a workflow cross as the strict check allows", () => {
   const workflowOp = (extra: Record<string, unknown>) => {
     const field = (v: unknown) => ({ v, s: stamp })

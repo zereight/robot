@@ -690,6 +690,10 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     // (spec 012, 017).
     ["skills.list", { serverId: "x" }],
     ["skills.forAgent", { agentId: "x" }],
+    // The delete of an agent is on the computer only (spec 012). So is the count of the skills
+    // that it takes along (spec 002, 017): a client never sees that confirm text.
+    ["agents.delete", { id: "x" }],
+    ["skills.onlyFor", { agentId: "x" }],
     [
       "skills.create",
       { serverId: "x", name: "N", description: "", instructions: "i", agentIds: null },
