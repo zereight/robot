@@ -365,9 +365,15 @@ export const PlaceList = (props: PlaceListProps) => {
     ui.saveWidth()
   }
 
+  /** The role line that a row shows: an agent with one has it. A channel never does. */
+  const roleOf = (place: Place) =>
+    place.kind === "agent" && place.role?.trim() ? place.role.trim() : undefined
+
   const accessibleName = (place: Place) =>
     [
       place.name,
+      // The whole role line is part of the name of an agent row (spec 001).
+      roleOf(place) ? t("places.role", { role: roleOf(place) ?? "" }) : "",
       place.working ? t("places.working") : "",
       place.unread > 0 ? t("places.unread", { count: place.unread }) : "",
       place.lastMessage ? t("places.lastMessage", { message: place.lastMessage }) : "",
@@ -573,7 +579,21 @@ export const PlaceList = (props: PlaceListProps) => {
             <span class={styles.workingDot} data-testid="working-dot" />
           </Show>
         </span>
-        <span class={styles.rowName}>{place.name}</span>
+        <span class={styles.rowName} data-with-badge={roleOf(place) ? "true" : undefined}>
+          {place.name}
+        </span>
+        {/* The badge is the role line of an agent. A channel never has one. The name comes first:
+            the slot is what is left of the row, the badge is cut with an ellipsis inside it, and
+            it hides when less than 4 characters of it fit (the sheet does that). */}
+        <Show when={roleOf(place)}>
+          {(role) => (
+            <span class={styles.roleSlot}>
+              <span class={styles.roleBadge} title={role()} data-testid="role-badge" data-user-data>
+                {role()}
+              </span>
+            </span>
+          )}
+        </Show>
         <Show when={place.unread > 0}>
           <span class={styles.badge}>{place.unread}</span>
         </Show>

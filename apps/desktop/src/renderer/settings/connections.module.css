@@ -1,0 +1,502 @@
+/* Settings, Connections (spec 018): the list, the rows, the tools, and the form. */
+
+.top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding-bottom: 8px;
+}
+
+.top p {
+  flex: 1 1 280px;
+  min-width: 0;
+  margin: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.state {
+  flex-shrink: 0;
+  padding: 0 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.state[data-state="connected"] {
+  color: var(--c-success);
+}
+
+.state[data-state="error"] {
+  color: var(--c-danger);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.code {
+  margin: 0;
+  color: var(--c-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.warn {
+  color: var(--c-danger);
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.result {
+  margin: 0;
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.result[data-ok="true"] {
+  color: var(--c-success);
+}
+
+.result[data-ok="false"] {
+  color: var(--c-danger);
+}
+
+/* The tools of a connection: a fold that lists each tool with its own switch. */
+.tools > summary {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  cursor: pointer;
+}
+
+.toolList {
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  margin: 6px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.tool {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.toolText {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* A long description must not squeeze the switch of a tool. */
+.tool > :last-child {
+  flex: 0 0 auto;
+}
+
+.toolName {
+  font-family: var(--font-mono);
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.toolText .meta {
+  font-size: var(--text-xs);
+}
+
+/* The form is a dialog: one column, the fields as wide as the box. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(520px, 80vw);
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.fieldTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.label {
+  font-size: var(--text-s);
+  font-weight: 500;
+}
+
+.hint,
+.counter {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.counter[data-over="true"] {
+  color: var(--c-danger);
+}
+
+.input,
+.textarea {
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-main);
+  color: var(--c-text);
+  user-select: text;
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 72px;
+  font-family: var(--font-mono);
+}
+
+.input:focus-visible,
+.textarea:focus-visible {
+  outline: none;
+  border-color: var(--c-focus);
+}
+
+.input[aria-invalid="true"],
+.textarea[aria-invalid="true"] {
+  border-color: var(--c-danger);
+}
+
+.fieldError {
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+}
+
+/* A line for an environment value or a header: name, value, the switch, and remove. */
+.entryBox {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto;
+  grid-template-areas: "name value secret remove";
+  align-items: center;
+  gap: 8px;
+}
+
+.entryName {
+  grid-area: name;
+}
+
+.entryValue {
+  grid-area: value;
+}
+
+.entryRemove {
+  grid-area: remove;
+}
+
+.secretSwitch {
+  grid-area: secret;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.savedHint {
+  color: var(--c-success);
+  font-size: var(--text-xs);
+}
+
+.agentList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  margin: 4px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.agentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+/* Test and Save stay in view at the bottom of the box, also when a long list of tools is above. */
+.actions {
+  position: sticky;
+  bottom: -20px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: -20px;
+  padding: 12px 0 20px;
+  border-top: 1px solid var(--c-border);
+  background: var(--c-elevated);
+}
+
+.actionsEnd {
+  display: flex;
+  gap: 8px;
+}
+
+/* A narrow window: the value of a line goes under its name, and the box is as wide as the window. */
+@media (max-width: 640px) {
+  .form {
+    width: 100%;
+  }
+
+  .entry {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "name secret remove"
+      "value value value";
+  }
+}
+
+/* The line of a row with tools that wait for review, and the tag of such a tool (spec 018). */
+.review {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.reviewText {
+  color: var(--c-accent);
+  font-size: var(--text-s);
+  font-weight: 500;
+}
+
+.toolNameLine {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.tag {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-s);
+  color: var(--c-accent);
+  font-size: var(--text-xs);
+}
+
+/* The dialog "Review": each held tool with the old and the new text of what changed. */
+.reviewBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(720px, 80vw);
+  min-width: 0;
+}
+
+.heldList {
+  display: flex;
+  flex-direction: column;
+  max-height: min(56vh, 460px);
+  margin: 0;
+  padding: 0 12px 0 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  list-style: none;
+}
+
+.heldItem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.heldHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.heldHead .toolName {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.diffPart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.diffLabel,
+.diffSideLabel {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.diffLabel {
+  font-weight: 500;
+}
+
+.diffSides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.diffSide {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-height: 160px;
+  padding: 6px 8px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+}
+
+.diffSide[data-side="now"] {
+  border-color: var(--c-accent);
+}
+
+/* The text of a part of a new tool: no old text to set it against, so no box. */
+.diffPlain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.diffText {
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.diffEmpty {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.diffParams {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diffParams li {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.reviewActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .reviewBox {
+    width: 100%;
+  }
+}

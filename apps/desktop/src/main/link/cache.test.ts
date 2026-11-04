@@ -46,6 +46,29 @@ describe("the cache of a linked server", () => {
     expect(again.get("link-1", key)).toEqual([{ id: "section" }])
   })
 
+  test("the saved list of places holds the role line of an agent, and an older list has none", () => {
+    const { root, cache } = make()
+    const key = cacheKey("places.list", { serverId: "s" })
+    const agent = (id: string, role?: string) => ({
+      kind: "agent",
+      id,
+      name: id,
+      unread: 0,
+      working: false,
+      lastMessage: null,
+      sectionId: null,
+      ...(role ? { role } : {}),
+    })
+    cache.set("link-1", key, [
+      { id: "agents", places: [agent("a1", "Designer"), agent("a2")], sections: [] },
+    ])
+    cache.flush()
+    const again = new LinkCache(root).get("link-1", key) as {
+      places: { id: string; role?: string }[]
+    }[]
+    expect(again[0]?.places.map((x) => x.role)).toEqual(["Designer", undefined])
+  })
+
   test("a message that came live joins a place that was opened, and not one that was not", () => {
     const { cache } = make()
     const key = cacheKey("chat.history", { agentId: "agent-1" })

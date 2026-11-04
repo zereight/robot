@@ -1,7 +1,15 @@
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { expect, type Page, test } from "@playwright/test"
-import { connectMock, freshUserData, type Launched, launch, resizeWindow, shot } from "./harness.ts"
+import {
+  connectMock,
+  freshUserData,
+  type Launched,
+  launch,
+  pickRole,
+  resizeWindow,
+  shot,
+} from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, openDevices, rpc, send, setName, settled } from "./sync-helpers.ts"
@@ -113,7 +121,7 @@ test("starters: the choice, the filled fields, the paused routine and the skill"
   await expect(page.getByTestId("starter-briefer")).toHaveAttribute("aria-pressed", "true")
   await expect(page.getByTestId("starter-blank")).toHaveAttribute("aria-pressed", "false")
   await expect(page.getByTestId("agent-name")).toHaveValue("Briefer")
-  await expect(page.getByTestId("agent-role")).toHaveValue(
+  await expect(page.getByTestId("agent-role-chip")).toHaveText(
     "Prepares a short briefing on the topics its user follows.",
   )
   await expect(page.getByTestId("agent-instructions")).toHaveValue(/10 lines or fewer/)
@@ -178,7 +186,7 @@ test("starters: the user can change the fields, Blank clears them, and a second 
   await page.getByTestId("starter-reviewer").click()
   await expect(page.getByTestId("agent-name")).toHaveValue("Reviewer")
   await expect(page.getByTestId("agent-instructions")).toHaveValue(/Do not change a file/)
-  await page.getByTestId("agent-role").fill("Reads pull requests for the team.")
+  await pickRole(page, "Reads pull requests for the team.")
   await create(page, "Reviewer")
   await expect(page.getByTestId("chat-start")).toContainText("Reads pull requests for the team.")
   const [reviewer] = await agentsOf(page)
@@ -194,7 +202,8 @@ test("starters: the user can change the fields, Blank clears them, and a second 
   await page.getByTestId("starter-blank").click()
   await expect(page.getByTestId("starter-blank")).toHaveAttribute("aria-pressed", "true")
   await expect(page.getByTestId("agent-name")).toHaveValue("")
-  await expect(page.getByTestId("agent-role")).toHaveValue("")
+  await expect(page.getByTestId("agent-role-chip")).toHaveCount(0)
+  await expect(page.getByTestId("agent-role-open")).toBeVisible()
   await expect(page.getByTestId("agent-instructions")).toHaveValue("")
   await expect(page.getByTestId("starter-makes")).toHaveCount(0)
   // Blank makes a plain agent, with no routine and no skill.
@@ -550,7 +559,7 @@ test("starters: a linked device gets the three fields only", async () => {
     // The pick fills the three fields. The form does not list a routine or a skill.
     await one.page.getByTestId("starter-briefer").click()
     await expect(one.page.getByTestId("agent-name")).toHaveValue("Briefer")
-    await expect(one.page.getByTestId("agent-role")).toHaveValue(
+    await expect(one.page.getByTestId("agent-role-chip")).toHaveText(
       "Prepares a short briefing on the topics its user follows.",
     )
     await expect(one.page.getByTestId("agent-instructions")).toHaveValue(/Search the web/)

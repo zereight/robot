@@ -55,6 +55,13 @@ export interface RulesService {
   saveFromCard(agentId: string, step: RuleStep): PermissionRule | null
   /** True when a card for this step can offer "Always allow": the rule would fit. */
   canSave(agentId: string, step: RuleStep): boolean
+  /**
+   * Deletes the rules for the tools of a connection, when the connection is removed (spec 018).
+   * The names of connections match with case ignored, as a rule does.
+   */
+  removeForConnection(name: string): void
+  /** The rules for the tools of a connection follow its new name (spec 018, "Edit"). */
+  renameConnection(from: string, to: string): void
 }
 
 interface Row {
@@ -231,10 +238,27 @@ export class Rules extends Context.Service<Rules, RulesService>()("robot/main/Ru
         return count < RULES_MAX || sameAs(input) !== null
       }
 
+      /** The rules of kind connection that name this connection. */
+      const connectionRules = (name: string) =>
+        db
+          .all<Row>(`${SELECT} WHERE kind = 'connection'`)
+          .filter((r) => r.match_text.trim().toLowerCase() === name.trim().toLowerCase())
+
       return Rules.of({
         get,
         verdict,
         canSave,
+        removeForConnection: (name) => {
+          const found = connectionRules(name)
+          for (const rule of found) db.run("DELETE FROM permission_rule WHERE id = ?", rule.id)
+          if (found.length > 0) changed()
+        },
+        renameConnection: (from, to) => {
+          const found = connectionRules(from)
+          for (const rule of found)
+            db.run("UPDATE permission_rule SET match_text = ? WHERE id = ?", to, rule.id)
+          if (found.length > 0) changed()
+        },
         list: (filter = {}) =>
           Effect.sync(() =>
             all().filter(

@@ -7,6 +7,7 @@ import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
+import type { ConnectionsOptions } from "./Connections.ts"
 import type { BrowserPage, PlatformService } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
@@ -210,6 +211,8 @@ export const testRuntime = (
     databaseFile?: string
     /** The stand-in Teams to use. A restart gives the same one to both starts. */
     chat?: FakeChat
+    /** How connections are reached, and their time limits (spec 018). */
+    connections?: ConnectionsOptions
   } = {},
 ) => {
   const {
@@ -246,6 +249,7 @@ export const testRuntime = (
       secrets: Secrets.memory,
       ...(options.decisionUrl ? { decisionUrl: options.decisionUrl } : {}),
       ...(options.cacheHosts ? { cacheHosts: options.cacheHosts } : {}),
+      ...(options.connections ? { connections: options.connections } : {}),
     }),
   )
   // The requests of linked devices run the real handlers, as in the app.

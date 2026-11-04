@@ -1,0 +1,35 @@
+# Test files slower than ~2 s of test-body time (measured with bun 1.4.2, 2026-11-04).
+# `bun run test:fast` skips these via --path-ignore-patterns; `bun run test:slow` runs only
+# these. `bun run test` still runs everything, and CI runs the full suite. One path per line,
+# relative to the repository root. Re-measure before adding or removing a line.
+apps/desktop/scripts/judge-items-lib.test.ts
+apps/desktop/src/main/link/changes.test.ts
+apps/desktop/src/main/link/phone.test.ts
+apps/desktop/src/main/runtimes/readonly.test.ts
+apps/desktop/src/main/runtimes/run.test.ts
+apps/desktop/src/main/services/ChannelCheck.test.ts
+apps/desktop/src/main/services/ChannelReview.test.ts
+apps/desktop/src/main/services/Chat.test.ts
+apps/desktop/src/main/services/Decision.test.ts
+apps/desktop/src/main/services/Devices.test.ts
+apps/desktop/src/main/services/Handover.test.ts
+apps/desktop/src/main/services/Knowledge.test.ts
+apps/desktop/src/main/services/Notifier.test.ts
+apps/desktop/src/main/services/ProgramMark.test.ts
+apps/desktop/src/main/services/Remote.test.ts
+apps/desktop/src/main/services/Routines.test.ts
+apps/desktop/src/main/services/Runtimes.test.ts
+apps/desktop/src/main/services/Search.test.ts
+apps/desktop/src/main/services/Secrets.test.ts
+apps/desktop/src/main/services/SensitivePlaces.test.ts
+apps/desktop/src/main/services/Sync.test.ts
+apps/desktop/src/main/services/TeamsAnswers.test.ts
+apps/desktop/src/main/services/TeamsLink.test.ts
+apps/desktop/src/main/services/TeamsPause.test.ts
+apps/desktop/src/main/services/Threads.test.ts
+apps/desktop/src/main/services/Today.test.ts
+apps/desktop/src/main/services/Tools.test.ts
+apps/desktop/src/main/services/ToolsConnections.test.ts
+apps/desktop/src/main/services/WorkflowSteps.test.ts
+apps/desktop/src/main/services/workflowAsk.test.ts
+apps/desktop/src/main/sync/kinds.test.ts

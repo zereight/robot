@@ -302,6 +302,7 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                 hooks.execute,
                 input.resume?.call,
                 input.inbox,
+                input.moreTools,
               )
             }
             const kind = row.kind

@@ -55,6 +55,18 @@ export type MessagePart =
    */
   | { readonly kind: "note"; readonly note: "compact_failed"; readonly code: string }
   /**
+   * The muted line "The connection NAME is not available." (spec 018, "States"): the connection
+   * was down when the turn started, and the turn went on without its tools. The model never
+   * reads it.
+   */
+  | { readonly kind: "note"; readonly note: "connection_down"; readonly name: string }
+  /**
+   * The muted line "Tools of the connection NAME wait for your review." (spec 018, "States"): the
+   * connection had held tools when the turn started, and the turn went on without them. The model
+   * never reads it.
+   */
+  | { readonly kind: "note"; readonly note: "connection_held"; readonly name: string }
+  /**
    * The muted line "Handed over to <name>" in the chat that the user left (spec 003, "Hand over").
    * It links to the new thread. `toName` is the name that the other agent had then. The model
    * never reads it.
@@ -111,11 +123,21 @@ export type MessagePart =
       /** Set when an Allow rule let the step run with no question: the card says so (spec 007). */
       readonly ruleAllowed?: true
       /**
+       * Set for a call of a connection tool and for the step "Search tools" (spec 018): the card
+       * names the connection and the tool, or the words of the search and the tools found.
+       */
+      readonly connection?: ConnectionNote
+      /**
        * Set when the app refused or failed the step for a reason of its own (spec 005): a code
        * that the card translates, for example the limit of the chain of messages.
        */
       readonly reason?: { readonly code: string; readonly detail?: string }
     }
+
+/** What a card of a connection shows (spec 018). The log reads the names of a call from it. */
+export type ConnectionNote =
+  | { readonly kind: "call"; readonly connection: string; readonly tool: string }
+  | { readonly kind: "search"; readonly words: string; readonly found: number }
 
 /** A request that waits for the user. `askedAt` is the time when the agent asked (spec 007). */
 export type ToolAsk =

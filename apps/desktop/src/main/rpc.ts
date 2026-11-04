@@ -8,6 +8,7 @@ import {
   ChannelCreate,
   ChannelPatch,
   ChatSend,
+  CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
   isClientMethod,
@@ -53,6 +54,7 @@ import { BrowserProfiles } from "./services/BrowserProfiles.ts"
 import { Channels } from "./services/Channels.ts"
 import { Chat } from "./services/Chat.ts"
 import { Checklists } from "./services/Checklists.ts"
+import { Connections } from "./services/Connections.ts"
 import { Data } from "./services/Data.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
@@ -116,6 +118,29 @@ const RuleInputSchema = Schema.Struct({
   text: Schema.String,
   detail: Schema.optionalKey(Schema.NullOr(Schema.String)),
   decision: Schema.Literals(["allow", "deny"]),
+})
+/** A line of the connection form: an environment value or a header (spec 018). */
+const ConnectionEntrySchema = Schema.Struct({
+  name: Schema.String.check(Schema.isMaxLength(1000)),
+  value: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(100_000))),
+  secret: Schema.Boolean,
+})
+/** The form of a connection (spec 018). The service checks the limits of each field. */
+const ConnectionInputSchema = Schema.Struct({
+  name: Schema.String.check(Schema.isMaxLength(1000)),
+  kind: Schema.Literals(["program", "web"]),
+  command: Schema.String.check(Schema.isMaxLength(10_000)),
+  args: Schema.Array(Schema.String.check(Schema.isMaxLength(20_000))).check(
+    Schema.isMaxLength(1000),
+  ),
+  folder: Schema.String.check(Schema.isMaxLength(10_000)),
+  env: Schema.Array(ConnectionEntrySchema).check(Schema.isMaxLength(1000)),
+  address: Schema.String.check(Schema.isMaxLength(20_000)),
+  headers: Schema.Array(ConnectionEntrySchema).check(Schema.isMaxLength(1000)),
+  agents: Schema.Union([
+    Schema.Literal("all"),
+    Schema.Array(Schema.String).check(Schema.isMaxLength(1000)),
+  ]),
 })
 const SettingsLine = Schema.Struct({
   agentId: Schema.String,
@@ -794,6 +819,57 @@ export const handlers: Handlers = {
   "rules.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Rules.use((r) => r.remove(id))),
+      done,
+    ),
+  "connections.list": () => Connections.use((c) => c.list),
+  "connections.save": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.optionalKey(Schema.String),
+        connection: ConnectionInputSchema,
+        confirmed: Schema.Boolean,
+      }),
+    )(input).pipe(Effect.flatMap((saved) => Connections.use((c) => c.save(saved)))),
+  "connections.test": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.optionalKey(Schema.String),
+        connection: Schema.optionalKey(ConnectionInputSchema),
+      }),
+    )(input).pipe(Effect.flatMap((form) => Connections.use((c) => c.test(form)))),
+  "connections.setEnabled": (input) =>
+    decode(Schema.Struct({ id: Schema.String, enabled: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ id, enabled }) => Connections.use((c) => c.setEnabled(id, enabled))),
+    ),
+  "connections.setTool": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        tool: Schema.String.check(Schema.isMaxLength(1000)),
+        enabled: Schema.Boolean,
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ id, tool, enabled }) =>
+        Connections.use((c) => c.setTool(id, tool, enabled)),
+      ),
+    ),
+  "connections.held": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Connections.use((c) => c.held(id)))),
+  "connections.accept": (input) =>
+    decode(
+      Schema.Struct({
+        id: Schema.String,
+        tools: Schema.Array(
+          Schema.Struct({
+            name: Schema.String.check(Schema.isMaxLength(1000)),
+            key: Schema.String.check(Schema.isMaxLength(100)),
+          }),
+        ).check(Schema.isMaxLength(CONNECTION_TOOLS_MAX)),
+      }),
+    )(input).pipe(Effect.flatMap(({ id, tools }) => Connections.use((c) => c.accept(id, tools)))),
+  "connections.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Connections.use((c) => c.remove(id))),
       done,
     ),
   "secrets.list": (input) =>

@@ -66,6 +66,13 @@ import type { TeachState } from "./teach.ts"
 import type { TeamsLinkView, TeamsPatch } from "./teamsLink.ts"
 import type { ChatMeter, ChatThread, ChatThreads } from "./threads.ts"
 import type { TodaySnapshot } from "./today.ts"
+import type {
+  ConnectionSaveInput,
+  ConnectionTestResult,
+  ToolConnection,
+  ToolConnectionInput,
+} from "./toolConnections.ts"
+import type { HeldToolView } from "./toolReview.ts"
 import type { ApprovalAnswer } from "./tools.ts"
 import type { PlaceKind, PlaceSection, Server, UiState, UiStatePatch } from "./ui.ts"
 import type { UsageRange, UsageRow } from "./usage.ts"
@@ -431,6 +438,45 @@ export interface RpcMethods {
   /** Deletes a rule. A rule that was deleted already is not an error. */
   "rules.delete": { input: { id: string }; output: undefined }
   /**
+   * The connections of this computer (spec 018), by name. No secret value is in the answer. The
+   * connections page is for the computer only: none of the connections methods is offered to a
+   * linked device (spec 012, 018).
+   */
+  "connections.list": { input: undefined; output: readonly ToolConnection[] }
+  /** Adds a connection, or changes the one named by `id`. The result is the connection as kept. */
+  "connections.save": { input: ConnectionSaveInput; output: ToolConnection }
+  /**
+   * Connects once and gives the tools, or the reason of the failure. With `id` and no
+   * `connection`, it tests the saved connection and keeps the tools it read. With `connection`,
+   * it tests the form as it is; a value that is left empty for a saved secret uses the saved value.
+   */
+  "connections.test": {
+    input: { id?: string; connection?: ToolConnectionInput }
+    output: ConnectionTestResult
+  }
+  /** Turns a connection on or off. Off stops it at once. */
+  "connections.setEnabled": { input: { id: string; enabled: boolean }; output: ToolConnection }
+  /** Turns one tool of a connection on or off. A tool that is off is given to no agent. */
+  "connections.setTool": {
+    input: { id: string; tool: string; enabled: boolean }
+    output: ToolConnection
+  }
+  /**
+   * The tools of a connection that wait for the user's review (spec 018, "Tool review"), each with
+   * the reviewed text and the text that the connection offers now. This computer only.
+   */
+  "connections.held": { input: { id: string }; output: readonly HeldToolView[] }
+  /**
+   * Accepts held tools: each becomes a reviewed tool with the text that the user saw. A tool whose
+   * `key` is not the one of the text that the connection offers now stays held. This computer only.
+   */
+  "connections.accept": {
+    input: { id: string; tools: readonly { name: string; key: string }[] }
+    output: ToolConnection
+  }
+  /** Removes a connection, its saved secrets and its rules. The action log keeps its entries. */
+  "connections.delete": { input: { id: string }; output: undefined }
+  /**
    * The saved secrets of this computer (spec 020), never a value. Not offered to a linked device,
    * and a value never goes over a link.
    */
@@ -705,6 +751,8 @@ export interface RpcEvents {
   "actionLog.changed": Record<string, never>
   /** A permission rule was added, changed or deleted, or an agent with rules was deleted. */
   "rules.changed": Record<string, never>
+  /** A connection was added, changed, turned on or off, tested, started, or removed (spec 018). */
+  "connections.changed": Record<string, never>
   /** A saved secret was added, used, replaced or deleted. */
   "secrets.changed": Record<string, never>
   /** An article, a source or the change list of an agent changed. */

@@ -7,6 +7,7 @@ import {
   createAgent,
   freshUserData,
   launch,
+  pickRole,
   resizeWindow,
   shot,
   shotsDir,
@@ -86,7 +87,7 @@ const makeHome = () => {
 const createAgentWithRole = async (page: Page, name: string, role: string) => {
   await page.getByTestId("new-agent").click()
   await page.getByTestId("agent-name").fill(name)
-  await page.getByTestId("agent-role").fill(role)
+  await pickRole(page, role)
   await page.getByTestId("model-model").waitFor()
   await page.getByTestId("agent-submit").click()
   await page.getByTestId("chat-start").filter({ hasText: name }).waitFor()

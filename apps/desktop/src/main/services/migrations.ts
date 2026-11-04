@@ -934,4 +934,49 @@ export const migrations: readonly string[] = [
   -- carry it: the link belongs to one computer.
   ALTER TABLE task ADD COLUMN teams_job TEXT;
   `,
+  `
+  -- Connections (spec 018): outside tool providers that speak MCP. A connection belongs to this
+  -- computer and does not sync (spec 019): the table has no dirty trigger. Secret values are in the
+  -- system keychain and never in this table (spec 014): \`env\` and \`headers\` are JSON lists of
+  -- {name, secret, value, saved}. A secret entry has no value here, only \`saved\`, which says that
+  -- the keychain of this computer holds a value. \`tools\` is the list that the connection offered
+  -- the last time that the app read it, and \`tools_off\` holds the names of tools that the user
+  -- turned off. \`agents\` is NULL for all agents, or a JSON list of agent ids.
+  CREATE TABLE tool_connection (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    command TEXT NOT NULL DEFAULT '',
+    args TEXT NOT NULL DEFAULT '[]',
+    folder TEXT NOT NULL DEFAULT '',
+    env TEXT NOT NULL DEFAULT '[]',
+    address TEXT NOT NULL DEFAULT '',
+    headers TEXT NOT NULL DEFAULT '[]',
+    agents TEXT,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    state TEXT NOT NULL DEFAULT 'untested',
+    failure TEXT,
+    tools TEXT NOT NULL DEFAULT '[]',
+    tools_more INTEGER NOT NULL DEFAULT 0,
+    tools_off TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX tool_connection_name ON tool_connection (server_id, name_key);
+  `,
+  `
+  -- Review of connection tools (spec 018, "Tool review"). \`reviewed\` is a JSON list of the tools
+  -- that the user has seen and accepted: for each the name, the description, the names and
+  -- descriptions of its parameters, and the read-only mark. The list \`tools\` keeps the same
+  -- parts for what the connection offered the last time that the app read it, so the table holds
+  -- the old and the new text of a held tool. \`review_adopt\` is 1 for a connection that existed
+  -- before this rule: the tools that it offers at its first start after the update become its
+  -- reviewed tools. A new connection, an imported one and one whose way to the server changed have
+  -- 0 and an empty list, so their tools are all held at the first start. The reviewed tools stay
+  -- on this computer: sync (019) does not carry the table, and an export empties both columns.
+  ALTER TABLE tool_connection ADD COLUMN reviewed TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE tool_connection ADD COLUMN review_adopt INTEGER NOT NULL DEFAULT 0;
+  UPDATE tool_connection SET review_adopt = 1;
+  `,
 ]

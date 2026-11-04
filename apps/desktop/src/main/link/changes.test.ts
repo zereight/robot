@@ -4,6 +4,7 @@ import type { Agent, DevicesState, PlaceSection, RpcResult, UserSection } from "
 import { Effect } from "effect"
 import { runRequest } from "../rpc.ts"
 import { Activity } from "../services/Activity.ts"
+import { Connections } from "../services/Connections.ts"
 import { Database } from "../services/Database.ts"
 import { Devices } from "../services/Devices.ts"
 import { Memory } from "../services/Memory.ts"
@@ -698,6 +699,31 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     ["skills.draft", { requestId: "r", source: { kind: "task", id: "x" } }],
     ["skills.draft", { requestId: "r", source: { kind: "memory", id: "x" } }],
     ["skills.draftCancel", { requestId: "r" }],
+    // Connections are added and changed on the computer only, and they never sync (spec 012, 018).
+    ["connections.list", undefined],
+    [
+      "connections.save",
+      {
+        connection: {
+          name: "Notes",
+          kind: "program",
+          command: "notes-server",
+          args: [],
+          folder: "",
+          env: [],
+          address: "",
+          headers: [],
+          agents: "all",
+        },
+        confirmed: true,
+      },
+    ],
+    ["connections.test", { id: "x" }],
+    ["connections.setEnabled", { id: "x", enabled: true }],
+    ["connections.setTool", { id: "x", tool: "echo", enabled: false }],
+    ["connections.held", { id: "x" }],
+    ["connections.accept", { id: "x", tools: [{ name: "echo", key: "k" }] }],
+    ["connections.delete", { id: "x" }],
     ["knowledge.list", { agentId: "x" }],
     ["knowledge.get", { agentId: "x", file: "a.md" }],
     ["knowledge.save", { agentId: "x", file: "a.md", text: "t" }],
@@ -737,6 +763,8 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
       // No section was made, no knowledge of the agent was opened, no file was written.
       const lists = await sectionsOf(p)
       expect(lists.flatMap((s) => s.sections)).toEqual([])
+      // No connection was made on the server by a request of a client.
+      expect(await p.server.runtime.runPromise(Connections.use((c) => c.list))).toEqual([])
       expect(value<Agent>(await p.onServer("agents.get", { id: server.id })).knowledgeEnabled).toBe(
         true,
       )
@@ -824,5 +852,52 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     const crew = after.find((s) => s.id === "agents")?.sections[0]
     expect(crew?.name).toBe("Crew")
     expect(crew?.places.map((x) => x.id).sort()).toEqual([ada.id, bob.id].sort())
+  }, 30_000)
+
+  test("the list of places carries the role line of each agent; a change of it is pushed (spec 012)", async () => {
+    const p = await pair(false)
+    const ada = value<Agent>(
+      await p.onServer("agents.create", make(p.serverId, "Ada", { role: "Designer" })),
+    )
+    const bob = value<Agent>(await p.onServer("agents.create", make(p.serverId, "Bob")))
+    const channel = value<{ id: string }>(
+      await p.onServer("channels.create", {
+        serverId: p.serverId,
+        name: "launch",
+        topic: "",
+        memberIds: [ada.id, bob.id],
+        leadId: null,
+      }),
+    )
+    const roleOf = async (id: string) => {
+      const list = value<PlaceSection[]>(await p.ask("places.list", { serverId: p.serverId }))
+      const place = list.flatMap((s) => [...s.places, ...s.sections.flatMap((u) => u.places)])
+      return place.find((x) => x.id === id)
+    }
+
+    // The answer holds the role line of an agent. An agent with none, and a channel, send none.
+    expect((await roleOf(ada.id))?.role).toBe("Designer")
+    expect(await roleOf(bob.id)).not.toHaveProperty("role")
+    expect(await roleOf(channel.id)).not.toHaveProperty("role")
+
+    // A change of the role line is pushed, and the next answer holds it.
+    const pushes = () => p.client.events.filter((e) => e.event === "places.changed").length
+    const before = pushes()
+    await p.onServer("agents.update", { id: ada.id, patch: { role: "Writer" } })
+    await waitFor(pushes, (n) => n > before)
+    expect(pushes()).toBeGreaterThan(before)
+    expect((await roleOf(ada.id))?.role).toBe("Writer")
+
+    // A change of the name is pushed too.
+    const next = pushes()
+    await p.onServer("agents.update", { id: ada.id, patch: { name: "Ada L" } })
+    await waitFor(pushes, (n) => n > next)
+    expect((await roleOf(ada.id))?.name).toBe("Ada L")
+
+    // Removing the role line removes the field, so the badge leaves.
+    const last = pushes()
+    await p.onServer("agents.update", { id: ada.id, patch: { role: "" } })
+    await waitFor(pushes, (n) => n > last)
+    expect(await roleOf(ada.id)).not.toHaveProperty("role")
   }, 30_000)
 })

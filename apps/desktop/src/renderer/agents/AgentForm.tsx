@@ -57,6 +57,7 @@ import styles from "./agents.module.css"
 import { Face, faceColour } from "./Face.tsx"
 import { InstructionHistory } from "./InstructionHistory.tsx"
 import { MemoryPanel } from "./MemoryPanel.tsx"
+import { RoleField } from "./RoleField.tsx"
 
 export interface AgentFormValues {
   name: string
@@ -183,7 +184,7 @@ export const AgentForm = (props: AgentFormProps) => {
   const [busy, setBusy] = createSignal(false)
   let fileInput: HTMLInputElement | undefined
   let nameInput: HTMLInputElement | undefined
-  let roleInput: HTMLInputElement | undefined
+  let roleInput: HTMLButtonElement | undefined
 
   const face = () => pickedFace() ?? faceFromName(name().trim() || "?")
   const nameLength = () => charLength(name().trim())
@@ -431,19 +432,16 @@ export const AgentForm = (props: AgentFormProps) => {
         </Show>
       </div>
 
-      <label class={styles.field}>
-        <span class={styles.fieldTop}>
-          <span class={styles.label}>{t("agents.field.role")}</span>
-          <Counter used={charLength(role())} max={AGENT_ROLE_MAX} />
-        </span>
-        <input
-          ref={roleInput}
-          class={styles.input}
+      <div class={styles.field}>
+        <span class={styles.label}>{t("agents.field.role")}</span>
+        <RoleField
           value={role()}
-          onInput={(e) => setRole(e.currentTarget.value)}
-          aria-invalid={shownRoleProblem() !== undefined}
-          aria-describedby={shownRoleProblem() ? roleErrorId : undefined}
-          data-testid="agent-role"
+          onChange={setRole}
+          triggerRef={(element) => {
+            roleInput = element
+          }}
+          invalid={shownRoleProblem() !== undefined}
+          describedBy={shownRoleProblem() ? roleErrorId : undefined}
         />
         <span class={styles.hint}>{t("agents.field.role.hint")}</span>
         <Show when={shownRoleProblem()}>
@@ -458,7 +456,7 @@ export const AgentForm = (props: AgentFormProps) => {
             </span>
           )}
         </Show>
-      </label>
+      </div>
 
       <label class={styles.field}>
         <span class={styles.label}>{t("agents.field.instructions")}</span>

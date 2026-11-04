@@ -108,6 +108,13 @@ describe("client requests", () => {
       "rules.add",
       "rules.update",
       "rules.delete",
+      // Connections are added and edited on the computer only, and they never sync (spec 018, 019).
+      "connections.list",
+      "connections.save",
+      "connections.test",
+      "connections.setEnabled",
+      "connections.setTool",
+      "connections.delete",
       "actionLog.list",
       "browser.control",
       "data.export",

@@ -1,4 +1,5 @@
 import {
+  connectionToolLabel,
   fileAccess,
   type LoggedStep,
   loggedKind,
@@ -42,16 +43,28 @@ export const stepWatch = (options: StepWatchOptions): StepWatch => {
   let hit = false
   const recorded = new Set<string>()
 
-  const log = (name: string, input: string, result: LoggedStep["result"], callId: string) => {
+  const log = (
+    name: string,
+    input: string,
+    result: LoggedStep["result"],
+    callId: string,
+    part?: MessagePart,
+  ) => {
     if (recorded.has(callId)) return
     recorded.add(callId)
     const kind = loggedKind(name)
     if (!kind) return
+    // A tool of a connection is logged with the connection name and the tool name, never with
+    // the arguments (spec 007, 018).
+    const note = part?.kind === "tool" ? part.connection : undefined
     options.record({
       callId,
       kind,
       access: kind === "file" ? fileAccess(name) : null,
-      target: stepTarget(name, input),
+      target:
+        note?.kind === "call"
+          ? stepTarget(name, input, connectionToolLabel(note.connection, note.tool))
+          : stepTarget(name, input),
       result,
     })
   }
@@ -71,6 +84,7 @@ export const stepWatch = (options: StepWatchOptions): StepWatch => {
             ? "ran"
             : "failed",
         call.id,
+        parts?.find((p) => p.kind === "tool" && p.id === call.id),
       )
       ended++
       if (!hit && ended >= options.limit) {
@@ -83,7 +97,7 @@ export const stepWatch = (options: StepWatchOptions): StepWatch => {
       // the user did not start.
       for (const part of parts) {
         if (part.kind === "tool" && part.state === "running") {
-          log(part.name, part.input, "stopped", part.id)
+          log(part.name, part.input, "stopped", part.id, part)
         }
       }
     },

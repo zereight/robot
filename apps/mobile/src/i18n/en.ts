@@ -99,6 +99,7 @@ export const en = {
   "places.working": "working",
   "places.unread": "{count} unread",
   "places.row": "{name}, {details}",
+  "places.role": "Role: {role}",
   "places.section.open": "{name}, open",
   "places.section.closed": "{name}, closed",
 
@@ -152,6 +153,8 @@ export const en = {
   "chat.edited": "edited",
   "chat.note.compact_failed": "The compact failed: {reason} The turn went on without it.",
   "chat.note.watch": "{routine}: no change.",
+  "chat.note.connection_down": "The connection {name} is not available.",
+  "chat.note.connection_held": "Tools of the connection {name} wait for your review.",
   "chat.note.handed_over": "Handed over to {name}",
   "chat.note.starter.routine.limit":
     "Not made: the routine “{name}”. The server has no room for more routines.",
@@ -167,6 +170,7 @@ export const en = {
   "tool.refused": "Refused: read only",
   "tool.refusedRule": "Denied by a rule",
   "tool.refusedAddress": "Refused: this address is not allowed",
+  "tool.searchTools": "Searched tools: {words} · found: {found}",
   "tool.ruleAllowed": "Allowed by a rule",
   "tool.unreadable": "A rule cannot be read, so this step asks you.",
   "tool.details": "Details",

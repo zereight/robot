@@ -123,9 +123,10 @@ const firstField = (input: string): string => {
  * The short target of a step. A tool of a connection names the connection and the tool, never
  * the arguments. A secret in the text is hidden, and the text is cut.
  */
-export const stepTarget = (toolName: string, input: string): string => {
+export const stepTarget = (toolName: string, input: string, connection?: string): string => {
   const kind = loggedKind(toolName)
-  const raw = kind === "connection" ? toolName : firstField(input)
+  // `connection` is "connection name · tool name", when the app knows the names (spec 018).
+  const raw = kind === "connection" ? (connection ?? toolName) : firstField(input)
   const clean = redactSecrets(raw.replace(/\s+/g, " ").trim())
   return [...clean].length > TARGET_MAX ? [...clean].slice(0, TARGET_MAX).join("") : clean
 }

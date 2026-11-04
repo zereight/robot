@@ -832,3 +832,40 @@ describe("the step of permission rules (S30)", () => {
     ])
   })
 })
+
+describe("the migration for the review of connection tools (spec 018)", () => {
+  const REVIEW = migrations.findIndex((sql) => sql.includes("ADD COLUMN review_adopt"))
+  const insert = (db: DatabaseSync, id: string) =>
+    db
+      .prepare(
+        `INSERT INTO tool_connection (id, server_id, name, name_key, kind, enabled, tools, created_at)
+         VALUES (?, 's', ?, ?, 'program', 1, '[{"name":"echo","description":"Says it."}]', 1)`,
+      )
+      .run(id, id, id)
+
+  test("it only adds columns that have a default", () => {
+    // Later steps may follow it.
+    expect(REVIEW).toBeGreaterThan(0)
+    expect(migrations[REVIEW]).toContain("ADD COLUMN reviewed TEXT NOT NULL DEFAULT '[]'")
+    expect(migrations[REVIEW]).toContain("ADD COLUMN review_adopt INTEGER NOT NULL DEFAULT 0")
+  })
+
+  test("a connection from before keeps its row and is marked to take its tools at its first start; a new one is not", () => {
+    const db = upTo(REVIEW)
+    insert(db, "old")
+    db.exec(migrations[REVIEW] ?? "")
+    expect(
+      db
+        .prepare("SELECT reviewed, review_adopt, tools FROM tool_connection WHERE id = 'old'")
+        .get(),
+    ).toEqual({
+      reviewed: "[]",
+      review_adopt: 1,
+      tools: '[{"name":"echo","description":"Says it."}]',
+    })
+    insert(db, "new")
+    expect(
+      db.prepare("SELECT reviewed, review_adopt FROM tool_connection WHERE id = 'new'").get(),
+    ).toEqual({ reviewed: "[]", review_adopt: 0 })
+  })
+})

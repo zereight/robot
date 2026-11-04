@@ -235,6 +235,56 @@ describe("export and import", () => {
     expect(log).toMatchObject([{ decidedBy: "allow_rule", rule: { id: own.id, deleted: false } }])
   })
 
+  test("the reviewed tools of a connection stay out of the archive; an import brings the connection back off, with none (spec 018, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-review.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((x) => x.local))
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    const tools = JSON.stringify([
+      { name: "echo", description: "Says it.", params: [], readOnly: false },
+    ])
+    const add = (id: string, name: string, adopt: number, reviewed: string) =>
+      db.run(
+        `INSERT INTO tool_connection
+           (id, server_id, name, name_key, kind, command, enabled, state, tools, reviewed, review_adopt, created_at)
+         VALUES (?, ?, ?, ?, 'program', 'notes-server', 1, 'connected', ?, ?, ?, 1)`,
+        id,
+        local.id,
+        name,
+        name.toLowerCase(),
+        tools,
+        reviewed,
+        adopt,
+      )
+    // One connection with reviewed tools, and one from before the review that waits for its first start.
+    add("c1", "Notes", 0, tools)
+    add("c2", "Journal", 1, "[]")
+    await a.run(Data.use((d) => d.export()))
+    const entries = unzipSync(readFileSync(out))
+    const archived = join(testPlatform().dataDir, "archived-review.db")
+    writeFileSync(archived, entries["robot.db"] as Uint8Array)
+    const inArchive = new DatabaseSync(archived)
+    expect(
+      inArchive.prepare("SELECT id, reviewed, review_adopt FROM tool_connection ORDER BY id").all(),
+    ).toEqual([
+      { id: "c1", reviewed: "[]", review_adopt: 0 },
+      { id: "c2", reviewed: "[]", review_adopt: 0 },
+    ])
+    inArchive.close()
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(
+      bDb.all(
+        "SELECT id, enabled, state, tools, reviewed, review_adopt FROM tool_connection ORDER BY id",
+      ),
+    ).toEqual([
+      { id: "c1", enabled: 0, state: "untested", tools: "[]", reviewed: "[]", review_adopt: 0 },
+      { id: "c2", enabled: 0, state: "untested", tools: "[]", reviewed: "[]", review_adopt: 0 },
+    ])
+  })
+
   // Each export works in its own folder and removes it at the end, so two exports at once do not
   // meet in one temporary file, and none stays behind.
   test("two exports at once both finish, and no temporary folder stays", async () => {

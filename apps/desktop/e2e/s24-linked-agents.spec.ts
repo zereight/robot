@@ -6,6 +6,7 @@ import {
   freshUserData,
   type Launched,
   launch,
+  pickRole,
   resizeWindow,
   shot,
 } from "./harness.ts"
@@ -321,7 +322,7 @@ test("linked agents: a client with the switch makes and changes agents, channels
 
     // The user of MacBook 2 changes the agent: the record "Last changed by" goes.
     await two.page.getByTestId("chat-header-agent").click()
-    await two.page.getByTestId("agent-role").fill("Editor")
+    await pickRole(two.page, "Editor")
     await two.page.getByTestId("agent-submit").click()
     await two.page.getByTestId("chat-header-agent").click()
     await expect(two.page.getByTestId("agent-changed-by")).toHaveCount(0)

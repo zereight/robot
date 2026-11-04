@@ -83,9 +83,9 @@ tag, so the user reads their work as they read messages from colleagues.
   semibold weights only, one line icon set, motion under 300 ms that respects reduced motion
   settings.
 - Light is the one exception to the flat style. It shows who or what is here, and nothing else:
-  the app mark and the avatars (see 002, "Avatars") glow, and so does the badge of the app mark
-  on a working agent (see 003, "States"). Light is not used to decorate a surface, a button or a
-  text. Light that does not belong to the app mark or to an avatar needs a change of this spec.
+  the app mark glows, an avatar glows in the dark theme (see 002, "Avatars"), and so does the
+  badge of the app mark on a working agent (see 003, "States"). Light is not used to decorate a
+  surface, a button or a text. Light that does not belong to the app mark or to an avatar needs a change of this spec.
 
 ## Out of scope
 

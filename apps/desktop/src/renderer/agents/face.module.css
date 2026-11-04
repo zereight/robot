@@ -13,7 +13,7 @@
   transition: fill var(--motion-medium) var(--ease-out);
 }
 
-/* A thin rim of light, so that the dark tile keeps its shape on a dark surface. */
+/* A thin rim, so that the disc keeps its shape on a surface of its own tone. */
 .rim {
   transition: stroke var(--motion-medium) var(--ease-out);
 }
@@ -51,4 +51,12 @@
     filter: blur(2px);
     transform: scale(0.92);
   }
+}
+
+/*
+ * A change of the theme changes every avatar at once, with no motion (spec 002). The soft changes
+ * above are for a new hue. They are off while the theme changes (see `applyAppearance`).
+ */
+:global(:root[data-theme-switching]) :is(.skin, .rim, .layer, .picture) {
+  transition: none;
 }
