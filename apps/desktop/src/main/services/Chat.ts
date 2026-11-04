@@ -230,7 +230,9 @@ export interface ChatService {
   history(agentId: string, threadId?: string | null): Effect.Effect<ChatHistory>
   /**
    * Sends at once when the agent is free. While it works, a message of the user joins the turn
-   * (spec 003), or waits in the queue by the setting, by the program, or when it has an origin.
+   * (spec 003), or waits in the queue by the setting, by the program, or when it has an origin. A
+   * message with the origin "teams" (spec 028) never joins a turn: it waits in a queue of its own
+   * that the windows do not see, and starts its own turn.
    */
   send(input: ChatSend, origin?: TaskOrigin): Effect.Effect<{ queued: boolean }, AppError>
   /** Sends a queued message into the turn that runs now. */
