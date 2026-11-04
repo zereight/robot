@@ -456,6 +456,7 @@ export const en = {
   "chat.stop": "Stop",
   "chat.placeholder": "Message {name}",
   "chat.working": "Working…",
+  "quiet.line": "No answer from {name} for {time}",
   "chat.stopped": "Stopped",
   "chat.retry": "Retry",
   "chat.limitResets": "The limit resets at {time}.",

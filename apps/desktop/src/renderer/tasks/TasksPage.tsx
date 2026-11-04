@@ -42,6 +42,7 @@ import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { showToast } from "../ui/toast.ts"
+import { TaskStateText } from "./TaskStateText.tsx"
 import styles from "./tasks.module.css"
 
 // A reason with no text of its own shows the general error text.
@@ -227,7 +228,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 data-state={d().task.state}
               >
                 <StateIcon state={d().task.state} />
-                {t(`tasks.state.${d().task.state}` as MessageKey)}
+                <TaskStateText task={d().task} />
               </span>
             </p>
             <Show when={d().task.originName !== null}>
@@ -317,7 +318,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                     <li style={{ "padding-left": `${node.depth * 16}px` }}>
                       <span data-state={node.task.state} class={styles.state}>
                         <StateIcon state={node.task.state} />
-                        {t(`tasks.state.${node.task.state}` as MessageKey)}
+                        <TaskStateText task={node.task} />
                       </span>{" "}
                       {node.task.agentName}: {node.task.label}
                     </li>
@@ -638,7 +639,7 @@ export const TasksPage = () => {
                     <td>
                       <span class={styles.state} data-state={task.state} data-testid="task-state">
                         <StateIcon state={task.state} />
-                        {t(`tasks.state.${task.state}` as MessageKey)}
+                        <TaskStateText task={task} />
                       </span>
                       <Show when={task.waitsFor}>
                         {(name) => (

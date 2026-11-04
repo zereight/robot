@@ -157,6 +157,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.retryNote": "첫 시도에서 무언가를 바꿨을 수 있어요. 다시 하기 전에 확인해 주세요.",
   "chat.retryAnyway": "그래도 다시 시도",
   "chat.working": "작업 중…",
+  "chat.quiet": "{name}에서 {time} 동안 응답이 없어요",
   "chat.placeholder": "{name}에게 메시지 보내기",
   "chat.placeholder.channel": "#{name}에 메시지 보내기",
   "chat.mentions": "멤버",

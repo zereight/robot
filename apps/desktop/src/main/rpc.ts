@@ -45,6 +45,7 @@ import type { AppServices } from "./layers.ts"
 import { Id, modelChoices, ownServer, strict } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { ActionLog } from "./services/ActionLog.ts"
+import { Activity } from "./services/Activity.ts"
 import { AgentFiles } from "./services/AgentFiles.ts"
 import { AgentSettings } from "./services/AgentSettings.ts"
 import { Agents } from "./services/Agents.ts"
@@ -1321,6 +1322,7 @@ export const handlers: Handlers = {
       done,
     ),
   "island.get": () => Notifier.use((n) => Effect.succeed(n.island())),
+  "quiet.list": () => Activity.use((a) => Effect.sync(() => a.quietTurns())),
   "island.respond": (input) =>
     decode(Schema.Struct({ agentId: Schema.String, callId: Schema.String, answer: Schema.String }))(
       input,

@@ -196,6 +196,12 @@ export interface IslandRow {
   readonly doing: IslandDoing
   /** When the current task started, in ms. */
   readonly since: number
+  /**
+   * Set while the turn of the row is quiet (spec 005, "Quiet line"): the name, and the seconds on
+   * the quiet clock when this state was made. The card counts on from there. The row shows the
+   * quiet line in place of `doing`.
+   */
+  readonly quiet: { readonly name: string; readonly seconds: number } | null
 }
 
 /** The result card. `id` is new for each result, so a newer result replaces an older one. */

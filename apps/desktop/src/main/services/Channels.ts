@@ -104,7 +104,7 @@ import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
 import { SettingsStore } from "./Settings.ts"
-import { closing, turnWatch } from "./silence.ts"
+import { closing, quietReporter, turnWatch } from "./silence.ts"
 import { stepWatch } from "./stepWatch.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
@@ -595,6 +595,25 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             if (progress === "started") attemptStarted = true
             tasks.setProgress(o.taskId, progress)
           },
+          // The quiet line (spec 005): the plan step of this part reads it while the turn shows
+          // no sign of life.
+          onQuiet: quietReporter(
+            agentActivity,
+            {
+              taskId: o.taskId,
+              agentId: o.agent.id,
+              threadId: null,
+              source: "channel",
+              sourceId: o.channel.id,
+            },
+            () =>
+              (running.model_account_id
+                ? Effect.runSync(providers.accounts).find((a) => a.id === running.model_account_id)
+                    ?.name
+                : undefined) ??
+              running.model_name ??
+              "",
+          ),
           userHoldsBrowser: () => tools.browserState(o.agent.id).control,
         })
         let lastEmit = 0

@@ -26,6 +26,7 @@ import {
   numberedNames,
   parseAddress,
   parseLink,
+  type QuietState,
   type RpcResult,
   type Server,
   type ServerEntry,
@@ -152,6 +153,26 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
         notifier.notifyLinked({ linkId, serverId: link.serverId, serverName: name }, notice)
       }
 
+      /**
+       * The turns of a linked server that are quiet now (spec 005, "Quiet line"). They are not
+       * kept: when the link is not online the window shows none, and when it is back the server
+       * is asked again, since the pushes of the time away were not seen.
+       */
+      const showQuiet = (linkId: string, state: QuietState) => {
+        const serverId = devices.link(linkId)?.serverId
+        if (serverId) bus.window("quiet.changed", state, serverId)
+      }
+      const readQuiet = async (linkId: string) => {
+        try {
+          const state = (await connections.get(linkId)?.request("quiet.list")) as
+            | QuietState
+            | undefined
+          if (state && Array.isArray(state.turns)) showQuiet(linkId, state)
+        } catch {
+          // A server that does not answer shows no quiet line.
+        }
+      }
+
       /** What waited while this computer was away still notifies, once, when the link is back. */
       const catchUp = async (linkId: string) => {
         try {
@@ -177,8 +198,9 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
           },
           ...(maxDelay ? { maxDelayMs: maxDelay } : {}),
           hooks: {
-            onState: (_state, side) => {
+            onState: (state, side) => {
               sides.set(row.id, side)
+              if (state !== "online") showQuiet(row.id, { turns: [] })
               serversChanged()
             },
             onEvent: (event, payload) => {
@@ -209,6 +231,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
               }
               void loadAccess(row.id)
               void catchUp(row.id)
+              void readQuiet(row.id)
               for (const h of onlineHandlers) h(row.id)
             },
             onRevoked: () => {

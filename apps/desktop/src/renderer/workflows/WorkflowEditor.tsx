@@ -11,6 +11,7 @@ import {
   NOTIFY_TITLE_MAX,
   type Note,
   nodeNumbers,
+  type RunStep,
   type Schedule,
   SILENT_CODE,
   STEP_EFFORTS,
@@ -37,6 +38,7 @@ import { ScheduleFields } from "../routines/ScheduleFields.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
+import { quietOfTaskLine } from "../state/quiet.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { showToast } from "../ui/toast.ts"
@@ -74,6 +76,24 @@ const blank = (
     case "notify":
       return { ...base, kind, title: "" }
   }
+}
+
+/**
+ * The state of a step of a run as text. While the turn of a running step is quiet, the quiet line
+ * replaces "Running" (spec 005, "Quiet line"; 010).
+ */
+const StepStateText = (props: { step: Pick<RunStep, "state" | "taskId"> }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const quiet = () =>
+    props.step.state === "running"
+      ? quietOfTaskLine(ui.linked() ? ui.server()?.id : undefined, props.step.taskId)
+      : undefined
+  return (
+    <Show when={quiet()} fallback={t(`workflows.stepState.${props.step.state}` as MessageKey)}>
+      {(q) => t("quiet.line", { name: q().name, time: q().time })}
+    </Show>
+  )
 }
 
 export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () => void }) => {
@@ -1258,8 +1278,12 @@ export const WorkflowEditor = (props: { workflow: Workflow | null; onBack: () =>
                       >
                         <summary>
                           <span>{s.name}</span>
-                          <span class={styles.runState}>
-                            {t(`workflows.stepState.${s.state}` as MessageKey)}
+                          <span
+                            class={styles.runState}
+                            data-testid="wf-run-step-state"
+                            data-state={s.state}
+                          >
+                            <StepStateText step={s} />
                           </span>
                         </summary>
                         <Show when={s.input}>

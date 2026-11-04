@@ -105,7 +105,7 @@ import { PlaceMarks } from "./PlaceMarks.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
-import { closing, turnWatch } from "./silence.ts"
+import { closing, quietReporter, turnWatch } from "./silence.ts"
 import { stepWatch } from "./stepWatch.ts"
 import { type RetryOptions, Tasks } from "./Tasks.ts"
 import type { ToolContext } from "./Tools.ts"
@@ -668,6 +668,16 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const kind = accountId ? providers.runtimeKind(accountId) : null
         return (kind ? runtimeModel(kind, model ?? "")?.label : undefined) ?? model ?? ""
       }
+      /**
+       * The name that the quiet line shows: the model account, or the vendor program (spec 005,
+       * "Quiet line"). The model name stands in when the account is gone.
+       */
+      const accountName = (accountId: string | null, model: string | null) =>
+        (accountId
+          ? Effect.runSync(providers.accounts).find((a) => a.id === accountId)?.name
+          : undefined) ??
+        model ??
+        ""
       const messageRow = (id: string) =>
         db.get<MessageRow>("SELECT * FROM message WHERE id = ?", id)
       /** The messages of one conversation, oldest first. */
@@ -1167,6 +1177,19 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             if (progress === "started") attemptStarted = true
             tasks.setProgress(task.id, progress)
           },
+          // The quiet line (spec 005): every place that shows this turn reads it while the turn
+          // shows no sign of life.
+          onQuiet: quietReporter(
+            activity,
+            {
+              taskId: task.id,
+              agentId,
+              threadId: place.threadId,
+              source: task.source,
+              sourceId: task.sourceId,
+            },
+            () => accountName(running.model_account_id, running.model_name),
+          ),
           userHoldsBrowser: () => tools.browserState(agentId).control,
         })
         let lastEmit = 0
