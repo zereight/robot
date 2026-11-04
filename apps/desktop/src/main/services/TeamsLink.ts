@@ -1234,7 +1234,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           attention: Effect.sync((): TeamsAttention | null => {
             const r = row()
             const need = teamsNeed(run.state)
-            if (!r || r.enabled !== 1 || need === null) return null
+            if (r?.enabled !== 1 || need === null) return null
             return {
               state: need,
               reason: need === "paused" ? run.pause : null,
