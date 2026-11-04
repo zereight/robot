@@ -82,6 +82,21 @@ test("channels: create, split a job, chips, summary, stop, mention, pick", async
   await page.getByTestId("jump-back").click()
   await expect(page.getByTestId("jump-back")).toHaveCount(0)
 
+  // Scrolling up shows "Jump to latest". A short window makes the list scroll. The first
+  // scroll goes to the end, so the scroll back to the top always moves and sends a scroll event.
+  await resizeWindow(app, 1300, 400)
+  await page.getByTestId("chat-scroller").evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  await page.getByTestId("chat-scroller").evaluate((el) => {
+    el.scrollTop = 0
+  })
+  await expect(page.getByTestId("jump-latest")).toBeVisible()
+  await shot(page, "s9-07-jump-latest")
+  await page.getByTestId("jump-latest").click()
+  await expect(page.getByTestId("jump-latest")).toHaveCount(0)
+  await resizeWindow(app, 1300, 860)
+
   // A long part shows plan steps; stopping the channel cancels it and the steps leave.
   await post(page, "split long job")
   await expect(page.getByTestId("plan-step")).toHaveCount(1, { timeout: 15_000 })
