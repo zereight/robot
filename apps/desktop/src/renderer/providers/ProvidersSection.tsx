@@ -25,6 +25,7 @@ const kinds: readonly ProviderKind[] = [
   "muse",
   "pi",
   "opencode",
+  "cursor",
   "openai",
   "anthropic",
   "custom",

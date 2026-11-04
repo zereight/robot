@@ -11,7 +11,7 @@ const allowedLatin = new Set(["ROBot", "English", "OpenAI", "Anthropic", "API", 
 // Names of products are not translated.
 // A file name is a name too: the text says where the report is saved, and the file has one name.
 const productNames =
-  /Claude Code|Muse Code|Codex|Tailscale|Microsoft|Teams|opencode|\bpi\b|diagnostic-report\.txt/g
+  /Claude Code|Muse Code|Codex|Tailscale|Microsoft|Teams|opencode|\bpi\b|diagnostic-report\.txt|Cursor/g
 
 const latinWords = async (page: Page, selector: string) => {
   const text = await page.locator(selector).evaluate((el) => {

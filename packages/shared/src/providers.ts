@@ -109,7 +109,7 @@ export const settledEffort = (
  * Agent runtimes: the coding agent programs of the model vendors. The user signs in to them
  * with a subscription, so there is no key and no address.
  */
-export const RUNTIME_KINDS = ["claude_code", "codex", "muse", "pi", "opencode"] as const
+export const RUNTIME_KINDS = ["claude_code", "codex", "muse", "pi", "opencode", "cursor"] as const
 export type RuntimeKind = (typeof RUNTIME_KINDS)[number]
 
 export const ProviderKind = Schema.Literals(["openai", "anthropic", "custom", ...RUNTIME_KINDS])
@@ -121,7 +121,7 @@ export const isRuntimeKind = (kind: string): kind is RuntimeKind =>
 /**
  * True when the program reads a message of the user in the middle of a turn, as the app runs it
  * (spec 003). Claude Code reads a stream of messages on its input (`--input-format stream-json`).
- * Codex (`exec`), Muse Code, pi and opencode get one prompt when they start.
+ * Codex (`exec`), Muse Code, pi, opencode and Cursor get one prompt when they start.
  */
 export const runtimeTakesInput = (kind: RuntimeKind): boolean => kind === "claude_code"
 
@@ -134,6 +134,7 @@ export const defaultBaseUrls: Record<ProviderKind, string> = {
   muse: "",
   pi: "",
   opencode: "",
+  cursor: "",
 }
 
 /**
@@ -325,7 +326,7 @@ export interface RuntimeStatus {
 
 /**
  * The models of a runtime that has a fixed set. The programs keep no list that the app can read,
- * except pi and opencode, whose lists are asked from the program and are empty here.
+ * except pi, opencode and Cursor, whose lists are asked from the program and are empty here.
  */
 export const runtimeModels = (kind: RuntimeKind): readonly ModelInfo[] =>
   kind === "claude_code"
@@ -336,7 +337,7 @@ export const runtimeModels = (kind: RuntimeKind): readonly ModelInfo[] =>
         { id: "sonnet", label: "Sonnet 5.5", efforts: CLAUDE_EFFORTS },
         { id: "haiku", label: "Haiku 5.5", efforts: CLAUDE_EFFORTS },
       ]
-    : kind === "pi" || kind === "opencode"
+    : kind === "pi" || kind === "opencode" || kind === "cursor"
       ? []
       : [
           {
