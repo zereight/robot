@@ -458,6 +458,8 @@ export const en = {
   "chat.copyCode": "Copy code",
   "picture.load": "Load image",
   "picture.alt.empty": "Image",
+  "picture.enlarge": "Enlarge {name}",
+  "picture.close": "Close",
   "chat.edit": "Edit",
   "chat.edited": "(edited)",
   "chat.save": "Save",
