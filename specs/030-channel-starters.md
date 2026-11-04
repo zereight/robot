@@ -137,7 +137,7 @@ starter with the same job. The language follows the interface at the moment of t
 - A name that is taken, ignoring case, gets a number after the name, as in an import (see 002). This
   applies to the channel name too.
 - The channel name has 1 to 60 characters (see 004). An agent name has 1 to 40 characters (see 002).
-  A text box refuses more characters than its limit.
+  A text box takes no more characters than its limit. A paste over the limit is cut at the limit.
 
 ### Keyboard
 
@@ -254,3 +254,6 @@ starter with the same job. The language follows the interface at the moment of t
     With the Korean interface, "review my code" still ranks "Reviewer" first.
 19. Export a profile with a channel made from "Files", then import the file into an empty profile:
     the channel and its agents come in as an ordinary channel and ordinary agents (see 002 and 004).
+20. Type "review code file folder compare sources": "Recommended" shows three starters, Researcher, Reviewer and Organizer, in that order, with 2 keywords each. Code review and Files, with 1 keyword each, are not shown there. "All starters" still shows all eight starters.
+21. With the goal text empty, open the goal dialog with the keyboard: the text box has the focus. Press Tab: the focus moves to the first row, Assistant. Press Enter: the Assistant starter is picked, as with a click. Open the dialog again, type a goal, and press Escape: the dialog closes, and the goal text is cleared.
+22. Paste 320 characters into the goal text: it keeps the first 300. Type only spaces: "Recommended" is not shown, and "All starters" lists the eight starters. Paste 70 characters into a channel name: the field keeps the first 60.
