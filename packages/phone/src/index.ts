@@ -1,3 +1,4 @@
 export * from "./hub.ts"
+export * from "./orgChart.ts"
 export * from "./places.ts"
 export * from "./storage.ts"

@@ -5,10 +5,12 @@ import { join } from "node:path"
 import { type AsyncSecretStore, type BrowserWebSocketClass, browserSocket } from "@robot/link"
 import {
   MemoryStorage,
+  type OrgChartPhase,
   ATTACH_BYTES as PHONE_ATTACH_BYTES,
   ATTACH_MAX as PHONE_ATTACH_MAX,
   PhoneHub,
   type ServerView,
+  unsupportedByServer,
 } from "@robot/phone"
 import {
   ATTACH_BYTES,
@@ -520,5 +522,76 @@ describe("the phone on a real computer", () => {
     )
     expect(again.channels[0]?.nodes[0]?.name).toBe("Ada L")
     expect(view(phone, link.id).state).toBe("online")
+  }, 30_000)
+  test("the phone watches the org chart: the model, the pushes, nothing held while the server is not online, and a new read when it is back", async () => {
+    const pc = await computer("Studio")
+    const storage = new MemoryStorage()
+    const phone = await openPhone(storage)
+    await phone.setDeviceName("Pixel")
+    const { run } = await pair(pc, phone)
+    const link = await run.done
+    await waitFor(
+      () => view(phone, link.id).state,
+      (s) => s === "online",
+    )
+    await phone.flush()
+    const filesBefore = [...storage.files.keys()].sort()
+
+    const phases: OrgChartPhase[] = []
+    const watch = phone.watchOrgChart(link.id, (p) => phases.push(p))
+    const last = () => phases.at(-1)
+    const names = (p: OrgChartPhase | undefined) =>
+      p?.kind === "ready" ? p.model.channels.flatMap((c) => c.nodes.map((n) => n.name)) : null
+    // The first model comes from the request.
+    await waitFor(last, (p) => p?.kind === "ready")
+    expect(phases[0]).toEqual({ kind: "loading" })
+    expect(names(last())).toEqual(["Ada"])
+
+    // A change on the computer comes as a push. The phone asks nothing again for it.
+    await pc.run(Agents.use((x) => x.update(pc.agent.id, { name: "Ada L" })))
+    await waitFor(last, (p) => names(p)?.[0] === "Ada L")
+
+    // The computer does not accept connections: the phone goes away from "online", and the chart
+    // is not held. The phase is "off", with no model.
+    await pc.run(Devices.use((d) => Effect.promise(() => d.setAccept(false))))
+    await waitFor(
+      () => view(phone, link.id).state,
+      (s) => s !== "online",
+    )
+    await waitFor(last, (p) => p?.kind === "off")
+    const whileAway = phases.length
+
+    // The computer accepts again: the phone reads the chart again by itself.
+    await pc.run(Devices.use((d) => Effect.promise(() => d.setAccept(true))))
+    phone.reconnect(link.id)
+    await waitFor(last, (p) => p?.kind === "ready")
+    expect(phases.slice(whileAway).map((p) => p.kind)).toEqual(["loading", "ready"])
+    expect(names(last())).toEqual(["Ada L"])
+
+    // Nothing of the chart is on the disk of the phone.
+    await phone.flush()
+    expect([...storage.files.keys()].sort()).toEqual(filesBefore)
+
+    // Stopping the watch ends it: a later change tells nobody.
+    watch.stop()
+    const count = phases.length
+    await pc.run(Agents.use((x) => x.update(pc.agent.id, { name: "Ada M" })))
+    await Bun.sleep(600)
+    expect(phases).toHaveLength(count)
+  }, 40_000)
+
+  test("a server answers an unknown request with Not allowed, and that is what the phone takes for an older server", async () => {
+    const pc = await computer("Old")
+    const phone = await openPhone()
+    await phone.setDeviceName("Pixel")
+    const { run } = await pair(pc, phone)
+    const link = await run.done
+    await waitFor(
+      () => view(phone, link.id).state,
+      (s) => s === "online",
+    )
+    const error = await phone.request(link.id, "orgChart.no-such-request", {}).catch((e) => e)
+    expect(error).toMatchObject({ code: "not_allowed" })
+    expect(unsupportedByServer(error)).toBe(true)
   }, 30_000)
 })
