@@ -12,18 +12,26 @@ import {
   emptyTeamsView,
   failureReason,
   holdsChatTitle,
+  isFailure,
+  isTeamsJobKind,
   isTeamsPauseReason,
   isTeamsRecordReason,
+  type JobMessage,
+  jobName,
   type Locale,
+  leadReply,
   lineText,
   lineWord,
   type MessagePart,
   markAllRead,
+  memberAnswer,
+  memberReply,
   messageFiles,
   messageText,
   newReadSet,
   noFailures,
   type OutboxTiming,
+  partHoldsJobBack,
   patchTouchesLocked,
   pickNext,
   readGap,
@@ -51,6 +59,7 @@ import {
   type TeamsChatOpened,
   type TeamsFailCounts,
   type TeamsFields,
+  type TeamsJobKind,
   type TeamsLine,
   type TeamsLinkView,
   type TeamsLogEvent,
@@ -72,6 +81,7 @@ import {
   tidyTeamsFields,
   tooManyLineMayGo,
   translate,
+  waitingKey,
 } from "@robot/shared"
 import { Cause, Context, Effect, Layer } from "effect"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
@@ -770,37 +780,244 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
               return
           }
         }
+        // ----------------------------------------------------------------- Answers for a channel (S104)
+        /** How a channel job began, when a message from Teams began it (spec 028), or null. */
+        const jobKindOf = (taskId: string | null | undefined): TeamsJobKind | null => {
+          if (!taskId) return null
+          const kind = db.get<{ teams_job: string | null }>(
+            "SELECT teams_job FROM task WHERE id = ?",
+            taskId,
+          )?.teams_job
+          return isTeamsJobKind(kind) ? kind : null
+        }
+        /** The messages that a task wrote in a channel, oldest first. */
+        const jobMessages = (taskId: string): JobMessage[] =>
+          db
+            .all<{ kind: string; parts: string }>(
+              "SELECT kind, parts FROM channel_message WHERE task_id = ? AND author = 'agent' ORDER BY created_at, rowid",
+              taskId,
+            )
+            .flatMap((m) => {
+              try {
+                const kind = m.kind === "plan" || m.kind === "summary" ? m.kind : "text"
+                return [{ kind, parts: JSON.parse(m.parts) as MessagePart[] }]
+              } catch {
+                return []
+              }
+            })
+
+        /**
+         * True for a part that the user tried again after its request had ended (spec 028, "A retry
+         * of the task keeps the source"). The lead gives no second summary, so this part answers
+         * for itself. A part that ends while its request is open never does: the lead sums it up.
+         */
+        const lateRetry = (task: Task): boolean => {
+          if (task.parentId === null || task.retryOf === null) return false
+          const old = db.get<{ state: string }>("SELECT state FROM task WHERE id = ?", task.retryOf)
+          const root = db.get<{ finished_at: number | null }>(
+            "SELECT finished_at FROM task WHERE id = ?",
+            task.parentId,
+          )
+          // A part that "Request changes" made follows a part that is done: that is no retry.
+          return (
+            old !== undefined &&
+            old.state !== "done" &&
+            old.state !== "review" &&
+            root?.finished_at != null &&
+            task.createdAt >= root.finished_at
+          )
+        }
+
+        /**
+         * A task of a channel job that a message from Teams began has ended (spec 028, "Answers and
+         * the outbox"). Only the task of the job itself answers: the lead task, or the task of a
+         * member that a mention chose. A part never answers while its request is open; the lead
+         * sums the parts up.
+         * - The lead made parts: the summary. The plan message never goes. No parts: the reply text
+         *   of the lead.
+         * - A member that was chosen: its reply text, with its name and a colon. So does a part that
+         *   the user tried again after the request had ended.
+         * A failed, blocked or stopped job gets the line of the channel, or of the member.
+         */
+        const answerJob = (task: Task) => {
+          const own = jobKindOf(task.id)
+          if (own === null) return
+          const kind: TeamsJobKind | null =
+            task.parentId === null ? own : lateRetry(task) ? "mention" : null
+          if (kind === null) return
+          const r = row()
+          if (!r) return
+          const fields = fieldsOf(r)
+          if (fields.targetKind !== "channel" || fields.targetId !== task.sourceId) return
+          // A task that a restart stopped shows "The app stopped" in the app. Teams gets nothing.
+          if (task.error?.code === "app_stopped") return
+          const why = unavailable(r)
+          if (why)
+            return addRecord(why, {
+              taskId: task.id,
+              placeKind: "channel",
+              placeId: fields.targetId,
+            })
+          const name = jobName(kind, placeNameOf("channel", fields.targetId) ?? "", task.agentName)
+          switch (task.state) {
+            case "done": {
+              const messages = jobMessages(task.id)
+              const reply = kind === "lead" ? leadReply(messages) : memberReply(messages)
+              if (reply.text.trim() !== "") {
+                if (kind === "lead")
+                  makeAnswer(
+                    reply.text,
+                    task.id,
+                    messages.some((m) => m.kind === "plan") ? "summary" : "reply",
+                  )
+                else
+                  makeAnswer(
+                    memberAnswer(localeNow(), task.agentName, reply.text),
+                    task.id,
+                    "member_reply",
+                  )
+              } else makeLine({ kind: "noReply" }, task.id)
+              if (reply.files > 0) makeLine({ kind: "files", count: reply.files }, task.id)
+              return
+            }
+            case "failed":
+            case "blocked":
+              return makeLine(
+                { kind: "failed", name, reason: failureReason(localeNow(), task.error) },
+                task.id,
+              )
+            case "cancelled":
+              return makeLine({ kind: "stopped", name }, task.id)
+            default:
+              return
+          }
+        }
         tasks.onEnd((task) => {
           if (task.source === "teams") answerTask(task)
+          else if (task.source === "channel") {
+            answerJob(task)
+            // A part that fails holds its request back only until the lead sums up. The lead can do
+            // that in less than a second, so the card is not left to the next look of the loop.
+            const r = row()
+            if (r && r.enabled === 1 && task.parentId !== null && isFailure(task.state))
+              scanWaiting(r)
+          }
         })
 
         /**
-         * An approval or a question waits (spec 028, "Answers"). When it holds back work that a
-         * message from Teams started, or holds back a new message from Teams, Teams gets one line
-         * for the card. The line holds no text of the step or of the question.
+         * A card that holds work back and makes one waiting line (spec 028, "Answers and the
+         * outbox"). `due` says if the card holds back work that a message from Teams started, or a
+         * new message from Teams. It is read only for a card that has no line yet.
+         */
+        interface WaitingCard {
+          readonly key: string
+          readonly name: () => string | null
+          readonly due: () => boolean
+        }
+
+        /** The approvals and questions of the agent that is the target. */
+        const agentCards = (agentId: string): WaitingCard[] =>
+          notifier
+            .waitingRequests()
+            .filter((w) => w.agentId === agentId && w.from === null)
+            .map((w) => ({
+              key: waitingKey.card(w.agentId, w.callId),
+              name: () => placeNameOf("agent", w.agentId),
+              due: () => {
+                const messageId = w.target.messageId
+                const started = messageId
+                  ? db.get<{ source: string }>(
+                      "SELECT source FROM task WHERE message_id = ? ORDER BY created_at DESC LIMIT 1",
+                      messageId,
+                    )?.source
+                  : undefined
+                return started === "teams" || chat.teamsWaiting(w.agentId) > 0
+              },
+            }))
+
+        interface PartRow {
+          id: string
+          state: string
+          replaced: number
+          open: number
+        }
+        /**
+         * The cards of the channel that is the target: an approval or a question of a member in a
+         * job that a message from Teams began, a part in review, a failed or blocked part, and the
+         * request to pick a member (spec 004, 028).
+         */
+        const channelCards = (channelId: string): WaitingCard[] => {
+          const name = () => placeNameOf("channel", channelId)
+          const cards: WaitingCard[] = notifier
+            .waitingRequests()
+            .filter(
+              (w) => w.from === null && w.target.kind === "channel" && w.target.id === channelId,
+            )
+            .map((w) => ({
+              key: waitingKey.card(w.agentId, w.callId),
+              name,
+              due: () => {
+                const task = w.target.messageId
+                  ? db.get<{ task_id: string | null }>(
+                      "SELECT task_id FROM channel_message WHERE id = ?",
+                      w.target.messageId,
+                    )?.task_id
+                  : null
+                return jobKindOf(task) !== null
+              },
+            }))
+          // A part belongs to the job (its parent task). The job must still be open.
+          const parts = db.all<PartRow>(
+            `SELECT p.id AS id, p.state AS state,
+               EXISTS (SELECT 1 FROM task n WHERE n.retry_of = p.id) AS replaced,
+               (r.state IN ('queued', 'running', 'waiting')) AS open
+             FROM task p JOIN task r ON r.id = p.parent_id
+             WHERE p.source = 'channel' AND p.source_id = ? AND p.teams_job IS NOT NULL
+               AND p.state IN ('review', 'failed', 'blocked')`,
+            channelId,
+          )
+          for (const part of parts)
+            cards.push({
+              key: waitingKey.part(part.id),
+              name,
+              due: () =>
+                partHoldsJobBack({
+                  state: part.state as Task["state"],
+                  replaced: part.replaced === 1,
+                  jobOpen: part.open === 1,
+                }),
+            })
+          // The job waits for the user to pick a member, when the channel has no lead.
+          for (const job of db.all<{ id: string }>(
+            "SELECT id FROM channel_message WHERE channel_id = ? AND author = 'user' AND awaiting = 1 AND teams_sender IS NOT NULL",
+            channelId,
+          ))
+            cards.push({ key: waitingKey.pick(job.id), name, due: () => true })
+          return cards
+        }
+
+        /**
+         * An approval, a question, a failed part, a part in review or the request to pick a member
+         * waits (spec 028, "Answers and the outbox"). When it holds back work that a message from
+         * Teams started, or holds back a new message from Teams, Teams gets one line for the card.
+         * The line holds no text of the step, of the question or of the part.
          */
         const scanWaiting = (r: Row) => {
           const fields = fieldsOf(r)
-          if (fields.targetKind !== "agent" || fields.targetId === null) return
-          const waiting = notifier
-            .waitingRequests()
-            .filter((w) => w.agentId === fields.targetId && w.from === null)
-          const live = new Set(waiting.map((w) => `${w.agentId}:${w.callId}`))
+          if (fields.targetId === null) return
+          const cards =
+            fields.targetKind === "agent"
+              ? agentCards(fields.targetId)
+              : fields.targetKind === "channel"
+                ? channelCards(fields.targetId)
+                : []
+          const live = new Set(cards.map((c) => c.key))
           for (const key of run.announced) if (!live.has(key)) run.announced.delete(key)
-          if (waiting.length === 0 || unavailable(r) || !targetFound(fields)) return
-          for (const w of waiting) {
-            const key = `${w.agentId}:${w.callId}`
-            if (run.announced.has(key)) continue
-            const messageId = w.target.messageId
-            const started = messageId
-              ? db.get<{ source: string }>(
-                  "SELECT source FROM task WHERE message_id = ? ORDER BY created_at DESC LIMIT 1",
-                  messageId,
-                )?.source
-              : undefined
-            if (started !== "teams" && chat.teamsWaiting(w.agentId) === 0) continue
-            run.announced.add(key)
-            const name = placeNameOf("agent", w.agentId)
+          if (cards.length === 0 || unavailable(r) || !targetFound(fields)) return
+          for (const card of cards) {
+            if (run.announced.has(card.key) || !card.due()) continue
+            run.announced.add(card.key)
+            const name = card.name()
             if (name !== null) makeLine({ kind: "waiting", name })
           }
         }

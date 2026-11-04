@@ -851,7 +851,9 @@ describe("work from a message: channel", () => {
     expect(job?.parts).toEqual([{ kind: "text", text: "plan the launch" }])
     expect(messages.some((m) => m.agentId === s.lia.id)).toBe(true)
     expect(messages.some((m) => m.agentId === s.cy.id)).toBe(false)
-    expect(s.chat.typed).toEqual([])
+    // Since S104 the reply text of a lead that made no parts goes to Teams.
+    await s.pass(2000)
+    expect(s.chat.typed.map((x) => x.text)).toEqual(["[ROBot] ok"])
     await dispose(s)
   })
 

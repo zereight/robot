@@ -4,7 +4,6 @@ import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { type ChatMessage, messageText } from "@robot/shared"
 import { unzipSync } from "fflate"
-import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -843,32 +842,6 @@ describe("the records and the link log hold no text and no name", () => {
     const inArchive = new DatabaseSync(archived)
     expect(inArchive.prepare("SELECT 1 FROM teams_record").all()).toEqual([])
     inArchive.close()
-    await dispose(s)
-  })
-})
-
-// --- A channel is not answered in this slice -------------------------------------------------------
-
-describe("a channel target", () => {
-  test("S103 writes no answer for work of a channel: the answers for a channel come with S104", async () => {
-    const s = await setup(model)
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Launch",
-          topic: "Ship it",
-          memberIds: [s.ada.id, s.lia.id],
-          leadId: s.lia.id,
-        }),
-      ),
-    )
-    await s.prepare({ targetKind: "channel", targetId: channel.id })
-    await s.turnOn()
-    s.chat.say(ROOM, MARTA, "@ROBot plan the launch")
-    await s.pass(5000)
-    await s.pass(10_000)
-    expect(s.typedTexts()).toEqual([])
     await dispose(s)
   })
 })
