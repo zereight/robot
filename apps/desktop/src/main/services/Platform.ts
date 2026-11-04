@@ -91,6 +91,18 @@ export interface PlatformService {
   /** Opens a file with the program of the system for it. */
   openFile(path: string): Promise<void>
   setStartAtLogin(enabled: boolean): void
+  /**
+   * Stops the computer from going to sleep while `on` is true (spec 013, "Keep the computer
+   * awake"). The screen may still go dark. The hold ends with the app. Calling it again with the
+   * same value changes nothing.
+   */
+  setKeepAwake(on: boolean): void
+  /** True while the app holds the computer awake. The system tells it, not the last call. */
+  keepAwakeHeld(): boolean
+  /** True while the computer runs on its battery. */
+  onBattery(): boolean
+  /** Calls back when the computer changes between its battery and power. */
+  onPowerSource(listener: () => void): void
   setThemeSource(theme: "system" | "dark" | "light"): void
   copyText(text: string): void
   openExternal(url: string): Promise<void>

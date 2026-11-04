@@ -16,6 +16,8 @@ import {
   dialog,
   Notification,
   nativeTheme,
+  powerMonitor,
+  powerSaveBlocker,
   screen,
   session,
   shell,
@@ -539,6 +541,8 @@ const fitIsland = (size: { width: number; height: number }) => {
 }
 
 export const electronPlatform = (): PlatformService => {
+  /** The hold that keeps the computer from sleeping, while there is one (spec 013). */
+  let awakeHold: number | undefined
   const dataDir = app.getPath("userData")
   mkdirSync(dataDir, { recursive: true })
   let teamsSurface: TeamsSurface | undefined
@@ -686,6 +690,25 @@ export const electronPlatform = (): PlatformService => {
       }
       const failure = await shell.openPath(path)
       if (failure) throw new Error(failure)
+    },
+    setKeepAwake: (on) => {
+      if (on) {
+        if (awakeHold === undefined || !powerSaveBlocker.isStarted(awakeHold))
+          awakeHold = powerSaveBlocker.start("prevent-app-suspension")
+      } else if (awakeHold !== undefined) {
+        powerSaveBlocker.stop(awakeHold)
+        awakeHold = undefined
+      }
+    },
+    keepAwakeHeld: () => awakeHold !== undefined && powerSaveBlocker.isStarted(awakeHold),
+    // A test run can say that the computer is on its battery, because a test cannot unplug it.
+    onBattery: () =>
+      isTestRun && process.env.ROBOT_TEST_ON_BATTERY
+        ? process.env.ROBOT_TEST_ON_BATTERY === "1"
+        : powerMonitor.isOnBatteryPower(),
+    onPowerSource: (listener) => {
+      powerMonitor.on("on-battery", listener)
+      powerMonitor.on("on-ac", listener)
     },
     setStartAtLogin: (enabled) => {
       if (isTestRun || process.platform === "linux") return
