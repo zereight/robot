@@ -123,7 +123,7 @@ describe("keep going on open steps (spec 005)", () => {
         Effect.sync(() =>
           db.get<{ input_tokens: number; output_tokens: number }>(
             "SELECT input_tokens, output_tokens FROM message WHERE id = ?",
-            reply?.id,
+            reply?.id ?? "",
           ),
         ),
       ),
