@@ -6,6 +6,7 @@ import { app, BrowserWindow } from "electron"
 import { appLayer } from "./layers.ts"
 import { electronPlatform, isTestRun, setMainWindow } from "./platform-electron.ts"
 import { registerRpc } from "./register-rpc.ts"
+import { removeAllStaged } from "./runtimes/bridge.ts"
 import { importLoginPath } from "./runtimes/login-path.ts"
 import { Database } from "./services/Database.ts"
 import { Host } from "./services/Host.ts"
@@ -51,6 +52,9 @@ const closeRuntime = async (runtime: ReturnType<typeof makeRuntime>) => {
     console.error("close: dispose failed", error)
   } finally {
     clearTimeout(timer)
+    // A turn that is still going when the app quits has files with the token of the tools of the
+    // app in a temporary folder. The tools are gone after the quit, so the files are of no use.
+    removeAllStaged()
   }
 }
 

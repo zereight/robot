@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
 import type { RuntimeLimit } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { makeOwnedFolder } from "../stale-temp.ts"
 import { bridgeToolName, museBridge } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
@@ -289,7 +289,7 @@ export async function* runMuse(run: RuntimeRun): AsyncGenerator<AgentEvent> {
 
 async function* runMuseExec(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
-  const scratch = mkdtempSync(join(tmpdir(), "robot-muse-"))
+  const scratch = makeOwnedFolder("robot-muse-")
   const promptFile = join(scratch, "prompt.txt")
   writeFileSync(promptFile, musePrompt(run), { mode: 0o600 })
   const child = spawnProgram(run.bin, museArgs(run, promptFile), {

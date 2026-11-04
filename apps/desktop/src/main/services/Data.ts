@@ -3,13 +3,11 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs"
-import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import {
@@ -22,6 +20,7 @@ import {
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { unzipSync } from "fflate"
+import { makeOwnedFolder } from "../stale-temp.ts"
 import { Agents } from "./Agents.ts"
 import { type ArchiveFile, writeZip } from "./archive.ts"
 import { Connections } from "./Connections.ts"
@@ -144,7 +143,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
           ...connections.knownValues(),
         ]
 
-        const work = mkdtempSync(join(tmpdir(), "robot-export-"))
+        const work = makeOwnedFolder("robot-export-")
         try {
           const copy = join(work, "robot.db")
           db.run("VACUUM INTO ?", copy)
@@ -446,7 +445,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
 
         const local = yield* servers.local
         const defaultRoot = (yield* settings.get).workspaceRoot || platform.defaultWorkspaceRoot
-        const work = mkdtempSync(join(tmpdir(), "robot-import-"))
+        const work = makeOwnedFolder("robot-import-")
         const copy = join(work, "robot.db")
         writeFileSync(copy, dbFile)
         let counts = { agents: 0, messages: 0 }

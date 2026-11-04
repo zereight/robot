@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
 import type { ModelInfo, PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { makeOwnedFolder } from "../stale-temp.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
@@ -209,7 +209,7 @@ const TAIL = 2000
 
 export async function* runOpencode(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
-  const scratch = mkdtempSync(join(tmpdir(), "robot-opencode-"))
+  const scratch = makeOwnedFolder("robot-opencode-")
   let systemFile: string | null = null
   if (run.system.trim()) {
     // A file, so that the program never takes the text for something else.

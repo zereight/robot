@@ -1,7 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { spawnSync } from "node:child_process"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { basename, join } from "node:path"
 import { type DevicesState, groupCode, type PairingState } from "@robot/shared"
 import { Effect } from "effect"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
+import { forgetSweeps, ownTempRoot } from "../stale-temp.ts"
 import { Devices } from "./Devices.ts"
 import { Remote } from "./Remote.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -70,6 +75,54 @@ afterAll(async () => {
   delete process.env.ROBOT_LINK_ADDRESSES
   delete process.env.ROBOT_LINK_RETRY_MAX_MS
   delete process.env.ROBOT_LINK_NEARBY_WAIT_MS
+})
+
+describe("the upload folder of linked devices", () => {
+  /** A folder of the upload kind, as old as `ageMs`. */
+  const folder = (area: string, name: string, ageMs: number) => {
+    const path = join(area, name)
+    mkdirSync(path)
+    const at = new Date(Date.now() - ageMs)
+    utimesSync(path, at, at)
+    return path
+  }
+  /** The number of a process that has ended. */
+  const deadPid = () => Number(spawnSync("/bin/sh", ["-c", "echo $$"], { encoding: "utf8" }).stdout)
+
+  test("a start removes the old upload folders of a gone app, keeps the others, and the quit removes its own", async () => {
+    // The test has its own temporary folder, so that no other test file is counted.
+    const own = mkdtempSync(join(tmpdir(), "robot-own-tmp-"))
+    const saved = process.env.TMPDIR
+    process.env.TMPDIR = own
+    forgetSweeps()
+    let a: Rt | undefined
+    try {
+      const area = ownTempRoot() as string
+      const hour = 60 * 60_000
+      const gone = folder(area, `robot-uploads-${deadPid()}-AAAAAA`, hour)
+      const young = folder(area, `robot-uploads-${deadPid()}-BBBBBB`, 60_000)
+      const running = folder(area, `robot-uploads-${process.pid}-CCCCCC`, hour)
+      // The app starts after the folders are there, as after a kill.
+      a = testRuntime({ name: "MacBook Upload" })
+      await state(a)
+      expect(existsSync(gone)).toBe(false)
+      expect(existsSync(young)).toBe(true)
+      expect(existsSync(running)).toBe(true)
+      const mine = readdirSync(area).filter(
+        (n) => n.startsWith(`robot-uploads-${process.pid}-`) && n !== basename(running),
+      )
+      expect(mine).toHaveLength(1)
+      // A normal quit removes the folder of this start.
+      await a.runtime.dispose()
+      expect(existsSync(join(area, mine[0] as string))).toBe(false)
+      expect(existsSync(running)).toBe(true)
+    } finally {
+      await a?.runtime.dispose().catch(() => {})
+      if (saved === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = saved
+      rmSync(own, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("device link between two computers", () => {
