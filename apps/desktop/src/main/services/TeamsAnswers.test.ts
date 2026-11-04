@@ -423,23 +423,29 @@ describe("the outbox", () => {
   test("a message that failed is dropped one hour after its first failed try, with the record 'Not sent'", async () => {
     const s = await running(model)
     const task = await s.endTask({ text: "never goes" })
-    s.chat.refuseSends(100_000)
+    // The page refuses this one text and takes the others. Six failed tries in a row would pause
+    // the link (S105), so another answer goes out each 30 seconds: a good send sets the count to 0.
+    s.chat.refuseWhen = (text) => text.includes("never goes")
     await s.pass(1000)
     expect(s.chat.sendTries).toBe(1)
-    await s.pass(59 * 60_000)
+    for (let minute = 0; minute < 118; minute++) {
+      await s.endTask({ text: `other ${minute}` })
+      await s.pass(30_000)
+    }
     expect(await s.records()).toEqual([])
-    const tries = s.chat.sendTries
+    const tries = s.chat.presses.filter((p) => p.text.includes("never goes")).length
     expect(tries).toBeGreaterThan(5)
-    // The link was not paused or stopped by the tries (that comes with a later slice).
+    // The tries did not pause the link: a good send came between them.
+    expect((await s.view()).state).toBe("on")
     await s.pass(60_000 + 2000)
     const records = await s.records()
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({ reason: "notSent", taskId: task.id, placeName: "Ada" })
     // Nothing is tried again.
-    const after = s.chat.sendTries
+    const after = s.chat.presses.filter((p) => p.text.includes("never goes")).length
     await s.pass(10 * 60_000)
-    expect(s.chat.sendTries).toBe(after)
-    expect(s.typedTexts()).toEqual([])
+    expect(s.chat.presses.filter((p) => p.text.includes("never goes"))).toHaveLength(after)
+    expect(s.typedTexts().some((text) => text.includes("never goes"))).toBe(false)
     await dispose(s)
   }, 120_000)
 

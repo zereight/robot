@@ -65,6 +65,7 @@ import {
   type TeamsTargetKind,
   takeUnread,
   teamsNeed,
+  teamsNoticeBodyKey,
   teamsNoticeStep,
   teamsNoticeTitleKey,
   teamsPauseReasonKey,
@@ -378,12 +379,9 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             kind: "teams_link",
             serverId: localServerId(),
             title: translate(locale, teamsNoticeTitleKey),
-            body:
-              step.notify === "paused"
-                ? translate(locale, "teams.notice.paused", {
-                    reason: translate(locale, teamsPauseReasonKey(reason)),
-                  })
-                : translate(locale, "teams.notice.signedOut"),
+            body: translate(locale, teamsNoticeBodyKey(step.notify), {
+              reason: translate(locale, teamsPauseReasonKey(reason)),
+            }),
             page: "teams",
           })
         }
@@ -586,9 +584,10 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           if (generation !== run.generation) return
           const before = `${run.state}|${run.chat}|${run.lastReadAt}`
           apply(seen, clock.now())
-          // A page that cannot be read is a failed read. The states Signed out, Chat not found and
-          // Offline are not failures.
-          if (seen.kind === "unreadable" && countReadAttempt("failed")) return
+          // A page that cannot be read is a failed read while the link is On, that is, when it ran
+          // well before. Connecting ends by its own rule after 60 seconds, and a look in the states
+          // Signed out, Chat not found and Offline is no failure (spec 028).
+          if (seen.kind === "unreadable" && run.state === "on" && countReadAttempt("failed")) return
           if (seen.kind === "chat" && seen.opened.kind === "opened") await readStep(generation)
           if (before !== `${run.state}|${run.chat}|${run.lastReadAt}`) changed()
         }
