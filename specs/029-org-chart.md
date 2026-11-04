@@ -94,16 +94,23 @@ channel settings (004, 030), with the same rules.
   under…". Dropped on the root: it moves to the top. During a drag, a node where a drop is allowed
   shows a ring. A node where it is not allowed shows no ring, and a drop there changes nothing. A
   drop on the empty canvas changes nothing. Escape ends a drag with no change.
-- During the drag of an agent node that is in a channel, the channel node "No channel" shows at
-  its place in the order, also when it holds no agent, so that it can take the drop. It is empty
-  then. After the drag it shows again only by the rule of "Concepts".
+- A drag never moves the view by itself. The layout does not change during a drag. When the
+  pointer comes within 40 px of an edge of the canvas, the view moves in that direction while the
+  pointer stays there.
+- During the drag of an agent node that is in a channel, a drop area "No channel" shows at the
+  bottom left of the canvas, over the canvas and above the controls of the view. It is not a node
+  of the layout, and it stays in place when the view moves. A drop on it does what a drop on the
+  channel node "No channel" does. When the channel node "No channel" is drawn, it takes the drop
+  too. The area goes when the drag ends.
 - **Refusals**: a change that the rules of 004 or 030 do not allow is refused with a short line at
   the bottom of the canvas. A member that works cannot leave its channel: "<agent> works in
   <channel>. Wait for its part to end, or stop it." A tree that breaks the rules of 030 gives the
   reason of 030.
 - A move of the lead out of its channel leaves that channel with no lead.
 - "New agent in this channel" and "New agent": after the save the chart stays open, and the focus
-  goes to the node of the new agent. The profile does not open.
+  goes to the node of the new agent in that channel. When the agent is made but cannot join the
+  channel, the refusal line gives the reason, and the focus goes to its node in "No channel". The
+  profile does not open.
 - **Lines at the bottom**: one line shows at a time. A new line takes the place of the line that
   shows. A refusal line shows for 10 seconds and has no "Undo".
 - **Undo**: each change shows the line "<what changed>." with "Undo" at the bottom of the canvas for
