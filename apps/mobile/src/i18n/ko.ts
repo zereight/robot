@@ -154,6 +154,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.note.compact_failed": "압축하지 못했어요: {reason} 압축 없이 이어서 했어요.",
   "chat.note.watch": "{routine}: 바뀐 게 없어요.",
   "chat.note.connection_down": "연결 {name}을(를) 쓸 수 없어요.",
+  "chat.note.connection_held": "연결 {name}의 도구가 검토를 기다리고 있어요.",
   "chat.note.handed_over": "{name}에게 인계함",
   "chat.note.starter.routine.limit":
     "만들지 못한 루틴: “{name}”. 서버에 루틴을 더 둘 자리가 없어요.",

@@ -1,4 +1,5 @@
 import { charLength, nameKey } from "./agents.ts"
+import type { HeldTag } from "./toolReview.ts"
 
 // ---------------------------------------------------------------------------------------------
 // Connections (spec 018): outside tool providers that speak MCP. This file holds the rules that
@@ -92,6 +93,8 @@ export interface ConnectionToolView {
   readonly description: string
   /** False when the user turned this tool off. */
   readonly enabled: boolean
+  /** Set when the tool waits for the user's review: new, or changed (spec 018, "Tool review"). */
+  readonly held?: HeldTag
 }
 
 /** The reasons that a Test, or the start of a connection, fails (spec 018, "Flows"). */
@@ -126,6 +129,8 @@ export interface ToolConnection {
   readonly tools: readonly ConnectionToolView[]
   /** True when the connection offers more than 100 tools: the agent gets the first 100. */
   readonly tooMany: boolean
+  /** How many tools wait for the user's review (spec 018, "Tool review"). */
+  readonly needReview: number
   /** True when a secret value of the connection is missing on this computer. */
   readonly valueMissing: boolean
 }

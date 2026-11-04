@@ -101,6 +101,16 @@ const ConnectionDownLine = (props: { name: string }) => {
   )
 }
 
+/** The muted line of a connection with tools that wait for review when the turn started (spec 018). */
+const ConnectionHeldLine = (props: { name: string }) => {
+  const { t } = useApp()
+  return (
+    <p class={styles.compactFailed} data-testid="connection-held">
+      {t("chat.note.connectionHeld", { name: props.name })}
+    </p>
+  )
+}
+
 /** The line "Compacted". The user opens it to read the summary (spec 003, "Compact"). */
 const CompactedLine = (props: { part: Extract<MessagePart, { kind: "compacted" }> }) => {
   const { t } = useApp()
@@ -1111,6 +1121,7 @@ const NoteLine = (props: { message: ChatMessage }) => {
     if (part.note === "compact_failed")
       return t("chat.compact.failed", { reason: errorWords(t, part.code) })
     if (part.note === "connection_down") return t("chat.note.connectionDown", { name: part.name })
+    if (part.note === "connection_held") return t("chat.note.connectionHeld", { name: part.name })
     return t(`starters.note.${part.what}.${part.why}` as MessageKey, {
       name: part.name,
       n: part.what === "routine" ? ROUTINES_MAX : SKILLS_MAX,
@@ -1328,6 +1339,13 @@ const FullMessageRow = (props: MessageRowProps) => {
                     }
                   >
                     {(note) => <ConnectionDownLine name={(note() as { name: string }).name} />}
+                  </Match>
+                  <Match
+                    when={
+                      part.kind === "note" && part.note === "connection_held" ? part : undefined
+                    }
+                  >
+                    {(note) => <ConnectionHeldLine name={(note() as { name: string }).name} />}
                   </Match>
                   <Match when={part.kind === "tool"}>
                     <ToolStep

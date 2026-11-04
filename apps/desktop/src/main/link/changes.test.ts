@@ -721,6 +721,8 @@ describe("sections and knowledge on a linked server (spec 001, 012, 016)", () =>
     ["connections.test", { id: "x" }],
     ["connections.setEnabled", { id: "x", enabled: true }],
     ["connections.setTool", { id: "x", tool: "echo", enabled: false }],
+    ["connections.held", { id: "x" }],
+    ["connections.accept", { id: "x", tools: [{ name: "echo", key: "k" }] }],
     ["connections.delete", { id: "x" }],
     ["knowledge.list", { agentId: "x" }],
     ["knowledge.get", { agentId: "x", file: "a.md" }],

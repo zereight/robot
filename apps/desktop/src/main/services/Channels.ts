@@ -660,9 +660,11 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           // connection that does not start is left out, and the reply says so once.
           const connected =
             useTools && !isRuntime ? yield* connections.forTurn(o.agent.id) : undefined
-          if (connected && connected.down.length > 0) {
+          if (connected && (connected.down.length > 0 || connected.held.length > 0)) {
             for (const name of connected.down)
               parts.push({ kind: "note", note: "connection_down", name })
+            for (const name of connected.held)
+              parts.push({ kind: "note", note: "connection_held", name })
             save("streaming")
             emitMessage(id)
           }

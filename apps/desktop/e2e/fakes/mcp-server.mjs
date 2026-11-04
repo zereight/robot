@@ -5,9 +5,17 @@
 //   MCP_TEST_TOOLS        how many extra tools "tool_01", "tool_02", ... it offers (default 0)
 //   MCP_TEST_DESCRIPTION  the description of the tool "echo"
 //   MCP_TEST_CALLS        a file where each call is written as one JSON line
+//   MCP_TEST_STATE        a JSON file that a test edits between runs of the program. It is read at
+//                         each "tools/list", so the program offers other text at its next start
+//                         without a change of its settings (spec 018, review of tools). Keys:
+//                           descriptions  { tool: "new description" }
+//                           params        { tool: { parameter: "description of the parameter" } }
+//                           readOnly      { tool: true | false }
+//                           add           [ { name, description } ]  more tools
+//                           remove        [ "tool" ]  tools it does not offer
 //   MCP_TEST_TOKEN        when set, the HTTP server needs "Authorization: Bearer <token>"
 //   MCP_TEST_HTTP_PORT    serve HTTP on this port (on 127.0.0.1) instead of the input and output
-import { appendFileSync } from "node:fs"
+import { appendFileSync, existsSync, readFileSync } from "node:fs"
 import { createServer } from "node:http"
 import { createInterface } from "node:readline"
 
@@ -54,6 +62,43 @@ for (let i = 1; i <= extra; i++)
     inputSchema: { type: "object", properties: {} },
   })
 
+/** The tools now: the fixed ones, changed by the file of MCP_TEST_STATE when a test set one. */
+const offered = () => {
+  const file = process.env.MCP_TEST_STATE
+  if (!file || !existsSync(file)) return tools
+  let state = {}
+  try {
+    state = JSON.parse(readFileSync(file, "utf8") || "{}")
+  } catch {
+    return tools
+  }
+  const list = tools
+    .filter((t) => !(state.remove ?? []).includes(t.name))
+    .map((t) => {
+      const next = { ...t, inputSchema: structuredClone(t.inputSchema) }
+      const description = state.descriptions?.[t.name]
+      if (description !== undefined) next.description = description
+      for (const [parameter, text] of Object.entries(state.params?.[t.name] ?? {})) {
+        next.inputSchema.properties = next.inputSchema.properties ?? {}
+        next.inputSchema.properties[parameter] = {
+          ...(next.inputSchema.properties[parameter] ?? { type: "string" }),
+          description: text,
+        }
+      }
+      const mark = state.readOnly?.[t.name]
+      if (mark === true) next.annotations = { readOnlyHint: true }
+      else if (mark === false) delete next.annotations
+      return next
+    })
+  for (const more of state.add ?? [])
+    list.push({
+      name: more.name,
+      description: more.description ?? "",
+      inputSchema: { type: "object", properties: {} },
+    })
+  return list
+}
+
 const log = (entry) => {
   if (process.env.MCP_TEST_CALLS)
     appendFileSync(process.env.MCP_TEST_CALLS, `${JSON.stringify(entry)}\n`)
@@ -71,7 +116,7 @@ const answer = (message) => {
       serverInfo: { name: "test", version: "1" },
     })
   if (method === "ping") return ok({})
-  if (method === "tools/list") return ok({ tools })
+  if (method === "tools/list") return ok({ tools: offered() })
   if (method === "tools/call") {
     const name = params?.name
     const args = params?.arguments ?? {}
