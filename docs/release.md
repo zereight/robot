@@ -15,6 +15,10 @@ an Intel Mac, for Windows or for Linux.
 
 ## Steps
 
+The end-to-end suite runs in CI only in the Release workflow; the CI workflow does not run it. Before step 1,
+run Actions > Release > Run workflow on `main` and read the result, so that a broken test does not stop the
+tag run.
+
 1. On a branch `release/v<v>`, run `bun run version <v>` (for example `0.2.0`, or `0.2.0-beta.1`
    for a pre-release). Open a PR and squash-merge it when the checks pass.
 2. Tag the merge commit on `main` and push the tag:

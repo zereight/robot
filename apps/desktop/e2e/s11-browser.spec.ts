@@ -133,7 +133,14 @@ test("browser: hidden until the user shows it, small or large, hide keeps it ope
     .toBe(1)
   // The page keeps its own ratio (16:10) and sits in the middle of its box. It fills the box in
   // one direction, and never goes outside it. The small box has the same ratio, so it is filled.
-  const sameAs = async (testId: string) => {
+  // The screen measures its box on each frame and then tells the app, so the page follows the box
+  // a moment later, not at once. On a slow computer that moment is long. The check repeats until
+  // the page sits in the box; a page that never gets there still fails when the time is up.
+  const sameAs = (testId: string) =>
+    expect(async () => {
+      await sameAsOnce(testId)
+    }).toPass({ timeout: 10_000 })
+  const sameAsOnce = async (testId: string) => {
     const box = await page.getByTestId(testId).boundingBox()
     const [view] = await insideViews(app)
     expect(box).not.toBeNull()
@@ -198,11 +205,15 @@ test("browser: hidden until the user shows it, small or large, hide keeps it ope
   await expect(page.getByTestId("browser-bar")).toHaveAttribute("data-control", "true")
   // While the user holds the page, a click reaches it, at the point of the page that the user
   // points at, also when the page is drawn smaller or larger than its own size.
-  const clicked = await clickPage(app, { x: 40, y: 80 })
-  expect(clicked).toMatch(/^Clicked \d+,\d+$/)
-  const [hitX, hitY] = clicked.replace("Clicked ", "").split(",").map(Number)
-  expect(Math.abs((hitX ?? 0) - 40)).toBeLessThanOrEqual(3)
-  expect(Math.abs((hitY ?? 0) - 80)).toBeLessThanOrEqual(3)
+  // The page is given its scale a moment after the view gets its size, so a click right after a
+  // change of size can land off the point. The click repeats until it lands.
+  await expect(async () => {
+    const clicked = await clickPage(app, { x: 40, y: 80 })
+    expect(clicked).toMatch(/^Clicked \d+,\d+$/)
+    const [hitX, hitY] = clicked.replace("Clicked ", "").split(",").map(Number)
+    expect(Math.abs((hitX ?? 0) - 40)).toBeLessThanOrEqual(3)
+    expect(Math.abs((hitY ?? 0) - 80)).toBeLessThanOrEqual(3)
+  }).toPass({ timeout: 10_000 })
   await page.getByTestId("browser-control").click()
   await expect(page.getByTestId("browser-bar")).toHaveAttribute("data-control", "false")
 
