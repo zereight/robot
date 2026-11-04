@@ -274,6 +274,7 @@ export const en = {
   "providers.kind.muse": "Muse Code (Meta account)",
   "providers.kind.pi": "pi (its own sign-ins)",
   "providers.kind.opencode": "opencode (its own sign-ins)",
+  "providers.kind.cursor": "Cursor (Cursor account)",
   "providers.name": "Account name",
   "providers.name.placeholder": "For example: Work",
   "providers.baseUrl": "Base URL",
@@ -290,7 +291,7 @@ export const en = {
   "providers.cancel": "Cancel",
   "providers.empty": "No accounts yet. Add one to give your agents a model.",
   "providers.runtimes":
-    "Claude Code, Codex, Muse Code, pi and opencode use the sign-ins you already have. ROBot starts the program on this computer; it never reads a sign-in. A separate Claude Code sign-in is kept by the program, in the data folder of ROBot. pi and opencode use the models that you set up in them, with their own billing.",
+    "Claude Code, Codex, Muse Code, pi, opencode and Cursor use the sign-ins you already have. ROBot starts the program on this computer; it never reads a sign-in. A separate Claude Code sign-in is kept by the program, in the data folder of ROBot. pi and opencode use the models that you set up in them, with their own billing. Cursor uses the Cursor account on this computer.",
   "providers.signIn.choice": "Claude account",
   "providers.signIn.computer": "This computer's account",
   "providers.signIn.own": "Another account",
@@ -343,6 +344,9 @@ export const en = {
     "Install opencode 2 or later on this computer (for example: brew install opencode), then choose Check again.",
   "runtime.signIn.opencode":
     "Sign in inside opencode: run opencode auth login, or set up a key. ROBot needs opencode 2 or later. Then choose Check again.",
+  "runtime.install.cursor": "Install Cursor on this computer, then choose Check again.",
+  "runtime.signIn.cursor":
+    "Sign in inside Cursor: run cursor-agent login, or set CURSOR_API_KEY. Then choose Check again.",
   "runtime.signInCode": "Open the page and check that this code matches:",
   "runtime.signingIn": "Waiting for the sign-in in your browser…",
   "runtime.cancel": "Cancel",
@@ -547,6 +551,8 @@ export const en = {
     "pi reads no messages during a turn. Your messages wait here until the turn ends.",
   "chat.hold.opencode":
     "opencode reads no messages during a turn. Your messages wait here until the turn ends.",
+  "chat.hold.cursor":
+    "Cursor reads no messages during a turn. Your messages wait here until the turn ends.",
   "chat.tool.answeredInChat": "Answered in the chat",
   "settings.duringTurn": "While an agent works, new messages",
   "settings.duringTurn.hint":
@@ -935,6 +941,14 @@ export const en = {
     "opencode starts with its edit and write tools, and no shell.",
   "agents.permission.line.opencode.full":
     "opencode starts with all its tools. Deny rules in its own settings still apply.",
+  "agents.permission.line.cursor.read_only":
+    "Cursor starts in ask mode. It can read files and cannot change them.",
+  "agents.permission.line.cursor.ask_all":
+    "Cursor starts in ask mode. It can read files and cannot change them.",
+  "agents.permission.line.cursor.ask_risky":
+    "Cursor starts with its sandbox on and applies changes. A run from the app cannot ask before a step.",
+  "agents.permission.line.cursor.full":
+    "Cursor starts with its sandbox off and applies changes without asking.",
   "agents.permission.confirm.title": "Use Full access?",
   "agents.permission.confirm.body":
     "The agent changes files and runs commands without asking. Deny rules still apply.",

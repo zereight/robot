@@ -21,12 +21,14 @@ export interface FakeRuntimes {
   readonly muse: string
   readonly pi: string
   readonly opencode: string
+  readonly cursor: string
   /** Changes what `auth status` or `login status` says. */
   setClaude(state: Record<string, unknown>): void
   setCodex(state: Record<string, unknown>): void
   setMuse(state: Record<string, unknown>): void
   setPi(state: Record<string, unknown>): void
   setOpencode(state: Record<string, unknown>): void
+  setCursor(state: Record<string, unknown>): void
   /** What each program was asked to do, one entry per call, oldest first. */
   claudeCalls(): Record<string, unknown>[]
   /** The looks of Claude at the usage of the plan, oldest first. They are not turns. */
@@ -35,11 +37,12 @@ export interface FakeRuntimes {
   museCalls(): Record<string, unknown>[]
   piCalls(): Record<string, unknown>[]
   opencodeCalls(): Record<string, unknown>[]
+  cursorCalls(): Record<string, unknown>[]
   /**
    * Every call that a program got, oldest first, as its first three arguments. A check shows
    * here as a version or a sign-in question; a turn shows as `exec` or the like.
    */
-  asks(program: "claude" | "codex" | "muse" | "pi" | "opencode"): string[][]
+  asks(program: "claude" | "codex" | "muse" | "pi" | "opencode" | "cursor-agent"): string[][]
 }
 
 const calls = (file: string) => {
@@ -57,7 +60,7 @@ const calls = (file: string) => {
 export const makeFakeRuntimes = (): FakeRuntimes => {
   const dir = mkdtempSync(join(tmpdir(), "robot-fake-runtimes-"))
   mkdirSync(dir, { recursive: true })
-  for (const name of ["claude", "codex", "muse", "pi", "opencode"]) {
+  for (const name of ["claude", "codex", "muse", "pi", "opencode", "cursor-agent"]) {
     // The file name of the program has no extension, like the real one.
     copyFileSync(resolve(here, "fakes", `${name}.mjs`), join(dir, `${name}.mjs`))
     writeFileSync(join(dir, name), `#!/bin/sh\nexec node "${join(dir, `${name}.mjs`)}" "$@"\n`)
@@ -70,12 +73,16 @@ export const makeFakeRuntimes = (): FakeRuntimes => {
     muse: join(dir, "muse"),
     pi: join(dir, "pi"),
     opencode: join(dir, "opencode"),
+    cursor: join(dir, "cursor-agent"),
     setMuse: (state) => writeFileSync(join(dir, "muse-state.json"), JSON.stringify(state)),
     setPi: (state) => writeFileSync(join(dir, "pi-state.json"), JSON.stringify(state)),
     museCalls: () => calls(join(dir, "muse-calls.jsonl")),
     piCalls: () => calls(join(dir, "pi-calls.jsonl")),
     setOpencode: (state) => writeFileSync(join(dir, "opencode-state.json"), JSON.stringify(state)),
     opencodeCalls: () => calls(join(dir, "opencode-calls.jsonl")),
+    setCursor: (state) =>
+      writeFileSync(join(dir, "cursor-agent-state.json"), JSON.stringify(state)),
+    cursorCalls: () => calls(join(dir, "cursor-agent-calls.jsonl")),
     setClaude: (state) => writeFileSync(join(dir, "claude-state.json"), JSON.stringify(state)),
     setCodex: (state) => writeFileSync(join(dir, "codex-state.json"), JSON.stringify(state)),
     claudeCalls: () => calls(join(dir, "claude-calls.jsonl")),
