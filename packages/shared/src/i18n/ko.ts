@@ -2134,9 +2134,18 @@ export const ko: Record<MessageKey, string> = {
   "teams.kind.group": "그룹 채팅",
   "teams.allow": "허용된 보낸 사람",
   "teams.allow.hint":
-    "Teams에 보이는 대로 한 줄에 이름 하나씩 쓰세요. 이 사람들의 메시지에만 답해요.",
+    "Teams에 보이는 대로 이름을 하나씩 추가하세요. 이 사람들의 메시지에만 답해요. 채팅에서 바로 채우려면 Teams 페이지를 보고 채팅을 연 뒤 “채팅에서 찾기”를 누르세요.",
   "teams.bots": "답하지 않을 봇",
-  "teams.bots.hint": "한 줄에 이름 하나씩 쓰세요. 이 목록의 보낸 사람에게는 답하지 않아요.",
+  "teams.bots.hint":
+    "Teams에 보이는 대로 이름을 하나씩 추가하세요. 이 목록의 보낸 사람에게는 답하지 않아요.",
+  "teams.names.placeholder": "이름을 입력하고 Enter",
+  "teams.names.remove": "{name} 삭제",
+  "teams.names.add": "{name} 추가",
+  "teams.names.addAll": "모두 추가",
+  "teams.names.find": "채팅에서 찾기",
+  "teams.names.finding": "채팅을 읽는 중…",
+  "teams.names.found": "열려 있는 채팅의 이름이에요. 누르면 추가돼요.",
+  "teams.names.none": "열려 있는 채팅에 새 이름이 없어요.",
   "teams.bots.wins":
     "두 목록에 같은 이름이 있어요. 봇 목록이 먼저예요. 그 사람에게는 답하지 않아요.",
   "teams.call": "호출 문구",

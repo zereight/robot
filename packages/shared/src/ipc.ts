@@ -261,6 +261,8 @@ export interface RpcMethods {
   }
   /** "Use this chat": the title of the chat that is open in the Teams page fills the form. */
   "teams.useChat": { input: undefined; output: TeamsLinkView }
+  /** "Find in the chat": the names of the senders that the open chat shows. It changes nothing. */
+  "teams.readSenders": { input: undefined; output: readonly string[] }
   /** "Resume": a paused link starts again with a baseline read (spec 028). */
   "teams.resume": { input: undefined; output: TeamsLinkView }
   /** "Sign out of Teams": deletes the saved sign-in and turns the link off. */

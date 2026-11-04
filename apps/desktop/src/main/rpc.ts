@@ -503,6 +503,7 @@ export const handlers: Handlers = {
       done,
     ),
   "teams.useChat": () => TeamsLink.use((t) => t.useChat),
+  "teams.readSenders": () => TeamsLink.use((t) => t.readSenders),
   "teams.resume": () => TeamsLink.use((t) => t.resume),
   "teams.signOut": () => TeamsLink.use((t) => t.signOut),
   "teams.remove": () => TeamsLink.use((t) => t.remove),

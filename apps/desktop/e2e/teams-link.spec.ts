@@ -1,7 +1,7 @@
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { expect, type Page, test } from "@playwright/test"
-import { connectMock, createAgent, freshUserData, launch, resizeWindow } from "./harness.ts"
+import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
 // The Teams link, first slice (spec 028, S101). The app loads a stand-in site on this computer in
@@ -13,6 +13,13 @@ import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 const startStandIn = async () => {
   const site = { signedIn: false, hits: 0 }
   const chats = ["Marta Kim (You)", "Team A"]
+  // The people who wrote in the open chat. "Kim, Tao" shows that a comma is part of a name.
+  const messages = [
+    { sender: "Joe Lee", text: "hi" },
+    { sender: "Marta Kim", text: "hello" },
+    { sender: "Kim, Tao", text: "morning" },
+    { sender: "Joe Lee", text: "again" },
+  ]
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1")
     if (url.pathname === "/state") {
@@ -31,6 +38,12 @@ const startStandIn = async () => {
     res.end(`<title>Teams</title><body>
       <div data-tid="app-bar"></div>
       <h2 data-tid="chat-title" id="title">${chats[0]}</h2>
+      <div data-tid="message-pane-list-viewport">${messages
+        .map(
+          (m, i) =>
+            `<div data-mid="m${i}"><span data-tid="message-author-name">${m.sender}</span><div data-tid="chat-pane-message-body">${m.text}</div><time datetime="2026-01-01T10:0${i}:00Z"></time></div>`,
+        )
+        .join("")}</div>
       <div data-tid="chat-list">${chats
         .map(
           (c) =>
@@ -110,8 +123,60 @@ test("teams link: set up, sign in, pick a chat, turn on, restart in Korean, sign
   await expect(page.getByTestId("teams-page-box")).toBeVisible()
   await page.getByTestId("teams-use-chat").click()
   await expect(page.getByTestId("teams-chat-title")).toHaveValue("Marta Kim (You)")
+
+  // "Find in the chat" reads the senders of the open chat, each once. It adds none by itself.
+  await expect(page.getByTestId("teams-allow-chip")).toHaveCount(0)
+  await page.getByTestId("teams-allow-find").click()
+  await expect(page.getByTestId("teams-allow-suggestion")).toHaveText([
+    "Joe Lee",
+    "Marta Kim",
+    "Kim, Tao",
+  ])
+  await expect(page.getByTestId("teams-allow-chip")).toHaveCount(0)
+  await shot(page, "teams-names-found")
+  // A press on a name adds it, and the name leaves the offer. A comma stays in the name.
+  await page.getByTestId("teams-allow-suggestion").filter({ hasText: "Marta Kim" }).click()
+  await expect(page.getByTestId("teams-allow-chip")).toHaveText(["Marta Kim"])
+  await expect(page.getByTestId("teams-allow-suggestion")).toHaveText(["Joe Lee", "Kim, Tao"])
+  // The bot list is the same control. "Add all" takes every name that is left.
+  await page.getByTestId("teams-bots-find").click()
+  await expect(page.getByTestId("teams-bots-suggestion")).toHaveCount(3)
+  await page.getByTestId("teams-bots-add-all").click()
+  await expect(page.getByTestId("teams-bots-chip")).toHaveText(["Joe Lee", "Marta Kim", "Kim, Tao"])
+  await expect(page.getByTestId("teams-bots-found-none")).toBeVisible()
+  await expect(page.getByTestId("teams-bot-wins")).toBeVisible()
+  await shot(page, "teams-names-lists")
   await page.getByTestId("teams-page-toggle").click()
-  await page.getByTestId("teams-allow").fill("Marta Kim")
+  // With the page closed, the button says what to do first, and the lists stay as they are.
+  await page.getByTestId("teams-allow-find").click()
+  await expect(page.getByTestId("teams-allow-find-error")).toContainText(
+    "Show the Teams page and open the chat first.",
+  )
+
+  // The cross on a chip removes the name. Backspace in the empty box removes the last name.
+  await page
+    .getByTestId("teams-bots-chip")
+    .filter({ hasText: "Joe Lee" })
+    .getByRole("button")
+    .click()
+  await page.getByTestId("teams-bots").click()
+  await page.keyboard.press("Backspace")
+  await page.keyboard.press("Backspace")
+  await expect(page.getByTestId("teams-bots-chip")).toHaveCount(0)
+  await expect(page.getByTestId("teams-bot-wins")).toHaveCount(0)
+  // A name that is typed joins with Enter. A name that is on the list is not added twice.
+  await page.getByTestId("teams-allow").fill("marta  KIM")
+  await page.getByTestId("teams-allow").press("Enter")
+  await page.getByTestId("teams-allow").fill("Joe Lee")
+  await page.getByTestId("teams-allow").press("Enter")
+  await expect(page.getByTestId("teams-allow-chip")).toHaveText(["Marta Kim", "Joe Lee"])
+  await expect(page.getByTestId("teams-allow")).toHaveValue("")
+  await page
+    .getByTestId("teams-allow-chip")
+    .filter({ hasText: "Joe Lee" })
+    .getByRole("button")
+    .click()
+  await expect(page.getByTestId("teams-allow-chip")).toHaveText(["Marta Kim"])
   await page.getByTestId("teams-call").click()
 
   // The switch shows a dialog; "Back" leaves it off; "Turn on" starts the link.

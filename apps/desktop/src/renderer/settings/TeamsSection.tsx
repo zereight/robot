@@ -3,7 +3,6 @@ import {
   type Channel,
   isLimitProblem,
   type MessageKey,
-  namesOfText,
   problemField,
   TEAMS_DIALOG_FACT_KEYS,
   TEAMS_FACT_KEYS,
@@ -36,6 +35,7 @@ import { wholeBox } from "../teams/place.ts"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { NameList } from "./NameList.tsx"
 import styles from "./settings.module.css"
 import teamStyles from "./teams.module.css"
 
@@ -197,8 +197,6 @@ export const TeamsSection = () => {
   const [titleDraft, setTitleDraft] = createSignal<string>()
   const [callDraft, setCallDraft] = createSignal<string>()
   const [markerDraft, setMarkerDraft] = createSignal<string>()
-  const [allowDraft, setAllowDraft] = createSignal<string>()
-  const [botsDraft, setBotsDraft] = createSignal<string>()
 
   const textField = (options: {
     label: MessageKey
@@ -244,14 +242,15 @@ export const TeamsSection = () => {
     </div>
   )
 
+  /** The names that the open chat shows, for the button "Find in the chat". */
+  const findSenders = () => call("teams.readSenders")
+
   const listField = (options: {
     label: MessageKey
     hint: MessageKey
     field: TeamsFieldName
     value: () => readonly string[]
-    draft: () => string | undefined
-    setDraft: (value: string | undefined) => void
-    save: (names: string[]) => Promise<unknown>
+    save: (names: string[]) => Promise<boolean>
     testId: string
   }) => (
     <div class={teamStyles.field} data-testid={`${options.testId}-field`}>
@@ -259,19 +258,11 @@ export const TeamsSection = () => {
         {t(options.label)}
       </label>
       <div class={teamStyles.note}>{t(options.hint)}</div>
-      <textarea
+      <NameList
         id={options.testId}
-        class={teamStyles.area}
-        spellcheck={false}
-        value={options.draft() ?? options.value().join("\n")}
-        onInput={(e) => options.setDraft(e.currentTarget.value)}
-        onBlur={() => {
-          const next = options.draft()
-          options.setDraft(undefined)
-          if (next !== undefined) void options.save(namesOfText(next))
-        }}
-        data-testid={options.testId}
-        data-user-data
+        names={options.value()}
+        onChange={options.save}
+        find={findSenders}
       />
       {reasons(options.field)}
     </div>
@@ -536,8 +527,6 @@ export const TeamsSection = () => {
           hint: "teams.allow.hint",
           field: "allow",
           value: () => fields().allow,
-          draft: allowDraft,
-          setDraft: setAllowDraft,
           save: (allow) => commit({ allow }),
           testId: "teams-allow",
         })}
@@ -546,8 +535,6 @@ export const TeamsSection = () => {
           hint: "teams.bots.hint",
           field: "bots",
           value: () => fields().bots,
-          draft: botsDraft,
-          setDraft: setBotsDraft,
           save: (bots) => commit({ bots }),
           testId: "teams-bots",
         })}
