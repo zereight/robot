@@ -86,7 +86,7 @@ starter with the same job. The language follows the interface at the moment of t
 - **No fitting starter**: "Recommended" shows the line "No starter fits this goal." "All starters"
   stays as it is.
 - **Preview**: the fields hold the values of the starter, or what the user typed. "Create" is off
-  while a name is empty. The line under the empty field says "Type a name."
+  while a name is empty or has only spaces. The line under the empty field says "Type a name."
 - **Creating**: "Create" is off until every part is made, so one press makes one channel.
 - **Failed**: nothing is made. The preview stays open with the names that the user typed. One line
   gives the reason and the words "Nothing was made."
@@ -144,6 +144,7 @@ starter with the same job. The language follows the interface at the moment of t
 - The text box has the focus when the dialog opens.
 - Tab moves the focus in the order on screen. In the list, Enter picks the row, as a click does.
 - Escape closes the dialog (see "Flows", step 8).
+- In the preview, Enter does not press Create. Create is pressed by a click, or by Tab to its button and Enter.
 
 ### Limits
 
@@ -238,7 +239,7 @@ starter with the same job. The language follows the interface at the moment of t
 10. Repeat 9 in a profile with an agent named "Assistant": the new member gets a number after its
     name, and the channel gets one too if "Files" is taken.
 11. Pick "Research" and clear the channel name: "Create" is off, and the line "Type a name." shows
-    under the field.
+    under the field. Type only spaces instead: the same result.
 12. Make one part fail, for example with a test stand-in that refuses the second agent: no channel
     and no agent is made, and the preview shows the reason and the words "Nothing was made."
 13. Pick "Research" and press Back: the lists show the same goal text as before. Press Cancel:
@@ -257,3 +258,4 @@ starter with the same job. The language follows the interface at the moment of t
 20. Type "review code file folder compare sources": "Recommended" shows three starters, Researcher, Reviewer and Organizer, in that order, with 2 keywords each. Code review and Files, with 1 keyword each, are not shown there. "All starters" still shows all eight starters.
 21. With the goal text empty, open the goal dialog with the keyboard: the text box has the focus. Press Tab: the focus moves to the first row, Assistant. Press Enter: the Assistant starter is picked, as with a click. Open the dialog again, type a goal, and press Escape: the dialog closes, and the goal text is cleared.
 22. Paste 320 characters into the goal text: it keeps the first 300. Type only spaces: "Recommended" is not shown, and "All starters" lists the eight starters. Paste 70 characters into a channel name: the field keeps the first 60.
+23. Pick "Files" and press Enter in the preview: nothing is made. Press Tab until Create has the focus, then press Enter: the channel is made, as in item 9.
