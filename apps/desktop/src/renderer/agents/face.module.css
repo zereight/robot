@@ -1,6 +1,12 @@
+/*
+ * The disc reaches the edges of the drawing. An inline svg clips its drawing to its box, and the box
+ * edge snaps to whole pixels. At some sizes that cut a sliver off the right edge of the disc. So the
+ * drawing may paint past its box, which lets the disc keep its full edge.
+ */
 .face {
   display: block;
   flex-shrink: 0;
+  overflow: visible;
 }
 
 /* The eyes turn about their own middle, so a blink closes them where they are. */

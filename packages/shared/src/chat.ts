@@ -1,6 +1,7 @@
 import { Schema } from "effect"
 import type { SettingsNote } from "./agentSettings.ts"
 import type { KnowledgeNote } from "./knowledge.ts"
+import type { LeadAnswer, QuestionLead, QuestionPass } from "./leadAnswers.ts"
 import type { MemoryNote } from "./memory.ts"
 import type { OutsideSource } from "./outside.ts"
 import type { RuntimeKind } from "./providers.ts"
@@ -140,6 +141,12 @@ export type MessagePart =
       readonly knowledge?: KnowledgeNote
       /** Set when a message of the user in the chat answered this question card (spec 003). */
       readonly answeredInChat?: boolean
+      /**
+       * Set when the lead of the channel answered this question card in place of the user (spec
+       * 004, "Questions of members"): the card says "Answered by <lead>" with the reason, and
+       * offers "Correct".
+       */
+      readonly answeredByLead?: LeadAnswer
       /** Set when a protected card ended: the value was saved, or the user cancelled (spec 020). */
       readonly secret?: "saved" | "cancelled"
       /** Set for the settings tool: what the call changed, so the chat shows a line with Undo. */
@@ -221,6 +228,17 @@ export type ToolAsk =
       readonly question: string
       readonly choices: readonly string[]
       readonly askedAt?: number
+      /**
+       * Set while the lead of the channel looks at the question (spec 004, "Questions of
+       * members"). The card says "<lead> looks at it" and shows a spinner. The user can still
+       * answer it. The card is not in "Needs you" and makes no notification in that time.
+       */
+      readonly lead?: QuestionLead
+      /**
+       * Set when the lead passed the question to the user: the card is a normal question with the
+       * line of the lead. The kind of the pass is data for a later slice (spec 030).
+       */
+      readonly passed?: QuestionPass
     }
   /** The agent wants to change an article that the user edited last. Old and new text show side by side. */
   | {
@@ -310,6 +328,7 @@ export interface CutNotice {
 
 export type FilePart = Extract<MessagePart, { kind: "file" }>
 export type SkillPart = Extract<MessagePart, { kind: "skill" }>
+export type ToolPart = Extract<MessagePart, { kind: "tool" }>
 
 export interface QueuedMessage {
   readonly id: string
@@ -451,3 +470,51 @@ export const isNoteOnly = (parts: string | readonly MessagePart[]): boolean => {
     return false
   }
 }
+
+/**
+ * True for a tool step that may fold into a run: a finished plain card. A step that runs, waits,
+ * failed, was refused, or carries a note (an approval, a decision, a memory, knowledge or
+ * settings note) always stays open, so the user sees what needs them.
+ */
+export const isFoldableTool = (part: MessagePart): part is ToolPart =>
+  part.kind === "tool" &&
+  part.state === "done" &&
+  part.ask === undefined &&
+  part.refused === undefined &&
+  part.reason === undefined &&
+  part.decision === undefined &&
+  part.knowledge === undefined &&
+  part.memory === undefined &&
+  part.settings === undefined
+
+/** One row of a message: one part, or a run of folded tool steps. */
+export type PartSegment =
+  | { readonly kind: "part"; readonly part: MessagePart }
+  | { readonly kind: "tools"; readonly parts: readonly ToolPart[] }
+
+/**
+ * Groups runs of finished plain tool steps when `fold` is true, so a chat shows one line per
+ * run. With `fold` false every part is its own row.
+ */
+type MutableSegment = { kind: "part"; part: MessagePart } | { kind: "tools"; parts: ToolPart[] }
+
+export const groupParts = (
+  parts: readonly MessagePart[],
+  fold: boolean,
+): readonly PartSegment[] => {
+  if (!fold) return parts.map((part): PartSegment => ({ kind: "part", part }))
+  const out: MutableSegment[] = []
+  for (const part of parts) {
+    const last = out[out.length - 1]
+    if (isFoldableTool(part) && last?.kind === "tools") last.parts.push(part)
+    else if (isFoldableTool(part)) out.push({ kind: "tools", parts: [part] })
+    else out.push({ kind: "part", part })
+  }
+  return out
+}
+
+/** The catalogue key of a folded run: one step reads in the singular ("1 tool step"). */
+export const foldedToolsKey = (
+  count: number,
+): "chat.tools.folded.one" | "chat.tools.folded.other" =>
+  count === 1 ? "chat.tools.folded.one" : "chat.tools.folded.other"

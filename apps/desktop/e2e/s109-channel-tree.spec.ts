@@ -336,6 +336,27 @@ test("sync: two computers put a channel under each other while apart; the later 
     // tree has no loop.
     await expect.poll(() => tree(one.page), { timeout: 30_000 }).toEqual(["Docs < Site", "Site"])
     await expect.poll(() => tree(two.page), { timeout: 30_000 }).toEqual(["Docs < Site", "Site"])
+    // The line is no message of an agent: it adds no unread count, and it does not replace the
+    // preview of the place (030, "Repair"). Nobody opened the channel yet, so a count would show.
+    for (const page of [one.page, two.page]) {
+      await expect
+        .poll(
+          async () =>
+            (await rpc<unknown[]>(page, "channels.history", { channelId: site.id })).length,
+          { timeout: 30_000 },
+        )
+        .toBe(1)
+      const sections = await rpc<
+        { places: { id: string; unread: number; lastMessage: string | null }[] }[]
+      >(page, "places.list", { serverId: await localServerId(page) })
+      expect(sections.flatMap((x) => x.places).find((p) => p.id === site.id)).toMatchObject({
+        unread: 0,
+        lastMessage: null,
+      })
+      const row = page.getByTestId(`place-channel-${site.id}`)
+      await expect(row).toHaveAttribute("data-unread", "false")
+      await expect(row.locator("span", { hasText: /^\d+$/ })).toHaveCount(0)
+    }
     for (const page of [one.page, two.page]) {
       await page.getByTestId(`place-channel-${site.id}`).click()
       await expect(page.getByTestId("channel-header-name")).toHaveText("Site")

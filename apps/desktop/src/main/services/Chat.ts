@@ -472,6 +472,10 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
       ...(existing?.kind === "tool" && existing.decision ? { decision: existing.decision } : {}),
       ...(existing?.kind === "tool" && existing.knowledge ? { knowledge: existing.knowledge } : {}),
       ...(existing?.kind === "tool" && existing.answeredInChat ? { answeredInChat: true } : {}),
+      // The lead answered the question in place of the user: the card keeps saying so (spec 004).
+      ...(existing?.kind === "tool" && existing.answeredByLead
+        ? { answeredByLead: existing.answeredByLead }
+        : {}),
       ...(existing?.kind === "tool" && existing.secret ? { secret: existing.secret } : {}),
       ...(existing?.kind === "tool" && existing.settings ? { settings: existing.settings } : {}),
       // A step that the level refused keeps its mark, so the card says why (spec 007).

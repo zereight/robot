@@ -47,10 +47,8 @@ const side = (id: string, peer: string): Side => {
 
 const pair = () => [side("dev-a", "dev-b"), side("dev-b", "dev-a")] as const
 
-/** Records what waits on `from` and applies it on `to`, as the link does. */
-const ship = (from: Side, to: Side) => {
-  from.engine.flush()
-  const sent = from.engine.pending(1000, 50_000_000)
+/** Applies some of the changes that wait on `from` on `to` as one batch of the link. */
+const batch = (from: Side, to: Side, sent: ReturnType<SyncEngine["pending"]>) => {
   const ops = sent.map((p) => parseOp(JSON.parse(JSON.stringify(p.op)), 10_000_000))
   expect(ops.every((op) => op !== undefined)).toBe(true)
   const result = to.engine.apply(
@@ -58,6 +56,17 @@ const ship = (from: Side, to: Side) => {
     { force: false, snapshot: false },
   )
   from.engine.ack(sent)
+  return result
+}
+
+/**
+ * A whole sync: records what waits on `from`, applies all of it on `to` in one batch, and then
+ * checks the tree, as the sync service does when no more batches come (spec 030, "Repair").
+ */
+const ship = (from: Side, to: Side) => {
+  from.engine.flush()
+  const result = batch(from, to, from.engine.pending(1000, 50_000_000))
+  result.touches.push(...to.engine.repairTree())
   return result
 }
 
@@ -270,5 +279,85 @@ describe("a fourth level that two computers make", () => {
       expect(parents(on)).toEqual({ a: "p", b: "a", p: null })
       expect(on.db.all("SELECT id FROM channel_message")).toEqual([])
     }
+  })
+})
+
+describe('a set of changes that crosses in two batches (spec 030, Repair, "When it runs")', () => {
+  /**
+   * Computer A makes one consistent edit set: it moves "Y" to the top, then puts "X" under "Y".
+   * A later edit of "Y" (a new topic) moves the change of "Y" behind the change of "X" in the log,
+   * so the two batches split between them.
+   */
+  const editSet = () => {
+    const [a, b] = start([
+      ["x", null],
+      ["y", "x"],
+      ["z", null],
+    ])
+    a.clock = 2000
+    setParent(a, "y", null)
+    a.engine.flush()
+    a.clock = 2100
+    setParent(a, "x", "y")
+    a.engine.flush()
+    a.clock = 2200
+    a.db.run("UPDATE channel SET topic = 'Renamed' WHERE id = 'y'")
+    a.engine.flush()
+    const sent = a.engine.pending(1000, 50_000_000)
+    expect(sent.map((p) => p.id)).toEqual(["x", "y"])
+    return { a, b, first: sent.slice(0, 1), second: sent.slice(1) }
+  }
+  const want = { x: "y", y: null, z: null }
+
+  test("the first batch alone makes a loop; the apply does not repair it, and the second batch removes it", () => {
+    const { a, b, first, second } = editSet()
+    const one = batch(a, b, first)
+    // Half of the set is a loop (X under Y, and Y under X). Nothing is repaired in the middle.
+    expect(parents(b)).toEqual({ x: "y", y: "x", z: null })
+    expect(one.touches.every((t) => t.kind === "channel")).toBe(true)
+    expect(b.db.all("SELECT id FROM channel_message")).toEqual([])
+    expect(b.engine.hasPending()).toBe(false)
+
+    batch(a, b, second)
+    expect(parents(b)).toEqual(want)
+    // The sync has applied all that it has: the tree is right, and the check finds nothing.
+    expect(b.engine.repairTree()).toEqual([])
+    expect(b.db.all("SELECT id FROM channel_message")).toEqual([])
+    expect(b.engine.hasPending()).toBe(false)
+    expect(parents(a)).toEqual(want)
+  })
+
+  test("a check after the whole set repairs nothing, and the other computer gets nothing back", () => {
+    const { a, b, first, second } = editSet()
+    batch(a, b, first)
+    batch(a, b, second)
+    settle(a, b)
+    for (const on of [a, b]) {
+      expect(parents(on)).toEqual(want)
+      for (const id of ["x", "y", "z"]) expect(lines(on, id)).toEqual([])
+    }
+  })
+
+  test("the same changes in one batch: the same result", () => {
+    const { a, b } = editSet()
+    ship(a, b)
+    expect(parents(b)).toEqual(want)
+    for (const id of ["x", "y", "z"]) expect(lines(b, id)).toEqual([])
+  })
+
+  test("a set that does end in a break is repaired when the check runs, once", () => {
+    // Only the first half comes (the second change is a real clash that never arrives): the loop
+    // stays, and the check at the end repairs it.
+    const { a, b, first } = editSet()
+    batch(a, b, first)
+    expect(parents(b)).toEqual({ x: "y", y: "x", z: null })
+    const made = b.engine.repairTree()
+    expect(made.map((t) => t.kind)).toEqual(["channel", "cmessage"])
+    expect(made.length).toBe(2)
+    expect(parents(b)).toEqual({ x: null, y: "x", z: null })
+    expect(lines(b, "x")).toHaveLength(1)
+    // A second check finds nothing.
+    expect(b.engine.repairTree()).toEqual([])
+    expect(lines(b, "x")).toHaveLength(1)
   })
 })

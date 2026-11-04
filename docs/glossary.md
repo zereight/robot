@@ -99,7 +99,9 @@ A new word goes here in the same pull request as the spec that brings it.
 | Record only | A switch of a watch routine or a workflow trigger: a change or a trigger starts no task and calls no model, and only shows as "Recorded" (spec question of 009, 010). | 기록만 하기 | dry run, observe mode, test mode |
 | Recorded | A run of "Record only": what fired, with no task (spec question of 009, 010). | 기록됨 | skipped, ignored |
 | Workflow | Connected steps that run when a trigger fires (010). | 워크플로, 워크플로우 (see "Open points") | automation, pipeline |
-| Starter | A ready setup for one job. It fills the new agent form (002) or makes a workflow (010). | — (proposed: 스타터) | template, preset |
+| Starter | A ready setup for one job. It fills the new agent form (002), makes a workflow (010), or makes a channel with its agents (031). | — (proposed: 스타터) | template, preset |
+| Channel starter | A ready channel with its agents and lead, made in one step from a fixed list (031). | — (proposed: 채널 스타터) | team starter, team, squad |
+| Goal text | The words that the user types in the goal dialog. They stay on this computer and are not kept (031). | — (proposed: 목표 글) | prompt, task description |
 | Today | The page of what waits, went wrong, ran and runs next (021). | 오늘 | inbox, dashboard |
 | Needs you | Items that wait for the user (011, 021). | 내 확인이 필요해요 | inbox |
 | Board | The page of cards in four columns (024). | 보드 (proposed) | kanban (as a name in the interface), project |
@@ -135,6 +137,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Thinking sheet | The sheet on the phone that lists all thoughts of a turn (011). | 생각 보기 (proposed) | log |
 | Share to an agent | The target of the share sheet of the phone that sends an item to an agent (011). | 에이전트에게 공유 (proposed) | export |
 | Find in the chat | The bar of Cmd+F that finds text in the chat that is open (003). | 대화에서 찾기 (proposed) | search (search is Cmd+K, 001) |
+| Folded tool steps | The one line that stands for a run of finished tool steps when the switch "Show tool steps" is off. The user opens it to read the cards (003, 011). | "도구 단계 N개" (proposed) | — |
+| Show tool steps | The switch in Appearance (013) and in the Chat settings of the phone (011). When it is off, finished tool steps fold into one line per run (003). | "도구 단계 표시" (proposed) | — |
 | Sound when a task ends | The setting for the sound of a result (015). | 작업이 끝날 때 소리 (proposed) | alert |
 | Keep phones quiet | The setting that holds notices to phones while the user works at the computer (015). | 일하는 동안 폰 알림 보류 (proposed) | focus mode |
 | Sensitive read | A step that reads a place with keys or logins. The turn then holds a mark (007). | 민감한 정보 읽기 | leak, breach |

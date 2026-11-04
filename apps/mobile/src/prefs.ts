@@ -15,6 +15,8 @@ export interface Prefs {
   readonly notify: Readonly<Record<NotifyKind, boolean>>
   /** The sections that the user closed, per paired server: keys like "agents" or "user:<id>". */
   readonly closed: Readonly<Record<string, readonly string[]>>
+  /** When false, finished plain tool steps fold into one line per run. */
+  readonly showToolSteps: boolean
 }
 
 export const defaultPrefs: Prefs = {
@@ -22,6 +24,7 @@ export const defaultPrefs: Prefs = {
   theme: "system",
   notify: { reply: true, mention: true, approval: true, task_failed: true },
   closed: {},
+  showToolSteps: true,
 }
 
 const PREFS_FILE = "prefs.json"
@@ -37,6 +40,7 @@ export const readPrefs = async (storage: PhoneStorage): Promise<Prefs> => {
   return {
     language: oneOf(raw.language, ["system", "en", "ko"], "system"),
     theme: oneOf(raw.theme, ["system", "dark", "light"], "system"),
+    showToolSteps: typeof raw.showToolSteps === "boolean" ? raw.showToolSteps : true,
     notify: Object.fromEntries(
       NOTIFY_KINDS.map((k) => [k, typeof notify[k] === "boolean" ? notify[k] : true]),
     ) as Record<NotifyKind, boolean>,

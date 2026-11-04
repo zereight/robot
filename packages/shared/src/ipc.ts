@@ -31,7 +31,15 @@ import type {
   ServerEntry,
   WireNotice,
 } from "./link.ts"
-import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryProposal } from "./memory.ts"
+import type {
+  MemoryFilter,
+  MemoryHistoryRow,
+  MemoryItem,
+  MemoryMode,
+  MemoryProposal,
+  MemoryScope,
+} from "./memory.ts"
+import type { MemoryCheckInfo } from "./memoryCheck.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { HandOffRule, Organization } from "./organization.ts"
 import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
@@ -487,13 +495,30 @@ export interface RpcMethods {
   "handbook.save": { input: { serverId: string; text: string }; output: Handbook }
   /** Makes the text of a version the handbook again. The restore is a new version. */
   "handbook.restore": { input: { serverId: string; versionId: string }; output: Handbook }
-  "memory.list": { input: { agentId: string; query?: string }; output: readonly MemoryItem[] }
+  /** The items of one agent. The filter keeps all items, the general items, or the notes of one channel. */
+  "memory.list": {
+    input: { agentId: string; query?: string; filter?: MemoryFilter }
+    output: readonly MemoryItem[]
+  }
+  /** The channels for the filter and for a move: those with notes of the agent, and those it is a member of. */
+  "memory.scopes": { input: { agentId: string }; output: readonly MemoryScope[] }
+  /** Moves an item to General (`null`) or to a channel that the agent is a member of (spec 008). */
+  "memory.move": { input: { id: string; channelId: string | null }; output: MemoryItem }
   "memory.add": { input: { agentId: string; text: string }; output: MemoryItem }
   "memory.update": { input: { id: string; text: string }; output: MemoryItem }
   "memory.delete": { input: { id: string }; output: undefined }
   /** "Save at once" or "Ask me first" for one agent (spec 008). Not for a linked device. */
   "memory.mode": { input: { agentId: string }; output: MemoryMode }
   "memory.setMode": { input: { agentId: string; mode: MemoryMode }; output: undefined }
+  /**
+   * The memory check of one agent (spec 008): the choice, the count of done turns since the last
+   * check, and why it is off. A linked device reads it with the link only.
+   */
+  "memory.check": { input: { agentId: string }; output: MemoryCheckInfo }
+  /** Turns the memory check of an agent on or off. A linked device needs "Can create and change agents". */
+  "memory.check.set": { input: { agentId: string; on: boolean }; output: undefined }
+  /** "Check now": adds a check with the turns since the last check. Not for a linked device. */
+  "memory.check.now": { input: { agentId: string }; output: undefined }
   /** The proposals of an agent, oldest first. */
   "memory.proposals": { input: { agentId: string }; output: readonly MemoryProposal[] }
   /** Makes an item of a proposal. `text` is the edited text of "Edit and save". */

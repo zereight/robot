@@ -44,7 +44,6 @@ can see and edit: its instructions, its memory, its knowledge, and the skills th
 - [Architecture](#architecture)
 - [Testing](#testing)
 - [Release](#release)
-- [Clean-room project](#clean-room-project)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -56,7 +55,7 @@ can see and edit: its instructions, its memory, its knowledge, and the skills th
 | Area | What you can do |
 | --- | --- |
 | **Agents** | Create an agent from a starter (Assistant, Briefer, Researcher, Reviewer, Organizer) or from blank. A starter fills the name, role and instructions, and can also make a paused routine and a skill. Pick one of 6 faces and 10 colours, or upload a picture. A face follows the theme: it glows in the dark theme and is a tinted disc in the light theme. Give an agent a role line from a list or a new one. Edit, duplicate, archive, restore and delete. Each agent has its own workspace folder, and its instructions keep a history that you can restore. Export agents to one file, and import them with a review before anything is made. |
-| **Model accounts** | Use the subscription you already have: sign in to Claude Code (Claude plan), Codex (ChatGPT plan) or Muse Code (Meta account), or use the models that you set up in pi or opencode. ROBot runs that program with your sign-in. It never reads or stores your tokens and it removes API key variables from the program's environment, so the plan pays (not for pi and opencode, which have their own models and billing). Or connect OpenAI, Anthropic or any OpenAI-compatible endpoint with an API key, which goes to the system keychain. Add more than one Claude Code account, each with its own sign-in. The app shows if a program is missing or signed out, and has **Check again** and **Repair**. Pick a model and an effort level (None to Ultra) per agent. A model shows only the levels that it lists. Hide models you do not use. |
+| **Model accounts** | Use the subscription you already have: sign in to Claude Code (Claude plan), Codex (ChatGPT plan) or Muse Code (Meta account), use the models that you set up in pi or opencode, or use Cursor on this computer (`cursor-agent`, then `cursor-agent login` or `CURSOR_API_KEY`). ROBot runs that program with your sign-in. It never reads or stores your tokens and it removes API key variables from the program's environment, so the plan pays (not for pi and opencode, which have their own models and billing). Cursor keeps `CURSOR_API_KEY`, because that key is the Cursor account. Or connect OpenAI, Anthropic or any OpenAI-compatible endpoint with an API key, which goes to the system keychain. Add more than one Claude Code account, each with its own sign-in. The app shows if a program is missing or signed out, and has **Check again** and **Repair**. Pick a model and an effort level (None to Ultra) per agent. A model shows only the levels that it lists. Hide models you do not use. |
 | **Direct chat** | Replies stream in. Stop a reply at any time; the partial reply stays and is marked. Messages you send while the agent works join the turn or wait in a queue that you can edit. Reply to a message and jump to the quote. Edit your last message. Retry a failed reply. Markdown with code copy buttons, tables and links; a picture from the web loads only when you press **Load image**. Thinking folds into one line. Attach files. Use threads, fork a thread from a message, hand a chat over to another agent, and search all messages. A context meter shows how full the chat is, and **Compact** (also automatic) shortens it. Type `/` to run a saved skill. |
 | **Channels** | Put several agents in a channel and pick a lead. The lead splits a job into parts, and each part has a done test. The members work on their parts. The lead checks each result against its test and posts one summary. Mention one agent with `@Name`, or all of them with `@all`. Turn on review of parts, so that you accept a part or ask for changes. A part that cannot be done shows as **Blocked**. The activity panel shows the plan steps and the members at work. An optional small decision model (off by default) can pick one member for a job, so that the lead does not have to. |
 | **Tasks** | Every agent turn is a task. The Tasks page lists them with their state and times, and a work record for each. Stop, retry, run next, and set how many agents work at once. A task that waits for you keeps waiting after a restart. |
@@ -218,7 +217,7 @@ packages/link/       The device link: identity, pairing, encrypted messages
 packages/phone/      The phone's side of the link: hub, places, cache
 packages/teams-bridge/  A stand-alone Teams reader for tests (not part of the app)
 specs/               Behaviour specs: the only source for implementation
-docs/                Spec questions, provenance, release process, formats, measures
+docs/                Spec questions, release process, formats, measures
 ```
 
 ### App icon
@@ -296,8 +295,10 @@ frames stay in `build/e2e/videos/readme-demo-frames`. Look at each picture befor
   other way.
 - **Chat and tasks.** One worker per agent streams the reply, saves it every 500 ms and when it
   ends, and sends the next queued message. Replies still marked as streaming at start-up become
-  stopped. An agent that uses a vendor program (Claude Code, Codex, Muse Code, pi, opencode) runs
-  that program, and the app shows its steps and approvals in the same cards.
+  stopped. An agent that uses a vendor program (Claude Code, Codex, Muse Code, pi, opencode,
+  Cursor) runs that program, and the app shows its steps and approvals in the same cards. Cursor
+  shows its steps. A headless run cannot ask before a step, so the permission level sets the mode
+  of the program instead.
 - **Device link.** A computer that you link is a server. The window and the phone ask it for
   places and messages over an encrypted link, and it pushes changes back. Two computers that sync
   each keep a full copy, and send change records to each other.
@@ -358,24 +359,11 @@ disk image and the zip file (version, arm64 only, host program, signature). A ve
 suffix, such as `0.2.0-beta.1`, becomes a pre-release. The full process, the dry run and the
 signing plan are in [docs/release.md](docs/release.md).
 
-## Clean-room project
-
-ROBot is written from an empty tree. Two roles keep it clean:
-
-- **Spec authors** write behaviour specs in [`specs/`](specs/README.md): what the user sees and
-  does, never code.
-- **Implementers** build only from those specs and public documentation, and never look at other
-  apps' code.
-
-Unclear spec points and the choices made for them are in
-[docs/spec-questions.md](docs/spec-questions.md). Every merged change has a line in
-[docs/provenance.md](docs/provenance.md). The rules are in [CLEANROOM.md](CLEANROOM.md).
-
 ## Roadmap
 
 The [spec index](specs/README.md) lists every milestone and the slices of each.
-[docs/spec-changes.md](docs/spec-changes.md) and [docs/provenance.md](docs/provenance.md) say what
-each slice built and what it left out. This table says where the app stands.
+[docs/spec-changes.md](docs/spec-changes.md) says what each slice built and what it left out.
+This table says where the app stands.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
@@ -390,7 +378,8 @@ each slice built and what it left out. This table says where the app stands.
 
 ## Contributing
 
-1. Read [CLEANROOM.md](CLEANROOM.md) and [AGENTS.md](AGENTS.md), and state your role in the PR.
+1. Read [AGENTS.md](AGENTS.md). Unclear spec points and the choices made for them are in
+   [docs/spec-questions.md](docs/spec-questions.md).
 2. One branch and one pull request per change, with the PR template filled in.
 3. Interface text goes in both catalogues, `packages/shared/src/i18n/en.ts` and `ko.ts`.
 4. Run `bun run lint`, `bun run typecheck`, `bun run test` and the end-to-end tests for the area

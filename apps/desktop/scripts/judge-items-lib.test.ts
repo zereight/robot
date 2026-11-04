@@ -1297,7 +1297,7 @@ describe("the output file", () => {
   test("a path inside this repository is refused, also through .. and through a link", () => {
     const [root] = repositoryRoots() as [string]
     // A guard against a wrong root: the repository root holds the rules of the project.
-    expect(existsSync(join(root, "CLEANROOM.md"))).toBe(true)
+    expect(existsSync(join(root, "AGENTS.md"))).toBe(true)
     const db = dbFile()
     const dir = tempDir()
     const inside = [

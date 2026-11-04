@@ -16,8 +16,6 @@ How sure a fact is:
   stars on 2026-11-04.
 - Read: the public page about its Org chart, the README, and two change notes about the Org chart.
 - Not read: any source code. Not run: the app.
-- No code of OpenBot or OpenOwnBot was read. This note holds no text, picture or name from the
-  Clawboo code.
 
 ## What the Org chart of Clawboo does (Read, not run)
 

@@ -1354,6 +1354,32 @@ describe("the cards that ask and the notes of knowledge tools in a message", () 
     ok({ ask: { kind: "question", question: "Which?", choices: ["a"], askedAt: NOW } })
     ok({ ask: { kind: "article", title: "Alpha", before: "old", after: "new", askedAt: NOW } })
     ok({ ask: { kind: "article", title: "Alpha", before: "old", after: null } })
+    // A question that the lead looks at, or passed, and one that it answered (spec 004, 019).
+    const lead = { agentId: "lead-1", name: "Lia" }
+    ok({ ask: { kind: "question", question: "Which?", choices: ["a"], askedAt: NOW, lead } })
+    for (const kind of ["user_choice", "not_sure", "late", "failure"])
+      ok({
+        ask: {
+          kind: "question",
+          question: "Which?",
+          choices: ["a"],
+          passed: { ...lead, kind, reason: kind === "late" ? "" : "No fact." },
+        },
+      })
+    ok({ answeredByLead: { ...lead, reason: "The shop ships to the EU only." }, state: "done" })
+    bad({ ask: { kind: "question", question: "Which?", choices: ["a"], lead: { agentId: "" } } })
+    bad({
+      ask: {
+        kind: "question",
+        question: "Which?",
+        choices: ["a"],
+        passed: { ...lead, kind: "unknown", reason: "x" },
+      },
+    })
+    bad({ answeredByLead: { ...lead } })
+    bad({ answeredByLead: { ...lead, reason: "x", extra: 1 } })
+    // Only a question can name a lead.
+    bad({ ask: { kind: "approval", summary: "Run ls", lead } })
     // The command of a step can be long, as long as its input.
     ok({ ask: { kind: "approval", summary: "x".repeat(12_000), askedAt: NOW } })
     bad({ ask: { kind: "approval", summary: "x".repeat(2_000_001) } })
@@ -1449,6 +1475,15 @@ describe("memory in a sync (spec 008, 019)", () => {
     expect(parseOp(itemOp({ source: "undo" }), NOW)).toBeUndefined()
   })
 
+  test("the channel of a note is a field: an id or null passes; an empty id or a number does not", () => {
+    expect(parseOp(itemOp({ channelId: "chan-1" }), NOW)).toBeDefined()
+    expect(parseOp(itemOp({ channelId: null }), NOW)).toBeDefined()
+    expect(parseOp(itemOp({ channelId: "" }), NOW)).toBeUndefined()
+    expect(parseOp(itemOp({ channelId: 7 }), NOW)).toBeUndefined()
+    // A computer of an older step sends no such field, and its item is a general item.
+    expect(parseOp(itemOp({}), NOW)).toBeDefined()
+  })
+
   test("a text typed by hand may be longer than the tool takes, up to the limit of the user", () => {
     expect(parseOp(itemOp({ text: "x".repeat(MEMORY_TEXT_MAX + 1) }), NOW)).toBeDefined()
     expect(parseOp(itemOp({ text: "x".repeat(MEMORY_USER_TEXT_MAX) }), NOW)).toBeDefined()
@@ -1462,7 +1497,7 @@ describe("memory in a sync (spec 008, 019)", () => {
     }
     expect(Object.keys(KINDS.agent.fields)).not.toContain("memoryMode")
     expect(Object.keys(KINDS.memory.fields).sort()).toEqual(
-      ["agentId", "createdAt", "source", "text", "updatedAt"].sort(),
+      ["agentId", "channelId", "createdAt", "source", "text", "updatedAt"].sort(),
     )
   })
 })
@@ -1712,6 +1747,35 @@ describe("review of parts and blocked tasks cross with their task and channel (s
     expect(KINDS.channel.read(b, a.channel.id)?.fields.reviewParts).toBe(true)
     KINDS.channel.write(b, a.channel.id, { reviewParts: false })
     expect(KINDS.channel.read(b, a.channel.id)?.fields.reviewParts).toBe(false)
+  })
+
+  test("the setting The lead answers questions is a field of the channel: on at first, a wrong value does not pass, an older computer counts as on (spec 004, 019)", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-lead-answers")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    // On at first.
+    expect(KINDS.channel.read(ctxA, a.channel.id)?.fields.leadAnswers).toBe(true)
+    a.db.run("UPDATE channel SET lead_answers = 0 WHERE id = ?", a.channel.id)
+    const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
+    expect(fields.leadAnswers).toBe(false)
+    expect(parseOp(op("channel", a.channel.id, fields), NOW)).toBeDefined()
+    expect(
+      parseOp(op("channel", a.channel.id, { ...fields, leadAnswers: "yes" }), NOW),
+    ).toBeUndefined()
+
+    // The other computer makes the channel with the setting, and a change reaches it.
+    const b = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(b, a.channel.id, { ...fields, members: [] })).toBe(true)
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.leadAnswers).toBe(false)
+    KINDS.channel.write(b, a.channel.id, { leadAnswers: true })
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.leadAnswers).toBe(true)
+
+    // A channel from a computer that has no such setting counts as on.
+    const { leadAnswers: _drop, ...older } = fields
+    expect(parseOp(op("channel", "older-lead", older), NOW)).toBeDefined()
+    const c = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(c, "older-lead", { ...older, members: [] })).toBe(true)
+    expect(KINDS.channel.read(c, "older-lead")?.fields.leadAnswers).toBe(true)
   })
 
   test("a channel from a computer that has no such setting counts as off", async () => {

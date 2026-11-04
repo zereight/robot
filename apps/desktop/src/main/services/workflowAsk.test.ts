@@ -115,6 +115,6 @@ test("the message ends with the form of the answer, and holds the question and t
 
 test("Muse Code cannot answer a prompt with no tools and no chat", () => {
   expect(canAnswerPlainPrompt("muse")).toBe(false)
-  for (const kind of ["openai", "anthropic", "custom", "claude_code", "codex", "pi"])
+  for (const kind of ["openai", "anthropic", "custom", "claude_code", "codex", "pi", "cursor"])
     expect(canAnswerPlainPrompt(kind)).toBe(true)
 })

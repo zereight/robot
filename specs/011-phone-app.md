@@ -25,9 +25,13 @@ The user follows and directs agents from an iPhone or Android phone while away f
    it cannot move a place to a section, and it cannot pin or unpin a place. The user does this on
    the computer. The phone shows the group "Pinned" and the sections inside sections (001).
 3. **Conversation**: message rows as on desktop, Markdown, tool cards (tap for details), the
-   message box with attach (photos, files), stop, and reply.
+   message box with attach (photos, files), stop, and reply. When the switch "Show tool steps"
+   in Settings is off, each run of finished plain tool steps shows as one muted line with the
+   count, and a tap opens it to read the cards. A step that runs, waits, failed, was refused, or
+   carries a note always shows as its own card (003, "Folded tool steps").
 4. **Approvals**: approval and question cards can be answered in the conversation or from a
-   notification.
+   notification. A question card shows the look of the lead, its pass line and "Answered by
+   <lead>" with the reason (004). The button "Correct" is on the computer only in this version.
 5. **Needs you**: one list of what waits for the user on a server: approval cards, question cards,
    and failed channel parts. A failed part has "Retry" and "End the request", as on the computer
    (see 004). A question of a member that is with the lead (004) joins the list only when it
@@ -36,7 +40,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
    reads the runs, edits steps, and asks the assistant, as on the computer (see 010). Running a
    workflow and reading its runs need only the link. Editing steps and asking the assistant need
    the switch "Can create and change agents" of that computer (012).
-7. **Settings**: language, theme, notifications, unpair.
+7. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
+   switch "Show tool steps", on at first.
 8. **Org chart**: a read-only list of the main agent, the channels with their members and leads
    (a sub-channel indented under its parent channel, 030), the state of each agent, and the work that agents handed to each other in the last 7 days. It
    is a list, not a canvas (see 029, "Phone"). A tap on an agent opens its chat, and a tap on a
@@ -140,6 +145,7 @@ start a handover (003) and does not make a skill from work (017). It shows the m
   iPhone this means in practice while the app is open or was open a moment ago. The settings
   screen says this in one line, so the user does not expect a notice from a closed app.
 - An answer from a notification needs the app: a tap opens the card in the conversation.
+- The settings of the phone stay on the phone.
 
 ## Out of scope
 
@@ -172,3 +178,5 @@ start a handover (003) and does not make a skill from work (017). It shows the m
 - Open the screen "Org chart": it lists the main agent, each channel with its members and lead, and
   the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer off, the
   screen says so and shows no list (029).
+- Turn off "Show tool steps" in Settings: a reply with finished steps shows one folded line per
+  run, and a tap opens the cards. A step that waits still shows as its own card.
