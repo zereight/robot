@@ -286,7 +286,7 @@ describe("opencode program", () => {
       { type: "text", text: "Echo: second line" },
     ])
     expect(events).toContainEqual({ type: "thinking", text: "Thinking it over." })
-    expect(events.at(-1)).toEqual({ type: "usage", input: 23, output: 5 })
+    expect(events.at(-1)).toEqual({ type: "usage", input: 23, output: 5, cached: 2 })
     const call = fake.opencodeCalls().slice(before)[0] as {
       args: string[]
       prompt: string

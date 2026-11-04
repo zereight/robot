@@ -2440,6 +2440,29 @@ export const en = {
   "orgchart.zoomIn": "Zoom in",
   "orgchart.zoomOut": "Zoom out",
   "orgchart.fit": "Fit to view",
+  "taskUsage.title": "Usage",
+  "taskUsage.input": "Input tokens",
+  "taskUsage.output": "Output tokens",
+  "taskUsage.cached": "Cached share",
+  "taskUsage.cost": "Cost",
+  "taskUsage.none": "—",
+  "taskUsage.tree": "All tasks together",
+  "taskUsage.byAgent": "By agent",
+  "taskUsage.line": "{input} in · {output} out",
+  "taskUsage.share": "{percent}% of the total",
+  "taskUsage.noReport": "No tokens reported.",
+  "taskUsage.lead": "Tokens: {line}",
+  "routines.tokenLimit": "Token limit for each run",
+  "routines.tokenLimit.hint":
+    "Stops a run that uses this many tokens. Cached input counts. Empty means no limit. A whole number from 1,000 to 10,000,000.",
+  "routines.tokenLimit.late":
+    "{program} reports tokens at the end of a turn, so a run can go over the limit by the size of one turn.",
+  "routines.tokenLimit.silent": "{program} does not report tokens.",
+  "routines.tokenLimit.card": "Token limit: {count} for each run",
+  "routines.limitNear": "80% of the token limit is used.",
+  "routines.runTokens": "Tokens: {line}",
+  "error.token_limit": "Token limit reached ({detail}).",
+  "error.invalid_token_limit": "Use a whole number from 1,000 to 10,000,000 for the token limit.",
 } as const
 
 export type MessageKey = keyof typeof en

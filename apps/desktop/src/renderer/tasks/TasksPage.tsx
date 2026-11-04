@@ -43,6 +43,7 @@ import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { showToast } from "../ui/toast.ts"
 import { TaskStateText } from "./TaskStateText.tsx"
+import { TaskUsageView } from "./TaskUsageView.tsx"
 import styles from "./tasks.module.css"
 
 // A reason with no text of its own shows the general error text.
@@ -253,6 +254,8 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
             <TaskTimesList task={d().task} />
             <h3>{t("moments.title")}</h3>
             <MomentsList task={d().task} leadName={d().leadName} />
+            {/* The tokens and the cost of the task, and the total of its tree (spec 005). */}
+            <TaskUsageView usage={d().task.usage} tree={d().tree} />
             <h3>{t("tasks.prompt")}</h3>
             <pre class={styles.text}>{d().task.prompt}</pre>
             {/* The done test and the verdict of the lead belong to a part of a channel (spec 004, 005). */}

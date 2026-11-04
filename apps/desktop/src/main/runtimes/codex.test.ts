@@ -65,7 +65,7 @@ describe("codex events", () => {
     expect(out).toEqual([
       { type: "text", text: "One" },
       { type: "text", text: "\n\nTwo" },
-      { type: "usage", input: 100, output: 7 },
+      { type: "usage", input: 100, output: 7, cached: 90 },
     ])
     expect(state.done).toBe(true)
   })

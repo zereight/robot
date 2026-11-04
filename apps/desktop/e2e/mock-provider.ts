@@ -157,6 +157,40 @@ const answer = (body: ChatBody): Plan => {
     }
   // A member who does half of the work.
   if (text.includes("HALFREPLY")) return { chunks: ["Only two of the five facts."], delay: 0 }
+  // Usage of a task (spec 005): the lead splits a job into a part for Bo, who answers at once, and
+  // a part for Cy. "split usage" holds the part of Cy quiet until the test lets it go, so that the
+  // card of the lead can show the total while the job runs. "split usagegap" lets Cy report no
+  // usage at all. The numbers come from the words USAGE in the prompts (see `spendOf`).
+  if (text.includes("split usagegap"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "Two parts, and one that reports no tokens",
+          parts: [
+            { member: "Bo", label: "Write the intro", prompt: "Write the intro USAGE 3000/500" },
+            { member: "Cy", label: "Check the facts", prompt: "Check the facts USAGE none" },
+          ],
+        }),
+      ],
+      delay: 0,
+    }
+  if (text.includes("split usage"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "Two parts, and one that goes quiet",
+          parts: [
+            { member: "Bo", label: "Write the intro", prompt: "Write the intro USAGE 3000/500" },
+            {
+              member: "Cy",
+              label: "Check the facts",
+              prompt: "go quiet while you check the facts USAGE 3000/500",
+            },
+          ],
+        }),
+      ],
+      delay: 0,
+    }
   // A lead that splits a job answers with a plan. The members are Bo and Cy.
   if (text.includes("split two"))
     return {
@@ -376,10 +410,44 @@ export interface SentPart {
   readonly at: number
 }
 
+/**
+ * What each request of a turn reports as its usage (spec 005, "Usage of a task"). The last message
+ * of the user holds `USAGE` and a list with one entry for each request of the turn, in order, the
+ * last one repeating:
+ *   "USAGE 1000/200"            input 1000 and output 200 tokens
+ *   "USAGE 8000/100/6000"       the same with 6000 cached input tokens
+ *   "USAGE 4100,5200"           the tokens in all for the first and the second request
+ *   "USAGE none"                the provider reports nothing
+ * Returns undefined when the message holds no such word, and null for "none".
+ */
+const spendOf = (body: ChatBody) => {
+  const at = body.messages.map((m) => m.role).lastIndexOf("user")
+  const text = String(body.messages[at]?.content ?? "")
+  // The summary of a lead quotes the parts, and so their words. It reports nothing, so that the
+  // numbers of a job are the ones its prompts ask for.
+  if (text.includes("All parts have ended:")) return null
+  // A message can hold the words of earlier requests of the chat: the last ones count.
+  const spec = [...text.matchAll(/USAGE ([\w/,]+)/g)].at(-1)?.[1]
+  if (!spec) return undefined
+  if (spec === "none") return null
+  const index = body.messages.slice(at + 1).filter((m) => m.role === "tool").length
+  const list = spec.split(",")
+  const entry = (list[Math.min(index, list.length - 1)] ?? "").split("/").map(Number)
+  const [first = 0, output, cached] = entry
+  if (entry.length === 1) return { prompt_tokens: first - 10, completion_tokens: 10 }
+  return {
+    prompt_tokens: first,
+    completion_tokens: output ?? 0,
+    ...(cached !== undefined ? { prompt_tokens_details: { cached_tokens: cached } } : {}),
+  }
+}
+
 /** The context size of "mock-fast". "fill context" in a message reports 91 percent of it as used. */
 export const CONTEXT_SIZE = 100_000
 /** "use N" at the end of a message reports a use of N tokens in all. */
 const usageOf = (body: ChatBody) => {
+  const spent = spendOf(body)
+  if (spent !== undefined) return spent
   const line = (body.messages.at(-1)?.content ?? "").split("\n").at(-1) ?? ""
   const use = /use (\d+)$/.exec(line)?.[1]
   if (use) return { prompt_tokens: Number(use) - 10, completion_tokens: 10 }
@@ -424,6 +492,9 @@ const openAiReply = async (
       const rest = { index, function: { arguments: call.args } }
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
     }
+    // A turn that asks for a usage reports it for this request too.
+    const spent = spendOf(body)
+    if (spent) res.write(`data: ${JSON.stringify({ choices: [], usage: spent })}\n\n`)
     return res.end("data: [DONE]\n\n")
   }
   const finished = body.messages.at(-1)
@@ -442,6 +513,15 @@ const openAiReply = async (
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [rest] } }] })}\n\n`)
       return res.end("data: [DONE]\n\n")
     }
+    // "HOLDAFTER": the request after the first tool result waits until the test calls
+    // `releaseQuiet`, so that a test can look at a run between its two requests (spec 009).
+    if (lastAsk.includes("HOLDAFTER")) {
+      await new Promise<void>((resolve) => {
+        quiet.push(resolve)
+        res.on("close", resolve)
+      })
+      if (res.destroyed || res.writableEnded) return
+    }
     // A model that fails after a tool step, once for each text.
     if (lastAsk.includes("FAILTOOL") && !failedAfterTool.has(lastAsk)) {
       failedAfterTool.add(lastAsk)
@@ -459,6 +539,8 @@ const openAiReply = async (
         ? `From the past chats: ${quotes.slice(0, 400)}`
         : `Tool said: ${output.slice(0, 80)}`
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`)
+    const spent = spendOf(body)
+    if (spent) res.write(`data: ${JSON.stringify({ choices: [], usage: spent })}\n\n`)
     return res.end("data: [DONE]\n\n")
   }
   // "go quiet" (spec 005, "Quiet line"): one part of the reply, then nothing until the test calls
@@ -508,7 +590,8 @@ const openAiReply = async (
     sent.push({ text: chunk, at: Date.now() })
     if (p.delay) await sleep(p.delay)
   }
-  send({ choices: [], usage: usageOf(body) })
+  const reported = usageOf(body)
+  if (reported) send({ choices: [], usage: reported })
   res.end("data: [DONE]\n\n")
 }
 

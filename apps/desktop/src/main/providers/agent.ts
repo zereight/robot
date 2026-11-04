@@ -8,6 +8,7 @@ import {
   type ToolDef,
   type Turn,
 } from "./chat.ts"
+import { type SpentEvent, spendTracker } from "./spent.ts"
 import type { TurnInbox } from "./turn.ts"
 
 export interface ToolOutcome {
@@ -53,6 +54,7 @@ export type AgentEvent =
   | ToolEvent
   | JoinedEvent
   | PlanEvent
+  | SpentEvent
 
 /**
  * Asks the model, runs the tools it calls, gives it the results, and asks again, until it
@@ -94,7 +96,17 @@ export async function* runAgent(
       calls.push(pending)
     } else {
       const tools = moreTools ? [...(req.tools ?? []), ...moreTools()] : req.tools
+      // Every request is billed on its own: the counts of one request are running totals, and
+      // the next request starts from nothing. `spent` says what the request used since the last
+      // report, so a task adds up all the requests of a turn (spec 005, "Usage of a task").
+      const spend = spendTracker()
       for await (const event of streamChat({ ...req, turns, ...(tools ? { tools } : {}) })) {
+        if (event.type === "usage") {
+          yield event
+          const spent = spend(event)
+          if (spent) yield spent
+          continue
+        }
         if (event.type === "toolcall")
           calls.push({ id: event.id, name: event.name, input: event.input })
         else if (event.type === "reply") blocks = event.blocks

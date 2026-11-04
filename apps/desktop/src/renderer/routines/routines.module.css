@@ -168,6 +168,13 @@
   color: var(--c-text-muted);
 }
 
+/* The run details: the tokens of the run, and the line at 80 percent of its limit (spec 009). */
+.entryDetails {
+  color: var(--c-text-muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
 /* An item that the Today page asks for lights up for a moment. */
 .card[data-flash="true"] {
   background: var(--c-selected);
