@@ -1136,4 +1136,10 @@ export const migrations: readonly string[] = [
   ALTER TABLE memory_history ADD COLUMN channel_name_before TEXT;
   ALTER TABLE memory_history ADD COLUMN channel_name_after TEXT;
   `,
+  `
+  -- "The lead answers questions" (spec 004, S74): a setting of the channel, on (1) by default. A
+  -- question of a member in a part goes to the lead first. It syncs with the channel (spec 019):
+  -- the dirty trigger of the channel already watches every column.
+  ALTER TABLE channel ADD COLUMN lead_answers INTEGER NOT NULL DEFAULT 1;
+  `,
 ]

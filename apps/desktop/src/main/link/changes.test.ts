@@ -443,6 +443,21 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     expect(
       codeOf(await p.ask("channels.update", { id: channel.id, patch: { archived: true } })),
     ).toBe("invalid_input")
+    // "The lead answers questions" is on at first. A client with the switch changes it (spec 004,
+    // 012). "Review parts" is not a field that a client sets.
+    expect(
+      value<{ id: string; leadAnswers: boolean }[]>(
+        await p.onServer("channels.list", { serverId: p.serverId }),
+      ).find((c) => c.id === channel.id)?.leadAnswers,
+    ).toBe(true)
+    expect(
+      value<{ leadAnswers: boolean }>(
+        await p.ask("channels.update", { id: channel.id, patch: { leadAnswers: false } }),
+      ).leadAnswers,
+    ).toBe(false)
+    expect(
+      codeOf(await p.ask("channels.update", { id: channel.id, patch: { reviewParts: true } })),
+    ).toBe("invalid_input")
 
     const item = value<{ id: string; text: string }>(
       await p.ask("memory.add", { agentId: a.id, text: "Likes tea" }),

@@ -559,7 +559,7 @@ describe("tools in channels", () => {
     expect(await s.run(Memory.use((m) => m.list(s.bo.id)))).toEqual([])
   })
 
-  test("a mention: a save asks only when the history holds a message of another agent", async () => {
+  test("a mention: the messages that a member reads are no outside content; the mark of the channel is (spec 007)", async () => {
     const s = await setup({ lead: false })
     const save = `@Bo TOOL save_memory ${JSON.stringify({ text: "Ship on Friday" })}`
     await s.send(save)
@@ -567,9 +567,27 @@ describe("tools in channels", () => {
     expect((await s.run(Memory.use((m) => m.list(s.bo.id)))).map((i) => i.text)).toEqual([
       "Ship on Friday",
     ])
-    // Cy is asked next. Cy reads the message of Bo, so the same save of Cy asks (the mock
-    // model repeats the request that it reads in the channel).
+    // Cy reads the message of Bo, but that is no "message from another agent" (spec 007): only a
+    // message that Bo sends with "send message" is. So the same save of Cy runs with no card (the
+    // mock model repeats the request that it reads in the channel).
     await s.send(`@Cy ${save.slice(4)}`)
+    await s.idle()
+    expect((await s.run(Memory.use((m) => m.list(s.cy.id)))).map((i) => i.text)).toEqual([
+      "Ship on Friday",
+    ])
+    expect((await s.tasks()).some((t) => t.state === "waiting")).toBe(false)
+    // An earlier turn read a page and no one cleared the mark of the channel: now a save asks.
+    await s.run(
+      PlaceMarks.use((marks) =>
+        Effect.sync(() =>
+          marks.holdOutside(
+            { kind: "channel", id: s.channel.id },
+            { kind: "page", host: "a.test" },
+          ),
+        ),
+      ),
+    )
+    await s.send(`@Cy TOOL save_memory ${JSON.stringify({ text: "Ship on Monday" })}`)
     await until(async () => (await s.tasks()).some((t) => t.state === "waiting"))
     const waiting = (await s.history())
       .filter((m) => m.agentId === s.cy.id)
@@ -578,7 +596,7 @@ describe("tools in channels", () => {
     expect(waiting).toMatchObject({
       name: "save_memory",
       state: "waiting",
-      ask: { once: true, outside: { kind: "agent", name: "Bo" } },
+      ask: { once: true, outside: { kind: "page", host: "a.test" } },
     })
     await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
     await s.idle()

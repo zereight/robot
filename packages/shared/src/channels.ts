@@ -30,6 +30,12 @@ export interface Channel {
   readonly sectionId: string | null
   /** "Review parts": a part of a plan that ends well waits for the user (spec 004). Off at first. */
   readonly reviewParts: boolean
+  /**
+   * "The lead answers questions": a question of a member in a part goes to the lead first (spec
+   * 004, "Questions of members"). On by default. A channel with no lead shows it off with a muted
+   * line; the stored value stays, and the rule needs a lead anyway.
+   */
+  readonly leadAnswers: boolean
   readonly unread: number
   readonly working: boolean
   /** The label of the first credential place that a turn of the channel read (spec 007). */
@@ -60,6 +66,7 @@ export const ChannelPatch = Schema.Struct({
   leadId: Schema.optionalKey(ChannelCreate.fields.leadId),
   sectionId: ChannelCreate.fields.sectionId,
   reviewParts: Schema.optionalKey(Schema.Boolean),
+  leadAnswers: Schema.optionalKey(Schema.Boolean),
 })
 export type ChannelPatch = typeof ChannelPatch.Type
 
@@ -89,6 +96,8 @@ export const ClientChannelPatch = Schema.Struct({
   instructions: ChannelCreate.fields.instructions,
   memberIds: Schema.optionalKey(ClientMemberIds),
   leadId: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
+  // A linked device with the switch "Can create and change agents" changes it (spec 004, 012).
+  leadAnswers: Schema.optionalKey(Schema.Boolean),
 })
 export type ClientChannelPatch = typeof ClientChannelPatch.Type
 
