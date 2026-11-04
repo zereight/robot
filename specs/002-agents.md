@@ -12,8 +12,10 @@ An agent has:
 - **Name**: 1 to 40 characters, unique on its server.
 - **Face**: a generated round avatar with a hue and a shape (see "Avatars"). The user can pick
   another shape and one of ten hues, or upload an image.
-- **Role line**: up to 120 characters, shown under the name in profiles. It is the job title of
-  the agent. Settings list all role lines (see 013).
+- **Role line**: up to 120 characters. It is the job title of the agent. An agent has one. It works
+  as a label: the user picks it from a list, adds a new one, and removes it with one click (see
+  "Role label"). It shows under the name in profiles and as a badge in the place list (see 001,
+  "Place rows"). Settings list all role lines (see 013).
 - **Instructions**: free text that the agent always follows.
 - **Read the handbook**: a switch, on by default. See "Handbook".
 - **Model**: the provider and model it uses (see 006), and an effort level when the model has one.
@@ -54,8 +56,9 @@ An agent has:
    filled in and can be changed.
 4. Edit: the user opens the agent profile and changes any field, also the section. Changes apply to
    the next turn. A change of section applies at once.
-5. Choose a role line: the role box of the profile shows a list of the role lines that other
-   agents use. The user picks one or types a new one.
+5. Choose a role line: the role field of the form and of the profile shows a list of the role
+   lines that other agents use. The user picks one or types a new one, and can remove it again
+   (see "Role label").
 6. Duplicate: makes a new agent with the same fields and a new, empty workspace and history.
    The copy gets a random name (flow 2). It keeps the saved browser session of the original (see
    007), so the sign-ins carry over. It joins the same section as the original.
@@ -76,6 +79,49 @@ An agent has:
     picks such a file. The app shows the review screen (see 014, "Review before an import"), asks for one model for all of them (see
     006), and asks to confirm.
 11. Recent work: the profile lists the latest tasks of the agent (see "Recent work").
+
+## Role label
+
+The field "Role" of the form of a new agent and of the profile works like a label field.
+
+- **Shape**: with a role line, the field shows it as a chip with a "Remove" button at its end.
+  With no role line, the field shows a muted "Choose a role" button. A click on the chip or on
+  the button opens the list.
+- **List**: a text box is at the top and has focus when the list opens. Under it are the roles
+  that agents of this server have now (see 013, "Roles"), in alphabetical order. A choice shows
+  the role and the number of agents that have it. The count is of the saved agents, so a pick that
+  is not saved yet changes no count. The role of this agent, as the form holds it now, shows a
+  check.
+- **Filter**: typed text keeps the roles that hold it, ignoring case. When the typed text, after
+  spaces at both ends are removed, is not empty and is not the same as a listed role (ignoring
+  case), the last choice is "Add <text>". "Add" is off for a text over 120 characters, and a muted
+  line says why.
+- **Pick**: a click on a choice, or Enter on the choice that has the bar, sets the role line and
+  closes the list. The bar marks the choice for the keys. It starts on the role that is the same
+  as the typed text, ignoring case, or on the first choice when none is. Up and down move it.
+  Escape closes the list and changes nothing. Typed text that is the same as a listed role
+  (ignoring case) gets the spelling of the list, so "designer" picks "Designer".
+- **Remove**: "Remove" empties the role line of this agent. It changes no other agent. The role
+  line is optional.
+- **Save**: a pick, an add and a remove change the form. The agent changes when the user saves the
+  form (flow 4), as for every other field. A role that no agent has after the save leaves the
+  list (013).
+- **Other ways to a role line**: a starter, an import, a duplicate and the agent itself in the
+  chat (see "Changes from the chat") set the same field. The chip shows it in the same way. A
+  role line wider than the chip is cut with "…", and the whole text shows in a note when the
+  pointer rests on the chip.
+- **Other devices**: on a linked computer that lets this device create and change agents (012),
+  the field works in the same way, with the roles of that server. Without that right, the
+  profile shows the chip with no "Remove" button, leaves the whole field out, with its label,
+  when the role line is empty, and the list does not open. The phone shows
+  the role line as a badge in the place list (001) and follows the computer for the role list
+  (011).
+- **Runtimes**: nothing changes. The role line is the same field and the model gets it as before,
+  on an API provider and on a vendor runtime.
+- **Data**: nothing new. The role line syncs (019), goes in an export (014) and in an agent file,
+  as before.
+- **Words**: the texts of the field come from the translation catalogue, in English and Korean. A
+  role is text of the user and is not translated.
 
 ## Changes from the chat
 
@@ -289,6 +335,16 @@ glyph of light that glow.
   "Default" after the update. Duplicate an agent that has "High": the copy has "High". In the dialog
   of an import, the effort starts at "Default".
 - The new agent form opens with a first name. Press the name button: the name changes.
+- Open "New agent" and open the role list: it lists the roles of the other agents, in alphabetical
+  order, with the number of agents of each. Type "Qa tester": the last choice is "Add Qa tester".
+  Press Enter: the field shows a chip. Press Create: the profile and the place list show "Qa
+  tester".
+- Type "designer" while the role "Designer" exists: the list has no "Add" choice. Enter picks
+  "Designer".
+- Type a role of 121 characters: "Add" is off, with the reason. Press Escape: the list closes and the
+  role stays as it was.
+- In a profile, press "Remove" and save: the agent has no role and its row has no badge. Another
+  agent with the same role keeps it. When no agent has the role, the list no longer shows it.
 - Duplicate an agent: the copy has a different random name and the same browser sign-ins.
 - Turn on "Main agent" for agent B while agent A has it: only B has it.
 - Put an agent in the section "Research" in its profile, then duplicate it: the copy shows in

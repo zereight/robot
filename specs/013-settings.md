@@ -90,8 +90,10 @@ small choices for the app. It is off by default. When it is off, nothing is sent
   the name of another role, the two roles join into one.
 - The user can remove a role after a confirm. Its agents keep their names, chats and files, and
   have an empty role line.
-- A role exists while an agent has it. The user makes a new role in the profile of an agent
-  (see 002).
+- A role exists while an agent that is not archived has it. The user makes a new role in the
+  profile of an agent (see 002, "Role label"). The list of that field shows the roles of this page.
+- Archived agents are not in the list, and a rename or a remove does not change them. An archived
+  agent keeps its role line, and a restore brings it back.
 
 ## Archive
 
@@ -131,6 +133,9 @@ small choices for the app. It is off by default. When it is off, nothing is sent
 - Two agents have the role lines "Designer" and "designer": the Roles page shows one role with
   two agents. Rename it to the role line of a third agent: all three agents have one role.
 - Remove a role: its agents have an empty role line and keep their chats.
+- Open the role list in the profile of an agent: it lists the same roles as the Roles page. Rename a
+  role on the page, then open the list again: it shows the new name. Archive the only agent of a
+  role: the role leaves both lists.
 - The settings list shows Permissions, Skills and Connections. Each opens its own page.
 - Turn off "Keep going on open steps": a stand-in runtime that ends with open steps ends its task.
   Turn it on: the same turn goes on.

@@ -212,12 +212,12 @@ means a profile on a computer.
 
 ## Messages
 
-- A client asks for: server summary, places (with the user sections and the section of each
-  place), a page of messages, search of places and of messages (001), send message, stop, edit,
-  retry, mark a place as read, approve, answer question, upload attachment, download attachment,
-  task list, task details, stop a task, workflow list, one workflow, run history, run details,
-  create, update, delete and turn on or off a workflow, run a workflow, stop a run, and the org
-  chart (029).
+- A client asks for: server summary, places (with the user sections, the section of each place,
+  and the role line of each agent), a page of messages, search of places and of messages (001),
+  send message, stop, edit, retry, mark a place as read, approve, answer question, upload
+  attachment, download attachment, task list, task details, stop a task, workflow list, one
+  workflow, run history, run details, create, update, delete and turn on or off a workflow, run a
+  workflow, stop a run, and the org chart (029).
 - The phone app (011) may ask for more: end a request (see 004). The aim of 011 is that the phone
   can do whatever the user can do in a conversation on the computer. Start and fork a thread,
   compact a conversation and "Run next" are on no client in this version (003, 005), and each of
@@ -227,7 +227,8 @@ means a profile on a computer.
   workflow needs the switch "Can create and change agents".
 - A server pushes: new and changed messages, task state changes, agent state changes, approval
   requests and questions, unread counts, changes to the sections or to the section of a place,
-  changes to workflows, changes to the state of a run, and changes to the org chart (029).
+  changes to the name or to the role line of an agent, changes to workflows, changes to the state
+  of a run, and changes to the org chart (029).
 - A server pushes the start and the end of a quiet turn (005, "Quiet line"), with the name and
   the seconds on the quiet clock at the time of the push. The client counts on from that value.
   It does not get a push each second. A client that connects while a turn is quiet gets the quiet

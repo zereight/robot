@@ -72,6 +72,7 @@ only. Follow the limits in [CLEANROOM.md](../CLEANROOM.md#what-a-spec-must-not-c
 | M28 | 027, and the changes to 001, 002, 003, 004, 005, 006, 007, 009, 010, 011, 012, 013, 014, 015, 019, 020 and 022 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S86 to S100: backup model, keep going on open steps, channel turns and picture, browser details, voice, quiet phone notices, web hook, effort levels and model list, ACP programs, saved logins, menu bar and sound, phone extras, place list extras, idle work, busy provider |
 | M29 | 028, and the changes to 000, 002, 003, 005, 007, 013, 014, 015, 019, 021 and 022 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S101 to S105: the Teams link, calls from Teams, answers and the outbox, answers for a channel, pause and notices |
 | M30 | 029, and the changes to 001, 011, 012, 014 and 019 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S106: the org chart |
+| M31 | The changes to 001, 002, 011, 012 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S107: the role label, the role badge and the filter of places by role |
 
 ## Surfaces check
 

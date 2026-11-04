@@ -33,8 +33,9 @@ new user knows where to look.
    On a linked computer, the places and the pages work as 012 says. The plus buttons on the
    sections show only when that computer lets this device create and change agents.
 2. The user clicks a place. The conversation opens it. The place row shows as selected.
-3. The user types in search. The list shows only places whose name matches, and a group of
-   matching messages (see "Message search"). Escape clears it.
+3. The user types in search. The list shows only the places whose name matches, the agents whose
+   role line matches, and a group of matching messages (see "Message search"). Escape clears
+   it.
 4. The user collapses a section by clicking its name. The app remembers this per section.
 5. The user hides or shows the activity panel with a header button. The app remembers this.
 6. The user drags the edge of the place list to change its width, between 200 and 400 px.
@@ -91,9 +92,12 @@ The Channels section holds channel sections. The Agents section holds agent sect
   same ones. The open or closed state of a section belongs to the device (step 4 of "Flows"
   above).
 - Section names are text of the user. They are not translated.
-- The filter of places (step 3 of "Flows" above) looks at place names only. Messages have their
-  own group (see "Message search"). A section with no match hides, and a section with a match
-  opens, also when it is collapsed.
+- The filter of places (step 3 of "Flows" above) looks at the names of places and at the role
+  line of agents. A place matches when the typed text is a part of its name, or of its role line,
+  ignoring case. A channel has no role line, so only its name counts, also when a member has a
+  role that matches. Cmd+K focuses the same field. The order of the places does not change.
+  Messages have their own group (see "Message search"), and it does not look at role lines. A
+  section with no match hides, and a section with a match opens, also when it is collapsed.
 - Up and down in the list move through the places that show, in the order shown. A collapsed
   section has no places that show.
 
@@ -166,6 +170,17 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 - One line, 34 px high: a 24 px avatar (see 002, "Avatars"): the face for an agent, or the
   picture or the `#` mark for a channel, then the name.
+- An agent with a role line shows it as a **role badge** after the name: a small, muted label with
+  the role line on one line. An agent with no role line, and a channel, show no badge. The badge
+  is text of the user and is not translated.
+  - The name comes first: the badge is cut before the name is. When the row is too narrow, the
+    badge is cut with "…" at its end. When the room is less than the width of 4 letters of the
+    badge, the badge hides, and then the name is cut with "…" as before, if it is too long. The
+    unread count stays at the right end, after the badge.
+  - The badge shows in the compact place list, in the group "Pinned", in user sections, on a linked
+    computer (012) and on the phone (011). It changes at once when the role line changes.
+  - The whole role line shows in a note when the pointer rests on the badge, and it is part of the
+    accessible name of the row.
 - Names are muted. They are full contrast when the row is selected, hovered, or has unread
   messages.
 - An unread count shows as a small badge at the right end.
@@ -226,6 +241,16 @@ The Channels section holds channel sections. The Agents section holds agent sect
   No agent is deleted.
 - Type part of an agent name that is in a collapsed user section: the section opens and shows the
   agent. Escape clears the search and the section collapses again.
+- Give one agent the role "Designer" and another the role "Writer". Type "design": only the first
+  agent shows. Type "writ": only the second shows. Type the name of the second agent: it shows.
+  Press Escape: both show.
+- Give an agent in a collapsed section the role "Researcher". Type "researcher": the section
+  opens and shows the agent. A channel with a member of that role does not show.
+- An agent with the role "Qa tester" shows the badge "Qa tester" after its name. Remove the role:
+  the badge leaves. A channel row never shows a badge.
+- Set the place list to its narrowest width. An agent with a short name, a long role and unread
+  messages shows the whole name, a badge cut with "…", and the unread count at the right end. An
+  agent with a name of 40 characters shows its name cut with "…" and no badge.
 - Send "The budget is 4200 euros" to an agent. Search "euros budget": the group "Messages" shows
   the message with both words marked. A click opens the chat at that message and flashes it.
   "Back" returns to the earlier place.

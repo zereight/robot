@@ -14,7 +14,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | --- | --- | --- | --- |
 | Agent | A member that does work, with a face, name, role line, model, workspace and memory (002). | 에이전트 | bot (except the bot tag), assistant, employee, coworker |
 | Main agent | The one agent that can split work across the others (002). | — | boss, manager |
-| Role line | The short line under the name of an agent (002). | 역할 | job title |
+| Role line | The short line under the name of an agent. It works as a label: the user picks it from a list, adds a new one, or removes it (002). | 역할 | job title |
+| Role badge | The small label that shows the role line of an agent in a row of the place list (001). Not shown as a word in the interface. | — | — |
 | Instructions | The text that an agent follows in every turn (002). | 지침 | prompt, soul, persona |
 | Workspace | The folder of an agent (007). | 작업 폴더 | project, sandbox |
 | Memory | Short facts that an agent keeps between chats (008). | 메모리 | brain, learning |
