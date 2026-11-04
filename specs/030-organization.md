@@ -103,10 +103,15 @@ More rules:
 - An agent in no channel can send only to the main agent. With no main agent, it can send to no
   agent.
 - A send that the rule does not allow fails. No task starts. The step shows the reason "<R> is not
-  on your path. Send it to <A>." <A> is the first agent on the path to R: the lead of a channel of
-  S that is on the path, or else the main agent. When there is no such agent, the reason is "<R>
-  is not on your path, and no agent can pass it on. Tell the user." The sender gets the reason as
-  a failed step, and its turn goes on.
+  on your path. Send it to <A>." The sender gets the reason as a failed step, and its turn goes on.
+  - **A chain**: a row of agents from S to R in which each agent may send to the next one by the
+    rules above. The rule applies to the first send only. A chain of 2 agents is a send that the
+    rule allows. <A> is the second agent of the shortest chain from S to R.
+  - **Equal chains**: when more than one first agent gives a chain of the same length, the lead of a
+    channel of S comes first, then the main agent, then the other agents in the order of their
+    names, ignoring case.
+  - **No chain**: when S has no chain to R, the reason is "<R> is not on your path, and no agent
+    can pass it on. Tell the user."
 - A refused send is not a hand-off of the org chart (029). It counts for no limit of 005.
 - The reply of a receiver always comes back to the sender (007). A reply is not a send.
 - The rule does not touch the work that the user gives: a direct chat, a channel job, a mention,
@@ -218,16 +223,16 @@ the lead, and the parent channel.
 - **Ways in**: the channel settings (parent channel, tools of the channel, daily token limit). The
   settings part "Organization" (hand-off rule, ask up the line). The forms of skills and connections
   (channels in the picker). The org chart (029, edit on the chart). No key, no command of the
-  message
-  box. The search of the place list (Cmd+K) lists the settings part "Organization".
+  message box, and no entry in the search of the place list.
 - **Devices**:
   - The computer can do all of this.
   - A linked computer (012) with the switch "Can create and change agents" can change the parent
     channel and the daily token limit, and edit on the chart. It cannot change the part
     "Organization", the tools of a channel, skills or connections (012). It sees them read-only.
   - The phone (011) shows the tree in the list of the org chart, the line "In <parent channel>" in
-    a channel header, and the reasons of refused sends and blocked parts. It changes nothing of this
-    spec.
+    a channel header, and the blocked parts with their reasons. A refused send shows as a failed
+    step on a tool card, with the text of the step. The phone does not translate that text. The
+    phone changes nothing of this spec.
   - Each profile (022) has its own channels, its own part "Organization" and its own tools.
 - **Runtimes**: the hand-off rule, the line and the token limit are checked by the app. They are
   the same for agents that use the tools of the app and for agents on each vendor runtime (006). A
