@@ -15,6 +15,7 @@ import {
   type GuardedStep,
   guardDecision,
   holdOutside,
+  holdProgram,
   holdSensitive,
   hostOf,
   insideWorkspace,
@@ -140,6 +141,12 @@ export interface ToolContext {
    * of the turn holds the mark from now on, so its next turns hold the sensitive read too.
    */
   readonly onSensitive?: (label: SensitiveLabel) => void
+  /**
+   * Called when a step gave the turn the program mark (spec 007, "Program mark"), for example a
+   * hit of "search chats" that holds a message of an outside program or from Teams. The turn
+   * mark is set already; the chat or the channel then holds the mark for the next turns.
+   */
+  readonly onProgram?: () => void
 }
 
 /** What "send message" needs from the chat service, which is built after the tools. */
@@ -148,7 +155,11 @@ export interface Messenger {
    * Sends a text to another agent as a message that makes a task for it. The task is one deeper
    * than the task that sends. The reply of the receiver comes back to the sender later.
    */
-  send(from: { agentId: string; depth: number }, toAgentId: string, text: string): Promise<void>
+  send(
+    from: { agentId: string; depth: number; program: boolean },
+    toAgentId: string,
+    text: string,
+  ): Promise<void>
 }
 
 /**
@@ -919,6 +930,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           step: request.step,
           level: ctx.permission,
           outside: outside !== null,
+          program: ctx.turn.program,
           starter: ctx.turn.starter,
           // "Read only" comes before the rules (spec 007): there it refuses the step first.
           denied: request.rule?.kind === "deny" && ctx.permission !== "read_only",
@@ -1872,7 +1884,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           return { output: "This agent is archived. Choose another agent.", failed: true }
         if (!messenger)
           return { output: "Messages to other agents are not available.", failed: true }
-        await messenger.send({ agentId: ctx.agentId, depth }, target.id, message)
+        // A message from a turn that holds the program mark starts a turn that holds it too.
+        await messenger.send(
+          { agentId: ctx.agentId, depth, program: ctx.turn.program },
+          target.id,
+          message,
+        )
         return {
           output: `Sent to ${name}. Its reply comes back to you as a new message in a later turn. End your turn if you have nothing else to do.`,
           failed: false,
@@ -1984,7 +2001,14 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             // list of tools from before the user turned memory off.
             if (!memoryOn(ctx.agentId))
               return { output: "Search of past chats is off for this agent.", failed: true }
-            return search.forAgent(ctx.agentId, text(args, "query"))
+            const found = search.forAgent(ctx.agentId, text(args, "query"))
+            // A hit that holds a message of an outside program, of Teams, or of a turn that held
+            // the program mark gives the program mark to this turn (spec 007, "Program mark").
+            if (found.program) {
+              holdProgram(ctx.turn, found.program)
+              ctx.onProgram?.()
+            }
+            return { output: found.output, failed: found.failed }
           }
           case "save_memory":
             return await saveMemory(ctx, call, text(args, "text"))

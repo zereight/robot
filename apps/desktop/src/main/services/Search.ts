@@ -1,7 +1,9 @@
 import {
   charLength,
   matchesAll,
+  type OutsideSource,
   pageOf,
+  parseOutsideSource,
   SEARCH_CAP,
   SEARCH_SNIPPET,
   type SearchHit,
@@ -39,7 +41,18 @@ export interface SearchService {
    * The answer of the tool "search chats" for one agent: its own chats and the channels where it
    * is a member. `failed` is true when the words are too short to search.
    */
-  forAgent(agentId: string, query: string): { readonly output: string; readonly failed: boolean }
+  forAgent(
+    agentId: string,
+    query: string,
+  ): {
+    readonly output: string
+    readonly failed: boolean
+    /**
+     * The first source of a turn that holds the program mark, when a hit is a message of an
+     * outside program, of Teams, or of such a turn (spec 007, "Program mark"). Else null.
+     */
+    readonly program: OutsideSource | null
+  }
 }
 
 type Scope =
@@ -164,6 +177,15 @@ export class Search extends Context.Service<Search, SearchService>()("robot/main
             )?.thread_id ?? null)
           : null
 
+      /** The program mark of a hit: the first source of its turn, or null. */
+      const programOf = (found: Found): OutsideSource | null =>
+        parseOutsideSource(
+          db.get<{ program_mark: string | null }>(
+            `SELECT program_mark FROM ${found.kind === "chat" ? "message" : "channel_message"} WHERE id = ?`,
+            found.message_id,
+          )?.program_mark,
+        )
+
       return Search.of({
         page: (serverId, query, offset, mainOnly = false) =>
           Effect.sync(() => {
@@ -190,22 +212,26 @@ export class Search extends Context.Service<Search, SearchService>()("robot/main
         forAgent: (agentId, query) => {
           const words = searchWords(query)
           if (!words) {
-            return { output: "Give at least 2 characters to search for.", failed: true }
+            return {
+              output: "Give at least 2 characters to search for.",
+              failed: true,
+              program: null,
+            }
           }
-          const hits = find(db, { kind: "agent", agentId }, words, TOOL_SEARCH_HITS).map(
-            (f): ToolHit => {
-              const who = writer(f)
-              return {
-                place: nameOf(f.kind === "chat" ? "agent" : "channel", f.place_id),
-                kind: f.kind === "chat" ? "agent" : "channel",
-                createdAt: f.created_at,
-                who: who.agent,
-                isUser: who.author === "user",
-                text: snippetOf(bodyOf(db, f), words, TOOL_SEARCH_SNIPPET).text,
-              }
-            },
-          )
-          return { output: toolSearchOutput(hits), failed: false }
+          const found = find(db, { kind: "agent", agentId }, words, TOOL_SEARCH_HITS)
+          const program = found.map(programOf).find((source) => source !== null) ?? null
+          const hits = found.map((f): ToolHit => {
+            const who = writer(f)
+            return {
+              place: nameOf(f.kind === "chat" ? "agent" : "channel", f.place_id),
+              kind: f.kind === "chat" ? "agent" : "channel",
+              createdAt: f.created_at,
+              who: who.agent,
+              isUser: who.author === "user",
+              text: snippetOf(bodyOf(db, f), words, TOOL_SEARCH_SNIPPET).text,
+            }
+          })
+          return { output: toolSearchOutput(hits), failed: false, program }
         },
       })
     }),

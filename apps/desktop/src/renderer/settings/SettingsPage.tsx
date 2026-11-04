@@ -3,6 +3,7 @@ import {
   AGENTS_AT_ONCE_MIN,
   isAgentsAtOnce,
   isStepLimit,
+  type KeepAwakeState,
   type LicenseEntry,
   type MessageKey,
   type MessageParams,
@@ -54,17 +55,72 @@ export const sections = [
 ] as const
 export type SettingsSection = (typeof sections)[number]
 
-const Row = (props: ParentProps<{ label: string; hint?: string | undefined; testId?: string }>) => (
+const Row = (
+  props: ParentProps<{
+    label: string
+    hint?: string | undefined
+    /** A second muted line, for what is true now. */
+    note?: { text: string; testId: string } | undefined
+    testId?: string
+  }>,
+) => (
   <div class={styles.row} data-testid={props.testId}>
     <div>
       <div class={styles.label}>{props.label}</div>
       <Show when={props.hint}>
         <div class={styles.hint}>{props.hint}</div>
       </Show>
+      <Show when={props.note}>
+        {(note) => (
+          <div class={styles.hint} data-testid={note().testId}>
+            {note().text}
+          </div>
+        )}
+      </Show>
     </div>
     {props.children}
   </div>
 )
+
+/**
+ * "Keep the computer awake" (spec 013): when the app stops the computer from sleeping, and, in a
+ * muted line, whether it does now and why. The line follows the app while the user looks at it.
+ */
+const KeepAwake = () => {
+  const app = useApp()
+  const { t } = app
+  const [state, { mutate }] = createResource(() => call("keepAwake.state"))
+  onCleanup(window.robot.on("keepAwake.changed", (next) => mutate(next)))
+  const words = (now: KeepAwakeState | undefined) => {
+    if (!now) return undefined
+    if (now.reason === "working") return t("settings.keepAwake.now.working", { count: now.working })
+    if (now.reason === "routines")
+      return t("settings.keepAwake.now.routines", { count: now.routines })
+    // On its battery the computer lets a waiting routine go. Say why, so it does not look broken.
+    if (now.mode === "routines" && now.routines > 0 && now.onBattery)
+      return t("settings.keepAwake.now.battery")
+    return t("settings.keepAwake.now.none")
+  }
+  const noteOf = () => {
+    const text = words(state())
+    return text ? { text, testId: "setting-keep-awake-state" } : undefined
+  }
+  return (
+    <Row label={t("settings.keepAwake")} hint={t("settings.keepAwake.hint")} note={noteOf()}>
+      <Segmented
+        label={t("settings.keepAwake")}
+        testId="setting-keep-awake"
+        value={app.settings.keepAwake}
+        onChange={(keepAwake) => app.update({ keepAwake })}
+        options={[
+          { value: "off", label: t("settings.keepAwake.off") },
+          { value: "working", label: t("settings.keepAwake.working") },
+          { value: "routines", label: t("settings.keepAwake.routines") },
+        ]}
+      />
+    </Row>
+  )
+}
 
 /**
  * "Agents working at once": a whole number from 1 to 8 (spec 005, 013). A number out of range
@@ -173,6 +229,7 @@ const General = () => {
           onChange={(startAtLogin) => app.update({ startAtLogin })}
         />
       </Row>
+      <KeepAwake />
       <Row
         label={t("settings.workspaceRoot")}
         hint={app.settings.workspaceRoot || app.info.defaultWorkspaceRoot}

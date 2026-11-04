@@ -21,6 +21,17 @@ export const en = {
   "settings.language.ko": "한국어",
   "settings.startAtLogin": "Start at login",
   "settings.startAtLogin.hint": "Open ROBot when you sign in to this computer.",
+  "settings.keepAwake": "Keep the computer awake",
+  "settings.keepAwake.hint":
+    "A computer that sleeps runs no agent and no routine. The screen can still go dark.",
+  "settings.keepAwake.off": "Off",
+  "settings.keepAwake.working": "While agents work",
+  "settings.keepAwake.routines": "Also for routines",
+  "settings.keepAwake.now.none": "The app does not hold the computer awake now.",
+  "settings.keepAwake.now.working": "Awake now. Agents that work: {count}.",
+  "settings.keepAwake.now.routines": "Awake now. Routines that are on: {count}.",
+  "settings.keepAwake.now.battery":
+    "The computer runs on its battery. A routine that waits does not hold it awake.",
   "settings.workspaceRoot": "Agent workspaces folder",
   "settings.workspaceRoot.hint": "New agents get a folder here.",
   "settings.workspaceRoot.change": "Change…",
@@ -708,6 +719,8 @@ export const en = {
   "outside.source.secret": "the answer of a request with {name}",
   "outside.source.routine": "the routine {name}",
   "outside.source.agent": "a message from {name}",
+  "outside.source.teams": "Teams",
+  "outside.placeHeld": "Holds outside content",
   "sensitive.held": "Holds a sensitive read",
   "sensitive.first": "First place: {label}",
   "sensitive.askLine": "This turn read a place with keys or logins.",
@@ -720,6 +733,8 @@ export const en = {
   "sensitive.label.robot": "ROBot data",
   "marks.clear": "Clear",
   "marks.clearTitle": 'Clear "{marks}"?',
+  "marks.clearOutside":
+    "The agent still sees the outside text. After you clear the mark, guarded and checked steps do not ask because of it.",
   "marks.clearSensitive":
     "The agent still sees what it read. After you clear the mark, a step that sends data out does not ask because of it.",
   "marks.cancel": "Cancel",

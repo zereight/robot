@@ -21,11 +21,34 @@ export type OutsideSource =
   | { readonly kind: "routine"; readonly name: string }
   /** A message from another agent. */
   | { readonly kind: "agent"; readonly name: string }
+  /** A message from Teams (028). The card names "Teams" and holds no other data. */
+  | { readonly kind: "teams" }
 
-export const OUTSIDE_SOURCE_KINDS = ["page", "connection", "secret", "routine", "agent"] as const
+export const OUTSIDE_SOURCE_KINDS = [
+  "page",
+  "connection",
+  "secret",
+  "routine",
+  "agent",
+  "teams",
+] as const satisfies readonly OutsideSource["kind"][]
 
-/** Who started a turn. Only "user" is a turn that the user started. */
-export type TurnStarter = "user" | "routine" | "workflow" | "agent"
+/**
+ * The source kinds that carry the program mark (spec 007, "Program mark"): a message from Teams
+ * (028). A message of an outside program (023) joins this list when that feature is built: add its
+ * kind to the type above and to this list, and nothing else in the program mark changes.
+ */
+const PROGRAM_SOURCE_KINDS: readonly OutsideSource["kind"][] = ["teams"]
+
+/** True when a source carries the program mark: outside content from it holds the mark. */
+export const carriesProgramMark = (source: OutsideSource | null | undefined): boolean =>
+  source !== null && source !== undefined && PROGRAM_SOURCE_KINDS.includes(source.kind)
+
+/**
+ * Who started a turn. Only "user" is a turn that the user started. "program" is a turn that a
+ * message of an outside program (023) or a message from Teams (028) starts.
+ */
+export type TurnStarter = "user" | "routine" | "workflow" | "agent" | "program"
 
 /** The starter of a turn of a task, by the source of the task. */
 export const starterOf = (source: TaskSource): TurnStarter =>
@@ -62,19 +85,30 @@ export interface GuardInput {
   readonly level: GuardLevel
   /** True when the turn holds outside content. */
   readonly outside: boolean
+  /**
+   * True when the turn holds the program mark (spec 007, "Program mark"). That mark is outside
+   * content, so the turn holds outside content too, also when `outside` is false here.
+   */
+  readonly program?: boolean
   readonly starter: TurnStarter
   /** True when a Deny rule matches the step. */
   readonly denied?: boolean
 }
 
-/** The decision for a guarded step (spec 007, "Outside content"). An Allow rule does not count. */
+/**
+ * The decision for a guarded step (spec 007, "Outside content" and "Program mark"). An Allow rule
+ * does not count. At "Full access" a step runs with no question, except in a turn that holds the
+ * program mark: that turn asks at every level.
+ */
 export const guardDecision = (input: GuardInput): GuardVerdict => {
   if (input.denied) return "refuse_rule"
   // At "Read only" a save to memory follows the outside rule; every other guarded step is a change.
   if (input.level === "read_only" && input.step !== "memory") return "refuse_read_only"
+  if (input.program) return "ask"
   if (input.level === "full") return "run"
   if (input.outside) return "ask"
-  // A turn that the user did not start asks before a change of the agent's own settings.
+  // A turn that the user did not start asks before a change of the agent's own settings or of the
+  // settings of the app (the settings tool covers both).
   if (input.step === "settings" && input.starter !== "user") return "ask"
   return "usual"
 }
@@ -89,26 +123,50 @@ export interface TurnMark {
   readonly starter: TurnStarter
   source: OutsideSource | null
   sensitive: SensitiveLabel | null
+  /**
+   * True when the turn holds the program mark (spec 007, "Program mark"): one of its sources
+   * carries the mark, or the mark came by a later rule (`holdProgram`). The turn then holds
+   * outside content, so `source` is set.
+   */
+  program: boolean
 }
 
 /**
  * A new mark. A turn that a message from another agent or a watch routine starts passes its
  * source here: it holds outside content from its start. A turn in a place that holds a sensitive
- * read passes the label here: it holds the sensitive read from its start.
+ * read passes the label here: it holds the sensitive read from its start. The turn holds the
+ * program mark when `program` is true, or, when `program` is left out, when the source carries it.
  */
 export const newTurnMark = (
   starter: TurnStarter,
   source: OutsideSource | null = null,
   sensitive: SensitiveLabel | null = null,
+  program: boolean = carriesProgramMark(source),
 ): TurnMark => ({
   starter,
   source,
   sensitive,
+  program: program && source !== null,
 })
 
-/** The turn got outside content. The first source stays. */
+/**
+ * The turn got outside content. The first source stays. A source that carries the program mark
+ * gives the turn the program mark, also when it is not the first source.
+ */
 export const holdOutside = (mark: TurnMark, source: OutsideSource | null): void => {
   if (source && !mark.source) mark.source = source
+  if (carriesProgramMark(source)) mark.program = true
+}
+
+/**
+ * The turn got the program mark by a later rule (spec 007, "Program mark"): the place holds it, a
+ * message came from a turn that held it, or a hit of "search chats" holds a message that carries
+ * it. `source` is the source that the card names when the turn has none yet. The first source
+ * stays.
+ */
+export const holdProgram = (mark: TurnMark, source: OutsideSource): void => {
+  if (!mark.source) mark.source = source
+  mark.program = true
 }
 
 /** The turn read a credential place. The first label stays. */
@@ -230,8 +288,21 @@ export const isOutsideSource = (v: unknown): v is OutsideSource => {
     case "routine":
     case "agent":
       return keys(["kind", "name"]) && text(o.name)
+    case "teams":
+      return keys(["kind"])
     default:
       return false
+  }
+}
+
+/** The source as a column stores it (JSON text), or null. Text that is no source reads as none. */
+export const parseOutsideSource = (text: string | null | undefined): OutsideSource | null => {
+  if (!text) return null
+  try {
+    const value: unknown = JSON.parse(text)
+    return isOutsideSource(value) ? value : null
+  } catch {
+    return null
   }
 }
 

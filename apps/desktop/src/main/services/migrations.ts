@@ -797,6 +797,21 @@ export const migrations: readonly string[] = [
   ALTER TABLE browser_profile ADD COLUMN purpose TEXT;
   `,
   `
+  -- The outside mark of a place and of a message (spec 007, "Outside content" and "Program mark").
+  -- \`outside_mark\` is JSON text, or NULL: the first source of the outside content that the next
+  -- turns of a chat (the agent), a thread or a channel hold, and whether it holds the program mark.
+  -- It is stored with the place and syncs with it (spec 019): the dirty trigger of each table
+  -- already watches every column, and \`updated_at\` moves when a mark changes. \`program_mark\` is
+  -- JSON text, or NULL: the first source of a turn that holds the program mark, on each message
+  -- that the turn started or made. A fork, a hit of "search chats" and a read of an old message use
+  -- it to know that a message came from such a turn. It syncs with the message.
+  ALTER TABLE agent ADD COLUMN outside_mark TEXT;
+  ALTER TABLE channel ADD COLUMN outside_mark TEXT;
+  ALTER TABLE thread ADD COLUMN outside_mark TEXT;
+  ALTER TABLE message ADD COLUMN program_mark TEXT;
+  ALTER TABLE channel_message ADD COLUMN program_mark TEXT;
+  `,
+  `
   -- Permission rules (spec 007, "Permission rules"). A rule is for one agent (agent_id) or for all
   -- agents of the server (agent_id is NULL). The column kind is file, shell, web, connection or
   -- secret. The column match_text is the path, the command, the host, the connection or the

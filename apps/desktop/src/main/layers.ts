@@ -17,6 +17,7 @@ import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
 import { Handover } from "./services/Handover.ts"
 import { Host } from "./services/Host.ts"
+import { KeepAwake } from "./services/KeepAwake.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
 import { Notifier } from "./services/Notifier.ts"
@@ -89,11 +90,13 @@ export const appLayer = (options: AppLayerOptions) => {
     Checklists.layer,
     PlaceMarks.layer,
   ).pipe(Layer.provideMerge(base))
+  // After the stores: it reads the setting, the agents that work and the routines.
+  const keepAwake = KeepAwake.layer.pipe(Layer.provideMerge(stores))
   const devices = Devices.layer({
     computerName: options.localServerName,
     ...(options.linkPort !== undefined ? { port: options.linkPort } : {}),
     ...(options.nearbySocket ? { nearbySocket: options.nearbySocket } : {}),
-  }).pipe(Layer.provideMerge(stores))
+  }).pipe(Layer.provideMerge(keepAwake))
   const runtimes = Runtimes.layer.pipe(Layer.provideMerge(devices))
   const providers = Providers.layer(
     options.cacheHosts ? { cacheHosts: options.cacheHosts } : {},

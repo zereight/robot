@@ -94,6 +94,8 @@ describe("client requests", () => {
       "providers.connect",
       "providers.list",
       "settings.update",
+      // Keeping the computer awake is a setting of that computer (spec 013).
+      "keepAwake.state",
       "routines.list",
       // A client does not move a workflow of another computer here (spec 012, "Workflows").
       "workflows.runHere",

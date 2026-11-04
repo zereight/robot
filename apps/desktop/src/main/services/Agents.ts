@@ -12,6 +12,7 @@ import {
   isSensitiveLabel,
   nameKey,
   type PermissionLevel,
+  parsePlaceOutside,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Activity } from "./Activity.ts"
@@ -47,6 +48,7 @@ interface AgentRow {
   changed_by: string | null
   changed_at: number | null
   sensitive_mark: string | null
+  outside_mark: string | null
 }
 
 export interface AgentsService {
@@ -136,6 +138,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
               : null,
           knowledgeEnabled: row.knowledge_enabled === 1,
           sensitive: isSensitiveLabel(row.sensitive_mark) ? row.sensitive_mark : null,
+          outside: parsePlaceOutside(row.outside_mark),
         }
       }
 

@@ -222,7 +222,8 @@ const AgentMarksLine = (props: { agent: Agent }) => {
   }
   const marks = () => {
     const id = threadId()
-    if (!id) return { sensitive: props.agent.sensitive ?? null }
+    if (!id)
+      return { outside: props.agent.outside ?? null, sensitive: props.agent.sensitive ?? null }
     return threads.list.threads.find((x) => x.id === id)?.marks ?? NO_MARKS
   }
   return <PlaceMarksLine place={place()} marks={marks()} />

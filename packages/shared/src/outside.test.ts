@@ -1,16 +1,21 @@
 import { describe, expect, test } from "bun:test"
 import type { MessagePart } from "./chat.ts"
 import {
+  carriesProgramMark,
   GUARDED_STEPS,
   type GuardLevel,
   guardDecision,
   holdOutside,
+  holdProgram,
   hostOf,
   isOutsideSource,
   newTurnMark,
+  OUTSIDE_SOURCE_KINDS,
+  type OutsideSource,
   outsideOfCall,
   outsideOfParts,
   starterOf,
+  type TurnStarter,
 } from "./outside.ts"
 
 const LEVELS: readonly GuardLevel[] = ["read_only", "ask_all", "ask_risky", "full"]
@@ -65,6 +70,139 @@ describe("guardDecision", () => {
         "usual",
       )
     }
+  })
+})
+
+describe("guardDecision and the program mark (spec 007, 023)", () => {
+  const STARTERS: readonly TurnStarter[] = ["user", "routine", "workflow", "agent", "program"]
+  const STEPS = GUARDED_STEPS
+
+  test("a turn with the program mark asks at every level that does not refuse, also at Full access", () => {
+    for (const step of STEPS)
+      for (const starter of STARTERS)
+        for (const outside of [true, false]) {
+          for (const level of ["ask_all", "ask_risky", "full"] as const)
+            expect(guardDecision({ step, level, outside, program: true, starter })).toBe("ask")
+          // At Read only, the steps that Read only refuses stay refused.
+          expect(guardDecision({ step, level: "read_only", outside, program: true, starter })).toBe(
+            step === "memory" ? "ask" : "refuse_read_only",
+          )
+        }
+  })
+
+  test("a Deny rule still refuses in a turn with the program mark, at every level", () => {
+    for (const level of LEVELS)
+      for (const step of STEPS)
+        expect(
+          guardDecision({
+            step,
+            level,
+            outside: true,
+            program: true,
+            starter: "program",
+            denied: true,
+          }),
+        ).toBe("refuse_rule")
+  })
+
+  test("the program mark is outside content, also when the input says no outside content", () => {
+    expect(
+      guardDecision({
+        step: "memory",
+        level: "ask_risky",
+        outside: false,
+        program: true,
+        starter: "user",
+      }),
+    ).toBe("ask")
+  })
+
+  test("a turn with no program mark runs at Full access, as before, whatever the starter", () => {
+    for (const step of STEPS)
+      for (const starter of STARTERS)
+        for (const outside of [true, false])
+          for (const program of [false, undefined])
+            expect(
+              guardDecision({
+                step,
+                level: "full",
+                outside,
+                ...(program === false ? { program } : {}),
+                starter,
+              }),
+            ).toBe("run")
+  })
+
+  test("the rows for levels, starters and the mark agree with the spec", () => {
+    // [level, outside, program, starter, step] -> verdict, one row for each rule of spec 007.
+    const rows: [GuardLevel, boolean, boolean, TurnStarter, (typeof STEPS)[number], string][] = [
+      ["full", false, false, "user", "settings", "run"],
+      ["full", true, false, "user", "settings", "run"],
+      ["full", true, false, "agent", "settings", "run"],
+      ["full", false, true, "user", "settings", "ask"],
+      ["full", true, true, "program", "settings", "ask"],
+      ["full", true, true, "program", "memory", "ask"],
+      ["full", true, true, "program", "secret_request", "ask"],
+      ["ask_risky", false, false, "program", "settings", "ask"],
+      ["ask_risky", false, false, "program", "memory", "usual"],
+      ["ask_all", true, false, "user", "memory", "ask"],
+      ["ask_risky", true, true, "user", "secret_new", "ask"],
+      ["read_only", true, true, "program", "settings", "refuse_read_only"],
+      ["read_only", true, true, "program", "memory", "ask"],
+    ]
+    for (const [level, outside, program, starter, step, verdict] of rows)
+      expect(guardDecision({ step, level, outside, program, starter })).toBe(verdict as never)
+  })
+})
+
+describe("the program mark of a turn", () => {
+  const teams: OutsideSource = { kind: "teams" }
+
+  test("a source from Teams gives the turn the program mark from its start", () => {
+    const mark = newTurnMark("program", teams)
+    expect(mark.program).toBe(true)
+    expect(mark.source).toEqual(teams)
+    expect(newTurnMark("agent", { kind: "agent", name: "Bo" }).program).toBe(false)
+    expect(newTurnMark("user").program).toBe(false)
+  })
+
+  test("a turn with no source holds no program mark, also when the caller says it does", () => {
+    expect(newTurnMark("user", null, null, true).program).toBe(false)
+  })
+
+  test("the mark can come by a later rule, and the first source stays", () => {
+    const mark = newTurnMark("agent", { kind: "agent", name: "Bo" })
+    expect(mark.program).toBe(false)
+    holdProgram(mark, teams)
+    expect(mark.program).toBe(true)
+    expect(mark.source).toEqual({ kind: "agent", name: "Bo" })
+    const plain = newTurnMark("user")
+    holdProgram(plain, teams)
+    expect(plain.source).toEqual(teams)
+    expect(plain.program).toBe(true)
+  })
+
+  test("a later source from Teams gives the mark, also when it is not the first source", () => {
+    const mark = newTurnMark("user")
+    holdOutside(mark, { kind: "page", host: "a.test" })
+    expect(mark.program).toBe(false)
+    holdOutside(mark, teams)
+    expect(mark.program).toBe(true)
+    expect(mark.source).toEqual({ kind: "page", host: "a.test" })
+  })
+
+  test("one function says which source kinds carry the mark", () => {
+    expect(carriesProgramMark({ kind: "teams" })).toBe(true)
+    expect(carriesProgramMark(null)).toBe(false)
+    expect(carriesProgramMark(undefined)).toBe(false)
+    for (const source of [
+      { kind: "page", host: "a.test" },
+      { kind: "connection", connection: "c", tool: "t" },
+      { kind: "secret", name: "s" },
+      { kind: "routine", name: "r" },
+      { kind: "agent", name: "a" },
+    ] satisfies OutsideSource[])
+      expect(carriesProgramMark(source)).toBe(false)
   })
 })
 
@@ -187,8 +325,24 @@ test("hostOf and isOutsideSource", () => {
   expect(isOutsideSource({ kind: "page", host: "a.test" })).toBe(true)
   expect(isOutsideSource({ kind: "connection", connection: "c", tool: "t" })).toBe(true)
   expect(isOutsideSource({ kind: "agent", name: "Bo" })).toBe(true)
+  // A message from Teams (028) has a kind and no other data.
+  expect(isOutsideSource({ kind: "teams" })).toBe(true)
+  expect(isOutsideSource({ kind: "teams", name: "x" })).toBe(false)
   expect(isOutsideSource({ kind: "page", host: "a", extra: 1 })).toBe(false)
   expect(isOutsideSource({ kind: "other", name: "x" })).toBe(false)
   expect(isOutsideSource({ kind: "agent", name: "x".repeat(501) })).toBe(false)
   expect(isOutsideSource(null)).toBe(false)
+})
+
+test("every source kind is a kind that the type guard accepts", () => {
+  const sample: Record<(typeof OUTSIDE_SOURCE_KINDS)[number], OutsideSource> = {
+    page: { kind: "page", host: "a.test" },
+    connection: { kind: "connection", connection: "c", tool: "t" },
+    secret: { kind: "secret", name: "s" },
+    routine: { kind: "routine", name: "r" },
+    agent: { kind: "agent", name: "a" },
+    teams: { kind: "teams" },
+  }
+  expect([...OUTSIDE_SOURCE_KINDS].map(String).sort()).toEqual(Object.keys(sample).sort())
+  for (const kind of OUTSIDE_SOURCE_KINDS) expect(isOutsideSource(sample[kind])).toBe(true)
 })

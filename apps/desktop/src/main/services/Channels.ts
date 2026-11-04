@@ -19,6 +19,7 @@ import {
   type ChannelMessageKind,
   type ChannelPatch,
   type CheckAnswer,
+  carriesProgramMark,
   changesLabel,
   charLength,
   checkInstruction,
@@ -28,6 +29,7 @@ import {
   endOfTurn,
   hasVisibleReply,
   holdOutside,
+  holdProgram,
   isFinal,
   isSensitiveLabel,
   isTaskProgress,
@@ -53,6 +55,7 @@ import {
   PLAN_STEPS_MAX,
   parseCheck,
   parseMentions,
+  parsePlaceOutside,
   parsePlan,
   partText,
   planText,
@@ -120,6 +123,7 @@ export interface ChannelsService {
     channelId: string,
     text: string,
     replyTo?: string | null,
+    origin?: ChannelOrigin,
   ): Effect.Effect<{ awaiting: boolean }, AppError>
   assign(channelId: string, messageId: string, agentId: string): Effect.Effect<void, AppError>
   stopAll(channelId: string): Effect.Effect<void>
@@ -150,6 +154,16 @@ export interface ChannelsService {
   lastMessage(channelId: string): string | null
 }
 
+/**
+ * Where a message of a channel comes from, when the user did not write it in the app: a message
+ * of an outside program (023) or from Teams (028). The job holds outside content in every part.
+ * When the source carries the program mark, the channel holds the mark from now on (spec 007,
+ * "Program mark"), so each part, each later turn and each reply holds it too.
+ */
+export interface ChannelOrigin {
+  readonly outside: OutsideSource
+}
+
 /** What a run of a routine brings to its turn in a channel (spec 009). */
 export interface RoutineRunOptions {
   /** The model and effort of the routine, in place of the model of the agent. */
@@ -167,6 +181,7 @@ interface ChannelRow {
   place_section_id: string | null
   review_parts: number
   sensitive_mark: string | null
+  outside_mark: string | null
 }
 
 interface MessageRow {
@@ -248,7 +263,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -303,6 +318,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           sectionId: row.place_section_id,
           reviewParts: row.review_parts === 1,
           sensitive: isSensitiveLabel(row.sensitive_mark) ? row.sensitive_mark : null,
+          outside: parsePlaceOutside(row.outside_mark),
           unread,
           working: hasActiveWork(row.id),
         }
@@ -525,7 +541,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           tasks.replied(o.taskId)
         }
         const stepLimit = (yield* settings.get).stepLimit
-        const mark = o.turn ?? newTurnMark("user")
+        // A turn with no mark of its own (the lead) still holds the program mark when the channel
+        // does, so its reply says so (spec 007, "Program mark").
+        const mark =
+          o.turn ??
+          (() => {
+            const fresh = newTurnMark("user")
+            const held = placeMarks.get({ kind: "channel", id: o.channel.id }).outside
+            if (held?.program) holdProgram(fresh, held.source)
+            return fresh
+          })()
         const watch = stepWatch({
           limit: stepLimit,
           before: 0,
@@ -552,6 +577,20 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           timeIn(o.channel.id),
         )
         tasks.setMessage(o.taskId, id)
+        /**
+         * The turn holds the program mark: the channel holds it for the next turns, and the reply
+         * says so, for a hit of "search chats" later (spec 007, "Program mark").
+         */
+        const markProgram = () => {
+          if (!mark.program || !mark.source) return
+          placeMarks.holdProgram({ kind: "channel", id: o.channel.id }, mark.source)
+          db.run(
+            "UPDATE channel_message SET program_mark = ? WHERE id = ?",
+            JSON.stringify(mark.source),
+            id,
+          )
+        }
+        markProgram()
         emitMessage(id)
         placesChanged(o.channel.server_id)
 
@@ -666,6 +705,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             // The channel holds the mark from the first read of any member (spec 007).
             onSensitive: (label) =>
               placeMarks.holdSensitive({ kind: "channel", id: o.channel.id }, label),
+            // The turn got the program mark in a step (a hit of "search chats").
+            onProgram: markProgram,
           }
           const events = yield* providers.events(
             o.agent.model_account_id,
@@ -849,12 +890,17 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             // A turn of the channel holds a sensitive read from its start when an earlier turn of
             // any member read a credential place: the channel holds the mark (spec 007). This
             // covers a part that the lead gives after its own turn read one.
+            const held = placeMarks.get({ kind: "channel", id: channel.id })
             const turn = newTurnMark(
               starter,
               outside ??
                 (from ? { kind: "agent", name: from.name } : otherVoice(channel.id, agent)),
-              placeMarks.get({ kind: "channel", id: channel.id }).sensitive,
+              held.sensitive,
             )
+            // The turn holds the program mark from its start when the channel does: the job came
+            // from an outside program or Teams, or an earlier turn of any member held the mark
+            // and no one cleared it (spec 007, "Program mark"). The first source stays.
+            if (held.outside?.program) holdProgram(turn, held.outside.source)
             return streamReply({
               channel,
               agent,
@@ -1776,6 +1822,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         channelId: string,
         text: string,
         replyTo?: string | null,
+        origin?: ChannelOrigin,
       ) {
         const sender = yield* CurrentActor
         const channel = channelRow(channelId)
@@ -1803,8 +1850,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           : mentioned.flatMap((name) => members.find((m) => m.name === name)?.id ?? [])
         // A reply to a part with no mention goes to the member of that part (spec question of 004).
         const replied = direct.length === 0 ? yield* partOfReply(channelId, replyTo) : undefined
+        // A message that carries the program mark marks the channel before any turn starts, so
+        // every part, also a part that waits in the queue, holds the mark (spec 007).
+        const program = origin && carriesProgramMark(origin.outside) ? origin.outside : null
+        const arrived = (id: string) => {
+          if (!program) return id
+          db.run(
+            "UPDATE channel_message SET program_mark = ? WHERE id = ?",
+            JSON.stringify(program),
+            id,
+          )
+          placeMarks.holdProgram({ kind: "channel", id: channelId }, program)
+          return id
+        }
         if (replied) {
-          insertUserMessage(channelId, value, false, sender)
+          arrived(insertUserMessage(channelId, value, false, sender))
           placesChanged(channel.server_id)
           for (const handler of messageHandlers) handler(channelId, value)
           yield* followPart(channel, replied.agent, replied.task, value)
@@ -1824,7 +1884,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         // member with a full queue refuses a message that names or calls several members.
         if (direct.length > 0) for (const id of direct) yield* checkQueue(id)
         else if (!picking && lead !== null) yield* checkQueue(lead)
-        const jobId = insertUserMessage(channelId, value, awaiting, sender)
+        const jobId = arrived(insertUserMessage(channelId, value, awaiting, sender))
         placesChanged(channel.server_id)
         for (const handler of messageHandlers) handler(channelId, value)
         if (awaiting) return { awaiting: true }
@@ -1923,7 +1983,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark FROM channel
+                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )
