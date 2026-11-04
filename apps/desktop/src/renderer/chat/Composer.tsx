@@ -342,27 +342,43 @@ export const Composer = (props: ComposerProps) => {
     }
   }
 
+  /**
+   * Sends the box. The box empties at once, before the host answers, so a second Enter or click in
+   * the time of the call finds an empty box and sends nothing. If the send fails, the draft goes
+   * back into the box (spec 003, "Messages during a turn": a refused message stays in the box).
+   */
   const send = async () => {
     const value = text().trim()
     const chip = skill()
-    if (!value && files().length === 0 && !chip) return
+    const attached = files()
+    if (!value && attached.length === 0 && !chip) return
+    // The small pictures stay alive until the send ends, so a failed send can show them again.
+    const shown = previews()
     setError(undefined)
+    setText("")
+    setFiles([])
+    setPreviews({})
+    setSkill(undefined)
+    queueMicrotask(resize)
     try {
       await call("chat.send", {
         agentId: props.agent.id,
         ...threadPart(props.threadId),
         text: value,
         replyTo: props.replyTo?.id ?? null,
-        files: [...files()],
+        files: [...attached],
         ...(chip ? { skillId: chip.id } : {}),
       })
-      setText("")
-      keepFiles([])
-      setSkill(undefined)
-      queueMicrotask(resize)
+      for (const url of Object.values(shown)) URL.revokeObjectURL(url)
       props.onCancelReply()
       props.onSent()
     } catch (e) {
+      // Put the draft back in front of anything that the user typed or attached in the meantime.
+      setText(text() ? `${value}\n${text()}` : value)
+      setFiles([...new Set([...attached, ...files()])].slice(0, ATTACH_MAX))
+      setPreviews({ ...shown, ...previews() })
+      if (chip && !skill()) setSkill(chip)
+      queueMicrotask(resize)
       setError(describeError(e))
     }
   }
