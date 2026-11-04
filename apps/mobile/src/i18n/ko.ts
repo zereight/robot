@@ -151,6 +151,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.edited": "수정됨",
   "chat.note.compact_failed": "압축하지 못했어요: {reason} 압축 없이 이어서 했어요.",
   "chat.note.watch": "{routine}: 바뀐 게 없어요.",
+  "chat.note.connection_down": "연결 {name}을(를) 쓸 수 없어요.",
   "chat.note.handed_over": "{name}에게 인계함",
   "chat.note.starter.routine.limit":
     "만들지 못한 루틴: “{name}”. 서버에 루틴을 더 둘 자리가 없어요.",
@@ -165,6 +166,7 @@ export const ko: Record<MessageKey, string> = {
   "tool.refused": "거부됨: 읽기 전용",
   "tool.refusedRule": "규칙으로 거부됨",
   "tool.refusedAddress": "거부됨: 허용되지 않는 주소예요",
+  "tool.searchTools": "검색한 도구: {words} · 찾음: {found}",
   "tool.ruleAllowed": "규칙으로 허용됨",
   "tool.unreadable": "읽을 수 없는 규칙이 있어서 이 작업은 확인을 요청해요.",
   "tool.details": "자세히",

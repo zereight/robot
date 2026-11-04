@@ -37,6 +37,11 @@ export interface TurnInput {
   /** The tools of the app, for an API account. */
   readonly tools?: readonly ToolDef[]
   /**
+   * More tools, read before each request of the turn: the tools of the connections of the agent,
+   * and the tools it found by search (spec 018). API accounts only.
+   */
+  readonly moreTools?: () => readonly ToolDef[]
+  /**
    * How long an Anthropic account keeps the start of the request ready: "long" for a turn that a
    * person starts in the chat. Absent means "short". It has no effect where the endpoint takes no
    * cache marker. API accounts only.

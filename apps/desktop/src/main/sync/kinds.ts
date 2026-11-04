@@ -5,6 +5,7 @@ import {
   AGENT_ROLE_MAX,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
+  CONNECTION_NAME_MAX,
   charLength,
   DECISIONS,
   EdgeSchema,
@@ -305,6 +306,21 @@ const settingsNoteCheck = (v: unknown): boolean => {
   )
 }
 
+/** The card of a connection tool, or of a search of tools (spec 018). Names only, no arguments. */
+const connectionNoteCheck = (v: unknown): boolean => {
+  if (!isObject(v)) return false
+  // A name of 40 characters can take two code units for each.
+  if (v.kind === "call")
+    return (
+      shape(["kind", "connection", "tool"])(v) &&
+      str(CONNECTION_NAME_MAX * 4, 1)(v.connection) &&
+      str(500, 1)(v.tool)
+    )
+  if (v.kind === "search")
+    return shape(["kind", "words", "found"])(v) && str(1000)(v.words) && int(v.found)
+  return false
+}
+
 const partCheck = (v: unknown): boolean => {
   if (!isObject(v)) return false
   switch (v.kind) {
@@ -331,6 +347,9 @@ const partCheck = (v: unknown): boolean => {
       // A note travels as a code with its names. The window writes the words (spec 002, 009).
       if (v.note === "compact_failed")
         return shape(["kind", "note", "code"])(v) && str(100, 1)(v.code)
+      // The muted line "The connection NAME is not available." travels with the name (spec 018).
+      if (v.note === "connection_down")
+        return shape(["kind", "note", "name"])(v) && str(CONNECTION_NAME_MAX * 4, 1)(v.name)
       // The muted line "Handed over to <name>" travels with the ids of the new thread (spec 003, 019).
       if (v.note === "handed_over")
         return (
@@ -378,7 +397,16 @@ const partCheck = (v: unknown): boolean => {
       return (
         shape(
           ["kind", "id", "name", "label", "state", "input", "output"],
-          ["ask", "memoryId", "memory", "decision", "knowledge", "secret", "settings"],
+          [
+            "ask",
+            "memoryId",
+            "memory",
+            "decision",
+            "knowledge",
+            "secret",
+            "settings",
+            "connection",
+          ],
         )(v) &&
         str(200, 1)(v.id) &&
         str(200)(v.name) &&
@@ -392,6 +420,7 @@ const partCheck = (v: unknown): boolean => {
         (v.knowledge === undefined || knowledgeNoteCheck(v.knowledge)) &&
         (v.secret === undefined || oneOf(["saved", "cancelled"])(v.secret)) &&
         (v.settings === undefined || settingsNoteCheck(v.settings)) &&
+        (v.connection === undefined || connectionNoteCheck(v.connection)) &&
         (v.decision === undefined ||
           (isObject(v.decision) &&
             shape(["answer", "by"])(v.decision) &&

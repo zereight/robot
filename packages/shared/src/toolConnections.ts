@@ -69,6 +69,14 @@ export interface ToolConnectionInput {
   readonly agents: "all" | readonly string[]
 }
 
+/** What the window sends to save a connection. `id` is left out for a new connection. */
+export interface ConnectionSaveInput {
+  readonly id?: string
+  readonly connection: ToolConnectionInput
+  /** True when the user confirmed the command line of a program (spec 018, "Flows"). */
+  readonly confirmed: boolean
+}
+
 /** An environment value or a header as the page shows it. A secret value is never here. */
 export interface ConnectionEntryView {
   readonly name: string
@@ -82,8 +90,6 @@ export interface ConnectionEntryView {
 export interface ConnectionToolView {
   readonly name: string
   readonly description: string
-  /** True when the connection marks the tool as one that only reads (spec 018, "Read-only mark"). */
-  readonly readOnly: boolean
   /** False when the user turned this tool off. */
   readonly enabled: boolean
 }
@@ -227,6 +233,11 @@ export type ConnectionFormProblem =
   | "address_scheme"
   | "address_credentials"
   | "headers"
+  /** A secret value that is new has no text, and no value is saved for it. */
+  | "env_value_missing"
+  | "header_value_missing"
+  /** A program must be confirmed before it is saved (spec 018, "Flows"). */
+  | "confirm"
 
 /**
  * The first problem of a whole form, or null. Only the fields of the chosen kind count: a web

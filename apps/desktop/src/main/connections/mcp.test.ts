@@ -20,7 +20,8 @@ const program = (env: Record<string, string> = {}): Extract<McpSpec, { kind: "pr
   kind: "program",
   command: process.execPath,
   args: [SERVER],
-  cwd: work,
+  // Not the temp folder: Bun starts slowly in a folder whose parent holds very many entries.
+  cwd: process.cwd(),
   env: { PATH: process.env.PATH, ...env },
 })
 
