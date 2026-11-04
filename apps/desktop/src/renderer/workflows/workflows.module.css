@@ -439,3 +439,11 @@
 .card[data-flash="true"] {
   background: var(--c-selected);
 }
+
+/* The starters of the dialog "New from a starter": one full row for each. A row looks like a
+   choice of the new agent form, and the list gives it the whole width. */
+.starterRows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
