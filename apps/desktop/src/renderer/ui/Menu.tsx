@@ -12,7 +12,16 @@ export interface MenuItem {
   /** Set on items of a group where one is current. The current one shows a check mark. */
   readonly checked?: boolean
   readonly disabled?: boolean
+  /**
+   * Why the item is off, as a muted line under it. It shows only on an item that is `disabled`,
+   * and the screen reader reads it with the item.
+   */
+  readonly reason?: string
 }
+
+/** The id of the line that tells why an item is off. Only an item with a test id has one. */
+const reasonId = (item: MenuItem) =>
+  item.disabled && item.reason && item.testId ? `${item.testId}-reason` : undefined
 
 const MENU_WIDTH = 220
 /** About the height of one item. It keeps a menu that opens low inside the window. */
@@ -96,6 +105,7 @@ export const PopupMenu = (props: {
                 class={styles.menuItem}
                 role={item.checked === undefined ? "menuitem" : "menuitemradio"}
                 aria-checked={item.checked}
+                aria-describedby={reasonId(item)}
                 disabled={item.disabled}
                 data-testid={item.testId}
                 onClick={() => {
@@ -105,6 +115,16 @@ export const PopupMenu = (props: {
               >
                 {item.label}
               </button>
+              <Show when={item.disabled && item.reason}>
+                <div
+                  class={styles.menuReason}
+                  role="presentation"
+                  id={reasonId(item)}
+                  data-testid={reasonId(item)}
+                >
+                  {item.reason}
+                </div>
+              </Show>
             </Show>
           )}
         </For>
