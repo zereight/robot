@@ -349,14 +349,15 @@ describe("the states", () => {
     await dispose(t)
   })
 
-  test("the chat opens by its title, and the link reads no message and types nothing", async () => {
+  test("the chat opens by its title, and the link reads its messages and types nothing", async () => {
     const t = await ready()
     t.chat.addChat("Team A")
     t.chat.say(CHAT, "Marta Kim", "@ROBot list my tasks")
     await t.turnOn()
     await t.pass(30_000)
     expect(t.chat.openIndex).toBe(0)
-    expect(t.chat.messageReads).toBe(0)
+    expect(t.chat.messageReads).toBeGreaterThan(0)
+    // The message was there at the start: a baseline read marks it, and no task starts.
     expect(t.chat.typed).toEqual([])
     await dispose(t)
   })

@@ -10,7 +10,7 @@ export const LOG_MAX_BYTES = 256 * 1024
  */
 export const appendLog = (
   dataDir: string,
-  name: "channels",
+  name: "channels" | "teams",
   entry: Record<string, unknown>,
   maxBytes = LOG_MAX_BYTES,
 ) => {
@@ -32,6 +32,34 @@ export const appendLog = (
       size += bytes
     }
     writeFileSync(file, kept.length ? `${kept.join("\n")}\n` : "")
+  } catch {
+    // Dropped on purpose.
+  }
+}
+
+/**
+ * Removes the lines of a log that are older than `maxAgeMs`, as the time of the line tells
+ * (spec 014: the link log keeps 90 days). A line with no readable time stays. A log that cannot be
+ * read or written is left as it is.
+ */
+export const pruneLog = (
+  dataDir: string,
+  name: "channels" | "teams",
+  maxAgeMs: number,
+  now: number,
+) => {
+  try {
+    const file = join(dataDir, "logs", `${name}.log`)
+    const lines = readFileSync(file, "utf8").split("\n").filter(Boolean)
+    const kept = lines.filter((line) => {
+      try {
+        const time = Date.parse(String((JSON.parse(line) as { time?: unknown }).time))
+        return Number.isNaN(time) || now - time <= maxAgeMs
+      } catch {
+        return true
+      }
+    })
+    if (kept.length !== lines.length) writeFileSync(file, kept.length ? `${kept.join("\n")}\n` : "")
   } catch {
     // Dropped on purpose.
   }

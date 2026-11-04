@@ -40,6 +40,7 @@ import {
   TASK_PROGRESS,
   TASK_SOURCES,
   TASK_STATES,
+  TEAMS_SENDER_MAX,
   THREAD_TITLE_MAX,
   TriggerSchema,
   VERDICTS,
@@ -1027,6 +1028,7 @@ interface MessageRow {
   origin: string | null
   thread_id: string | null
   program_mark: string | null
+  teams_sender: string | null
 }
 
 const errorOf = (r: {
@@ -1073,6 +1075,9 @@ const message: KindDef = {
     // The first source of the turn that started or made the message, when that turn holds the
     // program mark (spec 007). A computer of an older step has none.
     programMark: { check: nullable(isOutsideSource) },
+    // The name of the sender of a message from Teams, as the Teams page showed it (spec 028). It is
+    // stored with the message, as the text is. A computer of an older step has none.
+    teamsSender: { check: nullable(str(TEAMS_SENDER_MAX * 4)) },
   },
   required: [
     "agentId",
@@ -1088,7 +1093,7 @@ const message: KindDef = {
     "sender",
     "origin",
   ],
-  fixed: ["agentId", "author", "createdAt", "sender", "origin", "threadId"],
+  fixed: ["agentId", "author", "createdAt", "sender", "origin", "threadId", "teamsSender"],
   count: (db) => q.count(db, "message"),
   ids: (db, after, limit) => q.ids(db, "message", after, limit),
   read: (ctx, id) => {
@@ -1110,6 +1115,7 @@ const message: KindDef = {
         origin: r.origin ?? ctx.self,
         threadId: r.thread_id,
         programMark: parseOutsideSource(r.program_mark),
+        teamsSender: r.teams_sender,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: Math.max(r.created_at, r.finished_at ?? 0, r.edited_at ?? 0),
@@ -1149,6 +1155,7 @@ const message: KindDef = {
       from_name: (f.sender as string | null) ?? peer?.name ?? null,
       origin: originColumn(ctx, f.origin),
       program_mark: markColumn(f.programMark),
+      teams_sender: (f.teamsSender as string | null | undefined) ?? null,
     })
     return true
   },
@@ -1282,6 +1289,7 @@ interface ChannelMessageRow {
   from_name: string | null
   origin: string | null
   program_mark: string | null
+  teams_sender: string | null
 }
 
 const cmessage: KindDef = {
@@ -1304,6 +1312,8 @@ const cmessage: KindDef = {
     origin: { check: str(64, 1) },
     // As for a message of a chat: the first source of a turn that holds the program mark.
     programMark: { check: nullable(isOutsideSource) },
+    // As for a message of a chat: the name of the sender of a message from Teams (spec 028).
+    teamsSender: { check: nullable(str(TEAMS_SENDER_MAX * 4)) },
   },
   required: [
     "channelId",
@@ -1321,7 +1331,7 @@ const cmessage: KindDef = {
     "sender",
     "origin",
   ],
-  fixed: ["channelId", "author", "agentId", "createdAt", "sender", "origin"],
+  fixed: ["channelId", "author", "agentId", "createdAt", "sender", "origin", "teamsSender"],
   count: (db) => q.count(db, "channel_message"),
   ids: (db, after, limit) => q.ids(db, "channel_message", after, limit),
   read: (ctx, id) => {
@@ -1344,6 +1354,7 @@ const cmessage: KindDef = {
         sender: r.from_name,
         origin: r.origin ?? ctx.self,
         programMark: parseOutsideSource(r.program_mark),
+        teamsSender: r.teams_sender,
       },
       parent: { kind: "channel", id: r.channel_id },
       wall: Math.max(r.created_at, r.finished_at ?? 0),
@@ -1372,6 +1383,7 @@ const cmessage: KindDef = {
       from_name: (f.sender as string | null) ?? peer?.name ?? null,
       origin: originColumn(ctx, f.origin),
       program_mark: markColumn(f.programMark),
+      teams_sender: (f.teamsSender as string | null | undefined) ?? null,
     })
     return true
   },
