@@ -38,6 +38,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 028 | [Chat bridge: talk to one agent or one channel from a Microsoft Teams chat, who may call, answers and the outbox, states, data rules](028-chat-bridge.md) | Draft |
 | 029 | [Org chart: the main agent, the channels with their members, leads and sub-channels, the state of each agent, the work that agents handed to each other, and edits of members, leads and parent channels; a read-only list on the phone](029-org-chart.md) | Draft |
 | 030 | [Organization: sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel](030-organization.md) | Draft |
+| 031 | [Channel starters and the goal dialog: a goal in a few words shows the starters that fit, and a channel with its agents is made from a fixed list](031-channel-starters.md) | Draft |
 
 ## Milestones
 
