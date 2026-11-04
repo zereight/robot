@@ -11,6 +11,7 @@ import { Effect } from "effect"
 import { Agents } from "../services/Agents.ts"
 import { Channels } from "../services/Channels.ts"
 import { Database, type DatabaseService, openDatabase } from "../services/Database.ts"
+import { Handbook } from "../services/Handbook.ts"
 import { Routines } from "../services/Routines.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
@@ -40,7 +41,14 @@ const source = async () => {
   const serverId = (await run(Servers.use((s) => s.local))).id
   const ada = await run(
     Agents.use((a) =>
-      a.create({ serverId, name: "Ada", role: "Helper", instructions: "Be brief.", model: null }),
+      a.create({
+        serverId,
+        name: "Ada",
+        role: "Helper",
+        instructions: "Be brief.",
+        readHandbook: false,
+        model: null,
+      }),
     ),
   )
   const bo = await run(
@@ -52,11 +60,15 @@ const source = async () => {
         serverId,
         name: "Team",
         topic: "Talk",
+        instructions: "Write the answer as a list.",
         memberIds: [ada.id, bo.id],
         leadId: ada.id,
       }),
     ),
   )
+  // The handbook has a history of two versions (spec 002, 019).
+  await run(Handbook.use((h) => h.save(serverId, "Answer in Korean.", "page")))
+  await run(Handbook.use((h) => h.save(serverId, "Answer in English.", "device")))
   const routine = await run(
     Routines.use((r) =>
       r.create({
@@ -1459,6 +1471,129 @@ describe("the instruction history crosses with its agent (spec 002, 019)", () =>
     expect(parseOp(version({ ...good, source: "import" }), NOW)).toBeUndefined()
     expect(parseOp(version({ ...good, text: 5 }), NOW)).toBeUndefined()
     expect(parseOp(version({ ...good, createdAt: -1 }), NOW)).toBeUndefined()
+  })
+})
+
+describe("the handbook crosses as versions, and the newest one is the handbook (spec 002, 019)", () => {
+  const version = (fields: Record<string, unknown>) => ({
+    k: "hversion",
+    i: "hv-1",
+    o: "dev-b",
+    f: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, { v, s: stamp }])),
+  })
+  const good = { text: "Answer in Korean.", source: "page", createdAt: NOW }
+  test("a version passes in each of its four sources; a wrong source, text or time does not", () => {
+    for (const source of ["page", "device", "restore", "import"])
+      expect(parseOp(version({ ...good, source }), NOW)).toBeDefined()
+    expect(parseOp(version({ ...good, source: "chat" }), NOW)).toBeUndefined()
+    expect(parseOp(version({ ...good, text: 5 }), NOW)).toBeUndefined()
+    expect(parseOp(version({ ...good, createdAt: -1 }), NOW)).toBeUndefined()
+    expect(parseOp(version({ ...good, text: "x".repeat(40_001) }), NOW)).toBeUndefined()
+    // The id of a server is not sent: each computer puts the version on its own server.
+    expect(parseOp(version({ ...good, serverId: "s1" }), NOW)).toBeUndefined()
+  })
+
+  test("two versions made on two computers: the later one is the handbook and the other stays in the history", async () => {
+    const rt = testRuntime({ name: "Handbook sync" })
+    runtimes.push(rt)
+    const run = rt.runtime.runPromise
+    const db = await run(Database.use((d) => Effect.succeed(d)))
+    const ctx = target(db, join(rt.dataDir, "hversion"))
+    // The computer of the test has its own server (the helper adds it); the versions go there.
+    const serverId = ctx.localServerId()
+    // This computer wrote at time 2000. The other one wrote earlier (1000) and later (3000).
+    await run(Handbook.use((h) => h.save(serverId, "Mine", "page")))
+    db.run("UPDATE handbook_version SET created_at = 2000")
+    expect(
+      KINDS.hversion.create(ctx, "theirs-early", { ...good, text: "Early", createdAt: 1000 }),
+    ).toBe(true)
+    expect((await run(Handbook.use((h) => h.get(serverId)))).text).toBe("Mine")
+    expect(
+      KINDS.hversion.create(ctx, "theirs-late", { ...good, text: "Late", createdAt: 3000 }),
+    ).toBe(true)
+    const now = await run(Handbook.use((h) => h.get(serverId)))
+    expect(now.text).toBe("Late")
+    expect((await run(Handbook.use((h) => h.history(serverId)))).map((v) => v.text)).toEqual([
+      "Late",
+      "Mine",
+      "Early",
+    ])
+    // The version sits on this computer's own server.
+    expect(
+      db.get<{ server_id: string }>(
+        "SELECT server_id FROM handbook_version WHERE id = 'theirs-late'",
+      )?.server_id,
+    ).toBe(serverId)
+    // A version never changes, and a removal takes it out of the history.
+    KINDS.hversion.write(ctx, "theirs-late", { text: "Changed" })
+    expect((await run(Handbook.use((h) => h.get(serverId)))).text).toBe("Late")
+    KINDS.hversion.remove(ctx, "theirs-late")
+    expect((await run(Handbook.use((h) => h.get(serverId)))).text).toBe("Mine")
+  })
+
+  test("the switch of an agent and the instructions of a channel are fields; a computer of an older step has none", async () => {
+    expect(Object.keys(KINDS.agent.fields)).toContain("readHandbook")
+    expect(Object.keys(KINDS.channel.fields)).toContain("instructions")
+    expect(KINDS.agent.required).not.toContain("readHandbook")
+    expect(KINDS.channel.required).not.toContain("instructions")
+    const agentOp = (extra: Record<string, unknown>) => ({
+      k: "agent",
+      i: "a-1",
+      o: "dev-b",
+      f: Object.fromEntries(
+        Object.entries({
+          name: "Ada",
+          role: "",
+          instructions: "",
+          face: { shape: 0, hue: 0 },
+          model: null,
+          archived: false,
+          createdAt: NOW,
+          ...extra,
+        }).map(([k, v]) => [k, { v, s: stamp }]),
+      ),
+    })
+    expect(parseOp(agentOp({ readHandbook: false }), NOW)).toBeDefined()
+    expect(parseOp(agentOp({}), NOW)).toBeDefined()
+    expect(parseOp(agentOp({ readHandbook: "no" }), NOW)).toBeUndefined()
+    const channelOp = (extra: Record<string, unknown>) => ({
+      k: "channel",
+      i: "c-1",
+      o: "dev-b",
+      f: Object.fromEntries(
+        Object.entries({
+          name: "Team",
+          topic: "",
+          lead: null,
+          members: [],
+          createdAt: NOW,
+          ...extra,
+        }).map(([k, v]) => [k, { v, s: stamp }]),
+      ),
+    })
+    expect(parseOp(channelOp({ instructions: "Use lists." }), NOW)).toBeDefined()
+    expect(parseOp(channelOp({}), NOW)).toBeDefined()
+    expect(parseOp(channelOp({ instructions: "x".repeat(4001) }), NOW)).toBeUndefined()
+    expect(parseOp(channelOp({ instructions: 5 }), NOW)).toBeUndefined()
+    // An agent from an older computer makes an agent that reads the handbook.
+    const rt = testRuntime({ name: "Older step" })
+    runtimes.push(rt)
+    const db = await rt.runtime.runPromise(Database.use((d) => Effect.succeed(d)))
+    const ctx = target(db, join(rt.dataDir, "older"))
+    expect(
+      KINDS.agent.create(ctx, "a-old", {
+        name: "Old",
+        role: "",
+        instructions: "",
+        face: { shape: 0, hue: 0 },
+        model: null,
+        archived: false,
+        createdAt: NOW,
+      }),
+    ).toBe(true)
+    expect(KINDS.agent.read(ctx, "a-old")?.fields.readHandbook).toBe(true)
+    KINDS.agent.write(ctx, "a-old", { readHandbook: false })
+    expect(KINDS.agent.read(ctx, "a-old")?.fields.readHandbook).toBe(false)
   })
 })
 
