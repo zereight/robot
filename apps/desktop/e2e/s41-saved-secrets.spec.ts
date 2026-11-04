@@ -35,6 +35,12 @@ const settled = (page: Page) =>
     timeout: 15_000,
   })
 const tools = (...calls: { name: string; args: unknown }[]) => `TOOLS ${JSON.stringify(calls)}`
+/** "Clear" and its confirm end the mark "Holds outside content" of the chat (spec 007). */
+const clearMark = async (page: Page) => {
+  await page.getByTestId("place-marks-clear").click()
+  await page.getByTestId("place-marks-confirm").click()
+  await expect(page.getByTestId("place-marks")).toHaveCount(0)
+}
 
 /** A small test web service, written for this test (spec 020, "Acceptance"). */
 const startTestService = async () => {
@@ -157,6 +163,18 @@ test("saved secrets: ask, use, redact, refuse, rule, settings, export and import
     "4. Other port: refused, nothing sent. Redirect: not followed; status 302 and address.",
   )
 
+  // The answers of the GET requests are outside content that the agent still sees, so the next turn
+  // holds it, and a card of such a turn has no "Always allow" (spec 007, "Outside content"). The
+  // first POST asks in that turn: Allow once and Deny only. "Clear" ends the mark.
+  await send(page, tools(request(`${service.origin}/items`, "POST")))
+  await expect(page.getByTestId("ask-outside")).toContainText("This turn holds outside content", {
+    timeout: 15_000,
+  })
+  await expect(page.getByTestId("ask-always")).toHaveCount(0)
+  await page.getByTestId("ask-deny").click()
+  await settled(page)
+  await clearMark(page)
+
   // POST at "Ask for risky steps": the card names the secret, the method and the address.
   await send(page, tools(request(`${service.origin}/items`, "POST")))
   await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 15_000 })
@@ -166,6 +184,8 @@ test("saved secrets: ask, use, redact, refuse, rule, settings, export and import
   await shot(page, "s41-03-post-approval")
   await page.getByTestId("ask-always").click()
   await settled(page)
+  // The answer of that POST is outside content too. After "Clear", the Allow rule runs the next one.
+  await clearMark(page)
   await send(page, tools(request(`${service.origin}/items`, "POST")))
   await settled(page)
   await expect(page.getByTestId("ask-card")).toHaveCount(0)
@@ -179,6 +199,8 @@ test("saved secrets: ask, use, redact, refuse, rule, settings, export and import
   await expect(page.getByTestId("tool-card")).toHaveCount(cards + 1)
   await expect(page.getByTestId("secret-card")).toHaveCount(0)
   await expect(lastCard()).toContainText("saved already")
+  // The POST before it left the mark again: a request for a new secret asks in that turn.
+  await clearMark(page)
   await send(page, tools(ask({ replace: true })))
   await expect(page.getByTestId("secret-card")).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId("secret-replace")).toBeVisible()

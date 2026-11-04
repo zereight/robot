@@ -11,6 +11,7 @@ import {
   statSync,
   writeSync,
 } from "node:fs"
+import { readFile } from "node:fs/promises"
 import { join, sep } from "node:path"
 import {
   ATTACH_BYTES,
@@ -25,6 +26,7 @@ import {
   type MessagePart,
   messageText,
   parseAddress,
+  pictureType,
   SYNC_BACKUPS_KEEP,
   SYNC_DECISION_MS,
   SYNC_IDS_PAGE,
@@ -94,6 +96,16 @@ export interface SyncService {
   respond(agentId: string, callId: string, answer: string): Effect.Effect<boolean, AppError>
   /** True when a file of a message is on this computer. */
   fileHere(agentId: string, path: string, size: number, messageId: string): boolean
+  /**
+   * The bytes of a picture of a message, for the small picture above the message (spec 003).
+   * Null when the file is not a kind of picture that shows, or is not here.
+   */
+  picture(input: {
+    agentId: string
+    path: string
+    size: number
+    messageId: string
+  }): Promise<Uint8Array | null>
   /** Opens a file of a message. A file that is not here is copied from the computer of the message. */
   openFile(input: {
     agentId: string
@@ -559,6 +571,26 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
 
       const fileHere = (agentId: string, path: string, size: number, messageId: string) =>
         fileSpots(agentId, path, messageId).some((spot) => isFileOf(spot, size))
+
+      const picture = async (input: {
+        agentId: string
+        path: string
+        size: number
+        messageId: string
+      }): Promise<Uint8Array | null> => {
+        if (!pictureType(input.path)) return null
+        if (!Number.isSafeInteger(input.size) || input.size < 0 || input.size > ATTACH_BYTES)
+          return null
+        const spot = fileSpots(input.agentId, input.path, input.messageId).find((s) =>
+          isFileOf(s, input.size),
+        )
+        if (!spot) return null
+        try {
+          return new Uint8Array(await readFile(spot))
+        } catch {
+          return null
+        }
+      }
 
       const copyFile = async (
         originId: string,
@@ -1576,6 +1608,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         peerId: () => pairRow()?.peer_id,
         respond,
         fileHere,
+        picture,
         openFile,
         handle,
         flush: async () => {

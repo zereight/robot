@@ -1,13 +1,18 @@
 import {
+  buildCheckRequest,
   buildPickRequest,
+  type CheckResult,
+  type CheckTarget,
   DECISION_PATH,
   DECISION_URL,
   DECISION_WAIT_MS,
   type DecisionKeys,
   type DecisionStatus,
   type DecisionTestResult,
+  PERMISSION_CHECK_WAIT_MS,
   type PickInput,
   type PickResult,
+  readCheckAnswer,
   readPickAnswer,
   redactSecrets,
   TEST_PICK,
@@ -31,6 +36,12 @@ export interface DecisionService {
   pick(input: PickInput): Effect.Effect<PickResult>
   /** One real request with three made-up members to the saved choice (spec 013). */
   readonly test: Effect.Effect<DecisionTestResult>
+  /**
+   * Asks the model one question: does the user ask for this step? (spec 007, "Ask when unsure").
+   * It never fails and never takes longer than 3 seconds: an error, a late answer, a model that
+   * is not set up and an unsure answer are all a result that does not allow the step.
+   */
+  check(input: { readonly words: string; readonly target: CheckTarget }): Effect.Effect<CheckResult>
 }
 
 export class Decision extends Context.Service<Decision, DecisionService>()("robot/main/Decision") {
@@ -135,6 +146,64 @@ export class Decision extends Context.Service<Decision, DecisionService>()("robo
             : none(read.reason)
         }
 
+        /** One check: the same service and key as a pick, the limit of 3 seconds (spec 007). */
+        const askCheck = async (
+          setup: { model: string; key: string },
+          input: { words: string; target: CheckTarget },
+        ): Promise<CheckResult> => {
+          const started = Date.now()
+          const no = (
+            reason: Extract<CheckResult, { allowed: false }>["reason"],
+            probability: number | null = null,
+          ): CheckResult => ({ allowed: false, reason, probability, ms: Date.now() - started })
+          const timedOut = (e: unknown) =>
+            e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
+          // One signal for the whole wait: the request and the reading of the answer.
+          const signal = AbortSignal.timeout(PERMISSION_CHECK_WAIT_MS)
+          let response: Response
+          try {
+            response = await fetch(`${base}${DECISION_PATH}`, {
+              method: "POST",
+              redirect: "error",
+              headers: {
+                "content-type": "application/json",
+                authorization: `Bearer ${setup.key}`,
+              },
+              body: JSON.stringify(buildCheckRequest(setup.model, input)),
+              signal,
+            })
+          } catch (e) {
+            return no(timedOut(e) ? "timeout" : "network_error")
+          }
+          if (!response.ok) {
+            await response.body?.cancel().catch(() => {})
+            return no("service_error")
+          }
+          let json: unknown
+          try {
+            json = await response.json()
+          } catch (e) {
+            return no(timedOut(e) ? "timeout" : "unreadable")
+          }
+          const read = readCheckAnswer(json)
+          return read.ok
+            ? { allowed: true, probability: read.probability, ms: Date.now() - started }
+            : no(read.reason, read.probability)
+        }
+
+        const check = (input: { words: string; target: CheckTarget }) =>
+          Effect.gen(function* () {
+            const setup = yield* config
+            if (!setup)
+              return {
+                allowed: false,
+                reason: "not_set_up",
+                probability: null,
+                ms: 0,
+              } satisfies CheckResult as CheckResult
+            return yield* Effect.promise(() => askCheck(setup, input))
+          })
+
         const pick = (input: PickInput) =>
           Effect.gen(function* () {
             const setup = yield* config
@@ -167,6 +236,7 @@ export class Decision extends Context.Service<Decision, DecisionService>()("robo
           ready: Effect.map(config, (c) => c !== null),
           pick,
           test,
+          check,
         })
       }),
     )

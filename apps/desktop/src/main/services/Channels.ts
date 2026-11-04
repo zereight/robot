@@ -38,6 +38,7 @@ import {
   keepGoingMessage,
   type ListedStep,
   LOOKS_MAX,
+  levelOnRuntime,
   MESSAGE_MAX,
   type MemberState,
   type MessagePart,
@@ -635,7 +636,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           (() => {
             const fresh = newTurnMark("user")
             const held = placeMarks.get({ kind: "channel", id: o.channel.id }).outside
-            if (held?.program) holdProgram(fresh, held.source)
+            if (held) (held.program ? holdProgram : holdOutside)(fresh, held.source)
             return fresh
           })()
         const watch = stepWatch({
@@ -665,19 +666,26 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         )
         tasks.setMessage(o.taskId, id)
         /**
-         * The turn holds the program mark: the channel holds it for the next turns, and the reply
-         * says so, for a hit of "search chats" later (spec 007, "Program mark").
+         * The turn holds outside content: the channel holds it for the next turns, and the reply
+         * says so, for a fork or a hit of "search chats" later. With the program mark, the reply
+         * says that too (spec 007, "Outside content" and "Program mark").
          */
-        const markProgram = () => {
-          if (!mark.program || !mark.source) return
-          placeMarks.holdProgram({ kind: "channel", id: o.channel.id }, mark.source)
+        const markOutside = () => {
+          if (!mark.source) return
+          placeMarks.holdOutside({ kind: "channel", id: o.channel.id }, mark.source, mark.program)
+          db.run(
+            "UPDATE channel_message SET outside_mark = ? WHERE id = ?",
+            JSON.stringify(mark.source),
+            id,
+          )
+          if (!mark.program) return
           db.run(
             "UPDATE channel_message SET program_mark = ? WHERE id = ?",
             JSON.stringify(mark.source),
             id,
           )
         }
-        markProgram()
+        markOutside()
         emitMessage(id)
         placesChanged(o.channel.server_id)
 
@@ -779,7 +787,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             const context: ToolContext = {
               agentId: o.agent.id,
               workspace: o.agent.workspace,
-              permission: o.agent.permission,
+              // "Ask when unsure" is for an agent that uses the tools of the app. A program of a
+              // vendor works as at "Ask for risky steps" (spec 007).
+              permission: levelOnRuntime(o.agent.permission, isRuntime),
               signal: controller.signal,
               onWaiting: (callId, ask) => {
                 // An answer needs a slot again (spec 005): the step goes on when the task has one.
@@ -810,6 +820,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               origin: { kind: "channel", id: o.channel.id, messageId: id },
               onRefused: (callId, refused) => changePart(callId, (p) => ({ ...p, refused })),
               onRuleAllowed: (callId) => changePart(callId, (p) => ({ ...p, ruleAllowed: true })),
+              onCheckAllowed: (callId, probability) =>
+                changePart(callId, (p) => ({ ...p, checkAllowed: probability })),
+              words: () => tasks.userWords(o.taskId),
               onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
               onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
               knowledgeChanges: { count: 0 },
@@ -822,7 +835,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
               onSensitive: (label) =>
                 placeMarks.holdSensitive({ kind: "channel", id: o.channel.id }, label),
               // The turn got the program mark in a step (a hit of "search chats").
-              onProgram: markProgram,
+              onProgram: markOutside,
+              onOutside: markOutside,
               ...(connected ? { connections: connected } : {}),
               onConnection: (callId, connection) =>
                 changePart(callId, (p) => ({ ...p, connection })),
@@ -869,7 +883,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   : {}),
                 signal: controller.signal,
                 workspace: o.agent.workspace,
-                permission: o.agent.permission,
+                permission: levelOnRuntime(o.agent.permission, isRuntime),
                 useTools,
               },
               {
@@ -900,8 +914,11 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   return Effect.void
                 }
                 // A web, browser or connection step of the program itself gives outside content.
-                if (isRuntime && event.type === "tool" && event.state !== "running")
+                if (isRuntime && event.type === "tool" && event.state !== "running") {
                   holdOutside(mark, outsideOfCall(event.call.name, event.call.input))
+                  // The channel holds the outside content for the next turns (spec 007).
+                  markOutside()
+                }
                 return onEvent(event)
               }),
               // A turn that reached the step limit was stopped by the app (spec 005).
@@ -1098,16 +1115,20 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             // any member read a credential place: the channel holds the mark (spec 007). This
             // covers a part that the lead gives after its own turn read one.
             const held = placeMarks.get({ kind: "channel", id: channel.id })
+            // A part that the lead gives is part of the job of the user: it holds outside content
+            // from its start only when the job came from an outside program or the lead read
+            // outside content first, and then the mark of the channel says so (spec 007, "Outside
+            // content"). A turn that answers a message reads the messages of other agents.
             const turn = newTurnMark(
               starter,
-              outside ??
-                (from ? { kind: "agent", name: from.name } : otherVoice(channel.id, agent)),
+              outside ?? (from ? null : otherVoice(channel.id, agent)),
               held.sensitive,
             )
             // The turn holds the program mark from its start when the channel does: the job came
             // from an outside program or Teams, or an earlier turn of any member held the mark
             // and no one cleared it (spec 007, "Program mark"). The first source stays.
-            if (held.outside?.program) holdProgram(turn, held.outside.source)
+            if (held.outside)
+              (held.outside.program ? holdProgram : holdOutside)(turn, held.outside.source)
             return streamReply({
               channel,
               agent,
@@ -1733,6 +1754,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             retryOf: old.id,
             ...(old.doneTest ? { doneTest: old.doneTest } : {}),
           })
+          // The text that the user typed counts as words of the user for the new part (spec 007).
+          tasks.noteRequest(part.id, text)
           yield* background(
             memberTurn(channel, agent, part, `Your part: ${part.label}\n${text}`, "text", null),
           )
@@ -1757,6 +1780,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             ...failedIfFull(agent.id),
           })
           if (part.state === "failed") return
+          // The text of the request counts as words of the user for the new part (spec 007).
+          tasks.noteRequest(part.id, text)
           yield* background(
             memberTurn(channel, agent, part, `Your part: ${part.label}\n${text}`, "text", null),
           )

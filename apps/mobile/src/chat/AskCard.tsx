@@ -84,6 +84,9 @@ export const AskCard = (props: {
           {ask.sensitive ? (
             <Text style={[styles.small, { color: palette.danger }]}>{t("tool.sensitive")}</Text>
           ) : null}
+          {ask.unsure ? (
+            <Text style={[styles.small, { color: palette.danger }]}>{t("tool.unsure")}</Text>
+          ) : null}
           {ask.unreadable ? (
             <Text style={[styles.small, { color: palette.danger }]}>{t("tool.unreadable")}</Text>
           ) : null}

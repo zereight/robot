@@ -11,6 +11,7 @@ import { CurrentActor } from "./actor.ts"
 import { Chat } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
+import { PlaceMarks } from "./PlaceMarks.ts"
 import { Providers } from "./Providers.ts"
 import { SavedSecrets, savedSecretKey } from "./SavedSecrets.ts"
 import { Secrets } from "./Secrets.ts"
@@ -390,6 +391,15 @@ describe("request with a secret", () => {
     await s.finished()
     expect(got.get("/api/items")).toEqual({ auth: `Bearer ${VALUE}`, method: "POST" })
     got.delete("/api/items")
+    // The answer of that POST is outside content that the agent still sees (spec 007). After "Clear",
+    // the Allow rule runs the next POST.
+    await s.run(
+      PlaceMarks.use((marks) =>
+        Effect.sync(() => {
+          marks.clear({ kind: "agent", id: s.agent.id })
+        }),
+      ),
+    )
     await s.send(calls(request("/api/items", "POST")))
     await s.finished()
     expect((await s.part("call_1"))?.state).toBe("done")

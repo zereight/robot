@@ -94,6 +94,7 @@ import { UiStore } from "./services/UiStore.ts"
 import { Usage } from "./services/Usage.ts"
 import { WorkflowFiles } from "./services/WorkflowFiles.ts"
 import { Workflows } from "./services/Workflows.ts"
+import { STAGE_ROOT, stageFile } from "./staging.ts"
 
 export type Services = AppServices
 
@@ -252,6 +253,9 @@ export const handlers: Handlers = {
       // The device name and the switch go through "devices.update", which also opens or closes
       // the listener. The saved port is the app's own.
       const { deviceName: _name, acceptLinks: _accept, linkPort: _port, ...patch } = decoded
+      // The switch "Permission checks" can go on only when the decision model is set up (spec 013).
+      if (patch.permissionChecks === true && !(yield* Decision.use((d) => d.ready)))
+        return yield* new AppError({ code: "decision_not_set_up" })
       const next = yield* SettingsStore.use((s) => s.update(patch))
       yield* applySystemSettings(patch)
       if (patch.island !== undefined) yield* Notifier.use((n) => Effect.sync(() => n.refresh()))
@@ -437,6 +441,11 @@ export const handlers: Handlers = {
     ),
   // Saving a file of a linked server is carried out over the link, see `Remote.invoke`.
   "attachments.save": () => Effect.fail(new AppError({ code: "not_allowed" })),
+  // The picture of a file of this computer. A linked server sends it over the link.
+  "attachments.picture": (input) =>
+    decode(FileOfMessage)(input).pipe(
+      Effect.flatMap((file) => Sync.use((s) => Effect.promise(() => s.picture(file)))),
+    ),
   "places.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Places.use((p) => p.list(serverId))),
@@ -717,6 +726,16 @@ export const handlers: Handlers = {
       Effect.as(undefined),
     ),
   "files.pick": () => Platform.use((p) => Effect.promise(() => p.pickFiles())),
+  "files.stage": (input) =>
+    decode(Schema.Struct({ name: Schema.String, data: Schema.Uint8Array }))(input).pipe(
+      Effect.flatMap(({ name, data }) =>
+        Effect.try({
+          try: () => stageFile(STAGE_ROOT, name, data),
+          catch: (e) =>
+            e instanceof AppError ? e : new AppError({ code: "file_unreadable", detail: name }),
+        }),
+      ),
+    ),
   "data.export": () => Data.use((d) => d.export()),
   "data.restore": () => Data.use((d) => d.import()),
   "tasks.list": (input) =>

@@ -3,11 +3,13 @@ import {
   ACTION_LOG_DAYS,
   ACTION_LOG_MAX,
   ACTION_TARGET_MAX,
+  type ActionCheck,
   type ActionDecider,
   type ActionKind,
   type ActionLogEntry,
   type ActionResult,
   type ActionRule,
+  isCheckReason,
   isOutsideSource,
   isRuleKind,
   isSensitiveLabel,
@@ -37,6 +39,8 @@ export interface ActionLogInput {
   readonly sensitive?: SensitiveLabel | null
   /** The rule that decided the step, or the rule that could not be read (spec 007). */
   readonly rule?: RuleRef | null
+  /** The check of "Ask when unsure", when the step went to the check (spec 007). */
+  readonly check?: ActionCheck | null
 }
 
 export interface ActionLogFilter {
@@ -79,6 +83,8 @@ interface Row {
   rule_detail: string | null
   /** 1 while the rule that decided the step still exists. */
   rule_alive: number | null
+  check_reason: string | null
+  check_probability: number | null
 }
 
 /** The columns of an entry, and whether its rule still exists. */
@@ -106,6 +112,18 @@ const toRule = (r: Row): ActionRule | null =>
       }
     : null
 
+/** The check of a row: none, allowed, or sent to the user with a reason. */
+const toCheck = (r: Row): ActionCheck | null => {
+  if (r.check_reason === null) return null
+  if (r.check_reason === "allowed")
+    return { allowed: true, probability: r.check_probability, reason: null }
+  return {
+    allowed: false,
+    probability: r.check_probability,
+    reason: isCheckReason(r.check_reason) ? r.check_reason : "unreadable",
+  }
+}
+
 const toEntry = (r: Row): ActionLogEntry => ({
   id: r.id,
   at: r.at,
@@ -120,6 +138,7 @@ const toEntry = (r: Row): ActionLogEntry => ({
   outside: parseOutside(r.outside),
   sensitive: isSensitiveLabel(r.sensitive) ? r.sensitive : null,
   rule: toRule(r),
+  check: toCheck(r),
 })
 
 /** The target as the log keeps it: secrets hidden, then cut at 200 characters. */
@@ -149,8 +168,8 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", input.agentId)?.name ??
             ""
           db.run(
-            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail, check_reason, check_probability)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             at,
             input.agentId,
@@ -167,6 +186,12 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             input.rule?.kind ?? null,
             input.rule ? logTarget(input.rule.text) : null,
             input.rule?.detail ? logTarget(input.rule.detail) : null,
+            input.check
+              ? input.check.allowed
+                ? "allowed"
+                : (input.check.reason ?? "unsure")
+              : null,
+            input.check?.probability ?? null,
           )
           db.run("DELETE FROM action_log WHERE at < ?", at - ACTION_LOG_DAYS * DAY_MS)
           db.run(

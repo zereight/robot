@@ -54,6 +54,7 @@ import styles from "./chat.module.css"
 import { fileSize, formatTime, formatUntil } from "./format.ts"
 import { HandedOverText, HandoverCard } from "./Handover.tsx"
 import { Markdown } from "./Markdown.tsx"
+import { SentPictures } from "./SentPictures.tsx"
 
 export interface MessageRowProps {
   agent: Agent
@@ -353,6 +354,12 @@ const ToolCard = (props: {
             {t("chat.tool.ruleAllowed")}
           </span>
         </Show>
+        {/* A step that the check of "Ask when unsure" let run says so (spec 007). */}
+        <Show when={props.part.checkAllowed !== undefined}>
+          <span class={styles.fromDevice} data-testid="tool-check-allowed">
+            {t("chat.tool.checkAllowed")}
+          </span>
+        </Show>
         <Show when={props.part.reason}>
           {(reason) => (
             <span class={styles.toolReason} data-testid="tool-reason" data-code={reason().code}>
@@ -518,6 +525,12 @@ const ToolCard = (props: {
                   <Show when={(ask() as { unreadable?: true }).unreadable}>
                     <div class={styles.outside} role="note" data-testid="ask-unreadable">
                       <strong>{t("chat.tool.unreadable")}</strong>
+                    </div>
+                  </Show>
+                  {/* The check of "Ask when unsure" was asked and did not allow the step (spec 007). */}
+                  <Show when={(ask() as { unsure?: true }).unsure}>
+                    <div class={styles.outside} role="note" data-testid="ask-unsure">
+                      <strong>{t("chat.tool.unsure")}</strong>
                     </div>
                   </Show>
                   {/* A guarded step in a turn that holds outside content (spec 007). */}
@@ -1317,6 +1330,7 @@ const FullMessageRow = (props: MessageRowProps) => {
             when={isAgent()}
             fallback={
               <>
+                <SentPictures message={props.message} />
                 <Show when={messageSkill(props.message)}>
                   {(skill) => <SkillChip skill={skill()} />}
                 </Show>

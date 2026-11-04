@@ -3,6 +3,7 @@ import {
   effortsFor,
   isBlockingState,
   isRuntimeKind,
+  levelOnRuntime,
   MODEL_NEW_MS,
   type ModelInfo,
   nearestEffort,
@@ -456,7 +457,9 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                     // blocks are the same as in the turn before. The other programs get the text.
                     ...(kind === "claude_code" ? { blocks: buildBlocks(input.turns) } : {}),
                     workspace: input.workspace,
-                    permission: input.permission,
+                    // A program decides its own steps: "Ask when unsure" works as "Ask for risky
+                    // steps" there (spec 007).
+                    permission: levelOnRuntime(input.permission, true),
                     useTools: input.useTools,
                     signal: input.signal,
                     approve: hooks.approve,

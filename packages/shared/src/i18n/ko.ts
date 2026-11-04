@@ -433,6 +433,10 @@ export const ko: Record<MessageKey, string> = {
     "프로그램을 복구해야 해요. 프로그램이 응답하지 않아요. 모델 제공자를 열어 '복구'를 누르세요.",
   "error.runtime_repair_unreadable":
     "프로그램을 복구해야 해요. 프로그램의 응답을 읽을 수 없어요. 모델 제공자를 열어 '복구'를 누르세요.",
+  "error.unsure_unavailable":
+    "이 수준은 '권한 판단' 스위치가 켜져 있어야 하고, 벤더 프로그램을 쓰지 않는 에이전트만 쓸 수 있어요. 설정의 결정 모델을 확인하세요.",
+  "error.decision_not_set_up":
+    "결정 모델이 설정되지 않았어요. OpenRouter의 Jev를 고르고 키와 모델 이름을 저장하세요.",
   "error.read_only_unsupported":
     "이 에이전트는 읽기 전용 수준인데, 프로그램에 읽기 전용 모드가 없어요. 다른 수준을 고르세요.",
   "error.runtime_not_signed_in": "프로그램에 로그인되어 있지 않아요. 먼저 로그인하세요.",
@@ -2208,6 +2212,31 @@ export const ko: Record<MessageKey, string> = {
   "error.teams_unreadable": "앱이 Teams 페이지를 읽지 못했어요.",
   "agents.permission.rules": "이 에이전트의 규칙 보기",
   "chat.tool.refusedRule": "규칙으로 거부됨",
+  "agents.permission.ask_unsure": "확실하지 않을 때만 확인",
+  "agents.permission.line.app.ask_unsure":
+    "앱이 모든 작업을 판단해요. 위험한 작업 전에 물어보지만, 내가 요청한 일이라고 권한 판단이 확신하면 묻지 않아요.",
+  "agents.permission.line.app.ask_unsure.off":
+    '권한 판단이 꺼져 있어서 이 에이전트는 "위험한 작업만 확인"처럼 동작해요.',
+  "agents.permission.line.program.ask_unsure":
+    '{program}이(가) 자기 작업을 직접 판단해서 이 에이전트는 "위험한 작업만 확인"처럼 동작해요.',
+  "agents.permission.unsureOff.checks": "설정의 결정 모델에서 권한 판단을 켜세요.",
+  "agents.permission.unsureOff.program": "{program}이(가) 자기 작업을 직접 판단해요.",
+  "decision.checks": "권한 판단",
+  "decision.checks.hint":
+    '"확실하지 않을 때만 확인" 수준의 에이전트는 확인이 필요한 작업 전에 결정 모델에 물어봐요. 그 턴에서 내가 쓴 글과 명령어 글, 호스트, 도구 이름이 OpenRouter와 TypeSafe로 가고 그쪽 약관이 적용돼요. 기본값은 꺼짐이에요.',
+  "decision.checks.needsSetup": "켜려면 OpenRouter의 Jev를 고르고 키와 모델 이름을 저장하세요.",
+  "permissions.log.decided.check": "권한 판단",
+  "permissions.log.check.allowed": "권한 판단이 확신했어요: {percent}%",
+  "permissions.log.check.sent": "권한 판단이 이 작업을 나에게 넘겼어요: {reason}",
+  "permissions.log.check.reason.unsure": "확신하지 못했어요",
+  "permissions.log.check.reason.timeout": "3초 안에 답이 오지 않았어요",
+  "permissions.log.check.reason.network_error": "네트워크 오류",
+  "permissions.log.check.reason.service_error": "서비스가 요청을 거절했어요",
+  "permissions.log.check.reason.unreadable": "답을 읽을 수 없었어요",
+  "permissions.log.check.reason.not_set_up": "결정 모델이 설정되지 않았어요",
+  "chat.tool.checkAllowed": "권한 판단으로 허용됨",
+  "chat.tool.unsure": "권한 판단이 확실하지 않았어요.",
+  "routines.unsavedImport": "이 루틴을 한 번 저장하기 전까지는 확인이 필요한 작업마다 물어봐요.",
   "chat.tool.ruleAllowed": "규칙으로 허용됨",
   "chat.tool.unreadable": "읽을 수 없는 규칙이 있어서 이 작업은 확인을 요청해요.",
   "permissions.log.decided.unreadable_rule": "읽을 수 없는 규칙, 그다음 내가 결정",

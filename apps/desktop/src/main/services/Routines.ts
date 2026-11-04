@@ -44,7 +44,10 @@ import { type CheckOutcome, runCheck, type ToolCaller } from "./watchCheck.ts"
 export interface RoutinesService {
   list(serverId: string): Effect.Effect<readonly Routine[]>
   /** Makes a routine. `paused` makes it with the switch off, so it does not run until resumed. */
-  create(input: RoutineInput, options?: { paused?: boolean }): Effect.Effect<Routine, AppError>
+  create(
+    input: RoutineInput,
+    options?: { paused?: boolean; fromFile?: boolean },
+  ): Effect.Effect<Routine, AppError>
   update(id: string, patch: RoutinePatch): Effect.Effect<Routine, AppError>
   remove(id: string): Effect.Effect<void>
   /** Starts a run at once, outside the schedule. */
@@ -79,6 +82,7 @@ interface Row {
   created_at: number
   runs_on: string | null
   token_limit: number | null
+  unsaved_import: number
 }
 
 interface StateRow {
@@ -206,6 +210,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           nextCheck: watch ? nextCheckOf(r, watch, state) : null,
           pausedAfterFailures: r.enabled === 1 ? null : parseFailure(state.paused_failure),
           runsOn: r.runs_on === null ? null : tasks.computerName(r.runs_on),
+          unsavedImport: r.unsaved_import === 1,
         }
       }
       const row = (id: string) => db.get<Row>(`${SELECT} WHERE r.id = ?`, id)
@@ -525,8 +530,8 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             if (input.tokenLimit != null && !validTokenLimit(input.tokenLimit))
               return yield* new AppError({ code: "invalid_token_limit" })
             db.run(
-              `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, watch, model_account_id, model_name, model_effort, channel_id, enabled, last_checked_at, created_at, updated_at, token_limit)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              `INSERT INTO routine (id, server_id, agent_id, name, prompt, schedule, watch, model_account_id, model_name, model_effort, channel_id, enabled, last_checked_at, created_at, updated_at, token_limit, unsaved_import)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               id,
               input.serverId,
               input.agentId,
@@ -543,6 +548,9 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               now,
               now,
               input.tokenLimit ?? null,
+              // A routine that an agent file made counts its prompt as words of the user after the
+              // user saves its form once (spec 007, 009).
+              options?.fromFile ? 1 : 0,
             )
             changed(input.serverId)
             return toRoutine(row(id) as Row)
@@ -569,7 +577,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             db.run(
               `UPDATE routine SET agent_id = ?, name = ?, prompt = ?, schedule = ?, watch = ?, channel_id = ?, enabled = ?,
                  model_account_id = ?, model_name = ?, model_effort = ?, last_checked_at = ?, updated_at = ?,
-                 token_limit = ? WHERE id = ?`,
+                 token_limit = ?, unsaved_import = ? WHERE id = ?`,
               agentId,
               patch.name?.trim() ?? current.name,
               patch.prompt ?? current.prompt,
@@ -584,6 +592,8 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               now,
               now,
               tokenLimit,
+              // The form of the routine was saved once: the prompt counts as words of the user.
+              patch.prompt !== undefined ? 0 : current.unsaved_import,
               id,
             )
             // Resume, and an edit of the prompt, the trigger, the agent or the place, set the

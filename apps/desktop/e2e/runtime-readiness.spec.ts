@@ -169,6 +169,7 @@ test("the level Read only: an agent that uses the tools of the app is refused, a
     "Read only",
     "Ask for everything",
     "Ask for risky steps",
+    "Ask when unsure",
     "Full access",
   ])
   await expect(page.getByTestId("agent-permission-line")).toContainText(

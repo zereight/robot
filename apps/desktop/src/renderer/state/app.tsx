@@ -42,7 +42,14 @@ export const AppProvider = (props: ParentProps<{ info: AppInfo; settings: Settin
     t: (key, params) => translate(locale(), key, params),
     update: async (patch) => {
       setSettings(patch)
-      setSettings(reconcile(await call("settings.update", patch)))
+      try {
+        setSettings(reconcile(await call("settings.update", patch)))
+      } catch (error) {
+        // The app refused the change (for example "Permission checks" before the decision model is
+        // set up): the window shows the saved settings again, and the caller shows the reason.
+        setSettings(reconcile(await call("settings.get")))
+        throw error
+      }
     },
   }
   return <AppContext.Provider value={state}>{props.children}</AppContext.Provider>

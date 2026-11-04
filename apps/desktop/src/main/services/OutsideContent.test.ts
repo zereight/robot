@@ -17,6 +17,7 @@ import { Agents } from "./Agents.ts"
 import { Chat, type TaskOrigin } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Memory } from "./Memory.ts"
+import { PlaceMarks } from "./PlaceMarks.ts"
 import { Providers } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
@@ -150,6 +151,15 @@ const setup = async (permission: PermissionLevel, rule = true) => {
 }
 
 const pageSource: OutsideSource = { kind: "page", host: "127.0.0.1" }
+/** "Clear" on the chat of the agent: the next turns hold no outside content (spec 007). */
+const clearMarks = (s: Awaited<ReturnType<typeof setup>>) =>
+  s.run(
+    PlaceMarks.use((marks) =>
+      Effect.sync(() => {
+        marks.clear({ kind: "agent", id: s.agent.id })
+      }),
+    ),
+  )
 
 describe("a memory save in a turn that holds outside content", () => {
   test("at Ask for risky steps it asks with Allow once and Deny only; Deny saves nothing", async () => {
@@ -248,10 +258,18 @@ describe("a memory save in a turn that holds outside content", () => {
     await s.finished()
   })
 
-  test("the mark ends with the turn: the next turn saves at once", async () => {
+  test("the mark outlasts the turn: the next turn of the chat asks until Clear (spec 007)", async () => {
     const s = await setup("ask_risky")
     await s.send(calls(fetchPage))
     await s.finished()
+    // The page is still in front of the agent: the next turn holds outside content from its start.
+    await s.send(calls(save("Plain fact")))
+    expect(await s.card("call_1")).toMatchObject({ once: true, outside: pageSource })
+    await s.respond("call_1", "deny")
+    await s.finished()
+    expect(await s.memory()).toEqual([])
+    // "Clear" ends the mark, and the next turn saves at once.
+    await clearMarks(s)
     await s.send(calls(save("Plain fact")))
     await s.finished()
     expect(await s.memory()).toEqual(["Plain fact"])
@@ -271,7 +289,9 @@ describe("a memory save in a turn that holds outside content", () => {
     await s.respond("call_1", "allow")
     await s.finished()
     expect(await s.memory()).toEqual(["Price is 3"])
-    // A routine turn with no outside content saves at once.
+    // The change is still in front of the agent. After "Clear", a routine turn with no outside
+    // content saves at once.
+    await clearMarks(s)
     await s.send(calls(save("Routine fact")), { source: "routine", sourceId: "r1" })
     await s.finished()
     expect(await s.memory()).toEqual(["Price is 3", "Routine fact"])
