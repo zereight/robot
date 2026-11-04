@@ -94,13 +94,21 @@ channel settings (004, 030), with the same rules.
   under…". Dropped on the root: it moves to the top. During a drag, a node where a drop is allowed
   shows a ring. A node where it is not allowed shows no ring, and a drop there changes nothing. A
   drop on the empty canvas changes nothing. Escape ends a drag with no change.
+- During the drag of an agent node that is in a channel, the channel node "No channel" shows at
+  its place in the order, also when it holds no agent, so that it can take the drop. It is empty
+  then. After the drag it shows again only by the rule of "Concepts".
 - **Refusals**: a change that the rules of 004 or 030 do not allow is refused with a short line at
   the bottom of the canvas. A member that works cannot leave its channel: "<agent> works in
   <channel>. Wait for its part to end, or stop it." A tree that breaks the rules of 030 gives the
   reason of 030.
 - A move of the lead out of its channel leaves that channel with no lead.
+- "New agent in this channel" and "New agent": after the save the chart stays open, and the focus
+  goes to the node of the new agent. The profile does not open.
+- **Lines at the bottom**: one line shows at a time. A new line takes the place of the line that
+  shows. A refusal line shows for 10 seconds and has no "Undo".
 - **Undo**: each change shows the line "<what changed>." with "Undo" at the bottom of the canvas for
-  10 seconds. Undo puts back the members, the lead and the parent channel as they were before that
+  10 seconds. After an Undo, the line "Undone." shows for 3 seconds. Undo puts back the
+  members, the lead and the parent channel as they were before that
   change. Undo is refused with a reason when the change cannot go back, for example when the agent
   works now in the new channel. Cmd+Z does the same while the line shows.
 - No change on the chart needs a confirm. The chart cannot archive, delete or rename an agent or a
