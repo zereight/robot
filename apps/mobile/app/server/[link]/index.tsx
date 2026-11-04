@@ -1,7 +1,8 @@
 import { allPlaces, summarize } from "@robot/phone"
 import type { Agent, Place, PlaceSection } from "@robot/shared"
 import { router, Stack, useLocalSearchParams } from "expo-router"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { useState } from "react"
+import { PixelRatio, Pressable, StyleSheet, Text, View } from "react-native"
 import { toggleSection } from "../../../src/prefs.ts"
 import { useApp, useServer } from "../../../src/state/context.tsx"
 import { radius, space, text } from "../../../src/theme/palette.ts"
@@ -199,7 +200,12 @@ const PlaceRow = (props: {
 }) => {
   const { t, palette } = useApp()
   const { place } = props
+  // The role line of an agent shows as a badge after the name (spec 001, 011). A channel has none,
+  // and a computer that does not send it yet gives no badge.
+  const role = place.kind === "agent" ? place.role?.trim() : undefined
+  const [slot, setSlot] = useState(0)
   const details = [
+    role ? t("places.role", { role }) : null,
     place.working ? t("places.working") : null,
     place.unread > 0 ? t("places.unread", { count: place.unread }) : null,
     place.lastMessage,
@@ -241,6 +247,27 @@ const PlaceRow = (props: {
           {place.working ? (
             <View style={[styles.workDot, { backgroundColor: palette.success }]} />
           ) : null}
+          {role ? (
+            // The name comes first. The slot is what is left of the line. The badge is cut with an
+            // ellipsis in it, and it hides when less than 4 characters of it fit.
+            <View
+              style={styles.roleSlot}
+              onLayout={(event) => setSlot(event.nativeEvent.layout.width)}
+            >
+              {slot >= roleBadgeMin() ? (
+                <Text
+                  testID={`role.${place.name}`}
+                  numberOfLines={1}
+                  style={[
+                    styles.roleBadge,
+                    { color: palette.textMuted, borderColor: palette.border },
+                  ]}
+                >
+                  {role}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
         {place.lastMessage ? (
           <Text numberOfLines={1} style={[styles.last, { color: palette.textMuted }]}>
@@ -252,6 +279,9 @@ const PlaceRow = (props: {
     </Pressable>
   )
 }
+
+/** Room for 4 characters of the badge, its padding and its border, at the text size of the user. */
+const roleBadgeMin = () => Math.ceil(4 * text.xs * 0.62 * PixelRatio.getFontScale()) + 14
 
 const styles = StyleSheet.create({
   section: { gap: space.xs },
@@ -282,5 +312,14 @@ const styles = StyleSheet.create({
   placeText: { flex: 1, gap: 2 },
   placeTop: { flexDirection: "row", alignItems: "center", gap: space.s },
   placeName: { fontSize: text.m, flexShrink: 1 },
+  roleSlot: { flex: 1, minWidth: 0, flexDirection: "row" },
+  roleBadge: {
+    flexShrink: 1,
+    fontSize: text.xs,
+    paddingHorizontal: 6,
+    borderWidth: 1,
+    borderRadius: radius.s,
+    overflow: "hidden",
+  },
   last: { fontSize: text.s },
 })

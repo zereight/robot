@@ -9,8 +9,10 @@ const onePixelPng = Buffer.from(
 )
 
 const placeRows = (page: Page) => page.getByTestId("section-agents").locator("[data-place-row]")
+// An agent with a role line shows it as a badge after the name (spec 001), so the row is found by
+// its name and not by its whole text.
 const rowNamed = (page: Page, name: string) =>
-  placeRows(page).filter({ hasText: new RegExp(`^${name}$`) })
+  placeRows(page).and(page.locator(`[data-place-name="${name}"]`))
 
 const openProfile = async (page: Page, name: string) => {
   await rowNamed(page, name).click()
@@ -67,7 +69,17 @@ test("agents: create, duplicate, edit, archive, restore and delete", async () =>
   await openProfile(page, "Ada")
   await page.getByTestId("agent-duplicate").click()
   await expect(page.getByTestId("chat-start")).toContainText("Ada copy 2")
-  await expect(placeRows(page)).toHaveText(["Ada", "Ada copy", "Ada copy 2"])
+  // The copies keep the role line of the original, so each row shows it as a badge (spec 001).
+  await expect(placeRows(page)).toHaveText([
+    /^Ada.*Answers daily questions/,
+    /^Ada copy.*Answers daily questions/,
+    /^Ada copy 2.*Answers daily questions/,
+  ])
+  expect(
+    await placeRows(page).evaluateAll((all) =>
+      all.map((el) => (el as HTMLElement).dataset.placeName),
+    ),
+  ).toEqual(["Ada", "Ada copy", "Ada copy 2"])
   expect(readdirSync(join(userData, "workspaces"))).toHaveLength(3)
 
   // Search and keyboard.

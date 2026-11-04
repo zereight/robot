@@ -73,6 +73,12 @@ export interface Place {
   readonly lastMessage: string | null
   /** The user section that holds the place, or null for "No section". */
   readonly sectionId: string | null
+  /**
+   * The role line of an agent (spec 001, "Place rows"). A channel has none. It is absent for an
+   * agent with no role line, and from a computer that does not send it yet, so a reader treats
+   * absent as empty (spec 012). It is text of the user and is not translated.
+   */
+  readonly role?: string
 }
 
 /** A built-in place list section. */
@@ -119,14 +125,24 @@ export const summarize = (places: readonly Place[]): SectionSummary => ({
 })
 
 /**
- * Keeps places whose name contains the query, ignoring case. A user section with no match
- * leaves the list. The order of sections and places does not change.
+ * True when the typed text is a part of the name of the place, or, for an agent, a part of its
+ * role line, ignoring case. A channel has no role line, so only its name counts.
+ */
+export const placeMatches = (place: Place, query: string) => {
+  const q = query.trim().toLocaleLowerCase()
+  if (!q) return true
+  if (place.name.toLocaleLowerCase().includes(q)) return true
+  return place.kind === "agent" && !!place.role && place.role.toLocaleLowerCase().includes(q)
+}
+
+/**
+ * Keeps places whose name contains the query, or, for an agent, whose role line contains it,
+ * ignoring case. A user section with no match leaves the list. The order of sections and places
+ * does not change.
  */
 export const filterPlaces = (sections: readonly PlaceSection[], query: string) => {
-  const q = query.trim().toLocaleLowerCase()
-  if (!q) return sections
-  const keep = (places: readonly Place[]) =>
-    places.filter((p) => p.name.toLocaleLowerCase().includes(q))
+  if (!query.trim()) return sections
+  const keep = (places: readonly Place[]) => places.filter((p) => placeMatches(p, query))
   return sections.map(
     (s): PlaceSection => ({
       ...s,

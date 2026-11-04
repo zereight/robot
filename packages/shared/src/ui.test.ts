@@ -8,6 +8,7 @@ import {
   filterPlaces,
   type Place,
   type PlaceSection,
+  placeMatches,
   sectionKind,
   summarize,
   UiState,
@@ -134,5 +135,85 @@ describe("user sections in the place list", () => {
     expect(found?.sections.map((s) => s.name)).toEqual(["Research"])
     const [all] = filterPlaces([sample()], "")
     expect(all?.sections.map((s) => s.name)).toEqual(["Research", "Ops", "Empty"])
+  })
+})
+
+describe("the filter of places by role line", () => {
+  const withRoles = (): PlaceSection[] => [
+    {
+      id: "channels",
+      places: [place("launch", { kind: "channel" }), place("design", { kind: "channel" })],
+      sections: [],
+    },
+    {
+      id: "agents",
+      places: [place("Ada", { role: "Designer" }), place("Bo", { role: "Writer" }), place("Cy")],
+      sections: [
+        {
+          id: "team",
+          name: "Team",
+          places: [place("Dee", { sectionId: "team", role: "Researcher" })],
+        },
+        { id: "ops", name: "Ops", places: [place("Eli", { sectionId: "ops", role: "Qa tester" })] },
+      ],
+    },
+  ]
+  const names = (sections: readonly PlaceSection[], id: "channels" | "agents") =>
+    allPlaces(sections.find((s) => s.id === id) as PlaceSection).map((p) => p.name)
+
+  test("an agent matches on part of its role line, ignoring case", () => {
+    expect(names(filterPlaces(withRoles(), "design"), "agents")).toEqual(["Ada"])
+    expect(names(filterPlaces(withRoles(), "DESIGN"), "agents")).toEqual(["Ada"])
+    expect(names(filterPlaces(withRoles(), "writ"), "agents")).toEqual(["Bo"])
+    expect(names(filterPlaces(withRoles(), " qa TEST "), "agents")).toEqual(["Eli"])
+  })
+
+  test("an agent still matches on its name, with or without a role line", () => {
+    expect(names(filterPlaces(withRoles(), "bo"), "agents")).toEqual(["Bo"])
+    expect(names(filterPlaces(withRoles(), "cy"), "agents")).toEqual(["Cy"])
+  })
+
+  test("a text that is in the name of one agent and in the role line of another gives both", () => {
+    const list: PlaceSection[] = [
+      { id: "agents", places: [place("Writer"), place("Ada", { role: "Writer" })], sections: [] },
+    ]
+    expect(names(filterPlaces(list, "writer"), "agents")).toEqual(["Writer", "Ada"])
+  })
+
+  test("a channel matches by its name only, also when a member has a role that matches", () => {
+    // The word "design" is in the name of the channel "design" and in the role of Ada.
+    expect(names(filterPlaces(withRoles(), "design"), "channels")).toEqual(["design"])
+    // The role "Researcher" is in no channel name, so no channel shows.
+    expect(names(filterPlaces(withRoles(), "researcher"), "channels")).toEqual([])
+    // A channel with a stray role field still matches by name only.
+    const stray: PlaceSection[] = [
+      {
+        id: "channels",
+        places: [place("launch", { kind: "channel", role: "Designer" })],
+        sections: [],
+      },
+    ]
+    expect(names(filterPlaces(stray, "designer"), "channels")).toEqual([])
+  })
+
+  test("a user section opens on a role match, and one with no match leaves", () => {
+    const [, agents] = filterPlaces(withRoles(), "researcher")
+    expect(agents?.places).toEqual([])
+    expect(agents?.sections.map((s) => [s.name, s.places.map((p) => p.name)])).toEqual([
+      ["Team", ["Dee"]],
+    ])
+  })
+
+  test("the order of places and sections does not change", () => {
+    const [, agents] = filterPlaces(withRoles(), "e")
+    expect(agents?.places.map((p) => p.name)).toEqual(["Ada", "Bo"])
+    expect(agents?.sections.map((s) => s.name)).toEqual(["Team", "Ops"])
+  })
+
+  test("an empty text, or spaces, keeps every place; a role that is absent matches nothing", () => {
+    expect(filterPlaces(withRoles(), "")).toHaveLength(2)
+    expect(names(filterPlaces(withRoles(), "   "), "agents")).toHaveLength(5)
+    expect(placeMatches(place("Cy"), "designer")).toBe(false)
+    expect(placeMatches(place("Cy", { role: "" }), "x")).toBe(false)
   })
 })
