@@ -32,6 +32,19 @@ Tests:
 
 - Wait for a signal of the app: an event, a stored state, a drawn element, or the end of a queue.
   Do not wait for a fixed time. A test that passes only with a longer sleep is wrong.
+- Wait for the state that the next line reads, not for a state next to it. Two members that work
+  at the same time end in any order. A reply has its place in the history before it has words.
+- A wait that ends with no result must fail with a message. It must not go on to the next line.
+- A state that lasts about 100 ms (a motion on exit) is missed by a check that looks again every
+  100 ms. Let the page watch for it, for example with a `MutationObserver`.
+- Do not fail a test on a time. When a test must compare two costs, compare the cost of the code
+  with the cost of the work that it saves, make the input before the timing starts, and use the
+  best of several runs. A shared computer pauses a run.
+- A unit test has 30 seconds, set once in the preload of the test runner. A test that sets its own
+  limit keeps it.
+- A stand-in program for a unit test is a shell script, not a program of Bun. Many test files start
+  programs at the same time, and a Bun program may then not start for seconds, or never. A test of
+  a real script of the app is the exception: it must run the script.
 - Never start the app or a test against the real data folder of the user, and never write to it.
   Each test makes its own data folder.
 - When a defect needs real data, copy the database into a new test folder while no app has it

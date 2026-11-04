@@ -1,5 +1,15 @@
+import { setDefaultTimeout } from "bun:test"
 import { ChildProcess } from "node:child_process"
 import { Readable } from "node:stream"
+
+/**
+ * The time limit of one test, when the test sets none. The limit of the test runner is 5 seconds.
+ * That is too short for a shared computer: many tests start a program or a socket and wait for it,
+ * and a busy computer makes the same test 5 times slower. A test that ran in 1 second failed at
+ * the limit, and the failure had nothing to do with the code. A test that really hangs still
+ * fails, a little later. A test that sets its own limit keeps it.
+ */
+setDefaultTimeout(30_000)
 
 /**
  * Loaded before every unit test file (bunfig.toml). Test runs only; the app runs on Node.

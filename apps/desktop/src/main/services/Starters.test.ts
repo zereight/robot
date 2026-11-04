@@ -538,17 +538,19 @@ describe("a limit stops one part, and a note in the chat says why", () => {
     expect(note?.model ?? null).toBeNull()
 
     await s.run(Chat.use((c) => c.send({ agentId: agent.id, text: "Hi there", replyTo: null })))
-    const until = async (check: () => Promise<boolean>) => {
-      for (let i = 0; i < 300 && !(await check()); i++) await Bun.sleep(10)
+    // The reply has its place in the history as soon as it starts, with no words yet. So the test
+    // waits for the words, not for the number of messages. A wait that ends with no result fails.
+    const until = async (what: string, check: () => Promise<boolean>) => {
+      for (let i = 0; i < 1000 && !(await check()); i++) await Bun.sleep(10)
+      if (!(await check())) throw new Error(`timed out: ${what}`)
     }
-    await until(async () => requests.length > 0)
-    await until(async () => (await s.messages(agent)).length >= 3)
+    const words = async () => (await s.messages(agent)).map(messageText).join("\n")
+    await until("the request reached the model", async () => requests.length > 0)
+    await until("the reply is in the history", async () => (await words()).includes("Hello."))
     const sent = requests.at(-1) ?? ""
     expect(sent).toContain("Hi there")
     expect(sent).not.toContain("Weekday briefing")
     expect(sent).not.toContain("Not made")
-    const history = await s.messages(agent)
-    expect(history.map(messageText).join("\n")).toContain("Hello.")
     await s.runtime.dispose()
   })
 })
