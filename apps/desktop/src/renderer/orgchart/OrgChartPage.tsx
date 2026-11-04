@@ -79,7 +79,7 @@ const StateDot = (props: { state: AgentState }) => (
 )
 
 /** The three kinds of line, each in its own style, so the legend does not rely on colour only. */
-const Legend = (props: { capped: boolean }) => {
+const Legend = (props: { capped: boolean; follows: boolean }) => {
   const { t } = useApp()
   return (
     <ul class={styles.legend} aria-label={t("orgchart.legend.label")} data-testid="org-legend">
@@ -106,6 +106,12 @@ const Legend = (props: { capped: boolean }) => {
       <Show when={props.capped}>
         <li class={styles.legendNote} data-testid="org-capped">
           {t("orgchart.legend.capped")}
+        </li>
+      </Show>
+      {/* With the hand-off rule "Along the channels" the legend ends with this line (spec 029, 030). */}
+      <Show when={props.follows}>
+        <li class={styles.legendNote} data-testid="org-legend-channels">
+          {t("orgchart.legend.channels")}
         </li>
       </Show>
     </ul>
@@ -824,7 +830,7 @@ export const OrgChartPage = () => {
               </div>
             }
           >
-            <Legend capped={m().handoffsCapped} />
+            <Legend capped={m().handoffsCapped} follows={m().handOffRule === "channels"} />
             <section
               ref={setCanvas}
               class={styles.viewport}
