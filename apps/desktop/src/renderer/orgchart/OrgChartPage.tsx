@@ -34,7 +34,7 @@ import { useUi } from "../state/ui.tsx"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
-import { createChartEdit } from "./ChartEdit.tsx"
+import { createChartEdit, DROP_AREA_KEY } from "./ChartEdit.tsx"
 import { edgeStep } from "./edit.ts"
 import { type ChartLayout, layoutChart } from "./layout.ts"
 import {
@@ -330,7 +330,7 @@ export const OrgChartPage = () => {
   })
 
   // Edge scroll: while a drag holds the pointer within EDGE_PX of an edge of the canvas, the view
-  // moves in that direction.
+  // moves in that direction. Not on the drop area "No channel" (spec 029).
   createEffect(() => {
     if (!nodeDrag()) return
     let frame = 0
@@ -341,7 +341,12 @@ export const OrgChartPage = () => {
       const drag = untrack(edit.dragging)
       const el = untrack(canvas)
       if (drag && el) {
-        const { dx, dy } = edgeStep(drag, el.getBoundingClientRect(), ms)
+        const { dx, dy } = edgeStep(
+          drag,
+          el.getBoundingClientRect(),
+          ms,
+          drag.over === DROP_AREA_KEY,
+        )
         if (dx !== 0 || dy !== 0) {
           const v = untrack(view)
           setView({ ...v, x: v.x + dx, y: v.y + dy }, false)

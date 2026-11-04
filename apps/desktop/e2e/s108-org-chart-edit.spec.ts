@@ -509,6 +509,26 @@ test("edit on the org chart: the drop area No channel, a still view, edge scroll
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo", "Ops: Dee"])
     await page.getByTestId("org-fit").click()
 
+    // No edge scroll on the drop area: the pointer stays on it, within 40 px of the bottom edge of
+    // the canvas, and the view does not move. Escape ends the drag.
+    const fitted = await settledView(page)
+    await drag(page, copyOf(page, bo, docs.id), opsAt, async () => {
+      const area = await dropArea(page).boundingBox()
+      if (!area) throw new Error("no drop area")
+      const nearBottom = {
+        x: area.x + area.width / 2,
+        y: Math.max(area.y + 2, canvasBox.y + canvasBox.height - 20),
+      }
+      expect(nearBottom.y).toBeLessThan(area.y + area.height)
+      await page.mouse.move(nearBottom.x, nearBottom.y, { steps: 4 })
+      await expect(dropArea(page)).toHaveAttribute("data-over", "true")
+      await page.waitForTimeout(600)
+      expect(await viewOf(page)).toEqual(fitted)
+      await page.mouse.move(opsAt.x, opsAt.y, { steps: 4 })
+      await page.keyboard.press("Escape")
+    })
+    expect(await viewOf(page)).toEqual(fitted)
+
     // A drop on the drop area removes Bo from "Docs". After the drag, "No channel" shows by the
     // normal rule: it holds Bo now.
     await drag(page, copyOf(page, bo, docs.id), opsAt, async () => {

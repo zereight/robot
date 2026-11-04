@@ -184,6 +184,12 @@ describe("edge scroll during a drag", () => {
     expect(at(500, 700)).toEqual({ dx: 0, dy: 0 })
   })
 
+  test('the view does not move when the pointer is on the drop area "No channel"', () => {
+    // The drop area is at the bottom left: within the strip of the bottom and the left edge.
+    expect(edgeStep({ x: 110, y: 640 }, rect, 1000, true)).toEqual({ dx: 0, dy: 0 })
+    expect(edgeStep({ x: 110, y: 640 }, rect, 1000, false).dy).toBeLessThan(0)
+  })
+
   test("the view moves toward the edge that the pointer is near", () => {
     // Left and top: the chart moves right and down, so the view shows more of the left and top.
     expect(at(100, 350).dx).toBe(EDGE_SPEED)

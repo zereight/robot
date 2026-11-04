@@ -183,13 +183,16 @@ export const EDGE_SPEED = 720
 /**
  * How far the view moves in `ms` milliseconds while a drag holds the pointer at `point`: the
  * view moves toward the edge that the pointer is near, faster nearer the edge (a quarter of the speed at the inner side of the strip). The pointer must be
- * on the canvas and within EDGE_PX of an edge; elsewhere the view does not move.
+ * on the canvas and within EDGE_PX of an edge; elsewhere the view does not move. On the drop area
+ * "No channel" (`onDropArea`) the view does not move either, so that a drop there is easy.
  */
 export const edgeStep = (
   point: { x: number; y: number },
   rect: { left: number; top: number; width: number; height: number },
   ms: number,
+  onDropArea = false,
 ): { dx: number; dy: number } => {
+  if (onDropArea) return { dx: 0, dy: 0 }
   const x = point.x - rect.left
   const y = point.y - rect.top
   if (x < 0 || y < 0 || x > rect.width || y > rect.height) return { dx: 0, dy: 0 }
