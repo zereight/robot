@@ -5,8 +5,9 @@
 // the label that a person gave it.
 //
 //   id        text, required. A unique name of the item. It is the only name that a report shows.
-//   group     text, required. The job that the part belongs to. The parts of one group are judged
-//             in one call (V1, V2, V4), as in a real check.
+//   group     text, required. The check that judged the part (the parts that one real check judged
+//             in one call), or a set of parts that no check judged. The parts of one group are
+//             judged in one call (V1, V2, V4), as in a real check.
 //   tag       "real" or "synthetic", required.
 //   label     text, required. The label of the part.
 //   doneTest  text, required. What the finished part must hold (spec 004, 005).
