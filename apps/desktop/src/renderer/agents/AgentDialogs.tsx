@@ -119,7 +119,11 @@ const AgentProfileView = (props: { agent: Agent; onClose: () => void }) => {
   )
 }
 
-export const NewAgentDialog = (props: { onClose: () => void }) => {
+export const NewAgentDialog = (props: {
+  onClose: () => void
+  /** Runs after save and before the agent opens, for example to add it to a channel (029). */
+  onCreated?: (agent: Agent) => Promise<void>
+}) => {
   const { t } = useApp()
   const ui = useUi()
   return (
@@ -131,6 +135,7 @@ export const NewAgentDialog = (props: { onClose: () => void }) => {
           if (!serverId) return
           const agent = await createAgent(serverId, values)
           markBorn(agent.id)
+          await props.onCreated?.(agent)
           props.onClose()
           ui.selectPlace({ kind: "agent", id: agent.id })
         }}

@@ -476,3 +476,113 @@ button.node[data-kind="more"]:hover {
 .empty p {
   margin: 0;
 }
+
+/* ---- Edit on the chart (spec 029). */
+
+/* The "…" button of a node. It shows on the node that has the pointer or the focus. */
+.nodeMenu {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition:
+    opacity var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.nodeMenu[data-shown="false"] {
+  opacity: 0;
+}
+
+.nodeMenu:hover {
+  background: var(--c-hover);
+  color: var(--c-text);
+}
+
+/* A drag moves no node: the node that is dragged only looks lighter until the drop. */
+.node[data-dragged="true"] {
+  opacity: 0.5;
+}
+
+.viewport[data-drag-node="true"] {
+  cursor: grabbing;
+}
+
+/* During a drag, a node where a drop is allowed shows a ring. */
+.node[data-ring="true"] {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent);
+}
+
+.node[data-ring="true"][data-over="true"] {
+  background: color-mix(in srgb, var(--c-accent) 14%, var(--c-sidebar));
+}
+
+/* The line at the bottom of the canvas: what changed with "Undo", or why a change was refused. */
+.notice {
+  position: absolute;
+  z-index: 4;
+  left: 16px;
+  bottom: 16px;
+  max-width: calc(100% - 280px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  font-size: var(--text-s);
+  animation: node-in var(--motion-fast) var(--ease-out);
+}
+
+.notice[data-kind="refused"] {
+  border-color: color-mix(in srgb, var(--c-danger) 60%, var(--c-border));
+}
+
+.noticeText {
+  min-width: 0;
+}
+
+.undo {
+  flex: none;
+  margin: 0;
+  padding: 2px 10px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--c-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+
+.undo:hover {
+  background: var(--c-hover);
+}
+
+/* The name that follows the pointer during a drag. */
+.ghost {
+  position: fixed;
+  z-index: 20;
+  padding: 4px 10px;
+  border: 1px solid var(--c-accent);
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  font-size: var(--text-s);
+  font-weight: 600;
+  pointer-events: none;
+}

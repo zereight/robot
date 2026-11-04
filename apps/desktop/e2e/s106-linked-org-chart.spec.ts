@@ -161,6 +161,30 @@ test("linked org chart: the chart of the server, read only, live, with an offlin
     )
     await shot(one.page, "s106-01-linked-chart")
 
+    // Without the switch, the menus hold no change and there is no drag (spec 029, S108).
+    const menu = one.page.getByTestId("org-menu")
+    await nodeOf(one.page, "Bo").click({ button: "right" })
+    await expect(menu.getByRole("menuitem")).toHaveText(["Open profile"])
+    await one.page.keyboard.press("Escape")
+    await channelOf(one.page, "Docs").click({ button: "right" })
+    await expect(menu.getByRole("menuitem")).toHaveText(["Open channel"])
+    await one.page.keyboard.press("Escape")
+    await channelOf(one.page, "No channel").click({ button: "right" })
+    await expect(menu).toHaveCount(0)
+    const from = await nodeOf(one.page, "Bo").boundingBox()
+    const to = await channelOf(one.page, "No channel").boundingBox()
+    if (!from || !to) throw new Error("no box")
+    await one.page.mouse.move(from.x + from.width / 2, from.y + from.height / 2)
+    await one.page.mouse.down()
+    await one.page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 })
+    await expect(channelOf(one.page, "No channel")).toHaveAttribute("data-ring", "false")
+    await one.page.mouse.up()
+    await expect(one.page.getByTestId("org-notice")).toHaveCount(0)
+    const stored = await rpc<{ name: string; memberIds: string[] }[]>(two.page, "channels.list", {
+      serverId: serverTwo,
+    })
+    expect(stored.find((c) => c.name === "Docs")?.memberIds).toEqual([ids.Ada, ids.Bo])
+
     // A click on an agent node opens that agent on MacBook 2; a click on a channel node opens the
     // channel of MacBook 2. The server tile stays MacBook 2.
     await nodeOf(one.page, "Bo").click()
