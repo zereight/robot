@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { type DevicesState, groupCode, type PairingState } from "@robot/shared"
 import { Effect } from "effect"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
+import { pairRuntimes } from "../link/pairing.testing.ts"
 import { Devices } from "./Devices.ts"
 import { Remote } from "./Remote.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -52,13 +53,8 @@ const side = (name: string) => {
 }
 
 /** Pairs `client` with `server` with the copied link; the user of `server` allows. */
-const pair = async (server: Rt, client: Rt, twoWay = false) => {
-  const pairing = await start(server)
-  const found = await probe(client, { link: pairing.link })
-  const done = finish(client, found.session, twoWay)
-  await decide(server, true)
-  return { entry: await done, pairing }
-}
+const pair = (server: Rt, client: Rt, twoWay = false) =>
+  pairRuntimes(server, client, { twoWay, online: false })
 
 beforeAll(() => {
   process.env.ROBOT_LINK_ADDRESSES = "127.0.0.1"

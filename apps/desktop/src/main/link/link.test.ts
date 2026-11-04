@@ -86,7 +86,9 @@ const rig = async (handshakeMs?: number): Promise<Rig> => {
   }
   const server = new LinkServer(host, handshakeMs ? { handshakeMs } : {})
   servers.push(server)
-  const port = await server.listen(0)
+  // On 127.0.0.1 only, as the test preload does for the app: the test connects there, and a
+  // listener on all addresses can get a port that another program holds on 127.0.0.1.
+  const port = await server.listen(0, "127.0.0.1")
   return { host, server, port }
 }
 

@@ -261,6 +261,7 @@ describe("a web address", () => {
   test("a server that does not speak MCP fails with the reason", async () => {
     const server = Bun.serve({
       port: 0,
+      hostname: "127.0.0.1",
       fetch: () => new Response("<html>hello</html>", { headers: { "content-type": "text/html" } }),
     })
     afterAll(() => server.stop())

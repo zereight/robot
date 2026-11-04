@@ -576,11 +576,14 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
           if (server.port !== null) return Promise.resolve()
           if (starting) return starting
           const wanted = choosePort()
+          // The address to listen on. With none, the listener takes all addresses (the default).
+          // The test preload sets one: the reason is written there.
+          const bind = process.env.ROBOT_LINK_BIND || undefined
           starting = server
-            .listen(wanted)
+            .listen(wanted, bind)
             .catch((error: NodeJS.ErrnoException) => {
               // The usual port is taken (a second copy of the app): take any free port.
-              if (error.code === "EADDRINUSE" && wanted !== 0) return server.listen(0)
+              if (error.code === "EADDRINUSE" && wanted !== 0) return server.listen(0, bind)
               throw error
             })
             .then((port) => {

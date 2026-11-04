@@ -490,6 +490,7 @@ describe("download", () => {
     const archive = tarGzOf("codex-release", readFileSync(fake.codex, "utf8"))
     const server = Bun.serve({
       port: 0,
+      hostname: "127.0.0.1",
       fetch(req) {
         const url = new URL(req.url)
         if (url.pathname === "/repos/openai/codex/releases/latest") {
