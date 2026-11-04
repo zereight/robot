@@ -97,3 +97,12 @@ h3 {
 p {
   text-wrap: pretty;
 }
+
+/*
+ * Korean lines break between words, not inside a word. A piece that does not fit on a line alone
+ * (a long path) still breaks, so nothing runs out of its box.
+ */
+:lang(ko) p {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
