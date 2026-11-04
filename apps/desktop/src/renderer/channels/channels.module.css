@@ -244,6 +244,10 @@
   align-items: center;
   gap: 8px;
 }
+/* The button of the profile takes the room that the name had, and the state stays at the end. */
+.cardProfile {
+  flex: 1;
+}
 .cardName {
   font-weight: 500;
   flex: 1;

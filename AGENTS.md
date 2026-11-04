@@ -6,6 +6,9 @@ Read [CLEANROOM.md](CLEANROOM.md) first. It is the main rule of this repository.
 - Implementer: do not open, search, fetch or recall code from OpenBot or OpenOwnBot. If a spec is
   unclear, ask for a spec change. Do not guess from memory of the old app.
 - Spec author: change only `specs/` and `docs/`. Describe behaviour, never implementation.
+- Development process: when you write or change code, follow the ub-mode skill
+  (`.agents/skills/ub-mode/SKILL.md`): first make it work, then make it right, then follow
+  practice.
 - Write in ASD-STE100 Simplified Technical English. Be concise.
 - Interface text comes from translation keys in English and Korean, never literals.
 - Styles: use the tokens of `global.css` for text size, radius, motion time and easing, and a `--c-*` token for colour. `style-rules.test.ts` fails on a raw value. Add an exception to its list only with a reason in the pull request.

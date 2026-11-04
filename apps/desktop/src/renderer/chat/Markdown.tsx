@@ -1,4 +1,5 @@
 import { decidePicture, type PictureBox } from "@robot/shared/pictures"
+import { openableLink } from "@robot/shared/weblinks"
 import { Check, Copy } from "lucide-solid"
 import type { Token, Tokens } from "marked"
 import {
@@ -13,21 +14,24 @@ import {
   useContext,
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
+import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
+import { showToast } from "../ui/toast.ts"
 import styles from "./chat.module.css"
 import { type Lexed, lexMarkdown } from "./lex.ts"
 import { isPictureLoaded, loadPicture } from "./pictures.ts"
-
-const safeLink = (href: string) => /^(https?:|mailto:)/i.test(href)
 
 /** The message or article that the pictures of a Markdown text belong to. */
 const PictureScope = createContext<() => string>(() => "")
 
 const openLink = (event: MouseEvent, href: string) => {
   event.preventDefault()
-  if (safeLink(href)) void call("app.openExternal", { url: href })
+  void call("app.openExternal", { url: href }).catch((e: unknown) => {
+    const error = describeError(e)
+    showToast("error", error.key, error.params)
+  })
 }
 
 const CodeBlock = (props: { code: string; lang?: string | undefined }) => {
@@ -183,14 +187,13 @@ const Inline = (props: { tokens: readonly Token[] | undefined }): JSX.Element =>
         <Match when={token.type === "link"}>
           {(() => {
             const link = token as Tokens.Link
-            return (
-              <a
-                href={link.href}
-                title={link.title ?? undefined}
-                onClick={(e) => openLink(e, link.href)}
-              >
+            const href = openableLink(link.href)
+            return href ? (
+              <a href={href} title={link.title ?? undefined} onClick={(e) => openLink(e, href)}>
                 <Inline tokens={link.tokens} />
               </a>
+            ) : (
+              <Inline tokens={link.tokens} />
             )
           })()}
         </Match>
@@ -308,7 +311,8 @@ const Blocks = (props: { tokens: readonly Token[] }): JSX.Element => (
 
 /**
  * Renders Markdown as elements, never as HTML. Raw HTML in the text shows as text.
- * Links open in the system browser. A picture from the web shows as a box until the user loads
+ * Links open in the system browser. A link with no scheme opens with `https`, and a link that
+ * opens nothing shows as plain words. A picture from the web shows as a box until the user loads
  * it. `scope` names the message or article that holds the text: the choice to load a picture
  * holds for one address in one scope.
  */
