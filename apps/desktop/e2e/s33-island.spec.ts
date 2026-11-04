@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ElectronApplication } from "@playwright/test"
@@ -99,13 +99,25 @@ const seconds = (text: string | null) => {
   return parts.reduce((total, part) => total * 60 + part, 0)
 }
 
+/**
+ * The short folders of the tests of this file. They stand outside the temporary folder of the run
+ * (e2e/global-setup.ts), so the run does not remove them: each test removes its own at its end.
+ */
+const outsideFolders: string[] = []
+test.afterEach(() => {
+  for (const folder of outsideFolders.splice(0)) rmSync(folder, { recursive: true, force: true })
+})
+
 const setup = async (env: Record<string, string> = {}) => {
   const mock = await startMockProvider()
   const userData = freshUserData()
   const log = join(userData, "notices.jsonl")
   // A short path, so that the card holds the file name when it cuts the line to 90 characters.
-  // Windows has no /tmp; its temporary folder is short enough on the runners.
+  // The temporary folder of the run is too long for that (a test with a folder in it showed
+  // "rm .../a-fi…" and failed), so on macOS and Linux this folder is in /tmp and not in the run
+  // folder. Windows has no /tmp; its temporary folder is short enough on the runners.
   const outside = mkdtempSync(process.platform === "win32" ? join(tmpdir(), "s33-") : "/tmp/s33-")
+  outsideFolders.push(outside)
   const launched = await launch(userData, {
     ROBOT_SYSTEM_LOCALE: "en-US",
     ROBOT_TEST_NOTIFY_LOG: log,
