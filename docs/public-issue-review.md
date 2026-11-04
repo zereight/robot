@@ -1,10 +1,9 @@
 # Review of public issues
 
-Role: Implementer. Date: 2026-11-04.
+Date: 2026-11-04.
 
 This page turns the failures that users of a public project reported into checks for ROBot. The
-project is milind-soni/OpenMausBot (Apache-2.0, an app of the same kind). The product owner
-confirmed that it is not part of OpenBot or OpenOwnBot.
+project is milind-soni/OpenMausBot (Apache-2.0, an app of the same kind).
 
 What was read: the titles and labels of its public issues (838 issues, 26 open with the label
 "bug"), and the names of its release files. No source code, no README and no issue text beyond

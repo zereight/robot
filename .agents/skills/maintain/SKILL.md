@@ -16,7 +16,7 @@ The user who asks you to land a change has approved the push, the pull request a
 CI passes. If the user asked only for a pull request, stop after step 6. This approval does not
 cover the cases in "Stop and ask".
 
-Read `AGENTS.md` and `CLEANROOM.md` first. State your role.
+Read `AGENTS.md` first.
 
 ## 1. Look at the branch
 
@@ -51,14 +51,12 @@ Read `AGENTS.md` and `CLEANROOM.md` first. State your role.
 - Write a short title in the imperative mood. Then write what changed and why.
 - Never add an AI co-author trailer.
 - The `pre-commit` hook runs Biome on the staged files. Do not use `--no-verify`.
-- Add one row at the end of `docs/provenance.md`: `| date | change | role | specs |`.
 
 ## 4. Rebase
 
 - Run `git fetch origin main && git rebase origin/main`.
-- A conflict in `docs/provenance.md`: both sides add rows. Keep both. Remove only the three marker
-  lines, with Python (`sed -i` is different on macOS). Then check that `git grep -n '^<<<<<<< '`
-  finds nothing, and that `git diff origin/main -- docs/provenance.md | grep -c '^-|'` is 0.
+- A conflict where both sides add lines: keep both. Remove only the three marker lines, with
+  Python (`sed -i` is different on macOS). Then check that `git grep -n '^<<<<<<< '` finds nothing.
   Then run `git add` and `GIT_EDITOR=true git rebase --continue`.
 - Any other conflict: read both sides. If you cannot tell which side is right, stop and ask.
 - Do the checks of step 2 again after the rebase.
@@ -90,8 +88,8 @@ Read `AGENTS.md` and `CLEANROOM.md` first. State your role.
   `gh pr view <number>`. If its body lacks a section of the template, put the missing sections in
   front of the text that is there, and run `gh pr edit <number> --body-file <file>`. Do not remove
   the text of the other session.
-- The body keeps the four sections of `.github/pull_request_template.md`: Role, Specs, Clean-room
-  check, End-to-end check. Tick a box only when it is true.
+- The body keeps the sections of `.github/pull_request_template.md`: Specs, Checks, End-to-end
+  check. Tick a box only when it is true.
 - In "End-to-end check", name the specs, say which screenshots you looked at, and say what you did
   not check.
 - Add what changed, which checks passed, and what is not done.
@@ -116,7 +114,7 @@ Read `AGENTS.md` and `CLEANROOM.md` first. State your role.
   Only the user can allow `--no-verify` for that push.
 - CI fails, or you cannot tell if the failure is yours.
 - A conflict that you cannot solve.
-- The change needs a change to a spec, and your role is implementer.
+- The change needs a change to a spec that the user did not ask for.
 - The branch holds a commit that you did not make, and the user has not said to push it.
 - A pull request for the branch exists, and its head is not the commit that you checked.
 
