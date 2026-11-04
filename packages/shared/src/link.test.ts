@@ -114,6 +114,7 @@ describe("client requests", () => {
       "connections.test",
       "connections.setEnabled",
       "connections.setTool",
+      "connections.setTrust",
       "connections.delete",
       "actionLog.list",
       "browser.control",

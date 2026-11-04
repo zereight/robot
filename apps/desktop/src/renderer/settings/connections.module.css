@@ -372,6 +372,41 @@
   font-size: var(--text-xs);
 }
 
+/* The mark of a tool that only reads, and the switch "Trust read-only marks" of a row (spec 018). */
+.markTag {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.trust {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.trust > :first-child {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.trustText {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trustLabel {
+  font-size: var(--text-s);
+  font-weight: 500;
+}
+
 /* The dialog "Review": each held tool with the old and the new text of what changed. */
 .reviewBox {
   display: flex;

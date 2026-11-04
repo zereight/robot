@@ -134,6 +134,21 @@ export const ConnectionsSection = () => {
       <p class={styles.code} data-testid="connection-row-target">
         {c.kind === "program" ? commandLine(c.command, c.args) : c.address}
       </p>
+      {/* The switch "Trust read-only marks" (spec 018, "Rules"). Off by default. */}
+      <div class={styles.trust} data-testid="connection-trust">
+        <Switch
+          label={t("connections.trust.switch", { name: c.name })}
+          checked={c.trustReadOnly}
+          onChange={(trust) => run(() => call("connections.setTrust", { id: c.id, trust }))}
+          testId="connection-trust-switch"
+        />
+        <span class={styles.trustText}>
+          <span class={styles.trustLabel}>{t("connections.trust.label")}</span>
+          <span class={styles.meta} data-testid="connection-trust-hint">
+            {t("connections.trust.hint")}
+          </span>
+        </span>
+      </div>
       <Show when={c.needReview > 0}>
         <div class={styles.review} data-testid="connection-review-row">
           <span class={styles.reviewText} data-testid="connection-review-text">
@@ -208,6 +223,16 @@ export const ConnectionsSection = () => {
                   <span class={styles.toolText}>
                     <span class={styles.toolNameLine}>
                       <span class={styles.toolName}>{tool.name}</span>
+                      {/* The mark that the connection gives to a tool that only reads (spec 018). */}
+                      <Show when={tool.readOnly}>
+                        <span
+                          class={styles.markTag}
+                          title={t("connections.tool.readOnly.title")}
+                          data-testid="connection-tool-read-only"
+                        >
+                          {t("connections.tool.readOnly")}
+                        </span>
+                      </Show>
                       <Show when={tool.held}>
                         {(tag) => (
                           <span

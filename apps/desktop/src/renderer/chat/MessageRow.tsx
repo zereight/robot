@@ -360,6 +360,12 @@ const ToolCard = (props: {
             {t("chat.tool.checkAllowed")}
           </span>
         </Show>
+        {/* A call of a connection tool that its read-only mark let run says so (spec 018). */}
+        <Show when={props.part.readOnlyTrusted}>
+          <span class={styles.fromDevice} data-testid="tool-read-only-trusted">
+            {t("chat.tool.readOnlyTrusted")}
+          </span>
+        </Show>
         <Show when={props.part.reason}>
           {(reason) => (
             <span class={styles.toolReason} data-testid="tool-reason" data-code={reason().code}>

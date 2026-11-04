@@ -93,6 +93,8 @@ export interface ConnectionToolView {
   readonly description: string
   /** False when the user turned this tool off. */
   readonly enabled: boolean
+  /** True when the connection marks the tool as one that only reads (spec 018, "Read-only mark"). */
+  readonly readOnly: boolean
   /** Set when the tool waits for the user's review: new, or changed (spec 018, "Tool review"). */
   readonly held?: HeldTag
 }
@@ -133,6 +135,11 @@ export interface ToolConnection {
   readonly needReview: number
   /** True when a secret value of the connection is missing on this computer. */
   readonly valueMissing: boolean
+  /**
+   * The switch "Trust read-only marks" (spec 018, "Rules"). Off by default. With it on, a call of
+   * a tool with the read-only mark is not a risky step outside a turn that holds outside content.
+   */
+  readonly trustReadOnly: boolean
 }
 
 /** What a Test gives back. */
@@ -445,6 +452,32 @@ export const searchStepDescription = (count: number, connections: readonly strin
     .join(
       ", ",
     )}, and you get none of them until you search. Give some words; the step gives back at most ${TOOL_SEARCH_RESULTS_MAX} tools whose name or description holds one of them. A tool that you found works for the rest of this turn.`
+
+// ---------------------------------------------------------------------------------------------
+// The read-only mark (spec 018, "Rules"; spec 007, "Rules").
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Whether a call of a connection tool is a risky step (spec 018, "Rules"). A call is not risky
+ * only when all of these are true: the connection marks the tool as read only, the user turned
+ * on "Trust read-only marks" for the connection, and the turn holds no outside content. Outside
+ * text can make the agent put data in the arguments, so in a turn that holds outside content the
+ * call is a risky step again, also with the mark.
+ */
+export const connectionCallIsRisky = (input: {
+  readonly readOnlyMark: boolean
+  readonly trusted: boolean
+  readonly outside: boolean
+}): boolean => !(input.readOnlyMark && input.trusted && !input.outside)
+
+/**
+ * The levels where the mark counts (spec 018, "Rules"): "Ask for risky steps" and "Ask when
+ * unsure". At "Ask for everything" the call still asks, at "Read only" it is still refused, and
+ * at "Full access" it runs with no question whatever the mark says. The card says "Read only, as
+ * the connection says" only where the mark made the difference.
+ */
+export const readOnlyMarkCounts = (level: string): boolean =>
+  level === "ask_risky" || level === "ask_unsure"
 
 /** The label of the card of a call of a connection tool: the connection and the tool. */
 export const connectionToolLabel = (connection: string, tool: string): string =>

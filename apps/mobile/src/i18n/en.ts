@@ -209,6 +209,7 @@ export const en = {
   "tool.refusedAddress": "Refused: this address is not allowed",
   "tool.searchTools": "Searched tools: {words} · found: {found}",
   "tool.checkAllowed": "Allowed by the check",
+  "tool.readOnlyTrusted": "Read only, as the connection says",
   "tool.unsure": "The check was not sure.",
   "tool.ruleAllowed": "Allowed by a rule",
   "tool.unreadable": "A rule cannot be read, so this step asks you.",

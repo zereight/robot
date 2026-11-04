@@ -16,6 +16,7 @@ import {
   commandChangesControl,
   commandReads,
   commandTarget,
+  connectionCallIsRisky,
   connectionToolLabel,
   type GuardedStep,
   guardDecision,
@@ -47,6 +48,7 @@ import {
   type RuleRef,
   type RuleStep,
   type RuleVerdict,
+  readOnlyMarkCounts,
   readOnlyRefuses,
   readOnlyRefusesKey,
   riskyReason,
@@ -173,6 +175,11 @@ export interface ToolContext {
    * says "Allowed by the check" (spec 007).
    */
   readonly onCheckAllowed?: (callId: string, probability: number) => void
+  /**
+   * Records that the read-only mark of a connection tool let the call run with no question, so
+   * its card says "Read only, as the connection says" (spec 018, "Rules").
+   */
+  readonly onReadOnlyTrusted?: (callId: string) => void
   /**
    * The tools of the connections that the agent may use in this turn (spec 018). Absent for an
    * agent on a vendor runtime, which has no connections.
@@ -2022,12 +2029,22 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         const label = connectionToolLabel(target.connection, target.tool)
         // A Deny rule refuses the call at every level, before any question.
         const verdict = checkRules(ctx, call.id, step)
+        // A call of a tool with a trusted read-only mark is not a risky step, unless the turn holds
+        // outside content: outside text can make the agent put data in the arguments (spec 018).
+        const risky = connectionCallIsRisky({
+          readOnlyMark: target.readOnly,
+          trusted: target.trusted,
+          outside: ctx.turn.source !== null,
+        })
         // The check gets the name of the connection and of the tool, and never the arguments.
-        await approve(ctx, call, true, step, `${label}\n${argumentsText(args)}`, verdict, {
+        await approve(ctx, call, risky, step, `${label}\n${argumentsText(args)}`, verdict, {
           kind: "connection",
           connection: target.connection,
           tool: target.tool,
         })
+        // The mark made the difference only where it counts, and when no rule decided the call.
+        if (!risky && verdict.kind === "none" && readOnlyMarkCounts(ctx.permission))
+          ctx.onReadOnlyTrusted?.(call.id)
         const result = await turn.call(call.name, args, ctx.signal)
         if (!result.ok) {
           ctx.onReason?.(call.id, {

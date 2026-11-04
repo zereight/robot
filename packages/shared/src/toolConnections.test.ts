@@ -8,6 +8,7 @@ import {
   checkConnectionName,
   checkEntries,
   commandLine,
+  connectionCallIsRisky,
   connectionSlug,
   connectionsFull,
   cutResult,
@@ -15,6 +16,7 @@ import {
   NO_TOOL_FOUND_TEXT,
   needsToolSearch,
   RESULT_CUT_NOTE,
+  readOnlyMarkCounts,
   type SearchableTool,
   searchResultText,
   searchTools,
@@ -274,5 +276,28 @@ describe("tool search", () => {
     expect(text).toContain('connection "Weather"')
     expect(text).toContain('tool "forecast"')
     expect(text).toContain("Weather forecast for a city")
+  })
+})
+
+describe("the read-only mark (spec 018, Rules)", () => {
+  test("a call is not risky only with the mark, the switch on, and no outside content", () => {
+    const risky = (readOnlyMark: boolean, trusted: boolean, outside: boolean) =>
+      connectionCallIsRisky({ readOnlyMark, trusted, outside })
+    expect(risky(true, true, false)).toBe(false)
+    // The switch is off: every call is risky.
+    expect(risky(true, false, false)).toBe(true)
+    // A tool with no mark is risky, with the switch on too.
+    expect(risky(false, true, false)).toBe(true)
+    expect(risky(false, false, false)).toBe(true)
+    // A turn that holds outside content makes the call risky again.
+    expect(risky(true, true, true)).toBe(true)
+  })
+
+  test("the mark counts at Ask for risky steps and Ask when unsure only", () => {
+    expect(readOnlyMarkCounts("ask_risky")).toBe(true)
+    expect(readOnlyMarkCounts("ask_unsure")).toBe(true)
+    expect(readOnlyMarkCounts("ask_all")).toBe(false)
+    expect(readOnlyMarkCounts("read_only")).toBe(false)
+    expect(readOnlyMarkCounts("full")).toBe(false)
   })
 })

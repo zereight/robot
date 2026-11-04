@@ -313,6 +313,9 @@ describe("export and import", () => {
     // One connection with reviewed tools, and one from before the review that waits for its first start.
     add("c1", "Notes", 0, tools)
     add("c2", "Journal", 1, "[]")
+    // The switch "Trust read-only marks" is on for one of them (spec 018). An import brings every
+    // connection back with it off: the user reviews the tools again, and decides again.
+    db.run("UPDATE tool_connection SET trust_read_only = 1 WHERE id = 'c1'")
     await a.run(Data.use((d) => d.export()))
     const entries = unzipSync(readFileSync(out))
     const archived = join(testPlatform().dataDir, "archived-review.db")
@@ -331,11 +334,27 @@ describe("export and import", () => {
     const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
     expect(
       bDb.all(
-        "SELECT id, enabled, state, tools, reviewed, review_adopt FROM tool_connection ORDER BY id",
+        "SELECT id, enabled, state, tools, reviewed, review_adopt, trust_read_only FROM tool_connection ORDER BY id",
       ),
     ).toEqual([
-      { id: "c1", enabled: 0, state: "untested", tools: "[]", reviewed: "[]", review_adopt: 0 },
-      { id: "c2", enabled: 0, state: "untested", tools: "[]", reviewed: "[]", review_adopt: 0 },
+      {
+        id: "c1",
+        enabled: 0,
+        state: "untested",
+        tools: "[]",
+        reviewed: "[]",
+        review_adopt: 0,
+        trust_read_only: 0,
+      },
+      {
+        id: "c2",
+        enabled: 0,
+        state: "untested",
+        tools: "[]",
+        reviewed: "[]",
+        review_adopt: 0,
+        trust_read_only: 0,
+      },
     ])
   })
 
