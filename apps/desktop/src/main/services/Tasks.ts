@@ -1319,7 +1319,9 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         const name = (sql: string) =>
           running.source_id ? db.get<{ name: string }>(sql, running.source_id)?.name : undefined
         switch (running.source) {
-          case "channel": {
+          // The look of an agent on the line works for a channel too (spec 030, "Ask up the line").
+          case "channel":
+          case "question": {
             const found = name("SELECT name FROM channel WHERE id = ?")
             return found ? { kind: "channel", name: found } : null
           }

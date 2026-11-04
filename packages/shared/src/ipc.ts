@@ -793,7 +793,8 @@ export interface RpcMethods {
    */
   "orgChart.model": { input: { serverId: string }; output: ChartModel }
   /**
-   * The part "Organization" of the settings (spec 030, 013): the hand-off rule of a server. A
+   * The part "Organization" of the settings (spec 030, 013): the hand-off rule and the switch "Ask
+   * up the line" of a server. A
    * linked computer reads it with no switch (spec 012).
    */
   "organization.get": { input: { serverId: string }; output: Organization }
@@ -802,6 +803,11 @@ export interface RpcMethods {
    * a client reads the part and never changes it (spec 012).
    */
   "organization.setHandOff": { input: { rule: HandOffRule }; output: Organization }
+  /**
+   * Turns the switch "Ask up the line" on or off for this computer (spec 030). Like the hand-off
+   * rule, there is no request for a linked server: a client reads the part and never changes it.
+   */
+  "organization.setAskUpTheLine": { input: { on: boolean }; output: Organization }
   /**
    * Message search (spec 001): one page of the messages of a server that hold every word of the
    * text, newest first. A linked server answers it; while the link is offline the answer comes

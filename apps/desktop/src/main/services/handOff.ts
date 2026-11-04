@@ -14,6 +14,12 @@ export const readHandOffRule = (db: DatabaseService): HandOffRule => {
   return isHandOffRule(row?.hand_off) ? row.hand_off : DEFAULT_HAND_OFF_RULE
 }
 
+/** The switch "Ask up the line" of this profile (spec 030). A row that is not there counts as off. */
+export const readAskUpTheLine = (db: DatabaseService): boolean =>
+  db.get<{ ask_up_the_line: number }>(
+    "SELECT ask_up_the_line FROM organization WHERE id = 'organization'",
+  )?.ask_up_the_line === 1
+
 /**
  * The agents and channels of one server as the hand-off rule reads them (spec 030). It reads the
  * database at the time of the send, so a change of a member, of a lead or of a parent channel

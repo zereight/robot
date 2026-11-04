@@ -24,9 +24,9 @@ export const LEAD_REASON_MAX = 160
 // --- the data of a card -----------------------------------------------------------------------
 
 /**
- * Why a question went to the user, as the lead said or as the app found. The kind is data of the
- * pass: a later slice that sends a passed question to other agents reads it ("Only the user can
- * choose" is final, "Not sure" can go up the line, "late" and "failure" can too).
+ * Why a question was passed, as the agent said or as the app found. The kind is data of the pass:
+ * the line of spec 030 ("Ask up the line") reads it. "Only the user can choose" is final. "Not
+ * sure", "late" and "failure" can go up the line.
  */
 export type PassKind = "user_choice" | "not_sure" | "late" | "failure"
 
@@ -47,11 +47,16 @@ export interface QuestionPass {
   readonly reason: string
 }
 
-/** The answer of the lead on a finished question card: "Answered by <name>" and the reason. */
+/**
+ * The answer of the lead, or of an agent on the line (spec 030), on a finished question card:
+ * "Answered by <name>" and the reason. `passes` are the passes before the answer, oldest first;
+ * the card keeps their lines.
+ */
 export interface LeadAnswer {
   readonly agentId: string
   readonly name: string
   readonly reason: string
+  readonly passes?: readonly QuestionPass[]
 }
 
 // --- who looks at a question ------------------------------------------------------------------
@@ -111,15 +116,6 @@ export const firstReader = (f: FirstReaderFacts): FirstReader => {
   return { kind: "lead", leadId: f.lead.id }
 }
 
-/**
- * Who looks at a question after the lead passed it. Today the user does. A later slice (spec 030,
- * "Ask up the line") may name other agents here, by the kind of the pass. This is the one place
- * that decides it.
- */
-export const readerAfterPass = (_pass: QuestionPass): { readonly kind: "user" } => ({
-  kind: "user",
-})
-
 // --- what the lead reads and what it answers ---------------------------------------------------
 
 const LEAD_LOOK_LINES = [
@@ -155,6 +151,11 @@ export interface LeadLookData {
   readonly choices: readonly string[]
   /** The messages of the channel, the oldest first. The text holds the last 12, each cut. */
   readonly messages: readonly CheckMessage[]
+  /**
+   * The passes before this look, oldest first (spec 030, "Ask up the line"): an agent of the line
+   * reads the reason of each pass before it. Absent for the look of the lead.
+   */
+  readonly passes?: readonly QuestionPass[]
 }
 
 /**
@@ -176,6 +177,8 @@ export const leadLookText = (d: LeadLookData) => {
     if (!text) continue
     lines.push(`[${message.who}]: ${cutChars(text, CHECK_MESSAGE_MAX)}`)
   }
+  const passes = passesForModel(d.passes ?? [])
+  if (passes.length > 0) lines.push("", ...passes)
   lines.push("", `Question of ${d.member}:`, d.question)
   if (d.choices.length > 0) {
     lines.push("", "Choices:")
@@ -184,6 +187,22 @@ export const leadLookText = (d: LeadLookData) => {
   lines.push("", LEAD_LOOK_REPLY_LINE)
   return lines.join("\n")
 }
+
+/** One pass, as an agent of the line reads it. The text is English, like the other texts for a model. */
+export const passLineForModel = (pass: Pick<QuestionPass, "name" | "kind" | "reason">): string => {
+  if (pass.kind === "late") return `${pass.name} did not answer in time.`
+  if (pass.kind === "failure") return `${pass.name} could not answer.`
+  const how = pass.kind === "user_choice" ? "Only the user can choose" : "Not sure"
+  return pass.reason !== ""
+    ? `${pass.name} passed it (${how}): ${pass.reason}`
+    : `${pass.name} passed it (${how}).`
+}
+
+/** The lines that an agent of the line reads about the passes before it. Empty for the lead. */
+export const passesForModel = (passes: readonly QuestionPass[]): string[] =>
+  passes.length === 0
+    ? []
+    : ["Passes before you:", ...passes.map((p) => `- ${passLineForModel(p)}`)]
 
 /** What the lead decided: an answer with a reason, or a pass with a reason. */
 export type LeadLookAnswer =
@@ -255,7 +274,7 @@ export const parseLeadLook = (reply: string, choices: readonly string[]): LeadLo
 // --- the line of the channel log and the line of a pass ----------------------------------------
 
 /** Why a look ended with neither an answer nor a pass. */
-export type StopWhy = "user_answer" | "setting_off" | "turn_ended"
+export type StopWhy = "user_answer" | "setting_off" | "line_off" | "turn_ended"
 
 export type LeadLookEnd =
   | { readonly result: "answered"; readonly ms: number }
@@ -264,9 +283,23 @@ export type LeadLookEnd =
 
 /**
  * The line that one look writes to the log of channels (spec 014): the result, the kind of the
- * pass, and the time taken. It holds no question text and no answer text.
+ * pass, and the time taken. It holds no question text and no answer text. A look of an agent on
+ * the line (spec 030, "Ask up the line") also holds its place on the line: 1 for the first agent
+ * after the lead, up to 3.
  */
-export const leadLookLog = (end: LeadLookEnd) => ({ event: "lead_look" as const, ...end })
+export const leadLookLog = (end: LeadLookEnd, place?: number) =>
+  place === undefined
+    ? { event: "lead_look" as const, ...end }
+    : { event: "line_look" as const, place, ...end }
+
+/**
+ * The passes of a question card, oldest first: all of them while the question is on the line or
+ * waits for the user. A card that only holds `passed` (the card of an older step) has that one.
+ */
+export const passesOf = (ask: {
+  readonly passes?: readonly QuestionPass[]
+  readonly passed?: QuestionPass
+}): readonly QuestionPass[] => ask.passes ?? (ask.passed ? [ask.passed] : [])
 
 /** The key of the text of a pass line on a card. Late and failure have their own lines. */
 export const passLabelKey = (pass: Pick<QuestionPass, "kind" | "reason">) => {

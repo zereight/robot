@@ -79,6 +79,10 @@ describe('a client and the part "Organization" of a server (spec 030, 012)', () 
     expect(isClientMethod("organization.setHandOff")).toBe(false)
     expect(isChangeMethod("organization.setHandOff")).toBe(false)
     expect(isRoutedMethod("organization.setHandOff")).toBe(false)
+    // The same for the switch "Ask up the line" (spec 030, 013): a client reads it, never sets it.
+    expect(isClientMethod("organization.setAskUpTheLine")).toBe(false)
+    expect(isChangeMethod("organization.setAskUpTheLine")).toBe(false)
+    expect(isRoutedMethod("organization.setAskUpTheLine")).toBe(false)
     expect(CLIENT_METHODS.filter((m) => m.startsWith("organization."))).toEqual([
       "organization.get",
     ])
@@ -90,9 +94,9 @@ describe('a client and the part "Organization" of a server (spec 030, 012)', () 
 
   test("a client reads the rule of the server, and a later change reaches it as a push", async () => {
     const p = await pair(false)
-    expect(await p.read()).toEqual({ handOff: "any" })
+    expect(await p.read()).toEqual({ handOff: "any", askUpTheLine: false })
     await p.set("channels")
-    expect(await p.read()).toEqual({ handOff: "channels" })
+    expect(await p.read()).toEqual({ handOff: "channels", askUpTheLine: false })
     // The window of the client hears that the part changed on that server.
     const pushes = await waitFor(
       () =>
@@ -110,11 +114,22 @@ describe('a client and the part "Organization" of a server (spec 030, 012)', () 
       expect(codeOf(await p.ask("organization.setHandOff", { rule: "channels" }))).toBe(
         "not_allowed",
       )
-      expect(await p.read()).toEqual({ handOff: "any" })
+      expect(await p.read()).toEqual({ handOff: "any", askUpTheLine: false })
       // The server still holds the rule it had.
       expect(await p.server.runtime.runPromise(Organization.use((o) => o.get))).toEqual({
         handOff: "any",
+        askUpTheLine: false,
       })
+    }
+  })
+
+  test("a client reads the switch 'Ask up the line' and cannot set it, with the switch or without it", async () => {
+    for (const canChange of [false, true]) {
+      const p = await pair(canChange)
+      await p.server.runtime.runPromise(Organization.use((o) => o.setAskUpTheLine(true)))
+      expect(await p.read()).toEqual({ handOff: "any", askUpTheLine: true })
+      expect(codeOf(await p.ask("organization.setAskUpTheLine", { on: false }))).toBe("not_allowed")
+      expect(await p.read()).toEqual({ handOff: "any", askUpTheLine: true })
     }
   })
 

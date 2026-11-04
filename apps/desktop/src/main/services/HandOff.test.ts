@@ -225,7 +225,10 @@ const setup = async (options: { main?: boolean } = {}) => {
 describe('rule "Any agent" (the default)', () => {
   test("the rule starts as Any agent; an agent in a channel sends to an agent in none", async () => {
     const s = await setup()
-    expect(await s.run(Organization.use((o) => o.get))).toEqual({ handOff: "any" })
+    expect(await s.run(Organization.use((o) => o.get))).toEqual({
+      handOff: "any",
+      askUpTheLine: false,
+    })
     const step = await s.call("A", "send_message", { to: "X", text: "hello" })
     expect(step.state).toBe("done")
     expect(step.reason).toBeUndefined()
@@ -509,14 +512,17 @@ describe('the part "Organization"', () => {
   test("it changes the rule once, tells the window, and keeps the value", async () => {
     const s = await setup()
     const before = s.t.events.length
-    expect(await s.rule("channels")).toEqual({ handOff: "channels" })
+    expect(await s.rule("channels")).toEqual({ handOff: "channels", askUpTheLine: false })
     const events = s.t.events.slice(before).filter((e) => e.event === "organization.changed")
     expect(events).toHaveLength(1)
     expect(events[0]?.payload).toEqual({ serverId: s.local.id })
     // The same value changes nothing and tells nothing.
     await s.rule("channels")
     expect(s.t.events.filter((e) => e.event === "organization.changed")).toHaveLength(1)
-    expect(await s.run(Organization.use((o) => o.get))).toEqual({ handOff: "channels" })
+    expect(await s.run(Organization.use((o) => o.get))).toEqual({
+      handOff: "channels",
+      askUpTheLine: false,
+    })
     expect(await s.run(Organization.use((o) => Effect.succeed(o.rule())))).toBe("channels")
   })
 

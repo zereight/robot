@@ -15,6 +15,7 @@ import {
   messageSkill,
   messageText,
   type OutsideSource,
+  passesOf,
   passLabelKey,
   type QuestionLead,
   type QuestionPass,
@@ -518,20 +519,29 @@ const ToolCard = (props: {
                             </div>
                           )}
                         </Show>
-                        {/* The lead passed the question: its reason, or the line about the time. */}
-                        <Show when={(question() as { passed?: QuestionPass }).passed}>
-                          {(passed) => (
+                        {/* One line for each pass: the lead, then the agents of the line (spec 004, 030). */}
+                        <For
+                          each={passesOf(
+                            question() as {
+                              passes?: readonly QuestionPass[]
+                              passed?: QuestionPass
+                            },
+                          )}
+                        >
+                          {(pass) => (
                             <div
                               class={styles.leadPass}
                               data-testid="lead-pass"
-                              data-kind={passed().kind}
+                              data-kind={pass.kind}
                             >
-                              {t(passLabelKey(passed()), {
-                                name: passed().name,
-                                reason: passed().reason,
-                              })}
+                              {t(passLabelKey(pass), { name: pass.name, reason: pass.reason })}
                             </div>
                           )}
+                        </For>
+                        <Show when={(question() as { lineLate?: boolean }).lineLate}>
+                          <div class={styles.leadPass} data-testid="lead-line-late">
+                            {t("lead.lineLate")}
+                          </div>
                         </Show>
                         <div class={styles.askActions}>
                           <For each={(question() as { choices: readonly string[] }).choices}>
@@ -653,6 +663,18 @@ const ToolCard = (props: {
       <Show when={props.part.answeredByLead}>
         {(by) => (
           <div class={styles.leadAnswer} data-testid="lead-answer">
+            {/* The passes before the answer of an agent on the line (spec 030). */}
+            <Show when={(by().passes ?? []).length > 0}>
+              <div class={styles.leadAnswerPasses}>
+                <For each={by().passes ?? []}>
+                  {(pass) => (
+                    <span data-testid="lead-pass" data-kind={pass.kind}>
+                      {t(passLabelKey(pass), { name: pass.name, reason: pass.reason })}
+                    </span>
+                  )}
+                </For>
+              </div>
+            </Show>
             <span class={styles.leadAnswerText} data-testid="lead-answer-text">
               {props.part.output}
             </span>

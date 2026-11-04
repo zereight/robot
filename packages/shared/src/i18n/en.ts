@@ -1063,6 +1063,8 @@ export const en = {
   "memory.check.started": "The check is in the queue of the agent.",
   "memory.proposals.fromCheck": "From a memory check",
   "tasks.source.memory_check": "Memory check",
+  "tasks.source.question": "Question from a channel",
+  "tasks.source.questionFrom": "Question from {channel}",
   "error.memory_check_unavailable": "This program cannot use the memory check.",
   "error.memory_check_off": "A check cannot start now. Look at the choice and the count.",
   "error.memory_off": "Memory is off for this agent.",
@@ -2084,6 +2086,7 @@ export const en = {
   "lead.pass.failure": "{name} could not answer.",
   "lead.pass.user_choice": "{name}: Only you can choose.",
   "lead.pass.not_sure": "{name}: Not sure.",
+  "lead.lineLate": "No agent on the line answered in time.",
   "tasks.questions": "Questions of the part",
   "tasks.question.user": "Answered by you",
   "tasks.question.lead": "Answered by {name}",
@@ -2105,6 +2108,7 @@ export const en = {
   "moments.given.workflow": "Given by a workflow",
   "moments.given.agent": "Given by another agent",
   "moments.given.memory_check": "Given by a memory check",
+  "moments.given.question": "Given by a question of a member",
   "moments.started": "Started",
   "moments.ended.done": "Ended: done",
   "moments.ended.failed": "Ended: failed",
@@ -2741,6 +2745,12 @@ export const en = {
     "A linked computer reads this part and does not change it. Change it on {name}.",
   "organization.offline": "{name} is offline. Open this page when it is online again.",
   "organization.syncs": "This part syncs with the other computer. The later change wins.",
+  "organization.askUpTheLine": "Ask up the line",
+  "organization.askUpTheLine.hint":
+    "When the lead of a channel passes a question of a member, the lead of each higher channel and then the main agent can look at it before it comes to you. A choice that only you can make comes to you at once. An approval always comes to you.",
+  "organization.askUpTheLine.now.on":
+    "A question that the lead passes can go to higher agents first. Each one has 2 minutes, and the whole line has 5 minutes.",
+  "organization.askUpTheLine.now.off": "A question that the lead passes comes to you.",
   "orgchart.legend.channels": "Hand-offs follow the channels.",
   "error.hand_off_path": "{detail} is not on your path. Send it to {next}.",
   "error.hand_off_none":

@@ -24,6 +24,7 @@ import {
   isSensitiveLabel,
   KNOWLEDGE_TITLE_MAX,
   LEAD_REASON_MAX,
+  LINE_AGENTS_MAX,
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
@@ -177,7 +178,7 @@ const leadRefCheck = (v: unknown): boolean =>
   str(100, 1)(v.agentId) &&
   str(AGENT_NAME_MAX * 4)(v.name)
 
-/** A question that the lead passed: the kind of the pass is data for a later slice (spec 030). */
+/** A question that an agent passed: the kind of the pass is data (spec 030). */
 const passCheck = (v: unknown): boolean =>
   isObject(v) &&
   shape(["agentId", "name", "kind", "reason"])(v) &&
@@ -186,13 +187,21 @@ const passCheck = (v: unknown): boolean =>
   oneOf(["user_choice", "not_sure", "late", "failure"])(v.kind) &&
   str(LEAD_REASON_MAX * 4)(v.reason)
 
-/** "Answered by <lead>" on a finished question card, with the reason (spec 004). */
+/** The passes of a question, oldest first: the lead and then the agents of the line (spec 030). */
+const passesCheck = (v: unknown): boolean =>
+  Array.isArray(v) && v.length <= LINE_AGENTS_MAX + 1 && v.every(passCheck)
+
+/**
+ * "Answered by <agent>" on a finished question card, with the reason (spec 004), and the passes
+ * before the answer when an agent of the line answered (spec 030).
+ */
 const leadAnswerCheck = (v: unknown): boolean =>
   isObject(v) &&
-  shape(["agentId", "name", "reason"])(v) &&
+  shape(["agentId", "name", "reason"], ["passes"])(v) &&
   str(100, 1)(v.agentId) &&
   str(AGENT_NAME_MAX * 4)(v.name) &&
-  str(LEAD_REASON_MAX * 4)(v.reason)
+  str(LEAD_REASON_MAX * 4)(v.reason) &&
+  (v.passes === undefined || passesCheck(v.passes))
 
 const askCheck = (v: unknown): boolean => {
   if (!isObject(v)) return false
@@ -214,14 +223,20 @@ const askCheck = (v: unknown): boolean => {
   if (v.kind === "question") {
     return (
       timeOk &&
-      shape(["kind", "question", "choices"], ["askedAt", "lead", "passed"])(v) &&
+      shape(
+        ["kind", "question", "choices"],
+        ["askedAt", "lead", "passed", "passes", "lineLate"],
+      )(v) &&
       str(5000)(v.question) &&
       Array.isArray(v.choices) &&
       v.choices.length <= 50 &&
       v.choices.every(str(1000)) &&
       // The lead that looks at the question, or that passed it (spec 004, "Questions of members").
       (v.lead === undefined || leadRefCheck(v.lead)) &&
-      (v.passed === undefined || passCheck(v.passed))
+      (v.passed === undefined || passCheck(v.passed)) &&
+      // Every pass of the question, and the line "No agent on the line answered in time."
+      (v.passes === undefined || passesCheck(v.passes)) &&
+      (v.lineLate === undefined || bool(v.lineLate))
     )
   }
   // A protected card (spec 020). It holds no value: the other computer shows "Answer this on".
@@ -651,20 +666,26 @@ const account: KindDef = {
 
 interface OrganizationRow {
   hand_off: string
+  ask_up_the_line: number
   changed_at: number
 }
 
 /**
- * The part "Organization" of the settings (spec 013, 030, 019): the hand-off rule. It is data of
- * the agents, like the handbook: a change on one computer counts on the other after it syncs, and
- * the later change wins. The profile has one row, always with the same id, so both computers
- * name the same item. A profile with no row has the default rule, "Any agent", so a deletion from
- * the other computer sets the default. A computer of an older step has no such item.
+ * The part "Organization" of the settings (spec 013, 030, 019): the hand-off rule and the switch
+ * "Ask up the line". It is data of the agents, like the handbook: a change on one computer counts
+ * on the other after it syncs, and the later change wins. The profile has one row, always with the
+ * same id, so both computers name the same item. A profile with no row has the default rule, "Any
+ * agent", and the switch off, so a deletion from the other computer sets the defaults. A computer
+ * of an older step has no such item, and an older one of this item has no switch (it counts as
+ * off).
  */
 const org: KindDef = {
   kind: "org",
   rank: 0,
-  fields: { handOff: { check: oneOf(HAND_OFF_RULES) } },
+  fields: {
+    handOff: { check: oneOf(HAND_OFF_RULES) },
+    askUpTheLine: { check: bool },
+  },
   required: ["handOff"],
   fixed: [],
   count: (db) => q.count(db, "organization"),
@@ -672,14 +693,19 @@ const org: KindDef = {
   read: (ctx, id) => {
     const r = ctx.db.get<OrganizationRow>("SELECT * FROM organization WHERE id = ?", id)
     if (!r) return undefined
-    return { fields: { handOff: r.hand_off }, parent: null, wall: r.changed_at }
+    return {
+      fields: { handOff: r.hand_off, askUpTheLine: r.ask_up_the_line === 1 },
+      parent: null,
+      wall: r.changed_at,
+    }
   },
   create: (ctx, id, f) => {
     if (id !== "organization") return false
     ctx.db.run(
-      "INSERT OR REPLACE INTO organization (id, hand_off, changed_at) VALUES (?, ?, ?)",
+      "INSERT OR REPLACE INTO organization (id, hand_off, ask_up_the_line, changed_at) VALUES (?, ?, ?, ?)",
       id,
       f.handOff as string,
+      f.askUpTheLine === true ? 1 : 0,
       ctx.now(),
     )
     return true
@@ -687,6 +713,12 @@ const org: KindDef = {
   write: (ctx, id, f) => {
     if (f.handOff !== undefined)
       ctx.db.run("UPDATE organization SET hand_off = ? WHERE id = ?", f.handOff as string, id)
+    if (typeof f.askUpTheLine === "boolean")
+      ctx.db.run(
+        "UPDATE organization SET ask_up_the_line = ? WHERE id = ?",
+        f.askUpTheLine ? 1 : 0,
+        id,
+      )
   },
   remove: (ctx, id) => ctx.db.run("DELETE FROM organization WHERE id = ?", id),
   label: (f) => String(f.handOff ?? ""),

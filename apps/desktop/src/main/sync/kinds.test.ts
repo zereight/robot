@@ -12,7 +12,7 @@ import { Agents } from "../services/Agents.ts"
 import { Channels } from "../services/Channels.ts"
 import { Database, type DatabaseService, openDatabase } from "../services/Database.ts"
 import { Handbook } from "../services/Handbook.ts"
-import { readHandOffRule } from "../services/handOff.ts"
+import { readAskUpTheLine, readHandOffRule } from "../services/handOff.ts"
 import { Routines } from "../services/Routines.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
@@ -2079,7 +2079,7 @@ describe("the parent channel crosses with the channel (spec 030, 019)", () => {
   })
 })
 
-describe("the hand-off rule crosses as one item of the profile (spec 030, 019)", () => {
+describe("the hand-off rule and the switch 'Ask up the line' cross as one item of the profile (spec 030, 019)", () => {
   const op = (id: string, fields: Record<string, unknown>) => ({
     k: "org",
     i: id,
@@ -2092,7 +2092,36 @@ describe("the hand-off rule crosses as one item of the profile (spec 030, 019)",
     expect(KINDS.org.ids(a.db, "", 10)).toEqual(["organization"])
     expect(KINDS.org.count(a.db)).toBe(1)
     const ctxA: Ctx = { ...target(openDatabase(":memory:"), "/tmp/kinds-org"), db: a.db }
-    expect(KINDS.org.read(ctxA, "organization")?.fields).toEqual({ handOff: "any" })
+    expect(KINDS.org.read(ctxA, "organization")?.fields).toEqual({
+      handOff: "any",
+      askUpTheLine: false,
+    })
+  })
+
+  test("the switch is a boolean; a computer of an older step sends none and it counts as off", async () => {
+    expect(parseOp(op("organization", { handOff: "any", askUpTheLine: true }), NOW)).toBeDefined()
+    expect(parseOp(op("organization", { handOff: "any", askUpTheLine: false }), NOW)).toBeDefined()
+    expect(parseOp(op("organization", { handOff: "any", askUpTheLine: 1 }), NOW)).toBeUndefined()
+    expect(parseOp(op("organization", { handOff: "any", askUpTheLine: "on" }), NOW)).toBeUndefined()
+    // The older item has no switch: the first copy makes the row with the switch off.
+    const b = target(openDatabase(":memory:"), "/tmp/kinds-org-older")
+    expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
+    expect(readAskUpTheLine(b.db)).toBe(false)
+    // A change of the switch alone leaves the rule as it is, and the reverse.
+    KINDS.org.write(b, "organization", { askUpTheLine: true })
+    expect(KINDS.org.read(b, "organization")?.fields).toEqual({
+      handOff: "channels",
+      askUpTheLine: true,
+    })
+    KINDS.org.write(b, "organization", { handOff: "any" })
+    expect(KINDS.org.read(b, "organization")?.fields).toEqual({
+      handOff: "any",
+      askUpTheLine: true,
+    })
+    // The first copy brings the switch too.
+    const c = target(openDatabase(":memory:"), "/tmp/kinds-org-copy")
+    expect(KINDS.org.create(c, "organization", { handOff: "any", askUpTheLine: true })).toBe(true)
+    expect(readAskUpTheLine(c.db)).toBe(true)
   })
 
   test("only the two known values pass the strict check", async () => {
@@ -2109,10 +2138,15 @@ describe("the hand-off rule crosses as one item of the profile (spec 030, 019)",
   test("a change is written and read back; a deletion removes the row, and the rule is the default", async () => {
     const b = target(openDatabase(":memory:"), "/tmp/kinds-org-write")
     KINDS.org.write(b, "organization", { handOff: "channels" })
-    expect(KINDS.org.read(b, "organization")?.fields).toEqual({ handOff: "channels" })
+    expect(KINDS.org.read(b, "organization")?.fields).toEqual({
+      handOff: "channels",
+      askUpTheLine: false,
+    })
     KINDS.org.remove(b, "organization")
     expect(KINDS.org.read(b, "organization")).toBeUndefined()
     expect(readHandOffRule(b.db)).toBe("any")
+    // A deletion from the other computer sets the defaults: the switch is off.
+    expect(readAskUpTheLine(b.db)).toBe(false)
     // The row comes from a first copy again.
     expect(KINDS.org.create(b, "organization", { handOff: "channels" })).toBe(true)
     expect(readHandOffRule(b.db)).toBe("channels")
@@ -2122,6 +2156,12 @@ describe("the hand-off rule crosses as one item of the profile (spec 030, 019)",
     )
     b.db.run("DELETE FROM sync_dirty")
     b.db.run("UPDATE organization SET hand_off = 'channels'")
+    expect(b.db.all("SELECT kind, id FROM sync_dirty")).toEqual([
+      { kind: "org", id: "organization" },
+    ])
+    // So does a change of the switch.
+    b.db.run("DELETE FROM sync_dirty")
+    b.db.run("UPDATE organization SET ask_up_the_line = 1")
     expect(b.db.all("SELECT kind, id FROM sync_dirty")).toEqual([
       { kind: "org", id: "organization" },
     ])

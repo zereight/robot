@@ -45,7 +45,7 @@ import { showToast } from "../ui/toast.ts"
 import { TaskStateText } from "./TaskStateText.tsx"
 import { TaskUsageView } from "./TaskUsageView.tsx"
 import styles from "./tasks.module.css"
-import { taskTitle } from "./title.ts"
+import { sourceWords, taskTitle } from "./title.ts"
 
 // A reason with no text of its own shows the general error text.
 const catalogueKeys = catalogues.en
@@ -223,7 +223,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
           <div class={styles.detail}>
             <h2 class={styles.title}>{taskTitle(d().task, t)}</h2>
             <p class={styles.meta}>
-              {d().task.agentName} · {t(`tasks.source.${d().task.source}` as MessageKey)} ·{" "}
+              {d().task.agentName} · {sourceWords(d().task, t)} ·{" "}
               <span
                 class={styles.state}
                 data-testid="task-detail-state"
@@ -665,7 +665,7 @@ export const TasksPage = () => {
                         {taskTitle(task, t)}
                       </button>
                     </th>
-                    <td>{t(`tasks.source.${task.source}` as MessageKey)}</td>
+                    <td>{sourceWords(task, t)}</td>
                     <Show when={showComputers()}>
                       <td data-testid="task-computer">{computerOf(task)}</td>
                     </Show>

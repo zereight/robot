@@ -14,7 +14,6 @@ import {
   parseLeadLook,
   passLabelKey,
   questionsOf,
-  readerAfterPass,
 } from "./leadAnswers.ts"
 
 // Questions of members that the lead answers (spec 004, "Questions of members").
@@ -76,15 +75,6 @@ describe("which question goes to the lead first", () => {
     expect(firstReader(facts({ answered: 2 })).kind).toBe("lead")
     expect(firstReader(facts({ answered: 3 }))).toEqual({ kind: "user", why: "limit" })
     expect(firstReader(facts({ answered: 9 }))).toEqual({ kind: "user", why: "limit" })
-  })
-})
-
-describe("who looks at a question after a pass", () => {
-  test("today the user, whatever the kind of the pass", () => {
-    for (const kind of ["user_choice", "not_sure", "late", "failure"] as const)
-      expect(readerAfterPass({ agentId: "lead", name: "Lia", kind, reason: "" })).toEqual({
-        kind: "user",
-      })
   })
 })
 

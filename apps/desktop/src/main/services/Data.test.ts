@@ -741,6 +741,23 @@ describe("export and import", () => {
     ])
   })
 
+  test("the switch 'Ask up the line' comes back with the archive, and the rule beside it (spec 030, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-line.zip")
+    const a = app({ save: out })
+    await a.run(Organization.use((o) => o.setAskUpTheLine(true)))
+    await a.run(Data.use((d) => d.export()))
+    const b = app({ open: out })
+    expect(await b.run(Organization.use((o) => o.get))).toEqual({
+      handOff: "any",
+      askUpTheLine: false,
+    })
+    await b.run(Data.use((d) => d.import()))
+    expect(await b.run(Organization.use((o) => o.get))).toEqual({
+      handOff: "any",
+      askUpTheLine: true,
+    })
+  })
+
   test("the hand-off rule comes back with the archive (spec 030, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-rule.zip")
     const a = app({ save: out })
@@ -749,9 +766,15 @@ describe("export and import", () => {
 
     // An empty profile holds the default until it imports the archive.
     const b = app({ open: out })
-    expect(await b.run(Organization.use((o) => o.get))).toEqual({ handOff: "any" })
+    expect(await b.run(Organization.use((o) => o.get))).toEqual({
+      handOff: "any",
+      askUpTheLine: false,
+    })
     await b.run(Data.use((d) => d.import()))
-    expect(await b.run(Organization.use((o) => o.get))).toEqual({ handOff: "channels" })
+    expect(await b.run(Organization.use((o) => o.get))).toEqual({
+      handOff: "channels",
+      askUpTheLine: false,
+    })
   })
 
   test("an archive that holds a tree with a fourth level or a loop comes back repaired, with a muted line (spec 030, Repair)", async () => {
