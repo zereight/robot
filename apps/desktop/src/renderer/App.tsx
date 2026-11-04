@@ -35,6 +35,7 @@ import { setFocusMessage } from "./state/focus.ts"
 import { useUi } from "./state/ui.tsx"
 import { TasksPage } from "./tasks/TasksPage.tsx"
 import { TodayPage } from "./today/TodayPage.tsx"
+import { ChannelMark } from "./ui/ChannelMark.tsx"
 import { IconButton } from "./ui/controls.tsx"
 import { Menu } from "./ui/Menu.tsx"
 import { Presence } from "./ui/Presence.tsx"
@@ -89,6 +90,15 @@ export const App = () => {
     <>
       <Shell
         face={(place) => {
+          // A channel shows its picture, or the mark with the `#` (spec 004, "Picture").
+          if (place.kind === "channel")
+            return (
+              <ChannelMark
+                picture={channels.byId(place.id)?.picture}
+                size={24}
+                testId="channel-mark"
+              />
+            )
           const agent = agents.byId(place.id)
           return agent ? (
             <Face face={agent.face} image={agent.faceImage} size={24} agentId={agent.id} />

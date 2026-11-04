@@ -18,6 +18,7 @@ import {
   HANDBOOK_SOURCES,
   HANDOVER_LIMITS,
   INSTRUCTION_SOURCES,
+  isChannelPicture,
   isOutsideSource,
   isPlaceOutside,
   isSensitiveLabel,
@@ -871,6 +872,7 @@ interface ChannelRow {
   instructions: string
   lead_agent_id: string | null
   review_parts: number
+  picture: string | null
   sensitive_mark: string | null
   outside_mark: string | null
   created_at: number
@@ -912,6 +914,9 @@ const channel: KindDef = {
     lead: { check: nullable(str(100, 1)) },
     // "Review parts" (spec 004). A computer of an older step has none, and it counts as off.
     reviewParts: { check: (v) => typeof v === "boolean" },
+    // The picture of the channel (spec 004, 019): a square PNG of at most 256 px and 1 MB as a data
+    // address, or none. A computer of an older step has none.
+    picture: { check: nullable(isChannelPicture) },
     // The mark of a sensitive read of the channel (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
     // The outside content that the next turns of the channel hold, with the program mark (spec 007).
@@ -937,6 +942,7 @@ const channel: KindDef = {
         instructions: r.instructions,
         lead: r.lead_agent_id,
         reviewParts: r.review_parts === 1,
+        picture: isChannelPicture(r.picture) ? r.picture : null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
         members: ctx.db
@@ -963,6 +969,7 @@ const channel: KindDef = {
       instructions: typeof f.instructions === "string" ? f.instructions : "",
       lead_agent_id: f.lead,
       review_parts: f.reviewParts === true ? 1 : 0,
+      picture: isChannelPicture(f.picture) ? f.picture : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
       created_at: f.createdAt,
@@ -984,6 +991,7 @@ const channel: KindDef = {
     if (typeof f.instructions === "string") columns.instructions = f.instructions
     if (f.lead !== undefined) columns.lead_agent_id = f.lead
     if (typeof f.reviewParts === "boolean") columns.review_parts = f.reviewParts ? 1 : 0
+    if (f.picture !== undefined) columns.picture = isChannelPicture(f.picture) ? f.picture : null
     if (f.sensitive !== undefined)
       columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
     if (f.outside !== undefined)

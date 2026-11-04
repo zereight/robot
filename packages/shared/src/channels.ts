@@ -30,6 +30,11 @@ export interface Channel {
   readonly sectionId: string | null
   /** "Review parts": a part of a plan that ends well waits for the user (spec 004). Off at first. */
   readonly reviewParts: boolean
+  /**
+   * The picture of the channel (spec 004, "Picture"): a square PNG of at most 256 px as a data
+   * address, or null. It shows in place of the `#` mark.
+   */
+  readonly picture: string | null
   readonly unread: number
   readonly working: boolean
   /** The label of the first credential place that a turn of the channel read (spec 007). */

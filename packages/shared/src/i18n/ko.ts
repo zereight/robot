@@ -998,6 +998,14 @@ export const ko: Record<MessageKey, string> = {
   "channels.instructions": "지침",
   "channels.instructions.hint":
     "모든 멤버와 리드가 이 채널의 모든 턴에서 자기 지침 다음에 이 글을 읽어요. 최대 4,000자까지 쓸 수 있어요.",
+  "channels.picture": "사진",
+  "channels.picture.hint": "# 표시 대신 보여요. ROBot이 사진을 정사각형으로 잘라요.",
+  "channels.picture.upload": "사진 올리기",
+  "channels.picture.remove": "사진 지우기",
+  "error.channel_picture_invalid": "이 파일은 사진으로 쓸 수 없어요.",
+  "error.channel_picture_too_large": "사진이 너무 커요. 최대 1MB까지 쓸 수 있어요.",
+  "error.channel_context_too_small":
+    "맡은 일과 지침이 모델의 컨텍스트보다 길어요. 지침을 줄이거나 컨텍스트가 더 큰 모델을 골라 주세요.",
   "agents.memory.title": "메모리",
   "honest.line":
     "에이전트는 지침, 메모리, 지식, 그리고 사용자가 저장한 스킬로 더 나아집니다. ROBot은 모델을 훈련하지 않습니다.",

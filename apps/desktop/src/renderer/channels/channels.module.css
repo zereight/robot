@@ -62,6 +62,13 @@
 .memberSearch {
   margin-top: 6px;
 }
+/* The picture of the channel with its two buttons, in a row that wraps in a narrow dialog. */
+.pictureRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 /*
  * The box has one height for any search: a list, a short list and "no match" fill the same room.
  * The height comes from all agents (the sizer, hidden), up to 180 px. The list that the user sees

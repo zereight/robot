@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import type { ChannelMessage, Task } from "@robot/shared"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
+import { asOldShape } from "./channelTurns.testing.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
@@ -65,7 +66,7 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as { messages: { role: string; content: string }[] }
+    const body = asOldShape((await req.json()) as { messages: { role: string; content: string }[] })
     const system = body.messages.find((m) => m.role === "system")?.content ?? ""
     const content = body.messages.at(-1)?.content ?? ""
     const last = content.split("\n").at(-1) ?? ""

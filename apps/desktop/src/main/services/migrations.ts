@@ -1136,4 +1136,10 @@ export const migrations: readonly string[] = [
   ALTER TABLE memory_history ADD COLUMN channel_name_before TEXT;
   ALTER TABLE memory_history ADD COLUMN channel_name_after TEXT;
   `,
+  `
+  -- The picture of a channel (spec 004, S88): a square PNG of at most 256 px and 1 MB as a data
+  -- address, or NULL. It is in the database, so an export keeps it, and the delete of a channel
+  -- removes it. It syncs with the channel (the dirty trigger of the channel watches every column).
+  ALTER TABLE channel ADD COLUMN picture TEXT;
+  `,
 ]
