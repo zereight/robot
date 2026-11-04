@@ -47,6 +47,7 @@ import {
   TriggerSchema,
   VERDICTS,
   validSchedule,
+  validTokenLimit,
   validWatch,
   WatchSchema,
   WORKFLOW_NAME_MAX,
@@ -1520,6 +1521,11 @@ interface TaskRow {
   decision: string | null
   decision_text: string | null
   agent_message: string | null
+  input_tokens: number | null
+  output_tokens: number | null
+  cached_tokens: number | null
+  cost_micros: number | null
+  token_limit: number | null
 }
 
 const task: KindDef = {
@@ -1564,6 +1570,13 @@ const task: KindDef = {
     // A send or a reply of a message from another agent (spec 029, 019). It is set when the task
     // is made. A computer of an older step has none: the task is then not counted as a hand-off.
     agentMessage: { check: nullable(oneOf(AGENT_MESSAGE_KINDS)) },
+    // The usage of the task and the token limit of its run (spec 005, 009, 019). The numbers are
+    // counts of tokens, never text. A computer of an older step has none, so they are optional.
+    inputTokens: { check: nullable(int) },
+    outputTokens: { check: nullable(int) },
+    cachedTokens: { check: nullable(int) },
+    costMicros: { check: nullable(int) },
+    tokenLimit: { check: nullable(validTokenLimit) },
   },
   required: [
     "agentId",
@@ -1639,6 +1652,11 @@ const task: KindDef = {
         decision: r.decision,
         decisionText: r.decision_text,
         agentMessage: r.agent_message,
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        cachedTokens: r.cached_tokens,
+        costMicros: r.cost_micros,
+        tokenLimit: r.token_limit,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: r.finished_at ?? r.started_at ?? r.created_at,
@@ -1677,6 +1695,11 @@ const task: KindDef = {
       decision: f.decision ?? null,
       decision_text: f.decisionText ?? null,
       agent_message: f.agentMessage ?? null,
+      input_tokens: f.inputTokens ?? null,
+      output_tokens: f.outputTokens ?? null,
+      cached_tokens: f.cachedTokens ?? null,
+      cost_micros: f.costMicros ?? null,
+      token_limit: f.tokenLimit ?? null,
     })
     return true
   },
@@ -1700,6 +1723,10 @@ const task: KindDef = {
       ...(f.startedAt !== undefined ? { started_at: f.startedAt } : {}),
       ...(f.finishedAt !== undefined ? { finished_at: f.finishedAt } : {}),
       ...(f.firstReplyAt !== undefined ? { first_reply_at: f.firstReplyAt } : {}),
+      ...(f.inputTokens !== undefined ? { input_tokens: f.inputTokens } : {}),
+      ...(f.outputTokens !== undefined ? { output_tokens: f.outputTokens } : {}),
+      ...(f.cachedTokens !== undefined ? { cached_tokens: f.cachedTokens } : {}),
+      ...(f.costMicros !== undefined ? { cost_micros: f.costMicros } : {}),
     })
   },
   remove: (ctx, id) => ctx.db.run("DELETE FROM task WHERE id = ?", id),
@@ -1723,6 +1750,7 @@ interface RoutineRow {
   model_account_id: string | null
   model_name: string | null
   model_effort: string | null
+  token_limit: number | null
 }
 
 const isSchedule = strictly(ScheduleSchema as unknown as Schema.Codec<unknown, unknown>)
@@ -1757,6 +1785,8 @@ const routine: KindDef = {
       check: nullable((v) => isWatch(v) && validWatch(v as Parameters<typeof validWatch>[0])),
     },
     model: { check: nullable(modelCheck) },
+    // The most tokens that one run may use (spec 009). A computer of an older step has none.
+    tokenLimit: { check: nullable(validTokenLimit) },
     channelId: { check: nullable(str(100, 1)) },
     enabled: { check: bool },
     runsOn: { check: str(64, 1) },
@@ -1791,6 +1821,7 @@ const routine: KindDef = {
           r.model_account_id && r.model_name
             ? { accountId: r.model_account_id, model: r.model_name, effort: r.model_effort }
             : null,
+        tokenLimit: r.token_limit,
         channelId: r.channel_id,
         enabled: r.enabled === 1,
         runsOn: r.runs_on ?? ctx.self,
@@ -1814,6 +1845,7 @@ const routine: KindDef = {
       schedule: JSON.stringify(f.schedule),
       watch: f.watch === null ? null : JSON.stringify(f.watch),
       ...routineModelOf(ctx, f.model),
+      token_limit: f.tokenLimit ?? null,
       channel_id: f.channelId,
       enabled: f.enabled ? 1 : 0,
       // The missed-run rule counts from the time the routine came to this computer.
@@ -1831,6 +1863,7 @@ const routine: KindDef = {
     if (f.schedule !== undefined) columns.schedule = JSON.stringify(f.schedule)
     if (f.watch !== undefined) columns.watch = f.watch === null ? null : JSON.stringify(f.watch)
     if (f.model !== undefined) Object.assign(columns, routineModelOf(ctx, f.model))
+    if (f.tokenLimit !== undefined) columns.token_limit = f.tokenLimit
     if (f.channelId !== undefined) columns.channel_id = f.channelId
     if (f.enabled !== undefined) columns.enabled = f.enabled ? 1 : 0
     // A change that makes it run on this computer is ignored: the user here decides that.

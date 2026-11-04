@@ -138,11 +138,18 @@ const num = (value: unknown) => (typeof value === "number" ? value : 0)
 export interface OpencodeState {
   input: number
   output: number
+  /** The input read from the cache, or null while the program has not reported it. */
+  cached: number | null
   /** The error that the program reported. */
   error: { readonly type: string; readonly status: number; readonly message: string } | null
 }
 
-export const newOpencodeState = (): OpencodeState => ({ input: 0, output: 0, error: null })
+export const newOpencodeState = (): OpencodeState => ({
+  input: 0,
+  output: 0,
+  cached: null,
+  error: null,
+})
 
 /** Turns one line of `opencode run --format json` into events for the reply. */
 export const mapOpencodeEvent = (message: unknown, state: OpencodeState): AgentEvent[] => {
@@ -177,6 +184,7 @@ export const mapOpencodeEvent = (message: unknown, state: OpencodeState): AgentE
       const cache = obj(tokens.cache)
       state.input += num(tokens.input) + num(cache.read) + num(cache.write)
       state.output += num(tokens.output)
+      if (typeof cache.read === "number") state.cached = (state.cached ?? 0) + cache.read
       return []
     }
     case "error": {
@@ -267,7 +275,12 @@ export async function* runOpencode(run: RuntimeRun): AsyncGenerator<AgentEvent> 
     if (started) throw started
     if (code !== 0)
       throw opencodeFailure({ message: stderr.trim() || `The program ended with code ${code}.` })
-    yield { type: "usage", input: state.input, output: state.output }
+    yield {
+      type: "usage",
+      input: state.input,
+      output: state.output,
+      ...(state.cached !== null ? { cached: state.cached } : {}),
+    }
   } finally {
     run.signal.removeEventListener("abort", stop)
     if (child.exitCode === null) {

@@ -603,6 +603,38 @@ describe("the states", () => {
     await dispose(t)
   })
 
+  test("a shown page takes input again after the page was made again", async () => {
+    const t = await ready()
+    await t.showPage()
+    const bounds = { x: 1, y: 2, width: 300, height: 200 }
+    await t.run(TeamsLink.use((l) => l.place(bounds)))
+    expect(t.chat.inputAllowed).toBe(true)
+    // The app made the page again (the window closed and opened): the new page takes no input.
+    t.chat.driver.close()
+    expect(t.chat.inputAllowed).toBe(false)
+    // The window sends the place again: the shown page takes input, before it even reopened.
+    await t.run(TeamsLink.use((l) => l.place(bounds)))
+    expect(t.chat.inputAllowed).toBe(true)
+    await dispose(t)
+  })
+
+  test("each tick lets the input in while the page shows, and keeps it out while hidden", async () => {
+    const t = await ready()
+    await t.showPage()
+    // The page broke and takes no input: the next tick lets the input in again.
+    t.chat.driver.close()
+    expect(t.chat.isOpen).toBe(false)
+    await t.pass(3000)
+    expect(t.chat.isOpen).toBe(true)
+    expect(t.chat.inputAllowed).toBe(true)
+    // Hidden, the page stays shut: no tick lets the input in.
+    await t.hidePage()
+    t.chat.driver.close()
+    await t.pass(3000)
+    expect(t.chat.inputAllowed).toBe(false)
+    await dispose(t)
+  })
+
   test("a user who looks at another chat in the shown page is not pulled back", async () => {
     const t = await ready()
     t.chat.addChat("Team A")

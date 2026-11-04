@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { runAgent } from "./agent.ts"
-import { anthropicBody, inputCounter, normaliseTurns, replyBlocks, streamChat } from "./chat.ts"
+import {
+  anthropicBody,
+  cachedCounter,
+  inputCounter,
+  normaliseTurns,
+  replyBlocks,
+  streamChat,
+} from "./chat.ts"
 
 describe("normaliseTurns", () => {
   test("joins turns of one role and drops empty ones", () => {
@@ -715,5 +722,131 @@ describe("inputCounter", () => {
     expect(count({ input_tokens: 1, cache_creation_input_tokens: 2 })).toBe(3)
     expect(count({ cache_read_input_tokens: 10 })).toBe(13)
     expect(count({ input_tokens: 5 })).toBe(17)
+  })
+})
+
+describe("cached input and what a turn spent (spec 005, Usage of a task)", () => {
+  const realFetch = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = realFetch
+  })
+
+  const event = (type: string, data: object) =>
+    `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`
+  const anthropic = (start: object, end: object, calls: boolean) =>
+    new Response(
+      [
+        event("message_start", { message: { usage: start } }),
+        ...(calls
+          ? [
+              event("content_block_start", {
+                index: 0,
+                content_block: { type: "tool_use", id: "toolu_1", name: "read", input: {} },
+              }),
+              event("content_block_delta", {
+                index: 0,
+                delta: { type: "input_json_delta", partial_json: "{}" },
+              }),
+              event("content_block_stop", { index: 0 }),
+            ]
+          : [
+              event("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+              event("content_block_delta", {
+                index: 0,
+                delta: { type: "text_delta", text: "Done." },
+              }),
+              event("content_block_stop", { index: 0 }),
+            ]),
+        event("message_delta", { usage: end }),
+        event("message_stop", {}),
+      ].join(""),
+    )
+  const request = {
+    connection: { kind: "anthropic" as const, baseUrl: "http://x", apiKey: "k" },
+    model: "claude-sonnet-5-5",
+    effort: null,
+    system: "",
+    turns: [{ role: "user" as const, content: "hi" }],
+    signal: new AbortController().signal,
+  }
+
+  test("cachedCounter gives the cache read, and nothing until a field names it", () => {
+    const count = cachedCounter()
+    expect(count(undefined)).toBeUndefined()
+    expect(count({ input_tokens: 5 })).toBeUndefined()
+    expect(count({ cache_read_input_tokens: 10 })).toBe(10)
+    // A later event that names no cache field keeps what was told.
+    expect(count({ output_tokens: 3 })).toBe(10)
+    expect(count({ cache_read_input_tokens: null as unknown as number })).toBe(10)
+  })
+
+  test("the usage of a reply carries the cached part of its input", async () => {
+    globalThis.fetch = (async () =>
+      anthropic(
+        { input_tokens: 4, cache_creation_input_tokens: 6, cache_read_input_tokens: 10 },
+        { output_tokens: 9 },
+        false,
+      )) as unknown as typeof fetch
+    const usage = []
+    for await (const e of streamChat(request)) if (e.type === "usage") usage.push(e)
+    // The start gives the input with its cached part; the end gives the output.
+    expect(usage[0]).toEqual({ type: "usage", input: 20, cached: 10 })
+    expect(usage.at(-1)).toMatchObject({ output: 9, cached: 10 })
+  })
+
+  test("a reply with no cache fields has no cached count", async () => {
+    globalThis.fetch = (async () =>
+      anthropic({ input_tokens: 20 }, { output_tokens: 9 }, false)) as unknown as typeof fetch
+    const usage = []
+    for await (const e of streamChat(request)) if (e.type === "usage") usage.push(e)
+    expect(usage.every((e) => !("cached" in e))).toBe(true)
+  })
+
+  test("an OpenAI-style reply carries the cached tokens of its prompt", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        [
+          `data: ${JSON.stringify({ choices: [{ delta: { content: "Hi" } }] })}\n\n`,
+          `data: ${JSON.stringify({
+            choices: [],
+            usage: {
+              prompt_tokens: 8000,
+              completion_tokens: 100,
+              prompt_tokens_details: { cached_tokens: 6000 },
+            },
+          })}\n\n`,
+          "data: [DONE]\n\n",
+        ].join(""),
+      )) as unknown as typeof fetch
+    const usage = []
+    for await (const e of streamChat({
+      ...request,
+      connection: { kind: "custom", baseUrl: "http://x/v1", apiKey: "k" },
+      model: "m",
+    }))
+      if (e.type === "usage") usage.push(e)
+    expect(usage).toEqual([{ type: "usage", input: 8000, output: 100, cached: 6000 }])
+  })
+
+  test("a turn of two requests spends the sum of both, and each report adds only what is new", async () => {
+    let calls = 0
+    globalThis.fetch = (async () =>
+      ++calls === 1
+        ? anthropic({ input_tokens: 1000 }, { output_tokens: 100 }, true)
+        : anthropic(
+            { input_tokens: 1500 },
+            { output_tokens: 50 },
+            false,
+          )) as unknown as typeof fetch
+    const spent = []
+    for await (const e of runAgent(request, async () => ({ output: "x", failed: false })))
+      if (e.type === "spent") spent.push(e)
+    const total = spent.reduce(
+      (sum, e) => ({ input: sum.input + (e.input ?? 0), output: sum.output + (e.output ?? 0) }),
+      { input: 0, output: 0 },
+    )
+    expect(total).toEqual({ input: 2500, output: 150 })
+    // The running totals of one request are not counted twice.
+    expect(spent[0]).toEqual({ type: "spent", input: 1000 })
   })
 })

@@ -20,6 +20,7 @@ import { Context, Effect, Layer } from "effect"
 import { type AgentEvent, runAgent } from "../providers/agent.ts"
 import { takesCacheMarker } from "../providers/cache.ts"
 import { type Connection, effortToSend, listModels, ProviderFailure } from "../providers/client.ts"
+import { spendTracker } from "../providers/spent.ts"
 import type { TurnHooks, TurnInput } from "../providers/turn.ts"
 import { grantBridge } from "../runtimes/bridge.ts"
 import { buildBlocks, buildPrompt } from "../runtimes/prompt.ts"
@@ -441,7 +442,10 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                   ? await grantBridge(hooks.bridge).catch(() => undefined)
                   : undefined
               try {
-                yield* runtimes.run(
+                // A program gives its counts of tokens at the end of a turn, as totals of the run.
+                // `spent` is what the run used, for the usage of the task (spec 005).
+                const spend = spendTracker()
+                for await (const event of runtimes.run(
                   kind,
                   {
                     model: input.model,
@@ -460,7 +464,13 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                     ...(input.inbox && runtimeTakesInput(kind) ? { inbox: input.inbox } : {}),
                   },
                   row.sign_in,
-                )
+                )) {
+                  yield event
+                  if (event.type === "usage") {
+                    const spent = spend(event)
+                    if (spent) yield spent
+                  }
+                }
               } catch (error) {
                 // The sign-in is gone: look again, so that the account shows the truth.
                 if (error instanceof ProviderFailure && error.code === "runtime_signed_out")

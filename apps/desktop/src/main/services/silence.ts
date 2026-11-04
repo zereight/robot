@@ -214,7 +214,7 @@ export const turnWatch = (options: TurnWatchOptions): TurnWatch => {
     },
     sense: (event) => {
       // The count of tokens is not a sign of life: it says nothing about the work.
-      if (event.type === "usage") return
+      if (event.type === "usage" || event.type === "spent") return
       options.progress("started")
       timer.alive()
       if (event.type !== "tool") return

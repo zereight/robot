@@ -661,6 +661,113 @@ describe("the mark of a message from another agent syncs with the task (spec 029
   })
 })
 
+describe("the usage of a task and the token limit sync (spec 005, 009, 019)", () => {
+  const dirOf = () => join(testRuntime().dataDir, "kinds")
+  const opOf = (kind: "task" | "routine", id: string, fields: Fields) =>
+    parseOp(
+      {
+        k: kind,
+        i: id,
+        o: "dev-a",
+        f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+      },
+      NOW,
+    )
+
+  test("the numbers reach the copy of the task, and a later change follows", async () => {
+    const a = await source()
+    a.db.run(
+      "UPDATE task SET input_tokens = 7000, output_tokens = 1200, cached_tokens = 5000, cost_micros = 4200, token_limit = 9000 WHERE id = 'task-1'",
+    )
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(fields).toMatchObject({
+      inputTokens: 7000,
+      outputTokens: 1200,
+      cachedTokens: 5000,
+      costMicros: 4200,
+      tokenLimit: 9000,
+    })
+    const b = target(openDatabase(":memory:"), dirOf())
+    const ada = KINDS.agent.read(ctxA, a.ada.id)
+    expect(KINDS.agent.create(b, a.ada.id, copy(ada?.fields) as Fields)).toBe(true)
+    expect(KINDS.task.create(b, "task-1", fields)).toBe(true)
+    expect(KINDS.task.read(b, "task-1")?.fields).toMatchObject({
+      inputTokens: 7000,
+      tokenLimit: 9000,
+    })
+    KINDS.task.write(b, "task-1", { inputTokens: 8000, outputTokens: 1300 })
+    expect(KINDS.task.read(b, "task-1")?.fields).toMatchObject({
+      inputTokens: 8000,
+      outputTokens: 1300,
+      cachedTokens: 5000,
+    })
+  })
+
+  test("a number that was not reported stays null on both computers, never 0", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(fields).toMatchObject({
+      inputTokens: null,
+      outputTokens: null,
+      cachedTokens: null,
+      costMicros: null,
+      tokenLimit: null,
+    })
+    const b = target(openDatabase(":memory:"), dirOf())
+    const ada = KINDS.agent.read(ctxA, a.ada.id)
+    KINDS.agent.create(b, a.ada.id, copy(ada?.fields) as Fields)
+    KINDS.task.create(b, "task-1", fields)
+    expect(KINDS.task.read(b, "task-1")?.fields.inputTokens).toBeNull()
+  })
+
+  test("a computer of an older step sends none, and its task still arrives", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const full = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    for (const name of [
+      "inputTokens",
+      "outputTokens",
+      "cachedTokens",
+      "costMicros",
+      "tokenLimit",
+    ]) {
+      expect(KINDS.task.required).not.toContain(name)
+      const { [name]: _gone, ...rest } = full
+      expect(opOf("task", "task-1", rest as Fields), name).toBeDefined()
+    }
+  })
+
+  test("only whole numbers of tokens pass the strict check", async () => {
+    const a = await source()
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.task.read(ctxA, "task-1")?.fields) as Fields
+    expect(opOf("task", "task-1", { ...fields, inputTokens: 12 })).toBeDefined()
+    for (const bad of [-1, 1.5, "7", {}, true])
+      expect(opOf("task", "task-1", { ...fields, inputTokens: bad }), String(bad)).toBeUndefined()
+    expect(opOf("task", "task-1", { ...fields, tokenLimit: 999 })).toBeUndefined()
+    expect(opOf("task", "task-1", { ...fields, tokenLimit: 10_000_001 })).toBeUndefined()
+  })
+
+  test("the token limit of a routine reaches the copy and follows a later change", async () => {
+    const a = await source()
+    a.db.run("UPDATE routine SET token_limit = 5000 WHERE id = ?", a.routine.id)
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dirOf()), db: a.db, self: "dev-a" }
+    const fields = copy(KINDS.routine.read(ctxA, a.routine.id)?.fields) as Fields
+    expect(fields.tokenLimit).toBe(5000)
+    expect(KINDS.routine.required).not.toContain("tokenLimit")
+    const b = target(openDatabase(":memory:"), dirOf())
+    const ada = KINDS.agent.read(ctxA, a.ada.id)
+    KINDS.agent.create(b, a.ada.id, copy(ada?.fields) as Fields)
+    expect(KINDS.routine.create(b, a.routine.id, fields)).toBe(true)
+    expect(KINDS.routine.read(b, a.routine.id)?.fields.tokenLimit).toBe(5000)
+    KINDS.routine.write(b, a.routine.id, { tokenLimit: null })
+    expect(KINDS.routine.read(b, a.routine.id)?.fields.tokenLimit).toBeNull()
+    expect(opOf("routine", a.routine.id, { ...fields, tokenLimit: 12 })).toBeUndefined()
+  })
+})
+
 describe("the note of a starter syncs with its message (spec 002, 019)", () => {
   const note = {
     kind: "note",

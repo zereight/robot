@@ -33,6 +33,8 @@ const task = (extra: Partial<Task> = {}): Task => ({
   endedAs: "done",
   decision: null,
   decisionText: null,
+  usage: { input: null, output: null, cached: null, costMicros: null },
+  tokenLimit: null,
   ...extra,
 })
 

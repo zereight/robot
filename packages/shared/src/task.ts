@@ -1,4 +1,5 @@
 import type { Verdict } from "./check.ts"
+import type { TaskUsage, TreeUsage } from "./taskUsage.ts"
 import type { RecentPlace } from "./work.ts"
 
 export const TASK_STATES = [
@@ -274,6 +275,16 @@ export interface Task {
   /** What the user decided on a part, and for "changes" the text of the request. */
   readonly decision: Decision | null
   readonly decisionText: string | null
+  /**
+   * What the turns of this task used, as the provider reports it (spec 005, "Usage of a task"). A
+   * number that the provider did not report is null. It holds no text of a message.
+   */
+  readonly usage: TaskUsage
+  /**
+   * The token limit of the run, for the first task of a run of a routine that has a limit (spec
+   * 009). It is kept when the run starts, so a later edit of the routine does not change it.
+   */
+  readonly tokenLimit: number | null
 }
 
 export interface TaskDetail {
@@ -286,6 +297,11 @@ export interface TaskDetail {
   readonly joined: readonly { readonly text: string; readonly at: number }[]
   /** The name of the agent that gave the task as a part of a plan (its lead). Null for any other. */
   readonly leadName: string | null
+  /**
+   * The total of the task and the tasks below it, with one line for each agent. Null for a task
+   * with no child task (spec 005, "Usage of a task").
+   */
+  readonly tree: TreeUsage | null
 }
 
 /** One line of a prompt, cut to a label. */

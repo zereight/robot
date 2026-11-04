@@ -700,7 +700,7 @@ describe("the language of the app", () => {
     expect(w.s.typedTexts()).toEqual([
       "[ROBot] Launch이(가) ROBot에서 기다리고 있어요. 앱을 열어 답해 주세요.",
       "[ROBot] Cy: 안녕하세요",
-      "[ROBot] Ada이(가) 끝내지 못했어요: 5분 동안 답이 없어요.",
+      "[ROBot] Ada가 끝내지 못했어요: 5분 동안 답이 없어요.",
     ])
     await dispose(w.s)
   })

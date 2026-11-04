@@ -491,6 +491,8 @@
 }
 
 .browserThumb {
+  /* A native view draws the page above this box: the box is no drag area of the window. */
+  -webkit-app-region: no-drag;
   width: 100%;
   aspect-ratio: 16 / 10;
   background: var(--c-main);
@@ -535,6 +537,7 @@
 
 /* The page itself is a native view above this box. The box keeps its place. */
 .browserView {
+  -webkit-app-region: no-drag;
   flex: 1;
   min-height: 0;
   background: var(--c-main);

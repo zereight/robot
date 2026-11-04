@@ -1029,4 +1029,23 @@ export const migrations: readonly string[] = [
     released INTEGER NOT NULL DEFAULT 0
   );
   `,
+  `
+  -- The usage of a task (spec 005, "Usage of a task") and the token limit of a routine (spec 009).
+  -- The four numbers are what the turns of THIS task used, as the provider reports them: input
+  -- tokens (cached input counts as input), output tokens, the cached part of the input, and the
+  -- cost that the provider reports, in millionths of a US dollar. A number that the provider did not
+  -- report is NULL, never 0, and the window shows "—". The total of a tree is worked out from the
+  -- tasks below, not stored. \`token_limit\` on a task is the limit that its run started with: only
+  -- the first task of a run of a routine that has a limit holds it, so a later edit of the routine
+  -- does not change a run that went. The numbers hold no text of a message. They sync with the
+  -- task (spec 019, the dirty trigger of the task watches every column) and an export keeps them
+  -- (spec 014). \`routine.token_limit\` is the limit of one run, NULL for no limit; it syncs with
+  -- the routine.
+  ALTER TABLE task ADD COLUMN input_tokens INTEGER;
+  ALTER TABLE task ADD COLUMN output_tokens INTEGER;
+  ALTER TABLE task ADD COLUMN cached_tokens INTEGER;
+  ALTER TABLE task ADD COLUMN cost_micros INTEGER;
+  ALTER TABLE task ADD COLUMN token_limit INTEGER;
+  ALTER TABLE routine ADD COLUMN token_limit INTEGER;
+  `,
 ]

@@ -112,6 +112,12 @@ export interface RpcMethods {
   "app.info": { input: undefined; output: AppInfo }
   "app.licenses": { input: undefined; output: readonly LicenseEntry[] }
   "app.copy": { input: { text: string }; output: undefined }
+  /**
+   * Makes the diagnostic report of the whole app (the app screen, the Teams page, the browser
+   * pages, the processes and the logs), copies it to the clipboard and keeps a copy in the logs
+   * folder. `path` is the file. Settings, Data, "Copy a diagnostic report".
+   */
+  "app.diagnosticReport": { input: undefined; output: { path: string } }
   /** Opens an http, https or mailto link in the system browser. */
   "app.openExternal": { input: { url: string }; output: undefined }
   "settings.get": { input: undefined; output: Settings }
@@ -918,3 +924,10 @@ export interface RobotBridge {
 
 export const INVOKE_CHANNEL = "robot:invoke"
 export const EVENT_CHANNEL = "robot:event"
+/**
+ * The app screen tells the diagnostic report that a press, a click or a touch reached its
+ * document: the kind of event, a place, the tag and the test id of the target. Never text.
+ */
+export const SCREEN_INPUT_CHANNEL = "robot:screen-input"
+/** The kinds of event that the app screen reports on `SCREEN_INPUT_CHANNEL`. */
+export const SCREEN_INPUT_TYPES: readonly string[] = ["pointerdown", "click", "touchstart"]

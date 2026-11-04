@@ -25,6 +25,7 @@ import {
 } from "solid-js"
 import { formatDateTime, formatTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
+import { guardNativePage } from "../lib/nativePageGuard.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { setOpenTarget } from "../state/target.ts"
@@ -70,11 +71,14 @@ const PageBox = () => {
       const rect = box?.getBoundingClientRect()
       const area = box?.parentElement?.closest("section")?.getBoundingClientRect()
       const covered = document.querySelector(COVERS) !== null
-      send(rect && area && !covered ? wholeBox(rect, area) : null)
+      const place = rect && area && !covered ? wholeBox(rect, area) : null
+      send(place)
+      guardNativePage("teams", place)
       frame = requestAnimationFrame(measure)
     })
     onCleanup(() => {
       cancelAnimationFrame(frame)
+      guardNativePage("teams", null)
       void call("teams.place", { bounds: null }).catch(() => {})
     })
   })
@@ -84,6 +88,7 @@ const PageBox = () => {
       class={teamStyles.page}
       aria-label={t("teams.page.label")}
       data-testid="teams-page-box"
+      data-native-page="teams"
     />
   )
 }
@@ -408,14 +413,16 @@ export const TeamsSection = () => {
               <div class={styles.label}>{t("teams.page.label")}</div>
               <div class={styles.hint}>{t("teams.page.hint")}</div>
             </div>
-            <Button
-              onClick={() =>
-                void run(() => call(view().pageShown ? "teams.hidePage" : "teams.showPage"))
-              }
-              data-testid="teams-page-toggle"
-            >
-              {view().pageShown ? t("teams.page.hide") : t("teams.page.show")}
-            </Button>
+            <div class={teamStyles.actions}>
+              <Button
+                onClick={() =>
+                  void run(() => call(view().pageShown ? "teams.hidePage" : "teams.showPage"))
+                }
+                data-testid="teams-page-toggle"
+              >
+                {view().pageShown ? t("teams.page.hide") : t("teams.page.show")}
+              </Button>
+            </div>
           </div>
           <Show when={view().pageShown}>
             <PageBox />

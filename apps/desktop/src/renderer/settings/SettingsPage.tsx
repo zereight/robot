@@ -357,6 +357,21 @@ const Data = () => {
   const { t } = app
   const [note, setNote] = createSignal<{ key: MessageKey; params?: MessageParams }>()
   const [failed, setFailed] = createSignal(false)
+  /** The state of the last "Copy a diagnostic report": it shows on the button for a moment. */
+  const [report, setReport] = createSignal<"done" | "failed">()
+  let reportTimer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => clearTimeout(reportTimer))
+  /** Makes the diagnostic report of the whole app and copies it. A copy also stays in the logs folder. */
+  const copyReport = async () => {
+    clearTimeout(reportTimer)
+    try {
+      await call("app.diagnosticReport")
+      setReport("done")
+    } catch {
+      setReport("failed")
+    }
+    reportTimer = setTimeout(() => setReport(undefined), 3_000)
+  }
   const run = async (
     action: () => Promise<{ key: MessageKey; params?: MessageParams } | undefined>,
   ) => {
@@ -373,6 +388,19 @@ const Data = () => {
     <>
       <Row label={t("settings.data.folder")} hint={app.info.dataDir} testId="setting-data-folder">
         <Button onClick={() => call("data.openFolder")}>{t("settings.data.open")}</Button>
+      </Row>
+      <Row
+        label={t("settings.data.report")}
+        hint={t("settings.data.report.hint")}
+        testId="setting-report"
+      >
+        <Button onClick={() => void copyReport()} aria-live="polite" data-testid="data-report">
+          {report() === "failed"
+            ? t("settings.data.report.failed")
+            : report()
+              ? t("settings.data.report.copied")
+              : t("settings.data.report.button")}
+        </Button>
       </Row>
       <Row
         label={t("settings.data.export")}
@@ -488,6 +516,7 @@ export const SettingsPage = (props: {
       data-closing={closing()}
       data-testid="settings"
     >
+      <div class={styles.dragStrip} aria-hidden="true" />
       <nav class={styles.nav} aria-label={t("settings.title")}>
         <div class={styles.navTitle}>{t("settings.title")}</div>
         <For each={sections}>

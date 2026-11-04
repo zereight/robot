@@ -1,8 +1,10 @@
-import { appendFileSync, existsSync, mkdirSync, renameSync } from "node:fs"
-import { homedir } from "node:os"
+import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs"
+import { homedir, arch as osArch, release as osRelease, type as osType } from "node:os"
 import { basename, join, join as joinPath } from "node:path"
 import {
   type IslandShape,
+  PAGE_INPUT_CHANNEL,
+  SCREEN_INPUT_CHANNEL,
   TEACH_CHANNEL,
   TEACH_ON_CHANNEL,
   type TeachEvent,
@@ -23,9 +25,23 @@ import {
   shell,
   WebContentsView,
 } from "electron"
+import { appendLog, readLogTail } from "./services/logs.ts"
 import type { BrowserPage, PageBounds, PlatformService } from "./services/Platform.ts"
 import { createTeamsSurface, TEAMS_PAGE_KEY, type TeamsSurface } from "./teams/surface.ts"
 import { type Resolver, systemResolver } from "./web/fetch.ts"
+import {
+  BOX_SCRIPT,
+  type BoxMeasure,
+  buildReport,
+  cleanInputNote,
+  createInputDiagnostics,
+  type DiagWrite,
+  lineBudget,
+  PAGE_DRAG_SCRIPT,
+  PAGE_NO_DRAG_CSS,
+  type PageDrag,
+  type PageSnapshot,
+} from "./web/pageDiagnostics.ts"
 import { fitPage, PAGE_VIEW } from "./web/pageFit.ts"
 import { pageUserAgent } from "./web/userAgent.ts"
 
@@ -59,7 +75,99 @@ const partitionOf = (agentId: string) => {
   return profile ? `persist:browser-${profile}` : `persist:agent-${agentId}`
 }
 
+/** What each page says about itself for the diagnostic report. */
+const snapshots = new Map<string, () => PageSnapshot>()
+/**
+ * Each page checks a press that the app screen got: did it land inside the place of the page? Then
+ * the page is drawn there, but the system gave the press to the screen under it.
+ */
+const screenPresses = new Map<string, (type: string, x: number, y: number) => void>()
+
+/** The host of an address, or an empty text. The report never holds a path or a query. */
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ""
+  }
+}
+
 let mainWindow: BrowserWindow | undefined
+
+/**
+ * The app log (spec 014): what the app does around its windows and its processes. A line holds
+ * the kind of event, sizes, counts and places in the code. It never holds a message or a text.
+ */
+const appLog: DiagWrite = (event, data) =>
+  appendLog(app.getPath("userData"), "app", { event, ...data })
+/**
+ * The counts of input on the app screen: what the window gives to it, and what its document gets.
+ * They stay for the whole run, also when the window is made again.
+ */
+const screenDiag = createInputDiagnostics(appLog)
+/** Lines about the windows and the processes that the app may write in a minute. */
+const eventRoom = lineBudget(60)
+const logEvent: DiagWrite = (event, data) => {
+  if (eventRoom()) appLog(event, data)
+}
+
+/** What the app screen says about itself for the diagnostic report. */
+const screenSnapshot = (): PageSnapshot => {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+  const wc = win?.webContents
+  const content = win?.getContentBounds()
+  const size = content ? { x: 0, y: 0, width: content.width, height: content.height } : null
+  return {
+    page: "app",
+    open: win !== undefined,
+    plain: true,
+    userInput: true,
+    placed: null,
+    view: size,
+    visible: win?.isVisible() ?? null,
+    zoom: wc?.getZoomFactor() ?? null,
+    inWindow: win ? "main" : "none",
+    stackIndex: null,
+    stackSize: null,
+    pageFocused: wc?.isFocused() ?? null,
+    windowFocused: win?.isFocused() ?? null,
+    loading: wc?.isLoading() ?? null,
+    host: wc ? hostOf(wc.getURL()) : "",
+    shownMs: 0,
+    pageDrag: null,
+    counts: screenDiag.counts(),
+  }
+}
+
+/** The boxes where the pages show, as the screen measured them the last time that it could. */
+let lastBoxes: BoxMeasure[] = []
+let boxTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Asks the app screen to measure the boxes of the pages. A screen that does not answer: none. */
+const measureBoxes = async (): Promise<BoxMeasure[]> => {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+  if (!win) return []
+  const measured = await Promise.race([
+    win.webContents.executeJavaScript(BOX_SCRIPT, true).catch(() => []) as Promise<BoxMeasure[]>,
+    new Promise<BoxMeasure[]>((resolve) => setTimeout(() => resolve([]), 1_500)),
+  ])
+  const measuredAt = new Date().toISOString()
+  return Array.isArray(measured) ? measured.map((box) => ({ ...box, measuredAt })) : []
+}
+
+/**
+ * Measures the boxes a moment after the place of a page stopped changing, and keeps the numbers for
+ * the report: the box is gone from the screen when the user makes the report.
+ */
+const noteBoxesSoon = () => {
+  clearTimeout(boxTimer)
+  boxTimer = setTimeout(() => {
+    void measureBoxes().then((boxes) => {
+      for (const box of boxes)
+        lastBoxes = [...lastBoxes.filter((known) => known.page !== box.page), box]
+    })
+  }, 700)
+}
 /**
  * Moves the page of an agent to another window. Each page has one. A page that the user holds
  * does not move: it closes, because the user cannot hold a page that has no view.
@@ -90,6 +198,79 @@ const hostWindow = (): BaseWindow =>
   mainWindow && !mainWindow.isDestroyed() ? mainWindow : shelfWindow()
 
 /**
+ * Writes the app log about one window: the focus, the size, the screen process. A drag of the
+ * window moves it on each frame, so a move or a resize is written once, when it is over.
+ */
+const watchWindow = (win: BrowserWindow) => {
+  const wc = win.webContents
+  const bounds = () => (win.isDestroyed() ? null : win.getBounds())
+  logEvent("window_created", { bounds: bounds() })
+  win.on("focus", () => logEvent("window_focus", {}))
+  win.on("blur", () => logEvent("window_blur", {}))
+  win.on("show", () => logEvent("window_show", {}))
+  win.on("hide", () => logEvent("window_hide", {}))
+  win.on("minimize", () => logEvent("window_minimize", {}))
+  win.on("restore", () => logEvent("window_restore", {}))
+  win.on("enter-full-screen", () => logEvent("window_full_screen", { on: true }))
+  win.on("leave-full-screen", () => logEvent("window_full_screen", { on: false }))
+  let settle: ReturnType<typeof setTimeout> | undefined
+  const moved = () => {
+    clearTimeout(settle)
+    settle = setTimeout(() => logEvent("window_bounds", { bounds: bounds() }), 400)
+  }
+  win.on("resize", moved)
+  win.on("move", moved)
+  win.once("closed", () => {
+    clearTimeout(settle)
+    logEvent("window_closed", {})
+  })
+  wc.on("did-finish-load", () => logEvent("screen_loaded", {}))
+  wc.on("did-fail-load", (_, code, __, ___, isMainFrame) => {
+    if (isMainFrame) logEvent("screen_load_failed", { code })
+  })
+  wc.on("render-process-gone", (_, details) =>
+    logEvent("screen_process_gone", { reason: details.reason, exitCode: details.exitCode }),
+  )
+  wc.on("unresponsive", () => logEvent("screen_unresponsive", {}))
+  wc.on("responsive", () => logEvent("screen_responsive", {}))
+  // A script of the screen that fails is often the reason that a press does nothing. The line
+  // holds the place in the code and never the message: a message can hold text of the user.
+  wc.on("console-message", (details) => {
+    if (details.level !== "error") return
+    logEvent("screen_error", {
+      source: basename(details.sourceId.split("?")[0] ?? ""),
+      line: details.lineNumber,
+    })
+  })
+}
+
+/** The app log about the computer and the processes: the displays, a crash of a child process. */
+const watchApp = () => {
+  logEvent("started", {
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    platform: process.platform,
+  })
+  app.on("child-process-gone", (_, details) =>
+    logEvent("child_process_gone", {
+      type: details.type,
+      reason: details.reason,
+      exitCode: details.exitCode,
+    }),
+  )
+  const displays = () => ({ count: screen.getAllDisplays().length })
+  screen.on("display-added", () => logEvent("display_added", displays()))
+  screen.on("display-removed", () => logEvent("display_removed", displays()))
+  screen.on("display-metrics-changed", (_, display, changed) =>
+    logEvent("display_changed", { changed, scaleFactor: display.scaleFactor }),
+  )
+  // A watcher only: it does not change what the app does with an error. Only the kind is kept.
+  process.on("uncaughtExceptionMonitor", (error, origin) =>
+    logEvent("uncaught_error", { origin, name: error.name }),
+  )
+}
+
+/**
  * The window that holds the app. Notifications and the island bring it to the front, and the
  * pages of the agent browsers show inside it. On macOS the app goes on when the user closes the
  * window, and the agents go on with their pages: the pages wait on a window that nobody sees, and
@@ -97,6 +278,18 @@ const hostWindow = (): BaseWindow =>
  */
 export const setMainWindow = (win: BrowserWindow) => {
   mainWindow = win
+  // Only counts: this never stops a press.
+  win.webContents.on("before-mouse-event", (_, mouse) => {
+    screenDiag.native(mouse.type, { x: mouse.x, y: mouse.y }, false)
+    if (mouse.type !== "mouseDown" && mouse.type !== "mouseMove") return
+    for (const check of screenPresses.values()) check(mouse.type, mouse.x, mouse.y)
+  })
+  // The document of the app screen tells what reached it: the other half of the count above.
+  win.webContents.ipc.on(SCREEN_INPUT_CHANNEL, (_, payload: unknown) => {
+    const note = cleanInputNote(payload)
+    if (note) screenDiag.page(note)
+  })
+  watchWindow(win)
   for (const move of rehomers.values()) move(() => win)
   win.on("close", () => {
     if (process.platform !== "darwin" || quitting) return
@@ -118,7 +311,17 @@ export const setMainWindow = (win: BrowserWindow) => {
  * One page per agent, inside the main window. Its session is kept on disk, so logins stay between
  * runs. The session is the one of the browser profile of the agent, or its own. The screen of the chat says where the page shows. Until it does, the page is hidden.
  */
-const electronBrowser = (agentId: string): BrowserPage => {
+const electronBrowser = (
+  agentId: string,
+  options: { fixedLayout?: boolean; log?: DiagWrite } = {},
+): BrowserPage => {
+  /** The counts of input and the lines of the log about this page (the diagnostic report). */
+  const diag = createInputDiagnostics(options.log ?? (() => {}))
+  /**
+   * A fixed layout keeps the size of PAGE_VIEW whatever the size of its place. A plain view (the
+   * Teams page) fills its place exactly, so the clicks of the user land where the page shows them.
+   */
+  const fixedLayout = options.fixedLayout ?? true
   let view: WebContentsView | undefined
   let host: BaseWindow | undefined
   let bounds: PageBounds | undefined
@@ -158,6 +361,7 @@ const electronBrowser = (agentId: string): BrowserPage => {
    * the session ends.
    */
   const emulate = (scale: number) => {
+    if (!fixedLayout) return
     const v = live()
     if (!v || !started) return
     const session = v.webContents.debugger
@@ -189,9 +393,40 @@ const electronBrowser = (agentId: string): BrowserPage => {
   /** The app screen, when the page sits in the main window. The shelf has none. */
   const screenOf = () =>
     host && host === mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined
+  /**
+   * Puts a plain view where it belongs: exactly the place that the screen gives it, or parked
+   * and hidden. The page is laid out in the size that the user sees, so a real click lands where
+   * the page shows it, with no scale in between.
+   */
+  const applyPlain = (v: WebContentsView) => {
+    const screenContents = screenOf()
+    if (!bounds || !screenContents) {
+      v.setBounds({ x: 0, y: 0, ...PAGE_VIEW })
+      if (!sized) {
+        v.setVisible(true)
+        sized = true
+      }
+      v.setVisible(false)
+      return
+    }
+    // The screen measures in CSS px. The window measures in px after the page zoom.
+    const zoom = screenContents.getZoomFactor()
+    sized = true
+    v.setBounds({
+      x: Math.round(bounds.x * zoom),
+      y: Math.round(bounds.y * zoom),
+      width: Math.max(1, Math.round(bounds.width * zoom)),
+      height: Math.max(1, Math.round(bounds.height * zoom)),
+    })
+    v.setVisible(true)
+  }
   const apply = () => {
     const v = live()
     if (!v) return
+    if (!fixedLayout) {
+      applyPlain(v)
+      return
+    }
     const screenContents = screenOf()
     // The screen measures in CSS px. The window measures in px after the page zoom.
     const zoom = screenContents?.getZoomFactor() ?? 1
@@ -248,6 +483,9 @@ const electronBrowser = (agentId: string): BrowserPage => {
     if (!v) return
     view = undefined
     bounds = undefined
+    trackShown()
+    lastPlaceKey = ""
+    diag.state("closed", {})
     scaleNow = 1
     started = false
     emulated = undefined
@@ -290,6 +528,69 @@ const electronBrowser = (agentId: string): BrowserPage => {
       from.destroy()
   }
   rehomers.set(agentId, rehome)
+  /** The host of the last page that loaded: the report keeps it after the page closed. */
+  let lastHost = ""
+  /** How long the page had a place on the screen since it opened. The report needs it. */
+  let shownMs = 0
+  let shownSince: number | undefined
+  const trackShown = () => {
+    const shown = live() !== undefined && bounds !== undefined && bounds !== null
+    if (shown && shownSince === undefined) shownSince = Date.now()
+    else if (!shown && shownSince !== undefined) {
+      shownMs += Date.now() - shownSince
+      shownSince = undefined
+    }
+  }
+  /** What the page declared about drag areas of the window, at the load with the most. */
+  let pageDrag: PageDrag | null = null
+  /** The last place that was logged, so the log holds a line for each change and no more. */
+  let lastPlaceKey = ""
+  const logPlace = () => {
+    const v = live()
+    const key = `${bounds ? `${bounds.x},${bounds.y},${bounds.width},${bounds.height}` : "hidden"}|${v?.getVisible()}`
+    if (key === lastPlaceKey) return
+    lastPlaceKey = key
+    const now = v?.getBounds()
+    diag.state("placed", {
+      placed: bounds ?? null,
+      view: now ?? null,
+      visible: v?.getVisible() ?? null,
+      zoom: screenOf()?.getZoomFactor() ?? null,
+    })
+  }
+  screenPresses.set(agentId, (type, x, y) => {
+    const v = live()
+    if (!v?.getVisible()) return
+    const b = v.getBounds()
+    if (x < b.x || x >= b.x + b.width || y < b.y || y >= b.y + b.height) return
+    if (type === "mouseDown") diag.screen({ x, y })
+    else diag.screenMove()
+  })
+  snapshots.set(agentId, () => {
+    const v = live()
+    const stack = host && !host.isDestroyed() && v ? host.contentView.children : []
+    const index = v ? stack.indexOf(v) : -1
+    return {
+      page: agentId === TEAMS_PAGE_KEY ? "teams" : "agent",
+      open: v !== undefined,
+      plain: !fixedLayout,
+      userInput,
+      placed: bounds ? { ...bounds } : null,
+      view: v ? v.getBounds() : null,
+      visible: v ? v.getVisible() : null,
+      zoom: screenOf()?.getZoomFactor() ?? null,
+      inWindow: !host || host.isDestroyed() ? "none" : host === mainWindow ? "main" : "shelf",
+      stackIndex: index >= 0 ? index : null,
+      stackSize: index >= 0 ? stack.length : null,
+      pageFocused: v ? v.webContents.isFocused() : null,
+      windowFocused: host && !host.isDestroyed() ? host.isFocused() : null,
+      loading: v ? v.webContents.isLoading() : null,
+      host: v ? hostOf(v.webContents.getURL()) : lastHost,
+      shownMs: shownMs + (shownSince === undefined ? 0 : Date.now() - shownSince),
+      pageDrag,
+      counts: diag.counts(),
+    }
+  })
   return {
     isOpen: () => live() !== undefined,
     open: async (url) => {
@@ -323,7 +624,34 @@ const electronBrowser = (agentId: string): BrowserPage => {
           const step = teachEventOf(payload)
           if (step && recorder) recorder(step)
         })
-        wc.on("did-finish-load", () => reportPage(wc))
+        wc.on("did-finish-load", () => {
+          lastHost = hostOf(wc.getURL())
+          diag.state("loaded", { host: lastHost })
+          reportPage(wc)
+        })
+        // A web page is never a handle of the window (see PAGE_NO_DRAG_CSS). The page is counted
+        // first, so the report can say what it declared, then its drag areas are cancelled.
+        wc.on("dom-ready", () => {
+          void (async () => {
+            try {
+              const found = await wc.executeJavaScript(PAGE_DRAG_SCRIPT, true)
+              if (found && typeof found === "object") {
+                const next: PageDrag = {
+                  host: hostOf(wc.getURL()),
+                  drag: Number(found.drag) || 0,
+                  noDrag: Number(found.noDrag) || 0,
+                  scanned: Number(found.scanned) || 0,
+                  total: Number(found.total) || 0,
+                }
+                if (next.drag > 0 || next.noDrag > 0) diag.state("page_drag_areas", { ...next })
+                if (!pageDrag || next.drag > pageDrag.drag) pageDrag = next
+              }
+              await wc.insertCSS(PAGE_NO_DRAG_CSS, { cssOrigin: "user" })
+            } catch {
+              // A page that is gone, or that does not answer, has nothing to cancel.
+            }
+          })()
+        })
         wc.on("did-navigate-in-page", (_, __, isMainFrame) => {
           if (isMainFrame) reportPage(wc)
         })
@@ -338,12 +666,26 @@ const electronBrowser = (agentId: string): BrowserPage => {
           if (!userInput && !input.control && !input.meta && !input.alt) event.preventDefault()
         })
         wc.on("before-mouse-event", (event, mouse) => {
-          if (
+          const refused =
             !userInput &&
             (mouse.type === "mouseDown" || mouse.type === "mouseUp" || mouse.type === "contextMenu")
-          )
-            event.preventDefault()
+          // Every press is counted, kept out or not: the report tells a quiet window from a flag.
+          diag.native(mouse.type, { x: mouse.x, y: mouse.y }, refused)
+          if (refused) event.preventDefault()
         })
+        // The document of the page tells what reached it: the other half of the count above.
+        wc.ipc.on(PAGE_INPUT_CHANNEL, (_, payload: unknown) => {
+          const note = cleanInputNote(payload)
+          if (note) diag.page(note)
+        })
+        wc.on("did-fail-load", (_, code, __, url, isMainFrame) => {
+          if (isMainFrame) diag.state("load_failed", { code, host: hostOf(url) })
+        })
+        wc.on("render-process-gone", (_, details) => {
+          diag.state("page_process_gone", { reason: details.reason, exitCode: details.exitCode })
+        })
+        wc.on("unresponsive", () => diag.state("page_unresponsive", {}))
+        wc.on("responsive", () => diag.state("page_responsive", {}))
         // The page takes the focus (a load, a new address, a link): the chat gets it back.
         wc.on("focus", returnFocusSoon)
         // The window gets the focus while the page holds it: the chat gets it back.
@@ -358,6 +700,11 @@ const electronBrowser = (agentId: string): BrowserPage => {
         wc.once("destroyed", () => {
           if (view === created) release()
         })
+        diag.reset()
+        shownMs = 0
+        shownSince = undefined
+        pageDrag = null
+        lastPlaceKey = ""
         created.setVisible(false)
         h.contentView.addChildView(created)
         view = created
@@ -368,10 +715,13 @@ const electronBrowser = (agentId: string): BrowserPage => {
       try {
         if (!started) {
           // An empty page first: from then on the view answers the debugger, and the page of the
-          // address has its size before its first script runs.
-          await v.webContents.loadURL("about:blank")
+          // address has its size before its first script runs. A plain view has no debugger, so
+          // it loads the address at once.
+          if (fixedLayout) {
+            await v.webContents.loadURL("about:blank")
+            emulate(scaleNow)
+          }
           started = true
-          emulate(scaleNow)
         }
         // A debugger that does not answer must not keep the agent from the page.
         await Promise.race([emulating, new Promise((resolve) => setTimeout(resolve, 2_000))])
@@ -408,9 +758,17 @@ const electronBrowser = (agentId: string): BrowserPage => {
     place: (next) => {
       bounds = next
       apply()
+      logPlace()
+      trackShown()
+      // The report wants the drag areas of the screen over the place, also after the page is gone.
+      if (next) noteBoxesSoon()
     },
     allowUserInput: (allowed) => {
+      // The Teams link says this again on each place and each tick while its page shows, so a
+      // page that was made again takes input: only a change moves the focus, never a repeat.
+      if (allowed === userInput) return
       userInput = allowed
+      diag.state("user_input", { allowed })
       // A test run never moves the system focus: this call makes the app the active program.
       // No test checks where the keys go.
       if (isTestRun) return
@@ -545,11 +903,20 @@ export const electronPlatform = (): PlatformService => {
   let awakeHold: number | undefined
   const dataDir = app.getPath("userData")
   mkdirSync(dataDir, { recursive: true })
+  watchApp()
   let teamsSurface: TeamsSurface | undefined
   const pageOf = (agentId: string): BrowserPage => {
     const known = browsers.get(agentId)
     if (known) return known
-    const page = electronBrowser(agentId)
+    // The Teams page is for the hands of the user (spec 028): it fills its place exactly, with
+    // no fixed layout and no scale, so a click lands where the page shows. An agent keeps the
+    // fixed layout, so its place never changes what the agent reads or where a click lands.
+    const isTeams = agentId === TEAMS_PAGE_KEY
+    // The browser log (spec 014) gets the input that the page took or refused, and the changes of
+    // its place. The line says "teams" or "agent", never the id of an agent.
+    const log: DiagWrite = (event, data) =>
+      appendLog(dataDir, "browser", { event, page: isTeams ? "teams" : "agent", ...data })
+    const page = electronBrowser(agentId, isTeams ? { fixedLayout: false, log } : { log })
     browsers.set(agentId, page)
     return page
   }
@@ -779,6 +1146,75 @@ export const electronPlatform = (): PlatformService => {
       return teamsSurface
     },
     setTeamsProfile: (profileId) => platformSetBrowserProfile(TEAMS_PAGE_KEY, profileId),
+    diagnosticReport: async () => {
+      const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+      // The screen measures the boxes of the native pages. A kind of page that has no box on the
+      // screen now keeps the numbers of the last time that it had one.
+      const fresh = await measureBoxes()
+      const boxes = [
+        ...fresh,
+        ...lastBoxes.filter((known) => !fresh.some((box) => box.page === known.page)),
+      ]
+      const content = win?.webContents
+      const text = buildReport({
+        madeAt: new Date().toISOString(),
+        app: {
+          name: app.getName(),
+          version: app.getVersion(),
+          packaged: app.isPackaged,
+          electron: process.versions.electron,
+          chrome: process.versions.chrome,
+          platform: process.platform,
+          arch: osArch(),
+          os: `${osType()} ${osRelease()}`,
+          locale: app.getLocale(),
+          upSeconds: Math.round(process.uptime()),
+        },
+        displays: screen.getAllDisplays().map((d) => ({
+          scaleFactor: d.scaleFactor,
+          size: d.size,
+          workArea: d.workArea,
+          rotation: d.rotation,
+          internal: d.internal,
+          touchSupport: d.touchSupport,
+        })),
+        window: win
+          ? {
+              bounds: win.getBounds(),
+              content: win.getContentBounds(),
+              focused: win.isFocused(),
+              visible: win.isVisible(),
+              minimized: win.isMinimized(),
+              maximized: win.isMaximized(),
+              fullScreen: win.isFullScreen(),
+              zoomFactor: content?.getZoomFactor(),
+              zoomLevel: content?.getZoomLevel(),
+              views: win.contentView.children.length,
+            }
+          : null,
+        // A process that is stuck or crowded explains a screen that takes no click.
+        processes: app.getAppMetrics().map((m) => ({
+          type: m.type,
+          cpuPercent: Math.round(m.cpu.percentCPUUsage * 10) / 10,
+          memoryMB: Math.round(m.memory.workingSetSize / 1024),
+        })),
+        boxes,
+        // The screen of the app first, then the Teams page, then the pages of the agents.
+        pages: [screenSnapshot(), ...[...snapshots.values()].map((snapshot) => snapshot())],
+        logs: [
+          { name: "app", lines: readLogTail(dataDir, "app", 100) },
+          { name: "browser", lines: readLogTail(dataDir, "browser", 150) },
+          { name: "teams", lines: readLogTail(dataDir, "teams", 60) },
+          { name: "channels", lines: readLogTail(dataDir, "channels", 40) },
+        ],
+      })
+      // The text also stays on disk, in the logs folder, so it can be found again.
+      const dir = join(dataDir, "logs")
+      mkdirSync(dir, { recursive: true })
+      const path = join(dir, "diagnostic-report.txt")
+      writeFileSync(path, text)
+      return { text, path }
+    },
     setBrowserProfile: platformSetBrowserProfile,
     clearBrowserProfile: async (profileId) => {
       const data = session.fromPartition(`persist:browser-${profileId}`)

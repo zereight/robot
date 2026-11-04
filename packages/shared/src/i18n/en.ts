@@ -63,6 +63,12 @@ export const en = {
   "settings.data.folder": "Data folder",
   "settings.data.folder.hint": "Your database and attachments are here.",
   "settings.data.open": "Open folder",
+  "settings.data.report": "Diagnostic report",
+  "settings.data.report.hint":
+    "When something in the app does not take a click, or a page does not: click there a few times, then copy the report and paste it to the developer. It covers the whole app: its screen, the Teams page, the browser pages, the processes and the logs. A copy is also saved in the logs folder as diagnostic-report.txt. The report holds sizes, places and counts of clicks. It holds no password, no text of a page and no message. The app sends nothing.",
+  "settings.data.report.button": "Copy a diagnostic report",
+  "settings.data.report.copied": "Copied",
+  "settings.data.report.failed": "The report could not be made.",
 
   "settings.about.version": "Version {version}",
   "settings.about.licenses": "Open source licenses",
@@ -2434,6 +2440,29 @@ export const en = {
   "orgchart.zoomIn": "Zoom in",
   "orgchart.zoomOut": "Zoom out",
   "orgchart.fit": "Fit to view",
+  "taskUsage.title": "Usage",
+  "taskUsage.input": "Input tokens",
+  "taskUsage.output": "Output tokens",
+  "taskUsage.cached": "Cached share",
+  "taskUsage.cost": "Cost",
+  "taskUsage.none": "—",
+  "taskUsage.tree": "All tasks together",
+  "taskUsage.byAgent": "By agent",
+  "taskUsage.line": "{input} in · {output} out",
+  "taskUsage.share": "{percent}% of the total",
+  "taskUsage.noReport": "No tokens reported.",
+  "taskUsage.lead": "Tokens: {line}",
+  "routines.tokenLimit": "Token limit for each run",
+  "routines.tokenLimit.hint":
+    "Stops a run that uses this many tokens. Cached input counts. Empty means no limit. A whole number from 1,000 to 10,000,000.",
+  "routines.tokenLimit.late":
+    "{program} reports tokens at the end of a turn, so a run can go over the limit by the size of one turn.",
+  "routines.tokenLimit.silent": "{program} does not report tokens.",
+  "routines.tokenLimit.card": "Token limit: {count} for each run",
+  "routines.limitNear": "80% of the token limit is used.",
+  "routines.runTokens": "Tokens: {line}",
+  "error.token_limit": "Token limit reached ({detail}).",
+  "error.invalid_token_limit": "Use a whole number from 1,000 to 10,000,000 for the token limit.",
 } as const
 
 export type MessageKey = keyof typeof en
