@@ -11,6 +11,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -52,6 +53,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
+  const channels = useChannels()
   const work = props.open.kind === "work" ? props.open.source : undefined
   const edited = props.open.kind === "edit" ? props.open.skill : undefined
   const [name, setName] = createSignal(edited?.name ?? "")
@@ -59,6 +61,10 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const [instructions, setInstructions] = createSignal(edited?.instructions ?? "")
   const [all, setAll] = createSignal(edited ? edited.agentIds === null : true)
   const [chosen, setChosen] = createSignal<readonly string[]>(edited?.agentIds ?? [])
+  // The channels in the list (spec 017, 030). A channel that is gone is left out.
+  const [chosenChannels, setChosenChannels] = createSignal<readonly string[]>(
+    (edited?.channelIds ?? []).filter((id) => channels.byId(id) !== undefined),
+  )
   const [phase, setPhase] = createSignal<"writing" | "ready" | "failed">(work ? "writing" : "ready")
   const [failure, setFailure] = createSignal<ErrorText>()
   const [outside, setOutside] = createSignal(false)
@@ -82,6 +88,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
       setInstructions(result.draft.instructions)
       setAll(false)
       setChosen([result.agentId])
+      setChosenChannels([])
       setOutside(result.outside)
       setPhase("ready")
     } catch (e) {
@@ -102,6 +109,13 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const toggle = (id: string) =>
     setChosen(chosen().includes(id) ? chosen().filter((x) => x !== id) : [...chosen(), id])
 
+  const toggleChannel = (id: string) =>
+    setChosenChannels(
+      chosenChannels().includes(id)
+        ? chosenChannels().filter((x) => x !== id)
+        : [...chosenChannels(), id],
+    )
+
   const save = async (event?: SubmitEvent) => {
     event?.preventDefault()
     const serverId = ui.server()?.id
@@ -114,6 +128,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
         description: description(),
         instructions: instructions(),
         agentIds: all() ? null : chosen(),
+        channelIds: all() ? [] : chosenChannels(),
       }
       if (edited) await call("skills.update", { id: edited.id, ...fields })
       else await call("skills.create", { serverId, ...fields })
@@ -254,6 +269,25 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
                           data-agent={agent.name}
                         />
                         <span>{agent.name}</span>
+                      </label>
+                    </li>
+                  )}
+                </For>
+                <For each={channels.channels()}>
+                  {(channel) => (
+                    <li>
+                      <label class={skillStyles.agentRow}>
+                        <input
+                          type="checkbox"
+                          checked={chosenChannels().includes(channel.id)}
+                          onChange={() => toggleChannel(channel.id)}
+                          data-testid="skill-channel"
+                          data-channel={channel.name}
+                        />
+                        <span>{channel.name}</span>
+                        <span class={skillStyles.channelMark} data-testid="skill-channel-mark">
+                          {t("tools.channelMark")}
+                        </span>
                       </label>
                     </li>
                   )}

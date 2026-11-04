@@ -9,6 +9,7 @@ import {
   filterAgents,
   type ParentRefusal,
   parentChoices,
+  validDailyLimit,
 } from "@robot/shared"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
@@ -22,6 +23,7 @@ import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
+import { ChannelToolsPart } from "./ChannelTools.tsx"
 import styles from "./channels.module.css"
 
 /** Makes a channel, or changes the name, topic, members and lead of one. */
@@ -66,6 +68,21 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
     props.channel && parentId() === channelParent(channels.channels(), props.channel.id)
       ? {}
       : { parentId: parentId() }
+  // The daily token limit (spec 030): off by default. On, it takes a whole number in a range.
+  const was = props.channel?.dailyTokenLimit ?? null
+  const [limitOn, setLimitOn] = createSignal(was !== null)
+  const [limitText, setLimitText] = createSignal(was === null ? "" : String(was))
+  /** The number in the box, or null while it is not a whole number. Commas and spaces are fine. */
+  const limitNumber = () => {
+    const digits = limitText().replace(/[,\s]/g, "")
+    return /^\d+$/.test(digits) ? Number(digits) : null
+  }
+  const limitValid = () => !limitOn() || validDailyLimit(limitNumber())
+  /** The limit to send: only when the user changed it. */
+  const limitField = () => {
+    const next = limitOn() ? limitNumber() : null
+    return next === was ? {} : { dailyTokenLimit: next }
+  }
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
@@ -74,7 +91,8 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
     charLength(name().trim()) >= 1 &&
     charLength(name().trim()) <= CHANNEL_NAME_MAX &&
     charLength(topic().trim()) <= CHANNEL_TOPIC_MAX &&
-    charLength(instructions()) <= CHANNEL_INSTRUCTIONS_MAX
+    charLength(instructions()) <= CHANNEL_INSTRUCTIONS_MAX &&
+    limitValid()
   // Members that the search hides stay chosen: the choice lives in `members`, not in the list.
   const shown = createMemo(() => filterAgents(agents.agents(), query()))
   const toggle = (agent: Agent) => {
@@ -109,6 +127,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             ...(ui.linked() ? {} : { reviewParts: reviewParts() }),
             ...sectionField(),
             ...parentField(),
+            ...limitField(),
           },
         })
       } else {
@@ -123,6 +142,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           leadId: leadId(),
           ...sectionField(),
           ...(parentId() ? { parentId: parentId() } : {}),
+          ...limitField(),
         })
         ui.selectPlace({ kind: "channel", id: channel.id })
       }
@@ -319,6 +339,42 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             </span>
           </span>
         </label>
+        <div class={styles.field} data-testid="channel-daily-limit">
+          <span class={styles.label}>{t("channels.dailyLimit")}</span>
+          <div class={styles.limitRow}>
+            <Switch
+              label={t("channels.dailyLimit")}
+              checked={limitOn()}
+              onChange={setLimitOn}
+              testId="channel-limit-switch"
+            />
+            <Show when={limitOn()}>
+              <input
+                class={`${styles.input} ${styles.limitInput}`}
+                inputmode="numeric"
+                value={limitText()}
+                placeholder={t("channels.dailyLimit.placeholder")}
+                aria-label={t("channels.dailyLimit")}
+                aria-invalid={!limitValid()}
+                onInput={(e) => setLimitText(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  // Enter in the field sends the form, as in any other field.
+                  if (e.key === "Escape") e.stopPropagation()
+                }}
+                data-testid="channel-limit"
+              />
+            </Show>
+          </div>
+          <span class={styles.hint}>{t("channels.dailyLimit.hint")}</span>
+          <Show when={limitOn() && !limitValid()}>
+            <span class={styles.hint} role="alert" data-testid="channel-limit-error">
+              {t("error.invalid_daily_limit")}
+            </span>
+          </Show>
+        </div>
+        <Show when={props.channel}>
+          {(channel) => <ChannelToolsPart channelId={channel().id} />}
+        </Show>
         <Show when={props.channel && !ui.linked()}>
           <div class={styles.field}>
             <span class={styles.label}>{t("channels.reviewParts")}</span>

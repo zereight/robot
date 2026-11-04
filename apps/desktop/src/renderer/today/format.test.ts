@@ -61,6 +61,12 @@ describe("Today row text", () => {
     expect(line).toBe("Morning check: Paused after 3 failed runs. This account is not connected.")
   })
 
+  test("a part that the daily token limit of a channel blocked names the channel, in both languages (spec 030)", () => {
+    const reason = { code: "channel_limit", detail: "Docs" }
+    expect(reasonText(en, reason)).toBe("The daily token limit of Docs is used.")
+    expect(reasonText(ko, reason)).toBe("Docs의 하루 토큰 한도를 모두 사용했어요.")
+  })
+
   test("an account says what is wrong, and a plan limit gives the reset time", () => {
     expect(rowLine(en, "en", row({ kind: "account_signin", text: "Work" }), NOW)).toBe(
       "Work: sign-in lost",

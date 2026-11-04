@@ -307,6 +307,15 @@
   padding: 3px 0;
 }
 
+/* The mark "channel" beside a channel in the list of who may use a connection (spec 030). */
+.channelMark {
+  padding: 0 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
 /* Test and Save stay in view at the bottom of the box, also when a long list of tools is above. */
 .actions {
   position: sticky;
