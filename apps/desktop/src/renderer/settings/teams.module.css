@@ -86,6 +86,7 @@
 .state[data-state="signedOut"],
 .state[data-state="chatNotFound"],
 .state[data-state="offline"],
+.state[data-state="paused"],
 .state[data-state="targetMissing"] {
   border-color: var(--c-danger);
 }

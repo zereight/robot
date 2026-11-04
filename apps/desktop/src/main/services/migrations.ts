@@ -919,4 +919,11 @@ export const migrations: readonly string[] = [
     task_id TEXT
   );
   `,
+  `
+  -- The pause of the Teams link (spec 028, "States and errors"): why it paused ('read' or 'send')
+  -- and when. NULL while the link is not paused. A restart keeps the pause until the user presses
+  -- "Resume". The columns hold no text of a message and no name.
+  ALTER TABLE teams_link ADD COLUMN paused TEXT;
+  ALTER TABLE teams_link ADD COLUMN paused_at INTEGER;
+  `,
 ]

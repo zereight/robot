@@ -70,6 +70,11 @@ export const Settings = Schema.Struct({
      * value for it, and the kind counts as on.
      */
     workflow_notice: Schema.optionalKey(Schema.Boolean),
+    /**
+     * The Teams link needs the user (spec 028, 015). A setting that was saved before this kind
+     * existed has no value for it, and the kind counts as on.
+     */
+    teams_link: Schema.optionalKey(Schema.Boolean),
   }),
   /** The status island of macOS. */
   island: Schema.Literals(ISLAND_MODES),
@@ -130,6 +135,7 @@ export const defaultSettings: Settings = {
     routine_failed: true,
     part_review: true,
     workflow_notice: true,
+    teams_link: true,
   },
   island: "always",
   deviceName: "",

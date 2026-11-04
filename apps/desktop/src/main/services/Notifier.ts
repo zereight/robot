@@ -37,7 +37,8 @@ export interface Notice {
   readonly body: string
   /** The place to open on a click. A notice with a page opens that page instead. */
   readonly target?: PlaceTarget
-  readonly page?: "workflows"
+  /** A page to open on a click: the workflows page, or Settings, Teams (spec 028). */
+  readonly page?: "workflows" | "teams"
   /** The agent of a reply or of a failure. The result card of the island needs it. */
   readonly agentId?: string
   /** Why a task or routine failed. The result card of the island shows it. */
@@ -253,16 +254,20 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
         n.kind === "workflow_notice" ? notifyBody(n.body) : cut(n.body)
 
       /** Linked devices get every notice and decide by their own settings. */
-      const push = (n: Notice, ids?: { callId: string; agentId: string }) =>
+      const push = (n: Notice, ids?: { callId: string; agentId: string }) => {
+        const kind = n.kind
+        // The Teams link belongs to this computer. A linked device shows no part of it (spec 028).
+        if (kind === "teams_link") return
         bus.emit("notice", {
-          kind: n.kind,
+          kind,
           channelId: n.channelId ?? null,
           title: n.title,
           body: bodyOf(n),
           ...(n.target ? { target: n.target } : {}),
-          ...(n.page ? { page: n.page } : {}),
+          ...(n.page === "workflows" ? { page: n.page } : {}),
           ...(ids ? { callId: ids.callId, agentId: ids.agentId } : {}),
         })
+      }
 
       const notify = (n: Notice, ids?: { callId: string; agentId: string }, isNew = true) => {
         // A linked device has the main thread only: a reply in another thread is no news there

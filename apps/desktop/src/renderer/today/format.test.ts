@@ -78,6 +78,39 @@ describe("Today row text", () => {
     )
   })
 
+  test("the Teams link says what it needs, with the reason of a pause, and no name or message", () => {
+    const signedOut = row({ kind: "teams_signed_out", agentId: null, text: "" })
+    expect(rowLine(en, "en", signedOut, NOW)).toBe("Teams link: sign in to Teams to go on")
+    expect(rowLine(ko, "ko", signedOut, NOW)).toBe("Teams 연동: 계속하려면 Teams에 로그인하세요")
+    const read = row({
+      kind: "teams_paused",
+      agentId: null,
+      text: "",
+      reason: { code: "read", detail: "" },
+    })
+    expect(rowLine(en, "en", read, NOW)).toBe(
+      "Teams link: paused after repeated failure. The app cannot read the Teams page",
+    )
+    const send = row({
+      kind: "teams_paused",
+      agentId: null,
+      text: "",
+      reason: { code: "send", detail: "" },
+    })
+    expect(rowLine(en, "en", send, NOW)).toBe(
+      "Teams link: paused after repeated failure. Teams does not take the messages",
+    )
+    expect(rowLine(ko, "ko", send, NOW)).toBe(
+      "Teams 연동: 반복된 실패로 멈췄어요. Teams가 메시지를 받지 않아요",
+    )
+    // The kind names are in both languages, and the row has no place and no other computer.
+    expect(en("today.kind.teams_paused")).toBe("Teams link paused")
+    expect(ko("today.kind.teams_paused")).toBe("Teams 연동 멈춤")
+    expect(en("today.kind.teams_signed_out")).toBe("Teams link signed out")
+    expect(ko("today.kind.teams_signed_out")).toBe("Teams 연동 로그아웃")
+    expect(rowSource(en, "en", send, NOW)).toBe("")
+  })
+
   test("a routine that is due names its due time", () => {
     const due = rowLine(
       en,

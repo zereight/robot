@@ -251,6 +251,12 @@ export class FakeChat {
     this.sendRefusals = count
   }
 
+  /**
+   * The page refuses every press of the send button for which this returns true, whatever the
+   * count of `refuseSends`. A test uses it to refuse one text and take the others.
+   */
+  refuseWhen: ((text: string) => boolean) | undefined
+
   /** The next `count` scripts fail, as when the page cannot be read. */
   failScripts(count: number) {
     this.evaluateFailures = count
@@ -318,10 +324,11 @@ export class FakeChat {
   /** The send button is pressed: the page posts the text of the message box, or refuses. */
   private pressSend() {
     this.sendTries++
-    const refused = this.sendRefusals > 0
+    const byCount = this.sendRefusals > 0
+    const refused = byCount || this.refuseWhen?.(this.composerText) === true
     this.presses.push({ at: this.now(), refused, text: this.composerText })
     if (refused) {
-      this.sendRefusals--
+      if (byCount) this.sendRefusals--
       return
     }
     const text = this.composerText

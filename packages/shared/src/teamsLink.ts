@@ -2,6 +2,7 @@ import { Schema } from "effect"
 import { charLength } from "./agents.ts"
 import type { MessageKey } from "./i18n/en.ts"
 import type { TeamsRecord } from "./teamsOutbox.ts"
+import type { TeamsPauseReason } from "./teamsPause.ts"
 
 // The Teams link (spec 028): the pure rules of the form, the names and the states. Nothing here
 // touches a page, a clock or a database.
@@ -37,8 +38,8 @@ export const TEAMS_CONNECT_MAX_MS = 60_000
 export const TEAMS_LOOK_AGAIN_MS = 30_000
 
 /**
- * The states that the first slice (S101) shows. The state Paused (repeated failure) comes with the
- * slice that brings the pause (S105).
+ * The eight states of the link (spec 028, "States and errors"). Paused is the state after a
+ * repeated failure (`teamsPause.ts`).
  */
 export const TEAMS_STATES = [
   "off",
@@ -47,6 +48,7 @@ export const TEAMS_STATES = [
   "signedOut",
   "chatNotFound",
   "offline",
+  "paused",
   "targetMissing",
 ] as const
 export type TeamsState = (typeof TEAMS_STATES)[number]
@@ -268,6 +270,8 @@ export interface TeamsLinkView {
   /** The switch. */
   readonly enabled: boolean
   readonly state: TeamsState
+  /** With the state Paused: why the link paused. Otherwise null. */
+  readonly pauseReason: TeamsPauseReason | null
   /** With the state Chat not found: no chat, or more than one chat, holds the title. */
   readonly chat: TeamsChatMatch | null
   /** The Teams page showed Teams, not a sign-in form, the last time it was looked at. */
@@ -291,6 +295,7 @@ export const emptyTeamsView: TeamsLinkView = {
   fields: emptyTeamsFields,
   enabled: false,
   state: "off",
+  pauseReason: null,
   chat: null,
   signedIn: false,
   lastReadAt: null,
@@ -389,6 +394,8 @@ export const teamsStateTextKey = (
       return chat === "many" ? "teams.state.chatMany" : "teams.state.chatNone"
     case "offline":
       return "teams.state.offline"
+    case "paused":
+      return "teams.state.paused"
     case "targetMissing":
       return "teams.state.targetMissing"
   }
@@ -408,6 +415,8 @@ export const teamsStateWordKey = (state: TeamsState): MessageKey | null => {
       return "teams.stateWord.chatNotFound"
     case "offline":
       return "teams.stateWord.offline"
+    case "paused":
+      return "teams.stateWord.paused"
     case "targetMissing":
       return "teams.stateWord.targetMissing"
   }

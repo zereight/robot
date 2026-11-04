@@ -468,6 +468,7 @@ export const handlers: Handlers = {
       done,
     ),
   "teams.useChat": () => TeamsLink.use((t) => t.useChat),
+  "teams.resume": () => TeamsLink.use((t) => t.resume),
   "teams.signOut": () => TeamsLink.use((t) => t.signOut),
   "teams.remove": () => TeamsLink.use((t) => t.remove),
   "browserProfiles.list": () => BrowserProfiles.use((b) => b.list),

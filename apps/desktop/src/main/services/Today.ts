@@ -33,6 +33,7 @@ import { EventBus } from "./EventBus.ts"
 import { Notifier } from "./Notifier.ts"
 import { secretKey } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
+import { TeamsLink } from "./TeamsLink.ts"
 
 export interface TodayService {
   /**
@@ -61,6 +62,8 @@ const SOURCES = new Set<RpcEvent>([
   "chat.message",
   "chat.removed",
   "sync.changed",
+  // The Teams link is signed out or paused: a row of "Went wrong" (spec 021, 028).
+  "teams.changed",
 ])
 
 /** How often the loop looks for a change that came from an event. */
@@ -87,6 +90,7 @@ export class Today extends Context.Service<Today, TodayService>()("robot/main/To
       const bus = yield* EventBus
       const notifier = yield* Notifier
       const secrets = yield* Secrets
+      const teams = yield* TeamsLink
 
       // ------------------------------------------------------------------ Needs you
       const cards = (): CardFacts[] =>
@@ -426,7 +430,16 @@ export class Today extends Context.Service<Today, TodayService>()("robot/main/To
         const day = dayBounds(now)
         const groups: Record<TodayGroupId, readonly TodayRow[] | null> = {
           needs: read(() => needsRows(cards(), parts())),
-          wrong: read(() => wrongRows(tasks(day), routines(day), accounts(), day, now)),
+          wrong: read(() =>
+            wrongRows(
+              tasks(day),
+              routines(day),
+              accounts(),
+              day,
+              now,
+              Effect.runSync(teams.attention),
+            ),
+          ),
           done: read(() => doneRows(done(day))),
           next: read(() => nextRows(routineRuns(now), workflows(now), now)),
         }
