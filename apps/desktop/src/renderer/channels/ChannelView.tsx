@@ -37,6 +37,7 @@ import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
 import { useUi } from "../state/ui.tsx"
+import { ChannelMark } from "../ui/ChannelMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { ChannelDialog } from "./ChannelDialog.tsx"
@@ -81,9 +82,17 @@ export const ChannelHeader = (props: { channel: Channel }) => {
   }
   return (
     <>
-      <span class={styles.hash} aria-hidden="true">
-        #
-      </span>
+      {/* The picture of the channel stands in place of the `#` (spec 004, "Picture"). */}
+      <Show
+        when={props.channel.picture}
+        fallback={
+          <span class={styles.hash} aria-hidden="true">
+            #
+          </span>
+        }
+      >
+        <ChannelMark picture={props.channel.picture} size={24} testId="channel-header-picture" />
+      </Show>
       <span class={styles.nameBlock}>
         <span class={styles.headerName} data-testid="channel-header-name">
           {props.channel.name}

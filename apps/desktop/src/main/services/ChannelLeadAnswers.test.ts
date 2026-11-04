@@ -5,6 +5,7 @@ import type { MessagePart, ToolAsk } from "@robot/shared"
 import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
+import { asOldShape } from "./channelTurns.testing.ts"
 import { Notifier } from "./Notifier.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Providers } from "./Providers.ts"
@@ -105,10 +106,14 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as {
-      messages: { role: string; content: string }[]
-      tools?: unknown[]
-    }
+    // The text of a member starts with its assignment (spec 004): the stand-in reads it behind the
+    // last message of the user, as before. The `system` that a test reads stays as the app sent it.
+    const body = asOldShape(
+      (await req.json()) as {
+        messages: { role: string; content: string }[]
+        tools?: unknown[]
+      },
+    )
     const system = body.messages.find((m) => m.role === "system")?.content ?? ""
     const last = body.messages.at(-1)
     const content = last?.content ?? ""

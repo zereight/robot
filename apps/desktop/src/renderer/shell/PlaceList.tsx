@@ -570,11 +570,10 @@ export const PlaceList = (props: PlaceListProps) => {
         onDragEnd={endDrag}
       >
         <span class={styles.mark}>
-          {place.kind === "channel" ? (
-            <AvatarMark icon={Hash} size={24} testId="channel-mark" />
-          ) : (
-            props.face?.(place)
-          )}
+          {/* The window draws a channel with its picture, or the mark with the `#`. */}
+          {place.kind === "channel"
+            ? (props.face?.(place) ?? <AvatarMark icon={Hash} size={24} testId="channel-mark" />)
+            : props.face?.(place)}
           <Show when={place.working}>
             <span class={styles.workingDot} data-testid="working-dot" />
           </Show>
@@ -709,6 +708,18 @@ export const PlaceList = (props: PlaceListProps) => {
     )
   }
 
+  /** The face, picture or mark of the place of a hit, as the window draws it. */
+  const hitFace = (hit: SearchHit) =>
+    props.face?.({
+      kind: hit.kind,
+      id: hit.placeId,
+      name: hit.placeName,
+      unread: 0,
+      working: false,
+      lastMessage: null,
+      sectionId: null,
+    })
+
   const renderHit = (hit: SearchHit) => {
     const time = () => formatHitTime(app.locale(), hit.createdAt)
     return (
@@ -724,19 +735,9 @@ export const PlaceList = (props: PlaceListProps) => {
       >
         <span class={styles.hitHead}>
           <span class={styles.hitMark}>
-            {hit.kind === "channel" ? (
-              <AvatarMark icon={Hash} size={24} />
-            ) : (
-              props.face?.({
-                kind: hit.kind,
-                id: hit.placeId,
-                name: hit.placeName,
-                unread: 0,
-                working: false,
-                lastMessage: null,
-                sectionId: null,
-              })
-            )}
+            {hit.kind === "channel"
+              ? (hitFace(hit) ?? <AvatarMark icon={Hash} size={24} />)
+              : hitFace(hit)}
           </span>
           <span class={styles.hitPlace} data-user-data>
             {hit.placeName}

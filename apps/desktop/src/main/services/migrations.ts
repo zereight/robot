@@ -1150,4 +1150,10 @@ export const migrations: readonly string[] = [
   -- dirty trigger of the channel already watches every column. An export keeps it (014).
   ALTER TABLE channel ADD COLUMN parent_channel_id TEXT;
   `,
+  `
+  -- The picture of a channel (spec 004, S88): a square PNG of at most 256 px and 1 MB as a data
+  -- address, or NULL. It is in the database, so an export keeps it, and the delete of a channel
+  -- removes it. It syncs with the channel (the dirty trigger of the channel watches every column).
+  ALTER TABLE channel ADD COLUMN picture TEXT;
+  `,
 ]

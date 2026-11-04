@@ -1028,6 +1028,14 @@ export const en = {
   "channels.instructions": "Instructions",
   "channels.instructions.hint":
     "Every member and the lead read these in each turn of this channel, after their own instructions. Up to 4,000 characters.",
+  "channels.picture": "Picture",
+  "channels.picture.hint": "Shows in place of the # mark. ROBot cuts it to a square.",
+  "channels.picture.upload": "Upload picture",
+  "channels.picture.remove": "Remove picture",
+  "error.channel_picture_invalid": "ROBot cannot use this file as a picture.",
+  "error.channel_picture_too_large": "The picture is too large. It can hold at most 1 MB.",
+  "error.channel_context_too_small":
+    "The job and the instructions are larger than the context of the model. Shorten the instructions, or pick a model with a larger context.",
   "agents.memory.title": "Memory",
   "honest.line":
     "An agent gets better through its instructions, memory and knowledge, and through skills that you save. ROBot does not train the model.",

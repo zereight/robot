@@ -142,6 +142,7 @@ describe("client requests", () => {
         "agents.update",
         "agents.useMain",
         "channels.create",
+        "channels.setPicture",
         "channels.update",
         "handbook.restore",
         "handbook.save",

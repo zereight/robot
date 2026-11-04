@@ -1777,6 +1777,37 @@ describe("review of parts and blocked tasks cross with their task and channel (s
     expect(KINDS.channel.read(c, "older-lead")?.fields.leadAnswers).toBe(true)
   })
 
+  test("the picture of a channel is a field: a PNG passes, a wrong one does not, and it clears", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-picture")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    expect(KINDS.channel.read(ctxA, a.channel.id)?.fields.picture).toBeNull()
+    const bytes = new Uint8Array(100)
+    bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
+    new DataView(bytes.buffer).setUint32(16, 256)
+    new DataView(bytes.buffer).setUint32(20, 256)
+    const picture = `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`
+    a.db.run("UPDATE channel SET picture = ? WHERE id = ?", picture, a.channel.id)
+    const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
+    expect(fields.picture).toBe(picture)
+    expect(parseOp(op("channel", a.channel.id, fields), NOW)).toBeDefined()
+    // A picture that is not a square PNG of at most 256 px does not pass.
+    expect(
+      parseOp(
+        op("channel", a.channel.id, { ...fields, picture: "data:image/gif;base64,AAAA" }),
+        NOW,
+      ),
+    ).toBeUndefined()
+    expect(parseOp(op("channel", a.channel.id, { ...fields, picture: 5 }), NOW)).toBeUndefined()
+
+    // The other computer makes the channel with the picture, and a removal reaches it.
+    const b = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(b, a.channel.id, { ...fields, members: [] })).toBe(true)
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.picture).toBe(picture)
+    KINDS.channel.write(b, a.channel.id, { picture: null })
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.picture).toBeNull()
+  })
+
   test("a channel from a computer that has no such setting counts as off", async () => {
     const a = await source()
     const dir = join(testRuntime().dataDir, "kinds-review-old")

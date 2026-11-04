@@ -41,6 +41,11 @@ export interface Channel {
    * line; the stored value stays, and the rule needs a lead anyway.
    */
   readonly leadAnswers: boolean
+  /**
+   * The picture of the channel (spec 004, "Picture"): a square PNG of at most 256 px as a data
+   * address, or null. It shows in place of the `#` mark.
+   */
+  readonly picture: string | null
   readonly unread: number
   readonly working: boolean
   /** The label of the first credential place that a turn of the channel read (spec 007). */

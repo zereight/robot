@@ -34,6 +34,36 @@ interface ChatBody {
   tools?: { function?: { name?: string } }[]
   /** The cache marker of an Anthropic request. */
   cache_control?: unknown
+  /** The system text of an Anthropic request (an OpenAI request has it as the first message). */
+  system?: unknown
+}
+
+const ASSIGNMENT_HEAD = "Your assignment, which this reply does:\n"
+const ASSIGNMENT_END = "\n(End of your assignment.)"
+
+/**
+ * The text of a member in a channel starts with its assignment (spec 004, "What a member reads").
+ * The stand-in model decides by the last message of the user, as the earlier text of a member
+ * ended with its assignment. So this puts the assignment back behind the last message of the user,
+ * and the answers of the stand-in do not depend on the new order. The request that the test reads
+ * (`requests`) is the one that the app sent; only the answer is made from this one.
+ */
+const assignmentLast = (body: ChatBody): ChatBody => {
+  const first = body.messages[0]
+  const system =
+    typeof body.system === "string"
+      ? body.system
+      : first?.role === "system"
+        ? String(first.content ?? "")
+        : ""
+  if (!system.startsWith(ASSIGNMENT_HEAD)) return body
+  const end = system.indexOf(ASSIGNMENT_END)
+  if (end < 0) return body
+  const assignment = system.slice(ASSIGNMENT_HEAD.length, end)
+  const at = body.messages.map((m) => m.role).lastIndexOf("user")
+  const messages = [...body.messages]
+  messages.splice(at + 1, 0, { role: "user", content: assignment })
+  return { ...body, messages }
 }
 
 export const MARKDOWN_REPLY = [
@@ -555,6 +585,22 @@ const summaryReply = async (res: ServerResponse, body: ChatBody) => {
   res.end("data: [DONE]\n\n")
 }
 
+/**
+ * A request for the summary of the older messages of a channel (spec 004). The answer says how many
+ * messages it read. A message that holds "summary fails" makes it fail.
+ */
+const channelSummaryReply = (res: ServerResponse, body: ChatBody) => {
+  const text = body.messages.map((m) => String(m.content)).join("\n")
+  if (text.includes("summary fails"))
+    return json(res, 400, { error: { message: "mock bad request" } })
+  const lines = text.split("\n").filter((l) => /^\[[^\]]+\]: /.test(l)).length
+  res.writeHead(200, { "content-type": "text/event-stream" })
+  const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`)
+  send({ choices: [{ delta: { content: `Channel summary of ${lines} older messages` } }] })
+  send({ choices: [], usage: { prompt_tokens: 40, completion_tokens: 8 } })
+  res.end("data: [DONE]\n\n")
+}
+
 const openAiReply = async (
   res: ServerResponse,
   body: ChatBody,
@@ -564,6 +610,8 @@ const openAiReply = async (
 ) => {
   if (String(body.messages[0]?.content ?? "").startsWith("You write the summary"))
     return summaryReply(res, body)
+  if (String(body.messages[0]?.content ?? "").startsWith("You summarise the older messages"))
+    return channelSummaryReply(res, body)
   const calls = toolCalls(body)
   if (calls.length > 0) {
     res.writeHead(200, { "content-type": "text/event-stream" })
@@ -873,8 +921,9 @@ export const startMockProvider = async (
       return res.end(JSON.stringify({ error: { message: limit.message } }))
     }
     if (url.pathname === "/v1/chat/completions")
-      return openAiReply(res, body as ChatBody, sent, dropped, quiet)
-    if (url.pathname === "/anthropic/v1/messages") return anthropicReply(res, body as ChatBody)
+      return openAiReply(res, assignmentLast(body as ChatBody), sent, dropped, quiet)
+    if (url.pathname === "/anthropic/v1/messages")
+      return anthropicReply(res, assignmentLast(body as ChatBody))
     json(res, 404, { error: { message: "not found" } })
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
