@@ -1,7 +1,5 @@
 import type { MessagePart } from "./chat.ts"
 import { messageFiles, messageText } from "./chat.ts"
-import { translate } from "./i18n/index.ts"
-import type { Locale } from "./settings.ts"
 import type { TaskState } from "./task.ts"
 
 // The answers for a channel (spec 028, S104, with 004 and 005): the pure rules of which text goes
@@ -58,10 +56,10 @@ export const memberReply = (messages: readonly JobMessage[]): JobReply =>
 
 /**
  * The text of one answer of a member that a mention chose: the name of the member, a colon and the
- * reply text (spec 028). The marker is not part of it.
+ * reply text (spec 028). The marker is not part of it. The colon is no word, so the form is the same
+ * in every language, as the marker is.
  */
-export const memberAnswer = (locale: Locale, name: string, text: string): string =>
-  translate(locale, "teams.line.member", { name, text })
+export const memberAnswer = (name: string, text: string): string => `${name}: ${text}`
 
 /**
  * The name in the lines "could not finish" and "was stopped" for a job of a channel. A request that

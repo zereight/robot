@@ -88,12 +88,12 @@ describe("the reply of a member", () => {
 
 describe("the answer of a member", () => {
   test("it holds the name of the member, a colon and the reply text", () => {
-    expect(memberAnswer("en", "Cy", "Ready.")).toBe("Cy: Ready.")
-    expect(memberAnswer("ko", "Cy", "준비됐어요.")).toBe("Cy: 준비됐어요.")
+    expect(memberAnswer("Cy", "Ready.")).toBe("Cy: Ready.")
+    expect(memberAnswer("Cy", "준비됐어요.")).toBe("Cy: 준비됐어요.")
   })
 
   test("a reply text that looks like a place holder is kept as it is", () => {
-    expect(memberAnswer("en", "Cy", "use {name} and {text}")).toBe("Cy: use {name} and {text}")
+    expect(memberAnswer("Cy", "use {name} and {text}")).toBe("Cy: use {name} and {text}")
   })
 })
 

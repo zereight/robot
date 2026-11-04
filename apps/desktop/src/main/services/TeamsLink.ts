@@ -870,12 +870,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
                     task.id,
                     messages.some((m) => m.kind === "plan") ? "summary" : "reply",
                   )
-                else
-                  makeAnswer(
-                    memberAnswer(localeNow(), task.agentName, reply.text),
-                    task.id,
-                    "member_reply",
-                  )
+                else makeAnswer(memberAnswer(task.agentName, reply.text), task.id, "member_reply")
               } else makeLine({ kind: "noReply" }, task.id)
               if (reply.files > 0) makeLine({ kind: "files", count: reply.files }, task.id)
               return
