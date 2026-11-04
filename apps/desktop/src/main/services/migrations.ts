@@ -1173,6 +1173,17 @@ export const migrations: readonly string[] = [
   ${dirtyTriggers("organization", "org", plainId)}
   `,
   `
+  -- The tools and the daily token limit of a channel (spec 030, S112). \`channels\` is a JSON list of
+  -- channel ids next to \`agents\`: a skill or a connection for a list holds agents and channels. An
+  -- empty list is what every row had before, so existing data keeps its meaning. A channel that is
+  -- gone stays in the list and gives nothing. Skills and connections do not sync (spec 019). The
+  -- limit is NULL when it is off, as it was for every channel. It syncs with the channel: the dirty
+  -- trigger of the channel already watches every column. An export keeps all three (014).
+  ALTER TABLE skill ADD COLUMN channels TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE tool_connection ADD COLUMN channels TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE channel ADD COLUMN daily_token_limit INTEGER;
+  `,
+  `
   -- The switch "Ask up the line" (spec 030, 013), in the row of the part "Organization": 0 (off)
   -- is the default, as every profile was before this step. It syncs with the row (kind "org": the
   -- dirty trigger of the table watches every column), and the later change wins (spec 019). An

@@ -11,6 +11,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useChannels } from "../state/channels.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -28,6 +29,7 @@ export const ConnectionsSection = () => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
+  const channels = useChannels()
   const [fetched, { refetch }] = createResource(
     () => (ui.linked() ? undefined : true),
     () => call("connections.list"),
@@ -80,12 +82,17 @@ export const ConnectionsSection = () => {
         ? t("connections.state.error", { reason: reason(c.failure ?? "ended") })
         : t(`connections.state.${c.state}` as MessageKey)
 
-  /** Who may use the connection: "All agents", or the names of the agents that are still there. */
+  /**
+   * Who may use the connection: "All agents", or the names of the agents and channels that are
+   * still there (spec 018, 030).
+   */
   const forWhom = (c: ToolConnection) =>
     c.agents === "all"
       ? t("connections.agents.all")
-      : c.agents
-          .map((id) => agents.byId(id)?.name)
+      : [
+          ...c.agents.map((id) => agents.byId(id)?.name),
+          ...c.channels.map((id) => channels.byId(id)?.name),
+        ]
           .filter((name): name is string => name !== undefined)
           .join(", ")
 

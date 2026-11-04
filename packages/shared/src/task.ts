@@ -131,7 +131,16 @@ export const blockedReason = (text: string): string | null => {
 /** How a turn that ended with no error and was not stopped ends the task. */
 export type TurnEnd =
   | { readonly state: "done" }
-  | { readonly state: "blocked"; readonly reason: string }
+  | {
+      readonly state: "blocked"
+      readonly reason: string
+      /**
+       * The code of an error that the app writes itself, for a reason the window shows in the
+       * language of the user (the daily token limit of a channel, spec 030). The reason is then its
+       * detail. Without it the reason is the text of the agent.
+       */
+      readonly code?: string
+    }
   | { readonly state: "review" }
 
 /**
@@ -144,6 +153,22 @@ export const endOfTurn = (replyText: string, options: { readonly review: boolean
   if (reason !== null) return { state: "blocked", reason }
   return options.review ? { state: "review" } : { state: "done" }
 }
+
+/** The error that a task keeps when it ends as blocked after `end`. */
+export const blockedErrorOf = (end: Extract<TurnEnd, { readonly state: "blocked" }>) =>
+  end.code === undefined ? blockedError(end.reason) : { code: end.code, detail: end.reason }
+
+/**
+ * The reason of a blocked task as plain English for an agent that reads it (the check of the lead
+ * and its summary). The window shows the reason in the language of the user instead, through the
+ * code. A blocked task whose error the app wrote itself names it in words (spec 030).
+ */
+export const blockedReasonForAgent = (
+  error: { readonly code: string; readonly detail: string } | null | undefined,
+): string =>
+  error?.code === "channel_limit"
+    ? `The daily token limit of ${error.detail} is used.`
+    : (error?.detail ?? "")
 
 /** The error that a blocked task keeps. */
 export const blockedError = (reason: string) =>

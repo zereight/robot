@@ -13,6 +13,11 @@ export interface Skill {
   readonly instructions: string
   /** The agents that may use the skill. `null` means all agents. */
   readonly agentIds: readonly string[] | null
+  /**
+   * The channels in the list of the skill (spec 017, 030): each gives the skill to its members and
+   * to the members of its lower channels. Empty for "All agents" and for a list of agents only.
+   */
+  readonly channelIds: readonly string[]
   readonly enabled: boolean
   readonly createdAt: number
 }
@@ -95,16 +100,20 @@ export type SkillAfterAgentDelete =
  * that does not name the agent, stay as they are. The agent leaves the list of the others. A skill
  * that was only for this agent is deleted: no agent that still exists is left in its list.
  * `exists` tells whether an agent is still there, in the archive or not; an id of an agent that
- * went before this rule counts as gone.
+ * went before this rule counts as gone. A channel that is still there and that is in the list keeps
+ * the skill (spec 030): the skill is not only for this agent.
  */
 export const skillAfterAgentDelete = (
   agentIds: readonly string[] | null,
   agentId: string,
   exists: (id: string) => boolean,
+  channelsLeft = 0,
 ): SkillAfterAgentDelete => {
   if (agentIds === null || !agentIds.includes(agentId)) return { kind: "same" }
   const rest = agentIds.filter((id) => id !== agentId)
-  return rest.some(exists) ? { kind: "shorter", agentIds: rest } : { kind: "delete" }
+  return rest.some(exists) || channelsLeft > 0
+    ? { kind: "shorter", agentIds: rest }
+    : { kind: "delete" }
 }
 
 /** What the agent reads before the text of a message with a skill chip. */

@@ -16,6 +16,7 @@ import {
   cutResult,
   type HeldToolView,
   heldTools,
+  mayUseTool,
   NO_TOOL_FOUND_TEXT,
   nameKey,
   needsToolSearch,
@@ -48,6 +49,7 @@ import {
   openMcp,
 } from "../connections/mcp.ts"
 import type { ToolDef } from "../providers/chat.ts"
+import { audienceOf, givingFor, idList } from "./channelAccess.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
@@ -73,6 +75,8 @@ interface Row {
   address: string
   headers: string
   agents: string | null
+  /** A JSON list of channel ids (spec 030): the channels in the list of the connection. */
+  channels: string
   enabled: number
   state: string
   failure: string | null
@@ -373,6 +377,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
             address: row.address,
             headers: headers.map(asView),
             agents: row.agents === null ? "all" : parse<string[]>(row.agents, []),
+            channels: row.agents === null ? [] : idList(row.channels),
             state,
             failure:
               state === "error" ? ((row.failure as ConnectionFailure | null) ?? "ended") : null,
@@ -591,11 +596,11 @@ export class Connections extends Context.Service<Connections, ConnectionsService
         }
 
         const forTurn = async (agentId: string): Promise<ConnectionTurn> => {
-          const mine = rows().filter((row) => {
-            if (row.enabled !== 1) return false
-            if (row.agents === null) return true
-            return parse<string[]>(row.agents, []).includes(agentId)
-          })
+          // The channels that give their connections to this agent in this turn (spec 030).
+          const giving = givingFor(db, agentId)
+          const mine = rows().filter(
+            (row) => row.enabled === 1 && mayUseTool(audienceOf(row), agentId, giving),
+          )
           const down: string[] = []
           const held: string[] = []
           const sources: { id: string; name: string; tools: McpTool[] }[] = []
@@ -876,7 +881,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               return yield* new AppError({ code: "connections_full" })
             if (form.kind === "program" && !input.confirmed)
               return yield* new AppError({ code: "connection_confirm", detail: "confirm" })
-            if (form.agents !== "all" && form.agents.length === 0)
+            if (form.agents !== "all" && form.agents.length + (form.channels?.length ?? 0) === 0)
               return yield* new AppError({ code: "connection_agents", detail: "agents" })
 
             const id = before?.id ?? randomUUID()
@@ -910,6 +915,18 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               return yield* new AppError({ code: "connection_keychain" })
             }
             const agents = form.agents === "all" ? null : JSON.stringify([...new Set(form.agents)])
+            // The channels of the list (spec 030): only channels of this server, and none for "all".
+            const channels = JSON.stringify(
+              form.agents === "all"
+                ? []
+                : [...new Set(form.channels ?? [])].filter((channelId) =>
+                    db.get(
+                      "SELECT 1 FROM channel WHERE id = ? AND server_id = ?",
+                      channelId,
+                      serverId(),
+                    ),
+                  ),
+            )
             const next = {
               name: form.name.trim(),
               kind: form.kind as ToolConnectionKind,
@@ -926,9 +943,9 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               db.run(
                 `INSERT INTO tool_connection
                    (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,
-                    agents, enabled, state, failure, tools, tools_more, tools_off, reviewed, review_adopt,
-                    created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, '[]', ?, 0, ?)`,
+                    agents, channels, enabled, state, failure, tools, tools_more, tools_off, reviewed,
+                    review_adopt, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, '[]', ?, 0, ?)`,
                 id,
                 serverId(),
                 next.name,
@@ -941,6 +958,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 next.address,
                 next.headers,
                 agents,
+                channels,
                 probeResult ? "connected" : "untested",
                 JSON.stringify(probeResult ? toStored(probeResult.tools) : []),
                 probeResult?.more ? 1 : 0,
@@ -967,7 +985,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
               const keepsTools = !reachChanged
               db.run(
                 `UPDATE tool_connection SET name = ?, name_key = ?, kind = ?, command = ?, args = ?,
-                   folder = ?, env = ?, address = ?, headers = ?, agents = ?,
+                   folder = ?, env = ?, address = ?, headers = ?, agents = ?, channels = ?,
                    state = ?, failure = NULL, tools = ?, tools_more = ?, tools_off = ?,
                    reviewed = ?, review_adopt = ?
                  WHERE id = ?`,
@@ -981,6 +999,7 @@ export class Connections extends Context.Service<Connections, ConnectionsService
                 next.address,
                 next.headers,
                 agents,
+                channels,
                 probeResult ? "connected" : keepsTools ? before.state : "untested",
                 probeResult
                   ? JSON.stringify(toStored(probeResult.tools))

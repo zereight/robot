@@ -1234,3 +1234,68 @@ describe("the step of the switch 'Ask up the line' (spec 030, S111)", () => {
     ])
   })
 })
+
+describe("the step of the tools and the daily token limit of a channel (spec 030)", () => {
+  const LIMIT = migrations.findIndex((sql) => sql.includes("ADD COLUMN daily_token_limit"))
+  const server = `
+    INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+  `
+
+  test("it only adds three columns that have a default, once, and drops or changes nothing", () => {
+    expect(LIMIT).toBeGreaterThan(0)
+    expect(migrations.filter((sql) => sql.includes("ADD COLUMN daily_token_limit"))).toHaveLength(1)
+    const sql = migrations[LIMIT] ?? ""
+    expect(sql).not.toMatch(/DROP|DELETE|UPDATE /i)
+    expect(sql).toContain("ALTER TABLE skill ADD COLUMN channels TEXT NOT NULL DEFAULT '[]';")
+    expect(sql).toContain(
+      "ALTER TABLE tool_connection ADD COLUMN channels TEXT NOT NULL DEFAULT '[]';",
+    )
+    expect(sql).toContain("ALTER TABLE channel ADD COLUMN daily_token_limit INTEGER;")
+  })
+
+  test("a skill, a connection and a channel from before keep their rows: no channel in a list, no limit", () => {
+    const db = upTo(LIMIT)
+    db.exec(server)
+    db.exec(`
+      INSERT INTO channel (id, server_id, name, name_key, topic, created_at, updated_at)
+        VALUES ('c', 's', 'Docs', 'docs', 'Write', 1, 1);
+      INSERT INTO skill (id, server_id, name, name_key, description, instructions, agents, enabled, created_at)
+        VALUES ('k', 's', 'Notes', 'notes', '', 'Do it.', NULL, 1, 1);
+      INSERT INTO tool_connection (id, server_id, name, name_key, kind, command, agents, enabled, created_at)
+        VALUES ('t', 's', 'Journal', 'journal', 'program', 'journal-server', NULL, 1, 1);
+    `)
+    db.exec(migrations[LIMIT] as string)
+    expect(db.prepare("SELECT id, name, daily_token_limit FROM channel").all()).toEqual([
+      { id: "c", name: "Docs", daily_token_limit: null },
+    ])
+    expect(db.prepare("SELECT id, name, agents, channels FROM skill").all()).toEqual([
+      { id: "k", name: "Notes", agents: null, channels: "[]" },
+    ])
+    expect(db.prepare("SELECT id, name, agents, channels FROM tool_connection").all()).toEqual([
+      { id: "t", name: "Journal", agents: null, channels: "[]" },
+    ])
+  })
+
+  test("a change of the limit marks the channel for sync; the lists of skills and connections do not sync", () => {
+    const db = upTo(LIMIT + 1)
+    db.exec(server)
+    db.exec(`
+      INSERT INTO channel (id, server_id, name, name_key, topic, created_at, updated_at)
+        VALUES ('c', 's', 'Docs', 'docs', '', 1, 1);
+      INSERT INTO skill (id, server_id, name, name_key, description, instructions, agents, channels, enabled, created_at)
+        VALUES ('k', 's', 'Notes', 'notes', '', 'Do it.', '[]', '[]', 1, 1);
+      INSERT INTO tool_connection (id, server_id, name, name_key, kind, command, agents, channels, enabled, created_at)
+        VALUES ('t', 's', 'Journal', 'journal', 'program', 'journal-server', '[]', '[]', 1, 1);
+      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+    `)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE skill SET channels = '[\"c\"]' WHERE id = 'k'")
+    db.exec("UPDATE tool_connection SET channels = '[\"c\"]' WHERE id = 't'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([])
+    db.exec("UPDATE channel SET daily_token_limit = 50000 WHERE id = 'c'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "channel", id: "c" },
+    ])
+  })
+})

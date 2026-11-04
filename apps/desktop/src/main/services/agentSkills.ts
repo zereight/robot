@@ -9,13 +9,14 @@ import type { DatabaseService } from "./Database.ts"
 interface SkillAgentsRow {
   id: string
   agents: string | null
+  channels: string
 }
 
-/** The list of agent ids of a row, or `undefined` when the row holds no readable list. */
-const idsOf = (row: SkillAgentsRow): readonly string[] | undefined => {
-  if (row.agents === null) return undefined
+/** A JSON list of ids, or `undefined` when the text holds no readable list. */
+const listOf = (text: string | null): readonly string[] | undefined => {
+  if (text === null) return undefined
   try {
-    const parsed: unknown = JSON.parse(row.agents)
+    const parsed: unknown = JSON.parse(text)
     return Array.isArray(parsed) && parsed.every((id) => typeof id === "string")
       ? (parsed as string[])
       : undefined
@@ -23,6 +24,9 @@ const idsOf = (row: SkillAgentsRow): readonly string[] | undefined => {
     return undefined
   }
 }
+
+/** The list of agent ids of a row, or `undefined` when the row holds no readable list. */
+const idsOf = (row: SkillAgentsRow): readonly string[] | undefined => listOf(row.agents)
 
 /** What would happen to each skill of the server of the agent if the agent were deleted. */
 const plan = (db: DatabaseService, agentId: string) => {
@@ -32,14 +36,17 @@ const plan = (db: DatabaseService, agentId: string) => {
   )?.server_id
   if (serverId === undefined) return { serverId, steps: [] }
   const exists = (id: string) => Boolean(db.get("SELECT 1 FROM agent WHERE id = ?", id))
+  const channelExists = (id: string) => Boolean(db.get("SELECT 1 FROM channel WHERE id = ?", id))
   const steps: { id: string; after: SkillAfterAgentDelete }[] = []
   for (const row of db.all<SkillAgentsRow>(
-    "SELECT id, agents FROM skill WHERE server_id = ? AND agents IS NOT NULL",
+    "SELECT id, agents, channels FROM skill WHERE server_id = ? AND agents IS NOT NULL",
     serverId,
   )) {
     const ids = idsOf(row)
     if (!ids) continue
-    const after = skillAfterAgentDelete(ids, agentId, exists)
+    // A channel in the list that is still there keeps the skill (spec 030).
+    const channelsLeft = (listOf(row.channels) ?? []).filter(channelExists).length
+    const after = skillAfterAgentDelete(ids, agentId, exists, channelsLeft)
     if (after.kind !== "same") steps.push({ id: row.id, after })
   }
   return { serverId, steps }

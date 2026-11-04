@@ -68,6 +68,8 @@ export interface ToolConnectionInput {
   readonly headers: readonly ConnectionEntryInput[]
   /** "all", or the ids of the agents that may use the connection. */
   readonly agents: "all" | readonly string[]
+  /** The channels in the list of the connection (spec 018, 030). Absent counts as none. */
+  readonly channels?: readonly string[]
 }
 
 /** What the window sends to save a connection. `id` is left out for a new connection. */
@@ -124,6 +126,8 @@ export interface ToolConnection {
   readonly address: string
   readonly headers: readonly ConnectionEntryView[]
   readonly agents: "all" | readonly string[]
+  /** The channels in the list of the connection (spec 018, 030). Empty for "all". */
+  readonly channels: readonly string[]
   readonly state: ConnectionState
   /** The reason, when the state is "error". */
   readonly failure: ConnectionFailure | null

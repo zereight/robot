@@ -1,4 +1,5 @@
 import {
+  type ChannelUsageRow,
   type MessageKey,
   USAGE_RANGES,
   type UsageRange,
@@ -6,7 +7,7 @@ import {
   usageByDay,
   usageTotal,
 } from "@robot/shared"
-import { createMemo, createResource, createSignal, For, Show } from "solid-js"
+import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
 import shell from "../shell/shell.module.css"
@@ -28,6 +29,15 @@ export const UsagePage = () => {
     (key) => call("usage.summary", key),
     { initialValue: [] },
   )
+  // The channels with a daily token limit and the tokens used today (spec 006, 030). They do not
+  // depend on the range. A channel that works changes them, so they are read again.
+  const [limits, { refetch: refetchLimits }] = createResource(
+    () => ui.server()?.id,
+    (serverId) => call("usage.channels", { serverId }).catch((): readonly ChannelUsageRow[] => []),
+    { initialValue: [] as readonly ChannelUsageRow[] },
+  )
+  onCleanup(window.robot.on("channels.changed", () => void refetchLimits()))
+  onCleanup(window.robot.on("tasks.changed", () => void refetchLimits()))
   const number = createMemo(() => new Intl.NumberFormat(locale()))
   const dayLabel = (day: string) => {
     const [y, m, d] = day.split("-").map(Number) as [number, number, number]
@@ -147,6 +157,38 @@ export const UsagePage = () => {
           )}
         </For>
         <p class={styles.muted}>{t("usage.note")}</p>
+      </Show>
+
+      <Show when={limits().length > 0}>
+        <h2>{t("usage.channels")}</h2>
+        <table class={styles.table} data-testid="usage-channels">
+          <thead>
+            <tr>
+              <th scope="col">{t("usage.col.channel")}</th>
+              <th scope="col" class={styles.num}>
+                {t("usage.col.usedToday")}
+              </th>
+              <th scope="col" class={styles.num}>
+                {t("usage.col.limit")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={limits()}>
+              {(c) => (
+                <tr data-testid="usage-channel-row" data-channel={c.name}>
+                  <th scope="row">{c.name}</th>
+                  <td class={styles.num} data-testid="usage-channel-used">
+                    {number().format(c.used)}
+                  </td>
+                  <td class={styles.num} data-testid="usage-channel-limit">
+                    {number().format(c.limit)}
+                  </td>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
       </Show>
     </div>
   )
