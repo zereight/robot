@@ -10,6 +10,29 @@ export const EFFORTS = ["low", "medium", "high"] as const
 export const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const
 
 /**
+ * The level at which the effort field of the form of a new agent starts, when the model offers it
+ * (spec 002, flow 1). A lower level uses fewer tokens, so a new agent starts at the middle level.
+ */
+export const NEW_AGENT_EFFORT = "medium"
+
+/**
+ * The level that an effort field shows after its model, or the levels of its model, changed.
+ *
+ * `start` is the level that the field starts at while the user has not picked a level, or
+ * "Default", by hand. With a start, the field shows the start when the model offers it, and
+ * "Default" (null) when it does not. Without one, the pick of the user stays while the model offers
+ * it, and goes to "Default" when the model does not.
+ */
+export const settledEffort = (
+  current: string | null,
+  offered: readonly string[],
+  start: string | null,
+): string | null => {
+  const level = start ?? current
+  return level !== null && offered.includes(level) ? level : null
+}
+
+/**
  * Agent runtimes: the coding agent programs of the model vendors. The user signs in to them
  * with a subscription, so there is no key and no address.
  */
