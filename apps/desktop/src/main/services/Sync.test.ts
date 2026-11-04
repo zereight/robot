@@ -19,6 +19,7 @@ import { Devices } from "./Devices.ts"
 import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
+import { MemoryCheck } from "./MemoryCheck.ts"
 import { Notifier } from "./Notifier.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
@@ -716,6 +717,63 @@ describe("two computers that were apart", () => {
         )
       ).text,
     ).toBe("From A, later.")
+  })
+
+  test("the memory check is a choice of one computer, and each computer counts its own turns (spec 008, 019)", async () => {
+    const { a, b, agents } = await pair()
+    const id = agents[0]?.id ?? ""
+    const info = (rt: Rt) =>
+      run(
+        rt,
+        MemoryCheck.use((m) => m.info(id)),
+      )
+    // On the first computer: the choice goes on, and one turn is counted.
+    await run(
+      a,
+      MemoryCheck.use((m) => m.setOn(id, true)),
+    )
+    await run(
+      a,
+      Database.use((db) =>
+        Effect.sync(() => {
+          db.run(
+            "INSERT INTO task (id, agent_id, prompt, label, source, state, created_at) VALUES ('t1', ?, 'x', 'x', 'chat', 'done', 1)",
+            id,
+          )
+          db.run("INSERT INTO memory_check_turn (task_id, agent_id, at) VALUES ('t1', ?, 1)", id)
+        }),
+      ),
+    )
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+    // A change of the agent crosses. The choice and the count do not.
+    await run(
+      a,
+      Agents.use((x) => x.update(id, { role: "Reviews" })),
+    )
+    await waitFor(
+      () =>
+        run(
+          b,
+          Agents.use((x) => x.get(id)),
+        ),
+      (agent) => agent.role === "Reviews",
+    )
+    expect(await info(b)).toMatchObject({ on: false, count: 0 })
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+    // A change of the agent on the second computer does not turn the check off on the first.
+    await run(
+      b,
+      Agents.use((x) => x.update(id, { role: "Reviews code" })),
+    )
+    await waitFor(
+      () =>
+        run(
+          a,
+          Agents.use((x) => x.get(id)),
+        ),
+      (agent) => agent.role === "Reviews code",
+    )
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
   })
 
   test("a name stays unique when both computers give one name to different agents", async () => {

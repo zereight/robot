@@ -69,6 +69,12 @@ export interface MemoryService {
   plan(agentId: string, text: string): Effect.Effect<MemoryPlan>
   /** What the memory tool does for an agent: it saves at once or makes a proposal. */
   save(agentId: string, text: string, origin?: MemoryOrigin): Effect.Effect<MemorySave>
+  /**
+   * The one tool of a memory check (spec 008): it makes a proposal, whatever the choice "Memory
+   * saving" says, so that the user decides each one. The rules of a proposal hold: 500 characters,
+   * no duplicate, no secret, at most 20 that wait. The proposal is marked as made by a check.
+   */
+  suggest(agentId: string, text: string): Effect.Effect<MemorySave>
   mode(agentId: string): Effect.Effect<MemoryMode>
   setMode(agentId: string, mode: MemoryMode): Effect.Effect<void, AppError>
 
@@ -101,6 +107,7 @@ interface ProposalRow {
   place_kind: "agent" | "channel" | null
   place_id: string | null
   created_at: number
+  from_check: number
 }
 
 interface HistoryDb {
@@ -302,6 +309,7 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
         text: r.text,
         createdAt: r.created_at,
         place: placeOf(r),
+        fromCheck: r.from_check === 1,
       })
       const proposalRows = (agentId: string) => {
         pruneProposals(agentId)
@@ -320,7 +328,7 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
       type Decision =
         | { kind: "refuse"; result: MemoryPlan & MemorySave }
         | { kind: "item" | "proposal"; value: string }
-      const decide = (agentId: string, text: string): Decision => {
+      const decide = (agentId: string, text: string, forceProposal = false): Decision => {
         const agent = needAgent(agentId)
         if (agent?.memory_enabled !== 1) return { kind: "refuse", result: { kind: "off" } }
         const value = text.trim()
@@ -330,10 +338,46 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
         if (looksSecret(value)) return { kind: "refuse", result: { kind: "secret" } }
         if (rows(agentId).some((i) => sameMemoryText(i.text, value)))
           return { kind: "refuse", result: { kind: "known" } }
-        if (agent.memory_mode !== "ask") return { kind: "item", value }
+        if (agent.memory_mode !== "ask" && !forceProposal) return { kind: "item", value }
         if (proposalRows(agentId).some((p) => sameMemoryText(p.text, value)))
           return { kind: "refuse", result: { kind: "known" } }
         return { kind: "proposal", value }
+      }
+
+      /**
+       * Stores a proposal. At most 20 wait: a new one replaces the oldest. `origin` names the chat
+       * where the agent made it, and is null for a proposal of a memory check.
+       */
+      const propose = (
+        agentId: string,
+        value: string,
+        origin: MemoryOrigin | null,
+        fromCheck: boolean,
+      ): MemorySave => {
+        const waiting = proposalRows(agentId)
+        const over = waiting.length - (MEMORY_PROPOSALS_MAX - 1)
+        for (const old of waiting.slice(0, Math.max(0, over)))
+          db.run("DELETE FROM memory_proposal WHERE id = ?", old.id)
+        const id = randomUUID()
+        db.run(
+          `INSERT INTO memory_proposal (id, agent_id, text, place_kind, place_id, message_id, created_at, from_check)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          id,
+          agentId,
+          value,
+          origin?.kind ?? null,
+          origin?.id ?? null,
+          origin?.messageId ?? null,
+          Date.now(),
+          fromCheck ? 1 : 0,
+        )
+        changed(agentId)
+        return {
+          kind: "suggested",
+          proposal: toProposal(
+            db.get<ProposalRow>("SELECT * FROM memory_proposal WHERE id = ?", id) as ProposalRow,
+          ),
+        }
       }
 
       // Proposals that ended while the app was off, and history past its limits, go at the start.
@@ -404,33 +448,13 @@ export class Memory extends Context.Service<Memory, MemoryService>()("robot/main
               const saved = addItem(agentId, d.value, "agent", "agent", origin?.messageId ?? null)
               return { kind: "saved", item: saved.item, historyId: saved.historyId }
             }
-            const waiting = proposalRows(agentId)
-            // At most 20 wait. A new one replaces the oldest.
-            const over = waiting.length - (MEMORY_PROPOSALS_MAX - 1)
-            for (const old of waiting.slice(0, Math.max(0, over)))
-              db.run("DELETE FROM memory_proposal WHERE id = ?", old.id)
-            const id = randomUUID()
-            db.run(
-              `INSERT INTO memory_proposal (id, agent_id, text, place_kind, place_id, message_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              id,
-              agentId,
-              d.value,
-              origin?.kind ?? null,
-              origin?.id ?? null,
-              origin?.messageId ?? null,
-              Date.now(),
-            )
-            changed(agentId)
-            return {
-              kind: "suggested",
-              proposal: toProposal(
-                db.get<ProposalRow>(
-                  "SELECT * FROM memory_proposal WHERE id = ?",
-                  id,
-                ) as ProposalRow,
-              ),
-            }
+            return propose(agentId, d.value, origin ?? null, false)
+          }),
+        suggest: (agentId, text) =>
+          Effect.sync((): MemorySave => {
+            const d = decide(agentId, text, true)
+            if (d.kind === "refuse") return d.result
+            return propose(agentId, d.value, null, true)
           }),
         mode: (agentId) =>
           Effect.sync(() => {

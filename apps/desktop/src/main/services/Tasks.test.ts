@@ -628,6 +628,43 @@ describe("Tasks queue and slots", () => {
     expect(order).toEqual(["running", "chat", "routine old", "routine new"])
   })
 
+  test("a memory check starts after every other task of its agent, also when it was made first (spec 005, 008)", async () => {
+    const { run, agent, makeFrom, start } = await queueSetup(4)
+    const ada = await agent("Ada")
+    const gate = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const first = start(await makeFrom(ada.id, "running", "chat"), order, gate)
+    await sleep(20)
+    // The check waits first. A routine and a chat come after it, and both go before it.
+    const check = start(await makeFrom(ada.id, "check", "memory_check"), order)
+    const routine = start(await makeFrom(ada.id, "routine", "routine"), order)
+    const chat = start(await makeFrom(ada.id, "chat", "chat"), order)
+    await sleep(20)
+    await run(Deferred.succeed(gate, undefined))
+    await Promise.all([first, check, routine, chat])
+    expect(order).toEqual(["running", "chat", "routine", "check"])
+  })
+
+  test("a memory check does not start while its agent has a task that waits, even with a free slot", async () => {
+    const { run, agent, makeFrom, start, state } = await queueSetup(4)
+    const [ada, bo] = [await agent("Ada"), await agent("Bo")]
+    const gate = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    // A task of Bo runs, and a task of Ada waits for a task of Ada that runs: no slot is lacking.
+    const running = start(await makeFrom(ada.id, "running", "chat"), order, gate)
+    await sleep(20)
+    const check = await makeFrom(ada.id, "check", "memory_check")
+    const checkRun = start(check, order)
+    const other = start(await makeFrom(bo.id, "other agent", "chat"), order)
+    await sleep(30)
+    // Bo works at once. The check of Ada waits for Ada.
+    expect(order).toEqual(["running", "other agent"])
+    expect(await state(check.id)).toBe("queued")
+    await run(Deferred.succeed(gate, undefined))
+    await Promise.all([running, checkRun, other])
+    expect(order).toEqual(["running", "other agent", "check"])
+  })
+
   test("Run next moves a queued task to the front; the latest pick goes first", async () => {
     const { run, agent, makeFrom, start, state } = await queueSetup(4)
     const ada = await agent("Ada")

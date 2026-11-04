@@ -50,6 +50,8 @@ export interface MemoryProposal {
   readonly text: string
   readonly createdAt: number
   readonly place: MemoryPlace | null
+  /** True when a memory check made it (spec 008): the tab shows "From a memory check". */
+  readonly fromCheck: boolean
 }
 
 /** Who made a change: the user, the agent, a proposal that the user accepted, or an undo. */
