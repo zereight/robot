@@ -926,4 +926,12 @@ export const migrations: readonly string[] = [
   ALTER TABLE teams_link ADD COLUMN paused TEXT;
   ALTER TABLE teams_link ADD COLUMN paused_at INTEGER;
   `,
+  `
+  -- How a channel job began, when a message from Teams began it (spec 028, "Answers and the
+  -- outbox"): 'lead' (the lead read it) or 'mention' (a member that was chosen answers it). The
+  -- parts, the retries, the nudges and the requests for changes of the job keep it. NULL for any
+  -- other task. The link reads it to know which work sends text to Teams. Sync (019) does not
+  -- carry it: the link belongs to one computer.
+  ALTER TABLE task ADD COLUMN teams_job TEXT;
+  `,
 ]

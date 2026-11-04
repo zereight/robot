@@ -55,9 +55,10 @@ const usage = { choices: [], usage: { prompt_tokens: 12, completion_tokens: 5 } 
  * - `CALLS [...]` calls those tools in one reply, and answers "Done." after the results.
  * - a text with "SLOW" waits for `hold()`, a text with "BREAK" fails, and a text with "FLAKY" fails
  *   once and then works. "SLOW " and "FLAKY " in front of a directive do not hide it.
- * Any other text gets "ok".
+ * Any other text gets "ok". `extra` may answer a request first: it gets the last message and its last
+ * line, and gives a reply text, or null to leave the request to the rules above.
  */
-export const startModel = () => {
+export const startModel = (extra?: (text: string, lastLine: string) => string | null) => {
   const seen: string[] = []
   let gate: { promise: Promise<void>; release: () => void } | undefined
   let flakyFailed = false
@@ -80,6 +81,8 @@ export const startModel = () => {
         flakyFailed = true
         return new Response("boom", { status: 500 })
       }
+      const special = extra?.(text, lastLine) ?? null
+      if (special !== null) return sse([delta(special), usage, "[DONE]"])
       const calls = /^CALLS (\[.*\])$/.exec(lastLine)
       if (calls) {
         const list = JSON.parse(calls[1] as string) as { name: string; args: unknown }[]
