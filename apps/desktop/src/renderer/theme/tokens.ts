@@ -11,6 +11,8 @@ export interface Palette {
   textMuted: string
   accent: string
   accentText: string
+  /** The accent as text and links. It is lighter in the dark theme, so it reads on dark surfaces. */
+  accentInk: string
   success: string
   danger: string
   focus: string
@@ -45,8 +47,9 @@ export const palettes: Record<"dark" | "light", Palette> = {
     textMuted: "#a1a1a6",
     accent: "#4f66d9",
     accentText: "#ffffff",
+    accentInk: "#8ea0ff",
     success: "#3bb27a",
-    danger: "#e8625a",
+    danger: "#ea7069",
     focus: "#8ea0ff",
     markTile: "#0a0817",
     markEyes: "#eafff8",
@@ -69,8 +72,9 @@ export const palettes: Record<"dark" | "light", Palette> = {
     textMuted: "#56565c",
     accent: "#3953c8",
     accentText: "#ffffff",
-    success: "#1d8a57",
-    danger: "#c43c34",
+    accentInk: "#3953c8",
+    success: "#187147",
+    danger: "#b43730",
     focus: "#3953c8",
     markTile: "#0a0817",
     markEyes: "#eafff8",

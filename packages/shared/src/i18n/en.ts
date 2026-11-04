@@ -1103,7 +1103,7 @@ export const en = {
   "memory.history.after": "After",
   "chat.memory.saved": "Saved to memory",
   "chat.memory.suggested": "Suggested for memory",
-  "chat.memory.open": "Open Proposals",
+  "chat.memory.open": "Open proposals",
   "chat.memory.undo": "Undo",
   "chat.memory.undone": "Undone",
   "error.memory_proposal_not_found": "This suggestion does not exist any more.",

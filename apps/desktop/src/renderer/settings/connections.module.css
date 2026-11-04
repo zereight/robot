@@ -360,7 +360,7 @@
 }
 
 .reviewText {
-  color: var(--c-accent);
+  color: var(--c-accent-ink);
   font-size: var(--text-s);
   font-weight: 500;
 }
@@ -377,7 +377,7 @@
   padding: 0 6px;
   border: 1px solid var(--c-accent);
   border-radius: var(--radius-s);
-  color: var(--c-accent);
+  color: var(--c-accent-ink);
   font-size: var(--text-xs);
 }
 
