@@ -1,10 +1,10 @@
-import { mkdirSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { isAbsolute, join, resolve } from "node:path"
+import { mkdirSync, rmSync } from "node:fs"
+import { isAbsolute, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { hostOf, insideWorkspace, type RuntimeLimit, riskyReason } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { makeOwnedFolder } from "../stale-temp.ts"
 import { bridgeToolName, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
@@ -85,10 +85,19 @@ const probeArgs = () => [
   JSON.stringify({ disableAllHooks: true, remoteControlAtStartup: false }),
 ]
 
-const probeDir = () => {
-  const dir = join(tmpdir(), "robot-claude-probe")
-  mkdirSync(dir, { recursive: true })
-  return dir
+/**
+ * A new, empty working folder for one look at the usage: the program must find no project of the
+ * user in it. The look removes it when it ends. A fixed folder that nothing removed stayed in the
+ * temporary folder for ever.
+ */
+const probeDir = () => makeOwnedFolder("robot-claude-probe-")
+
+const dropProbeDir = (dir: string) => {
+  try {
+    rmSync(dir, { recursive: true, force: true })
+  } catch {
+    // The next start of the app removes it (stale-temp.ts).
+  }
 }
 
 /** The windows in the structured answer of the program. The share used comes as 0 to 100. */
@@ -170,6 +179,7 @@ const askUsageReport = (bin: string, dir?: string): Promise<RuntimeLimit[] | nul
   new Promise((resolve) => {
     const id = "robot-usage"
     let done = false
+    const cwd = probeDir()
     const child = spawnProgram(
       bin,
       [
@@ -184,7 +194,7 @@ const askUsageReport = (bin: string, dir?: string): Promise<RuntimeLimit[] | nul
         "",
       ],
       {
-        cwd: probeDir(),
+        cwd,
         env: claudeEnv(dir),
         stdio: ["pipe", "pipe", "ignore"],
         windowsHide: true,
@@ -197,11 +207,17 @@ const askUsageReport = (bin: string, dir?: string): Promise<RuntimeLimit[] | nul
       clearTimeout(timer)
       lines.close()
       child.kill()
+      dropProbeDir(cwd)
       resolve(limits)
     }
     const timer = setTimeout(() => finish(null), PROBE_MS)
     child.on("error", () => finish(null))
-    child.on("close", () => finish(null))
+    // The folder is removed again when the program has ended: some systems keep a folder that a
+    // running program works in.
+    child.on("close", () => {
+      dropProbeDir(cwd)
+      finish(null)
+    })
     child.stdin.on("error", () => {})
     lines.on("line", (line) => {
       try {
@@ -220,11 +236,17 @@ const askUsageReport = (bin: string, dir?: string): Promise<RuntimeLimit[] | nul
 
 /** Asks for the text of `/usage`. The program answers it itself, without a model. */
 const askUsageText = async (bin: string, dir?: string): Promise<RuntimeLimit[] | null> => {
-  const done = await execute(bin, ["-p", "/usage", ...probeArgs(), "--output-format", "json"], {
-    env: claudeEnv(dir),
-    cwd: probeDir(),
-    timeoutMs: PROBE_MS,
-  })
+  const cwd = probeDir()
+  let done: Awaited<ReturnType<typeof execute>>
+  try {
+    done = await execute(bin, ["-p", "/usage", ...probeArgs(), "--output-format", "json"], {
+      env: claudeEnv(dir),
+      cwd,
+      timeoutMs: PROBE_MS,
+    })
+  } finally {
+    dropProbeDir(cwd)
+  }
   if (done.code !== 0) return null
   try {
     return parseUsageText(str(obj(JSON.parse(done.stdout)).result))
@@ -548,6 +570,9 @@ export async function* runClaude(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   const lines = createInterface({ input: child.stdout })
   const exited = new Promise<number | null>((resolve) =>
     child.on("close", (code) => {
+      // The program is gone and nothing needs the files of the run (the token is in them). This
+      // runs also when a Stop leaves the stream unread, so no step of the stream has to come first.
+      staged?.remove()
       // A program that could not start never ends its output; this ends the reading.
       lines.close()
       resolve(code)

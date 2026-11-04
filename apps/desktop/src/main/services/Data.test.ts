@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import type { RuleInput } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
@@ -314,7 +314,11 @@ describe("export and import", () => {
       expect(results.every((r) => r !== null && "path" in r)).toBe(true)
       for (const out of outs)
         expect(Object.keys(unzipSync(readFileSync(out)))).toContain("robot.db")
-      expect(readdirSync(own).filter((n) => n.startsWith("robot-export-"))).toEqual([])
+      // The folders of an export stand one level down, in the folder of the app (stale-temp.ts).
+      const left = readdirSync(own, { recursive: true, encoding: "utf8" })
+      expect(left.filter((n) => basename(n).startsWith("robot-export-"))).toEqual([])
+      // The test would pass for the wrong reason if the folder of the app were not there.
+      expect(left.some((n) => basename(n).startsWith("robot-temp"))).toBe(true)
     } finally {
       if (saved === undefined) delete process.env.TMPDIR
       else process.env.TMPDIR = saved

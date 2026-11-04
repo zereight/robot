@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createInterface } from "node:readline"
 import { EFFORTS, type ModelInfo, type PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { makeOwnedFolder } from "../stale-temp.ts"
 import { stage } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
@@ -307,7 +307,7 @@ const TAIL = 2000
 
 export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   mkdirSync(run.workspace, { recursive: true })
-  const scratch = mkdtempSync(join(tmpdir(), "robot-pi-"))
+  const scratch = makeOwnedFolder("robot-pi-")
   let systemFile: string | null = null
   if (run.system.trim()) {
     // A file, so that the program never takes the text for something else.
@@ -332,6 +332,9 @@ export async function* runPi(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   const lines = createInterface({ input: child.stdout })
   const exited = new Promise<number | null>((resolve) =>
     child.on("close", (code) => {
+      // The program is gone and nothing needs the files of the run (the token is in them). This
+      // runs also when a Stop leaves the stream unread, so no step of the stream has to come first.
+      staged?.remove()
       lines.close()
       resolve(code)
     }),

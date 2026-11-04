@@ -220,6 +220,9 @@ export async function* runCodex(run: RuntimeRun): AsyncGenerator<AgentEvent> {
   const lines = createInterface({ input: child.stdout })
   const exited = new Promise<number | null>((resolve) =>
     child.on("close", (code) => {
+      // The program is gone and nothing needs the files of the run (the token is in them). This
+      // runs also when a Stop leaves the stream unread, so no step of the stream has to come first.
+      staged?.remove()
       lines.close()
       resolve(code)
     }),
