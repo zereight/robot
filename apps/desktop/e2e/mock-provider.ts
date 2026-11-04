@@ -272,6 +272,15 @@ const answer = (body: ChatBody): Plan => {
   if (text.includes("slow"))
     return { chunks: Array.from({ length: 60 }, (_, i) => `word${i} `), delay: 50 }
   if (text.includes("markdown")) return { chunks: [MARKDOWN_REPLY], delay: 0 }
+  // Links of a reply: one with no scheme, one full address, and one relative address.
+  if (text.includes("bare link"))
+    return {
+      chunks: [
+        "Read [the guide](www.example.com/guide) and [the docs](https://example.com/docs). ",
+        "See [local](./local.md) too.",
+      ],
+      delay: 0,
+    }
   if (text.includes("stream parts"))
     return { chunks: Array.from({ length: STREAM_PARTS }, (_, i) => streamPart(i)), delay: 50 }
   if (text.includes("think"))
