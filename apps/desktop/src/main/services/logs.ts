@@ -1,6 +1,9 @@
 import { appendFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
+/** The logs that the app writes. */
+export type LogName = "channels" | "teams" | "browser" | "app"
+
 /** The size limit of one log file. When a file grows past it, the oldest lines go first. */
 export const LOG_MAX_BYTES = 256 * 1024
 
@@ -10,7 +13,7 @@ export const LOG_MAX_BYTES = 256 * 1024
  */
 export const appendLog = (
   dataDir: string,
-  name: "channels" | "teams",
+  name: LogName,
   entry: Record<string, unknown>,
   maxBytes = LOG_MAX_BYTES,
 ) => {
@@ -42,12 +45,7 @@ export const appendLog = (
  * (spec 014: the link log keeps 90 days). A line with no readable time stays. A log that cannot be
  * read or written is left as it is.
  */
-export const pruneLog = (
-  dataDir: string,
-  name: "channels" | "teams",
-  maxAgeMs: number,
-  now: number,
-) => {
+export const pruneLog = (dataDir: string, name: LogName, maxAgeMs: number, now: number) => {
   try {
     const file = join(dataDir, "logs", `${name}.log`)
     const lines = readFileSync(file, "utf8").split("\n").filter(Boolean)
@@ -62,5 +60,18 @@ export const pruneLog = (
     if (kept.length !== lines.length) writeFileSync(file, kept.length ? `${kept.join("\n")}\n` : "")
   } catch {
     // Dropped on purpose.
+  }
+}
+
+/**
+ * The newest `count` lines of a log, oldest first. A log that is not there, or cannot be read, has
+ * no lines.
+ */
+export const readLogTail = (dataDir: string, name: LogName, count: number): string[] => {
+  try {
+    const lines = readFileSync(join(dataDir, "logs", `${name}.log`), "utf8").split("\n")
+    return lines.filter(Boolean).slice(-count)
+  } catch {
+    return []
   }
 }

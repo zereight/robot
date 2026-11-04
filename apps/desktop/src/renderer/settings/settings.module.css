@@ -5,7 +5,29 @@
   grid-template-columns: minmax(180px, 240px) 1fr;
   background: var(--c-main);
   z-index: 10;
+  /*
+   * This screen covers the whole window, but the screen under it still has drag areas (its header,
+   * its rail). The window builds its drag area from the whole document, covered or not, and a
+   * press in a drag area starts a window drag instead of reaching what lies there: a native page
+   * such as the Teams page, or a button. Later in the document wins, so this cuts them all away.
+   */
+  -webkit-app-region: no-drag;
   animation: page-in var(--motion-medium) var(--ease-out);
+}
+
+/* The strip at the top that still drags the window while this screen shows (macOS only). */
+.dragStrip {
+  display: none;
+}
+
+:root[data-platform="darwin"] .dragStrip {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  -webkit-app-region: drag;
 }
 
 .page[data-closing="true"] {

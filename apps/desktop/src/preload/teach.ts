@@ -1,9 +1,14 @@
 // The recorder of "Teach a task" (spec 017). It runs in the browser page of an agent, in a world
-// that the scripts of the page cannot reach. It reports what the user does while the app records,
-// and nothing else. Only real input of the user counts: events that a script makes are skipped.
+// that the scripts of the page cannot reach. It reports what the user does while the app records.
+// Only real input of the user counts: events that a script makes are skipped.
+// It also tells the diagnostic report, at the bottom of this file, that a click or a touch reached
+// the document. That report has the kind of event and a place, never text of the page.
 // A sandboxed preload cannot load packages, so it imports only plain constants and types, from a
 // module that the preload of the window does not load.
 import {
+  PAGE_INPUT_CHANNEL,
+  PAGE_INPUT_TYPES,
+  type PageInputNote,
   TEACH_CHANNEL,
   TEACH_KEYS,
   TEACH_ON_CHANNEL,
@@ -179,3 +184,45 @@ document.addEventListener(
   },
   { capture: true, passive: true },
 )
+
+// --- The diagnostic report ---------------------------------------------------------------------
+// A click that does not work in a page has two causes that look alike: it never reaches the
+// document, or the page does not act on it. The app counts what its window gives to the page. This
+// counts what the document gets, so the report can tell the two apart. It only listens: it never
+// stops an event and never reads text.
+
+// A desktop without a touch screen may have no `TouchEvent` and no `Touch` at all, so the events
+// are told apart by their fields, and no class of touch is named.
+const pointerOf = (event: Event): string => {
+  if ("pointerType" in event) return String(event.pointerType)
+  return "touches" in event ? "touch" : ""
+}
+
+const placeOf = (event: Event): { x: number; y: number } => {
+  const touches = "touches" in event ? (event.touches as ArrayLike<Touch>) : undefined
+  const point = touches?.[0] ?? (event as MouseEvent)
+  return { x: Math.round(point.clientX ?? 0), y: Math.round(point.clientY ?? 0) }
+}
+
+for (const type of PAGE_INPUT_TYPES) {
+  window.addEventListener(
+    type,
+    (event) => {
+      try {
+        const note: PageInputNote = {
+          type,
+          pointer: pointerOf(event),
+          trusted: event.isTrusted,
+          tag: event.target instanceof Element ? event.target.tagName.toLowerCase() : "",
+          ...placeOf(event),
+          width: window.innerWidth,
+          height: window.innerHeight,
+        }
+        ipcRenderer.send(PAGE_INPUT_CHANNEL, note)
+      } catch {
+        // A report that fails must never break the page.
+      }
+    },
+    { capture: true, passive: true },
+  )
+}
