@@ -22,6 +22,21 @@ const contrast = (a: string, b: string) => {
   return (hi + 0.05) / (lo + 0.05)
 }
 
+/** The surfaces of the light theme where a face sits: main, side list, and a selected row. */
+const lightSurfaces = ["#ffffff", "#f3f3f4", "#e1e1e4"]
+const hexLuminance = (hex: string) => {
+  const value = Number.parseInt(hex.slice(1), 16)
+  const channel = (shift: number) => {
+    const c = ((value >> shift) & 255) / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
+}
+const contrastWithHex = (colour: string, hex: string) => {
+  const [hi, lo] = [luminance(colour), hexLuminance(hex)].sort((x, y) => y - x) as [number, number]
+  return (hi + 0.05) / (lo + 0.05)
+}
+
 describe("face art", () => {
   test("each hue gives its own light on a dark tile", () => {
     const glows = new Set<string>()
@@ -41,6 +56,61 @@ describe("face art", () => {
       const { tile, core } = faceTones(hue)
       expect(contrast(core, tile)).toBeGreaterThanOrEqual(7)
     }
+  })
+
+  test("the dark theme is the default, and its colours do not change", () => {
+    for (let hue = 0; hue < FACE_HUES; hue++) {
+      expect(faceTones(hue)).toEqual(faceTones(hue, "dark"))
+      expect(faceLayers(hue, 40)).toEqual(faceLayers(hue, 40, "dark"))
+    }
+    expect(faceTones(2, "dark").tile).toBe("hsl(72, 42%, 9%)")
+  })
+
+  describe("the light theme", () => {
+    test("each hue gives its own tint on a light tile, with dark features", () => {
+      const tiles = new Set<string>()
+      for (let hue = 0; hue < FACE_HUES; hue++) {
+        const { tile, core } = faceTones(hue, "light")
+        tiles.add(tile)
+        expect(lightness(tile)).toBeGreaterThan(85)
+        expect(lightness(core)).toBeLessThan(20)
+      }
+      expect(tiles.size).toBe(FACE_HUES)
+    })
+
+    test("the features stand out from the tile at 7:1 or more, for every hue", () => {
+      for (let hue = 0; hue < FACE_HUES; hue++) {
+        const { tile, core } = faceTones(hue, "light")
+        expect(contrast(core, tile)).toBeGreaterThanOrEqual(7)
+      }
+    })
+
+    test("the rim shows on a light surface at 3:1 or more, for every hue", () => {
+      for (let hue = 0; hue < FACE_HUES; hue++) {
+        const { ring } = faceTones(hue, "light")
+        // A rim of light is a colour with an alpha in the dark theme. Here it must be solid.
+        expect(ring.startsWith("hsl(")).toBe(true)
+        for (const surface of lightSurfaces) {
+          expect(contrastWithHex(ring, surface)).toBeGreaterThanOrEqual(3)
+        }
+      }
+    })
+
+    test("a face has no glow: the core is the only layer, at every size", () => {
+      for (const size of [16, 24, 40, 64, 80]) {
+        for (let hue = 0; hue < FACE_HUES; hue++) {
+          expect(faceLayers(hue, size, "light")).toEqual([
+            { colour: faceTones(hue, "light").core, grow: 0, alpha: 1 },
+          ])
+        }
+      }
+    })
+
+    test("the hue colour for a swatch differs for every hue", () => {
+      const glows = new Set<string>()
+      for (let hue = 0; hue < FACE_HUES; hue++) glows.add(faceTones(hue, "light").glow)
+      expect(glows.size).toBe(FACE_HUES)
+    })
   })
 
   test("every shape has parts, and a shape out of range draws as the nearest one", () => {

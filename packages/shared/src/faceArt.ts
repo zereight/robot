@@ -1,28 +1,44 @@
 /**
- * The drawing of an agent face, as data. A face is a very dark disc with features of light, as
- * the app mark is. The desktop and the phone draw the same parts in the same layers, so a face
- * looks the same on both. A renderer needs no filter: the glow is a stack of wider, fainter copies
- * of the features under the sharp ones.
+ * The drawing of an agent face, as data. In the dark theme a face is a very dark disc with
+ * features of light, as the app mark is. In the light theme it is a light disc with dark features,
+ * and no glow. The desktop and the phone draw the same parts in the same layers, so a face looks
+ * the same on both. A renderer needs no filter: the glow is a stack of wider, fainter copies of the
+ * features under the sharp ones.
  */
 
-/** The three colours of a face, as CSS colours. */
+/** The two themes of the app. */
+export type FaceTheme = "dark" | "light"
+
+/** The four colours of a face, as CSS colours. */
 export interface FaceTones {
-  /** The dark disc, tinted by the hue. */
+  /** The disc, tinted by the hue: very dark in the dark theme, light in the light theme. */
   readonly tile: string
-  /** The light that spills round the features. */
+  /**
+   * The colour of the hue. In the dark theme it is the light that spills round the features. In
+   * the light theme a face has no glow, and it is the colour of the swatch of the hue.
+   */
   readonly glow: string
-  /** The features themselves: near white, with a trace of the hue. */
+  /** The features themselves: near white in the dark theme, dark in the light theme. */
   readonly core: string
-  /** The thin rim of light round the face, or round a picture in its place. */
+  /** The thin rim round the face, or round a picture in its place. */
   readonly ring: string
 }
 
 /**
- * The colours of a face. The hue picks the colour of the light. The tile is very dark in both
- * themes, so the features can be light.
+ * The colours of a face. The hue picks the colour of the light (dark theme) or the tint (light
+ * theme). The features stand out from the disc by 7:1 or more in both themes, and the rim of the
+ * light theme is dark enough to show on a light surface.
  */
-export const faceTones = (hue: number): FaceTones => {
+export const faceTones = (hue: number, theme: FaceTheme = "dark"): FaceTones => {
   const angle = hue * 36
+  if (theme === "light") {
+    return {
+      tile: `hsl(${angle}, 75%, 90%)`,
+      glow: `hsl(${angle}, 80%, 45%)`,
+      core: `hsl(${angle}, 65%, 14%)`,
+      ring: `hsl(${angle}, 75%, 30%)`,
+    }
+  }
   return {
     tile: `hsl(${angle}, 42%, 9%)`,
     glow: `hsl(${angle}, 100%, 66%)`,
@@ -163,13 +179,16 @@ export const LARGE_FACE = 48
  * The layers of a face, from the bottom: the glow, then the sharp core. A small face has fewer
  * layers of glow, because the layers of a small face cannot be told apart, and a long list of
  * small faces must stay cheap to draw. The most that a screen shows is a few large faces and
- * many small ones.
+ * many small ones. In the light theme there is no glow: the core is the only layer.
  */
-export const faceLayers = (hue: number, size: number): readonly FaceLayer[] => {
-  const tones = faceTones(hue)
+export const faceLayers = (
+  hue: number,
+  size: number,
+  theme: FaceTheme = "dark",
+): readonly FaceLayer[] => {
+  const tones = faceTones(hue, theme)
+  const core = { colour: tones.core, grow: 0, alpha: 1 }
+  if (theme === "light") return [core]
   const glow = size < SMALL_FACE ? [halos[2]] : size < LARGE_FACE ? [halos[1], halos[3]] : halos
-  return [
-    ...glow.map((halo) => ({ colour: tones.glow, ...halo })),
-    { colour: tones.core, grow: 0, alpha: 1 },
-  ]
+  return [...glow.map((halo) => ({ colour: tones.glow, ...halo })), core]
 }
