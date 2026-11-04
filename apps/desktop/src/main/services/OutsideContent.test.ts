@@ -15,6 +15,7 @@ import { appLayer } from "../layers.ts"
 import { ActionLog, type ActionLogService, logTarget } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
 import { Chat, type TaskOrigin } from "./Chat.ts"
+import { asOldShape } from "./channelTurns.testing.ts"
 import { Database } from "./Database.ts"
 import { Memory } from "./Memory.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
@@ -54,7 +55,9 @@ const server = Bun.serve({
         { headers: { "content-type": "text/html" } },
       )
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as { messages: { role: string; content: string | null }[] }
+    const body = asOldShape(
+      (await req.json()) as { messages: { role: string; content: string | null }[] },
+    )
     const last = body.messages.at(-1)
     if (last?.role === "tool")
       return sse([{ choices: [{ delta: { content: "Done." } }] }, "[DONE]"])

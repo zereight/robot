@@ -15,6 +15,7 @@ import { ActionLog } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat, type TaskOrigin } from "./Chat.ts"
+import { asOldShape } from "./channelTurns.testing.ts"
 import { Database } from "./Database.ts"
 import { Handover } from "./Handover.ts"
 import { Memory } from "./Memory.ts"
@@ -60,7 +61,11 @@ const server = Bun.serve({
     // A context of 1000 tokens, so that a compact has a size to work with.
     if (url.pathname === "/v1/models")
       return Response.json({ data: [{ id: "mock", context_length: 1000 }] })
-    const body = (await req.json()) as { messages: { role: string; content: string | null }[] }
+    // The text of a member starts with its assignment (spec 004): the stand-in reads it behind the
+    // last message of the user, as before.
+    const body = asOldShape(
+      (await req.json()) as { messages: { role: string; content: string | null }[] },
+    )
     const last = body.messages.at(-1)
     if (last?.role === "tool") return sse([delta("Done."), usage, "[DONE]"])
     const text = String(last?.content ?? "")

@@ -1137,12 +1137,24 @@ export const migrations: readonly string[] = [
   ALTER TABLE memory_history ADD COLUMN channel_name_after TEXT;
   `,
   `
+  -- "The lead answers questions" (spec 004, S74): a setting of the channel, on (1) by default. A
+  -- question of a member in a part goes to the lead first. It syncs with the channel (spec 019):
+  -- the dirty trigger of the channel already watches every column.
+  ALTER TABLE channel ADD COLUMN lead_answers INTEGER NOT NULL DEFAULT 1;
+  `,
+  `
   -- The parent channel (spec 030, S109). NULL is a top channel, as every channel was before this
   -- step, so existing data keeps its meaning. The column has no foreign key: a sync (019) can bring
   -- a sub-channel before its parent, and a parent that is gone counts as no parent. When the user
   -- removes a channel, the app clears the field of its sub-channels. It syncs with the channel: the
   -- dirty trigger of the channel already watches every column. An export keeps it (014).
   ALTER TABLE channel ADD COLUMN parent_channel_id TEXT;
+  `,
+  `
+  -- The picture of a channel (spec 004, S88): a square PNG of at most 256 px and 1 MB as a data
+  -- address, or NULL. It is in the database, so an export keeps it, and the delete of a channel
+  -- removes it. It syncs with the channel (the dirty trigger of the channel watches every column).
+  ALTER TABLE channel ADD COLUMN picture TEXT;
   `,
   `
   -- The part "Organization" of the settings (spec 013, 030, S110). One row for the profile; its id
@@ -1159,12 +1171,6 @@ export const migrations: readonly string[] = [
   );
   INSERT INTO organization (id) VALUES ('organization');
   ${dirtyTriggers("organization", "org", plainId)}
-  `,
-  `
-  -- "The lead answers questions" (spec 004, S74): a setting of the channel, on (1) by default. A
-  -- question of a member in a part goes to the lead first. It syncs with the channel (spec 019):
-  -- the dirty trigger of the channel already watches every column.
-  ALTER TABLE channel ADD COLUMN lead_answers INTEGER NOT NULL DEFAULT 1;
   `,
   `
   -- The switch "Ask up the line" (spec 030, 013), in the row of the part "Organization": 0 (off)

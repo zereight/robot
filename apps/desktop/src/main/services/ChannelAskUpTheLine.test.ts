@@ -117,7 +117,9 @@ const server = Bun.serve({
       // test that ran by then and take the answer that this test had queued for its own look.
       // That test then got a different answer and waited for ever for the user. A request of an
       // older test (it arrives late, under load) takes nothing: it gets a plain pass at once.
-      const stale = staleRequest(content)
+      // The instructions of the channel carry the marker of the test, in the system text of a
+      // member and in the text of a look (spec 004). Read both.
+      const stale = staleRequest(`${system}\n${content}`)
       if (!stale) lookRequests.push({ who, system, content })
       const wait = stale ? 0 : (script.delay[who] ?? 0)
       const status = stale ? 0 : (script.status[who] ?? 0)
@@ -140,7 +142,10 @@ const server = Bun.serve({
     const turnStart = body.messages.map((m) => m.role).lastIndexOf("user")
     const turn = body.messages.slice(Math.max(turnStart, 0))
     const text = turn.map((m) => m.content).join("\n")
-    const wanted = Number(/ASK (\d+)/.exec(text)?.[1] ?? 0)
+    // The assignment of a member is in the system text, with the instructions of the channel
+    // (spec 004, "What a member reads"). The stand-in reads both, as the part says what to ask.
+    const seen = `${system}\n${text}`
+    const wanted = Number(/ASK (\d+)/.exec(seen)?.[1] ?? 0)
     const answered = turn.filter((m) => m.role === "tool").length
     if (wanted > 0 && body.tools) {
       if (answered < wanted)
@@ -151,7 +156,7 @@ const server = Bun.serve({
         )
       return sse(`Done with ${last?.content ?? ""}`)
     }
-    const run = /RUN (.*)$/m.exec(text)?.[1]
+    const run = /RUN (.*)$/m.exec(seen)?.[1]
     if (run && body.tools && answered === 0) return toolCall("run_command", { command: run })
     return sse(`Echo: ${content.split("\n").at(-1)}`)
   },

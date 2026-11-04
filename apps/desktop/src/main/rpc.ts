@@ -812,6 +812,10 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ id: Schema.String, patch: ChannelPatch }))(input).pipe(
       Effect.flatMap(({ id, patch }) => Channels.use((c) => c.update(id, patch))),
     ),
+  "channels.setPicture": (input) =>
+    decode(Schema.Struct({ id: Schema.String, dataUrl: Schema.NullOr(Schema.String) }))(input).pipe(
+      Effect.flatMap(({ id, dataUrl }) => Channels.use((c) => c.setPicture(id, dataUrl))),
+    ),
   "channels.delete": (input) =>
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => Channels.use((c) => c.remove(id))),

@@ -337,6 +337,7 @@ export interface CutNotice {
 
 export type FilePart = Extract<MessagePart, { kind: "file" }>
 export type SkillPart = Extract<MessagePart, { kind: "skill" }>
+export type ToolPart = Extract<MessagePart, { kind: "tool" }>
 
 export interface QueuedMessage {
   readonly id: string
@@ -478,3 +479,51 @@ export const isNoteOnly = (parts: string | readonly MessagePart[]): boolean => {
     return false
   }
 }
+
+/**
+ * True for a tool step that may fold into a run: a finished plain card. A step that runs, waits,
+ * failed, was refused, or carries a note (an approval, a decision, a memory, knowledge or
+ * settings note) always stays open, so the user sees what needs them.
+ */
+export const isFoldableTool = (part: MessagePart): part is ToolPart =>
+  part.kind === "tool" &&
+  part.state === "done" &&
+  part.ask === undefined &&
+  part.refused === undefined &&
+  part.reason === undefined &&
+  part.decision === undefined &&
+  part.knowledge === undefined &&
+  part.memory === undefined &&
+  part.settings === undefined
+
+/** One row of a message: one part, or a run of folded tool steps. */
+export type PartSegment =
+  | { readonly kind: "part"; readonly part: MessagePart }
+  | { readonly kind: "tools"; readonly parts: readonly ToolPart[] }
+
+/**
+ * Groups runs of finished plain tool steps when `fold` is true, so a chat shows one line per
+ * run. With `fold` false every part is its own row.
+ */
+type MutableSegment = { kind: "part"; part: MessagePart } | { kind: "tools"; parts: ToolPart[] }
+
+export const groupParts = (
+  parts: readonly MessagePart[],
+  fold: boolean,
+): readonly PartSegment[] => {
+  if (!fold) return parts.map((part): PartSegment => ({ kind: "part", part }))
+  const out: MutableSegment[] = []
+  for (const part of parts) {
+    const last = out[out.length - 1]
+    if (isFoldableTool(part) && last?.kind === "tools") last.parts.push(part)
+    else if (isFoldableTool(part)) out.push({ kind: "tools", parts: [part] })
+    else out.push({ kind: "part", part })
+  }
+  return out
+}
+
+/** The catalogue key of a folded run: one step reads in the singular ("1 tool step"). */
+export const foldedToolsKey = (
+  count: number,
+): "chat.tools.folded.one" | "chat.tools.folded.other" =>
+  count === 1 ? "chat.tools.folded.one" : "chat.tools.folded.other"

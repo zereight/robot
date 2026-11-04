@@ -1,5 +1,5 @@
 //! The license list of the host crates (`host/licenses.json`) must match `Cargo.lock`, and every
-//! crate must have a license that the app may ship (CLEANROOM.md).
+//! crate must have a license that the app may ship (AGENTS.md).
 //!
 //! After a change of the dependencies, write the list again:
 //!   ROBOT_UPDATE_LICENSES=1 cargo test --manifest-path host/Cargo.toml --test licenses
@@ -19,7 +19,7 @@ struct Entry {
     license: String,
 }
 
-/// Licenses that the app may ship. "MIT-compatible" in CLEANROOM.md, plus Unicode-3.0, the license
+/// Licenses that the app may ship. "MIT-compatible" in AGENTS.md, plus Unicode-3.0, the license
 /// of the Unicode data tables that the parsers of Rust use; it asks for the same notice as MIT.
 const ALLOWED: &[&str] = &[
     "MIT",

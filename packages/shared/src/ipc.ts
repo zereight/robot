@@ -469,6 +469,8 @@ export interface RpcMethods {
   "channels.list": { input: { serverId: string }; output: readonly Channel[] }
   "channels.create": { input: ChannelCreate; output: Channel }
   "channels.update": { input: { id: string; patch: ChannelPatch }; output: Channel }
+  /** Sets the picture of a channel, or removes it with null (spec 004, "Picture"). */
+  "channels.setPicture": { input: { id: string; dataUrl: string | null }; output: Channel }
   "channels.delete": { input: { id: string }; output: undefined }
   "channels.history": { input: { channelId: string }; output: readonly ChannelMessage[] }
   /** Posts a job. `awaiting` is true when the user has to pick the member who takes it. */

@@ -1,5 +1,6 @@
 import {
   type Agent,
+  CHANNEL_PICTURE_BYTES,
   ClientAgentCreate,
   ClientAgentPatch,
   ClientChannelCreate,
@@ -236,6 +237,21 @@ export const changeHandlers: Record<string, ChangeHandler> = {
         input,
       )
       return yield* Channels.use((c) => c.update(id, patch))
+    }),
+
+  "channels.setPicture": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      // The address is long, and the service checks the image. Here only its size is held.
+      const { id, dataUrl } = yield* strict(
+        Schema.Struct({
+          id: Id,
+          dataUrl: Schema.NullOr(
+            Schema.String.check(Schema.isMaxLength(CHANNEL_PICTURE_BYTES * 2)),
+          ),
+        }),
+      )(input)
+      return yield* Channels.use((c) => c.setPicture(id, dataUrl))
     }),
 
   "memory.list": (input) =>

@@ -56,7 +56,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - An empty user section shows a short muted line that tells how to put a place in it.
 - A collapsed section (built-in or user) shows its header only. The header then shows the sum of
   the unread counts of its places, as a badge, and the working dot when one of its places works.
-  The sum of a built-in section includes the places of its user sections.
+  The dot breathes as the dot of a place does (see "Place rows"). The sum of a built-in section
+  includes the places of its user sections.
 
 ### Flows
 
@@ -185,7 +186,9 @@ The Channels section holds channel sections. The Agents section holds agent sect
   messages.
 - An unread count shows as a small badge at the right end.
 - A working agent has a small success-colour dot on its face, with a thin soft ring of the same
-  colour. A channel with work running has the same dot on its `#` mark.
+  colour. A channel with work running has the same dot on its `#` mark. The dot breathes while
+  the work runs, as 000 says: the dot and its ring grow and fade, without end. With reduce motion,
+  the dot is still. A dot shows only while a place works, and it goes at once when the work ends.
 - The row's accessible name includes the last message, but the row does not show it.
 - A place that waits for the user stays in its own section and keeps its badge. There is no
   separate group for places that need the user.

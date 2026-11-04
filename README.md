@@ -44,7 +44,6 @@ can see and edit: its instructions, its memory, its knowledge, and the skills th
 - [Architecture](#architecture)
 - [Testing](#testing)
 - [Release](#release)
-- [Clean-room project](#clean-room-project)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [License](#license)
@@ -71,7 +70,7 @@ can see and edit: its instructions, its memory, its knowledge, and the skills th
 | **Notifications** | System notifications by kind, with mutes. A status island on the screen shows agents at work and lets you answer an approval. Keep the computer awake while agents work. |
 | **Teams link** (experimental) | Talk to one agent or one channel from a Microsoft Teams chat. The app reads the chat in a page where you signed in by hand, and writes the answers to the same chat. It is off until you turn it on. It has been checked against a stand-in page only, not against the real Teams page. |
 | **Window and settings** | Server rail, place list with search (Cmd+K), your own sections, unread counts, a working dot, role badges, a resizable list and an activity panel. English or Korean (or follow the system), dark, light or system theme, three text sizes, reduce motion, start at login, workspace folder, third-party licences. |
-| **Motion** | Calm enter and exit motion, every motion under 300 ms. Reduce motion turns all of it off. |
+| **Motion** | Calm enter and exit motion, every motion under 300 ms. A working agent shows two motions that do not end: its badge light breathes, and its dot in the place list breathes. Reduce motion turns all of it off. |
 | **Local data** | One SQLite database in your app data folder. A reply is saved while it streams, so a crash loses at most the last part. Keys go to the system keychain. Export and import your data; keys and secrets stay out of the export. |
 
 ### Not built yet
@@ -218,7 +217,7 @@ packages/link/       The device link: identity, pairing, encrypted messages
 packages/phone/      The phone's side of the link: hub, places, cache
 packages/teams-bridge/  A stand-alone Teams reader for tests (not part of the app)
 specs/               Behaviour specs: the only source for implementation
-docs/                Spec questions, provenance, release process, formats, measures
+docs/                Spec questions, release process, formats, measures
 ```
 
 ### App icon
@@ -360,24 +359,11 @@ disk image and the zip file (version, arm64 only, host program, signature). A ve
 suffix, such as `0.2.0-beta.1`, becomes a pre-release. The full process, the dry run and the
 signing plan are in [docs/release.md](docs/release.md).
 
-## Clean-room project
-
-ROBot is written from an empty tree. Two roles keep it clean:
-
-- **Spec authors** write behaviour specs in [`specs/`](specs/README.md): what the user sees and
-  does, never code.
-- **Implementers** build only from those specs and public documentation, and never look at other
-  apps' code.
-
-Unclear spec points and the choices made for them are in
-[docs/spec-questions.md](docs/spec-questions.md). Every merged change has a line in
-[docs/provenance.md](docs/provenance.md). The rules are in [CLEANROOM.md](CLEANROOM.md).
-
 ## Roadmap
 
 The [spec index](specs/README.md) lists every milestone and the slices of each.
-[docs/spec-changes.md](docs/spec-changes.md) and [docs/provenance.md](docs/provenance.md) say what
-each slice built and what it left out. This table says where the app stands.
+[docs/spec-changes.md](docs/spec-changes.md) says what each slice built and what it left out.
+This table says where the app stands.
 
 | Milestone | Scope | State |
 | --- | --- | --- |
@@ -392,7 +378,8 @@ each slice built and what it left out. This table says where the app stands.
 
 ## Contributing
 
-1. Read [CLEANROOM.md](CLEANROOM.md) and [AGENTS.md](AGENTS.md), and state your role in the PR.
+1. Read [AGENTS.md](AGENTS.md). Unclear spec points and the choices made for them are in
+   [docs/spec-questions.md](docs/spec-questions.md).
 2. One branch and one pull request per change, with the PR template filled in.
 3. Interface text goes in both catalogues, `packages/shared/src/i18n/en.ts` and `ko.ts`.
 4. Run `bun run lint`, `bun run typecheck`, `bun run test` and the end-to-end tests for the area
