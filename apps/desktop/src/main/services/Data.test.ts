@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import type { RuleInput } from "@robot/shared"
@@ -224,6 +233,37 @@ describe("export and import", () => {
     // The entry of the log comes back and names its rule.
     const log = await b.run(ActionLog.use((l) => l.list()))
     expect(log).toMatchObject([{ decidedBy: "allow_rule", rule: { id: own.id, deleted: false } }])
+  })
+
+  // Each export works in its own folder and removes it at the end, so two exports at once do not
+  // meet in one temporary file, and none stays behind.
+  test("two exports at once both finish, and no temporary folder stays", async () => {
+    // The test has its own temporary folder, so that an export of another test file, which runs
+    // at the same time in another process, is not counted.
+    const own = mkdtempSync(join(tmpdir(), "robot-own-tmp-"))
+    const saved = process.env.TMPDIR
+    process.env.TMPDIR = own
+    try {
+      const out = join(testPlatform().dataDir, "twice.zip")
+      const a = app({ save: out })
+      const local = await a.run(Servers.use((s) => s.local))
+      await a.run(
+        Agents.use((x) =>
+          x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+        ),
+      )
+      const results = await Promise.all([
+        a.run(Data.use((d) => d.export())),
+        a.run(Data.use((d) => d.export())),
+      ])
+      expect(results.every((r) => r !== null && "path" in r)).toBe(true)
+      expect(Object.keys(unzipSync(readFileSync(out)))).toContain("robot.db")
+      expect(readdirSync(own).filter((n) => n.startsWith("robot-export-"))).toEqual([])
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR
+      else process.env.TMPDIR = saved
+      rmSync(own, { recursive: true, force: true })
+    }
   })
 
   test("a hidden key leaves no trace in the pages of the database file", async () => {

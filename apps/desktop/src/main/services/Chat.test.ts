@@ -257,6 +257,25 @@ describe("Chat", () => {
     expect(tasks.find((x) => x.retryOf === failed?.id)?.state).toBe("done")
   })
 
+  // Two taps on Retry (or a tap on the computer and one on the phone) give one reply, not two.
+  test("a retry that is asked twice at once makes one new reply", async () => {
+    const t = await setup()
+    failNext = true
+    await t.send("please fail")
+    await t.settled()
+    const failedId = (await t.history()).messages[1]?.id ?? ""
+    const retry = () => t.runtime.runPromiseExit(Chat.use((c) => c.retry(t.agent.id, failedId)))
+    const [a, b] = await Promise.all([retry(), retry()])
+    await t.settled()
+    // Exactly one of the two asks went through; the other found no failed reply to try again.
+    expect([a, b].filter((exit) => Exit.isSuccess(exit))).toHaveLength(1)
+    const { messages } = await t.history()
+    expect(messages.map((m) => m.author)).toEqual(["user", "agent"])
+    expect(messages[1]?.status).toBe("done")
+    // The same ask again, after the reply is done, is refused too.
+    expect(Exit.isFailure(await retry())).toBe(true)
+  })
+
   test("a usage limit fails the turn with the reset time", async () => {
     const t = await setup()
     await t.send("hit the limit")
