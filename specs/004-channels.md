@@ -40,7 +40,7 @@ The user gives a job to a group of agents in one place and watches them divide a
 
 1. Create: the user picks "New channel", types a name and topic, adds members, and optionally picks
    a lead and a section. The "Section" choice lists the channel sections and "No section". It
-   starts at "No section". Channel settings show the same choice.
+   starts at "No section". Channel settings show the same choice. A channel can also be made from a channel starter, which makes the channel and its agents in one step (see 031).
 2. Post a job: the user writes in the channel. The app chooses who gets the job, in this order:
    1. `@all`: every available member gets its own task for the message. Nobody else reads it.
    2. One or more `@Name` mentions: each named member answers. The lead does not read the job.
