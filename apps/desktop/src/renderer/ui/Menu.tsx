@@ -116,7 +116,12 @@ export const PopupMenu = (props: {
                 {item.label}
               </button>
               <Show when={item.disabled && item.reason}>
-                <div class={styles.menuReason} id={reasonId(item)} data-testid={reasonId(item)}>
+                <div
+                  class={styles.menuReason}
+                  role="presentation"
+                  id={reasonId(item)}
+                  data-testid={reasonId(item)}
+                >
                   {item.reason}
                 </div>
               </Show>

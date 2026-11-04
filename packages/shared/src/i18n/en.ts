@@ -1953,7 +1953,7 @@ export const en = {
     '3. Start your reply with one line: "Model:" and the path of the model file.',
     "4. Then copy the last 30 lines of the TLC output without any change.",
     '5. Make the last line of your reply "TLC_RESULT: PASS" when TLC says that it found no error. Make it "TLC_RESULT: FAIL" when TLC reports an error.',
-    'If Java or the file tla2tools.jar is missing, if TLC cannot read the model after one fix, or if a shell command is refused, end your reply with a last line that starts with "Blocked:" and gives the reason in one sentence. In that case, write no TLC_RESULT line.',
+    'If Java or the file tla2tools.jar is missing, if TLC cannot read the model after one fix, or if you cannot run a shell command (for example, it is refused), end your reply with a last line that starts with "Blocked:" and gives the reason in one sentence. In that case, write no TLC_RESULT line.',
   ].join("\n"),
   "workflowStarter.tla.check.name": "TLC passed?",
   "workflowStarter.tla.pass.name": "No error found",

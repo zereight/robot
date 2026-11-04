@@ -1933,7 +1933,7 @@ export const ko: Record<MessageKey, string> = {
     '3. 답장의 첫 줄은 "Model:"과 모델 파일의 경로로 쓰세요.',
     "4. 이어서 TLC 출력의 마지막 30줄을 바꾸지 말고 그대로 복사하세요.",
     '5. TLC가 오류를 찾지 못했다고 하면 답장의 마지막 줄을 "TLC_RESULT: PASS"로 쓰고, TLC가 오류를 보고하면 "TLC_RESULT: FAIL"로 쓰세요.',
-    'Java나 tla2tools.jar 파일이 없거나, 한 번 고친 뒤에도 TLC가 모델을 읽지 못하거나, 셸 명령이 거부되면, 답장의 마지막 줄을 "Blocked:"로 시작하고 이유를 한 문장으로 쓰세요. 이 경우에는 TLC_RESULT 줄을 쓰지 마세요.',
+    'Java나 tla2tools.jar 파일이 없거나, 한 번 고친 뒤에도 TLC가 모델을 읽지 못하거나, 셸 명령을 실행할 수 없으면(예: 거부됨), 답장의 마지막 줄을 "Blocked:"로 시작하고 이유를 한 문장으로 쓰세요. 이 경우에는 TLC_RESULT 줄을 쓰지 마세요.',
   ].join("\n"),
   "workflowStarter.tla.check.name": "TLC 통과?",
   "workflowStarter.tla.pass.name": "오류 없음",
