@@ -12,6 +12,7 @@ import {
   type RawTeamsRead,
   readScript,
   sendScript,
+  type TeamsPageDriver,
 } from "./surface.ts"
 import { TEAMS_PAGE } from "./teamsPageSelectors.ts"
 
@@ -245,6 +246,62 @@ describe("the surface on the stand-in Teams", () => {
     surface(chat).close()
     expect(chat.isOpen).toBe(false)
     expect(chat.placed).toBeUndefined()
+  })
+})
+
+describe("two looks at the same time", () => {
+  // The view of a page exists as soon as the load starts, but it has no document until the load
+  // ends: it reads as a blank page.
+  const slowDriver = () => {
+    let open = false
+    let loaded = false
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const state = { loads: 0, reads: 0 }
+    const driver: TeamsPageDriver = {
+      isOpen: () => open,
+      open: async () => {
+        state.loads++
+        open = true
+        await gate
+        loaded = true
+      },
+      evaluate: async <T>() => {
+        state.reads++
+        return (
+          loaded ? raw({ openTitle: "Marta Kim (You)" }) : raw({ url: "about:blank", shell: false })
+        ) as T
+      },
+      place: () => {},
+      allowUserInput: () => {},
+      close: () => {},
+    }
+    return { driver, state, release }
+  }
+
+  test("a look waits for the load that runs, so it never reads a page that has no document", async () => {
+    const { driver, state, release } = slowDriver()
+    const surface = createTeamsSurface(driver)
+    const first = surface.look()
+    const second = surface.look()
+    release()
+    const teams = { kind: "teams", openTitle: "Marta Kim (You)" } as const
+    expect(await first).toEqual(teams)
+    expect(await second).toEqual(teams)
+    // One load, and no read before it ended.
+    expect(state.loads).toBe(1)
+    expect(state.reads).toBe(2)
+  })
+
+  test("a look after the load ended does not wait, and does not load again", async () => {
+    const { driver, state, release } = slowDriver()
+    const surface = createTeamsSurface(driver)
+    release()
+    await surface.look()
+    await surface.look()
+    expect(state.loads).toBe(1)
   })
 })
 

@@ -31,7 +31,9 @@ export const freshUserData = () => mkdtempSync(join(tmpdir(), "robot-e2e-"))
  * The window of the app. A test run can also open the status island, and which of the two windows
  * Playwright reports first depends on the system, so the island page is skipped. The page of the
  * Teams link and the browser of an agent are web pages: the link can open its page at the start,
- * so a page with an address on the web is skipped too. The app itself loads from a file.
+ * so a page with an address on the web is skipped too. Such a page is blank until its load starts,
+ * so a blank page is skipped as well, and the next turn of the loop looks again. The app itself
+ * loads from a file.
  */
 export const mainPage = async (app: ElectronApplication): Promise<Page> => {
   const first = await app.firstWindow()
@@ -39,7 +41,8 @@ export const mainPage = async (app: ElectronApplication): Promise<Page> => {
     for (const candidate of app.windows()) {
       await candidate.waitForLoadState("domcontentloaded")
       const url = candidate.url()
-      if (!url.includes("island.html") && !/^https?:\/\//i.test(url)) return candidate
+      if (!url.includes("island.html") && url !== "about:blank" && !/^https?:\/\//i.test(url))
+        return candidate
     }
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
