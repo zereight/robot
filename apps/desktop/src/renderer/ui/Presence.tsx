@@ -24,6 +24,11 @@ export const motionMs = (token: "fast" | "medium") => {
 /**
  * Like `<Show keyed>`, but keeps the children for a short exit motion after `when` turns off.
  * Children read `useClosing()` and mark themselves so CSS can play the exit.
+ *
+ * The children function runs once per opening, and it is not tracked, as in `<Show keyed>`. A
+ * signal that it reads at its top level (a list, the open item) does not run it again. If it did,
+ * the dialog would be built again at each change: it would lose what the user typed, and it
+ * would be built once more, empty, while it closes. Read a signal inside the JSX to follow it.
  */
 export function Presence<T>(props: {
   when: T | undefined | null | false
@@ -59,7 +64,7 @@ export function Presence<T>(props: {
     <Show when={shown()} keyed>
       {(box) => (
         <ClosingContext.Provider value={closing}>
-          {props.children(box.value)}
+          {untrack(() => props.children(box.value))}
         </ClosingContext.Provider>
       )}
     </Show>
