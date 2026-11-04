@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { mentionsEveryone, parseMentions, parsePlan, planText, stepLabel } from "./channels.ts"
+import {
+  addableAgents,
+  idsAfterAdd,
+  idsAfterRemove,
+  mentionsEveryone,
+  parseMentions,
+  parsePlan,
+  planText,
+  stepLabel,
+} from "./channels.ts"
 
 describe("mentions", () => {
   const names = ["Ada", "Ada Lovelace", "Bo"]
@@ -93,5 +102,22 @@ describe("plans", () => {
   test("step labels are cut at 48 characters", () => {
     expect(stepLabel("short")).toBe("short")
     expect([...stepLabel("x".repeat(60))]).toHaveLength(48)
+  })
+})
+
+describe("panel member edits", () => {
+  const agents = [{ id: "a" }, { id: "b" }, { id: "c" }]
+  test("addable agents are the agents outside the channel, in order", () => {
+    expect(addableAgents(agents, ["b"])).toEqual([{ id: "a" }, { id: "c" }])
+    expect(addableAgents(agents, ["a", "b", "c"])).toEqual([])
+    expect(addableAgents([], [])).toEqual([])
+  })
+  test("add puts one member at the end and never twice", () => {
+    expect(idsAfterAdd(["a"], "b")).toEqual(["a", "b"])
+    expect(idsAfterAdd(["a", "b"], "b")).toEqual(["a", "b"])
+  })
+  test("remove drops one member and keeps the order of the rest", () => {
+    expect(idsAfterRemove(["a", "b", "c"], "b")).toEqual(["a", "c"])
+    expect(idsAfterRemove(["a"], "b")).toEqual(["a"])
   })
 })

@@ -124,6 +124,11 @@
   font-weight: 600;
 }
 
+/* The name of an agent is a button that opens its profile: it is underlined on hover. */
+.nameButton:hover .name {
+  text-decoration: underline;
+}
+
 .bot {
   font-size: var(--text-xs);
   font-weight: 500;

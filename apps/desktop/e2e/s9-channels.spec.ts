@@ -167,3 +167,66 @@ test("channels: the member box stops at 180 px for many agents and keeps its hei
   await app.close()
   await mock.close()
 })
+
+test("channels: the activity panel adds and removes members", async () => {
+  test.setTimeout(120_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1300, 860)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  for (const name of ["Lia", "Bo", "Cy"]) await createAgent(page, name)
+
+  // A channel with Lia as the lead and Bo as a member. Cy stays out.
+  await page.getByTestId("new-channel").click()
+  await page.getByTestId("channel-name").fill("Panel")
+  await page.getByTestId("channel-member-Lia").check()
+  await page.getByTestId("channel-member-Bo").check()
+  await page.getByTestId("channel-lead").selectOption({ label: "Lia" })
+  await page.getByTestId("channel-submit").click()
+  await expect(page.getByTestId("member-card")).toHaveCount(2)
+
+  // A member with a running part stays: the panel shows the reason.
+  await post(page, "split long job")
+  await expect(page.getByTestId("plan-step")).toHaveAttribute("data-state", "running", {
+    timeout: 15_000,
+  })
+  await page.getByTestId("panel-remove-Bo").click()
+  await expect(page.getByTestId("panel-error")).toHaveText(
+    "This member is working. Wait for its part to end or stop it.",
+  )
+  await expect(page.getByTestId("member-card")).toHaveCount(2)
+
+  // After a stop, Bo leaves the channel.
+  await page.getByTestId("channel-stop").click()
+  await expect(page.getByTestId("plan-step")).toHaveCount(0, { timeout: 10_000 })
+  await page.getByTestId("panel-remove-Bo").click()
+  await expect(page.getByTestId("member-card")).toHaveCount(1)
+  await expect(page.getByTestId("panel-error")).toHaveCount(0)
+
+  // Add: the picker lists the agents outside the channel. A click adds one at once.
+  await page.getByTestId("panel-add").click()
+  await expect(page.getByTestId("panel-add-list")).toBeVisible()
+  await expect(page.getByTestId("panel-add-pick-Bo")).toBeVisible()
+  await expect(page.getByTestId("panel-add-pick-Cy")).toBeVisible()
+  await expect(page.getByTestId("panel-add-pick-Lia")).toHaveCount(0)
+  await page.getByTestId("panel-add-pick-Cy").click()
+  await expect(page.getByTestId("member-card")).toHaveCount(2)
+  await expect(page.getByTestId("panel-add-pick-Cy")).toHaveCount(0)
+  await page.getByTestId("panel-add-pick-Bo").click()
+  await expect(page.getByTestId("member-card")).toHaveCount(3)
+  await expect(page.getByTestId("panel-add-empty")).toBeVisible()
+  await shot(page, "s9-07-panel-members")
+
+  // Removing the lead clears it: the next job asks who takes it.
+  await page.getByTestId("panel-remove-Lia").click()
+  await expect(page.getByTestId("member-card")).toHaveCount(2)
+  const before = await msgs(page).count()
+  await post(page, "who takes this")
+  await expect(page.getByTestId("pick-member")).toBeVisible()
+  await page.getByTestId("pick-Cy").click()
+  await expect(page.getByTestId("pick-member")).toHaveCount(0)
+  await expect(msgs(page).last()).toContainText("Cy", { timeout: 15_000 })
+  expect(await msgs(page).count()).toBeGreaterThan(before)
+  await app.close()
+  await mock.close()
+})

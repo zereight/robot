@@ -40,6 +40,7 @@ import {
 } from "lucide-solid"
 import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
+import { ProfileButton } from "../agents/ProfileButton.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
@@ -1282,7 +1283,15 @@ const FullMessageRow = (props: MessageRowProps) => {
           }
         >
           <span class={styles.avatarSlot}>
-            <Face face={props.agent.face} image={props.agent.faceImage} size={40} />
+            {/* The face opens the profile (spec 002). A removed agent has no profile to open. */}
+            <Show
+              when={props.agent.id}
+              fallback={<Face face={props.agent.face} image={props.agent.faceImage} size={40} />}
+            >
+              <ProfileButton agent={props.agent} testId="message-avatar">
+                <Face face={props.agent.face} image={props.agent.faceImage} size={40} />
+              </ProfileButton>
+            </Show>
           </span>
         </Show>
       </Show>
@@ -1305,7 +1314,15 @@ const FullMessageRow = (props: MessageRowProps) => {
         </Show>
         <Show when={props.first}>
           <div class={styles.head}>
-            <span class={styles.name}>{name()}</span>
+            {/* The name of an agent opens its profile, as the face does. */}
+            <Show
+              when={isAgent() && props.agent.id}
+              fallback={<span class={styles.name}>{name()}</span>}
+            >
+              <ProfileButton agent={props.agent} class={styles.nameButton} testId="message-name">
+                <span class={styles.name}>{name()}</span>
+              </ProfileButton>
+            </Show>
             <Show when={isAgent()}>
               <span class={styles.bot}>{t("chat.bot")}</span>
             </Show>
