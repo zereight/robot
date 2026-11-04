@@ -1,5 +1,9 @@
 #!/bin/sh
 # Biome on the staged files only. It writes no fixes, so the index stays as you made it.
+# It runs the Biome of this repository (node_modules/.bin/biome) and never "bunx biome": where
+# node_modules is missing, "bunx biome" downloads and runs another package that is called "biome".
+# That package does not know "check", prints nothing and exits 0, so the commit passes with no
+# check. Without the local Biome this hook fails: run "bun install --frozen-lockfile".
 # "bun run format" fixes the files. "git commit --no-verify" skips this hook.
 
 if ! command -v bun >/dev/null 2>&1; then
@@ -7,4 +11,12 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 0
 fi
 
-exec bunx biome check --staged --no-errors-on-unmatched
+top=$(git rev-parse --show-toplevel) || exit 1
+biome="$top/node_modules/.bin/biome"
+if [ ! -x "$biome" ]; then
+  echo "pre-commit: Biome is not installed ($biome is missing). Run 'bun install --frozen-lockfile', or use 'git commit --no-verify' to skip this check on purpose." >&2
+  exit 1
+fi
+
+# Bun runs the file, so that Node is not needed in PATH (the file starts with "#!/usr/bin/env node").
+exec bun "$biome" check --staged --no-errors-on-unmatched
