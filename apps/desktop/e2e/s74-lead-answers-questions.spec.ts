@@ -362,3 +362,46 @@ test("the setting: off sends the question that is with the lead and every later 
   await expect(page.getByTestId("lead-answer")).toHaveCount(1, { timeout: 30_000 })
   expect(lookRequests()).toBe(before + 1)
 })
+
+test("a part that Request changes starts is a part like any other: its question goes to the lead", async () => {
+  test.setTimeout(120_000)
+  const { page, looks, lookRequests, questionNotices } = await start()
+
+  // "Review parts" is on, so a part that ends waits for the user.
+  await page.getByTestId("channel-settings").click()
+  await page.getByTestId("channel-review-parts").click()
+  await expect(page.getByTestId("channel-review-parts")).toHaveAttribute("aria-checked", "true")
+  await page.getByTestId("channel-submit").click()
+  await expect(page.getByTestId("channel-form")).toHaveCount(0)
+
+  // The lead answers the question of the first part. The part waits in review. The channel now
+  // holds the plan of the lead and the reply of Bo: messages of other agents.
+  await post(page, "split lead ASKS answer")
+  await expect(page.getByTestId("lead-answer")).toHaveCount(1, { timeout: 30_000 })
+  await expect(page.getByTestId("part-review-bar")).toHaveCount(1, { timeout: 30_000 })
+  expect(lookRequests()).toBe(1)
+
+  // "Request changes" starts a new part. It asks one question of its own, and the lead answers it:
+  // the messages in the channel do not make the part hold outside content (spec 004, 007).
+  await page.getByTestId("part-changes").click()
+  await page.getByTestId("changes-text").fill("Check the colours too. ASKS answer")
+  await page.getByTestId("changes-send").click()
+  await expect(page.getByTestId("changes-dialog")).toHaveCount(0)
+  await expect(page.getByTestId("lead-answer")).toHaveCount(2, { timeout: 30_000 })
+  await expect(page.getByTestId("lead-answered-by")).toHaveText([
+    "Answered by Lia",
+    "Answered by Lia",
+  ])
+  await expect(page.getByTestId("part-review-bar")).toHaveCount(1, { timeout: 30_000 })
+  await shot(page, "s74-08-request-changes-answered-by-the-lead")
+  expect(lookRequests()).toBe(2)
+  expect(questionNotices()).toEqual([])
+  await expect.poll(() => looks().length).toBe(2)
+  expect(looks().map((l) => l.result)).toEqual(["answered", "answered"])
+
+  // The user accepts the new part: the request ends with one summary.
+  await page.getByTestId("part-accept").click()
+  await expect(page.locator("[data-testid=channel-message][data-kind=summary]")).toHaveCount(1, {
+    timeout: 60_000,
+  })
+})

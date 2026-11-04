@@ -1211,25 +1211,6 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         Effect.forkDetach(Effect.exit(effect)).pipe(Effect.asVoid)
 
       /**
-       * The newest message of another agent among the messages that a turn of `agent` reads, as
-       * an outside source (spec 007): the turn reads it, so it holds outside content.
-       */
-      const otherVoice = (channelId: string, agent: AgentRow): OutsideSource | null => {
-        const row = db.get<{ name: string }>(
-          `SELECT a.name AS name FROM (
-             SELECT agent_id, author, created_at, rowid AS r FROM channel_message
-             WHERE channel_id = ? AND status IN ('done', 'stopped')
-             ORDER BY created_at DESC, rowid DESC LIMIT ${HISTORY_TURNS}
-           ) m JOIN agent a ON a.id = m.agent_id
-           WHERE m.author = 'agent' AND m.agent_id != ?
-           ORDER BY m.created_at DESC, m.r DESC LIMIT 1`,
-          channelId,
-          agent.id,
-        )
-        return row ? { kind: "agent", name: row.name } : null
-      }
-
-      /**
        * One agent answers in the channel: a task of its own, with the reply as its message.
        * `from` is the lead that gave the agent its part: the turn starts with a message from
        * another agent.
@@ -1255,15 +1236,13 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             // any member read a credential place: the channel holds the mark (spec 007). This
             // covers a part that the lead gives after its own turn read one.
             const held = placeMarks.get({ kind: "channel", id: channel.id })
-            // A part that the lead gives is part of the job of the user: it holds outside content
-            // from its start only when the job came from an outside program or the lead read
-            // outside content first, and then the mark of the channel says so (spec 007, "Outside
-            // content"). A turn that answers a message reads the messages of other agents.
-            const turn = newTurnMark(
-              starter,
-              outside ?? (from ? null : otherVoice(channel.id, agent)),
-              held.sensitive,
-            )
+            // A turn of the channel holds outside content from its start only by the rules of
+            // spec 007: a source that starts it (`outside`), a message from another agent that
+            // starts it (`from`), or the mark of the channel, below. The messages that a member
+            // reads under spec 004, "What a member reads", are not "a message from another agent":
+            // the plan of the lead and the replies of other members make no mark by themselves.
+            // So a part that "Request changes" starts is a part like any other.
+            const turn = newTurnMark(starter, outside, held.sensitive)
             // The turn holds the program mark from its start when the channel does: the job came
             // from an outside program or Teams, or an earlier turn of any member held the mark
             // and no one cleared it (spec 007, "Program mark"). The first source stays.
