@@ -99,9 +99,9 @@ A new word goes here in the same pull request as the spec that brings it.
 | Record only | A switch of a watch routine or a workflow trigger: a change or a trigger starts no task and calls no model, and only shows as "Recorded" (spec question of 009, 010). | 기록만 하기 | dry run, observe mode, test mode |
 | Recorded | A run of "Record only": what fired, with no task (spec question of 009, 010). | 기록됨 | skipped, ignored |
 | Workflow | Connected steps that run when a trigger fires (010). | 워크플로, 워크플로우 (see "Open points") | automation, pipeline |
-| Starter | A ready setup for one job. It fills the new agent form (002), makes a workflow (010), or makes a channel with its agents (030). | — (proposed: 스타터) | template, preset |
-| Channel starter | A ready channel with its agents and lead, made in one step from a fixed list (030). | — (proposed: 채널 스타터) | team starter, team, squad |
-| Goal text | The words that the user types in the goal dialog. They stay on this computer and are not kept (030). | — (proposed: 목표 글) | prompt, task description |
+| Starter | A ready setup for one job. It fills the new agent form (002), makes a workflow (010), or makes a channel with its agents (031). | — (proposed: 스타터) | template, preset |
+| Channel starter | A ready channel with its agents and lead, made in one step from a fixed list (031). | — (proposed: 채널 스타터) | team starter, team, squad |
+| Goal text | The words that the user types in the goal dialog. They stay on this computer and are not kept (031). | — (proposed: 목표 글) | prompt, task description |
 | Today | The page of what waits, went wrong, ran and runs next (021). | 오늘 | inbox, dashboard |
 | Needs you | Items that wait for the user (011, 021). | 내 확인이 필요해요 | inbox |
 | Board | The page of cards in four columns (024). | 보드 (proposed) | kanban (as a name in the interface), project |

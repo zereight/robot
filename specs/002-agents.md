@@ -206,7 +206,7 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 A **starter** is a ready setup for one job. It fills the new agent form. It can also make a routine
 and skills for the new agent.
 
-- The choice "Start from" of the form lists "From a goal…" first (see 030), then "Blank" and then the starters in this order:
+- The choice "Start from" of the form lists "From a goal…" first (see 031), then "Blank" and then the starters in this order:
   Assistant, Briefer, Researcher, Reviewer, Organizer. Each choice shows the job name and one line
   that says what the agent does. A muted line says what else the starter makes, for example "A
   paused routine, 1 skill". For a starter that makes nothing else, the line says so.
@@ -225,7 +225,7 @@ and skills for the new agent.
 - A starter does not set a model, a permission level or a workspace. The agent starts with the
   defaults (see 006 and 007). A starter makes no memory and no knowledge.
 - A linked device (see 012) that makes an agent from a starter gets the three fields only. It
-  makes no routine and no skill, and its choice shows no muted line. The choice "From a goal…" does not show on a linked computer (see 030).
+  makes no routine and no skill, and its choice shows no muted line. The choice "From a goal…" does not show on a linked computer (see 031).
 - The instructions of a starter guide the agent. They do not limit it. The permission level limits
   it (see 007).
 - The user cannot make or edit starters in this version. The app does not write an agent setup
