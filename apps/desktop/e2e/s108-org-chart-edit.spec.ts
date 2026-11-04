@@ -62,6 +62,19 @@ const center = async (target: Locator) => {
   if (!box) throw new Error("no box")
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 }
+/** The center of a node once it stops moving: the view can fit again when the chart changes. */
+const settledCenter = async (target: Locator) => {
+  let last = ""
+  await expect
+    .poll(async () => {
+      const now = JSON.stringify(await center(target))
+      const same = now === last
+      last = now
+      return same
+    })
+    .toBe(true)
+  return center(target)
+}
 /** Presses on `from`, moves onto `to` in steps, and runs `during` before the drop. */
 const drag = async (
   page: Page,
@@ -276,10 +289,17 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await expect(page.getByTestId("org-notice-text")).toHaveText(
       "Bo works in Docs. Wait for its part to end, or stop it.",
     )
+    const refusedAt = Date.now()
     await expect(page.getByTestId("org-notice")).toHaveAttribute("data-kind", "refused")
     await expect(page.getByTestId("org-undo")).toHaveCount(0)
+    // One line shows at a time: the refusal took the place of the line before it.
+    await expect(page.getByTestId("org-notice")).toHaveCount(1)
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo, Cy", "Ops: Dee"])
     await shot(page, "s108-04-refused")
+    // A refusal line shows for 10 seconds.
+    await page.waitForTimeout(Math.max(0, refusedAt + 8_000 - Date.now()))
+    await expect(page.getByTestId("org-notice")).toBeVisible()
+    await expect(page.getByTestId("org-notice")).toHaveCount(0, { timeout: 4_000 })
     // The same in Korean. Names do not change.
     await rpc(page, "settings.update", { language: "ko" })
     await drag(page, copyOf(page, bo, docs.id), await center(channelNode(page, ops.id)))
@@ -364,7 +384,12 @@ test("edit on the org chart of a linked computer with the switch Can create and 
     await expect(bo).toBeVisible()
 
     // A move on the chart works: Bo leaves "Docs" and joins "Ops" on MacBook 2.
-    await drag(one.page, bo, await center(channelNode(one.page, ops.id)))
+    // Every agent is in a channel, so the drag adds "No channel" and the view can fit again: the
+    // pointer goes onto "Ops" once the view is still.
+    await drag(one.page, bo, await center(channelNode(one.page, ops.id)), async () => {
+      const to = await settledCenter(channelNode(one.page, ops.id))
+      await one.page.mouse.move(to.x, to.y, { steps: 4 })
+    })
     await expect(one.page.getByTestId("org-notice-text")).toHaveText("Moved Bo to Ops.")
     await expect.poll(() => teams(two.page)).toEqual(["Docs: Ada*", "Ops: Ada, Bo"])
     await expect(copyOf(one.page, ids.Bo as string, ops.id)).toBeVisible()
@@ -375,5 +400,136 @@ test("edit on the org chart of a linked computer with the switch Can create and 
   } finally {
     await one.app.close().catch(() => {})
     await two.app.close().catch(() => {})
+  }
+})
+
+test("edit on the org chart: an empty No channel during a drag, Undone., and a new agent", async () => {
+  test.setTimeout(240_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  try {
+    await resizeWindow(app, 1300, 860)
+    await connectMock(page, mock.openaiUrl, GOOD_KEY)
+    await createAgent(page, "Ada")
+    const server = await localServerId(page)
+    const template = (await agentsOf(page))[0] as AgentInfo
+    for (const name of ["Bo", "Dee"]) {
+      await rpc(page, "agents.create", {
+        serverId: server,
+        name,
+        role: "",
+        instructions: "",
+        model: template.model,
+      })
+    }
+    const ids = Object.fromEntries((await agentsOf(page)).map((a) => [a.name, a.id])) as Record<
+      string,
+      string
+    >
+    // Every agent is in a channel: the chart has no node "No channel".
+    const docs = await rpc<ChannelInfo>(page, "channels.create", {
+      serverId: server,
+      name: "Docs",
+      topic: "",
+      memberIds: [ids.Ada, ids.Bo],
+      leadId: ids.Ada,
+    })
+    const ops = await rpc<ChannelInfo>(page, "channels.create", {
+      serverId: server,
+      name: "Ops",
+      topic: "",
+      memberIds: [ids.Dee],
+      leadId: null,
+    })
+    const bo = ids.Bo as string
+
+    await page.getByTestId("page-orgchart").click()
+    await expect(copyOf(page, bo, docs.id)).toBeVisible()
+    await expect(channelNode(page, null)).toHaveCount(0)
+
+    // During the drag of Bo, "No channel" shows last, empty, with a ring. Escape ends the drag
+    // and "No channel" goes again.
+    await drag(
+      page,
+      copyOf(page, bo, docs.id),
+      await center(channelNode(page, ops.id)),
+      async () => {
+        await expect(channelNode(page, null)).toBeVisible()
+        await expect(channelNode(page, null)).toHaveAttribute("data-ring", "true")
+        await expect(page.locator('[data-testid=org-node][data-key^="c:none/"]')).toHaveCount(0)
+        await expect(page.locator("[data-testid=org-channel]").last()).toHaveAttribute(
+          "data-key",
+          "c:none",
+        )
+        await shot(page, "s108-07-drag-no-channel")
+        await page.keyboard.press("Escape")
+      },
+    )
+    await expect(channelNode(page, null)).toHaveCount(0)
+    await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo", "Ops: Dee"])
+
+    // A drop on the empty "No channel" removes Bo from "Docs". After the drag, "No channel" shows
+    // by the normal rule: it holds Bo now.
+    // "No channel" shows only once the drag has begun, so the pointer goes onto it then.
+    await drag(
+      page,
+      copyOf(page, bo, docs.id),
+      await center(channelNode(page, ops.id)),
+      async () => {
+        const none = await settledCenter(channelNode(page, null))
+        await page.mouse.move(none.x, none.y, { steps: 4 })
+      },
+    )
+    await expect(page.getByTestId("org-notice-text")).toHaveText("Removed Bo from Docs.")
+    await expect.poll(() => teams(page)).toEqual(["Docs: Ada*", "Ops: Dee"])
+    await expect(copyOf(page, bo, null)).toBeVisible()
+
+    // Undo: the line "Undone." takes its place, with no "Undo", for 3 seconds.
+    await page.getByTestId("org-undo").click()
+    await expect(page.getByTestId("org-notice-text")).toHaveText("Undone.")
+    const undoneAt = Date.now()
+    await expect(page.getByTestId("org-notice")).toHaveCount(1)
+    await expect(page.getByTestId("org-undo")).toHaveCount(0)
+    await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo", "Ops: Dee"])
+    await expect(channelNode(page, null)).toHaveCount(0)
+    await page.waitForTimeout(Math.max(0, undoneAt + 1_500 - Date.now()))
+    await expect(page.getByTestId("org-notice")).toBeVisible()
+    await expect(page.getByTestId("org-notice")).toHaveCount(0, { timeout: 3_000 })
+
+    // "New agent in this channel": after the save the chart stays open, the profile does not
+    // open, and the focus is on the node of the new agent in "Ops".
+    await channelNode(page, ops.id).click({ button: "right" })
+    await page.getByTestId("org-menu").getByTestId("org-menu-new-agent").click()
+    await page.getByTestId("agent-name").fill("Fay")
+    await page.getByTestId("model-model").waitFor()
+    await page.getByTestId("agent-submit").click()
+    await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
+    await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo", "Ops: Dee, Fay"])
+    const fay = (await agentsOf(page)).find((a) => a.name === "Fay")?.id as string
+    await expect(copyOf(page, fay, ops.id)).toBeFocused()
+    await expect(page.getByTestId("org-canvas")).toBeVisible()
+    await expect(page.getByTestId("chat-start")).toHaveCount(0)
+    await shot(page, "s108-08-new-agent-focused")
+
+    // "New agent" on "No channel": take Fay out of "Ops" first, so that "No channel" shows.
+    await rpc(page, "channels.update", { id: ops.id, patch: { memberIds: [ids.Dee] } })
+    await expect(copyOf(page, fay, null)).toBeVisible()
+    await channelNode(page, null).click({ button: "right" })
+    await page.getByTestId("org-menu").getByTestId("org-menu-new-agent").click()
+    await page.getByTestId("agent-name").fill("Gus")
+    await page.getByTestId("model-model").waitFor()
+    await page.getByTestId("agent-submit").click()
+    await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
+    await expect.poll(async () => (await agentsOf(page)).some((a) => a.name === "Gus")).toBe(true)
+    const gus = (await agentsOf(page)).find((a) => a.name === "Gus")?.id as string
+    await expect(copyOf(page, gus, null)).toBeFocused()
+    await expect(page.getByTestId("org-canvas")).toBeVisible()
+    await expect(page.getByTestId("chat-start")).toHaveCount(0)
+
+    // The New agent form elsewhere (002) still opens the new agent.
+    await createAgent(page, "Hal")
+  } finally {
+    await app.close().catch(() => {})
+    await mock.close()
   }
 })

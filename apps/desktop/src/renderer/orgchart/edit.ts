@@ -1,4 +1,4 @@
-import type { ChannelPatch } from "@robot/shared"
+import { type ChannelPatch, type ChartModel, NO_CHANNEL_KEY } from "@robot/shared"
 
 // Edit on the org chart (spec 029, "Edit on the chart"). The chart changes the members and the lead
 // of a channel with the same change as the channel settings (004), so the server keeps its rules:
@@ -174,3 +174,42 @@ export const leavingOf = (
   const gone = now.memberIds.filter((m) => !next.includes(m))
   return gone.length > 0 ? { channelId: now.id, agentIds: gone } : undefined
 }
+
+/**
+ * The chart during the drag of an agent node that is in a channel: the channel node "No channel"
+ * shows at its place in the order (last), also when it holds no agent, so that it can take the
+ * drop. It is empty then. Other drags, and the chart after the drag, keep the rule of "Concepts".
+ */
+export const withDropSpot = (
+  model: ChartModel,
+  dragFrom: string | null | undefined,
+): ChartModel => {
+  if (!dragFrom || model.empty || model.channels.some((c) => c.channelId === null)) return model
+  return {
+    ...model,
+    channels: [
+      ...model.channels,
+      {
+        key: NO_CHANNEL_KEY,
+        channelId: null,
+        name: "",
+        memberCount: 0,
+        counts: { working: 0, waiting: 0, idle: 0, offline: 0 },
+        nodes: [],
+        leadKey: null,
+        more: [],
+      },
+    ],
+  }
+}
+
+/** How long a line "<what changed>." with "Undo" shows, and a refusal line (spec 029). */
+export const NOTICE_MS = 10_000
+/** How long the line "Undone." shows after an Undo. */
+export const UNDONE_MS = 3_000
+
+/** The kinds of line at the bottom of the canvas. One shows at a time: a new one replaces it. */
+export type NoticeKind = "done" | "refused" | "undone"
+
+/** How long a line of that kind shows. */
+export const noticeMs = (kind: NoticeKind) => (kind === "undone" ? UNDONE_MS : NOTICE_MS)

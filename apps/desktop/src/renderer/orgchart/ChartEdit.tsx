@@ -17,6 +17,8 @@ import {
   dropEdit,
   type Edit,
   leavingOf,
+  type NoticeKind,
+  noticeMs,
   planEdit,
   type Step,
   undoSteps,
@@ -29,15 +31,13 @@ import styles from "./orgchart.module.css"
 // works cannot leave its channel, and a linked computer changes only with the switch "Can create
 // and change agents" (012). Without the switch, the menus hold no change and there is no drag.
 
-/** How long the line "<what changed>." with "Undo" shows. */
-export const UNDO_MS = 10_000
 /** A press that moves less than this is a click, not a drag. */
 const DRAG_START_PX = 5
 
 interface Notice {
-  readonly kind: "done" | "refused"
+  readonly kind: NoticeKind
   readonly text: string
-  /** The channels as they were: set while "Undo" can put them back. */
+  /** The channels as they were: set while "Undo" can put them back. A refusal has none. */
   readonly before?: readonly Before[]
 }
 
@@ -69,6 +69,8 @@ export const createChartEdit = (deps: {
   channelNode: (key: string) => ChartChannel | undefined
   openProfile: (agentId: string) => void
   openChannel: (channelId: string) => void
+  /** After "New agent" or "New agent in this channel": the focus goes to the node of the agent. */
+  focusAgent: (agentId: string, channelId: string | null) => void
 }) => {
   const { t } = useApp()
   const ui = useUi()
@@ -86,12 +88,13 @@ export const createChartEdit = (deps: {
     list.find((c) => c.id === id)?.name ?? channels.byId(id)?.name ?? ""
 
   // ---------------------------------------------------------------- The line at the bottom
+  // One line shows at a time: a new line takes the place of the line that shows, with its own time.
   const [notice, setNotice] = createSignal<Notice>()
   let timer: ReturnType<typeof setTimeout> | undefined
   const show = (next: Notice | undefined) => {
     clearTimeout(timer)
     setNotice(next)
-    if (next) timer = setTimeout(() => setNotice(undefined), UNDO_MS)
+    if (next) timer = setTimeout(() => setNotice(undefined), noticeMs(next.kind))
   }
   onCleanup(() => clearTimeout(timer))
 
@@ -181,7 +184,7 @@ export const createChartEdit = (deps: {
     try {
       const list = await fresh()
       const steps = undoSteps(shown.before, list)
-      if (await run(steps, list, [])) show({ kind: "done", text: t("orgchart.undone") })
+      if (await run(steps, list, [])) show({ kind: "undone", text: t("orgchart.undone") })
     } catch (error) {
       show({ kind: "refused", text: refusal(error, { channelId: "", patch: {} }, []) })
     } finally {
@@ -461,11 +464,14 @@ export const createChartEdit = (deps: {
   const onUp = (event: PointerEvent) => {
     if (!press || event.pointerId !== press.pointerId) return
     const drag = dragging()
+    // A drop where no ring shows, or on the empty canvas, changes nothing. The target is found
+    // before the drag ends: the end takes away an empty "No channel" and the chart can move.
+    const edit = drag
+      ? targetOf({ ...drag, add: event.altKey }, overAt(event.clientX, event.clientY))
+      : undefined
     endDrag()
     if (!drag) return
     swallowClick = true
-    // A drop where no ring shows, or on the empty canvas, changes nothing.
-    const edit = targetOf({ ...drag, add: event.altKey }, overAt(event.clientX, event.clientY))
     if (edit) void apply(edit)
   }
   const onCancel = () => endDrag()
@@ -544,8 +550,12 @@ export const createChartEdit = (deps: {
       <Presence when={creating()}>
         {(target) => (
           <NewAgentDialog
+            stay
             onClose={() => setCreating(undefined)}
             onCreated={async (agent) => {
+              // The chart stays open, the profile does not open, and the focus goes to the node of
+              // the new agent once the chart shows it.
+              deps.focusAgent(agent.id, target.channelId)
               if (!target.channelId) return
               const current = (await fresh()).find((c) => c.id === target.channelId)
               if (!current) return
@@ -601,6 +611,8 @@ export const createChartEdit = (deps: {
   return {
     canEdit,
     menuOpen: () => menu() !== undefined,
+    /** True while the form of a new agent is open. */
+    creating: () => creating() !== undefined,
     /** The key of the node to give the focus back to after a change from its menu. */
     kept,
     dropKept: () => setKept(undefined),

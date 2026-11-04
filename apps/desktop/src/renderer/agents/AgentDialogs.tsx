@@ -123,6 +123,8 @@ export const NewAgentDialog = (props: {
   onClose: () => void
   /** Runs after save and before the agent opens, for example to add it to a channel (029). */
   onCreated?: (agent: Agent) => Promise<void>
+  /** True keeps the page that is open: the profile of the new agent does not open (029). */
+  stay?: boolean
 }) => {
   const { t } = useApp()
   const ui = useUi()
@@ -137,7 +139,7 @@ export const NewAgentDialog = (props: {
           markBorn(agent.id)
           await props.onCreated?.(agent)
           props.onClose()
-          ui.selectPlace({ kind: "agent", id: agent.id })
+          if (!props.stay) ui.selectPlace({ kind: "agent", id: agent.id })
         }}
       />
     </Dialog>

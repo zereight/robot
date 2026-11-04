@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test"
+import { buildChart, NO_CHANNEL_KEY, type OrgSnapshot } from "@robot/shared"
 import {
   agentsFor,
   channelsFor,
   dropEdit,
   type EditChannel,
   leavingOf,
+  NOTICE_MS,
+  noticeMs,
   planEdit,
+  UNDONE_MS,
   undoSteps,
+  withDropSpot,
 } from "./edit.ts"
 
 // Spec 029, "Edit on the chart": the lists of the menus, where a drop is allowed, the patches of
@@ -150,5 +155,67 @@ describe("undo", () => {
       agentIds: ["b"],
     })
     expect(leavingOf({ channelId: "docs", patch: { leadId: null } }, all)).toBeUndefined()
+  })
+})
+
+describe("the node No channel during a drag", () => {
+  const snapshot = (memberIds: string[]): OrgSnapshot =>
+    ({
+      mainAgentId: null,
+      agents: ["a", "b"].map((id) => ({
+        id,
+        name: id.toUpperCase(),
+        role: "",
+        face: null,
+        state: "idle",
+        task: null,
+      })),
+      channels: [
+        { id: "docs", name: "Docs", leadId: null, memberIds, createdAt: 1 },
+        { id: "ops", name: "Ops", leadId: null, memberIds: ["b"], createdAt: 2 },
+      ],
+      handoffs: [],
+    }) as unknown as OrgSnapshot
+  const keysOf = (m: ReturnType<typeof buildChart>) => m.channels.map((c) => c.key)
+
+  test("shows last and empty while an agent from a channel is dragged", () => {
+    const model = buildChart(snapshot(["a"]))
+    expect(keysOf(model)).not.toContain(NO_CHANNEL_KEY)
+    const during = withDropSpot(model, "docs")
+    expect(keysOf(during)).toEqual(["c:docs", "c:ops", NO_CHANNEL_KEY])
+    const none = during.channels.at(-1)
+    expect(none?.channelId).toBeNull()
+    expect(none?.nodes).toEqual([])
+    expect(none?.memberCount).toBe(0)
+  })
+
+  test("is not added without a drag, or for a drag from No channel", () => {
+    const model = buildChart(snapshot(["a"]))
+    expect(withDropSpot(model, null)).toBe(model)
+    expect(withDropSpot(model, undefined)).toBe(model)
+  })
+
+  test("is not added twice when it holds agents", () => {
+    const model = buildChart(snapshot([]))
+    expect(keysOf(model)).toContain(NO_CHANNEL_KEY)
+    expect(withDropSpot(model, "ops")).toBe(model)
+  })
+
+  test("takes the drop: the agent leaves the channel it came from", () => {
+    expect(dropEdit({ agentId: "a", from: "docs", to: null, add: false }, all)).toEqual({
+      kind: "remove",
+      agentId: "a",
+      from: "docs",
+    })
+  })
+})
+
+describe("the lines at the bottom of the canvas", () => {
+  test("a change and a refusal show for 10 seconds, Undone. for 3 seconds", () => {
+    expect(NOTICE_MS).toBe(10_000)
+    expect(UNDONE_MS).toBe(3_000)
+    expect(noticeMs("done")).toBe(10_000)
+    expect(noticeMs("refused")).toBe(10_000)
+    expect(noticeMs("undone")).toBe(3_000)
   })
 })

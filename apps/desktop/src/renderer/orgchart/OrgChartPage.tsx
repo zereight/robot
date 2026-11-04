@@ -3,7 +3,9 @@ import {
   type ChartAgent,
   type ChartChannel,
   type ChartModel,
+  copyKey,
   litBy,
+  NO_CHANNEL_KEY,
   ROOT_KEY,
 } from "@robot/shared"
 import { Ellipsis, Hash, Minus, Plus, User } from "lucide-solid"
@@ -33,6 +35,7 @@ import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { createChartEdit } from "./ChartEdit.tsx"
+import { withDropSpot } from "./edit.ts"
 import { type ChartLayout, layoutChart } from "./layout.ts"
 import {
   agentLabel,
@@ -119,7 +122,13 @@ export const OrgChartPage = () => {
   const ui = useUi()
   const agents = useAgents()
   const chart = useOrgChart()
-  const model = chart.model
+  // During the drag of an agent node that is in a channel, the chart shows "No channel" also when
+  // it is empty, so that it can take the drop (see edit.ts).
+  const [dropFrom, setDropFrom] = createSignal<string | null>(null)
+  const model = createMemo(() => {
+    const m = chart.model()
+    return m && withDropSpot(m, dropFrom())
+  })
 
   const unit = createMemo(() => TEXT_SIZES[app.settings.textSize])
   const structure = createMemo(() => {
@@ -313,6 +322,33 @@ export const OrgChartPage = () => {
     channelNode: (key) => channelNodes().get(key),
     openProfile,
     openChannel,
+    focusAgent: (agentId, channelId) => setBorn({ agentId, channelId }),
+  })
+  createEffect(() => setDropFrom(edit.dragging()?.from ?? null))
+
+  // After "New agent" or "New agent in this channel" the focus goes to the node of the new agent:
+  // its copy in that channel, or the root when it is the main agent. It waits until the form has
+  // closed and the chart shows that node. A copy in "No channel" before the agent joins the
+  // channel does not count.
+  const [born, setBorn] = createSignal<{ agentId: string; channelId: string | null }>()
+  createEffect(() => {
+    const b = born()
+    if (!b || edit.creating()) return
+    const nodes = agentNodes()
+    const wanted = copyKey(b.channelId ? `c:${b.channelId}` : NO_CHANNEL_KEY, b.agentId)
+    const key = nodes.has(wanted)
+      ? wanted
+      : nodes.get(ROOT_KEY)?.agentId === b.agentId
+        ? ROOT_KEY
+        : undefined
+    if (!key || !nodeKeys().includes(key)) return
+    setBorn(undefined)
+    edit.dropKept()
+    queueMicrotask(() =>
+      page
+        ?.querySelector<HTMLElement>(`[data-node][data-key="${CSS.escape(key)}"]`)
+        ?.focus({ preventScroll: true }),
+    )
   })
 
   // ---------------------------------------------------------------- The tile "+<n> more"
