@@ -94,11 +94,14 @@ channel settings (004, 030), with the same rules.
   under…". Dropped on the root: it moves to the top. During a drag, a node where a drop is allowed
   shows a ring. A node where it is not allowed shows no ring, and a drop there changes nothing. A
   drop on the empty canvas changes nothing. Escape ends a drag with no change.
-- A drag never moves the view by itself. The layout does not change during a drag. When the
-  pointer comes within 40 px of an edge of the canvas, the view moves in that direction while the
-  pointer stays there.
+- A drag never moves the view by itself. The layout does not change during a drag. A change of
+  the data that comes during a drag shows when the drag ends. The drop is checked against the data
+  of that moment.
+- Edge scroll: when the pointer is on the canvas, within 40 px of an edge, and not on the drop area
+  "No channel", the view moves in that direction while the pointer stays there. The speed grows
+  toward the edge, up to 720 px a second at the edge.
 - During the drag of an agent node that is in a channel, a drop area "No channel" shows at the
-  bottom left of the canvas, over the canvas and above the controls of the view. It is not a node
+  bottom left of the canvas. It is drawn over the canvas and over the controls of the view. It is not a node
   of the layout, and it stays in place when the view moves. A drop on it does what a drop on the
   channel node "No channel" does. When the channel node "No channel" is drawn, it takes the drop
   too. The area goes when the drag ends.
