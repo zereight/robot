@@ -480,6 +480,7 @@ export const SettingsPage = (props: {
       data-closing={closing()}
       data-testid="settings"
     >
+      <div class={styles.dragStrip} aria-hidden="true" />
       <nav class={styles.nav} aria-label={t("settings.title")}>
         <div class={styles.navTitle}>{t("settings.title")}</div>
         <For each={sections}>

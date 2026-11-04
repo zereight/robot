@@ -211,8 +211,10 @@ export interface BoxMeasure {
   readonly innerWidth: number
   readonly innerHeight: number
   readonly pixelRatio: number
-  /** Elements over the place that the window can drag by. A drag area takes a press. */
+  /** Elements that still make a drag area of the window over the place. */
   readonly dragAreasOver: readonly string[]
+  /** How many of nine points of the place lie in a drag area (0 to 9). */
+  readonly dragPoints: number
 }
 
 const near = (a: number, b: number, slack = 2) => Math.abs(a - b) <= slack
@@ -248,7 +250,7 @@ export const findings = (pages: readonly PageSnapshot[], box: BoxMeasure | null)
       out.push("Another view of the window is above the page. It takes the clicks.")
     if (box && box.dragAreasOver.length > 0)
       out.push(
-        `A drag area of the window lies over the place of the page (${box.dragAreasOver.join(", ")}). The system takes a press there as the start of a window drag.`,
+        `A drag area of the window lies over the place of the page (${box.dragAreasOver.join(", ")}; ${box.dragPoints} of 9 points). The system can take a press there as the start of a window drag.`,
       )
     const c = teams.counts
     if (c.screenDown > 0)
@@ -332,20 +334,34 @@ const TEAMS_BOX_SELECTOR = '[data-testid="teams-page-box"]'
 
 /**
  * The script that the app screen runs for the report. It measures the box of the Teams page and
- * lists the elements over it that the window can drag by. It changes nothing. It gives back a
- * `BoxMeasure`, or null when the box is not on the screen.
+ * lists the elements that still make a drag area of the window at nine points of the box. The
+ * window builds its drag area from the elements in the order of the document: a drag element adds
+ * its rectangle and a no-drag element cuts it, so the last one at a point decides. The script does
+ * the same. It changes nothing. It gives back a `BoxMeasure`, or null when the box is not on the
+ * screen.
  */
 export const BOX_SCRIPT = `(() => {
   try {
     const box = document.querySelector(${JSON.stringify(TEAMS_BOX_SELECTOR)})
     if (!box) return null
     const r = box.getBoundingClientRect()
+    const regionOf = (el) => {
+      const style = getComputedStyle(el)
+      return style.getPropertyValue("-webkit-app-region") || style.webkitAppRegion || "none"
+    }
     const drag = new Set()
-    for (const [fx, fy] of [[0.5, 0.5], [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) {
-      for (const el of document.elementsFromPoint(r.left + r.width * fx, r.top + r.height * fy)) {
-        const style = getComputedStyle(el)
-        const area = style.getPropertyValue("-webkit-app-region") || style.webkitAppRegion
-        if (area === "drag") drag.add(el.tagName.toLowerCase() + (el.classList[0] ? "." + el.classList[0] : ""))
+    let dragPoints = 0
+    for (const fy of [0.1, 0.5, 0.9]) {
+      for (const fx of [0.1, 0.5, 0.9]) {
+        const stack = document
+          .elementsFromPoint(r.left + r.width * fx, r.top + r.height * fy)
+          .filter((el) => regionOf(el) === "drag" || regionOf(el) === "no-drag")
+          .sort((a, b) => (a === b ? 0 : a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+        const last = stack[stack.length - 1]
+        if (last && regionOf(last) === "drag") {
+          dragPoints++
+          drag.add(last.tagName.toLowerCase() + (last.classList[0] ? "." + last.classList[0] : ""))
+        }
       }
     }
     return {
@@ -354,6 +370,7 @@ export const BOX_SCRIPT = `(() => {
       innerHeight: window.innerHeight,
       pixelRatio: window.devicePixelRatio,
       dragAreasOver: Array.from(drag),
+      dragPoints,
     }
   } catch {
     return null

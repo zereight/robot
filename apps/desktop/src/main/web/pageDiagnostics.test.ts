@@ -183,6 +183,7 @@ const box = (dragAreasOver: string[] = []): BoxMeasure => ({
   innerHeight: 800,
   pixelRatio: 2,
   dragAreasOver,
+  dragPoints: dragAreasOver.length > 0 ? 3 : 0,
 })
 
 describe("findings", () => {
@@ -198,6 +199,7 @@ describe("findings", () => {
     const out = findings([teams({}, { nativeMove: 40 })], box(["div.rail"]))
     expect(out.join("\n")).toContain("no press or touch reached it")
     expect(out.join("\n")).toContain("drag area of the window lies over the place")
+    expect(out.join("\n")).toContain("3 of 9 points")
     expect(out.join("\n")).toContain("div.rail")
   })
 

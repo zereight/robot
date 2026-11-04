@@ -102,6 +102,12 @@
 }
 
 .page {
+  /*
+   * A native view draws the Teams page above this box. The box is no drag area of the window, so a
+   * press here reaches the page and never starts a window drag. It stays so wherever the box sits,
+   * also under a drag strip.
+   */
+  -webkit-app-region: no-drag;
   height: 440px;
   border: 1px solid var(--c-border);
   border-radius: var(--radius-m);

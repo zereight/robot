@@ -83,7 +83,7 @@ test("teams page: a press is counted by the window and by the document, and the 
 
     // "Copy a diagnostic report" says where the file is and keeps it in the logs folder.
     await page.getByTestId("teams-report").click()
-    await expect(page.getByTestId("teams-report-state")).toContainText("diagnostic-report.txt")
+    await expect(page.getByTestId("teams-report")).toHaveText("Copied")
     const report = readFileSync(join(userData, "logs", "diagnostic-report.txt"), "utf8")
     expect(report).toContain("ROBot diagnostic report")
     expect(report).toContain("== What the numbers say ==")
@@ -99,6 +99,50 @@ test("teams page: a press is counted by the window and by the document, and the 
     const log = readFileSync(join(userData, "logs", "browser.log"), "utf8")
     expect(log).toContain('"event":"page_input"')
     expect(log).not.toContain("zz-label-zz")
+  } finally {
+    await app.close()
+    stand.server.close()
+  }
+})
+
+test("teams page: nothing in the window drags by the place of the page, also when the page sits at the top", async () => {
+  test.setTimeout(90_000)
+  const stand = await startStandIn()
+  const userData = freshUserData()
+  const { app, page } = await launch(userData, {
+    ROBOT_SYSTEM_LOCALE: "en-US",
+    ROBOT_TEST_TEAMS_URL: stand.url,
+  })
+  // The size of a new window, as the user has it.
+  await resizeWindow(app, 1200, 800)
+  try {
+    await page.getByTestId("open-settings").click()
+    await page.getByTestId("settings-nav-teams").click()
+    await page.getByTestId("teams-setup").click()
+    await page.getByTestId("teams-signin-button").click()
+    await expect(page.getByTestId("teams-page-box")).toBeVisible()
+
+    // The settings screen covers the whole window, and the header of the screen under it is a
+    // drag area of the window. Scroll the page up to the top of the window, under that header.
+    await page
+      .getByTestId("teams-page-box")
+      .evaluate((box) => box.scrollIntoView({ block: "start" }))
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) => {
+          const win = BrowserWindow.getAllWindows()[0]
+          const top = win?.contentView.children.at(-1) as Electron.WebContentsView | undefined
+          return top?.getVisible() ? top.getBounds().y : 9999
+        }),
+      )
+      .toBeLessThan(40)
+
+    // Press the button with a script, so that nothing scrolls the page away from the top.
+    await page.getByTestId("teams-report").evaluate((button) => (button as HTMLElement).click())
+    await expect(page.getByTestId("teams-report")).toHaveText("Copied")
+    const report = readFileSync(join(userData, "logs", "diagnostic-report.txt"), "utf8")
+    expect(report).toContain('"dragAreasOver": []')
+    expect(report).not.toContain("A drag area of the window lies over the place")
   } finally {
     await app.close()
     stand.server.close()
