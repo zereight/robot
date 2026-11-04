@@ -194,6 +194,9 @@ export class MemoryCheck extends Context.Service<MemoryCheck, MemoryCheckService
               return { output: MEMORY_CHECK_REPLIES.empty, failed: true }
             case "off":
               return { output: MEMORY_CHECK_REPLIES.off, failed: true }
+            case "not_member":
+              // The check names no channel, so this cannot happen.
+              return { output: MEMORY_CHECK_REPLIES.off, failed: true }
             case "saved":
               // The tool never saves: it only makes proposals.
               return { output: MEMORY_CHECK_REPLIES.suggested, failed: false }
@@ -222,7 +225,9 @@ export class MemoryCheck extends Context.Service<MemoryCheck, MemoryCheckService
           changed(agentId)
 
           const request = memoryCheckRequest({
-            items: (yield* memory.list(agentId)).map((i) => i.text),
+            // A check is not a turn of a channel: it reads the general items only, because a
+            // channel note is read in its channel (spec 008).
+            items: (yield* memory.list(agentId, undefined, { kind: "general" })).map((i) => i.text),
             proposals: (yield* memory.proposals(agentId)).map((p) => p.text),
             turns: counted.map((c) => turnOf(c.task_id)),
           })

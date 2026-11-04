@@ -149,6 +149,8 @@ describe("client requests", () => {
         "memory.check.set",
         "memory.delete",
         "memory.list",
+        "memory.move",
+        "memory.scopes",
         "memory.update",
         "models.available",
         "workflows.create",

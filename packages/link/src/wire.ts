@@ -164,6 +164,9 @@ export const CLIENT_METHODS = [
   "channels.create",
   "channels.update",
   "memory.list",
+  // The channels for the filter and for a move of a channel note (spec 008, 012).
+  "memory.scopes",
+  "memory.move",
   "memory.add",
   "memory.update",
   "memory.delete",
@@ -205,6 +208,8 @@ export const CHANGE_METHODS = [
   "channels.create",
   "channels.update",
   "memory.list",
+  "memory.scopes",
+  "memory.move",
   "memory.add",
   "memory.update",
   "memory.delete",

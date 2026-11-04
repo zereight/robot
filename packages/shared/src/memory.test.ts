@@ -21,6 +21,7 @@ const item = (id: string, text: string, createdAt = 0): MemoryItem => ({
   source: "agent",
   createdAt,
   updatedAt: createdAt,
+  channel: null,
 })
 
 describe("relevantMemory", () => {
@@ -114,5 +115,32 @@ describe("memoryUndo", () => {
     expect(
       memoryUndo({ ...facts, kind: "deleted", after: null, itemText: null, secret: true }),
     ).toEqual({ on: false, why: "secret" })
+  })
+
+  test("the channel counts: an item that was moved is not as the change left it (spec 008)", () => {
+    const added = { ...facts, kind: "added" as const, afterChannel: "c1", itemChannel: "c1" }
+    expect(memoryUndo(added)).toEqual({ on: true })
+    // A move after the add: the text is the same, the channel is not.
+    expect(memoryUndo({ ...added, itemChannel: null })).toEqual({ on: false, why: "newer" })
+    expect(memoryUndo({ ...added, itemChannel: "c2" })).toEqual({ on: false, why: "newer" })
+    // Older rows and callers that name no channel mean a general item.
+    expect(memoryUndo({ ...facts, kind: "added" })).toEqual({ on: true })
+  })
+
+  test("moved: on while the item is where the move left it, and the old place is there", () => {
+    const moved = {
+      ...facts,
+      kind: "moved" as const,
+      afterChannel: null,
+      itemChannel: null,
+      backExists: true,
+    }
+    expect(memoryUndo(moved)).toEqual({ on: true })
+    expect(memoryUndo({ ...moved, itemChannel: "c1" })).toEqual({ on: false, why: "newer" })
+    expect(memoryUndo({ ...moved, itemText: "Edited after" })).toEqual({ on: false, why: "newer" })
+    expect(memoryUndo({ ...moved, backExists: false })).toEqual({
+      on: false,
+      why: "channel_gone",
+    })
   })
 })
