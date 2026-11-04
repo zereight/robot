@@ -1,5 +1,5 @@
 import { type AgentState, type ChartAgent, type ChartModel, litBy, ROOT_KEY } from "@robot/shared"
-import { Hash, Minus, Plus, User } from "lucide-solid"
+import { Minus, Plus, User } from "lucide-solid"
 import {
   createEffect,
   createMemo,
@@ -19,10 +19,12 @@ import { Face } from "../agents/Face.tsx"
 import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useChannels } from "../state/channels.tsx"
 import { useOrgChart } from "../state/orgChart.tsx"
 import { setProfileTarget } from "../state/profileTarget.ts"
 import { useUi } from "../state/ui.tsx"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
+import { ChannelMark } from "../ui/ChannelMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { type ChartLayout, layoutChart } from "./layout.ts"
@@ -107,6 +109,7 @@ export const OrgChartPage = () => {
   const { t } = app
   const ui = useUi()
   const agents = useAgents()
+  const channels = useChannels()
   const chart = useOrgChart()
   const model = chart.model
 
@@ -525,7 +528,8 @@ export const OrgChartPage = () => {
           >
             <span class={styles.channelHead}>
               <span class={styles.face} aria-hidden="true">
-                <AvatarMark icon={Hash} size={28} />
+                {/* The picture of the channel stands in place of the `#` (spec 004, 029). */}
+                <ChannelMark picture={channels.byId(c().channelId ?? "")?.picture} size={28} />
               </span>
               <span
                 class={styles.channelName}

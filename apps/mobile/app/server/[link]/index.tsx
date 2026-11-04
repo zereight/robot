@@ -1,12 +1,12 @@
 import { allPlaces, summarize } from "@robot/phone"
-import type { Agent, Place, PlaceSection } from "@robot/shared"
+import type { Agent, Channel, Place, PlaceSection } from "@robot/shared"
 import { router, Stack, useLocalSearchParams } from "expo-router"
 import { useState } from "react"
 import { PixelRatio, Pressable, StyleSheet, Text, View } from "react-native"
 import { toggleSection } from "../../../src/prefs.ts"
 import { useApp, useServer } from "../../../src/state/context.tsx"
 import { radius, space, text } from "../../../src/theme/palette.ts"
-import { AvatarMark } from "../../../src/ui/AvatarMark.tsx"
+import { ChannelMark } from "../../../src/ui/ChannelMark.tsx"
 import { Face } from "../../../src/ui/Face.tsx"
 import { Body, Button, HeaderButton, Notice, Screen } from "../../../src/ui/kit.tsx"
 import { stateText } from "../../../src/ui/states.ts"
@@ -66,6 +66,7 @@ export default function Places() {
             linkId={link}
             section={section}
             agents={data.agents ?? []}
+            channels={data.channels ?? []}
             closed={closed}
             toggle={(key) => setPrefs((p) => toggleSection(p, link, key))}
           />
@@ -105,6 +106,7 @@ const Section = (props: {
   readonly linkId: string
   readonly section: PlaceSection
   readonly agents: readonly Agent[]
+  readonly channels: readonly Channel[]
   readonly closed: readonly string[]
   readonly toggle: (key: string) => void
 }) => {
@@ -119,6 +121,7 @@ const Section = (props: {
       linkId={props.linkId}
       place={place}
       agent={props.agents.find((a) => a.id === place.id)}
+      channel={props.channels.find((c) => c.id === place.id)}
     />
   )
   return (
@@ -224,6 +227,7 @@ const PlaceRow = (props: {
   readonly linkId: string
   readonly place: Place
   readonly agent: Agent | undefined
+  readonly channel: Channel | undefined
 }) => {
   const { t, palette } = useApp()
   const { place } = props
@@ -258,7 +262,7 @@ const PlaceRow = (props: {
       {place.kind === "agent" ? (
         <Face face={props.agent?.face} image={props.agent?.faceImage} size={36} />
       ) : (
-        <AvatarMark glyph="#" size={36} />
+        <ChannelMark picture={props.channel?.picture} size={36} />
       )}
       <View style={styles.placeText}>
         <View style={styles.placeTop}>
