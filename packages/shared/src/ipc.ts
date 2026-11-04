@@ -207,6 +207,15 @@ export interface RpcMethods {
     output: undefined
   }
   "places.list": { input: { serverId: string }; output: readonly PlaceSection[] }
+  /**
+   * The bytes of a picture that a message holds (spec 003, flow 4), for the small picture above the
+   * message. Null when the file is not a picture of a kind that shows, is not on this computer or
+   * is not reachable now. A linked server sends the bytes over the link.
+   */
+  "attachments.picture": {
+    input: { agentId: string; path: string; size: number; messageId: string }
+    output: Uint8Array | null
+  }
   /** Saves a file of a message of a linked server to this computer. Asks where to save it. */
   "attachments.save": {
     input: { agentId: string; path: string; name: string }
@@ -381,6 +390,13 @@ export interface RpcMethods {
   "providers.discardSignIn": { input: { kind: RuntimeKind; signIn: string }; output: undefined }
   /** Opens the system file dialog. Returns the chosen full paths; none when cancelled. */
   "files.pick": { input: undefined; output: readonly string[] }
+  /**
+   * Saves the bytes of a file that has no path on disk (a picture or a video from the clipboard, a
+   * picture dragged out of a web page) and returns the full path of the saved file. The message
+   * box attaches the file by that path. A file over the limit of an attachment is refused. This
+   * computer answers it, also when the window shows a linked server.
+   */
+  "files.stage": { input: { name: string; data: Uint8Array }; output: string }
   /** Asks where to save, then writes the archive. `path` is null when cancelled. */
   "data.export": { input: undefined; output: { path: string | null; files: number } }
   /** Asks for an archive, then restores it into an empty app. `null` when cancelled. */

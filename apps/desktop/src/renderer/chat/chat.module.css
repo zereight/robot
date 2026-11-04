@@ -760,6 +760,53 @@
   animation: float-in var(--motion-medium) var(--ease-out);
 }
 
+/* The small picture of an image that was pasted or dropped. It sits at the round start of a chip. */
+.chipThumb {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: -6px;
+  border-radius: var(--radius-s);
+  object-fit: cover;
+}
+
+/*
+ * The small pictures above a sent message. A box of the full size waits for each picture, so the
+ * row does not change its height when the picture comes. The picture is never larger than the box.
+ * The saved picture has twice as many pixels (256), so it is sharp on a dense screen.
+ */
+.sentPictures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+
+.sentPicture {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  min-width: 128px;
+  min-height: 128px;
+  border-radius: var(--radius-m);
+  background: var(--c-elevated);
+}
+
+.sentPicture[data-state="loaded"] {
+  min-width: 0;
+  min-height: 0;
+  background: none;
+}
+
+.sentPictureImage {
+  display: block;
+  max-width: 128px;
+  max-height: 128px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  animation: float-in var(--motion-medium) var(--ease-out);
+}
+
 .chipName {
   overflow: hidden;
   text-overflow: ellipsis;

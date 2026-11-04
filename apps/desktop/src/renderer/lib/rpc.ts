@@ -39,3 +39,16 @@ export const call = async <M extends RpcMethod>(
   if (!result.ok) throw new RpcFailure(result.error)
   return result.value
 }
+
+/**
+ * Saves a file that has no path on disk (a pasted picture or video) on this computer and returns
+ * the full path. The bytes cross as they are: `call` would turn them into JSON. The save is
+ * always on this computer, also when the window shows a linked server, because the send reads
+ * the file from here.
+ */
+export const stageFile = async (file: File): Promise<string> => {
+  const data = new Uint8Array(await file.arrayBuffer())
+  const result = await window.robot.invoke("files.stage", { name: file.name, data })
+  if (!result.ok) throw new RpcFailure(result.error)
+  return result.value
+}

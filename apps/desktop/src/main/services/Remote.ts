@@ -26,6 +26,7 @@ import {
   numberedNames,
   parseAddress,
   parseLink,
+  pictureType,
   type QuietState,
   type RpcResult,
   type Server,
@@ -351,13 +352,13 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
         return { ...(input as object), files: tokens }
       }
 
-      /** "Save as": asks where, then pulls the file from the server piece by piece. */
-      const saveFile = async (linkId: string, input: unknown): Promise<RpcResult<unknown>> => {
-        const { agentId, path, name } = input as { agentId: string; path: string; name: string }
-        const connection = connections.get(linkId)
-        if (!connection || stateOf(linkId) !== "online") return failure("offline")
-        const target = await platform.pickSavePath(String(name))
-        if (!target) return ok({ saved: false })
+      /** Pulls a file of the server piece by piece. `cap` stops a file that is longer than it. */
+      const pullFile = async (
+        connection: Connection,
+        agentId: string,
+        path: string,
+        cap = Number.POSITIVE_INFINITY,
+      ): Promise<Buffer> => {
         const parts: Buffer[] = []
         let offset = 0
         for (;;) {
@@ -369,10 +370,40 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
           const bytes = Buffer.from(chunk.data, "base64")
           parts.push(bytes)
           offset += bytes.length
+          if (offset > cap) throw new LinkError("file_too_large")
           if (chunk.done || bytes.length === 0) break
         }
-        writeFileSync(target, Buffer.concat(parts))
+        return Buffer.concat(parts)
+      }
+
+      /** "Save as": asks where, then pulls the file from the server piece by piece. */
+      const saveFile = async (linkId: string, input: unknown): Promise<RpcResult<unknown>> => {
+        const { agentId, path, name } = input as { agentId: string; path: string; name: string }
+        const connection = connections.get(linkId)
+        if (!connection || stateOf(linkId) !== "online") return failure("offline")
+        const target = await platform.pickSavePath(String(name))
+        if (!target) return ok({ saved: false })
+        writeFileSync(target, await pullFile(connection, agentId, path))
         return ok({ saved: true })
+      }
+
+      /**
+       * The bytes of a picture of a message on the server, for the small picture above the message
+       * (spec 003). Null when the file is no kind of picture that shows, is too large, or the server
+       * does not give it: the message then shows its file chip only.
+       */
+      const pictureFile = async (linkId: string, input: unknown): Promise<RpcResult<unknown>> => {
+        const { agentId, path, size } = input as { agentId: string; path: string; size: number }
+        const connection = connections.get(linkId)
+        if (!connection || stateOf(linkId) !== "online") return ok(null)
+        if (typeof path !== "string" || !pictureType(path)) return ok(null)
+        if (!Number.isSafeInteger(size) || size < 0 || size > ATTACH_BYTES) return ok(null)
+        try {
+          const bytes = await pullFile(connection, agentId, path, ATTACH_BYTES)
+          return ok(bytes.length === size ? new Uint8Array(bytes) : null)
+        } catch {
+          return ok(null)
+        }
       }
 
       const invoke = async (
@@ -388,6 +419,7 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
         if (connection && stateOf(link.id) === "online") {
           try {
             if (method === "attachments.save") return await saveFile(link.id, input)
+            if (method === "attachments.picture") return await pictureFile(link.id, input)
             const payload = method === "chat.send" ? await uploadFiles(connection, input) : input
             const value = await connection.request(method, payload)
             if (key) cache.set(link.id, key, value)

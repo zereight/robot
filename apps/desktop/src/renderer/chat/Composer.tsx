@@ -1,5 +1,6 @@
 import {
   type Agent,
+  ATTACH_BYTES,
   ATTACH_MAX,
   type ChatMessage,
   type MessageKey,
@@ -32,7 +33,7 @@ import {
   Show,
 } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
-import { call } from "../lib/rpc.ts"
+import { call, stageFile } from "../lib/rpc.ts"
 import skillStyles from "../skills/skills.module.css"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
@@ -41,6 +42,7 @@ import { Button, IconButton } from "../ui/controls.tsx"
 import { compactOffKey } from "./ContextMeter.tsx"
 import styles from "./chat.module.css"
 import { pendingFill, takeFill } from "./fill.ts"
+import { pastedFiles } from "./paste.ts"
 import { threadPart } from "./threads.ts"
 
 export interface ComposerProps {
@@ -158,6 +160,8 @@ export const Composer = (props: ComposerProps) => {
   const [text, setText] = createSignal("")
   const [error, setError] = createSignal<ErrorText>()
   const [files, setFiles] = createSignal<string[]>([])
+  /** A small picture for each attached image that was pasted or dropped (spec 003, flow 4). */
+  const [previews, setPreviews] = createSignal<Readonly<Record<string, string>>>({})
   /** The skill chip at the start of the box (spec 017). One at a time. */
   const [skill, setSkill] = createSignal<{ id: string; name: string }>()
   // The command picker (spec 003, flow 7): a slash as the first character opens a list. It shows
@@ -248,7 +252,7 @@ export const Composer = (props: ComposerProps) => {
     const over = (e: DragEvent) => e.preventDefault()
     const drop = (e: DragEvent) => {
       e.preventDefault()
-      addFiles([...(e.dataTransfer?.files ?? [])].map((f) => window.robot.pathForFile(f)))
+      void attachFiles([...(e.dataTransfer?.files ?? [])])
     }
     dropZone?.addEventListener("dragover", over)
     dropZone?.addEventListener("drop", drop)
@@ -267,10 +271,68 @@ export const Composer = (props: ComposerProps) => {
   }
 
   const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path
+  /** Sets the attached files. A picture whose file left the list is let go. */
+  const keepFiles = (next: string[]) => {
+    const kept = new Set(next)
+    const shown: Record<string, string> = {}
+    for (const [path, url] of Object.entries(previews())) {
+      if (kept.has(path)) shown[path] = url
+      else URL.revokeObjectURL(url)
+    }
+    setPreviews(shown)
+    setFiles(next)
+  }
   const addFiles = (paths: readonly string[]) => {
     const merged = [...new Set([...files(), ...paths.filter(Boolean)])]
     if (merged.length > ATTACH_MAX) setError({ key: "error.too_many_files" })
-    setFiles(merged.slice(0, ATTACH_MAX))
+    keepFiles(merged.slice(0, ATTACH_MAX))
+  }
+  onCleanup(() => {
+    for (const url of Object.values(previews())) URL.revokeObjectURL(url)
+  })
+  /**
+   * Attaches files that the window got from a drop or a paste. A file with a path is attached by
+   * its path. A file with no path (a screenshot, a picture from a web page, a video that was
+   * copied) is saved on this computer first, and the box attaches the saved file.
+   */
+  const attachFiles = async (list: readonly File[]) => {
+    setError(undefined)
+    const paths: string[] = []
+    for (const file of list) {
+      if (new Set([...files(), ...paths]).size >= ATTACH_MAX) {
+        setError({ key: "error.too_many_files" })
+        break
+      }
+      let path = window.robot.pathForFile(file)
+      if (!path) {
+        if (file.size > ATTACH_BYTES) {
+          setError({ key: "error.file_too_large", params: { detail: file.name } })
+          continue
+        }
+        try {
+          path = await stageFile(file)
+        } catch (e) {
+          setError(describeError(e))
+          continue
+        }
+      }
+      if (file.type.startsWith("image/") && !previews()[path])
+        setPreviews({ ...previews(), [path]: URL.createObjectURL(file) })
+      paths.push(path)
+    }
+    addFiles(paths)
+  }
+  // A file on the clipboard is attached, and the paste does not reach the text box. Text pastes
+  // as it did (see `pastedFiles`).
+  const onPaste = (event: ClipboardEvent) => {
+    const data = event.clipboardData
+    if (!data) return
+    const attach = pastedFiles([...data.files], data.getData("text/plain"), (f) =>
+      Boolean(window.robot.pathForFile(f)),
+    )
+    if (attach.length === 0) return
+    event.preventDefault()
+    void attachFiles(attach)
   }
   const pick = async () => {
     try {
@@ -295,7 +357,7 @@ export const Composer = (props: ComposerProps) => {
         ...(chip ? { skillId: chip.id } : {}),
       })
       setText("")
-      setFiles([])
+      keepFiles([])
       setSkill(undefined)
       queueMicrotask(resize)
       props.onCancelReply()
@@ -504,10 +566,20 @@ export const Composer = (props: ComposerProps) => {
             <For each={files()}>
               {(path) => (
                 <li class={styles.chip} data-testid="attachment-chip">
+                  <Show when={previews()[path]}>
+                    {(src) => (
+                      <img
+                        class={styles.chipThumb}
+                        src={src()}
+                        alt=""
+                        data-testid="attachment-preview"
+                      />
+                    )}
+                  </Show>
                   <span class={styles.chipName}>{fileName(path)}</span>
                   <IconButton
                     label={t("chat.attach.remove", { name: fileName(path) })}
-                    onClick={() => setFiles(files().filter((p) => p !== path))}
+                    onClick={() => keepFiles(files().filter((p) => p !== path))}
                     data-testid="attachment-remove"
                   >
                     <X size={12} />
@@ -609,6 +681,7 @@ export const Composer = (props: ComposerProps) => {
               resize()
             }}
             onKeyDown={onKeyDown}
+            onPaste={onPaste}
             data-testid="composer-input"
           />
           <Show

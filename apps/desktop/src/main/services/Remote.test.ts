@@ -294,6 +294,48 @@ describe("a computer that opens a linked server", () => {
     expect(readdirSync(join(workspace, "attachments"))).toEqual(["report.txt"])
   })
 
+  test("the picture of a message comes down in pieces, and every other case gives null", async () => {
+    const { a, b, local, agent } = await setup()
+    const folder = mkdtempSync(join(tmpdir(), "robot-pictures-"))
+    // More than two pieces, and not a real picture: the server checks the name and the size only.
+    const bytes = Buffer.alloc(400_000, 7)
+    const shot = join(folder, "shot.png")
+    const note = join(folder, "note.txt")
+    writeFileSync(shot, bytes)
+    writeFileSync(note, "hello")
+    const sent = await invoke(b, local.id, "chat.send", {
+      agentId: agent.id,
+      text: "pictures",
+      replyTo: null,
+      files: [shot, note],
+    })
+    expect(sent.ok).toBe(true)
+    const stored = await waitFor(
+      () => a.runtime.runPromise(Chat.use((c) => c.history(agent.id))),
+      (h) => h.messages.length >= 1,
+    )
+    const messageId = stored.messages[0]?.id ?? ""
+    const ask = (path: string, size: number) =>
+      invoke(b, local.id, "attachments.picture", { agentId: agent.id, path, size, messageId })
+
+    const picture = await ask("attachments/shot.png", bytes.length)
+    expect(picture.ok && Buffer.from(picture.value as Uint8Array).equals(bytes)).toBe(true)
+    // A file that is no kind of picture is not pulled, a wrong size is not trusted, and a path
+    // that the server does not serve gives nothing. None of them is an error.
+    for (const [path, size] of [
+      ["attachments/note.txt", 5],
+      ["attachments/shot.png", bytes.length + 1],
+      ["attachments/missing.png", 1],
+      ["../secret.png", 1],
+    ] as const) {
+      const r = await ask(path, size)
+      expect(r.ok && r.value).toBeNull()
+    }
+    // A size over the limit of an attachment is not asked for.
+    const huge = await ask("attachments/shot.png", 21 * 1024 * 1024)
+    expect(huge.ok && huge.value).toBeNull()
+  })
+
   test("with the server away, reads come from the cache, writes say it is offline, and it comes back", async () => {
     const { a, b, local, agent, entry } = await setup()
     await invoke(b, local.id, "chat.send", { agentId: agent.id, text: "before", replyTo: null })

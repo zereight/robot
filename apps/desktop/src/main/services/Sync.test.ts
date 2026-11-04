@@ -1,5 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { join } from "node:path"
 import { Effect } from "effect"
 import type { AppServices } from "../layers.ts"
@@ -1380,6 +1387,37 @@ describe("tasks, routines, workflows and files of two computers", () => {
     )
     expect(offline.code).toBe("sync_file_offline")
     expect(offline.detail).toBe("MacBook 1")
+  })
+  test("the picture of a message: the bytes when the file is here, and nothing for any other case", async () => {
+    const { a, b, ada } = await pair()
+    const folder = join(ada.workspace, "attachments")
+    mkdirSync(folder, { recursive: true })
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])
+    writeFileSync(join(folder, "shot.png"), png)
+    writeFileSync(join(folder, "note.txt"), "hello")
+    const outside = join(ada.workspace, "outside.png")
+    writeFileSync(outside, png)
+    if (process.platform !== "win32") symlinkSync(outside, join(folder, "link.png"))
+    const ask = (rt: Rt, path: string, size: number) =>
+      run(
+        rt,
+        Sync.use((s) =>
+          Effect.promise(() => s.picture({ agentId: ada.id, path, size, messageId: "pic-1" })),
+        ),
+      )
+    expect([...((await ask(a, "attachments/shot.png", png.length)) ?? [])]).toEqual([...png])
+    // A file that is no kind of picture, a size that is not the size of the message, a file that
+    // is gone and a path that leaves the folder have no picture.
+    expect(await ask(a, "attachments/note.txt", 5)).toBeNull()
+    expect(await ask(a, "attachments/shot.png", png.length + 1)).toBeNull()
+    expect(await ask(a, "attachments/missing.png", 1)).toBeNull()
+    expect(await ask(a, "../outside.png", png.length)).toBeNull()
+    expect(await ask(a, "attachments/../outside.png", png.length)).toBeNull()
+    // A link in the folder that points out of it is not served.
+    if (process.platform !== "win32")
+      expect(await ask(a, "attachments/link.png", png.length)).toBeNull()
+    // The other computer does not hold the file, and the picture waits until it does.
+    expect(await ask(b, "attachments/shot.png", png.length)).toBeNull()
   })
   test("knowledge does not sync: a synced agent has no article, and sync reads and writes no knowledge row", async () => {
     const { a, b, ada } = await pair()
