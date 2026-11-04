@@ -50,13 +50,35 @@
 .memberSearch {
   margin-top: 6px;
 }
-/* The box has one height for any search: a list, a short list and "no match" fill the same room. */
+/*
+ * The box has one height for any search: a list, a short list and "no match" fill the same room.
+ * The height comes from all agents (the sizer, hidden), up to 180 px. The list that the user sees
+ * lies over it and scrolls.
+ */
+.memberBox {
+  position: relative;
+  max-height: 180px;
+  overflow: hidden;
+}
+.memberSizer,
 .memberList {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  height: 180px;
+}
+.memberSizer {
+  visibility: hidden;
+  pointer-events: none;
+}
+.memberList {
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
+}
+.memberFace {
+  flex: none;
+  width: 20px;
+  height: 20px;
 }
 /* The line of the count keeps its room, so the first chosen member does not push the form down. */
 .memberCount {

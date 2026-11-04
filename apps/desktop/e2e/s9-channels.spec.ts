@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test"
+import { expect, type Locator, type Page, test } from "@playwright/test"
 import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 
@@ -7,6 +7,13 @@ const post = async (page: Page, text: string) => {
   await page.getByTestId("channel-input").press("Enter")
 }
 const msgs = (page: Page) => page.getByTestId("channel-message")
+
+/** The layout size of a box. The screen box is not used: a box scales in while it opens. */
+const layoutSize = (box: Locator) =>
+  box.evaluate((el) => {
+    const e = el as HTMLElement
+    return { width: e.offsetWidth, height: e.offsetHeight }
+  })
 
 test("channels: create, split a job, chips, summary, stop, mention, pick", async () => {
   test.setTimeout(120_000)
@@ -28,11 +35,14 @@ test("channels: create, split a job, chips, summary, stop, mention, pick", async
   await member("Lia").check()
   // The box keeps its size for any search: a short list and "no match" do not resize it.
   const dialog = page.getByTestId("channel-dialog")
-  const size = async () => {
-    const box = await dialog.boundingBox()
-    return { width: box?.width, height: box?.height }
-  }
+  const size = () => layoutSize(dialog)
   const sizeBefore = await size()
+  // Few agents: the member box is as high as all of them, under its limit of 180 px.
+  const box = page.getByTestId("channel-member-box")
+  const boxHeight = async () => (await layoutSize(box)).height
+  const fewHeight = await boxHeight()
+  expect(fewHeight).toBeGreaterThan(0)
+  expect(fewHeight).toBeLessThan(180)
   await search.fill("bo")
   await expect(member("Bo")).toBeVisible()
   await expect(member("Lia")).toHaveCount(0)
@@ -46,6 +56,7 @@ test("channels: create, split a job, chips, summary, stop, mention, pick", async
   await search.fill("zzz")
   await expect(page.getByTestId("channel-member-nomatch")).toBeVisible()
   expect(await size()).toEqual(sizeBefore)
+  expect(await boxHeight()).toBe(fewHeight)
   await search.fill("")
   await expect(member("Lia")).toBeChecked()
   await member("Cy").check()
@@ -117,5 +128,42 @@ test("channels: create, split a job, chips, summary, stop, mention, pick", async
   await expect(second.page.getByTestId("channel-panel")).toContainText("지금")
   await shot(second.page, "s9-05-korean")
   await second.app.close()
+  await mock.close()
+})
+
+test("channels: the member box stops at 180 px for many agents and keeps its height in a search", async () => {
+  test.setTimeout(120_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await resizeWindow(app, 1300, 860)
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  const names = ["Ada", "Bea", "Cai", "Dan", "Eli", "Fay", "Gus", "Hal", "Ivy", "Jon", "Kim", "Lou"]
+  for (const name of names) await createAgent(page, name)
+
+  await page.getByTestId("new-channel").click()
+  const box = page.getByTestId("channel-member-box")
+  const height = async () => (await layoutSize(box)).height
+  const dialog = page.getByTestId("channel-dialog")
+  const size = () => layoutSize(dialog)
+  await expect(page.getByTestId("channel-member-Ada")).toBeVisible()
+  expect(await height()).toBe(180)
+  const before = await size()
+  // The list scrolls inside the box: the last agent is there, and the box did not grow for it.
+  await page.getByTestId("channel-member-Lou").scrollIntoViewIfNeeded()
+  await page.getByTestId("channel-member-Lou").check()
+  expect(await height()).toBe(180)
+
+  const search = page.getByTestId("channel-member-search")
+  await search.fill("ea")
+  await expect(page.getByTestId("channel-member-Bea")).toBeVisible()
+  await expect(page.getByTestId("channel-member-Ada")).toHaveCount(0)
+  expect(await height()).toBe(180)
+  await search.fill("zzz")
+  await expect(page.getByTestId("channel-member-nomatch")).toBeVisible()
+  expect(await height()).toBe(180)
+  // The first chosen member added a line of count; it was there already, so the box is the same.
+  expect(await size()).toEqual(before)
+  await shot(page, "s9-06-member-box-many")
+  await app.close()
   await mock.close()
 })
