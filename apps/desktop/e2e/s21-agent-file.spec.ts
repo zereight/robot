@@ -59,7 +59,9 @@ test("agent file: export two agents, import the file in an empty app", async () 
     version: number
     agents: Record<string, unknown>[]
   }
-  expect(written).toMatchObject({ format: "robot-agents", version: 1 })
+  // The format is version 2 since S67 (docs/agent-file-format.md; spec 002, "Agent file"). With
+  // no tick box ticked the file holds the same fields as version 1.
+  expect(written).toMatchObject({ format: "robot-agents", version: 2 })
   expect(written.agents.map((a) => a.name)).toEqual(["Ada", "Bob"])
   for (const agent of written.agents)
     expect(Object.keys(agent).sort()).toEqual(["face", "instructions", "name", "role", "routines"])

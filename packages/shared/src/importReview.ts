@@ -22,6 +22,12 @@ export type NotImported =
       readonly step: number
       readonly name: string
     }
+  /** A ticked channel of a team file whose members the user did not tick (spec 002). */
+  | { readonly reason: "channel_no_member"; readonly owner: string }
+  /** A ticked skill of a team file whose agents the user did not tick (spec 002). */
+  | { readonly reason: "skill_no_agent"; readonly owner: string }
+  /** A skill over the limit of 100 skills of the server (spec 017). */
+  | { readonly reason: "skills_full"; readonly owner: string }
 
 type Json = Record<string, unknown>
 const isObject = (value: unknown): value is Json =>
@@ -59,15 +65,39 @@ const parseRoot = (text: string): unknown => {
 
 /**
  * The fields of an agent file that the format does not define. Call it only for a file that
- * `parseAgentFile` read without a fault.
+ * `parseAgentFile` read without a fault. The fields `channels`, `skills` and `handbook` are
+ * defined from version 2: in a file of version 1 they are unknown fields.
  */
 export const ignoredAgentFields = (text: string): IgnoredField[] => {
   const root = parseRoot(text)
   if (!isObject(root)) return []
-  const out: IgnoredField[] = extra(root, ["format", "version", "agents"], "").map((field) => ({
-    owner: null,
-    field,
-  }))
+  const second = typeof root.version === "number" && root.version >= 2
+  const out: IgnoredField[] = extra(
+    root,
+    second
+      ? ["format", "version", "agents", "channels", "skills", "handbook"]
+      : ["format", "version", "agents"],
+    "",
+  ).map((field) => ({ owner: null, field }))
+  if (second) {
+    const list = (key: "channels" | "skills") => (Array.isArray(root[key]) ? root[key] : [])
+    for (const channel of list("channels")) {
+      if (!isObject(channel)) continue
+      const owner = nameOf(channel)
+      for (const field of extra(
+        channel,
+        ["name", "topic", "instructions", "reviewParts", "members", "lead"],
+        "",
+      ))
+        out.push({ owner, field })
+    }
+    for (const skill of list("skills")) {
+      if (!isObject(skill)) continue
+      const owner = nameOf(skill)
+      for (const field of extra(skill, ["name", "description", "instructions", "agents"], ""))
+        out.push({ owner, field })
+    }
+  }
   const agents = Array.isArray(root.agents) ? root.agents : []
   for (const agent of agents) {
     if (!isObject(agent)) continue

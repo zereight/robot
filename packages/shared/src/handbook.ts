@@ -18,6 +18,9 @@ export const CHANNEL_INSTRUCTIONS_MAX = 4_000
 export const HANDBOOK_SOURCES = ["page", "device", "restore", "import"] as const
 export type HandbookSource = (typeof HANDBOOK_SOURCES)[number]
 
+/** The source of a version that an import of a team file made (spec 002, "Agent file"). */
+export const HANDBOOK_FROM_FILE: HandbookSource = "import"
+
 /** One saved text of the handbook. The newest version of a server is the handbook now. */
 export interface HandbookVersion {
   readonly id: string
