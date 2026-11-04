@@ -294,6 +294,12 @@ export interface TasksService {
   onChanges(source: TaskSource, handler: ChangesHandler): void
   /** Calls `listener` when a task ends as done, failed, blocked or cancelled. */
   onEnd(listener: (task: Task) => void): void
+  /**
+   * Like `onEnd`, and the listener returns true when it told the user about this end by itself.
+   * The task then makes no failure notice of its own, so the user gets one notice and not two
+   * (spec 009, "Repeated failure").
+   */
+  onEndTold(listener: (task: Task) => boolean): void
   list(serverId: string): Effect.Effect<readonly Task[]>
   get(taskId: string): Effect.Effect<TaskDetail, AppError>
   /**
@@ -382,7 +388,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
       const live = new Set<string>()
       const retryHandlers = new Map<TaskSource, RetryHandler>()
       const changesHandlers = new Map<TaskSource, ChangesHandler>()
-      const endListeners: ((task: Task) => void)[] = []
+      const endListeners: ((task: Task) => unknown)[] = []
       const spaceListeners: ((agentId: string) => void)[] = []
       let remote: RemoteTasks | undefined
 
@@ -636,13 +642,15 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               console.error("queue space listener failed", e)
             }
           }
+        // A listener that told the user about this end by itself takes the failure notice.
+        let told = false
         if (isFinal(state)) {
           const ended = endListeners.length > 0 ? row(id) : undefined
           // A listener never stops the end of a task.
           if (ended)
             for (const listener of endListeners) {
               try {
-                listener(toTask(ended, remote))
+                if (listener(toTask(ended, remote)) === true) told = true
               } catch (e) {
                 console.error("task end listener failed", e)
               }
@@ -650,7 +658,10 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         }
         if (state === "review") reviewNotice(id, agentId)
         // A blocked task is a failed one for the notice (spec 005, 015).
-        if (state === "blocked" || (state === "failed" && error?.code !== "app_stopped")) {
+        if (
+          !told &&
+          (state === "blocked" || (state === "failed" && error?.code !== "app_stopped"))
+        ) {
           const task = row(id)
           const agent = db.get<{ server_id: string; name: string }>(
             "SELECT server_id, name FROM agent WHERE id = ?",
@@ -1283,6 +1294,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
         onRetry: (source, handler) => void retryHandlers.set(source, handler),
         onChanges: (source, handler) => void changesHandlers.set(source, handler),
         onEnd: (listener) => void endListeners.push(listener),
+        onEndTold: (listener) => void endListeners.push(listener),
         list: (serverId) =>
           Effect.sync(() =>
             db

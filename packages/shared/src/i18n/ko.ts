@@ -1780,6 +1780,9 @@ export const ko: Record<MessageKey, string> = {
   "routines.watch.first":
     "첫 확인은 결과를 저장만 하고 루틴을 실행하지 않아요. 이후 확인에서 결과가 바뀌면 실행해요.",
   "routines.watch.often": "하루에 약 {n}번 확인해요.",
+  "routines.often": "하루에 약 {n}번 실행돼요.",
+  "error.routines_full":
+    "이 서버에는 루틴이 이미 {detail}개 있어서 더 만들 수 없어요. 일시 중지된 루틴도 개수에 들어가요. 하나를 지우면 새로 만들 수 있어요.",
   "routines.confirm.title": "확인할 때마다 실행돼요",
   "routines.confirm.command":
     "ROBot이 확인할 때마다 묻지 않고 {agent}의 작업 공간에서 이 명령을 실행해요:",

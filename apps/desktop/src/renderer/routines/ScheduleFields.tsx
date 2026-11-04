@@ -1,4 +1,10 @@
-import { type MessageKey, runTimes, type Schedule, validSchedule } from "@robot/shared"
+import {
+  type MessageKey,
+  runsPerDayNote,
+  runTimes,
+  type Schedule,
+  validSchedule,
+} from "@robot/shared"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { useApp } from "../state/app.tsx"
 import styles from "./routines.module.css"
@@ -68,6 +74,8 @@ export const ScheduleFields = (props: {
 
   const valid = () => validSchedule(schedule())
   const preview = () => (valid() ? runTimes(schedule(), Date.now(), 3) : [])
+  // A schedule with less than 15 minutes between two runs shows a note. It never stops the save.
+  const often = createMemo(() => (valid() ? runsPerDayNote(schedule(), Date.now()) : null))
   createEffect(() => props.onChange(schedule(), valid()))
 
   return (
@@ -172,6 +180,13 @@ export const ScheduleFields = (props: {
           <ul class={styles.list}>
             <For each={preview()}>{(at) => <li>{format(at)}</li>}</For>
           </ul>
+        </Show>
+        <Show when={often()}>
+          {(n) => (
+            <span class={styles.hint} data-testid="routine-often">
+              {t("routines.often", { n: n() })}
+            </span>
+          )}
         </Show>
       </div>
     </>

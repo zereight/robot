@@ -3,6 +3,7 @@ import {
   type AgentModel,
   catalogues,
   type MessageKey,
+  ROUTINES_MAX,
   type Routine,
   type RoutineEntry,
   type RoutineInput,
@@ -82,7 +83,7 @@ export const useScheduleWords = () => {
   }
 }
 
-const RoutineDialog = (props: { routine?: Routine; onClose: () => void }) => {
+const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () => void }) => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
@@ -114,7 +115,11 @@ const RoutineDialog = (props: { routine?: Routine; onClose: () => void }) => {
 
   const memberChannels = () => channels.channels().filter((c) => c.memberIds.includes(agentId()))
   const triggerValid = () => (trigger() === "watch" ? watchValid() : valid())
+  // A server holds at most 50 routines, a paused one too. The form for a new routine says so and
+  // does not save (spec 009). The main process refuses it as well, in case the list is old.
+  const atLimit = () => props.routine === undefined && props.full === true
   const canSave = () =>
+    !atLimit() &&
     name().trim() &&
     prompt().trim() &&
     agentId() &&
@@ -168,6 +173,12 @@ const RoutineDialog = (props: { routine?: Routine; onClose: () => void }) => {
     <Dialog label={t("routines.dialog.title")} onClose={props.onClose} testId="routine-dialog">
       <form class={styles.form} onSubmit={submit}>
         <h2 class={styles.title}>{props.routine ? t("routines.edit") : t("routines.new")}</h2>
+        {/* At the top, where the eye is: the form is long and scrolls. */}
+        <Show when={atLimit()}>
+          <div class={styles.error} role="alert" data-testid="routine-full">
+            {t("error.routines_full", { detail: String(ROUTINES_MAX) })}
+          </div>
+        </Show>
         <label class={styles.field}>
           <span>{t("routines.field.name")}</span>
           <input
@@ -629,9 +640,13 @@ export const RoutinesView = () => {
       <Presence when={editing() !== undefined}>
         {() => {
           const current = editing()
+          // Read once, when the form opens: saving the last free place must not make the form
+          // say "full" while it closes.
+          const full = routines().length >= ROUTINES_MAX
           return (
             <RoutineDialog
               {...(current && current !== "new" ? { routine: current } : {})}
+              full={full}
               onClose={() => setEditing(undefined)}
             />
           )

@@ -10,6 +10,7 @@ import {
   type AgentModel,
   type AgentPick,
   charLength,
+  ROUTINES_MAX,
 } from "@robot/shared"
 import { Effect, Exit, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
@@ -582,6 +583,74 @@ describe("import", () => {
     const info = JSON.parse(failure(result)?.detail ?? "{}") as AgentFileFailure
     expect(info).toMatchObject({ name: "Ada", made: 0, code: "workspace_failed" })
     expect(await app.list()).toEqual([])
+  })
+})
+
+describe("import and the limit of 50 routines (spec 009, 002)", () => {
+  const routine = (name: string) => ({
+    name,
+    prompt: "Say hi",
+    schedule: { kind: "daily", times: ["09:00"] },
+  })
+  /** Fills the server with routines of one agent, so that `room` places are left. */
+  const fillRoutines = async (app: App, room: number) => {
+    const owner = await app.make("Owner")
+    for (let i = 0; i < ROUTINES_MAX - room; i++)
+      await app.run(
+        Routines.use((r) =>
+          r.create({
+            serverId: app.server.id,
+            agentId: owner.id,
+            name: `Old ${i}`,
+            prompt: "Look.",
+            schedule: { kind: "daily", times: ["09:00"] },
+            place: { kind: "agent" },
+          }),
+        ),
+      )
+    return owner
+  }
+
+  test("a routine of a file that does not fit stops the import with the limit as the reason; the agent stays", async () => {
+    const app = await setup()
+    await fillRoutines(app, 0)
+    const result = await app.importExit(
+      app.write("full.json", file([{ name: "Ada", routines: [routine("One")] }])),
+    )
+    const error = failure(result)
+    expect(error?.code).toBe("agent_file_failed")
+    const info = JSON.parse(error?.detail ?? "{}") as AgentFileFailure
+    expect(info).toMatchObject({ name: "Ada", made: 1, code: "routines_full", detail: "50" })
+    // The agent that was made stays. No routine was made, and the count is still 50.
+    expect((await app.list()).map((a) => a.name).sort()).toEqual(["Ada", "Owner"])
+    expect(await app.run(Routines.use((r) => r.list(app.server.id)))).toHaveLength(ROUTINES_MAX)
+  })
+
+  test("the routines that fit are made, and the first one that does not stops the import", async () => {
+    const app = await setup()
+    await fillRoutines(app, 2)
+    const result = await app.importExit(
+      app.write(
+        "three.json",
+        file([{ name: "Ada", routines: [routine("A"), routine("B"), routine("C")] }]),
+      ),
+    )
+    expect(failure(result)?.code).toBe("agent_file_failed")
+    const routines = await app.run(Routines.use((r) => r.list(app.server.id)))
+    expect(routines).toHaveLength(ROUTINES_MAX)
+    expect(routines.filter((r) => ["A", "B", "C"].includes(r.name)).map((r) => r.name)).toEqual([
+      "A",
+      "B",
+    ])
+    // Every routine of the file starts paused, and it counts.
+    expect(routines.filter((r) => ["A", "B"].includes(r.name)).every((r) => !r.enabled)).toBe(true)
+  })
+
+  test("a file with no routines imports at 50 routines", async () => {
+    const app = await setup()
+    await fillRoutines(app, 0)
+    const result = await app.importExit(app.write("calm.json", file([{ name: "Ada" }])))
+    expect(Exit.isSuccess(result)).toBe(true)
   })
 })
 

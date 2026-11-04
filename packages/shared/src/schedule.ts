@@ -175,6 +175,59 @@ export const runTimes = (
   }
 }
 
+/** A schedule with less than this many minutes between two runs shows a note (spec 009). */
+export const SHORT_GAP_MINUTES = 15
+
+const DAY_MINUTES = 24 * 60
+/** The days of a cron schedule that the note looks at, to find the busiest full day. */
+const NOTE_DAYS = 7
+
+/**
+ * For a schedule that has less than 15 minutes between two runs: how many times it runs in a full
+ * day ("This runs about N times a day."). Null for every other schedule. The note never stops the
+ * save (spec 009, "Limits and safeguards").
+ * - "every": the day divided by the step,
+ * - "daily": the number of times, when two of them are less than 15 minutes apart (the last time
+ *   of a day and the first of the next count too),
+ * - "cron": the runs of the busiest of the next 7 days, when two runs in a row are less than 15
+ *   minutes apart,
+ * - "once" and "weekly" run once in a day, so they never show it.
+ */
+export const runsPerDayNote = (s: Schedule, now: number): number | null => {
+  if (!validSchedule(s)) return null
+  switch (s.kind) {
+    case "once":
+    case "weekly":
+      return null
+    case "every":
+      return s.minutes < SHORT_GAP_MINUTES ? Math.round(DAY_MINUTES / s.minutes) : null
+    case "daily": {
+      const times = [...new Set(s.times.map((t) => parseTime(t) as number))].sort((a, b) => a - b)
+      const first = times[0] as number
+      const last = times[times.length - 1] as number
+      const gaps = times.slice(1).map((t, i) => t - (times[i] as number))
+      // The gap over midnight: from the last time of a day to the first of the next.
+      gaps.push(DAY_MINUTES - last + first)
+      return Math.min(...gaps) < SHORT_GAP_MINUTES ? times.length : null
+    }
+    case "cron": {
+      const dayStart = startOfDay(now).getTime()
+      const after = dayStart - 1
+      const runs = runTimes(s, after, NOTE_DAYS * DAY_MINUTES + 1, after + NOTE_DAYS * 86_400_000)
+      let closest = Number.POSITIVE_INFINITY
+      for (let i = 1; i < runs.length; i++)
+        closest = Math.min(closest, ((runs[i] as number) - (runs[i - 1] as number)) / MINUTE)
+      if (closest >= SHORT_GAP_MINUTES) return null
+      const perDay = new Map<string, number>()
+      for (const at of runs) {
+        const key = new Date(at).toDateString()
+        perDay.set(key, (perDay.get(key) ?? 0) + 1)
+      }
+      return Math.max(...perDay.values())
+    }
+  }
+}
+
 export type RoutineEntryState =
   | "planned"
   | "queued"
