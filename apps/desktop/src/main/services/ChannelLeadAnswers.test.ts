@@ -71,6 +71,7 @@ const script = {
   queue: [] as string[],
   /** The wait before the lead answers a look, in ms. */
   lookDelay: 0,
+
   /** The status of the answer to a look. 0 is an answer. */
   lookStatus: 0,
   /** The usage that a look reports. */
@@ -83,6 +84,17 @@ interface Seen {
 }
 const lookRequests: Seen[] = []
 const memberRequests: Seen[] = []
+
+/**
+ * The number of the test that runs now. The instructions of its channel hold it, so the server can
+ * tell a request of this test from a late request of an older test. One server serves the whole
+ * file, and a look that Stop ended can still reach it when the next test has begun.
+ */
+let testNo = 0
+const staleRequest = (text: string) => {
+  const from = /\(test (\d+)\)/.exec(text)?.[1]
+  return from !== undefined && Number(from) !== testNo
+}
 
 const server = Bun.serve({
   port: 0,
@@ -99,7 +111,8 @@ const server = Bun.serve({
     const content = last?.content ?? ""
     // A look of the lead at a question of a member.
     if (system.includes("A member asks a question")) {
-      lookRequests.push({ system, content })
+      // A request of an older test is answered but not noted: it is no look of this test.
+      if (!staleRequest(content)) lookRequests.push({ system, content })
       if (script.lookDelay) await Bun.sleep(script.lookDelay)
       if (script.lookStatus)
         return new Response(JSON.stringify({ error: { message: "boom" } }), {
@@ -112,7 +125,7 @@ const server = Bun.serve({
       return sse('{"verdicts":[],"action":"nothing"}')
     if (content.includes("All parts have ended")) return sse("Summary done.")
     if (system.includes("Read the job of the user")) return sse(script.plan)
-    memberRequests.push({ system, content })
+    if (!staleRequest(`${system}\n${content}`)) memberRequests.push({ system, content })
     // The member asks "ASK n" questions, one after the other, and then reports the last answer.
     const text = body.messages.map((m) => m.content).join("\n")
     const wanted = Number(/ASK (\d+)/.exec(text)?.[1] ?? 0)
@@ -162,6 +175,7 @@ const planOf = (prompt: string, label = "Sizes") =>
   })
 
 const setup = async (options: { prompt?: string; lead?: boolean; answers?: boolean } = {}) => {
+  testNo += 1
   script.plan = planOf(options.prompt ?? "ASK 1 sizes")
   const t = testRuntime()
   const run = t.runtime.runPromise
@@ -199,7 +213,7 @@ const setup = async (options: { prompt?: string; lead?: boolean; answers?: boole
         serverId: local.id,
         name: "Shop",
         topic: "Sell shoes",
-        instructions: "Write the answer as a list.",
+        instructions: `Write the answer as a list. (test ${testNo})`,
         memberIds: [lead.id, bo.id, cy.id],
         leadId: options.lead === false ? null : lead.id,
       }),
@@ -488,6 +502,26 @@ describe("the answer of the user wins", () => {
     await until(() => s.log().length === 1)
     expect(s.log()[0]).toMatchObject({ result: "stopped", why: "turn_ended" })
     expect(await s.waiting()).toEqual([])
+  })
+})
+
+describe("the stand-in server", () => {
+  test("a look that an older test left behind is not noted by the next test", async () => {
+    // A look that Stop ended can still reach the server when the next test has begun. The fast
+    // suite under load showed it: the fourth question of a part seemed to get a fourth look.
+    const older = testNo
+    testNo += 1
+    const reply = await fetch(`http://127.0.0.1:${server.port}/v1/chat/completions`, {
+      method: "POST",
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: "A member asks a question. Answer it or pass it." },
+          { role: "user", content: `Instructions: Write the answer as a list. (test ${older})` },
+        ],
+      }),
+    })
+    await reply.text()
+    expect(lookRequests).toEqual([])
   })
 })
 
