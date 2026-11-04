@@ -19,6 +19,7 @@ import {
   Show,
 } from "solid-js"
 import { Face } from "../agents/Face.tsx"
+import { ProfileButton } from "../agents/ProfileButton.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
@@ -165,8 +166,11 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                 {(a) => (
                   <div class={styles.card} data-testid="member-card" data-state={member.state}>
                     <div class={styles.cardHead}>
-                      <Face face={a().face} image={a().faceImage} size={24} agentId={a().id} />
-                      <span class={styles.cardName}>{a().name}</span>
+                      {/* The face and the name open the profile of the member (spec 004). */}
+                      <ProfileButton agent={a()} class={styles.cardProfile} testId="member-profile">
+                        <Face face={a().face} image={a().faceImage} size={24} agentId={a().id} />
+                        <span class={styles.cardName}>{a().name}</span>
+                      </ProfileButton>
                       <span class={styles.cardState} data-testid="member-state">
                         {t(stateLabel(member.state))}
                       </span>
