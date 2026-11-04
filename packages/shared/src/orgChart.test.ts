@@ -34,6 +34,7 @@ const channel = (id: string, memberIds: string[], extra: Partial<OrgChannel> = {
   createdAt: 1,
   leadId: null,
   memberIds,
+  parentId: null,
   ...extra,
 })
 const handoff = (from: string, to: string, count = 1, newest = 1): OrgHandoff => ({
@@ -480,5 +481,51 @@ describe("reading the chart", () => {
       }),
     )
     expect(again).toEqual(model)
+  })
+})
+
+describe("the channel tree on the chart (spec 029, 030)", () => {
+  const base = {
+    ...EMPTY_ORG_SNAPSHOT,
+    agents: ["a", "b", "c"].map((id) => agent(id)),
+  }
+
+  test("a parent with no member is drawn when a lower channel has a node; an empty tree is not", () => {
+    const model = buildChart({
+      ...base,
+      channels: [
+        channel("product", []),
+        channel("docs", ["a"], { parentId: "product" }),
+        channel("empty", []),
+        channel("emptier", [], { parentId: "empty" }),
+      ],
+    })
+    expect(model.channels.map((c) => [c.key, c.parentKey, c.level, c.memberCount])).toEqual([
+      ["c:product", null, 1, 0],
+      ["c:docs", "c:product", 2, 1],
+      ["c:none", null, 1, 2],
+    ])
+  })
+
+  test("the home node is the first copy in the order of the page, with sub-channels after their parent", () => {
+    // "b" is in "zeta" (a top channel) and in "alpha-sub" under "omega": omega, alpha-sub, zeta.
+    const model = buildChart({
+      ...base,
+      channels: [
+        channel("zeta", ["b"]),
+        channel("omega", ["a"]),
+        channel("alpha-sub", ["b"], { parentId: "omega" }),
+      ],
+      handoffs: [{ from: "a", to: "b", count: 1, newest: 1 }],
+    })
+    expect(model.channels.map((c) => c.key)).toEqual(["c:omega", "c:alpha-sub", "c:zeta", "c:none"])
+    expect(model.lines.find((l) => l.kind === "handoff")?.to).toBe("c:alpha-sub/b")
+    expect(chartOrder(model).slice(0, 4)).toEqual([ROOT_KEY, "c:omega", "c:omega/a", "c:alpha-sub"])
+  })
+
+  test("a parent that is not in the snapshot counts as none", () => {
+    const model = buildChart({ ...base, channels: [channel("docs", ["a"], { parentId: "gone" })] })
+    expect(model.channels[0]?.parentKey).toBeNull()
+    expect(model.lines.some((l) => l.id === "s:root>c:docs")).toBe(true)
   })
 })

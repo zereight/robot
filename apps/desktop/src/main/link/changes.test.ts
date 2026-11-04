@@ -443,6 +443,27 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       codeOf(await p.ask("channels.update", { id: channel.id, patch: { archived: true } })),
     ).toBe("invalid_input")
 
+    // The parent channel (spec 030, 012): set at the start and changed, with the rules of the tree.
+    const site = value<{ id: string; parentId: string | null }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Site",
+        topic: "",
+        memberIds: [a.id],
+        leadId: null,
+        parentId: channel.id,
+      }),
+    )
+    expect(site.parentId).toBe(channel.id)
+    expect(
+      codeOf(await p.ask("channels.update", { id: channel.id, patch: { parentId: site.id } })),
+    ).toBe("parent_loop")
+    expect(
+      value<{ parentId: string | null }>(
+        await p.ask("channels.update", { id: site.id, patch: { parentId: null } }),
+      ).parentId,
+    ).toBeNull()
+
     const item = value<{ id: string; text: string }>(
       await p.ask("memory.add", { agentId: a.id, text: "Likes tea" }),
     )

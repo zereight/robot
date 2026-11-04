@@ -58,6 +58,7 @@ import {
   PICK_RECENT_MAX,
   type PickInput,
   PLAN_STEPS_MAX,
+  parentRefusal,
   parseCheck,
   parseMentions,
   parsePlaceOutside,
@@ -199,6 +200,7 @@ interface ChannelRow {
   review_parts: number
   sensitive_mark: string | null
   outside_mark: string | null
+  parent_channel_id: string | null
 }
 
 interface MessageRow {
@@ -283,7 +285,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
 
       const channelRow = (id: string) =>
         db.get<ChannelRow>(
-          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark FROM channel WHERE id = ?",
+          "SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id FROM channel WHERE id = ?",
           id,
         )
       const memberRows = (channelId: string) =>
@@ -337,6 +339,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           memberIds,
           sectionId: row.place_section_id,
           reviewParts: row.review_parts === 1,
+          parentId: row.parent_channel_id,
           sensitive: isSensitiveLabel(row.sensitive_mark) ? row.sensitive_mark : null,
           outside: parsePlaceOutside(row.outside_mark),
           unread,
@@ -1825,6 +1828,34 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           return Effect.void
         })
 
+      /**
+       * The rules of the tree for a new parent of channel `id` (spec 030): no loop, at most 3
+       * levels, and a parent that exists on the same server. `id` may be a channel that is not
+       * made yet.
+       */
+      const checkParent = (serverId: string, id: string, parentId: string | null) =>
+        Effect.suspend(() => {
+          if (parentId === null) return Effect.void
+          const tree = db
+            .all<{ id: string; parent_channel_id: string | null }>(
+              "SELECT id, parent_channel_id FROM channel WHERE server_id = ?",
+              serverId,
+            )
+            .map((c) => ({ id: c.id, parentId: c.parent_channel_id }))
+          const refusal = parentRefusal(tree, id, parentId)
+          if (refusal === undefined) return Effect.void
+          return Effect.fail(
+            new AppError({
+              code:
+                refusal === "loop"
+                  ? "parent_loop"
+                  : refusal === "levels"
+                    ? "parent_levels"
+                    : "parent_not_found",
+            }),
+          )
+        })
+
       const writeMembers = (channelId: string, memberIds: readonly string[]) => {
         db.run("DELETE FROM channel_member WHERE channel_id = ?", channelId)
         for (const [position, id] of memberIds.entries()) {
@@ -1852,12 +1883,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         yield* checkMembers(input.serverId, memberIds, input.leadId)
         const sectionId = yield* sections.check(input.serverId, "channel", input.sectionId ?? null)
         const id = randomUUID()
+        const parentId = input.parentId ?? null
+        yield* checkParent(input.serverId, id, parentId)
         const now = Date.now()
         db.transaction(() => {
           db.run(
             `INSERT INTO channel (id, server_id, name, name_key, topic, lead_agent_id, place_section_id,
-              created_at, updated_at, last_read_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              parent_channel_id, created_at, updated_at, last_read_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.serverId,
             name,
@@ -1865,6 +1898,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             topic,
             input.leadId,
             sectionId,
+            parentId,
             now,
             now,
             now,
@@ -1905,6 +1939,10 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           patch.sectionId !== undefined
             ? yield* sections.check(row.server_id, "channel", patch.sectionId)
             : row.place_section_id
+        // The parent channel (spec 030). The same parent again needs no check: a parent that the
+        // rules allowed stays allowed, or the tree shows it as none.
+        const parentId = patch.parentId !== undefined ? patch.parentId : row.parent_channel_id
+        if (parentId !== row.parent_channel_id) yield* checkParent(row.server_id, id, parentId)
         // A member that works in this channel stays until its part ends or the user stops it.
         for (const removed of current.memberIds.filter((m) => !memberIds.includes(m))) {
           const busy = db.get(
@@ -1918,7 +1956,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         db.transaction(() => {
           db.run(
             `UPDATE channel SET name = ?, name_key = ?, topic = ?, lead_agent_id = ?, place_section_id = ?,
-              review_parts = ?, updated_at = ? WHERE id = ?`,
+              review_parts = ?, parent_channel_id = ?, updated_at = ? WHERE id = ?`,
             name,
             name.toLocaleLowerCase(),
             topic,
@@ -1926,6 +1964,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             sectionId,
             // Turning it off changes no part that is in review already (spec 004).
             patch.reviewParts === undefined ? row.review_parts : patch.reviewParts ? 1 : 0,
+            parentId,
             Date.now(),
             id,
           )
@@ -1950,11 +1989,23 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         const row = channelRow(id)
         if (!row) return yield* new AppError({ code: "channel_not_found" })
         yield* stopAll(id)
+        // A deleted parent channel clears the field of its sub-channels (spec 030): they are top
+        // channels now, here and, after a sync, on the other computer.
+        const subs = db.all<{ id: string }>(
+          "SELECT id FROM channel WHERE parent_channel_id = ?",
+          id,
+        )
         db.transaction(() => {
           db.run("DELETE FROM task WHERE source = 'channel' AND source_id = ?", id)
+          db.run(
+            "UPDATE channel SET parent_channel_id = NULL, updated_at = ? WHERE parent_channel_id = ?",
+            Date.now(),
+            id,
+          )
           db.run("DELETE FROM channel WHERE id = ?", id)
         })
         placesChanged(row.server_id)
+        for (const sub of subs) bus.emit("channels.changed", { channelId: sub.id })
       })
 
       const messageHandlers: ((channelId: string, text: string) => void)[] = []
@@ -2268,7 +2319,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           Effect.sync(() =>
             db
               .all<ChannelRow>(
-                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark FROM channel
+                `SELECT id, server_id, name, topic, lead_agent_id, place_section_id, review_parts, sensitive_mark, outside_mark, parent_channel_id FROM channel
                  WHERE server_id = ? ORDER BY name_key`,
                 serverId,
               )

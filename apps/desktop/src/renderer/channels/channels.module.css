@@ -122,6 +122,32 @@
 .headerName {
   font-weight: 600;
 }
+/* The name of a sub-channel, with the line "In <parent channel>" under it (spec 030). */
+.nameBlock {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.inParent {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--c-text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.inParent:hover {
+  color: var(--c-text);
+  text-decoration: underline;
+}
+.inParent:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-s);
+}
 .divider {
   width: 1px;
   height: 16px;

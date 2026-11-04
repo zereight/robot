@@ -1,4 +1,5 @@
 import type { AgentState, Face } from "./agents.ts"
+import { treeParents } from "./channelTree.ts"
 
 // The org chart (spec 029). The chart stores nothing. A snapshot is read from the agents, the
 // channels and the tasks of a server. The functions below turn a snapshot into the nodes and lines
@@ -49,6 +50,8 @@ export interface OrgChannel {
   /** The lead, or null. A lead that is archived or not a member counts as no lead. */
   readonly leadId: string | null
   readonly memberIds: readonly string[]
+  /** The parent channel as stored (spec 030), or null. One that is not in the snapshot counts as none. */
+  readonly parentId: string | null
 }
 
 /** The tasks that one agent handed to another with the tool "send message" in the window. */
@@ -129,6 +132,13 @@ export interface ChartChannel {
   readonly leadKey: string | null
   /** The members that are not drawn. Empty when all are drawn. */
   readonly more: readonly ChartOverflow[]
+  /**
+   * The key of the channel node of the parent channel (spec 030), or null for a top channel node
+   * and for "No channel": those hang from the root.
+   */
+  readonly parentKey: string | null
+  /** 1 for a top channel node and for "No channel", 2 for a sub-channel, 3 for the next level. */
+  readonly level: number
 }
 
 export type ChartLineKind = "lead" | "handoff" | "structure"
@@ -189,21 +199,51 @@ const emptyCounts = (): Record<AgentState, number> => ({
   offline: 0,
 })
 
-/** The channel nodes that a snapshot has: a channel that has a member that is not archived. */
+/**
+ * The channel nodes that a snapshot has, in the order of the page (spec 029, 030): a channel that
+ * has a member that is not archived, or a lower channel with a channel node. Each top channel
+ * node comes by name, and under it its sub-channel nodes by name, and so on.
+ */
 const channelsOf = (snapshot: OrgSnapshot) => {
   const known = new Set(snapshot.agents.map((a) => a.id))
-  return snapshot.channels
-    .map((c) => {
-      const seen = new Set<string>()
-      const memberIds = c.memberIds.filter((id) => {
-        if (!known.has(id) || seen.has(id)) return false
-        seen.add(id)
-        return true
-      })
-      return { ...c, memberIds, leadId: c.leadId && seen.has(c.leadId) ? c.leadId : null }
+  const parents = treeParents(snapshot.channels)
+  const cleaned = snapshot.channels.map((c) => {
+    const seen = new Set<string>()
+    const memberIds = c.memberIds.filter((id) => {
+      if (!known.has(id) || seen.has(id)) return false
+      seen.add(id)
+      return true
     })
-    .filter((c) => c.memberIds.length > 0)
-    .sort(compareChannels)
+    return {
+      ...c,
+      memberIds,
+      leadId: c.leadId && seen.has(c.leadId) ? c.leadId : null,
+      parentId: parents.get(c.id) ?? null,
+    }
+  })
+  const children = new Map<string | null, typeof cleaned>()
+  for (const c of cleaned) children.set(c.parentId, [...(children.get(c.parentId) ?? []), c])
+  for (const list of children.values()) list.sort(compareChannels)
+  const drawn = new Map<string, boolean>()
+  const hasNode = (c: (typeof cleaned)[number]): boolean => {
+    const known = drawn.get(c.id)
+    if (known !== undefined) return known
+    // `some` runs every child once its answer is needed; a child is drawn only with a node.
+    const result =
+      c.memberIds.length > 0 || (children.get(c.id) ?? []).some((child) => hasNode(child))
+    drawn.set(c.id, result)
+    return result
+  }
+  const out: ((typeof cleaned)[number] & { level: number })[] = []
+  const walk = (parent: string | null, level: number) => {
+    for (const c of children.get(parent) ?? []) {
+      if (!hasNode(c)) continue
+      out.push({ ...c, level })
+      walk(c.id, level + 1)
+    }
+  }
+  walk(null, 1)
+  return out
 }
 
 /** The key of the node of an agent copy. */
@@ -232,6 +272,8 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
     readonly name: string
     readonly leadId: string | null
     readonly members: readonly OrgAgent[]
+    readonly parentKey: string | null
+    readonly level: number
   }
   const groups: Group[] = channels.map((c) => {
     const members = c.memberIds.flatMap((id) => agents.get(id) ?? [])
@@ -244,10 +286,20 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
       name: c.name,
       leadId: lead?.id ?? null,
       members: lead ? [lead, ...rest] : rest,
+      parentKey: c.parentId ? `c:${c.parentId}` : null,
+      level: c.level,
     }
   })
   if (loose.length > 0) {
-    groups.push({ key: NO_CHANNEL_KEY, channelId: null, name: "", leadId: null, members: loose })
+    groups.push({
+      key: NO_CHANNEL_KEY,
+      channelId: null,
+      name: "",
+      leadId: null,
+      members: loose,
+      parentKey: null,
+      level: 1,
+    })
   }
 
   // The hand-offs between agents that exist. Each agent counts the agents on its two sides.
@@ -307,6 +359,8 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
         face: m.face,
         state: m.state,
       })),
+      parentKey: g.parentKey,
+      level: g.level,
     }
   })
 
@@ -331,9 +385,11 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
   }
 
   const lines: ChartLine[] = []
-  // Structure lines: the root to each channel node; a channel node to its lead, or to its members.
+  // Structure lines: the root to each top channel node, a channel node to the channel nodes of its
+  // sub-channels, and a channel node to its lead, or to its members.
   for (const c of channelNodes) {
-    lines.push({ id: `s:${ROOT_KEY}>${c.key}`, kind: "structure", from: ROOT_KEY, to: c.key })
+    const up = c.parentKey ?? ROOT_KEY
+    lines.push({ id: `s:${up}>${c.key}`, kind: "structure", from: up, to: c.key })
     if (c.leadKey) {
       lines.push({ id: `s:${c.key}>${c.leadKey}`, kind: "structure", from: c.key, to: c.leadKey })
     } else {
@@ -387,7 +443,11 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
 // Reading the chart
 // ---------------------------------------------------------------------------------------------
 
-/** Every key of a node of the model, in the order of the page: the root, then each channel node and its agents. */
+/**
+ * Every key of a node of the model, in the order of the page: the root, then each channel node
+ * followed by its agents and then the channel nodes of its sub-channels (the channels of the model
+ * are in that order).
+ */
 export const chartOrder = (model: ChartModel): string[] => [
   ROOT_KEY,
   ...model.channels.flatMap((c) => [c.key, ...c.nodes.map((n) => n.key)]),

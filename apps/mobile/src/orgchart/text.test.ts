@@ -43,6 +43,7 @@ const block = (extra: Partial<OrgBlock> = {}): OrgBlock => ({
   ],
   rows: [],
   more: [],
+  level: 1,
   ...extra,
 })
 

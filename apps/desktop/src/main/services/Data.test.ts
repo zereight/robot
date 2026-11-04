@@ -18,6 +18,7 @@ import { appLayer } from "../layers.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
+import { Channels } from "./Channels.ts"
 import { copyAttachments } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
@@ -656,6 +657,33 @@ describe("export and import", () => {
     expect(agents?.sections.map((s) => [s.name, s.places.map((p) => p.name)])).toEqual([
       ["Research", ["Ada"]],
       ["Ops", []],
+    ])
+  })
+
+  test("the channel tree comes back: each parent channel as it was (spec 030, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-tree.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const make = (name: string, parentId: string | null) =>
+      a.run(
+        Channels.use((c) =>
+          c.create({ serverId: local.id, name, topic: "", memberIds: [], leadId: null, parentId }),
+        ),
+      )
+    const product = await make("Product", null)
+    const docs = await make("Docs", product.id)
+    await make("Site", docs.id)
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const list = await b.run(Channels.use((c) => c.list(bLocal.id)))
+    const name = new Map(list.map((c) => [c.id, c.name]))
+    expect(list.map((c) => [c.name, c.parentId ? name.get(c.parentId) : null]).sort()).toEqual([
+      ["Docs", "Product"],
+      ["Product", null],
+      ["Site", "Docs"],
     ])
   })
 
