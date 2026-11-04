@@ -44,9 +44,20 @@ export class Usage extends Context.Service<Usage, UsageService>()("robot/main/Us
                  FROM channel_message m JOIN agent a ON a.id = m.agent_id
                  WHERE a.server_id = ? AND m.author = 'agent' AND m.status = 'done'
                    AND m.finished_at >= ? AND m.finished_at < ?
+                 UNION ALL
+                 -- A memory check posts no message, so its tokens come from its task (spec 008).
+                 -- It is no reply, so it adds no reply to the count.
+                 SELECT date(t.finished_at / 1000, 'unixepoch', 'localtime'),
+                        a.id, a.name, 0, COALESCE(t.input_tokens, 0), COALESCE(t.output_tokens, 0)
+                 FROM task t JOIN agent a ON a.id = t.agent_id
+                 WHERE a.server_id = ? AND t.source = 'memory_check' AND t.origin IS NULL
+                   AND t.finished_at >= ? AND t.finished_at < ?
                )
                GROUP BY day, agentId
                ORDER BY day DESC, agentName`,
+              serverId,
+              from,
+              to,
               serverId,
               from,
               to,

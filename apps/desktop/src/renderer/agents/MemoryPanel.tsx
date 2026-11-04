@@ -1,4 +1,10 @@
-import type { MemoryHistoryRow, MemoryMode, MemoryProposal, MessageKey } from "@robot/shared"
+import {
+  checkNowState,
+  type MemoryHistoryRow,
+  type MemoryMode,
+  type MemoryProposal,
+  type MessageKey,
+} from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
 import {
   createEffect,
@@ -16,7 +22,7 @@ import { makeSkillFromWork } from "../skills/SkillForm.tsx"
 import { useApp } from "../state/app.tsx"
 import { clearMemoryTarget, type MemoryTab, memoryTarget } from "../state/memoryLink.ts"
 import { useUi } from "../state/ui.tsx"
-import { Button, Segmented } from "../ui/controls.tsx"
+import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Menu } from "../ui/Menu.tsx"
 import styles from "./agents.module.css"
 
@@ -185,6 +191,8 @@ const Proposals = (props: { proposals: readonly MemoryProposal[] }) => {
       setEditing(undefined)
     })
   const origin = (p: MemoryProposal) => {
+    // A proposal of a memory check has no chat: the source is the check (spec 008).
+    if (p.fromCheck) return t("memory.proposals.fromCheck")
     if (!p.place) return undefined
     return p.place.name === null
       ? t("memory.proposals.placeGone")
@@ -339,6 +347,94 @@ const History = (props: { rows: readonly MemoryHistoryRow[] }) => {
 }
 
 /**
+ * The memory check of one agent (spec 008): the choice, how many turns it has counted, and "Check
+ * now". A linked device sees the choice and changes it only with the switch "Can create and change
+ * agents" (spec 012). "Check now" runs the model of this computer, so it is not offered there.
+ */
+const Check = (props: { agentId: string; own: boolean }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const [error, setError] = createSignal<ErrorText>()
+  const run = guarded(setError)
+  const [info, { refetch }] = createResource(
+    () => props.agentId,
+    (agentId) => call("memory.check", { agentId }),
+  )
+  // A turn that ends, a check that starts, and a change of the agent all move the count.
+  const again = () => void refetch()
+  onCleanup(window.robot.on("memory.changed", again))
+  onCleanup(window.robot.on("tasks.changed", again))
+  onCleanup(window.robot.on("agents.changed", again))
+
+  const toggle = (on: boolean) =>
+    run(async () => {
+      await call("memory.check.set", { agentId: props.agentId, on })
+      await refetch()
+    })
+  const now = () =>
+    run(async () => {
+      await call("memory.check.now", { agentId: props.agentId })
+      await refetch()
+    })
+
+  return (
+    <Show when={info()}>
+      {(current) => {
+        const usable = () => current().program === null
+        const state = () => checkNowState(current())
+        return (
+          <div class={styles.field} data-testid="memory-check">
+            <div class={styles.switchRow}>
+              <span class={styles.label}>{t("memory.check.label")}</span>
+              <Switch
+                label={t("memory.check.label")}
+                checked={current().on && usable()}
+                disabled={!usable() || !ui.canChange()}
+                onChange={toggle}
+                testId="memory-check-switch"
+              />
+            </div>
+            <span class={styles.hint} data-testid="memory-check-hint">
+              {t("memory.check.hint")}
+            </span>
+            <Show when={current().program}>
+              {(program) => (
+                <span class={styles.hint} data-testid="memory-check-runtime">
+                  {t("memory.check.runtime", { program: program() })}
+                </span>
+              )}
+            </Show>
+            <Show when={usable() && !current().memory}>
+              <span class={styles.hint} data-testid="memory-check-memory-off">
+                {t("memory.check.memoryOff")}
+              </span>
+            </Show>
+            <Show when={current().on && usable()}>
+              <div class={styles.memoryRow}>
+                <span class={styles.memoryText} data-testid="memory-check-count">
+                  {t("memory.check.count", { count: current().count, every: current().every })}
+                </span>
+                <Show when={props.own}>
+                  <Button disabled={state() !== "on"} onClick={now} data-testid="memory-check-now">
+                    {t("memory.check.now")}
+                  </Button>
+                </Show>
+              </div>
+              <Show when={props.own && (state() === "off_none" || state() === "off_busy")}>
+                <span class={styles.hint} data-testid="memory-check-now-reason">
+                  {t(state() === "off_none" ? "memory.check.now.none" : "memory.check.now.busy")}
+                </span>
+              </Show>
+            </Show>
+            <Failure error={error()} />
+          </div>
+        )
+      }}
+    </Show>
+  )
+}
+
+/**
  * The memory page of one agent (spec 008): the choice of how the agent saves, and three tabs.
  * A linked device (012) sees the items only, and a line that tells where to open the rest.
  */
@@ -424,6 +520,7 @@ export const MemoryPanel = (props: { agentId: string }) => {
           </div>
         )}
       </Show>
+      <Check agentId={props.agentId} own={own()} />
       <Show when={tabs().length > 1}>
         <Segmented
           label={t("memory.tabs")}
