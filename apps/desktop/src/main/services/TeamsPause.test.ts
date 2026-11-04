@@ -1,9 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { TodayRow } from "@robot/shared"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
+import { tempDir } from "../test-temp.ts"
 import { Agents } from "./Agents.ts"
 import { Notifier } from "./Notifier.ts"
 import { Servers } from "./Servers.ts"
@@ -354,7 +353,7 @@ describe("Resume", () => {
 
 describe("after a restart", () => {
   test("a paused link stays paused until the user presses Resume, and a start makes no second notice", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "robot-teams-pause-"))
+    const dir = tempDir("robot-teams-pause-")
     const file = join(dir, "robot.db")
     const chat = new FakeChat()
     chat.signedIn = true

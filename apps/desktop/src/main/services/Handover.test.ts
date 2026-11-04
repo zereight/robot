@@ -10,7 +10,7 @@ import {
   THREAD_MAX,
   userWords,
 } from "@robot/shared"
-import { Effect, Exit, ManagedRuntime } from "effect"
+import { Effect, Exit } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
 import { runRequest } from "../rpc.ts"
@@ -25,7 +25,7 @@ import { Providers } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 // A stand-in provider. It keeps the messages of every request, so a test can read what the model
 // of the new agent got. A message that ends with "slow" streams for about one second.
@@ -674,7 +674,7 @@ describe("the marks of a handover", () => {
 /** An app on an empty database, with the answers of the file pickers that a test sets. */
 const makeApp = (pick: { save?: string; open?: string; agentFile?: string } = {}) => {
   const p = testPlatform()
-  const runtime = ManagedRuntime.make(
+  const runtime = managedRuntime(
     appLayer({
       platform: {
         ...p.platform,

@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import {
@@ -9,10 +8,11 @@ import {
   TEAMS_LOOK_AGAIN_MS,
   type TeamsPatch,
 } from "@robot/shared"
-import { Effect, Exit, ManagedRuntime } from "effect"
+import { Effect, Exit } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
+import { tempDir } from "../test-temp.ts"
 import { Agents } from "./Agents.ts"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
 import { Channels } from "./Channels.ts"
@@ -21,7 +21,7 @@ import { Database } from "./Database.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { TeamsLink } from "./TeamsLink.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 const CHAT = "Marta Kim (You)"
 const PASSWORD = "correct-horse-battery-staple-7731"
@@ -626,7 +626,7 @@ describe("sign out and remove", () => {
 
 describe("after a restart", () => {
   test("a link that is on starts at Connecting and reads again; the last read stays", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "robot-teams-restart-"))
+    const dir = tempDir("robot-teams-restart-")
     const file = join(dir, "robot.db")
     // The stand-in Teams is the outside world: it does not restart with the app.
     const chat = new FakeChat()
@@ -678,7 +678,7 @@ describe("after a restart", () => {
   })
 
   test("a link that is off stays off, and the stand-in sees no visit", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "robot-teams-restart-"))
+    const dir = tempDir("robot-teams-restart-")
     const file = join(dir, "robot.db")
     const chat = new FakeChat()
     const first = testRuntime({ databaseFile: file, chat })
@@ -697,7 +697,7 @@ describe("after a restart", () => {
   })
 
   test("a link whose target went while the app was closed starts at Target missing", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "robot-teams-restart-"))
+    const dir = tempDir("robot-teams-restart-")
     const file = join(dir, "robot.db")
     const chat = new FakeChat()
     chat.signedIn = true
@@ -755,7 +755,7 @@ describe("what stays on this computer (spec 028, 014, 019)", () => {
     }
 
     const { platform } = testPlatform()
-    const second = ManagedRuntime.make(
+    const second = managedRuntime(
       appLayer({
         platform: { ...platform, pickArchive: async () => out },
         databaseFile: ":memory:",

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { chmodSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { tempDir } from "../test-temp.ts"
 import { hostStore } from "./Secrets.ts"
 
 /**
@@ -12,7 +12,7 @@ import { hostStore } from "./Secrets.ts"
  * time limit. A shell script starts at once.
  */
 const fakeHost = () => {
-  const dir = mkdtempSync(join(tmpdir(), "robot-secrets-unit-"))
+  const dir = tempDir("robot-secrets-unit-")
   const log = join(dir, "calls.log")
   const command = join(dir, "robot-host")
   writeFileSync(

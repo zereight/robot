@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import { BROWSER_PROFILE_NAME_MAX, BROWSER_PROFILES_MAX } from "@robot/shared"
-import { Effect, Exit, ManagedRuntime } from "effect"
+import { Effect, Exit } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
@@ -10,7 +10,7 @@ import { Platform } from "./Platform.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { Tools } from "./Tools.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 const setup = async () => {
   const t = testRuntime()
@@ -247,7 +247,7 @@ describe("after a restart", () => {
   test("each agent gets its profile again before any page opens", async () => {
     const t = testPlatform()
     const start = () =>
-      ManagedRuntime.make(
+      managedRuntime(
         appLayer({
           platform: t.platform,
           databaseFile: join(t.dataDir, "robot.db"),

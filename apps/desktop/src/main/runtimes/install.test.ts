@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { tempDir } from "../test-temp.ts"
 import {
   claudePlatform,
   codexAsset,
@@ -12,7 +12,7 @@ import {
 } from "./install.ts"
 import { findBinary, knownPlace, managedPath, rememberPlace } from "./locate.ts"
 
-const tmp = () => mkdtempSync(join(tmpdir(), "robot-install-test-"))
+const tmp = () => tempDir("robot-install-test-")
 const sha = (data: Uint8Array | string) => createHash("sha256").update(data).digest("hex")
 
 /** A tar with a header record for extended data first, then one file. */

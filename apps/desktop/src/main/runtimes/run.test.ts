@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { trackTemp } from "../test-temp.ts"
 import { type BridgeHandler, grantBridge, MUSE_AUTH_VARIABLE } from "./bridge.ts"
 import { claudeLogin, claudeUsage, claudeVersion, runClaude } from "./claude.ts"
 import { codexLogin, runCodex } from "./codex.ts"
@@ -13,6 +14,7 @@ import type { RuntimeRun } from "./types.ts"
 let fake: FakeRuntimes
 beforeAll(() => {
   fake = makeFakeRuntimes()
+  trackTemp(fake.dir)
 })
 
 const base = (bin: string, patch: Partial<RuntimeRun> = {}): RuntimeRun => ({

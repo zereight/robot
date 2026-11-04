@@ -1,13 +1,14 @@
 import { beforeAll, describe, expect, test } from "bun:test"
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { chmodSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
+import { tempDir, trackTemp } from "../test-temp.ts"
 import { hasReadOnlyMode, READ_ONLY_HELP } from "./readonly.ts"
 
 let fake: FakeRuntimes
 beforeAll(() => {
   fake = makeFakeRuntimes()
+  trackTemp(fake.dir)
 })
 
 describe("the read-only mode of a program is found in its own help text", () => {
@@ -54,7 +55,7 @@ describe("the read-only mode of a program is found in its own help text", () => 
   })
 
   test("Codex has the mode only when its help names the sandbox and the value read-only", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "robot-readonly-"))
+    const dir = tempDir("robot-readonly-")
     const only = (text: string) => {
       const path = join(dir, `codex-${Math.random().toString(36).slice(2)}`)
       writeFileSync(path, `#!/bin/sh\necho '${text}'\n`)
@@ -73,7 +74,7 @@ describe("the read-only mode of a program is found in its own help text", () => 
 
   test("a program that does not start, or is not there, has no mode: the app does not guess", async () => {
     expect(await hasReadOnlyMode("claude_code", "/no/such/claude")).toBe(false)
-    const dir = mkdtempSync(join(tmpdir(), "robot-readonly-"))
+    const dir = tempDir("robot-readonly-")
     const broken = join(dir, "broken")
     writeFileSync(broken, "#!/bin/sh\nexit 3\n")
     chmodSync(broken, 0o755)

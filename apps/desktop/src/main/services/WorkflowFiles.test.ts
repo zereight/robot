@@ -10,7 +10,7 @@ import {
   type WorkflowFileFailure,
   type WorkflowInput,
 } from "@robot/shared"
-import { Effect, Exit, ManagedRuntime } from "effect"
+import { Effect, Exit } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
@@ -20,7 +20,7 @@ import { secretKey } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
-import { testPlatform } from "./testing.ts"
+import { managedRuntime, testPlatform } from "./testing.ts"
 import { WorkflowFiles } from "./WorkflowFiles.ts"
 import { Workflows } from "./Workflows.ts"
 
@@ -31,7 +31,7 @@ const LOOKALIKE = "sk-looks-like-a-key-0123456789abcdef"
 const setup = async () => {
   const { platform, dataDir } = testPlatform()
   const pick = { save: undefined as string | undefined, open: undefined as string | undefined }
-  const runtime = ManagedRuntime.make(
+  const runtime = managedRuntime(
     appLayer({
       platform: {
         ...platform,

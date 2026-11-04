@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import { endOfTurn, type Task } from "@robot/shared"
-import { Deferred, Effect, ManagedRuntime } from "effect"
+import { Deferred, Effect } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
@@ -9,7 +9,7 @@ import { Database } from "./Database.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 // Blocked and review (spec 004, 005): how a turn ends a task, and the decisions on a part in review.
 
@@ -258,7 +258,7 @@ describe("Review (spec 004, 005)", () => {
     const { platform, dataDir } = testPlatform()
     const file = join(dataDir, "robot.db")
     const open = () =>
-      ManagedRuntime.make(
+      managedRuntime(
         appLayer({
           platform,
           databaseFile: file,

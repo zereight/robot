@@ -10,7 +10,7 @@ import {
   type ToolAsk,
   type TurnStarter,
 } from "@robot/shared"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Layer } from "effect"
 import { appLayer } from "../layers.ts"
 import { ActionLog, type ActionLogService, logTarget } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
@@ -21,7 +21,7 @@ import { Providers } from "./Providers.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
-import { allowLocalHost, testPlatform, testRuntime } from "./testing.ts"
+import { allowLocalHost, managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 const sse = (chunks: unknown[]) =>
   new Response(
@@ -364,7 +364,7 @@ describe("after a restart", () => {
       }),
     )
     const open = () =>
-      ManagedRuntime.make(
+      managedRuntime(
         appLayer({ platform, databaseFile: file, localServerName: "T", emit: () => {}, secrets }),
       )
     const first = open()

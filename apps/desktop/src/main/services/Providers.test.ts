@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { chmodSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Effect, Exit } from "effect"
+import { tempDir } from "../test-temp.ts"
 import { Agents } from "./Agents.ts"
 import { Database } from "./Database.ts"
 import { checkWait, Providers } from "./Providers.ts"
@@ -114,7 +114,7 @@ describe("Providers", () => {
     "the check of a program that never answers delays no other provider (spec 006)",
     async () => {
       // A stand-in for a vendor program that hangs when it is asked for its version.
-      const dir = mkdtempSync(join(tmpdir(), "robot-hung-"))
+      const dir = tempDir("robot-hung-")
       const bin = join(dir, "muse")
       writeFileSync(bin, "#!/bin/sh\nsleep 5 & wait\n")
       chmodSync(bin, 0o755)

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { type ChildProcess, spawn } from "node:child_process"
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { tempDir } from "../test-temp.ts"
 import {
   isSameProgram,
   type Observed,
@@ -85,7 +85,7 @@ describe.skipIf(!posix)("leftover programs", () => {
     stopPrograms()
     for (const child of started.splice(0)) child.kill("SIGKILL")
   })
-  const dir = () => mkdtempSync(join(tmpdir(), "robot-programs-"))
+  const dir = () => tempDir("robot-programs-")
   const list = (file: string) => JSON.parse(readFileSync(file, "utf8")) as { programs: unknown[] }
 
   test("a program of an earlier run that still runs is ended at the start, and one of the user is not", async () => {

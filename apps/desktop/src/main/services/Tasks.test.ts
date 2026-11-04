@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import { type TaskSource, taskTimes } from "@robot/shared"
-import { Deferred, Effect, Layer, ManagedRuntime } from "effect"
+import { Deferred, Effect, Layer } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
 import { Database } from "./Database.ts"
@@ -12,7 +12,7 @@ import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 const setup = async () => {
   const { runtime } = testRuntime()
@@ -187,7 +187,7 @@ describe("Tasks", () => {
     const { platform, dataDir } = testPlatform()
     const file = join(dataDir, "robot.db")
     const open = () =>
-      ManagedRuntime.make(
+      managedRuntime(
         appLayer({
           platform,
           databaseFile: file,
@@ -273,7 +273,7 @@ describe("Tasks", () => {
     const { platform, dataDir } = testPlatform()
     const file = join(dataDir, "robot.db")
     const open = () =>
-      ManagedRuntime.make(
+      managedRuntime(
         appLayer({
           platform,
           databaseFile: file,
@@ -348,7 +348,7 @@ describe("Tasks", () => {
       }),
     )
     const open = () =>
-      ManagedRuntime.make(
+      managedRuntime(
         appLayer({ platform, databaseFile: file, localServerName: "T", emit: () => {}, secrets }),
       )
     const first = open()
@@ -524,7 +524,7 @@ describe("Tasks", () => {
     const { platform, dataDir } = testPlatform()
     const file = join(dataDir, "robot.db")
     const open = () =>
-      ManagedRuntime.make(
+      managedRuntime(
         appLayer({
           platform,
           databaseFile: file,

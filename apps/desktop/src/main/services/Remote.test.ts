@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { type ChatMessage, messageText } from "@robot/shared"
 import { Effect } from "effect"
+import { tempDir } from "../test-temp.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
 import { Devices } from "./Devices.ts"
@@ -205,7 +205,7 @@ describe("a computer that opens a linked server", () => {
 
   test("files go up in pieces and come down again, and a path does not work as a file", async () => {
     const { a, b, local, agent, entry, history } = await setup()
-    const folder = mkdtempSync(join(tmpdir(), "robot-files-"))
+    const folder = tempDir("robot-files-")
     const source = join(folder, "report.txt")
     const content = "x".repeat(400_000) // more than two pieces
     writeFileSync(source, content)

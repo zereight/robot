@@ -1,6 +1,7 @@
-import { setDefaultTimeout } from "bun:test"
+import { afterAll, setDefaultTimeout } from "bun:test"
 import { ChildProcess } from "node:child_process"
 import { Readable } from "node:stream"
+import { cleanUpTemp } from "./test-temp.ts"
 
 /**
  * The time limit of one test, when the test sets none. The limit of the test runner is 5 seconds.
@@ -10,6 +11,16 @@ import { Readable } from "node:stream"
  * fails, a little later. A test that sets its own limit keeps it.
  */
 setDefaultTimeout(30_000)
+
+/**
+ * After the tests: close what they left open and remove the temp folders that they made with
+ * `tempDir` (test-temp.ts). Under `bun test --parallel` the preload runs again for each file, so
+ * this hook runs once after each file, after the `afterAll` hooks of that file, and a worker runs
+ * no `exit` handler. In a run with no `--parallel` it runs once, after the last file.
+ */
+afterAll(async () => {
+  await cleanUpTemp()
+})
 
 /**
  * Loaded before every unit test file (bunfig.toml). Test runs only; the app runs on Node.

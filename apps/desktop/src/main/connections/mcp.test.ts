@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { createServer } from "node:net"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { tempDir } from "../test-temp.ts"
 import {
   McpCallError,
   McpCallStopped,
@@ -14,7 +14,7 @@ import {
 } from "./mcp.ts"
 
 const SERVER = join(import.meta.dir, "../../../e2e/fakes/mcp-server.mjs")
-const work = mkdtempSync(join(tmpdir(), "robot-mcp-"))
+const work = tempDir("robot-mcp-")
 
 const program = (env: Record<string, string> = {}): Extract<McpSpec, { kind: "program" }> => ({
   kind: "program",

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { type PlaceKind, SECTION_NAME_MAX, SECTIONS_MAX } from "@robot/shared"
-import { Effect, Exit, ManagedRuntime } from "effect"
+import { Effect, Exit } from "effect"
 import { appLayer } from "../layers.ts"
 import { AgentFiles } from "./AgentFiles.ts"
 import { Agents } from "./Agents.ts"
@@ -12,7 +12,7 @@ import { Places } from "./Places.ts"
 import { Secrets } from "./Secrets.ts"
 import { Sections } from "./Sections.ts"
 import { Servers } from "./Servers.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 const setup = async () => {
   const t = testRuntime()
@@ -404,7 +404,7 @@ describe("the agent file", () => {
     const { platform, dataDir } = testPlatform()
     const file = join(dataDir, "team.json")
     const pick = { save: file as string | undefined, open: file as string | undefined }
-    const runtime = ManagedRuntime.make(
+    const runtime = managedRuntime(
       appLayer({
         platform: {
           ...platform,

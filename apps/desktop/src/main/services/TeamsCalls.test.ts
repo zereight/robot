@@ -1,6 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import {
@@ -15,6 +14,7 @@ import {
 import { Effect } from "effect"
 import { unzipSync } from "fflate"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
+import { tempDir } from "../test-temp.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
@@ -546,7 +546,7 @@ describe("gaps and baselines", () => {
   })
 
   test("the start of the app is a baseline read: the old calls get no task", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "robot-teams-calls-"))
+    const dir = tempDir("robot-teams-calls-")
     const file = join(dir, "robot.db")
     const chat = new FakeChat()
     const first = await setup("ask_risky", { databaseFile: file, chat })
@@ -789,7 +789,7 @@ describe("a message from Teams in the chat", () => {
   })
 
   test("a retry after a restart keeps the source and the program mark", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "robot-teams-calls-"))
+    const dir = tempDir("robot-teams-calls-")
     const file = join(dir, "robot.db")
     const chat = new FakeChat()
     const first = await setup("ask_risky", { databaseFile: file, chat })

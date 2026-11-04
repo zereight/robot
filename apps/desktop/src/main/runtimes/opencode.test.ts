@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from "bun:test"
 import { type FakeRuntimes, makeFakeRuntimes } from "../../../e2e/fake-runtimes.ts"
 import type { AgentEvent } from "../providers/agent.ts"
 import { ProviderFailure } from "../providers/client.ts"
+import { trackTemp } from "../test-temp.ts"
 import {
   mapOpencodeEvent,
   newOpencodeState,
@@ -20,6 +21,7 @@ import type { RuntimeRun } from "./types.ts"
 let fake: FakeRuntimes
 beforeAll(() => {
   fake = makeFakeRuntimes()
+  trackTemp(fake.dir)
 })
 
 const run = (patch: Partial<RuntimeRun> = {}): RuntimeRun => ({

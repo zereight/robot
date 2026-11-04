@@ -2,7 +2,6 @@ import { afterAll, describe, expect, test } from "bun:test"
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -12,11 +11,11 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ChatMessage, MessagePart } from "@robot/shared"
 import { KNOWLEDGE_CHARS_MAX, KNOWLEDGE_LINES_MAX } from "@robot/shared"
 import { Effect } from "effect"
+import { tempDir } from "../test-temp.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
@@ -370,7 +369,7 @@ describe("keys and tokens", () => {
 
   test("a refused source does not ask about the first save in a chosen workspace", async () => {
     const s = await setup()
-    const chosen = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    const chosen = tempDir("robot-chosen-")
     ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", chosen, s.agent.id)
     mkdirSync(join(chosen, "attachments"), { recursive: true })
     writeFileSync(join(chosen, "attachments", "leak.txt"), `key=${KEY}`)
@@ -982,7 +981,7 @@ describe("knowledge tools in a turn", () => {
 
   test("a file outside the workspace cannot be a source", async () => {
     const s = await setup()
-    const outside = join(mkdtempSync(join(tmpdir(), "robot-out-")), "secret.txt")
+    const outside = join(tempDir("robot-out-"), "secret.txt")
     writeFileSync(outside, "x")
     await s.turn(call("add_source", { path: outside }))
     expect((await s.toolParts())[0]?.knowledge).toMatchObject({
@@ -1169,7 +1168,7 @@ describe("protection", () => {
 describe("the first save in a workspace that the user chose", () => {
   test("asks for approval and names the folder; the default workspace asks nothing", async () => {
     const s = await setup()
-    const chosen = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    const chosen = tempDir("robot-chosen-")
     const db = await s.db()
     db.run("UPDATE agent SET workspace = ? WHERE id = ?", chosen, s.agent.id)
     await s.send(call("write_article", { title: "Alpha", body: "x" }))
@@ -1202,7 +1201,7 @@ describe("the first save in a workspace that the user chose", () => {
 
   test("a folder under a root that the user set in Settings is in the default workspace folder", async () => {
     const s = await setup()
-    const root = mkdtempSync(join(tmpdir(), "robot-root-"))
+    const root = tempDir("robot-root-")
     await s.run(SettingsStore.use((x) => x.update({ workspaceRoot: root })))
     const inside = join(root, "ada-1234")
     mkdirSync(inside, { recursive: true })
@@ -1214,7 +1213,7 @@ describe("the first save in a workspace that the user chose", () => {
     expect(existsSync(join(inside, "Knowledge", "Alpha.md"))).toBe(true)
     // A folder next to the root, or the built-in root after the user set another one, is judged
     // by the same rule.
-    const outside = mkdtempSync(join(tmpdir(), "robot-elsewhere-"))
+    const outside = tempDir("robot-elsewhere-")
     ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", outside, s.agent.id)
     expect((await s.k((x) => x.folder(s.agent.id))).chosen).toBe(true)
     const builtIn = join(s.t.dataDir, "workspaces", "old-agent")
@@ -1227,7 +1226,7 @@ describe("the first save in a workspace that the user chose", () => {
 
   test("the first source asks too; Always allow is not offered and the folder asks again when it is missing", async () => {
     const s = await setup()
-    const chosen = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    const chosen = tempDir("robot-chosen-")
     ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", chosen, s.agent.id)
     mkdirSync(join(chosen, "attachments"), { recursive: true })
     writeFileSync(join(chosen, "attachments", "r.txt"), "Plain source.")
@@ -1263,13 +1262,13 @@ describe("the first save in a workspace that the user chose", () => {
 
   test("a save by the user asks nothing, and at full access nothing asks", async () => {
     const s = await setup()
-    const chosen = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    const chosen = tempDir("robot-chosen-")
     ;(await s.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", chosen, s.agent.id)
     await s.save("Mine", "text")
     expect(existsSync(join(chosen, "Knowledge", "Mine.md"))).toBe(true)
 
     const full = await setup("full")
-    const other = mkdtempSync(join(tmpdir(), "robot-chosen-"))
+    const other = tempDir("robot-chosen-")
     ;(await full.db()).run("UPDATE agent SET workspace = ? WHERE id = ?", other, full.agent.id)
     await full.turn(call("write_article", { title: "Alpha", body: "x" }))
     expect((await full.toolParts())[0]).toMatchObject({ state: "done" })

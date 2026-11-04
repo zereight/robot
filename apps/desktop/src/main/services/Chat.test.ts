@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { join } from "node:path"
 import { messageText, type TaskProgress, taskTimes } from "@robot/shared"
-import { Effect, Exit, Layer, ManagedRuntime } from "effect"
+import { Effect, Exit, Layer } from "effect"
 import { appLayer } from "../layers.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
@@ -14,7 +14,7 @@ import { SettingsStore } from "./Settings.ts"
 import { fakeClock } from "./silence.testing.ts"
 import { useClockForTests } from "./silence.ts"
 import { Tasks } from "./Tasks.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 const KEY = "sk-chat-test"
 let failNext = true
@@ -512,7 +512,7 @@ describe("Chat", () => {
         }),
       )
       const open = () =>
-        ManagedRuntime.make(
+        managedRuntime(
           appLayer({ platform, databaseFile: file, localServerName: "T", emit: () => {}, secrets }),
         )
       const first = open()

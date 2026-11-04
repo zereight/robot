@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { tempDir } from "../test-temp.ts"
 import { isHostMethod, makeHost } from "./Host.ts"
 
 /**
@@ -11,7 +12,7 @@ import { isHostMethod, makeHost } from "./Host.ts"
  * not start for seconds, or never, and the test waits for its time limit.
  */
 const fakeHost = (source: (dir: string) => string) => {
-  const dir = mkdtempSync(join(tmpdir(), "robot-host-unit-"))
+  const dir = tempDir("robot-host-unit-")
   const file = join(dir, "host.sh")
   writeFileSync(file, source(dir))
   return { command: "/bin/sh", args: [file], dir }

@@ -11,7 +11,7 @@ import {
   type AgentPick,
   charLength,
 } from "@robot/shared"
-import { Effect, Exit, ManagedRuntime } from "effect"
+import { Effect, Exit } from "effect"
 import { appLayer } from "../layers.ts"
 import { AgentFiles } from "./AgentFiles.ts"
 import { Agents } from "./Agents.ts"
@@ -22,7 +22,7 @@ import { secretKey } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
 import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
-import { testPlatform } from "./testing.ts"
+import { managedRuntime, testPlatform } from "./testing.ts"
 
 const KEY = "stored-key-0123456789abcdef"
 
@@ -39,7 +39,7 @@ const SECRET_LOOKALIKE = "sk-looks-like-a-key-0123456789abcdef"
 const setup = async () => {
   const { platform, dataDir } = testPlatform()
   const pick = { save: undefined as string | undefined, open: undefined as string | undefined }
-  const runtime = ManagedRuntime.make(
+  const runtime = managedRuntime(
     appLayer({
       platform: {
         ...platform,

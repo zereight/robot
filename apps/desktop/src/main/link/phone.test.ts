@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { type AsyncSecretStore, type BrowserWebSocketClass, browserSocket } from "@robot/link"
 import {
@@ -26,6 +25,7 @@ import { EventBus } from "../services/EventBus.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
+import { tempDir } from "../test-temp.ts"
 
 // The phone app (spec 011) runs its client core in React Native. Here the same core runs in Bun,
 // with the web socket of the browser API that Bun has, against the real link server, the real
@@ -251,7 +251,7 @@ describe("the phone on a real computer", () => {
     // An approval: the card and the "Needs you" list show it, and the phone answers.
     const notices: WireNotice[] = []
     phone.onNotice((_id, n) => notices.push(n))
-    const dir = mkdtempSync(join(tmpdir(), "robot-phone-"))
+    const dir = tempDir("robot-phone-")
     const target = join(dir, "old.txt")
     writeFileSync(target, "x")
     await phone.send(link.id, {

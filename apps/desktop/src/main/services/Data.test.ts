@@ -12,7 +12,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import type { RuleInput } from "@robot/shared"
-import { Effect, ManagedRuntime } from "effect"
+import { Effect } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
 import { ActionLog } from "./ActionLog.ts"
@@ -31,14 +31,14 @@ import { Search } from "./Search.ts"
 import { Secrets } from "./Secrets.ts"
 import { Sections } from "./Sections.ts"
 import { Servers } from "./Servers.ts"
-import { testPlatform } from "./testing.ts"
+import { managedRuntime, testPlatform } from "./testing.ts"
 import { Workflows } from "./Workflows.ts"
 
 const KEY = "sk-export-test-0123456789abcdef"
 
 const app = (pick: { save?: string; open?: string } = {}) => {
   const { platform, dataDir } = testPlatform()
-  const runtime = ManagedRuntime.make(
+  const runtime = managedRuntime(
     appLayer({
       platform: {
         ...platform,

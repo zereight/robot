@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ChatMessage, MessagePart, PermissionLevel } from "@robot/shared"
-import { Effect, ManagedRuntime } from "effect"
+import { Effect } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
 import { ActionLog } from "./ActionLog.ts"
@@ -16,7 +16,7 @@ import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Tools } from "./Tools.ts"
-import { testPlatform, testRuntime } from "./testing.ts"
+import { managedRuntime, testPlatform, testRuntime } from "./testing.ts"
 
 const sse = (chunks: unknown[]) =>
   new Response(
@@ -315,7 +315,7 @@ describe("the instruction history (spec 002)", () => {
   test("an export holds the history with keys hidden; deleting the agent deletes it", async () => {
     const { platform, dataDir } = testPlatform()
     const out = join(dataDir, "export.zip")
-    const runtime = ManagedRuntime.make(
+    const runtime = managedRuntime(
       appLayer({
         platform: { ...platform, pickSavePath: async () => out },
         databaseFile: ":memory:",

@@ -1,17 +1,16 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { SEARCH_CAP, SEARCH_PAGE, type SearchHit } from "@robot/shared"
-import { Effect, Layer, ManagedRuntime } from "effect"
+import { Effect, Layer } from "effect"
+import { tempDir } from "../test-temp.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Database, type DatabaseService, openDatabase } from "./Database.ts"
 import { migrations } from "./migrations.ts"
 import { Search } from "./Search.ts"
 import { Servers } from "./Servers.ts"
-import { testRuntime } from "./testing.ts"
+import { managedRuntime, testRuntime } from "./testing.ts"
 
 const text = (value: string) => JSON.stringify([{ kind: "text", text: value }])
 
@@ -494,7 +493,7 @@ describe("the speed", () => {
     // opened the way the app opens it: the step of the search runs on all the messages.
     const at = migrations.findIndex((sql) => sql.includes("CREATE VIRTUAL TABLE message_fts"))
     expect(at).toBeGreaterThan(0)
-    const file = join(mkdtempSync(join(tmpdir(), "robot-search-")), "robot.db")
+    const file = join(tempDir("robot-search-"), "robot.db")
     const raw = new DatabaseSync(file)
     raw.exec("PRAGMA foreign_keys = ON")
     for (const sql of migrations.slice(0, at)) raw.exec(sql)
@@ -517,9 +516,7 @@ describe("the speed", () => {
 
     const db: DatabaseService = openDatabase(file)
     expect(db.get("SELECT COUNT(*) AS n FROM message_text")).toEqual({ n: 50_000 })
-    const runtime = ManagedRuntime.make(
-      Search.layer.pipe(Layer.provide(Layer.succeed(Database, db))),
-    )
+    const runtime = managedRuntime(Search.layer.pipe(Layer.provide(Layer.succeed(Database, db))))
     const search = (query: string, offset = 0) =>
       runtime.runPromise(Search.use((s) => s.page("s", query, offset)))
     await search("warm") // The first call loads the code.

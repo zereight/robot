@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ChatMessage, MessagePart, PermissionLevel, SecretAsk } from "@robot/shared"
-import { Effect, ManagedRuntime } from "effect"
+import { Effect } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
 import { ActionLog } from "./ActionLog.ts"
@@ -17,7 +17,7 @@ import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Tools } from "./Tools.ts"
-import { testPlatform } from "./testing.ts"
+import { managedRuntime, testPlatform } from "./testing.ts"
 
 const VALUE = "tok-Zq81xVb27mW0-secret"
 const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64")
@@ -121,7 +121,7 @@ const until = async (check: () => boolean | Promise<boolean>, ms = 5000) => {
 
 const setup = async (permission: PermissionLevel = "ask_risky", pick: { save?: string } = {}) => {
   const { platform, dataDir, trashed } = testPlatform()
-  const runtime = ManagedRuntime.make(
+  const runtime = managedRuntime(
     appLayer({
       platform: { ...platform, pickSavePath: async () => pick.save },
       databaseFile: ":memory:",
@@ -476,7 +476,7 @@ describe("export and import", () => {
     }
 
     const { platform } = testPlatform()
-    const b = ManagedRuntime.make(
+    const b = managedRuntime(
       appLayer({
         platform: { ...platform, pickArchive: async () => out },
         databaseFile: ":memory:",

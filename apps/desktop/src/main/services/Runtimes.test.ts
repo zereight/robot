@@ -3,13 +3,11 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   type ChatMessage,
@@ -22,6 +20,7 @@ import { type FakeRuntimes, makeFakeRuntimes, sha256, tarGzOf } from "../../../e
 import { runRequest } from "../rpc.ts"
 import { type Ctx, KINDS } from "../sync/kinds.ts"
 import { parseOp } from "../sync/wire.ts"
+import { tempDir, trackTemp } from "../test-temp.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
@@ -43,6 +42,7 @@ let fake: FakeRuntimes
 const saved: Record<string, string | undefined> = {}
 beforeAll(() => {
   fake = makeFakeRuntimes()
+  trackTemp(fake.dir)
   for (const key of ["ROBOT_CLAUDE_BIN", "ROBOT_CODEX_BIN", "ROBOT_MUSE_BIN"])
     saved[key] = process.env[key]
   process.env.ROBOT_CLAUDE_BIN = fake.claude
@@ -1108,7 +1108,7 @@ describe("the browser for a subscription: the status island", () => {
 describe("runtime states (spec 006)", () => {
   /** A program of its own that runs the stand-in, so a test can remove it, or make it fail. */
   const wrapped = (flag?: string) => {
-    const dir = mkdtempSync(join(tmpdir(), "robot-wrap-"))
+    const dir = tempDir("robot-wrap-")
     const path = join(dir, "codex")
     const body = `#!/bin/sh\n${flag ? `[ -f "${flag}" ] && exec /no/such/program\n` : ""}exec "${fake.codex}" "$@"\n`
     const put = () => {
@@ -1231,7 +1231,7 @@ describe("runtime states (spec 006)", () => {
 
   test("a turn that cannot start the program sets Needs repair at once; the next turn fails at once, in words", async () => {
     fake.setCodex(signedIn)
-    const flag = join(mkdtempSync(join(tmpdir(), "robot-flag-")), "broken")
+    const flag = join(tempDir("robot-flag-"), "broken")
     const program = wrapped(flag)
     await using(program.path, async () => {
       const s = await chatSetup("codex")

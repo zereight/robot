@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { tempDir } from "../src/main/test-temp.ts"
 import {
   checkSizes,
   compareMarkdown,
@@ -115,7 +115,7 @@ describe("sizes", () => {
   })
 
   test("measures a build folder and leaves out source maps", () => {
-    const out = mkdtempSync(join(tmpdir(), "robot-sizes-"))
+    const out = tempDir("robot-sizes-")
     mkdirSync(join(out, "main"))
     mkdirSync(join(out, "renderer/assets"), { recursive: true })
     writeFileSync(join(out, "main/index.js"), "x".repeat(100))

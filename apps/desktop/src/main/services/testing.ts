@@ -1,5 +1,3 @@
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { TeachEvent } from "@robot/shared"
 import { Effect, Layer, ManagedRuntime } from "effect"
@@ -7,6 +5,7 @@ import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
+import { afterTemp, tempDir } from "../test-temp.ts"
 import type { ConnectionsOptions } from "./Connections.ts"
 import type { BrowserPage, PlatformService } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
@@ -15,12 +14,13 @@ import { fakeClock } from "./silence.testing.ts"
 
 /**
  * A platform for unit tests: a temp data folder and a trash list. A test that restarts the app
- * gives the same stand-in Teams to both starts, because the outside world does not restart.
+ * gives the same stand-in Teams to both starts, because the outside world does not restart. The
+ * folders go after the last test of the file (test-temp.ts).
  */
 export const testPlatform = (options: { chat?: FakeChat } = {}) => {
-  const dataDir = mkdtempSync(join(tmpdir(), "robot-unit-"))
+  const dataDir = tempDir("robot-unit-")
   // A home folder of its own, so a test never reads or writes a real place of the user (spec 007).
-  const homeDir = mkdtempSync(join(tmpdir(), "robot-unit-home-"))
+  const homeDir = tempDir("robot-unit-home-")
   /** The addresses that each host name leads to, for a web page fetch. A name not here fails. */
   const hosts = new Map<string, string[]>()
   const trashed: string[] = []
@@ -200,6 +200,17 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
   }
 }
 
+/**
+ * A runtime of a layer that a test builds itself. A test that does not dispose it gets it disposed
+ * after the last test of the file, as when the app quits: that closes the database and removes
+ * the upload folder of the app (test-temp.ts). Disposing it twice does no harm.
+ */
+export const managedRuntime = <A, E>(layer: Layer.Layer<A, E>) => {
+  const runtime = ManagedRuntime.make(layer)
+  afterTemp(() => runtime.dispose())
+  return runtime
+}
+
 /** The full app layer on an in-memory database, with recorded events. */
 export const testRuntime = (
   options: {
@@ -236,7 +247,7 @@ export const testRuntime = (
   const { clock, advance, sleep } = fakeClock()
   // The messages of the stand-in Teams carry the time of this clock.
   chat.useClock(clock.now)
-  const runtime = ManagedRuntime.make(
+  const runtime = managedRuntime(
     appLayer({
       platform,
       clock,
