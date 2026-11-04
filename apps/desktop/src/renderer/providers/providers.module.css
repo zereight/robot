@@ -111,8 +111,18 @@
 
 .picker {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* `minmax(0, 1fr)`: a long model name must not widen a column (and the box around it). */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
+}
+
+.picker > * {
+  min-width: 0;
+}
+
+.picker .select {
+  width: 100%;
+  text-overflow: ellipsis;
 }
 
 /* The captions of the three choices are quieter than the label of the group. */

@@ -26,10 +26,18 @@ test("channels: create, split a job, chips, summary, stop, mention, pick", async
   const member = (name: string) => page.getByTestId(`channel-member-${name}`)
   const search = page.getByTestId("channel-member-search")
   await member("Lia").check()
+  // The box keeps its size for any search: a short list and "no match" do not resize it.
+  const dialog = page.getByTestId("channel-dialog")
+  const size = async () => {
+    const box = await dialog.boundingBox()
+    return { width: box?.width, height: box?.height }
+  }
+  const sizeBefore = await size()
   await search.fill("bo")
   await expect(member("Bo")).toBeVisible()
   await expect(member("Lia")).toHaveCount(0)
   await expect(member("Cy")).toHaveCount(0)
+  expect(await size()).toEqual(sizeBefore)
   await expect(page.getByTestId("channel-member-count")).toHaveText("1 selected")
   await shot(page, "s9-00-member-search")
   await search.press("Enter")
@@ -37,6 +45,7 @@ test("channels: create, split a job, chips, summary, stop, mention, pick", async
   await member("Bo").check()
   await search.fill("zzz")
   await expect(page.getByTestId("channel-member-nomatch")).toBeVisible()
+  expect(await size()).toEqual(sizeBefore)
   await search.fill("")
   await expect(member("Lia")).toBeChecked()
   await member("Cy").check()

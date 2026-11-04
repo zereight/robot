@@ -155,15 +155,15 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
               }}
               data-testid="channel-member-search"
             />
-            <Show
-              when={shown().length > 0}
-              fallback={
-                <p class={styles.hint} data-testid="channel-member-nomatch">
-                  {t("channels.members.noMatch")}
-                </p>
-              }
-            >
-              <div class={styles.memberList}>
+            <div class={styles.memberList}>
+              <Show
+                when={shown().length > 0}
+                fallback={
+                  <p class={styles.hint} data-testid="channel-member-nomatch">
+                    {t("channels.members.noMatch")}
+                  </p>
+                }
+              >
                 <For each={shown()}>
                   {(agent) => (
                     <label class={styles.member}>
@@ -181,13 +181,17 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
                     </label>
                   )}
                 </For>
-              </div>
-            </Show>
-            <Show when={members().length > 0}>
-              <span class={styles.hint} aria-live="polite" data-testid="channel-member-count">
+              </Show>
+            </div>
+            <span
+              class={`${styles.hint} ${styles.memberCount}`}
+              aria-live="polite"
+              data-testid="channel-member-count"
+            >
+              <Show when={members().length > 0}>
                 {t("channels.members.selected", { count: members().length })}
-              </span>
-            </Show>
+              </Show>
+            </span>
           </Show>
         </fieldset>
         <label class={styles.field}>
