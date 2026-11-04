@@ -43,6 +43,7 @@ afterAll(() => {
  * with a program that holds ports: 3 shared ports in 60 000 for all addresses, and 0 in 60 000
  * for 127.0.0.1.
  * A test server that a test reaches on 127.0.0.1 needs the same: `Bun.serve({ hostname })`.
+ * `listener-rules.test.ts` fails on a server of a test that names no address.
  */
 process.env.ROBOT_LINK_BIND = "127.0.0.1"
 

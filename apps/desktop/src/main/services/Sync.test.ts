@@ -32,6 +32,7 @@ type Rt = ReturnType<typeof testRuntime>
 
 const model = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   fetch(req) {
     if (new URL(req.url).pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
     return new Response("data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } })
