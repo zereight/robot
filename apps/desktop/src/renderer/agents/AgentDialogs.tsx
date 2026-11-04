@@ -45,6 +45,7 @@ const changesOf = (agent: Agent, values: AgentFormValues): AgentPatch => ({
   ...(values.name !== agent.name ? { name: values.name } : {}),
   ...(values.role !== agent.role ? { role: values.role } : {}),
   ...(values.instructions !== agent.instructions ? { instructions: values.instructions } : {}),
+  ...(values.readHandbook !== agent.readHandbook ? { readHandbook: values.readHandbook } : {}),
   ...(values.face.shape !== agent.face.shape || values.face.hue !== agent.face.hue
     ? { face: values.face }
     : {}),

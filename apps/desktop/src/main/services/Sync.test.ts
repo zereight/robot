@@ -16,6 +16,7 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Devices } from "./Devices.ts"
+import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Notifier } from "./Notifier.ts"
@@ -615,6 +616,106 @@ describe("two computers that were apart", () => {
     expect((await history(a)).map((r) => r.kind)).toEqual(["edited", "added"])
     expect((await history(a))[0]?.undo).toEqual({ on: false, why: "newer" })
     expect((await proposals(b)).length).toBe(0)
+  })
+
+  test("the handbook, the switch and the instructions of a channel cross; when both change the handbook apart, the later text wins and the other stays in the history (spec 002, 019)", async () => {
+    const { a, b, agents } = await pair()
+    const ada = agents[0]
+    const handbook = async (rt: Rt) => {
+      const id = await localId(rt)
+      return run(
+        rt,
+        Handbook.use((h) => h.get(id)),
+      )
+    }
+    const texts = async (rt: Rt) => {
+      const id = await localId(rt)
+      return (
+        await run(
+          rt,
+          Handbook.use((h) => h.history(id)),
+        )
+      ).map((v) => v.text)
+    }
+    const save = async (rt: Rt, text: string) => {
+      const id = await localId(rt)
+      await run(
+        rt,
+        Handbook.use((h) => h.save(id, text, "page")),
+      )
+    }
+
+    // A text that is written on one computer is the handbook of the other, with its history.
+    await save(a, "From A.")
+    expect(
+      (
+        await waitFor(
+          () => handbook(b),
+          (h) => h.text === "From A.",
+        )
+      ).text,
+    ).toBe("From A.")
+    expect(await texts(b)).toEqual(["From A."])
+
+    // The switch of an agent and the instructions of a channel cross as fields.
+    const serverA = await localId(a)
+    await run(
+      a,
+      Agents.use((x) => x.update(ada?.id ?? "", { readHandbook: false })),
+    )
+    await run(
+      a,
+      Channels.use((c) =>
+        c.create({
+          serverId: serverA,
+          name: "Team",
+          topic: "",
+          instructions: "Use lists.",
+          memberIds: [ada?.id ?? ""],
+          leadId: null,
+        }),
+      ),
+    )
+    const serverB = await localId(b)
+    const channelsB = await waitFor(
+      () =>
+        run(
+          b,
+          Channels.use((c) => c.list(serverB)),
+        ),
+      (list) => list.length === 1,
+    )
+    expect(channelsB[0]?.instructions).toBe("Use lists.")
+    const agentB = await waitFor(
+      () =>
+        run(
+          b,
+          Agents.use((x) => x.get(ada?.id ?? "")),
+        ),
+      (x) => x.readHandbook === false,
+    )
+    expect(agentB.readHandbook).toBe(false)
+
+    // Both computers change the handbook while apart: the later change wins on both.
+    await apart(a, b)
+    await save(b, "From B, first.")
+    await new Promise((r) => setTimeout(r, 40))
+    await save(a, "From A, later.")
+    await together(a, b)
+    const both = (t: string[]) => t.length === 3
+    const textsA = await waitFor(() => texts(a), both)
+    const textsB = await waitFor(() => texts(b), both)
+    expect(textsA).toEqual(["From A, later.", "From B, first.", "From A."])
+    expect(textsB).toEqual(textsA)
+    expect((await handbook(a)).text).toBe("From A, later.")
+    expect(
+      (
+        await waitFor(
+          () => handbook(b),
+          (h) => h.text === "From A, later.",
+        )
+      ).text,
+    ).toBe("From A, later.")
   })
 
   test("a name stays unique when both computers give one name to different agents", async () => {
