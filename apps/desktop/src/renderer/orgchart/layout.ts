@@ -127,7 +127,9 @@ const placeGroup = (channel: ChartChannel, m: Metrics, rowMaxCells: number): Gro
   const others = channel.nodes.filter((n) => n !== lead)
   const slots = others.length + (channel.more.length > 0 ? 1 : 0)
   const widest = Math.max(1, Math.floor((rowMaxCells - m.gutter) / (m.agentW + m.gutter)))
-  const cols = Math.min(widest, slots <= 1 ? 1 : slots <= 4 ? 2 : slots <= 9 ? 3 : 4)
+  // A small team stands in one or two columns, so that a chart of a few agents is not wide and
+  // "Fit to view" keeps the text large enough to read. A full channel node (12 and the tile) has 4.
+  const cols = Math.min(widest, slots <= 2 ? 1 : slots <= 6 ? 2 : slots <= 12 ? 3 : 4)
   const gridW = m.gutter + cols * (m.agentW + m.gutter)
   let w = Math.max(gridW, m.headW + 2)
   // An odd width puts the middle of the header and of the lead on the middle of a cell.

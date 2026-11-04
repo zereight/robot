@@ -50,8 +50,12 @@ export const isCachedMethod = (method: string) =>
  */
 export const defaultCanChange = (kind: DeviceKind): boolean => kind !== "phone"
 
-/** Page buttons that a client cannot use on a linked server (spec 012, "What a client can do"). */
-export const CLIENT_BLOCKED_PAGES = ["today", "usage"] as const
+/**
+ * Page buttons that a client cannot use on a linked server (spec 012, "What a client can do").
+ * The org chart (029) is here until the read of the chart of a linked server comes (S106, part 2):
+ * a linked server then shows the line "Open this on <name>", and never the chart of this computer.
+ */
+export const CLIENT_BLOCKED_PAGES = ["today", "orgchart", "usage"] as const
 
 /** A model that a device with the switch may pick (spec 012). It holds no key. */
 export interface ModelChoice {
