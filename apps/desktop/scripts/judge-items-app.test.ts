@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Agents } from "../src/main/services/Agents.ts"
 import { Channels } from "../src/main/services/Channels.ts"
+import { asOldShape } from "../src/main/services/channelTurns.testing.ts"
 import { Database } from "../src/main/services/Database.ts"
 import { Providers } from "../src/main/services/Providers.ts"
 import { Servers } from "../src/main/services/Servers.ts"
@@ -54,7 +55,7 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
-    const body = (await req.json()) as { messages: { role: string; content: string }[] }
+    const body = asOldShape((await req.json()) as { messages: { role: string; content: string }[] })
     const system = body.messages.find((m) => m.role === "system")?.content ?? ""
     const content = body.messages.at(-1)?.content ?? ""
     const last = content.split("\n").at(-1) ?? ""
