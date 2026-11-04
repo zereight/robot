@@ -471,6 +471,65 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     ])
   })
 
+  test("it sets the switch Read the handbook and the instructions of a channel, with the same limits as the server (spec 002, 004, 012)", async () => {
+    const p = await pair(true)
+    const off = value<Agent>(
+      await p.ask("agents.create", make(p.serverId, "Writer", { readHandbook: false })),
+    )
+    expect(off.readHandbook).toBe(false)
+    const on = value<Agent>(await p.ask("agents.create", make(p.serverId, "Planner")))
+    expect(on.readHandbook).toBe(true)
+    const flipped = value<Agent>(
+      await p.ask("agents.update", { id: off.id, patch: { readHandbook: true } }),
+    )
+    expect(flipped.readHandbook).toBe(true)
+    // A copy keeps the switch of the original.
+    await p.ask("agents.update", { id: on.id, patch: { readHandbook: false } })
+    const copy = value<Agent>(await p.ask("agents.duplicate", { id: on.id, suffix: " copy" }))
+    expect(copy.readHandbook).toBe(false)
+    expect(codeOf(await p.ask("agents.update", { id: on.id, patch: { readHandbook: "no" } }))).toBe(
+      "invalid_input",
+    )
+
+    const channel = value<{ id: string; instructions: string }>(
+      await p.ask("channels.create", {
+        serverId: p.serverId,
+        name: "Docs",
+        topic: "",
+        instructions: "Write a list.",
+        memberIds: [off.id],
+        leadId: null,
+      }),
+    )
+    expect(channel.instructions).toBe("Write a list.")
+    expect(
+      value<{ instructions: string }>(
+        await p.ask("channels.update", { id: channel.id, patch: { instructions: "Be kind." } }),
+      ).instructions,
+    ).toBe("Be kind.")
+    // The server checks the limit and the secrets, so a client cannot go round them.
+    expect(
+      codeOf(
+        await p.ask("channels.update", {
+          id: channel.id,
+          patch: { instructions: "x".repeat(4001) },
+        }),
+      ),
+    ).toBe("channel_instructions_too_long")
+    expect(
+      codeOf(
+        await p.ask("channels.update", {
+          id: channel.id,
+          patch: { instructions: "Use sk-abcdefghijklmnopqrstuvwxyz0123" },
+        }),
+      ),
+    ).toBe("channel_instructions_secret")
+    const listed = value<{ id: string; instructions: string }[]>(
+      await p.onServer("channels.list", { serverId: p.serverId }),
+    )
+    expect(listed.find((c) => c.id === channel.id)?.instructions).toBe("Be kind.")
+  })
+
   test("a request that is too large or has the wrong type is refused", async () => {
     const p = await pair(true)
     expect(codeOf(await p.ask("agents.create", make(p.serverId, "A".repeat(41))))).toBe(
