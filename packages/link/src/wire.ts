@@ -151,6 +151,9 @@ export const CLIENT_METHODS = [
   // The org chart of the server (spec 029, 012), as a ready model. It needs only the link: it is
   // read only, and a phone asks for it the same way (spec 011).
   "orgChart.model",
+  // The hand-off rule of the server (spec 030, 012). A client reads the part "Organization" and
+  // never changes it: there is no change request for it, with or without the switch.
+  "organization.get",
   // Only with the switch "Can create and change agents" (spec 012). Each one checks it again.
   "agents.create",
   "agents.update",
@@ -226,6 +229,8 @@ export const PUSHED_EVENTS = [
   "memory.changed",
   "workflows.changed",
   "workflows.run",
+  // The part "Organization" changed (spec 030, 012): a client that shows it reads it again.
+  "organization.changed",
   // The org chart changed (spec 029, 012): the whole ready model, so a client reads nothing again.
   "orgChart.model",
   // A turn became quiet, went on, or ended (spec 005, "Quiet line", 012). The start and the end
