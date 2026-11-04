@@ -80,10 +80,18 @@ export class LinkServer {
     return address && typeof address === "object" ? address.port : null
   }
 
-  /** Starts to listen. Resolves with the port. */
-  listen(port: number): Promise<number> {
+  /**
+   * Starts to listen. Resolves with the port. `host` is the address to listen on; with none, the
+   * listener takes all addresses of this computer.
+   */
+  listen(port: number, host?: string): Promise<number> {
     return new Promise((resolve, reject) => {
-      const wss = new WebSocketServer({ port, maxPayload: 1024 * 1024, perMessageDeflate: false })
+      const wss = new WebSocketServer({
+        port,
+        ...(host ? { host } : {}),
+        maxPayload: 1024 * 1024,
+        perMessageDeflate: false,
+      })
       wss.once("error", reject)
       wss.once("listening", () => {
         wss.off("error", reject)

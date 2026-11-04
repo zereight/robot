@@ -33,6 +33,20 @@ afterAll(() => {
 })
 
 /**
+ * The link listener of a unit test listens on 127.0.0.1 only. The app listens on all addresses,
+ * and the test asks the system for a free port (port 0). The system can give a port that another
+ * program of the computer already holds on 127.0.0.1 or on all IPv4 addresses. Then a connection
+ * to 127.0.0.1 and that port goes to the other program, not to the test. The other program
+ * answered "404" or "401" at once (a tunnel agent, a development server), or never answered, and
+ * the handshake of 3 seconds ran out (Tailscale). The test failed with "unreachable", in about 1
+ * of 200 runs. The system gives a listener on 127.0.0.1 only a port that is free there. Measured
+ * with a program that holds ports: 3 shared ports in 60 000 for all addresses, and 0 in 60 000
+ * for 127.0.0.1.
+ * A test server that a test reaches on 127.0.0.1 needs the same: `Bun.serve({ hostname })`.
+ */
+process.env.ROBOT_LINK_BIND = "127.0.0.1"
+
+/**
  * Loaded before every unit test file (bunfig.toml). Test runs only; the app runs on Node.
  *
  * Under `bun test` on a busy macOS computer, `node:child_process` can emit the events of a program
