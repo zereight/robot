@@ -253,6 +253,12 @@ const setup = async (
     until(async () =>
       (await tasks()).every((x) => ["done", "failed", "blocked", "cancelled"].includes(x.state)),
     )
+  /** Accepts every part in review, so that the request ends and the lead gives its summary. */
+  const acceptReviews = async () => {
+    for (const x of await tasks())
+      if (x.state === "review") await run(Tasks.use((y) => y.accept(x.id)))
+    await finished()
+  }
   const log = () => {
     try {
       return readFileSync(join(t.dataDir, "logs", "channels.log"), "utf8")
@@ -280,6 +286,7 @@ const setup = async (
     waiting,
     answer,
     finished,
+    acceptReviews,
     log,
   }
 }
@@ -639,6 +646,66 @@ describe("which questions go to the lead", () => {
     await s.finished()
     expect(lookRequests).toHaveLength(6)
     expect(await s.waiting()).toEqual([])
+  })
+
+  test("a part that Request changes starts is a part like any other: its question goes to the lead (spec 004, 007)", async () => {
+    script.look = '{"action":"answer","choice":1,"reason":"Yes."}'
+    const s = await setup({ review: true })
+    await s.send("split sizes")
+    // The first part asked one question, the lead answered, and the part waits in review. The
+    // channel holds the plan of the lead and the reply of Bo: messages of other agents.
+    await until(async () =>
+      (await s.tasks()).some((x) => x.parentId !== null && x.state === "review"),
+    )
+    expect(lookRequests).toHaveLength(1)
+    const first = (await s.tasks()).find((x) => x.parentId !== null)
+    await s.run(Tasks.use((x) => x.requestChanges(first?.id ?? "", "ASK 1 colours")))
+    await until(() => lookRequests.length === 2)
+    await until(async () =>
+      (await s.tasks()).some((x) => x.label?.startsWith("Changes:") && x.state === "review"),
+    )
+    // The second question was answered by the lead: nothing waited for the user.
+    const cards = await s.cards()
+    expect(cards).toHaveLength(2)
+    expect(cards[1]).toMatchObject({ state: "done", answeredByLead: { name: "Lia" } })
+    expect(await s.waiting()).toEqual([])
+    // The notices are those of the parts in review (015): no notice of a question.
+    expect(s.t.shell.notices.filter((n) => n.body.includes("Question"))).toEqual([])
+    await s.acceptReviews()
+  })
+
+  test("a part that Request changes starts goes to the user at once when its turn holds outside content", async () => {
+    script.look = '{"action":"answer","choice":1,"reason":"Yes."}'
+    const s = await setup({ review: true })
+    await s.send("split sizes")
+    await until(async () =>
+      (await s.tasks()).some((x) => x.parentId !== null && x.state === "review"),
+    )
+    expect(lookRequests).toHaveLength(1)
+    // An earlier turn read a page, and no one cleared the mark of the channel (spec 007).
+    await s.run(
+      PlaceMarks.use((marks) =>
+        Effect.sync(() =>
+          marks.holdOutside(
+            { kind: "channel", id: s.channel.id },
+            { kind: "page", host: "a.test" },
+          ),
+        ),
+      ),
+    )
+    const first = (await s.tasks()).find((x) => x.parentId !== null)
+    await s.run(Tasks.use((x) => x.requestChanges(first?.id ?? "", "ASK 1 colours")))
+    await until(async () => (await s.waiting()).length === 1)
+    // No second look: the question is a normal question for the user.
+    expect(lookRequests).toHaveLength(1)
+    const ask = askOf((await s.cards())[1])
+    expect(ask?.lead).toBeUndefined()
+    expect(ask?.passed).toBeUndefined()
+    await s.answer((await s.cards())[1]?.id ?? "", "Yes")
+    await until(async () =>
+      (await s.tasks()).some((x) => x.label?.startsWith("Changes:") && x.state === "review"),
+    )
+    await s.acceptReviews()
   })
 
   test("a reply to @all is no part: the question goes to the user", async () => {
