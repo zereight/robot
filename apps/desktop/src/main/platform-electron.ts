@@ -118,7 +118,12 @@ export const setMainWindow = (win: BrowserWindow) => {
  * One page per agent, inside the main window. Its session is kept on disk, so logins stay between
  * runs. The session is the one of the browser profile of the agent, or its own. The screen of the chat says where the page shows. Until it does, the page is hidden.
  */
-const electronBrowser = (agentId: string): BrowserPage => {
+const electronBrowser = (agentId: string, options: { fixedLayout?: boolean } = {}): BrowserPage => {
+  /**
+   * A fixed layout keeps the size of PAGE_VIEW whatever the size of its place. A plain view (the
+   * Teams page) fills its place exactly, so the clicks of the user land where the page shows them.
+   */
+  const fixedLayout = options.fixedLayout ?? true
   let view: WebContentsView | undefined
   let host: BaseWindow | undefined
   let bounds: PageBounds | undefined
@@ -158,6 +163,7 @@ const electronBrowser = (agentId: string): BrowserPage => {
    * the session ends.
    */
   const emulate = (scale: number) => {
+    if (!fixedLayout) return
     const v = live()
     if (!v || !started) return
     const session = v.webContents.debugger
@@ -189,9 +195,40 @@ const electronBrowser = (agentId: string): BrowserPage => {
   /** The app screen, when the page sits in the main window. The shelf has none. */
   const screenOf = () =>
     host && host === mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : undefined
+  /**
+   * Puts a plain view where it belongs: exactly the place that the screen gives it, or parked
+   * and hidden. The page is laid out in the size that the user sees, so a real click lands where
+   * the page shows it, with no scale in between.
+   */
+  const applyPlain = (v: WebContentsView) => {
+    const screenContents = screenOf()
+    if (!bounds || !screenContents) {
+      v.setBounds({ x: 0, y: 0, ...PAGE_VIEW })
+      if (!sized) {
+        v.setVisible(true)
+        sized = true
+      }
+      v.setVisible(false)
+      return
+    }
+    // The screen measures in CSS px. The window measures in px after the page zoom.
+    const zoom = screenContents.getZoomFactor()
+    sized = true
+    v.setBounds({
+      x: Math.round(bounds.x * zoom),
+      y: Math.round(bounds.y * zoom),
+      width: Math.max(1, Math.round(bounds.width * zoom)),
+      height: Math.max(1, Math.round(bounds.height * zoom)),
+    })
+    v.setVisible(true)
+  }
   const apply = () => {
     const v = live()
     if (!v) return
+    if (!fixedLayout) {
+      applyPlain(v)
+      return
+    }
     const screenContents = screenOf()
     // The screen measures in CSS px. The window measures in px after the page zoom.
     const zoom = screenContents?.getZoomFactor() ?? 1
@@ -368,10 +405,13 @@ const electronBrowser = (agentId: string): BrowserPage => {
       try {
         if (!started) {
           // An empty page first: from then on the view answers the debugger, and the page of the
-          // address has its size before its first script runs.
-          await v.webContents.loadURL("about:blank")
+          // address has its size before its first script runs. A plain view has no debugger, so
+          // it loads the address at once.
+          if (fixedLayout) {
+            await v.webContents.loadURL("about:blank")
+            emulate(scaleNow)
+          }
           started = true
-          emulate(scaleNow)
         }
         // A debugger that does not answer must not keep the agent from the page.
         await Promise.race([emulating, new Promise((resolve) => setTimeout(resolve, 2_000))])
@@ -552,7 +592,10 @@ export const electronPlatform = (): PlatformService => {
   const pageOf = (agentId: string): BrowserPage => {
     const known = browsers.get(agentId)
     if (known) return known
-    const page = electronBrowser(agentId)
+    // The Teams page is for the hands of the user (spec 028): it fills its place exactly, with
+    // no fixed layout and no scale, so a click lands where the page shows. An agent keeps the
+    // fixed layout, so its place never changes what the agent reads or where a click lands.
+    const page = electronBrowser(agentId, agentId === TEAMS_PAGE_KEY ? { fixedLayout: false } : {})
     browsers.set(agentId, page)
     return page
   }
