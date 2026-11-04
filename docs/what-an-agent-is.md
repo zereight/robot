@@ -87,17 +87,12 @@ Do not count names. Count the sets of state and action space that share no membe
   agents. The app says the same: the agent cannot change its permission level, its workspace, the
   skills that it may use, or the handbook (002, "Changes from the chat").
 
-A role line is not a part of this equation. The turn prompt of a direct chat holds the handbook, the
-instructions of the agent and the instructions of the channel. It holds no role line. A model reads
-the role line in three places: the check of the lead (004), the fast pick (004), and the answer of
-the settings tool (002, "Changes from the chat"). In a channel, the turn prompt names the agent and
-its members; in a direct chat it names no one. The role line is a label for placement, not an
-identity.
-
-Note: 002 says "the model gets it as before, on an API provider and on a vendor runtime." The code
-of a direct chat does not put the role line in the prompt. The word "before" needs a decision: is
-the role line part of the prompt, or is it a label? Write the answer in `docs/spec-questions.md`
-before a slice relies on it.
+A role line is not a part of this equation. The turn prompt of a direct chat holds the handbook and
+the instructions of the agent. It holds no role line. A model reads the role line in three places:
+the check of the lead (004), the fast pick (004), and the answer of the settings tool (002,
+"Changes from the chat"). In a channel, the turn prompt names the agent and its members; in a
+direct chat it names no one. The role line is a label for placement, not an identity. 002,
+"Role label", "What the model reads" holds this rule.
 
 ## What this model explains
 
