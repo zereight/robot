@@ -337,7 +337,12 @@ const REUSE_COST = 1.5
  * (the lines of the root go down to the channel nodes). One search finds all of them, and the
  * paths share their first part, so they merge into trunks like the branches of a tree.
  */
-const searchTree = (grid: Grid, from: readonly Port[], to: readonly Port[]) => {
+const searchTree = (
+  grid: Grid,
+  from: readonly Port[],
+  to: readonly Port[],
+  step: (next: number) => number = () => 1,
+) => {
   const n = grid.w * grid.h
   const g = new Float64Array(n * 4).fill(Number.POSITIVE_INFINITY)
   const parent = new Int32Array(n * 4).fill(-1)
@@ -362,7 +367,7 @@ const searchTree = (grid: Grid, from: readonly Port[], to: readonly Port[]) => {
     const dir = state & 3
     const here = g[state] as number
     if (goals.has(cell) && !reached.has(cell)) reached.set(cell, state)
-    expand(grid, g, parent, heap, state, cell, dir, here, () => 1, 0)
+    expand(grid, g, parent, heap, state, cell, dir, here, step, 0)
   }
   for (const c of freed) grid.blocked[c] = 1
   const paths = new Map<number, number[]>()
@@ -500,27 +505,64 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   const rowMaxCells = Math.floor(ROW_MAX_PX / CELL)
   const groups = model.channels.map((c) => placeGroup(c, m, rowMaxCells))
 
-  // Rows of channel nodes: left to right, then the next row. A row is at most 1,600 px wide.
-  interface RowOf {
-    readonly groups: { group: Group; x: number }[]
+  // A block is a channel node with the blocks of its sub-channels (spec 030) in rows under it, one
+  // level lower. The top blocks sit in rows under the root. Rows go left to right, then the next
+  // row, and a row is at most 1,600 px wide, also a row of sub-channels.
+  interface Row {
+    readonly blocks: { block: Block; x: number }[]
     w: number
     h: number
   }
-  const rows: RowOf[] = []
-  let current: RowOf | undefined
-  for (const group of groups) {
-    if (!current || (current.groups.length > 0 && current.w + m.groupGap + group.w > rowMaxCells)) {
-      current = { groups: [], w: 0, h: 0 }
-      rows.push(current)
-    }
-    const x = current.groups.length === 0 ? 0 : current.w + m.groupGap
-    current.groups.push({ group, x })
-    current.w = x + group.w
-    current.h = Math.max(current.h, group.h)
+  interface Block {
+    readonly group: Group
+    /** The rows of the sub-channel blocks, relative to the block. */
+    readonly rows: readonly { row: Row; x: number; y: number }[]
+    /** Where the group sits in the block. */
+    readonly gx: number
+    readonly w: number
+    readonly h: number
   }
+  const packRows = (blocks: readonly Block[]): Row[] => {
+    const rows: Row[] = []
+    let current: Row | undefined
+    for (const block of blocks) {
+      if (
+        !current ||
+        (current.blocks.length > 0 && current.w + m.groupGap + block.w > rowMaxCells)
+      ) {
+        current = { blocks: [], w: 0, h: 0 }
+        rows.push(current)
+      }
+      const x = current.blocks.length === 0 ? 0 : current.w + m.groupGap
+      current.blocks.push({ block, x })
+      current.w = x + block.w
+      current.h = Math.max(current.h, block.h)
+    }
+    return rows
+  }
+  const children = new Map<string | null, Group[]>()
+  for (const group of groups) {
+    const up = group.channel.parentKey
+    children.set(up, [...(children.get(up) ?? []), group])
+  }
+  const blockOf = (group: Group): Block => {
+    const rows = packRows((children.get(group.channel.key) ?? []).map(blockOf))
+    const rowsW = Math.max(0, ...rows.map((r) => r.w))
+    const w = Math.max(group.w, rowsW)
+    let y = group.h
+    const placedRows = rows.map((row) => {
+      y += m.rowGap
+      const at = { row, x: Math.floor((w - row.w) / 2), y }
+      y += row.h
+      return at
+    })
+    return { group, rows: placedRows, gx: Math.floor((w - group.w) / 2), w, h: y }
+  }
+  const rows = packRows((children.get(null) ?? []).map(blockOf))
   const chartW = Math.max(m.agentW, ...rows.map((r) => r.w))
 
-  // Absolute boxes in cells, with the margin around.
+  // Absolute boxes in cells, with the margin around, in the order of the page: a channel node,
+  // what hangs from it, then the blocks of its sub-channels.
   const boxes: Box[] = []
   const root: Box = {
     key: ROOT_KEY,
@@ -534,14 +576,19 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
   boxes.push(root)
   const placed: { group: Group; x: number; y: number }[] = []
   const rowRects: Rect[] = []
+  const placeRow = (row: Row, x0: number, y0: number) => {
+    rowRects.push({ x: px(x0), y: px(y0), w: px(row.w), h: px(row.h) })
+    for (const { block, x } of row.blocks) placeBlock(block, x0 + x, y0)
+  }
+  const placeBlock = (block: Block, x0: number, y0: number) => {
+    const gx = x0 + block.gx
+    placed.push({ group: block.group, x: gx, y: y0 })
+    for (const b of block.group.boxes) boxes.push({ ...b, x: gx + b.x, y: y0 + b.y })
+    for (const r of block.rows) placeRow(r.row, x0 + r.x, y0 + r.y)
+  }
   let y = m.margin + m.agentH + m.rootGap
   for (const row of rows) {
-    const shift = m.margin + Math.floor((chartW - row.w) / 2)
-    for (const { group, x } of row.groups) {
-      placed.push({ group, x: shift + x, y })
-      for (const b of group.boxes) boxes.push({ ...b, x: shift + x + b.x, y: y + b.y })
-    }
-    rowRects.push({ x: px(shift), y: px(y), w: px(row.w), h: px(row.h) })
+    placeRow(row, m.margin + Math.floor((chartW - row.w) / 2), y)
     y += row.h + m.rowGap
   }
   const totalW = chartW + 2 * m.margin
@@ -606,6 +653,50 @@ export const layoutChart = (model: ChartModel, unit: number): ChartLayout => {
       grid,
       from,
       targets.map((t) => t.port),
+    )
+    for (const { line, port } of targets) {
+      const cells = paths.get(port.cell)
+      if (cells) lines.set(line.id, route(grid, from, [port], cells))
+    }
+  }
+
+  // The lines from a channel node to the channel nodes of its sub-channels (spec 029, 030): from
+  // a side of the header down to the top of each sub-channel node. The lines of one parent share
+  // their first part. They keep off the lanes of the lead lines where they can.
+  const laneUse = new Uint8Array(grid.w * grid.h)
+  for (const [id, points] of lines) {
+    if (!id.startsWith("l:") && !id.startsWith("s:")) continue
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1] as Point
+      const b = points[i] as Point
+      const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y)) / (CELL / 2)
+      for (let k = 0; k <= steps; k++) {
+        const t = steps === 0 ? 0 : k / steps
+        const cx = Math.floor((a.x + (b.x - a.x) * t) / CELL)
+        const cy = Math.floor((a.y + (b.y - a.y) * t) / CELL)
+        if (cx >= 0 && cy >= 0 && cx < grid.w && cy < grid.h) laneUse[grid.index(cx, cy)] = 1
+      }
+    }
+  }
+  const subLines = model.lines.filter(
+    (l) =>
+      l.kind === "structure" &&
+      byKey.get(l.from)?.kind === "channel" &&
+      byKey.get(l.to)?.kind === "channel",
+  )
+  const byParent = new Map<string, typeof subLines>()
+  for (const l of subLines) byParent.set(l.from, [...(byParent.get(l.from) ?? []), l])
+  for (const [parentKey, list] of byParent) {
+    const from = grid.ports(boxOf(parentKey), ["left", "right"])
+    const targets = list.map((l) => ({
+      line: l,
+      port: (grid.ports(boxOf(l.to), ["top"]) as Port[])[0] as Port,
+    }))
+    const paths = searchTree(
+      grid,
+      from,
+      targets.map((t) => t.port),
+      (next) => 1 + 4 * (laneUse[next] as number),
     )
     for (const { line, port } of targets) {
       const cells = paths.get(port.cell)

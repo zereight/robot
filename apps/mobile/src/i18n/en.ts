@@ -189,6 +189,9 @@ export const en = {
   "chat.note.connection_held": "Tools of the connection {name} wait for your review.",
   "chat.note.handed_over": "Handed over to {name}",
   "chat.note.kept_going": "Kept going ({n} of {of})",
+  "chat.note.tree_repaired.loop": "The parent channel was cleared. The tree would have a loop.",
+  "chat.note.tree_repaired.levels":
+    "The parent channel was cleared. The tree would have more than 3 levels.",
   "chat.note.backup_goes_on": "{main} reached its limit. {backup} goes on.",
   "chat.note.backup_goes_on_until":
     "{main} reached its limit. {backup} goes on. The limit resets at {time}.",

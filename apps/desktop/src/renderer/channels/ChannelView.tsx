@@ -4,6 +4,7 @@ import {
   type ChannelMessage,
   type ChatMessage,
   catalogues,
+  channelParent,
   EVERYONE_MENTION,
   insertMention,
   type MentionEntry,
@@ -33,6 +34,7 @@ import review from "../review/review.module.css"
 import { TeamsMark } from "../settings/TeamsMark.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useChannels } from "../state/channels.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -70,14 +72,35 @@ const removedAgent = (name: string): Agent => ({
 export const ChannelHeader = (props: { channel: Channel }) => {
   const { t } = useApp()
   const ui = useUi()
+  const channels = useChannels()
   const [open, setOpen] = createSignal(false)
+  // The parent channel of the tree as it is now (spec 030): one that is gone counts as none.
+  const parent = () => {
+    const id = channelParent(channels.channels(), props.channel.id)
+    return id ? channels.byId(id) : undefined
+  }
   return (
     <>
       <span class={styles.hash} aria-hidden="true">
         #
       </span>
-      <span class={styles.headerName} data-testid="channel-header-name">
-        {props.channel.name}
+      <span class={styles.nameBlock}>
+        <span class={styles.headerName} data-testid="channel-header-name">
+          {props.channel.name}
+        </span>
+        <Show when={parent()}>
+          {(up) => (
+            <button
+              type="button"
+              class={styles.inParent}
+              onClick={() => ui.selectPlace({ kind: "channel", id: up().id }, ui.server()?.id)}
+              aria-label={t("channels.in.open", { parent: up().name })}
+              data-testid="channel-header-parent"
+            >
+              {t("channels.in", { parent: up().name })}
+            </button>
+          )}
+        </Show>
       </span>
       <Show when={props.channel.topic}>
         <span class={styles.divider} aria-hidden="true" />

@@ -189,6 +189,8 @@ export const ko: Record<MessageKey, string> = {
   "chat.note.connection_held": "연결 {name}의 도구가 검토를 기다리고 있어요.",
   "chat.note.handed_over": "{name}에게 인계함",
   "chat.note.kept_going": "이어서 진행했어요 ({n}/{of})",
+  "chat.note.tree_repaired.loop": "상위 채널을 비웠어요. 이대로면 트리에 순환이 생겨요.",
+  "chat.note.tree_repaired.levels": "상위 채널을 비웠어요. 이대로면 트리가 3단계를 넘게 돼요.",
   "chat.note.backup_goes_on": "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}",
   "chat.note.backup_goes_on_until":
     "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}. 한도는 {time}에 풀려요.",

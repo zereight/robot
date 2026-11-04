@@ -1293,6 +1293,10 @@ const NoteLine = (props: { message: ChatMessage }) => {
     if (part.note === "connection_held") return t("chat.note.connectionHeld", { name: part.name })
     if (part.note === "backup_goes_on") return backupWords(app, part)
     if (part.note === "kept_going") return t("chat.note.keptGoing", { n: part.n, of: part.of })
+    if (part.note === "tree_repaired")
+      return t(
+        part.why === "loop" ? "channels.parent.cleared.loop" : "channels.parent.cleared.levels",
+      )
     return t(`starters.note.${part.what}.${part.why}` as MessageKey, {
       name: part.name,
       n: part.what === "routine" ? ROUTINES_MAX : SKILLS_MAX,

@@ -57,8 +57,9 @@ const model = buildChart({
       createdAt: 1,
       leadId: "Ada",
       memberIds: ["Ada", "Bob", "Cy", "Di"],
+      parentId: null,
     },
-    { id: "ops", name: "Ops", createdAt: 2, leadId: null, memberIds: ["Bob"] },
+    { id: "ops", name: "Ops", createdAt: 2, leadId: null, memberIds: ["Bob"], parentId: null },
   ],
   handoffs: [
     { from: "Ada", to: "Bob", count: 3, newest: 5 },
@@ -149,6 +150,7 @@ describe("the accessible name of a channel node", () => {
           createdAt: 1,
           leadId: null,
           memberIds: Array.from({ length: 15 }, (_, i) => `m${String(i).padStart(2, "0")}`),
+          parentId: null,
         },
       ],
     })

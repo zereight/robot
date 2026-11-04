@@ -50,6 +50,7 @@ const channel = (id: string, memberIds: string[], extra: Partial<OrgChannel> = {
   createdAt: 1,
   leadId: null,
   memberIds,
+  parentId: null,
   ...extra,
 })
 const ids = (prefix: string, n: number) =>
@@ -252,8 +253,43 @@ const twentyChannels = () => {
   })
 }
 
+/** Product (no member of its own) > Docs > Site, and Ops at the top (spec 030). */
+const threeLevels = () => {
+  const a = ids("a", 9)
+  return snap({
+    mainAgentId: "a00",
+    agents: a.map((id) => agent(id)),
+    channels: [
+      channel("Product", []),
+      channel("Docs", ["a01", "a02", "a03"], { leadId: "a01", parentId: "Product" }),
+      channel("Site", ["a04", "a05"], { parentId: "Docs" }),
+      channel("Blog", ["a06"], { parentId: "Docs" }),
+      channel("Ops", ["a07", "a08", "a01"], { leadId: "a07" }),
+    ],
+    handoffs: [
+      { from: "a00", to: "a01", count: 3, newest: 1 },
+      { from: "a04", to: "a07", count: 2, newest: 2 },
+      { from: "a06", to: "a00", count: 5, newest: 3 },
+    ],
+  })
+}
+
+/** The 20 channel nodes, each of the later ones under an earlier one, up to 3 levels. */
+const twentyInATree = () => {
+  const base = twentyChannels()
+  const next = random(29)
+  return snap({
+    ...base,
+    channels: base.channels.map((c, i) =>
+      i < 4 ? c : { ...c, parentId: base.channels[Math.floor(next() * i)]?.id ?? null },
+    ),
+  })
+}
+
 const cases: [string, () => OrgSnapshot][] = [
   ["1 agent", oneAgent],
+  ["a tree of 3 levels", threeLevels],
+  ["20 channel nodes in a tree", twentyInATree],
   ["6 agents", sixAgents],
   ["40 agents", fortyAgents],
   ["a channel node of 12 agents and a tile", twelveInAChannel],
@@ -437,6 +473,57 @@ describe("the parts of the page", () => {
       expect(n.rect.y).toBeGreaterThanOrEqual(layout.bounds.y)
       expect(n.rect.x + n.rect.w).toBeLessThanOrEqual(layout.bounds.x + layout.bounds.w)
       expect(n.rect.y + n.rect.h).toBeLessThanOrEqual(layout.bounds.y + layout.bounds.h)
+    }
+  })
+})
+
+describe("sub-channels (spec 030)", () => {
+  test("a sub-channel node sits under the node of its parent, one level lower", () => {
+    const model = buildChart(threeLevels())
+    const layout = layoutChart(model, 14)
+    const rect = (key: string) => layout.nodes.find((n) => n.key === key)?.rect as Rect
+    const bottomOf = (channelKey: string) =>
+      Math.max(
+        ...layout.nodes
+          .filter((n) => n.key === channelKey || n.parent === channelKey)
+          .map((n) => n.rect.y + n.rect.h),
+      )
+    // Docs is under all of Product, Site and Blog under all of Docs, side by side.
+    expect(rect("c:Docs").y).toBeGreaterThanOrEqual(bottomOf("c:Product"))
+    expect(rect("c:Site").y).toBeGreaterThanOrEqual(bottomOf("c:Docs"))
+    expect(rect("c:Site").y).toBe(rect("c:Blog").y)
+    // Ops is a top channel: in the row of Product.
+    expect(rect("c:Ops").y).toBe(rect("c:Product").y)
+    // The lines that belong to the tree: root to the top channels, a parent to its sub-channels.
+    const structure = layout.lines.filter((l) => l.kind === "structure").map((l) => l.id)
+    expect(structure).toContain("s:c:Product>c:Docs")
+    expect(structure).toContain("s:c:Docs>c:Site")
+    expect(structure).toContain("s:c:Docs>c:Blog")
+    expect(structure).not.toContain("s:root>c:Docs")
+  })
+
+  test("the order of the page: a channel node, its agents, then its sub-channels", () => {
+    const model = buildChart(threeLevels())
+    expect(model.channels.map((c) => c.key)).toEqual([
+      "c:Ops",
+      "c:Product",
+      "c:Docs",
+      "c:Blog",
+      "c:Site",
+      // The main agent is in no channel: "No channel" is last.
+      "c:none",
+    ])
+  })
+})
+
+describe("the lines of a channel node to its members stay in its lanes with sub-channels", () => {
+  test("a member line ends on the left side of the member, also beside a sub-channel line", () => {
+    const model = buildChart(threeLevels())
+    const layout = layoutChart(model, 14)
+    for (const id of ["s:c:Site>c:Site/a04", "s:c:Blog>c:Blog/a06"]) {
+      const placed = layout.lines.find((l) => l.id === id)
+      const member = layout.nodes.find((n) => n.key === id.split(">")[1])?.rect as Rect
+      expect(placed?.points.at(-1)?.x).toBe(member.x)
     }
   })
 })

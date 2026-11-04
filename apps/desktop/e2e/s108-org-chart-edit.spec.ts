@@ -252,12 +252,14 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await page.getByTestId("org-undo").click()
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada, Bo*, Cy", "Ops: Dee"])
 
-    // The menu of a channel node: "Add member…" lists the agents that are not members.
+    // The menu of a channel node: "Add member…" lists the agents that are not members. "Put
+    // under…" is there too (030, S109); a top channel has no "Move to the top".
     await channelNode(page, ops.id).click({ button: "right" })
     await expect(menu.getByRole("menuitem")).toHaveText([
       "Open channel",
       "Add member…",
       "New agent in this channel",
+      "Put under…",
       "Channel settings",
     ])
     await menu.getByTestId("org-menu-add-member").click()
