@@ -841,26 +841,22 @@
   overflow-wrap: anywhere;
 }
 
-/* The hold of the main model in the header of the chat (spec 006). */
-.headerHold {
+/*
+ * The hold of the main model, in a line under the header of the chat (spec 006). The header is one
+ * row and has no room for the time and the button when the chat is narrow.
+ */
+.holdLine {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex-shrink: 1;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--c-border);
   color: var(--c-text-muted);
   font-size: var(--text-xs);
 }
 
-.headerHold > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.headerHoldButton {
-  flex-shrink: 0;
+.holdButton {
   border: 1px solid var(--c-border);
   background: transparent;
   color: var(--c-text);
@@ -870,6 +866,6 @@
   white-space: nowrap;
 }
 
-.headerHoldButton:hover {
+.holdButton:hover {
   background: var(--c-hover);
 }
