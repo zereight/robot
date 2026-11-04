@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { type Block, type Inline, parseMarkdown, safeLink } from "./parse.ts"
+import { type Block, type Inline, parseMarkdown } from "./parse.ts"
 
 const textOf = (list: readonly Inline[]): string =>
   list
@@ -57,13 +57,23 @@ describe("markdown of a reply", () => {
 
   test("links open only for http, https and mailto", () => {
     const block = first(
-      "[a](https://example.com) [b](mailto:me@example.com) [c](javascript:alert(1)) [d](file:///etc/passwd) [e](http://x.test)",
+      "[a](https://example.com) [b](mailto:me@example.com) [c](javascript:alert(1)) [d](file:///etc/passwd) [e](http://x.test) [f]( JAVASCRIPT:alert(1)) [g](data:text/html,x)",
     ) as Extract<Block, { kind: "paragraph" }>
     const links = block.inlines.filter((i) => i.kind === "link").map((i) => i.href)
     expect(links).toEqual(["https://example.com", "mailto:me@example.com", "http://x.test"])
     expect(textOf(block.inlines)).toContain("c")
-    expect(safeLink(" JAVASCRIPT:alert(1)")).toBeNull()
-    expect(safeLink("data:text/html,x")).toBeNull()
+    expect(textOf(block.inlines)).toContain("f")
+    expect(textOf(block.inlines)).toContain("g")
+  })
+
+  test("a link with no scheme opens with https", () => {
+    const block = first(
+      "[a](www.example.com/guide) [b](example.com) [c](./local.md) [d](#part)",
+    ) as Extract<Block, { kind: "paragraph" }>
+    const links = block.inlines.filter((i) => i.kind === "link").map((i) => i.href)
+    expect(links).toEqual(["https://www.example.com/guide", "https://example.com"])
+    expect(textOf(block.inlines)).toContain("c")
+    expect(textOf(block.inlines)).toContain("d")
   })
 
   test("a picture from the web is a box until the user loads it (spec 003)", () => {
