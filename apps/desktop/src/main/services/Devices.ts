@@ -27,6 +27,7 @@ import {
   type PairingEnd,
   type PairingState,
   PUSHED_EVENTS,
+  type QuietState,
   type RpcEvent,
   type RpcResult,
   type WireDevice,
@@ -633,6 +634,12 @@ export class Devices extends Context.Service<Devices, DevicesService>()("robot/m
             typeof (payload as { threadId?: unknown }).threadId === "string"
           )
             return
+          // The same for the quiet turns: a turn in another thread is not sent (spec 005, 012).
+          if (event === "quiet.changed") {
+            const turns = (payload as QuietState).turns.filter((t) => t.threadId === null)
+            push(event, { turns })
+            return
+          }
           push(event, payload)
         })
 

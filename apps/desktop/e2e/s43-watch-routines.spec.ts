@@ -124,6 +124,25 @@ test("watch routines: folder watch, change text, muted line, confirm, own model,
   await page.getByTestId("routine-trigger").selectOption("watch")
   await page.getByTestId("routine-watch-interval").selectOption("5")
   await page.getByTestId("routine-watch-path").fill(join(folder, "does-not-exist"))
+  // The other watches check while the form is open and change the list. The form keeps what the
+  // user typed, and Save stays on. (The form was built again at each change and lost its fields.)
+  const dialog = page.getByTestId("routine-dialog")
+  // A form that is built again is a new element: it loses this mark.
+  await dialog.evaluate((el) => el.setAttribute("data-same-form", "yes"))
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) => {
+        const off = window.robot.on("routines.changed", () => {
+          off()
+          done()
+        })
+      }),
+  )
+  await expect(dialog).toHaveAttribute("data-same-form", "yes")
+  await expect(page.getByTestId("routine-name")).toHaveValue("Gone folder")
+  await expect(page.getByTestId("routine-prompt")).toHaveValue("Look.")
+  await expect(page.getByTestId("routine-watch-path")).toHaveValue(join(folder, "does-not-exist"))
+  await expect(page.getByTestId("routine-save")).toBeEnabled()
   await page.getByTestId("routine-save").click()
   const gone = card.filter({ hasText: "Gone folder" })
   await expect(gone.getByTestId("routine-paused")).toContainText("Paused after 3 failed runs", {

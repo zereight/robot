@@ -3,6 +3,18 @@ import type { Locale } from "@robot/shared"
 export const formatTime = (locale: Locale, at: number) =>
   new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(at)
 
+/**
+ * The time at which a limit resets or a hold ends (spec 006). A time within the day is the clock
+ * time. A later one names the weekday too, because a weekly limit resets days from now.
+ */
+export const formatUntil = (locale: Locale, at: number, now = Date.now()) =>
+  new Intl.DateTimeFormat(
+    locale,
+    at - now < 20 * 3_600_000
+      ? { hour: "numeric", minute: "2-digit" }
+      : { weekday: "short", hour: "numeric", minute: "2-digit" },
+  ).format(at)
+
 /** A date and a time, for a record such as "Last changed by". */
 export const formatDateTime = (locale: Locale, at: number) =>
   new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(at)

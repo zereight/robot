@@ -350,6 +350,18 @@ const partCheck = (v: unknown): boolean => {
       // A note travels as a code with its names. The window writes the words (spec 002, 009).
       if (v.note === "compact_failed")
         return shape(["kind", "note", "code"])(v) && str(100, 1)(v.code)
+      // The muted line "<main> reached its limit. <backup> goes on." travels with the two names and
+      // the reset time (spec 006, 003, 019).
+      if (v.note === "backup_goes_on")
+        return (
+          shape(["kind", "note", "main", "backup", "until"])(v) &&
+          str(600, 1)(v.main) &&
+          str(600, 1)(v.backup) &&
+          nullable(int)(v.until)
+        )
+      // The muted line "Kept going (1 of 8)" travels with the two numbers (spec 005, 019).
+      if (v.note === "kept_going")
+        return shape(["kind", "note", "n", "of"])(v) && int(v.n) && int(v.of)
       // The muted lines "The connection NAME is not available." and "Tools of the connection NAME wait
       // for your review." travel with the name (spec 018).
       if (v.note === "connection_down" || v.note === "connection_held")
@@ -587,6 +599,11 @@ const account: KindDef = {
       "UPDATE agent SET model_account_id = NULL, model_name = NULL, model_effort = NULL WHERE model_account_id = ?",
       id,
     )
+    // A backup on the account goes too (spec 006).
+    ctx.db.run(
+      "UPDATE agent SET backup_account_id = NULL, backup_model = NULL, backup_effort = NULL WHERE backup_account_id = ?",
+      id,
+    )
     ctx.db.run("DELETE FROM provider_account WHERE id = ?", id)
   },
   label: (f) => String(f.name ?? ""),
@@ -605,6 +622,9 @@ interface AgentRow {
   model_account_id: string | null
   model_name: string | null
   model_effort: string | null
+  backup_account_id: string | null
+  backup_model: string | null
+  backup_effort: string | null
   workspace: string
   archived_at: number | null
   created_at: number
@@ -647,6 +667,27 @@ const modelOf = (ctx: Ctx, value: unknown) => {
   }
 }
 
+/**
+ * The columns of the backup model (spec 006, "Backup model"). Unlike the main model, a backup that
+ * names an account that this computer lacks stays: it is not ready here, the form says so, and the
+ * choice is not lost when the agent syncs back.
+ */
+const backupColumns = (ctx: Ctx, value: unknown) =>
+  isObject(value)
+    ? {
+        backup_account_id: ctx.accountOf(value.accountId as string),
+        backup_model: value.model,
+        backup_effort: value.effort,
+      }
+    : { backup_account_id: null, backup_model: null, backup_effort: null }
+
+const modelShape = (v: unknown) =>
+  isObject(v) &&
+  shape(["accountId", "model", "effort"])(v) &&
+  str(100, 1)(v.accountId) &&
+  str(300, 1)(v.model) &&
+  nullable(str(40))(v.effort)
+
 const agent: KindDef = {
   kind: "agent",
   rank: 1,
@@ -682,6 +723,9 @@ const agent: KindDef = {
           nullable(str(40))(v.effort),
       ),
     },
+    // The backup model is a setting of the agent and syncs with it (spec 019). The hold of the main
+    // model is a state of one computer and never travels. A computer of an older step has none.
+    backupModel: { check: nullable(modelShape) },
     archived: { check: bool },
     // The mark of a sensitive read of the chat (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
@@ -709,6 +753,10 @@ const agent: KindDef = {
           r.model_account_id && r.model_name
             ? { accountId: r.model_account_id, model: r.model_name, effort: r.model_effort }
             : null,
+        backupModel:
+          r.backup_account_id && r.backup_model
+            ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
+            : null,
         archived: r.archived_at !== null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
@@ -734,6 +782,7 @@ const agent: KindDef = {
       face_hue: face.hue,
       face_image: file,
       ...modelOf(ctx, f.model),
+      ...backupColumns(ctx, f.backupModel),
       // A new agent has no folder of its own on this computer and asks for every step ("Ask for
       // everything", spec 019). The level is named here: it must not follow the order of the list.
       workspace: ctx.newWorkspace(f.name as string, id),
@@ -774,6 +823,7 @@ const agent: KindDef = {
       )
     }
     if (f.model !== undefined) Object.assign(columns, modelOf(ctx, f.model))
+    if (f.backupModel !== undefined) Object.assign(columns, backupColumns(ctx, f.backupModel))
     if (f.archived !== undefined) {
       columns.archived_at = f.archived ? (row.archived_at ?? now) : null
     }

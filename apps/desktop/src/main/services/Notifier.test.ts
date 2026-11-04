@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { existsSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { attentionAnswers, type ChatMessage, type WireNotice } from "@robot/shared"
@@ -11,6 +11,8 @@ import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { SettingsStore } from "./Settings.ts"
+import { fakeClock } from "./silence.testing.ts"
+import { useClockForTests } from "./silence.ts"
 import { Tasks } from "./Tasks.ts"
 import { Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
@@ -69,6 +71,11 @@ const server = Bun.serve({
         },
         { delay: 0, data: "[DONE]" },
       ])
+    // A model that shows no sign of life: the answer opens and nothing follows.
+    if (content.includes("HANG"))
+      return new Response(new ReadableStream({ start() {} }), {
+        headers: { "content-type": "text/event-stream" },
+      })
     if (content.includes("SLOW"))
       return sse([
         ...Array.from({ length: 40 }, () => text("tick ", 30)),
@@ -725,6 +732,50 @@ describe("the island, other computers and Always allow", () => {
     expect(existsSync(second)).toBe(true)
     await s.run(Tools.use((x) => x.respond(s.agent.id, "call_1", "deny")))
     await s.idle()
+  })
+})
+
+afterEach(() => useClockForTests(undefined))
+
+describe("status island: the quiet line in a row (spec 005, 015)", () => {
+  test("a row carries the quiet line of its turn: the name and the seconds; no notice shows", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    s.t.shell.focused = false
+    await s.run(SettingsStore.use((x) => x.update({ silentLimit: 10, island: "always" })))
+    await s.send("HANG on")
+    await until(async () => (await s.island()).rows.length === 1)
+    await until(
+      async () => (await s.run(Tasks.use((x) => x.list(s.local.id))))[0]?.progress === "sent",
+    )
+    // Working, not quiet: the row has the usual text.
+    expect((await s.island()).rows[0]?.quiet).toBeNull()
+    fake.advance(89_000)
+    expect((await s.island()).rows[0]?.quiet).toBeNull()
+    fake.advance(1_000)
+    const row = (await s.island()).rows[0]
+    expect(row?.quiet?.name).toBe("M")
+    expect(row?.quiet?.seconds).toBeGreaterThanOrEqual(90)
+    // The island is told when the line starts, so it needs no timer of its own for the start.
+    const states = s.t.events.filter((e) => e.event === "island.state")
+    const pushed = states.at(-1)?.payload as { rows: { quiet: unknown }[] } | undefined
+    expect(pushed?.rows[0]?.quiet).not.toBeNull()
+    // The quiet line makes no notification and no result card.
+    expect(s.t.shell.notices).toHaveLength(0)
+    expect((await s.island()).result).toBeNull()
+    // Stop ends the line with the turn.
+    await s.run(Chat.use((c) => c.stop(s.agent.id)))
+    await until(async () => (await s.island()).rows.length === 0)
+    expect(s.t.shell.notices).toHaveLength(0)
+  })
+
+  test("a row without a quiet turn has no quiet line", async () => {
+    const s = await setup()
+    await s.send("SLOW work")
+    await until(async () => (await s.island()).rows.length === 1)
+    expect((await s.island()).rows[0]?.quiet).toBeNull()
+    await s.run(Chat.use((c) => c.stop(s.agent.id)))
   })
 })
 

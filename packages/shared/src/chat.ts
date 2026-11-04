@@ -67,6 +67,25 @@ export type MessagePart =
    */
   | { readonly kind: "note"; readonly note: "connection_held"; readonly name: string }
   /**
+   * The muted line "<main model> reached its limit. <backup model> goes on." (spec 006, "Backup
+   * model"; spec 003). `main` and `backup` are the names of the models as the window shows them.
+   * `until` is the reset time when the provider named one, else the end of the hold. The model
+   * never reads it.
+   */
+  | {
+      readonly kind: "note"
+      readonly note: "backup_goes_on"
+      readonly main: string
+      readonly backup: string
+      readonly until: number | null
+    }
+  /**
+   * The muted line "Kept going (1 of 8)" (spec 005, "Keep going"; 003): the app asked the agent to
+   * go on with the open steps of its list. `n` counts the continuations of the request, and `of`
+   * is the limit. The model never reads it. The message that asked has no row.
+   */
+  | { readonly kind: "note"; readonly note: "kept_going"; readonly n: number; readonly of: number }
+  /**
    * The muted line "Handed over to <name>" in the chat that the user left (spec 003, "Hand over").
    * It links to the new thread. `toName` is the name that the other agent had then. The model
    * never reads it.

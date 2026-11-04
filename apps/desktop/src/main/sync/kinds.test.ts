@@ -774,6 +774,15 @@ describe("a handover syncs as messages and a thread do (spec 003, 007, 019)", ()
     // The muted lines of a connection (spec 018): one with the name and nothing else.
     for (const note of ["connection_down", "connection_held"])
       expect(opOf(fields, [{ kind: "note", note, name: "Notes" }]), note).toBeDefined()
+    // The muted line "Kept going (1 of 8)" (spec 005): two numbers and nothing else.
+    expect(opOf(fields, [{ kind: "note", note: "kept_going", n: 1, of: 8 }])).toBeDefined()
+    for (const bad of [
+      { kind: "note", note: "kept_going", n: 1 },
+      { kind: "note", note: "kept_going", n: "1", of: 8 },
+      { kind: "note", note: "kept_going", n: -1, of: 8 },
+      { kind: "note", note: "kept_going", n: 1, of: 8, extra: "x" },
+    ])
+      expect(opOf(fields, [bad]), JSON.stringify(bad)).toBeUndefined()
     for (const bad of [
       { kind: "note", note: "connection_held" },
       { kind: "note", note: "connection_held", name: "" },

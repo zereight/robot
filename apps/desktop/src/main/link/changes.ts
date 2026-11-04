@@ -117,6 +117,7 @@ export const changeHandlers: Record<string, ChangeHandler> = {
       const data = yield* strict(ClientAgentCreate)(input)
       yield* ownServer(data.serverId)
       if (data.model) yield* checkModel(data.model)
+      if (data.backupModel) yield* checkModel(data.backupModel)
       // The server makes a new, empty folder in its own default folder, and the level starts at
       // the default for a new agent. Neither can come from the request.
       return forClient(yield* Agents.use((a) => a.create(data)))
@@ -127,6 +128,7 @@ export const changeHandlers: Record<string, ChangeHandler> = {
       yield* allowed
       const { id, patch } = yield* strict(Schema.Struct({ id: Id, patch: ClientAgentPatch }))(input)
       if (patch.model) yield* checkModel(patch.model)
+      if (patch.backupModel) yield* checkModel(patch.backupModel)
       // The level is compared with the level now, in the same step as the change.
       const agents = yield* Agents
       const current = yield* agents.get(id)
@@ -155,6 +157,13 @@ export const changeHandlers: Record<string, ChangeHandler> = {
       const activity = yield* Activity
       if (activity.isWorking(id)) return yield* new AppError({ code: "agent_working_archive" })
       return forClient(yield* agents.archive(id))
+    }),
+
+  "agents.useMain": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const { id } = yield* strict(ById)(input)
+      return forClient(yield* Agents.use((a) => a.useMain(id)))
     }),
 
   "channels.create": (input) =>

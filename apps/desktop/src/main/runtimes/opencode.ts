@@ -4,9 +4,10 @@ import { join } from "node:path"
 import { createInterface } from "node:readline"
 import type { ModelInfo, PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { limitFailure, ProviderFailure } from "../providers/client.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
+import { planFromTodos } from "./plan.ts"
 import { execute } from "./proc.ts"
 import { spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
@@ -161,11 +162,15 @@ export const mapOpencodeEvent = (message: unknown, state: OpencodeState): AgentE
         input: JSON.stringify(step.input ?? {}),
       }
       const running: AgentEvent = { type: "tool", state: "running", call }
+      // The tool todowrite is the list of steps of the program (spec 006): each call holds the
+      // whole list. The app reads it for "Keep going" (spec 005).
+      const steps = call.name === "todowrite" ? planFromTodos(obj(step.input).todos) : null
+      const plan: AgentEvent[] = steps ? [{ type: "plan", steps }] : []
       if (step.status === "completed")
-        return [running, { type: "tool", state: "done", call, output: str(step.output) }]
+        return [running, ...plan, { type: "tool", state: "done", call, output: str(step.output) }]
       if (step.status === "error")
         return [running, { type: "tool", state: "failed", call, output: str(step.error) }]
-      return [running]
+      return [running, ...plan]
     }
     case "step_finish": {
       const tokens = obj(part.tokens)
@@ -199,7 +204,7 @@ export const opencodeFailure = (error: {
 }): ProviderFailure => {
   const { type = "", status = 0, message } = error
   if (status === 429 || /rate-?limit/i.test(type) || LIMIT.test(message))
-    return new ProviderFailure("provider_limit", message)
+    return limitFailure(message)
   if (status === 401 || status === 403 || /auth/i.test(type) || SIGNED_OUT.test(message))
     return new ProviderFailure("runtime_signed_out", message)
   return new ProviderFailure("provider_error", message || "The program ended with an error.")

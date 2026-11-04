@@ -59,6 +59,7 @@ export default function Places() {
             }
           />
         )}
+        <OrgChartRow linkId={link} serverName={view.link.name} />
         {(data.places ?? []).map((section) => (
           <Section
             key={section.id}
@@ -71,6 +72,32 @@ export default function Places() {
         ))}
       </Screen>
     </>
+  )
+}
+
+/** The way into the screen "Org chart" (spec 011, screen 8). It shows in every state of the link. */
+const OrgChartRow = (props: { readonly linkId: string; readonly serverName: string }) => {
+  const { t, palette } = useApp()
+  return (
+    <Pressable
+      testID="places.orgChart"
+      accessibilityRole="button"
+      accessibilityLabel={t("places.orgChart")}
+      accessibilityHint={t("places.orgChart.hint", { name: props.serverName })}
+      onPress={() =>
+        router.push({ pathname: "/server/[link]/org", params: { link: props.linkId } })
+      }
+      style={({ pressed }) => [
+        styles.entry,
+        {
+          borderColor: palette.border,
+          backgroundColor: pressed ? palette.pressed : palette.surface,
+        },
+      ]}
+    >
+      <Text style={[styles.entryText, { color: palette.text }]}>{t("places.orgChart")}</Text>
+      <Text style={[styles.entryChevron, { color: palette.textMuted }]}>›</Text>
+    </Pressable>
   )
 }
 
@@ -284,6 +311,17 @@ const PlaceRow = (props: {
 const roleBadgeMin = () => Math.ceil(4 * text.xs * 0.62 * PixelRatio.getFontScale()) + 14
 
 const styles = StyleSheet.create({
+  entry: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 48,
+    paddingHorizontal: space.m,
+    borderWidth: 1,
+    borderRadius: radius.l,
+  },
+  entryText: { fontSize: text.m, fontWeight: "600" },
+  entryChevron: { fontSize: text.xl },
   section: { gap: space.xs },
   userSection: { gap: space.xs, marginLeft: space.s },
   empty: { fontSize: text.s, paddingHorizontal: space.s, paddingVertical: space.xs },

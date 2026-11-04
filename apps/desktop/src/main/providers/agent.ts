@@ -1,4 +1,4 @@
-import type { RefusalReason } from "@robot/shared"
+import type { ListedStep, RefusalReason } from "@robot/shared"
 import {
   type ChatRequest,
   type ReplyBlock,
@@ -38,7 +38,21 @@ export interface JoinedEvent {
   readonly id: string
 }
 
-export type AgentEvent = Exclude<StreamEvent, { type: "toolcall" }> | ToolEvent | JoinedEvent
+/**
+ * The program reported its list of steps (a plan, spec 006). Each event holds the whole list as it
+ * stands now, so the last one is the list. "Keep going" (spec 005) reads it when the turn ends.
+ * The reply does not show it.
+ */
+export interface PlanEvent {
+  readonly type: "plan"
+  readonly steps: readonly ListedStep[]
+}
+
+export type AgentEvent =
+  | Exclude<StreamEvent, { type: "toolcall" }>
+  | ToolEvent
+  | JoinedEvent
+  | PlanEvent
 
 /**
  * Asks the model, runs the tools it calls, gives it the results, and asks again, until it

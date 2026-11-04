@@ -1009,4 +1009,24 @@ export const migrations: readonly string[] = [
     PRIMARY KEY (account_id, model)
   );
   `,
+  `
+  -- The backup model of an agent (spec 006, "Backup model"). \`backup_*\` are NULL for "None". The
+  -- choice is a setting of the agent: it syncs with the agent (spec 019, the dirty trigger of the
+  -- agent already watches every column), travels with a client of a linked server (spec 012), and
+  -- an export keeps it with the agent (spec 014).
+  ALTER TABLE agent ADD COLUMN backup_account_id TEXT;
+  ALTER TABLE agent ADD COLUMN backup_model TEXT;
+  ALTER TABLE agent ADD COLUMN backup_effort TEXT;
+  -- The hold of the main model of an agent (spec 006): until \`ends_at\` (ms since the epoch) every
+  -- turn of the agent uses the backup model. \`released\` is 1 after the user pressed "Use the main
+  -- model now": the hold no longer counts, and the row tells that a limit that comes back before
+  -- \`ends_at\` starts the hold again with no second line in the chat. The hold is a state of this
+  -- computer: sync (019) does not carry the table, so it has no dirty trigger, and an export
+  -- deletes it. It stays after a restart.
+  CREATE TABLE model_hold (
+    agent_id TEXT PRIMARY KEY REFERENCES agent (id) ON DELETE CASCADE,
+    ends_at INTEGER NOT NULL,
+    released INTEGER NOT NULL DEFAULT 0
+  );
+  `,
 ]

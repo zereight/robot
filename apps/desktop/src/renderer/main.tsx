@@ -7,6 +7,7 @@ import { ChannelsProvider } from "./state/channels.tsx"
 import { DevicesProvider } from "./state/devices.tsx"
 import { OrgChartProvider } from "./state/orgChart.tsx"
 import { ProvidersProvider } from "./state/providers.tsx"
+import { startQuiet } from "./state/quiet.ts"
 import { TeamsProvider } from "./state/teams.tsx"
 import { TodayProvider } from "./state/today.tsx"
 import { loadUi, UiProvider } from "./state/ui.tsx"
@@ -21,6 +22,8 @@ const root = document.getElementById("root")
 if (root) {
   const [initial, layout] = await Promise.all([loadInitial(), loadUi()])
   document.documentElement.dataset.platform = initial.info.platform
+  // Listen for the quiet turns (spec 005) from the start, so that a view that opens later has them.
+  startQuiet()
   render(
     () => (
       <AppProvider info={initial.info} settings={initial.settings}>

@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { messageText, type TaskProgress, taskTimes } from "@robot/shared"
 import { Effect, Exit, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
+import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
@@ -495,6 +496,104 @@ describe("Chat", () => {
     expect(task?.error?.code).toBe("silent_limit_1")
     expect(task?.progress).toBe("started")
     expect(messageText((await t.history()).messages[1] as never)).toBe("Starting ")
+  })
+
+  describe("the quiet line (spec 005)", () => {
+    const quietNow = (t: Awaited<ReturnType<typeof setup>>) =>
+      t.run(Activity.use((a) => Effect.sync(() => a.quietTurns().turns)))
+    const quietEvents = (t: Awaited<ReturnType<typeof setup>>) =>
+      t.events
+        .filter((e) => e.event === "quiet.changed")
+        .map((e) => e.payload as { turns: unknown[] })
+
+    test("a turn with no sign of life for 90 seconds is quiet, and Stop ends the line", async () => {
+      const fake = fakeClock()
+      useClockForTests(fake.clock)
+      const t = await setup()
+      t.shell.focused = false
+      await t.run(SettingsStore.use((s) => s.update({ silentLimit: 10 })))
+      const before = held.opened
+      await t.send("begin the partial")
+      await waitForHeld(before + 1)
+      await until(async () => (await tasksOf(t))[0]?.progress === "started")
+      fake.advance(89_000)
+      expect(await quietNow(t)).toEqual([])
+      expect(quietEvents(t)).toEqual([])
+      fake.advance(1_000)
+      const turns = await quietNow(t)
+      const task = (await tasksOf(t))[0]
+      // The name is the name of the model account.
+      expect(turns).toHaveLength(1)
+      expect(turns[0]).toMatchObject({
+        taskId: task?.id,
+        agentId: t.agent.id,
+        threadId: null,
+        source: "chat",
+        name: "M",
+      })
+      expect(turns[0]?.seconds).toBeGreaterThanOrEqual(90)
+      expect(quietEvents(t)).toHaveLength(1)
+      // The turn goes on: a quiet line makes no notice, no task change, no failure.
+      expect(task?.state).toBe("running")
+      expect(t.shell.notices).toHaveLength(0)
+      // A longer silence sends nothing more: the clients count the seconds.
+      fake.advance(120_000)
+      expect(quietEvents(t)).toHaveLength(1)
+      // Stop is the way out. The line goes with the turn.
+      await t.run(Chat.use((c) => c.stop(t.agent.id)))
+      await until(async () => (await quietNow(t)).length === 0)
+      expect(quietEvents(t).at(-1)?.turns).toEqual([])
+      expect(t.shell.notices).toHaveLength(0)
+    })
+
+    test("with the limit 1 minute the line shows at 30 seconds, and the failed turn ends it", async () => {
+      const fake = fakeClock()
+      useClockForTests(fake.clock)
+      const t = await setup()
+      await t.run(SettingsStore.use((s) => s.update({ silentLimit: 1 })))
+      const before = held.opened
+      await t.send("go quiet and hang")
+      await waitForHeld(before + 1)
+      fake.advance(29_000)
+      expect(await quietNow(t)).toEqual([])
+      fake.advance(1_000)
+      expect(await quietNow(t)).toHaveLength(1)
+      fake.advance(30_000)
+      await until(async () => (await tasksOf(t))[0]?.state === "failed")
+      // The failed row replaces the quiet line.
+      expect(await quietNow(t)).toEqual([])
+      expect(quietEvents(t).at(-1)?.turns).toEqual([])
+    })
+
+    test("with the choice Never the line shows at 90 seconds and stays until Stop", async () => {
+      const fake = fakeClock()
+      useClockForTests(fake.clock)
+      const t = await setup()
+      await t.run(SettingsStore.use((s) => s.update({ silentLimit: 0 })))
+      const before = held.opened
+      await t.send("quiet hang")
+      await waitForHeld(before + 1)
+      fake.advance(89_000)
+      expect(await quietNow(t)).toEqual([])
+      fake.advance(1_000)
+      expect(await quietNow(t)).toHaveLength(1)
+      fake.advance(24 * 60 * 60_000)
+      expect((await tasksOf(t))[0]?.state).toBe("running")
+      expect(await quietNow(t)).toHaveLength(1)
+      await t.run(Chat.use((c) => c.stop(t.agent.id)))
+      await until(async () => (await quietNow(t)).length === 0)
+    })
+
+    test("a turn that is not quiet has no line, and a quick answer makes none", async () => {
+      const fake = fakeClock()
+      useClockForTests(fake.clock)
+      const t = await setup()
+      await t.send("hello")
+      await t.settled()
+      fake.advance(10 * 60_000)
+      expect(await quietNow(t)).toEqual([])
+      expect(quietEvents(t)).toEqual([])
+    })
   })
 
   describe("a request that a restart cut off", () => {

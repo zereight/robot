@@ -36,12 +36,16 @@ import type {
   Agent,
   Channel,
   ChannelMessage,
+  ChartModel,
   ChatHistory,
   ChatMessage,
   PlaceSection,
   QueuedMessage,
   QueueHold,
+  QuietState,
+  QuietTurn,
 } from "@robot/shared"
+import { type OrgChartPhase, OrgFeed } from "./orgChart.ts"
 import { newest, removeMessage, upsertMessage } from "./places.ts"
 import { type PhoneStorage, readJson } from "./storage.ts"
 
@@ -84,6 +88,16 @@ export interface ServerData {
   readonly channelMessages: Readonly<Record<string, readonly ChannelMessage[]>>
   /** Approvals and questions that wait (the "Needs you" list of spec 011). Never from the cache. */
   readonly attention: readonly WireNotice[]
+  /**
+   * The turns that are quiet now (spec 005, "Quiet line"; 011). The seconds count on from
+   * `receivedAt`. Never from the cache, and never written to it: a server that is not online
+   * has none.
+   */
+  readonly quiet: {
+    readonly turns: readonly QuietTurn[]
+    /** When the phone got the state, in ms. */
+    readonly receivedAt: number
+  }
 }
 
 export interface ServerView {
@@ -145,6 +159,7 @@ const EMPTY: ServerData = {
   chats: {},
   channelMessages: {},
   attention: [],
+  quiet: { turns: [], receivedAt: 0 },
 }
 
 /** The ids of a server come from the computer. They must not leave the folder of its cache. */
@@ -173,6 +188,8 @@ export class PhoneHub {
   readonly #saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
   readonly #pendingSaves = new Map<string, () => string>()
   readonly #refreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** The screens that watch the org chart of a server, by server (spec 029). Memory only. */
+  readonly #orgWatches = new Map<string, Set<(model: ChartModel) => void>>()
   #state: HubState
   /** The place that shows on the screen now, per server, so new messages are read at once. */
   readonly #focus = new Map<string, PlaceRef>()
@@ -455,7 +472,16 @@ export class PhoneHub {
       ...(this.#options.random ? { random: this.#options.random } : {}),
       hooks: {
         onState: (state, side) => {
-          this.#update(link.id, (v) => ({ ...v, state, updateSide: side }))
+          // A server that is not online shows no quiet line: the pushes are not seen (spec 005).
+          this.#update(link.id, (v) => ({
+            ...v,
+            state,
+            updateSide: side,
+            data:
+              state === "online" || v.data.quiet.turns.length === 0
+                ? v.data
+                : { ...v.data, quiet: EMPTY.quiet },
+          }))
         },
         onEvent: (event, payload) => this.#onEvent(link.id, event, payload),
         onOnline: (info) => void this.#online(link.id, info),
@@ -554,18 +580,21 @@ export class PhoneHub {
     const serverId = view.link.serverId
     const read = <T>(method: string, input: unknown) =>
       this.request<T>(linkId, method, input).catch(() => undefined)
-    const [places, agents, channels, attention] = await Promise.all([
+    const [places, agents, channels, attention, quiet] = await Promise.all([
       read<PlaceSection[]>("places.list", { serverId }),
       read<Agent[]>("agents.list", { serverId, archived: false }),
       read<Channel[]>("channels.list", { serverId }),
       read<WireNotice[]>("attention.list", undefined),
+      read<QuietState>("quiet.list", undefined),
     ])
+    const at = this.#options.now?.() ?? Date.now()
     this.#setData(linkId, (d) => ({
       ...d,
       places: places ?? d.places,
       agents: agents ?? d.agents,
       channels: channels ?? d.channels,
       attention: attention ?? d.attention,
+      quiet: quiet && Array.isArray(quiet.turns) ? { turns: quiet.turns, receivedAt: at } : d.quiet,
     }))
     if (places) this.#save(linkId, "places", () => JSON.stringify(places))
     if (agents) this.#save(linkId, "agents", () => JSON.stringify(agents))
@@ -678,6 +707,18 @@ export class PhoneHub {
         return { ...d, channelMessages: { ...d.channelMessages, [channelId]: next } }
       })
       this.#saveChannel(linkId, channelId)
+    } else if (event === "quiet.changed") {
+      // The start and the end of a quiet turn, with the seconds at the push (spec 005, 012).
+      const turns = (payload as QuietState | undefined)?.turns
+      const at = this.#options.now?.() ?? Date.now()
+      this.#setData(linkId, (d) => ({
+        ...d,
+        quiet: Array.isArray(turns) ? { turns, receivedAt: at } : d.quiet,
+      }))
+    } else if (event === "orgChart.model") {
+      // The whole ready model (spec 029, 012). Only a screen that watches the chart gets it; the
+      // phone keeps it nowhere else and never writes it to disk.
+      for (const watch of this.#orgWatches.get(linkId) ?? []) watch(payload as ChartModel)
     } else if (event === "places.changed") {
       this.#refreshSoon(linkId, "places")
     } else if (event === "agents.changed") {
@@ -692,6 +733,67 @@ export class PhoneHub {
         this.#refreshSoon(linkId, "attention")
       }
       for (const listener of this.#noticeListeners) listener(linkId, notice)
+    }
+  }
+
+  // ------------------------------------------------------------------ the org chart
+
+  /**
+   * Watches the org chart of a server for the screen "Org chart" (spec 029, "Phone"; spec 011).
+   * While the server is online it asks for the ready model once and then follows the pushes of the
+   * server. The model lives in memory only: `listener` gets the phase, and the phase `off` (no
+   * model) whenever the server is not online. When the server comes back online it is asked
+   * again, because the pushes of the time away were not seen. `stop` ends the watch and drops the
+   * model. Nothing of the chart is written to the cache.
+   */
+  watchOrgChart(
+    linkId: string,
+    listener: (phase: OrgChartPhase) => void,
+  ): { readonly stop: () => void; readonly refresh: () => void } {
+    const feed = new OrgFeed(listener)
+    let live = true
+    let asking = false
+    const ask = (again = false) => {
+      const view = this.#views.get(linkId)
+      if (!live || view?.state !== "online") return
+      asking = true
+      const question = again ? feed.again() : feed.begin()
+      this.request<ChartModel>(linkId, "orgChart.model", { serverId: view.link.serverId }).then(
+        (model) => void feed.answered(question, model),
+        (error: unknown) => feed.failed(question, error),
+      )
+    }
+    const follow = () => {
+      if (!live) return
+      const online = this.#views.get(linkId)?.state === "online"
+      if (online && !asking) ask()
+      else if (!online && asking) {
+        asking = false
+        feed.stop()
+      }
+    }
+    const unfollow = this.subscribe(follow)
+    const watches = this.#orgWatches.get(linkId) ?? new Set()
+    const push = (model: ChartModel) => {
+      if (asking) feed.pushed(model)
+    }
+    watches.add(push)
+    this.#orgWatches.set(linkId, watches)
+    follow()
+    return {
+      stop: () => {
+        if (!live) return
+        live = false
+        asking = false
+        unfollow()
+        watches.delete(push)
+        if (watches.size === 0) this.#orgWatches.delete(linkId)
+        feed.discard()
+      },
+      // The user asked again (pull to refresh).
+      refresh: () => {
+        if (live && asking) ask(true)
+      },
     }
   }
 

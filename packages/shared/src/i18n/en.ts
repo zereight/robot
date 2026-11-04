@@ -402,6 +402,24 @@ export const en = {
   "model.noAccounts": "Connect a model account in settings first.",
   "model.noAccounts.remote": "No model account is connected on {name}.",
   "model.save": "Save",
+  "backup.label": "Backup model",
+  "backup.none": "None",
+  "backup.choose": "Choose a backup model",
+  "backup.hint": "Takes the turns of this agent while the main model has spent its limit.",
+  "backup.same":
+    "The backup is the same as the main model. Choose another account, model or effort.",
+  "backup.noMain": "Choose a main model first.",
+  "backup.notReady": "Not ready on this computer: its account is not connected or is missing.",
+  "backup.remove": "Remove the backup model",
+  "backup.until": "Backup until {time}",
+  "backup.useMain": "Use {model} now",
+  "backup.header": "Backup model {model}",
+  "chat.note.keptGoing": "Kept going ({n} of {of})",
+  "chat.note.backupGoesOn": "{main} reached its limit. {backup} goes on.",
+  "chat.note.backupGoesOnUntil":
+    "{main} reached its limit. {backup} goes on. The limit resets at {time}.",
+  "error.backup_same":
+    "The backup is the same as the main model. Choose another account, model or effort.",
 
   "error.provider_auth": "The provider refused the key.",
   "error.provider_unreachable":
@@ -444,6 +462,7 @@ export const en = {
   "chat.stop": "Stop",
   "chat.placeholder": "Message {name}",
   "chat.working": "Working…",
+  "quiet.line": "No answer from {name} for {time}",
   "chat.stopped": "Stopped",
   "chat.retry": "Retry",
   "chat.limitResets": "The limit resets at {time}.",
@@ -494,6 +513,9 @@ export const en = {
   "threads.busy.waiting": "A task of this thread waits for you.",
   "threads.busy.queued": "A task of this thread waits in the queue.",
   "threads.busy.messages": "Messages of this thread wait in the message queue.",
+  "settings.keepGoing": "Keep going on open steps",
+  "settings.keepGoing.hint":
+    "When an agent ends a turn and its list of steps has steps that are not done, ROBot asks it to go on, up to 8 times for one request. This works for agents whose program reports a list of steps.",
   "settings.autoCompact": "Compact long chats automatically",
   "settings.autoCompact.hint":
     "Before a turn, a chat that uses 85 percent of the context of the model, or 400000 tokens, gets a summary of its older part.",

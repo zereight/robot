@@ -119,6 +119,60 @@ describe("claude stream", () => {
     expect(mapClaudeMessage(assistant, state)).toEqual([])
   })
 
+  test("the tool TodoWrite is the list of steps: its card shows, and the list is reported", () => {
+    const state = newStreamState()
+    const out = events(
+      mapClaudeMessage(
+        {
+          type: "assistant",
+          message: {
+            content: [
+              {
+                type: "tool_use",
+                id: "t2",
+                name: "TodoWrite",
+                input: {
+                  todos: [
+                    { content: "Write the test", status: "completed", activeForm: "Writing" },
+                    { content: "Fix the bug", status: "in_progress", activeForm: "Fixing" },
+                    { content: "Run the suite", status: "pending", activeForm: "Running" },
+                    { content: "  ", status: "pending", activeForm: "" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        state,
+      ),
+    )
+    expect(out.map((e) => e.type)).toEqual(["tool", "plan"])
+    expect(out[1]).toEqual({
+      type: "plan",
+      steps: [
+        { label: "Write the test", done: true },
+        { label: "Fix the bug", done: false },
+        { label: "Run the suite", done: false },
+      ],
+    })
+  })
+
+  test("a list that was cleared is reported empty; a call with no list reports none", () => {
+    const state = newStreamState()
+    const call = (id: string, input: object) =>
+      events(
+        mapClaudeMessage(
+          {
+            type: "assistant",
+            message: { content: [{ type: "tool_use", id, name: "TodoWrite", input }] },
+          },
+          state,
+        ),
+      )
+    expect(call("a", { todos: [] })[1]).toEqual({ type: "plan", steps: [] })
+    expect(call("b", {}).map((e) => e.type)).toEqual(["tool"])
+  })
+
   test("a tool result finishes the card; an error result fails it", () => {
     const state = newStreamState()
     mapClaudeMessage(

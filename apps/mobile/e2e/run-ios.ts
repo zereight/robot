@@ -55,7 +55,9 @@ try {
   children.push(host)
   const hostDone = new Promise<number>((r) => host.on("exit", (code) => r(code ?? 1)))
   await waitFor(() => existsSync(join(out, "host.json")), 180_000, "the desktop pairing code")
-  const { address, code } = JSON.parse(readFileSync(join(out, "host.json"), "utf8"))
+  // `control` is an address of the host that a flow can call to make the computer do something
+  // (apps/desktop/e2e/phone/phone-org-host.ts); the other hosts have none.
+  const { address, code, control } = JSON.parse(readFileSync(join(out, "host.json"), "utf8"))
 
   if (!(await metroUp())) {
     // `--ios` makes the Expo CLI install Expo Go on the booted simulator when it is missing.
@@ -91,6 +93,7 @@ try {
         `ADDRESS=${address}`,
         "-e",
         `CODE=${code}`,
+        ...(control ? ["-e", `CONTROL=${control}`] : []),
         flow,
       ],
       {

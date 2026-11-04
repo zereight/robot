@@ -130,6 +130,64 @@ describe("codex events", () => {
     expect(failed.state.failed).toBe("You've hit your usage limit")
   })
 
+  test("the item todo_list is the list of steps, at its start, its updates and its end", () => {
+    const list = (items: { text: string; completed: boolean }[]) => ({
+      id: "item_3",
+      type: "todo_list",
+      items,
+    })
+    const first = [
+      { text: "Read the file", completed: true },
+      { text: "Change it", completed: false },
+    ]
+    const { out } = feed([
+      { type: "item.started", item: list(first) },
+      {
+        type: "item.updated",
+        item: list([
+          { text: "Read the file", completed: true },
+          { text: "Change it", completed: true },
+        ]),
+      },
+      { type: "item.completed", item: list(first) },
+      // An update of another item reports no list.
+      { type: "item.updated", item: { id: "item_4", type: "command_execution", command: "ls" } },
+    ])
+    expect(out).toEqual([
+      {
+        type: "plan",
+        steps: [
+          { label: "Read the file", done: true },
+          { label: "Change it", done: false },
+        ],
+      },
+      {
+        type: "plan",
+        steps: [
+          { label: "Read the file", done: true },
+          { label: "Change it", done: true },
+        ],
+      },
+      {
+        type: "plan",
+        steps: [
+          { label: "Read the file", done: true },
+          { label: "Change it", done: false },
+        ],
+      },
+    ])
+  })
+
+  test("a run puts its own mark before the item ids, so a later run keeps the cards apart", () => {
+    const state = newCodexState()
+    state.prefix = "ab12:"
+    const out = mapCodexEvent(
+      { type: "item.started", item: { id: "item_1", type: "command_execution", command: "ls" } },
+      state,
+    )
+    expect(out[0]).toMatchObject({ call: { id: "ab12:item_1" } })
+  })
+
   test("unknown lines are ignored", () => {
     expect(
       feed([{ type: "something.new" }, { type: "item.completed", item: { type: "todo_list" } }])

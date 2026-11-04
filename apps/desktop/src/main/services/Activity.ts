@@ -1,4 +1,4 @@
-import type { ToolStepKind } from "@robot/shared"
+import type { QuietState, QuietTurn, ToolStepKind } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { EventBus } from "./EventBus.ts"
 
@@ -10,6 +10,16 @@ export interface ActivityService {
   /** The kind of step that an agent runs now, or null. It is cleared when the agent stops. */
   stepOf(agentId: string): ToolStepKind | null
   setStep(agentId: string, step: ToolStepKind | null): void
+  /**
+   * A turn became quiet (`seconds` is the time on its quiet clock), or tells the seconds again
+   * (the computer woke), or is not quiet any more (`null`). See spec 005, "Quiet line". It sends
+   * the event "quiet.changed" with every turn that is quiet.
+   */
+  setQuiet(turn: Omit<QuietTurn, "seconds">, seconds: number | null): void
+  /** The turns that are quiet now, with the seconds on their quiet clocks at this moment. */
+  quietTurns(): QuietState
+  /** The turn of a task, when it is quiet now. */
+  quietOf(taskId: string): QuietTurn | undefined
   /** Calls `handler` when an agent starts or stops working, or changes the kind of its step. */
   onChange(handler: () => void): void
 }
@@ -24,7 +34,26 @@ export class Activity extends Context.Service<Activity, ActivityService>()("robo
       const working = new Map<string, number>()
       const steps = new Map<string, ToolStepKind>()
       const handlers: (() => void)[] = []
+      // The turns that are quiet now, by task. `since` is the time at which the quiet clock was 0.
+      // Nothing of it is stored: after a restart no turn runs, so none is quiet.
+      const quiet = new Map<string, { turn: Omit<QuietTurn, "seconds">; since: number }>()
+      const seconds = (since: number, now: number) => Math.max(0, Math.floor((now - since) / 1000))
+      const turns = (): QuietState => {
+        const now = Date.now()
+        return {
+          turns: [...quiet.values()].map((q) => ({ ...q.turn, seconds: seconds(q.since, now) })),
+        }
+      }
       return Activity.of({
+        setQuiet: (turn, secs) => {
+          if (secs === null) {
+            if (!quiet.delete(turn.taskId)) return
+          } else quiet.set(turn.taskId, { turn, since: Date.now() - secs * 1000 })
+          bus.emit("quiet.changed", turns())
+          for (const h of handlers) h()
+        },
+        quietTurns: turns,
+        quietOf: (taskId) => turns().turns.find((t) => t.taskId === taskId),
         isWorking: (agentId) => (working.get(agentId) ?? 0) > 0,
         workingIds: () => [...working.keys()],
         stepOf: (agentId) => steps.get(agentId) ?? null,

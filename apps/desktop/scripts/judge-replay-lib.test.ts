@@ -40,6 +40,7 @@ import {
   startAndEnd,
   V4_NOTE,
 } from "./judge-replay-lib.ts"
+import { spawnGuarded } from "./spawn-guard.ts"
 
 // All data here is made for the tests. The words LBL, DONE and REPLY mark the text of an item: a
 // report must never hold them.
@@ -782,19 +783,12 @@ describe("the script", () => {
   const script = resolve(import.meta.dirname, "judge-replay.ts")
   // The same Bun as the one that runs the tests, not the first "bun" on the PATH. Each test that
   // starts a child process has a timeout of 30 s: on a busy machine the start of a process is slow.
-  const run = async (cwd: string, args: string[], env: Record<string, string>) => {
-    const child = Bun.spawn([process.execPath, script, ...args], {
+  // A child that has not ended after 15 s fails the test with a text that says where it stopped.
+  const run = (cwd: string, args: string[], env: Record<string, string>) =>
+    spawnGuarded([process.execPath, script, ...args], {
       cwd,
       env: { ...process.env, JUDGE_BASE_URL: "", JUDGE_MODEL: "", JUDGE_API_KEY: "", ...env },
-      stdout: "pipe",
-      stderr: "pipe",
     })
-    const [out, err] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ])
-    return { code: await child.exited, out, err }
-  }
   const lines = ITEMS.map((i) => JSON.stringify(i)).join("\n")
 
   test("writes the two reports to the folder that was given, and nothing else", async () => {

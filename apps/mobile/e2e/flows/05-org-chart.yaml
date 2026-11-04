@@ -1,0 +1,298 @@
+# The screen "Org chart" (spec 029 "Phone", spec 011 screen 8). Runs after 01-pair, against the
+# computer of apps/desktop/e2e/phone/phone-org-host.ts (PHONE_E2E_HOST=phone-org-host.ts). The
+# flow calls the control address of that computer (CONTROL) to start a task and to turn the link
+# off and on. The steps run in English first, then in Korean.
+appId: host.exp.Exponent
+---
+# The simulator may start in any language: the phone is set to English first.
+- tapOn:
+    id: "servers.settings"
+- extendedWaitUntil:
+    visible:
+      id: "settings"
+    timeout: 15000
+- tapOn:
+    text: "English"
+- tapOn:
+    point: "9%,9%"
+- extendedWaitUntil:
+    visible:
+      id: "server.MacBook"
+    timeout: 30000
+- tapOn:
+    id: "server.MacBook"
+- extendedWaitUntil:
+    visible:
+      id: "places.orgChart"
+    timeout: 30000
+- takeScreenshot: phone-org-01-places
+- tapOn:
+    id: "places.orgChart"
+
+# The root, the channel with its lead, no agent works yet.
+- extendedWaitUntil:
+    visible:
+      id: "org.block.Docs"
+    timeout: 30000
+- assertVisible:
+    text: "You"
+- assertVisible:
+    id: "org.agent.Docs.Ada.lead"
+- assertVisible:
+    text: ".*3 members · 3 idle.*"
+- assertNotVisible:
+    text: ".*Working.*"
+- takeScreenshot: phone-org-02-list
+
+# The block "Team" has 14 members: 12 rows and the row "+2 more", which opens the rest.
+- scrollUntilVisible:
+    element:
+      id: "org.more.Team"
+    direction: DOWN
+- assertVisible:
+    text: ".*2 more members of Team.*"
+- takeScreenshot: phone-org-03-more-row
+- tapOn:
+    id: "org.more.Team"
+- extendedWaitUntil:
+    visible:
+      id: "org.moreRow.Team 12"
+    timeout: 10000
+- assertVisible:
+    id: "org.moreRow.Team 11"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: phone-org-04-more-sheet
+# A tap on a row of the sheet opens the chat of that agent.
+- tapOn:
+    id: "org.moreRow.Team 12"
+- extendedWaitUntil:
+    visible:
+      id: "composer.input"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: phone-org-05-chat-from-sheet
+- tapOn:
+    point: "9%,9%"
+- extendedWaitUntil:
+    visible:
+      id: "org.more.Team"
+    timeout: 15000
+
+# "No channel" and the hand-offs.
+- scrollUntilVisible:
+    element:
+      id: "org.handoffs"
+    direction: DOWN
+- assertVisible:
+    text: ".*Bo handed 1 task to Cy in the last 7 days.*"
+- takeScreenshot: phone-org-06-handoffs
+- scrollUntilVisible:
+    element:
+      id: "org.block.Docs"
+    direction: UP
+
+# A task starts on the computer: the phone shows "Working" and the label by itself.
+- evalScript: ${http.get(CONTROL + '/start-task')}
+- extendedWaitUntil:
+    visible:
+      id: "org.agent.Docs.Bo.task"
+    timeout: 10000
+- evalScript: ${http.get(CONTROL + '/seen')}
+- assertVisible:
+    text: ".*Working.*"
+- assertVisible:
+    text: ".*3 members · 1 working · 2 idle.*"
+- assertVisible:
+    text: ".*Draft the release notes for the next big version of the app.*"
+- takeScreenshot: phone-org-07-working
+
+# A tap on an agent row opens its chat, and the back gesture comes back to the list.
+- tapOn:
+    id: "org.agent.Docs.Bo"
+- extendedWaitUntil:
+    visible:
+      id: "composer.input"
+    timeout: 30000
+- assertVisible:
+    text: ".*Draft the release notes.*"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: phone-org-08-chat
+- tapOn:
+    point: "9%,9%"
+# The stand-in model ends the task after about 30 seconds. The computer starts it again when it
+# has ended, so the steps below do not depend on the time that the steps above took.
+- evalScript: ${http.get(CONTROL + '/start-task')}
+- extendedWaitUntil:
+    visible:
+      id: "org.agent.Docs.Bo.task"
+    timeout: 15000
+# A tap on the header of the channel opens the channel.
+- tapOn:
+    id: "org.block.Docs"
+- extendedWaitUntil:
+    visible:
+      id: "composer.input"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: phone-org-09-channel
+- tapOn:
+    point: "9%,9%"
+- extendedWaitUntil:
+    visible:
+      id: "org.block.Docs"
+    timeout: 15000
+
+# An agent whose task waits for the user shows "Waiting for you" and the label of the task. This
+# step comes after the taps at the top of the screen: the approval makes a notice, and its banner
+# covers the back button for a few seconds.
+- evalScript: ${http.get(CONTROL + '/start-task')}
+- extendedWaitUntil:
+    visible:
+      id: "org.agent.Docs.Bo.task"
+    timeout: 15000
+- evalScript: ${http.get(CONTROL + '/ask-approval')}
+- extendedWaitUntil:
+    visible:
+      id: "org.agent.Docs.Cy.task"
+    timeout: 15000
+- assertVisible:
+    text: ".*Waiting for you.*"
+- assertVisible:
+    text: ".*3 members · 1 working · 1 waiting for you · 1 idle.*"
+- takeScreenshot: phone-org-10-waiting
+
+# The tasks end on the computer: the list changes back by itself.
+- evalScript: ${http.get(CONTROL + '/stop-task')}
+- extendedWaitUntil:
+    notVisible:
+      id: "org.agent.Docs.Bo.task"
+    timeout: 15000
+- extendedWaitUntil:
+    notVisible:
+      id: "org.agent.Docs.Cy.task"
+    timeout: 15000
+- takeScreenshot: phone-org-11-idle-again
+
+# The computer does not accept the link: the line and no list. The list is not kept.
+- evalScript: ${http.get(CONTROL + '/server-off')}
+- extendedWaitUntil:
+    visible:
+      text: "MacBook is offline."
+    timeout: 60000
+- assertNotVisible:
+    id: "org.block.Docs"
+- assertNotVisible:
+    text: "You"
+- takeScreenshot: phone-org-12-offline
+# The link comes back and the list comes back by itself.
+- evalScript: ${http.get(CONTROL + '/server-on')}
+- extendedWaitUntil:
+    visible:
+      id: "org.block.Docs"
+    timeout: 120000
+- takeScreenshot: phone-org-13-back
+
+# The same in Korean. Back to the Servers screen, whatever the depth.
+- repeat:
+    while:
+      notVisible:
+        id: "servers.settings"
+    times: 5
+    commands:
+      - tapOn:
+          point: "9%,9%"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- extendedWaitUntil:
+    visible:
+      id: "servers.settings"
+    timeout: 15000
+- tapOn:
+    id: "servers.settings"
+- extendedWaitUntil:
+    visible:
+      id: "settings"
+    timeout: 15000
+- tapOn:
+    text: "한국어"
+- tapOn:
+    point: "9%,9%"
+- extendedWaitUntil:
+    visible:
+      id: "server.MacBook"
+    timeout: 30000
+- tapOn:
+    id: "server.MacBook"
+- extendedWaitUntil:
+    visible:
+      id: "places.orgChart"
+    timeout: 30000
+- tapOn:
+    id: "places.orgChart"
+- extendedWaitUntil:
+    visible:
+      id: "org.block.Docs"
+    timeout: 30000
+- assertVisible:
+    text: ".*멤버 3명 · 대기 3.*"
+- takeScreenshot: phone-org-14-ko-list
+- evalScript: ${http.get(CONTROL + '/start-task')}
+- extendedWaitUntil:
+    visible:
+      id: "org.agent.Docs.Bo.task"
+    timeout: 10000
+- assertVisible:
+    text: ".*작업 중.*"
+- takeScreenshot: phone-org-15-ko-working
+# A name and a role line that are too long for the phone stay in their row, with the mark.
+- evalScript: ${http.get(CONTROL + '/long-names')}
+- extendedWaitUntil:
+    visible:
+      text: ".*Ada Lovelace the Analytical Programmer.*"
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: phone-org-16-ko-long-names
+- scrollUntilVisible:
+    element:
+      id: "org.more.Team"
+    direction: DOWN
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: phone-org-17-ko-more-row
+- tapOn:
+    id: "org.more.Team"
+- extendedWaitUntil:
+    visible:
+      id: "org.moreRow.Team 12"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: phone-org-18-ko-more-sheet
+- tapOn:
+    point: "50%,10%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- scrollUntilVisible:
+    element:
+      id: "org.handoffs"
+    direction: DOWN
+- takeScreenshot: phone-org-19-ko-handoffs
+- evalScript: ${http.get(CONTROL + '/server-off')}
+- extendedWaitUntil:
+    visible:
+      text: "MacBook이\\(가\\) 오프라인이에요."
+    timeout: 60000
+- assertNotVisible:
+    id: "org.block.Docs"
+- takeScreenshot: phone-org-20-ko-offline
+- evalScript: ${http.get(CONTROL + '/server-on')}
+- extendedWaitUntil:
+    visible:
+      id: "org.block.Docs"
+    timeout: 120000
+- evalScript: ${http.get(CONTROL + '/stop-task')}

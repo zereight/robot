@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import type { ModelHold } from "./backup.ts"
 import type { PlaceOutside } from "./placeMarks.ts"
 import type { RuntimeProblem } from "./providers.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
@@ -54,6 +55,24 @@ export interface Agent {
   /** A data URL of the uploaded picture, when there is one. */
   readonly faceImage: string | null
   readonly model: AgentModel | null
+  /**
+   * The backup model (spec 006, "Backup model"): the account, model and effort that take the turns
+   * while the main model is held because a limit is spent. Null is "None". It syncs with the agent
+   * (spec 019). A client of an older step has none.
+   */
+  readonly backupModel?: AgentModel | null
+  /**
+   * True when the backup model is ready on the computer that holds the agent: its account is here,
+   * connected and, for a program, Ready. A synced backup that names an account that this computer
+   * lacks is not ready (spec 006). Absent when the agent has no backup.
+   */
+  readonly backupReady?: boolean
+  /**
+   * The hold of the main model while the backup model takes the turns, with its end time. It is a
+   * state of the computer that holds the agent and does not sync (spec 006, 019). A linked device
+   * shows it as its server tells it (spec 012). Null or absent when no hold lasts.
+   */
+  readonly hold?: ModelHold | null
   readonly workspace: string
   /** The built-in section. The user section is `sectionId`. */
   readonly section: "agents"
@@ -95,6 +114,8 @@ export const AgentCreate = Schema.Struct({
   instructions: Schema.String,
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
+  /** The backup model (spec 006). Absent or null is "None". */
+  backupModel: Schema.optionalKey(Schema.NullOr(AgentModel)),
   sectionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** The level of the new agent. Without it the agent starts at the default (spec 007). */
   permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
@@ -107,6 +128,7 @@ export const AgentPatch = Schema.Struct({
   instructions: Schema.optionalKey(Schema.String),
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
+  backupModel: Schema.optionalKey(Schema.NullOr(AgentModel)),
   permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
   memoryEnabled: Schema.optionalKey(Schema.Boolean),
   knowledgeEnabled: Schema.optionalKey(Schema.Boolean),
@@ -139,6 +161,7 @@ export const ClientAgentCreate = Schema.Struct({
   instructions: ClientInstructions,
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(ClientModel)),
+  backupModel: Schema.optionalKey(Schema.NullOr(ClientModel)),
 })
 export type ClientAgentCreate = typeof ClientAgentCreate.Type
 
@@ -149,6 +172,7 @@ export const ClientAgentPatch = Schema.Struct({
   instructions: Schema.optionalKey(ClientInstructions),
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(ClientModel)),
+  backupModel: Schema.optionalKey(Schema.NullOr(ClientModel)),
   permission: Schema.optionalKey(Schema.Literals(PERMISSION_LEVELS)),
 })
 export type ClientAgentPatch = typeof ClientAgentPatch.Type

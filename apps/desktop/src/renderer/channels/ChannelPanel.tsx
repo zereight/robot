@@ -5,6 +5,8 @@ import { Face } from "../agents/Face.tsx"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { quietOfTaskLine } from "../state/quiet.ts"
+import { useUi } from "../state/ui.tsx"
 import { IconButton } from "../ui/controls.tsx"
 import { stateLabel } from "./ChannelView.tsx"
 import styles from "./channels.module.css"
@@ -33,7 +35,9 @@ const MAX_STAGGER = 5
 /** The "Now" panel: one card per member, and the plan steps under the lead. */
 export const ChannelPanel = (props: { channel: Channel }) => {
   const { t } = useApp()
+  const ui = useUi()
   const agents = useAgents()
+  const server = () => (ui.linked() ? ui.server()?.id : undefined)
   const [activity, { refetch }] = createResource(
     () => props.channel.id,
     (channelId) => call("channels.activity", { channelId }),
@@ -69,10 +73,18 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                       <ol class={styles.steps} data-testid="plan-steps">
                         <For each={member.steps}>
                           {(step, index) => {
+                            // A running step whose turn is quiet keeps its spinner. Its text label
+                            // and its tooltip read the quiet line (spec 004, 005).
+                            const quietText = () => {
+                              if (step.state !== "running") return undefined
+                              const q = quietOfTaskLine(server(), step.taskId)
+                              return q ? t("quiet.line", { name: q.name, time: q.time }) : undefined
+                            }
                             return (
                               <li
                                 class={styles.step}
                                 data-state={step.state}
+                                data-quiet={quietText() ? "true" : undefined}
                                 data-testid="plan-step"
                                 style={{ "--i": Math.min(index(), MAX_STAGGER) }}
                               >
@@ -84,7 +96,9 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                                       <span
                                         class={styles.stepIcon}
                                         role="img"
-                                        aria-label={t(view.key as never)}
+                                        aria-label={quietText() ?? t(view.key as never)}
+                                        title={quietText()}
+                                        data-testid="plan-step-icon"
                                       >
                                         {view.icon}
                                       </span>

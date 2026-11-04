@@ -138,6 +138,8 @@ export const CLIENT_METHODS = [
   "attachment.upload",
   "attachment.download",
   "attention.list",
+  // The turns that are quiet now (spec 005, "Quiet line", 012): read when a client connects.
+  "quiet.list",
   // Workflows of the server (spec 012, "Workflows"). Reading, running and stopping need only the
   // right to send messages.
   "workflows.list",
@@ -154,6 +156,8 @@ export const CLIENT_METHODS = [
   "agents.update",
   "agents.duplicate",
   "agents.archive",
+  // "Use the main model now": ends the hold of the main model (spec 006, 012).
+  "agents.useMain",
   "channels.create",
   "channels.update",
   "memory.list",
@@ -186,6 +190,8 @@ export const CHANGE_METHODS = [
   "agents.update",
   "agents.duplicate",
   "agents.archive",
+  // "Use the main model now": ends the hold of the main model (spec 006, 012).
+  "agents.useMain",
   "channels.create",
   "channels.update",
   "memory.list",
@@ -222,6 +228,9 @@ export const PUSHED_EVENTS = [
   "workflows.run",
   // The org chart changed (spec 029, 012): the whole ready model, so a client reads nothing again.
   "orgChart.model",
+  // A turn became quiet, went on, or ended (spec 005, "Quiet line", 012). The start and the end
+  // only: a client counts the seconds itself.
+  "quiet.changed",
 ] as const
 export type PushedEvent = (typeof PUSHED_EVENTS)[number]
 

@@ -5,6 +5,7 @@ import { FILE_CHUNK, LINK_PROTOCOL, UPLOAD_PREFIX } from "@robot/shared"
 import type { Effect } from "effect"
 import { Effect as E, Schema } from "effect"
 import type { AppServices } from "../layers.ts"
+import { Activity } from "../services/Activity.ts"
 import { Agents } from "../services/Agents.ts"
 import { CurrentActor } from "../services/actor.ts"
 import { Devices } from "../services/Devices.ts"
@@ -154,6 +155,15 @@ export const linkHandlers: Record<string, LinkHandler> = {
 
   /** The approvals and questions that wait now, for a device that connects (spec 015). */
   "attention.list": () => Notifier.use((n) => E.sync(() => n.waitingNotices())),
+
+  /**
+   * The turns that are quiet now, for a device that connects (spec 005, 012). A turn in another
+   * thread is left out: a linked device has the main thread only (spec 011, 012).
+   */
+  "quiet.list": () =>
+    Activity.use((a) =>
+      E.sync(() => ({ turns: a.quietTurns().turns.filter((t) => t.threadId === null) })),
+    ),
 
   "attachment.upload": (input) =>
     E.gen(function* () {

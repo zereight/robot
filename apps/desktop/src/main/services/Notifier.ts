@@ -173,13 +173,14 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
       /** The running task of an agent: its place, the label of its plan step, and when it began. */
       const runningTask = (agentId: string) =>
         db.get<{
+          id: string
           source: string
           source_id: string | null
           parent_id: string | null
           label: string
           started_at: number | null
         }>(
-          `SELECT source, source_id, parent_id, label, started_at FROM task
+          `SELECT id, source, source_id, parent_id, label, started_at FROM task
            WHERE agent_id = ? AND state IN ('running', 'waiting')
            ORDER BY started_at DESC, rowid DESC LIMIT 1`,
           agentId,
@@ -215,12 +216,15 @@ export class Notifier extends Context.Service<Notifier, NotifierService>()("robo
               : { kind: "none" }
         const since = task?.started_at ?? began.get(agent.id) ?? Date.now()
         began.set(agent.id, since)
+        // The turn of the task of this row is quiet (spec 005, "Quiet line").
+        const quiet = task ? activity.quietOf(task.id) : undefined
         return {
           agent,
           place,
           target: targetOf(agent.id, place === null ? null : channelId),
           doing,
           since,
+          quiet: quiet ? { name: quiet.name, seconds: quiet.seconds } : null,
         }
       }
 

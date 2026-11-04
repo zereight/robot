@@ -44,6 +44,7 @@ import type {
   RuntimeStatus,
   RuntimeTarget,
 } from "./providers.ts"
+import type { QuietState } from "./quiet.ts"
 import type { Routine, RoutineEntry, RoutineInput, RoutinePatch } from "./routines.ts"
 import type { PermissionRule, RuleDecision, RuleInput } from "./rules.ts"
 import type { SearchPage } from "./search.ts"
@@ -280,6 +281,11 @@ export interface RpcMethods {
   "agents.update": { input: { id: string; patch: AgentPatch }; output: Agent }
   "agents.duplicate": { input: { id: string; suffix: string }; output: Agent }
   "agents.archive": { input: { id: string }; output: Agent }
+  /**
+   * "Use the main model now" (spec 006, "Backup model"): ends the hold of the main model. The next
+   * turn tries the main model. A linked device needs the switch "Can create and change agents".
+   */
+  "agents.useMain": { input: { id: string }; output: Agent }
   "agents.restore": { input: { id: string }; output: Agent }
   "agents.delete": { input: { id: string }; output: undefined }
   /** The versions of the instructions of an agent, newest first (spec 002). */
@@ -380,6 +386,11 @@ export interface RpcMethods {
   /** The newest 500 tasks of a server. */
   "tasks.list": { input: { serverId: string }; output: readonly Task[] }
   "tasks.get": { input: { id: string }; output: TaskDetail }
+  /**
+   * The turns that are quiet now (spec 005, "Quiet line"), each with the seconds on its quiet
+   * clock. In memory only. A linked device may call it when it connects.
+   */
+  "quiet.list": { input: undefined; output: QuietState }
   /**
    * The last 20 tasks of one agent, newest first, each with what it waits for (spec 002, "Recent
    * work"). A read: a linked device may call it.
@@ -819,6 +830,12 @@ export interface RpcEvents {
   "workflows.changed": { serverId: string }
   "workflows.run": { runId: string }
   "island.state": IslandState
+  /**
+   * A turn became quiet, or went on, or ended (spec 005, "Quiet line"): all turns that are quiet
+   * now, with their seconds at this moment. A window counts on from there. It does not come each
+   * second.
+   */
+  "quiet.changed": QuietState
   /** The Today page changed: the whole page, so the window needs no second request. */
   "today.changed": TodaySnapshot
   /** The org chart changed: the whole snapshot, so the window needs no second request (spec 029). */

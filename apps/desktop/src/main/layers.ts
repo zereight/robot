@@ -21,6 +21,7 @@ import { Host } from "./services/Host.ts"
 import { KeepAwake } from "./services/KeepAwake.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
+import { ModelHolds } from "./services/ModelHolds.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { OrgChart } from "./services/OrgChart.ts"
 import { PlaceMarks } from "./services/PlaceMarks.ts"
@@ -93,6 +94,7 @@ export const appLayer = (options: AppLayerOptions) => {
     Skills.layer,
     Checklists.layer,
     PlaceMarks.layer,
+    ModelHolds.layer,
   ).pipe(Layer.provideMerge(base))
   // After the stores: it reads the setting, the agents that work and the routines.
   const keepAwake = KeepAwake.layer.pipe(Layer.provideMerge(stores))

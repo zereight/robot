@@ -4,9 +4,10 @@ import { isAbsolute, join, resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { hostOf, insideWorkspace, type RuntimeLimit, riskyReason } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { limitFailure, ProviderFailure } from "../providers/client.ts"
 import { bridgeToolName, stage } from "./bridge.ts"
 import { runtimeEnv } from "./env.ts"
+import { planFromTodos } from "./plan.ts"
 import { execute } from "./proc.ts"
 import { spawnProgram } from "./programs.ts"
 import { loginFailure, startFailure, type VersionProbe, versionProbe } from "./readiness.ts"
@@ -345,6 +346,12 @@ export const mapClaudeMessage = (message: unknown, state: StreamState): Mapped[]
           kind: "event",
           event: { type: "tool", state: "running", call: { id: str(block.id), ...call } },
         })
+        // The tool TodoWrite is the list of steps of the program (spec 006): each call holds the
+        // whole list. The app reads it for "Keep going" (spec 005).
+        if (call.name === "TodoWrite") {
+          const steps = planFromTodos(obj(block.input).todos)
+          if (steps) out.push({ kind: "event", event: { type: "plan", steps } })
+        }
       }
       return out
     }
@@ -516,7 +523,7 @@ export const claudeArgs = (run: RuntimeRun, mcpConfig?: string): string[] => {
 /** What went wrong in a turn that the vendor ended with an error. */
 export const claudeFailure = (text: string, resetsAt: number | null): ProviderFailure => {
   if (/\b(limit|quota|usage)\b/i.test(text) && /\b(reached|hit|exceeded|resets?)\b/i.test(text))
-    return new ProviderFailure("provider_limit", text, resetsAt ?? undefined)
+    return limitFailure(text, resetsAt ?? undefined)
   if (/log ?in|sign ?in|authenticat|oauth|401|unauthorized|expired/i.test(text))
     return new ProviderFailure("runtime_signed_out", text)
   return new ProviderFailure("provider_error", text || "The program ended with an error.")

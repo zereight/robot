@@ -38,6 +38,11 @@
   animation: mark-pulse 1.4s ease-in-out infinite;
 }
 
+/* A quiet turn: the light does not breathe. It is the same still light as with reduced motion. */
+.still .glow {
+  animation: none;
+}
+
 :root[data-reduce-motion="true"] .glow {
   animation: none;
 }

@@ -5,6 +5,7 @@ import {
   canAddThread,
   type PlaceRef,
   type QueuedLine,
+  type QuietShown,
   sameDay,
   startsGroup,
 } from "@robot/shared"
@@ -25,6 +26,7 @@ import { call } from "../lib/rpc.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
 import { useApp } from "../state/app.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
+import { quietOfChatLine } from "../state/quiet.ts"
 import { useUi } from "../state/ui.tsx"
 import { showToast } from "../ui/toast.ts"
 import { WorkMark } from "../ui/WorkMark.tsx"
@@ -51,16 +53,33 @@ export interface ChatViewProps {
 
 const NEAR_BOTTOM_PX = 48
 
-const WorkingLine = (props: { since: number; compacting: boolean }) => {
+const WorkingLine = (props: {
+  since: number
+  compacting: boolean
+  /** Set while the turn is quiet (spec 005, "Quiet line"): the line replaces the working text. */
+  quiet?: QuietShown | undefined
+}) => {
   const { t } = useApp()
   const [now, setNow] = createSignal(Date.now())
   const timer = setInterval(() => setNow(Date.now()), 1000)
   onCleanup(() => clearInterval(timer))
+  // The pause for a compact is no silence: its own text stays.
+  const quiet = () => (props.compacting ? undefined : props.quiet)
+  const text = () => {
+    if (props.compacting) return t("chat.compacting")
+    const q = quiet()
+    return q ? t("quiet.line", { name: q.name, time: q.time }) : t("chat.working")
+  }
   return (
-    <div class={styles.working} data-testid="working-line" aria-live="polite">
-      <WorkMark />
-      <span class={styles.workingText}>
-        {props.compacting ? t("chat.compacting") : t("chat.working")}
+    <div
+      class={styles.working}
+      data-testid="working-line"
+      data-quiet={quiet() ? "true" : undefined}
+      aria-live="polite"
+    >
+      <WorkMark still={quiet() !== undefined} />
+      <span class={styles.workingText} data-testid="working-text">
+        {text()}
       </span>
       <span class={styles.workingText}>{formatElapsed(now() - props.since)}</span>
     </div>
@@ -312,7 +331,11 @@ export const ChatView = (props: ChatViewProps) => {
             }}
           </For>
           <Show when={working()}>
-            <WorkingLine since={streaming()?.createdAt ?? Date.now()} compacting={compacting()} />
+            <WorkingLine
+              since={streaming()?.createdAt ?? Date.now()}
+              compacting={compacting()}
+              quiet={quietOfChatLine(server(), props.agent.id, props.threadId)}
+            />
           </Show>
           <Show when={!working() && queuedLine()}>
             {(line) => <QueuedTaskLine line={line()} canRunNext={!ui.linked()} />}
