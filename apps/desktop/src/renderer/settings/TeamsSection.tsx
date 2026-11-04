@@ -84,6 +84,7 @@ const PageBox = () => {
       class={teamStyles.page}
       aria-label={t("teams.page.label")}
       data-testid="teams-page-box"
+      data-native-page="teams"
     />
   )
 }
@@ -138,22 +139,6 @@ export const TeamsSection = () => {
     }
   }
   const commit = (patch: TeamsPatch) => run(() => call("teams.update", patch))
-
-  /** The state of the last "Copy a diagnostic report": it shows on the button for a moment. */
-  const [report, setReport] = createSignal<"done" | "failed">()
-  let reportTimer: ReturnType<typeof setTimeout> | undefined
-  onCleanup(() => clearTimeout(reportTimer))
-  /** Makes the diagnostic report and copies it. A copy also stays in the logs folder. */
-  const copyReport = async () => {
-    clearTimeout(reportTimer)
-    try {
-      await call("app.diagnosticReport")
-      setReport("done")
-    } catch {
-      setReport("failed")
-    }
-    reportTimer = setTimeout(() => setReport(undefined), 3_000)
-  }
 
   /** Fields that the switch locks while it is on. */
   const locked = () => view().enabled
@@ -442,23 +427,7 @@ export const TeamsSection = () => {
               >
                 {view().pageShown ? t("teams.page.hide") : t("teams.page.show")}
               </Button>
-              {/* Above the page, with a fixed line, so a click in the page then this button needs
-                  no scroll and the answer never moves the place of the page. */}
-              <Button
-                onClick={() => void copyReport()}
-                aria-live="polite"
-                data-testid="teams-report"
-              >
-                {report() === "failed"
-                  ? t("teams.report.failed")
-                  : report()
-                    ? t("teams.report.copied")
-                    : t("teams.report.button")}
-              </Button>
             </div>
-          </div>
-          <div class={teamStyles.note} data-testid="teams-report-hint">
-            {t("teams.report.hint")}
           </div>
           <Show when={view().pageShown}>
             <PageBox />

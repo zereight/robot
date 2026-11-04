@@ -63,6 +63,12 @@ export const en = {
   "settings.data.folder": "Data folder",
   "settings.data.folder.hint": "Your database and attachments are here.",
   "settings.data.open": "Open folder",
+  "settings.data.report": "Diagnostic report",
+  "settings.data.report.hint":
+    "When something in the app does not take a click, or a page does not: click there a few times, then copy the report and paste it to the developer. It covers the whole app: its screen, the Teams page, the browser pages, the processes and the logs. A copy is also saved in the logs folder as diagnostic-report.txt. The report holds sizes, places and counts of clicks. It holds no password, no text of a page and no message. The app sends nothing.",
+  "settings.data.report.button": "Copy a diagnostic report",
+  "settings.data.report.copied": "Copied",
+  "settings.data.report.failed": "The report could not be made.",
 
   "settings.about.version": "Version {version}",
   "settings.about.licenses": "Open source licenses",
@@ -2105,11 +2111,6 @@ export const en = {
   "teams.page.show": "Show the Teams page",
   "teams.page.hide": "Hide the Teams page",
   "teams.page.label": "Teams page",
-  "teams.report.button": "Copy a diagnostic report",
-  "teams.report.hint":
-    "When the Teams page does not take clicks: click in the page a few times, then press “Copy a diagnostic report” and paste the text to the developer. A copy is also saved in the logs folder as diagnostic-report.txt. The report holds sizes, places and counts of clicks. It holds no password, no text of a page and no message.",
-  "teams.report.copied": "Copied",
-  "teams.report.failed": "The report could not be made.",
   "teams.page.hint":
     "The page is hidden. Show it to sign in or to solve a prompt of Teams. While it shows, the app reads but sends nothing.",
   "teams.target": "Target",

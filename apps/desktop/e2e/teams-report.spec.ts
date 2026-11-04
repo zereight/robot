@@ -5,9 +5,10 @@ import { join } from "node:path"
 import { expect, test } from "@playwright/test"
 import { freshUserData, launch, resizeWindow } from "./harness.ts"
 
-// The diagnostic report of the Teams page (spec 028, 014). A stand-in site fills the place of
-// Teams. The test gives the page a press, as the window does, and checks that the report counts it
-// on both sides: the window that gave it, and the document that received it.
+// The diagnostic report of the whole app (spec 014, 013, 028). It is made from Settings, Data, and
+// it covers the app screen, the Teams page and the logs. A stand-in site fills the place of Teams.
+// The test gives the page a press, as the window does, and checks that the report counts it on both
+// sides: the window that gave it, and the document that received it.
 
 const startStandIn = async () => {
   const site = { clicks: 0 }
@@ -26,7 +27,7 @@ const startStandIn = async () => {
   return { site, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, server }
 }
 
-test("teams page: a press is counted by the window and by the document, and the report holds it", async () => {
+test("diagnostic report: a press is counted by the window and by the document, for the app screen and for the Teams page", async () => {
   test.setTimeout(90_000)
   const stand = await startStandIn()
   const userData = freshUserData()
@@ -81,9 +82,11 @@ test("teams page: a press is counted by the window and by the document, and the 
         wc?.sendInputEvent({ type, x: 300, y: 600, button: "left", clickCount: 1 })
     })
 
-    // "Copy a diagnostic report" says where the file is and keeps it in the logs folder.
-    await page.getByTestId("teams-report").click()
-    await expect(page.getByTestId("teams-report")).toHaveText("Copied")
+    // "Copy a diagnostic report" is a row of Settings, Data, not of the Teams page. It keeps the
+    // report in the logs folder. The Teams page goes away with the Teams settings, and its counts stay.
+    await page.getByTestId("settings-nav-data").click()
+    await page.getByTestId("data-report").click()
+    await expect(page.getByTestId("data-report")).toHaveText("Copied")
     const report = readFileSync(join(userData, "logs", "diagnostic-report.txt"), "utf8")
     expect(report).toContain("ROBot diagnostic report")
     expect(report).toContain("== What the numbers say ==")
@@ -92,6 +95,11 @@ test("teams page: a press is counted by the window and by the document, and the 
     expect(report).toMatch(/"click": [1-9]/)
     expect(report).toMatch(/"screenDown": 1/)
     expect(report).toContain("went to the app screen under the page")
+    // The app screen is counted too: the window gave it presses, and its document got them.
+    expect(report).toMatch(/"page": "app"[\s\S]*?"nativeDown": [1-9]/)
+    expect(report).toMatch(/"page": "app"[\s\S]*?"pointerDown": [1-9]/)
+    expect(report).toContain("== Processes ==")
+    expect(report).toContain("== Log: app")
     // The report knows the host of the page and holds no address beyond it.
     expect(report).toContain('"host": "127.0.0.1"')
     expect(report).not.toContain(stand.url)
@@ -99,13 +107,18 @@ test("teams page: a press is counted by the window and by the document, and the 
     const log = readFileSync(join(userData, "logs", "browser.log"), "utf8")
     expect(log).toContain('"event":"page_input"')
     expect(log).not.toContain("zz-label-zz")
+    // The app log holds the window and the input that its screen took, as kinds and places.
+    const appLog = readFileSync(join(userData, "logs", "app.log"), "utf8")
+    expect(appLog).toContain('"event":"window_created"')
+    expect(appLog).toContain('"event":"page_input"')
+    expect(appLog).toContain('"target":"settings-nav-data"')
   } finally {
     await app.close()
     stand.server.close()
   }
 })
 
-test("teams page: nothing in the window drags by the place of the page, also when the page sits at the top", async () => {
+test("diagnostic report: nothing in the window drags by the place of the page, also when the page sits at the top", async () => {
   test.setTimeout(90_000)
   const stand = await startStandIn()
   const userData = freshUserData()
@@ -137,9 +150,8 @@ test("teams page: nothing in the window drags by the place of the page, also whe
       )
       .toBeLessThan(40)
 
-    // Press the button with a script, so that nothing scrolls the page away from the top.
-    await page.getByTestId("teams-report").evaluate((button) => (button as HTMLElement).click())
-    await expect(page.getByTestId("teams-report")).toHaveText("Copied")
+    // The report is made while the page sits at the top, so it measures the box in its place.
+    await page.evaluate(() => window.robot.invoke("app.diagnosticReport", undefined))
     const report = readFileSync(join(userData, "logs", "diagnostic-report.txt"), "utf8")
     expect(report).toContain('"dragAreasOver": []')
     expect(report).not.toContain("A drag area of the window lies over the place")

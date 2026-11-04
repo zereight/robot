@@ -64,6 +64,12 @@ export const ko: Record<MessageKey, string> = {
   "settings.data.folder": "데이터 폴더",
   "settings.data.folder.hint": "데이터베이스와 첨부 파일이 여기에 있어요.",
   "settings.data.open": "폴더 열기",
+  "settings.data.report": "진단 보고서",
+  "settings.data.report.hint":
+    "앱의 어딘가, 또는 페이지가 클릭에 반응하지 않을 때: 그곳을 몇 번 클릭한 뒤 보고서를 복사해서 개발자에게 붙여 넣어 주세요. 앱 전체를 담아요. 앱 화면, Teams 페이지, 브라우저 페이지, 프로세스, 로그가 들어가요. 로그 폴더에도 diagnostic-report.txt로 저장돼요. 보고서에는 크기, 위치, 클릭 횟수만 들어가요. 비밀번호, 페이지의 글, 메시지는 들어가지 않아요. 앱이 어디로 보내지는 않아요.",
+  "settings.data.report.button": "진단 보고서 복사",
+  "settings.data.report.copied": "복사했어요",
+  "settings.data.report.failed": "보고서를 만들지 못했어요.",
 
   "settings.about.version": "버전 {version}",
   "settings.about.licenses": "오픈 소스 라이선스",
@@ -2089,11 +2095,6 @@ export const ko: Record<MessageKey, string> = {
   "teams.page.show": "Teams 페이지 보기",
   "teams.page.hide": "Teams 페이지 숨기기",
   "teams.page.label": "Teams 페이지",
-  "teams.report.button": "진단 보고서 복사",
-  "teams.report.hint":
-    "Teams 페이지가 클릭에 반응하지 않을 때: 페이지를 몇 번 클릭한 뒤 “진단 보고서 복사”를 누르고, 복사된 글을 개발자에게 붙여 넣어 주세요. 로그 폴더에도 diagnostic-report.txt로 저장돼요. 보고서에는 크기, 위치, 클릭 횟수만 들어가요. 비밀번호, 페이지의 글, 메시지는 들어가지 않아요.",
-  "teams.report.copied": "복사했어요",
-  "teams.report.failed": "보고서를 만들지 못했어요.",
   "teams.page.hint":
     "페이지는 숨겨져 있어요. 로그인하거나 Teams의 확인 요청을 처리할 때 보세요. 보는 동안 앱은 읽기만 하고 아무것도 보내지 않아요.",
   "teams.target": "대상",

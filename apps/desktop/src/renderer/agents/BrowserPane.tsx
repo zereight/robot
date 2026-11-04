@@ -252,6 +252,7 @@ export const BrowserCard = (props: { agentId: string; view: BrowserView }) => {
             ref={boxRef(props.view.setSmallBox)}
             class={styles.browserThumb}
             data-testid="browser-thumb"
+            data-native-page="agent"
           />
         </Show>
       </section>
@@ -316,6 +317,7 @@ export const BrowserLarge = (props: { agentId: string; view: BrowserView }) => {
           ref={boxRef(props.view.setLargeBox)}
           class={styles.browserView}
           data-testid="browser-view"
+          data-native-page="agent"
         />
       </section>
     </Show>

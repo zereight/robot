@@ -27,6 +27,11 @@ export interface PageInputNote {
   readonly trusted: boolean
   /** The tag of the target, in lower case. Nothing else about it. */
   readonly tag: string
+  /**
+   * The test id of the nearest element of the app screen that has one. A web page never sends it:
+   * the screen of the app is the only document that the app owns.
+   */
+  readonly target?: string
   readonly x: number
   readonly y: number
   /** The size of the document view, in CSS px. */
