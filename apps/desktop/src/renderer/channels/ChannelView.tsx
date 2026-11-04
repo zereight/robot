@@ -473,6 +473,20 @@ export const ChannelView = (props: { channel: Channel }) => {
                         input?.focus()
                       }}
                       onJumpTo={jump}
+                      // "Correct" on a question that the lead answered starts a reply with a
+                      // mention of the member (spec 004, flow 2). A member that is gone has none.
+                      onCorrect={
+                        agentFor(message).id !== "" && !agentFor(message).archived
+                          ? () => {
+                              setText((v) => `${v}@${agentFor(message).name} `)
+                              setCaret(text().length)
+                              queueMicrotask(() => {
+                                grow()
+                                input?.focus()
+                              })
+                            }
+                          : undefined
+                      }
                       onEdit={async () => {}}
                       onRetry={() => {
                         // A client of a linked server cannot try a part again (spec 012).

@@ -274,6 +274,7 @@ export const en = {
   "providers.kind.muse": "Muse Code (Meta account)",
   "providers.kind.pi": "pi (its own sign-ins)",
   "providers.kind.opencode": "opencode (its own sign-ins)",
+  "providers.kind.cursor": "Cursor (Cursor account)",
   "providers.name": "Account name",
   "providers.name.placeholder": "For example: Work",
   "providers.baseUrl": "Base URL",
@@ -290,7 +291,7 @@ export const en = {
   "providers.cancel": "Cancel",
   "providers.empty": "No accounts yet. Add one to give your agents a model.",
   "providers.runtimes":
-    "Claude Code, Codex, Muse Code, pi and opencode use the sign-ins you already have. ROBot starts the program on this computer; it never reads a sign-in. A separate Claude Code sign-in is kept by the program, in the data folder of ROBot. pi and opencode use the models that you set up in them, with their own billing.",
+    "Claude Code, Codex, Muse Code, pi, opencode and Cursor use the sign-ins you already have. ROBot starts the program on this computer; it never reads a sign-in. A separate Claude Code sign-in is kept by the program, in the data folder of ROBot. pi and opencode use the models that you set up in them, with their own billing. Cursor uses the Cursor account on this computer.",
   "providers.signIn.choice": "Claude account",
   "providers.signIn.computer": "This computer's account",
   "providers.signIn.own": "Another account",
@@ -343,6 +344,9 @@ export const en = {
     "Install opencode 2 or later on this computer (for example: brew install opencode), then choose Check again.",
   "runtime.signIn.opencode":
     "Sign in inside opencode: run opencode auth login, or set up a key. ROBot needs opencode 2 or later. Then choose Check again.",
+  "runtime.install.cursor": "Install Cursor on this computer, then choose Check again.",
+  "runtime.signIn.cursor":
+    "Sign in inside Cursor: run cursor-agent login, or set CURSOR_API_KEY. Then choose Check again.",
   "runtime.signInCode": "Open the page and check that this code matches:",
   "runtime.signingIn": "Waiting for the sign-in in your browser…",
   "runtime.cancel": "Cancel",
@@ -547,6 +551,8 @@ export const en = {
     "pi reads no messages during a turn. Your messages wait here until the turn ends.",
   "chat.hold.opencode":
     "opencode reads no messages during a turn. Your messages wait here until the turn ends.",
+  "chat.hold.cursor":
+    "Cursor reads no messages during a turn. Your messages wait here until the turn ends.",
   "chat.tool.answeredInChat": "Answered in the chat",
   "settings.duringTurn": "While an agent works, new messages",
   "settings.duringTurn.hint":
@@ -950,6 +956,14 @@ export const en = {
     "opencode starts with its edit and write tools, and no shell.",
   "agents.permission.line.opencode.full":
     "opencode starts with all its tools. Deny rules in its own settings still apply.",
+  "agents.permission.line.cursor.read_only":
+    "Cursor starts in ask mode. It can read files and cannot change them.",
+  "agents.permission.line.cursor.ask_all":
+    "Cursor starts in ask mode. It can read files and cannot change them.",
+  "agents.permission.line.cursor.ask_risky":
+    "Cursor starts with its sandbox on and applies changes. A run from the app cannot ask before a step.",
+  "agents.permission.line.cursor.full":
+    "Cursor starts with its sandbox off and applies changes without asking.",
   "agents.permission.confirm.title": "Use Full access?",
   "agents.permission.confirm.body":
     "The agent changes files and runs commands without asking. Deny rules still apply.",
@@ -1036,6 +1050,22 @@ export const en = {
   "memory.tab.proposals": "Proposals",
   "memory.tab.history": "History",
   "memory.client.more": "Open this on {name}.",
+  "memory.check.label": "Memory check",
+  "memory.check.hint":
+    "After every 10 done turns, the agent gets a short turn to find facts that it did not save. Each check is a turn of the model and uses the account of the agent. It makes at most 5 suggestions, and you decide on each one in Proposals.",
+  "memory.check.count": "Done turns since the last check: {count} of {every}",
+  "memory.check.now": "Check now",
+  "memory.check.now.none": "No turn has ended since the last check.",
+  "memory.check.now.busy": "A check waits or runs.",
+  "memory.check.now.off": "Turn on the memory check first.",
+  "memory.check.runtime": "{program} cannot use the memory check.",
+  "memory.check.memoryOff": "Memory is off for this agent, so no check runs.",
+  "memory.check.started": "The check is in the queue of the agent.",
+  "memory.proposals.fromCheck": "From a memory check",
+  "tasks.source.memory_check": "Memory check",
+  "error.memory_check_unavailable": "This program cannot use the memory check.",
+  "error.memory_check_off": "A check cannot start now. Look at the choice and the count.",
+  "error.memory_off": "Memory is off for this agent.",
   "memory.proposals.empty": "No proposals wait for you.",
   "memory.proposals.place": "From {name}",
   "memory.proposals.placeGone": "From a chat that is gone",
@@ -2042,6 +2072,24 @@ export const en = {
   "channels.reviewParts": "Review parts",
   "channels.reviewParts.hint":
     "A part of a plan that ends well waits for you. You accept it, or you ask for changes. A part that is in review stays in review when you turn this off.",
+  "channels.leadAnswers": "The lead answers questions",
+  "channels.leadAnswers.hint":
+    "When a member asks a question in a part, the lead reads it first. The lead answers from the job and the channel, or passes the question to you. You can answer at any time.",
+  "channels.leadAnswers.noLead": "The channel has no lead.",
+  "lead.looks": "{name} looks at it",
+  "lead.answeredBy": "Answered by {name}",
+  "lead.correct": "Correct",
+  "lead.pass.reason": "{name}: {reason}",
+  "lead.pass.late": "{name} did not answer in time.",
+  "lead.pass.failure": "{name} could not answer.",
+  "lead.pass.user_choice": "{name}: Only you can choose.",
+  "lead.pass.not_sure": "{name}: Not sure.",
+  "tasks.questions": "Questions of the part",
+  "tasks.question.user": "Answered by you",
+  "tasks.question.lead": "Answered by {name}",
+  "tasks.question.passed": "Passed to you by {name}",
+  "tasks.question.withLead": "{name} looks at it",
+  "tasks.question.open": "Not answered yet",
   "channels.part.blocked": "This part is blocked.",
   "channels.part.failed": "This part failed.",
   "tasks.doneTest": "Done test",
@@ -2056,6 +2104,7 @@ export const en = {
   "moments.given.routine": "Given by a routine",
   "moments.given.workflow": "Given by a workflow",
   "moments.given.agent": "Given by another agent",
+  "moments.given.memory_check": "Given by a memory check",
   "moments.started": "Started",
   "moments.ended.done": "Ended: done",
   "moments.ended.failed": "Ended: failed",
@@ -2078,6 +2127,7 @@ export const en = {
   "recent.behind.routine": "Waits behind the routine {name}",
   "recent.behind.workflow": "Waits behind the workflow {name}",
   "recent.behind.agent": "Waits behind a message of another agent",
+  "recent.behind.memoryCheck": "Waits behind a memory check",
   "recent.behind.thread": "Waits for another thread",
   "recent.behind.slot": "Waits for a free slot. Slots: {count}",
   "recent.behind.computer": "Waits behind the task on {name}",

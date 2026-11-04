@@ -1,5 +1,5 @@
 import { createSocket } from "node:dgram"
-import { createServer } from "node:net"
+import { connect, createServer } from "node:net"
 import makeMdns from "multicast-dns"
 
 // Ports for tests that run two copies of the app. A fixed number would meet another worker, another
@@ -15,12 +15,32 @@ const handedOut = new Set<number>()
 
 const randomPort = () => FIRST + Math.floor(Math.random() * (LAST - FIRST + 1))
 
-const tcpIsFree = (port: number) =>
+const tcpBindsFree = (port: number) =>
   new Promise<boolean>((resolve) => {
     const probe = createServer()
     probe.once("error", () => resolve(false))
     probe.listen(port, () => probe.close(() => resolve(true)))
   })
+
+// True when something on this computer answers TCP on 127.0.0.1 and the port. The bind probe
+// listens on all addresses, but that still misses a holder on 127.0.0.1 or on all IPv4 addresses,
+// so this check guards the address that the tests use to reach the app.
+const tcpAnswersOnLoopback = (port: number) =>
+  new Promise<boolean>((resolve) => {
+    const socket = connect({ host: "127.0.0.1", port })
+    const end = (answers: boolean) => {
+      socket.destroy()
+      resolve(answers)
+    }
+    // A connect that never ends means the number is not safe to use either.
+    socket.setTimeout(1000, () => end(true))
+    socket.once("connect", () => end(true))
+    socket.once("error", (reason: NodeJS.ErrnoException) => end(reason.code !== "ECONNREFUSED"))
+  })
+
+/** True when no program of this computer holds the TCP port. */
+export const tcpIsFree = async (port: number): Promise<boolean> =>
+  (await tcpBindsFree(port)) && !(await tcpAnswersOnLoopback(port))
 
 const udpIsFree = (port: number) =>
   new Promise<boolean>((resolve) => {

@@ -1100,6 +1100,24 @@ export const migrations: readonly string[] = [
   ${dirtyTriggers("handbook_version", "hversion", plainId)}
   `,
   `
+  -- The memory check (spec 008, S64). The choice of an agent: 0 (off) is the default. It is a
+  -- choice of one computer, like the other memory switches (spec 019): no dirty trigger is made
+  -- here, and sync does not read the column.
+  ALTER TABLE agent ADD COLUMN memory_check INTEGER NOT NULL DEFAULT 0;
+  -- The turns that ended as done since the last check: their number is the count of the agent.
+  -- A restart keeps the rows, so it keeps the count. The check reads these turns when it starts,
+  -- and deletes the rows then. A task that sync brought from the other computer is not counted
+  -- here: each computer counts its own turns. The rows are not part of an import.
+  CREATE TABLE memory_check_turn (
+    task_id TEXT PRIMARY KEY REFERENCES task (id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    at INTEGER NOT NULL
+  );
+  CREATE INDEX memory_check_turn_agent ON memory_check_turn (agent_id, at);
+  -- 1 for a proposal that a memory check made (the tab shows "From a memory check").
+  ALTER TABLE memory_proposal ADD COLUMN from_check INTEGER NOT NULL DEFAULT 0;
+  `,
+  `
   -- The parent channel (spec 030, S109). NULL is a top channel, as every channel was before this
   -- step, so existing data keeps its meaning. The column has no foreign key: a sync (019) can bring
   -- a sub-channel before its parent, and a parent that is gone counts as no parent. When the user
@@ -1122,5 +1140,11 @@ export const migrations: readonly string[] = [
   );
   INSERT INTO organization (id) VALUES ('organization');
   ${dirtyTriggers("organization", "org", plainId)}
+  `,
+  `
+  -- "The lead answers questions" (spec 004, S74): a setting of the channel, on (1) by default. A
+  -- question of a member in a part goes to the lead first. It syncs with the channel (spec 019):
+  -- the dirty trigger of the channel already watches every column.
+  ALTER TABLE channel ADD COLUMN lead_answers INTEGER NOT NULL DEFAULT 1;
   `,
 ]

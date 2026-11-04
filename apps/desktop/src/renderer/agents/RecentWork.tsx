@@ -11,6 +11,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { setOpenTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
+import { taskTitle } from "../tasks/title.ts"
 import { Button } from "../ui/controls.tsx"
 import styles from "./agents.module.css"
 
@@ -75,7 +76,7 @@ export const RecentWork = (props: { agent: Agent; onNavigate: () => void }) => {
                   data-state={row.task.state}
                 >
                   <span class={styles.recentLabel} data-user-data data-testid="recent-label">
-                    {row.task.label}
+                    {taskTitle(row.task, t)}
                   </span>
                   <span class={styles.hint} data-testid="recent-source">
                     {t(`tasks.source.${row.task.source}` as MessageKey)}

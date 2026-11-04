@@ -22,6 +22,7 @@ import { Host } from "./services/Host.ts"
 import { KeepAwake } from "./services/KeepAwake.ts"
 import { Knowledge } from "./services/Knowledge.ts"
 import { Memory } from "./services/Memory.ts"
+import { MemoryCheck } from "./services/MemoryCheck.ts"
 import { ModelHolds } from "./services/ModelHolds.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Organization } from "./services/Organization.ts"
@@ -140,8 +141,10 @@ export const appLayer = (options: AppLayerOptions) => {
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
   const agents = Layer.mergeAll(Chat.layer, Usage.layer).pipe(Layer.provideMerge(tasks))
+  // The memory check counts the turns that end as done, and runs its own short turn (spec 008).
+  const memoryCheck = MemoryCheck.layer.pipe(Layer.provideMerge(agents))
   // The handover of a chat needs the chat service (spec 003, "Hand over").
-  const handover = Handover.layer.pipe(Layer.provideMerge(agents))
+  const handover = Handover.layer.pipe(Layer.provideMerge(memoryCheck))
   const channels = Channels.layer.pipe(Layer.provideMerge(handover))
   const routines = Routines.layer.pipe(Layer.provideMerge(channels))
   const starters = Starters.layer.pipe(Layer.provideMerge(routines))

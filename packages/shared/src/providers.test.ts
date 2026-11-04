@@ -149,6 +149,7 @@ describe("providers", () => {
     expect(runtimeModels("muse").map((m) => m.id)).toEqual(["default"])
     // pi lists its own models, so the app has none to give.
     expect(runtimeModels("pi")).toEqual([])
+    expect(runtimeModels("cursor")).toEqual([])
   })
 
   test("a model of a runtime is found by its id; other models are not", () => {
@@ -165,6 +166,7 @@ describe("providers", () => {
     expect(runtimeSupport("codex")).toEqual({ install: "download", signIn: "app" })
     expect(runtimeSupport("muse")).toEqual({ install: "manual", signIn: "app" })
     expect(runtimeSupport("pi")).toEqual({ install: "manual", signIn: "manual" })
+    expect(runtimeSupport("cursor")).toEqual({ install: "manual", signIn: "manual" })
   })
 })
 

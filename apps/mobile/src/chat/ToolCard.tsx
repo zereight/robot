@@ -93,6 +93,13 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
           {t("tool.readOnlyTrusted")}
         </Text>
       ) : null}
+      {tool.answeredByLead ? (
+        <Text testID="tool.answeredByLead" style={[styles.decision, { color: palette.textMuted }]}>
+          {tool.answeredByLead.reason
+            ? `${t("tool.answeredByLead", { name: tool.answeredByLead.name })} · ${tool.answeredByLead.reason}`
+            : t("tool.answeredByLead", { name: tool.answeredByLead.name })}
+        </Text>
+      ) : null}
       {tool.answeredInChat ? (
         <Text style={[styles.decision, { color: palette.textMuted }]}>
           {t("tool.answeredInChat")}

@@ -60,6 +60,11 @@ Each agent works in its own folder with real tools, and the user stays in contro
   program has no such mode, "Read only" is off in the picker for agents on that program, with the
   muted line "<program> has no read-only mode." At "Read only", the browser of the app is
   refused for these agents too.
+- Cursor (006) does not ask the user during a run from the app. "Read only" and "Ask for
+  everything" start it in its read-only mode: it can read files and it cannot change them. "Ask
+  for risky steps" and "Ask when unsure" start it with its sandbox on, and it applies changes.
+  "Full access" starts it with its sandbox off. The line under the level says which. No approval
+  card comes from the program.
 - Token savings (026) never widen the level. The command that an edit can carry meets the level
   and the rules as a shell step does. For an agent on pi it needs "Full access", where pi may run
   shell commands.

@@ -672,6 +672,164 @@ describe("browser", () => {
     expect((await s.toolPart())?.state).toBe("failed")
     expect(s.t.browserLog).toEqual([])
   })
+
+  test("a click returns a short state: address, title, loading, focus and new page errors", async () => {
+    const s = await setup("full")
+    s.t.seedBrowserPage(s.agent.id, {
+      controls: [{ selector: "#go", role: "button", label: "Go", x: 10, y: 20 }],
+      focus: 'textbox "Email"',
+      errors: ["Cannot read properties of null"],
+    })
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_click", { selector: "#go" }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part?.state).toBe("done")
+    expect(part?.output).toContain("Address: https://example.com/a")
+    expect(part?.output).toContain("Title: Fake page")
+    expect(part?.output).toContain("Loading: no")
+    expect(part?.output).toContain('Focus: textbox "Email"')
+    expect(part?.output).toContain("Cannot read properties of null")
+  })
+
+  test("typing returns the same short state", async () => {
+    const s = await setup("full")
+    s.t.seedBrowserPage(s.agent.id, {
+      controls: [{ selector: "#email", role: "textbox", label: "Email", x: 10, y: 40 }],
+      focus: null,
+      loading: true,
+    })
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_type", { selector: "#email", text: "a@b.c" }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part?.state).toBe("done")
+    expect(part?.output).toContain("Address: https://example.com/a")
+    expect(part?.output).toContain("Loading: yes")
+    expect(part?.output).toContain("Focus: none")
+    expect(part?.output).toContain("Page errors: none")
+  })
+
+  test("page errors drain: the next action reports none", async () => {
+    const s = await setup("full")
+    s.t.seedBrowserPage(s.agent.id, {
+      controls: [{ selector: "#go", role: "button", label: "Go", x: 10, y: 20 }],
+      errors: ["Boom"],
+    })
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_click", { selector: "#go" }))
+    await s.finished()
+    expect((await s.toolPart())?.output).toContain("Boom")
+    await s.send(call("browser_click", { selector: "#go" }))
+    await s.finished()
+    expect((await s.toolPart())?.output).toContain("Page errors: none")
+  })
+
+  test("an unclear target fails with up to 5 candidates, and the agent picks one by its number", async () => {
+    const s = await setup("full")
+    s.t.seedBrowserPage(s.agent.id, {
+      controls: [
+        { selector: ".buy", role: "button", label: "Buy now", x: 800, y: 600 },
+        { selector: ".buy", role: "button", label: "Buy later", x: 800, y: 680 },
+        { selector: ".buy", role: "button", label: "Buy again", x: 800, y: 760 },
+        { selector: ".buy", role: "button", label: "Buy more", x: 800, y: 840 },
+        { selector: ".buy", role: "button", label: "Buy less", x: 800, y: 920 },
+        { selector: ".buy", role: "button", label: "Buy all", x: 800, y: 1000 },
+      ],
+    })
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_click", { selector: ".buy" }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part?.state).toBe("failed")
+    expect(part?.output).toContain("fits 6 controls")
+    expect(part?.output).toContain('[1] button "Buy now" at 800,600')
+    expect(part?.output).toContain('[5] button "Buy less" at 800,920')
+    expect(part?.output).not.toContain("Buy all")
+    await s.send(call("browser_click", { selector: "2" }))
+    await s.finished()
+    expect((await s.toolPart())?.state).toBe("done")
+    expect(s.t.browserLog.some((l) => l.endsWith("click 2"))).toBe(true)
+  })
+
+  test("a target that fits nothing fails and names the read tool", async () => {
+    const s = await setup("full")
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_click", { selector: "#missing" }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part?.state).toBe("failed")
+    expect(part?.output).toContain('no control fits "#missing"')
+    expect(part?.output).toContain("browser_read")
+  })
+
+  test("a read lists each control on one numbered line", async () => {
+    const s = await setup("full")
+    s.t.seedBrowserPage(s.agent.id, {
+      controls: [
+        { selector: "#signin", role: "button", label: "Sign in", x: 10, y: 20 },
+        { selector: "#email", role: "textbox", label: "Email", x: 10, y: 40 },
+      ],
+    })
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_read", {}))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part?.state).toBe("done")
+    expect(part?.output).toContain("Text of https://example.com/a")
+    expect(part?.output).toContain('Controls:\n[1] button "Sign in"\n[2] textbox "Email"')
+  })
+
+  test("a read with no controls says none", async () => {
+    const s = await setup("full")
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_read", {}))
+    await s.finished()
+    expect((await s.toolPart())?.output).toContain("Controls: none")
+  })
+
+  test("a read caps the list at 200 controls and says how many more", async () => {
+    const s = await setup("full")
+    s.t.seedBrowserPage(s.agent.id, {
+      controls: Array.from({ length: 205 }, (_, i) => ({
+        selector: `#c${i}`,
+        role: "button",
+        label: `C${i}`,
+        x: 0,
+        y: i,
+      })),
+    })
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_read", {}))
+    await s.finished()
+    const output = (await s.toolPart())?.output ?? ""
+    expect(output).toContain("[200]")
+    expect(output).toContain("... and 5 more")
+    expect(output).not.toContain("[201]")
+  })
+
+  test("an action with controls true appends the list", async () => {
+    const s = await setup("full")
+    s.t.seedBrowserPage(s.agent.id, {
+      controls: [{ selector: "#go", role: "button", label: "Go", x: 10, y: 20 }],
+    })
+    await s.send(call("browser_open", { url: "https://example.com/a" }))
+    await s.finished()
+    await s.send(call("browser_click", { selector: "#go", controls: true }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part?.state).toBe("done")
+    expect(part?.output).toContain("Clicked.")
+    expect(part?.output).toContain('Controls:\n[1] button "Go"')
+  })
 })
 
 describe("browser for an agent runtime", () => {

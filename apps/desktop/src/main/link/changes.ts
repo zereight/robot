@@ -19,6 +19,7 @@ import { Devices } from "../services/Devices.ts"
 import { AppError } from "../services/errors.ts"
 import { Handbook } from "../services/Handbook.ts"
 import { Memory } from "../services/Memory.ts"
+import { MemoryCheck } from "../services/MemoryCheck.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
 
@@ -270,6 +271,16 @@ export const changeHandlers: Record<string, ChangeHandler> = {
       yield* allowed
       const { id } = yield* strict(ById)(input)
       yield* Memory.use((m) => m.remove(id))
+    }),
+
+  // The choice of the memory check (spec 008, 012). The switch is read again at each request.
+  "memory.check.set": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const { agentId, on } = yield* strict(Schema.Struct({ agentId: Id, on: Schema.Boolean }))(
+        input,
+      )
+      yield* MemoryCheck.use((m) => m.setOn(agentId, on))
     }),
 
   "models.available": (input) =>

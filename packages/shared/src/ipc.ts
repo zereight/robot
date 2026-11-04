@@ -32,6 +32,7 @@ import type {
   WireNotice,
 } from "./link.ts"
 import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryProposal } from "./memory.ts"
+import type { MemoryCheckInfo } from "./memoryCheck.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { HandOffRule, Organization } from "./organization.ts"
 import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
@@ -494,6 +495,15 @@ export interface RpcMethods {
   /** "Save at once" or "Ask me first" for one agent (spec 008). Not for a linked device. */
   "memory.mode": { input: { agentId: string }; output: MemoryMode }
   "memory.setMode": { input: { agentId: string; mode: MemoryMode }; output: undefined }
+  /**
+   * The memory check of one agent (spec 008): the choice, the count of done turns since the last
+   * check, and why it is off. A linked device reads it with the link only.
+   */
+  "memory.check": { input: { agentId: string }; output: MemoryCheckInfo }
+  /** Turns the memory check of an agent on or off. A linked device needs "Can create and change agents". */
+  "memory.check.set": { input: { agentId: string; on: boolean }; output: undefined }
+  /** "Check now": adds a check with the turns since the last check. Not for a linked device. */
+  "memory.check.now": { input: { agentId: string }; output: undefined }
   /** The proposals of an agent, oldest first. */
   "memory.proposals": { input: { agentId: string }; output: readonly MemoryProposal[] }
   /** Makes an item of a proposal. `text` is the edited text of "Edit and save". */

@@ -478,6 +478,10 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
           const name = computerName(row.origin) || pairRow()?.peer_name || ""
           for (const part of JSON.parse(row.parts) as MessagePart[]) {
             if (part.kind !== "tool" || part.state !== "waiting" || !part.ask) continue
+            // A question that is with the lead is no request for the user yet: no notice and no
+            // row in "Needs you" on this computer, until the lead passes it (spec 004, 015, 021).
+            // The card is not counted as known, so that the pass makes the notice.
+            if (part.ask.kind === "question" && part.ask.lead) continue
             calls.add(part.id)
             if (known?.calls.has(part.id)) continue
             notifier.attention(

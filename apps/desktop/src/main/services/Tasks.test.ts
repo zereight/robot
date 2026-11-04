@@ -628,6 +628,43 @@ describe("Tasks queue and slots", () => {
     expect(order).toEqual(["running", "chat", "routine old", "routine new"])
   })
 
+  test("a memory check starts after every other task of its agent, also when it was made first (spec 005, 008)", async () => {
+    const { run, agent, makeFrom, start } = await queueSetup(4)
+    const ada = await agent("Ada")
+    const gate = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const first = start(await makeFrom(ada.id, "running", "chat"), order, gate)
+    await sleep(20)
+    // The check waits first. A routine and a chat come after it, and both go before it.
+    const check = start(await makeFrom(ada.id, "check", "memory_check"), order)
+    const routine = start(await makeFrom(ada.id, "routine", "routine"), order)
+    const chat = start(await makeFrom(ada.id, "chat", "chat"), order)
+    await sleep(20)
+    await run(Deferred.succeed(gate, undefined))
+    await Promise.all([first, check, routine, chat])
+    expect(order).toEqual(["running", "chat", "routine", "check"])
+  })
+
+  test("a memory check does not start while its agent has a task that waits, even with a free slot", async () => {
+    const { run, agent, makeFrom, start, state } = await queueSetup(4)
+    const [ada, bo] = [await agent("Ada"), await agent("Bo")]
+    const gate = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    // A task of Bo runs, and a task of Ada waits for a task of Ada that runs: no slot is lacking.
+    const running = start(await makeFrom(ada.id, "running", "chat"), order, gate)
+    await sleep(20)
+    const check = await makeFrom(ada.id, "check", "memory_check")
+    const checkRun = start(check, order)
+    const other = start(await makeFrom(bo.id, "other agent", "chat"), order)
+    await sleep(30)
+    // Bo works at once. The check of Ada waits for Ada.
+    expect(order).toEqual(["running", "other agent"])
+    expect(await state(check.id)).toBe("queued")
+    await run(Deferred.succeed(gate, undefined))
+    await Promise.all([running, checkRun, other])
+    expect(order).toEqual(["running", "other agent", "check"])
+  })
+
   test("Run next moves a queued task to the front; the latest pick goes first", async () => {
     const { run, agent, makeFrom, start, state } = await queueSetup(4)
     const ada = await agent("Ada")
@@ -770,6 +807,104 @@ describe("Tasks queue and slots", () => {
       ),
     )
     expect(await state(child.id)).toBe("done")
+    expect(await state(parent.id)).toBe("done")
+  })
+
+  test("a turn of a parent that waits takes one slot while it runs and frees it after", async () => {
+    const { run, agent, makeFrom, start } = await queueSetup(1)
+    const [ada, bo] = [await agent("Ada"), await agent("Bo")]
+    const parent = await makeFrom(ada.id, "parent", "chat")
+    const other = await makeFrom(bo.id, "other", "chat")
+    const gateLook = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    const parentRun = run(
+      Tasks.use((t) =>
+        t.run(
+          parent.id,
+          ada.id,
+          t.withoutSlot(
+            parent.id,
+            t.withSlot(
+              parent.id,
+              Effect.gen(function* () {
+                order.push("look starts")
+                yield* Deferred.await(gateLook)
+                order.push("look ends")
+              }),
+            ),
+          ),
+        ),
+      ),
+    )
+    await sleep(30)
+    // The look holds the only slot, so the task of Bo waits.
+    const otherRun = start(other, order)
+    await sleep(30)
+    expect(order).toEqual(["look starts"])
+    await run(Deferred.succeed(gateLook, undefined))
+    await Promise.all([parentRun, otherRun])
+    expect(order).toEqual(["look starts", "look ends", "other"])
+  })
+
+  test("a turn of a parent waits for a free slot, and an interrupt takes no slot", async () => {
+    const { run, agent, makeFrom, start, state } = await queueSetup(2)
+    const [ada, bo, cy, di] = [
+      await agent("Ada"),
+      await agent("Bo"),
+      await agent("Cy"),
+      await agent("Di"),
+    ]
+    const parent = await makeFrom(ada.id, "parent", "chat")
+    const other = await makeFrom(bo.id, "other", "chat")
+    const later = await makeFrom(cy.id, "later", "chat")
+    const fourth = await makeFrom(di.id, "fourth", "chat")
+    const gateOther = Deferred.makeUnsafe<void>()
+    const gateLater = Deferred.makeUnsafe<void>()
+    const gateStart = Deferred.makeUnsafe<void>()
+    const gateEnd = Deferred.makeUnsafe<void>()
+    const order: string[] = []
+    // The task of Bo holds one slot. The parent runs, gives up its slot, and the task of Cy takes
+    // that slot. The look of the parent then waits for a free slot.
+    const otherRun = start(other, order, gateOther)
+    const parentRun = run(
+      Tasks.use((t) =>
+        t.run(
+          parent.id,
+          ada.id,
+          t.withoutSlot(
+            parent.id,
+            Effect.gen(function* () {
+              yield* Deferred.await(gateStart)
+              // A look that is cut short: it waits for a slot and is interrupted before it has one.
+              yield* Effect.timeout(
+                t.withSlot(
+                  parent.id,
+                  Effect.sync(() => order.push("look")),
+                ),
+                "80 millis",
+              ).pipe(Effect.ignore)
+              order.push("look cut")
+              yield* Deferred.await(gateEnd)
+            }),
+          ),
+        ),
+      ),
+    )
+    await sleep(30)
+    const laterRun = start(later, order, gateLater)
+    await sleep(30)
+    await run(Deferred.succeed(gateStart, undefined))
+    await sleep(200)
+    expect(order).toEqual(["other", "later", "look cut"])
+    // The cut look left the queue: the slot that comes free goes to the next task, not to it.
+    await run(Deferred.succeed(gateLater, undefined))
+    const fourthRun = start(fourth, order)
+    await sleep(60)
+    expect(order).toEqual(["other", "later", "look cut", "fourth"])
+    expect(await state(parent.id)).toBe("running")
+    await run(Deferred.succeed(gateEnd, undefined))
+    await run(Deferred.succeed(gateOther, undefined))
+    await Promise.all([parentRun, otherRun, laterRun, fourthRun])
     expect(await state(parent.id)).toBe("done")
   })
 

@@ -19,6 +19,7 @@ import { Devices } from "./Devices.ts"
 import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
+import { MemoryCheck } from "./MemoryCheck.ts"
 import { Notifier } from "./Notifier.ts"
 import { Organization } from "./Organization.ts"
 import { Places } from "./Places.ts"
@@ -805,6 +806,63 @@ describe("two computers that were apart", () => {
     ).toBe("From A, later.")
   })
 
+  test("the memory check is a choice of one computer, and each computer counts its own turns (spec 008, 019)", async () => {
+    const { a, b, agents } = await pair()
+    const id = agents[0]?.id ?? ""
+    const info = (rt: Rt) =>
+      run(
+        rt,
+        MemoryCheck.use((m) => m.info(id)),
+      )
+    // On the first computer: the choice goes on, and one turn is counted.
+    await run(
+      a,
+      MemoryCheck.use((m) => m.setOn(id, true)),
+    )
+    await run(
+      a,
+      Database.use((db) =>
+        Effect.sync(() => {
+          db.run(
+            "INSERT INTO task (id, agent_id, prompt, label, source, state, created_at) VALUES ('t1', ?, 'x', 'x', 'chat', 'done', 1)",
+            id,
+          )
+          db.run("INSERT INTO memory_check_turn (task_id, agent_id, at) VALUES ('t1', ?, 1)", id)
+        }),
+      ),
+    )
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+    // A change of the agent crosses. The choice and the count do not.
+    await run(
+      a,
+      Agents.use((x) => x.update(id, { role: "Reviews" })),
+    )
+    await waitFor(
+      () =>
+        run(
+          b,
+          Agents.use((x) => x.get(id)),
+        ),
+      (agent) => agent.role === "Reviews",
+    )
+    expect(await info(b)).toMatchObject({ on: false, count: 0 })
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+    // A change of the agent on the second computer does not turn the check off on the first.
+    await run(
+      b,
+      Agents.use((x) => x.update(id, { role: "Reviews code" })),
+    )
+    await waitFor(
+      () =>
+        run(
+          a,
+          Agents.use((x) => x.get(id)),
+        ),
+      (agent) => agent.role === "Reviews code",
+    )
+    expect(await info(a)).toMatchObject({ on: true, count: 1 })
+  })
+
   test("a name stays unique when both computers give one name to different agents", async () => {
     const { a, b, agents } = await pair(["P", "Q"])
     const [p, q] = agents
@@ -1490,6 +1548,65 @@ describe("tasks, routines, workflows and files of two computers", () => {
         (x) => x === null,
       ),
     ).toBeNull()
+  })
+
+  test("a question that is with the lead on the other computer makes no notice here until the lead passes it (spec 004, 015, 021)", async () => {
+    const { a, b, ada } = await pair()
+    const card = (ask: Record<string, unknown>) =>
+      JSON.stringify([
+        {
+          kind: "tool",
+          id: "call-2",
+          name: "ask_user",
+          label: "Question",
+          state: "waiting",
+          input: "",
+          output: "",
+          ask: {
+            kind: "question",
+            question: "Use the EU sizes only?",
+            choices: ["Yes", "No"],
+            ...ask,
+          },
+        },
+      ])
+    await SQL(
+      b,
+      `INSERT INTO message (id, agent_id, author, parts, status, created_at) VALUES ('card-2', ?, 'agent', ?, 'streaming', ?)`,
+      ada.id,
+      card({ lead: { agentId: "lead-1", name: "Lia" } }),
+      Date.now(),
+    )
+    const attention = (rt: Rt) =>
+      run(
+        rt,
+        Notifier.use((n) => Effect.sync(() => n.island().waiting[0] ?? null)),
+      )
+    // The card arrives here with its line "Lia looks at it", and makes no notice.
+    await waitFor(
+      () =>
+        run(
+          a,
+          Database.use((db) =>
+            Effect.sync(() => db.get<{ id: string }>("SELECT id FROM message WHERE id = 'card-2'")),
+          ),
+        ),
+      (row) => row !== undefined,
+    )
+    await new Promise((r) => setTimeout(r, 400))
+    expect(await attention(a)).toBeNull()
+    // The lead passes it: the same card is a normal question for the user, and the notice comes.
+    await SQL(
+      b,
+      `UPDATE message SET parts = ? WHERE id = 'card-2'`,
+      card({ passed: { agentId: "lead-1", name: "Lia", kind: "not_sure", reason: "No fact." } }),
+    )
+    const notice = await waitFor(
+      () => attention(a),
+      (x) => x !== null,
+    )
+    expect(notice?.callId).toBe("call-2")
+    expect(notice?.kind).toBe("question")
   })
 
   test("a file of a message is copied from the computer where it was made, and an offline origin gives a plain error", async () => {
