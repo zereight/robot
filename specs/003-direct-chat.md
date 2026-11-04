@@ -14,6 +14,9 @@ The user gives an agent work in plain language and sees what the agent does whil
   and images. The app adds no automatic image preview below a reply. An image shows only where the
   Markdown of the reply puts it. A picture from the web shows as a box until the user loads it
   (see "Pictures from the web").
+- A link with no scheme that names a host opens with `https` (`localhost` opens with `http`,
+  as in the bar of a browser). A bare mail address opens as `mailto`. A link that opens nothing
+  (a relative address or another scheme) shows its words as plain text, not as a link.
 - Tool use shows as a compact card inside the reply: an icon, a short label of what the agent did
   (read a file, ran a command, opened a page), and its result state. A click opens the details.
 - Thinking, when the model gives it, folds into one muted line that the user can open.

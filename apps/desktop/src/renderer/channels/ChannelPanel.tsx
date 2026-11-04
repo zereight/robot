@@ -1,7 +1,26 @@
-import type { Channel, ChannelActivity, TaskState } from "@robot/shared"
-import { Check, Circle, Eye, Loader, OctagonX, X } from "lucide-solid"
-import { createResource, For, type JSX, onCleanup, Show } from "solid-js"
+import {
+  addableAgents,
+  type Channel,
+  type ChannelActivity,
+  idsAfterAdd,
+  idsAfterRemove,
+  type TaskState,
+} from "@robot/shared"
+import { Check, Circle, Eye, Loader, OctagonX, Plus, X } from "lucide-solid"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  For,
+  type JSX,
+  on,
+  onCleanup,
+  Show,
+} from "solid-js"
 import { Face } from "../agents/Face.tsx"
+import { ProfileButton } from "../agents/ProfileButton.tsx"
+import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
@@ -49,9 +68,92 @@ export const ChannelPanel = (props: { channel: Channel }) => {
   )
   onCleanup(window.robot.on("agents.changed", refresh))
   const data = (): ChannelActivity => activity() ?? { members: [] }
+  const [pickerOpen, setPickerOpen] = createSignal(false)
+  const [error, setError] = createSignal<ErrorText>()
+  const [busy, setBusy] = createSignal(false)
+  // The member list of the last edit, until the channel tells the new one. A second quick edit
+  // builds on it, so it cannot bring back what the first one took out.
+  const [pending, setPending] = createSignal<readonly string[] | null>(null)
+  createEffect(
+    on(
+      () => props.channel.memberIds,
+      () => setPending(null),
+      { defer: true },
+    ),
+  )
+  const ids = () => pending() ?? props.channel.memberIds
+  const addable = createMemo(() => addableAgents(agents.agents(), ids()))
+  // One edit at a time, with the same rules as channel settings: a member that works in this
+  // channel stays, and removing the lead clears it (the server does both).
+  const edit = async (next: readonly string[]) => {
+    if (busy()) return
+    setBusy(true)
+    setError(undefined)
+    setPending(next)
+    try {
+      await call("channels.update", { id: props.channel.id, patch: { memberIds: [...next] } })
+    } catch (e) {
+      setError(describeError(e))
+      setPending(null)
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div class={styles.panel} data-testid="channel-panel">
-      <div class={styles.panelTitle}>{t("channels.now")}</div>
+      <div class={styles.panelHead}>
+        <div class={styles.panelTitle}>{t("channels.now")}</div>
+        <Show when={ui.canChange()}>
+          <button
+            type="button"
+            class={styles.panelAdd}
+            aria-expanded={pickerOpen()}
+            disabled={busy()}
+            onClick={() => setPickerOpen((open) => !open)}
+            data-testid="panel-add"
+          >
+            <Plus size={14} aria-hidden="true" />
+            <span>{t("channels.panel.add")}</span>
+          </button>
+        </Show>
+      </div>
+      <Show when={error()}>
+        {(err) => (
+          <div class={styles.error} role="alert" data-testid="panel-error">
+            {t(err().key, err().params)}
+          </div>
+        )}
+      </Show>
+      <Show when={ui.canChange() && pickerOpen()}>
+        <Show
+          when={addable().length > 0}
+          fallback={
+            <p class={styles.hint} data-testid="panel-add-empty">
+              {t("channels.panel.allIn")}
+            </p>
+          }
+        >
+          <div class={styles.addList} data-testid="panel-add-list">
+            <For each={addable()}>
+              {(agent) => (
+                <button
+                  type="button"
+                  class={styles.addPick}
+                  disabled={busy()}
+                  onClick={() => edit(idsAfterAdd(ids(), agent.id))}
+                  data-testid={`panel-add-pick-${agent.name}`}
+                >
+                  <Face face={agent.face} image={agent.faceImage} size={20} />
+                  <span class={styles.addPickName}>{agent.name}</span>
+                  <Show when={agent.role}>
+                    <span class={styles.memberRole}>{agent.role}</span>
+                  </Show>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
+      </Show>
       <Show
         when={data().members.length > 0}
         fallback={<p class={styles.hint}>{t("channels.noWork")}</p>}
@@ -64,11 +166,24 @@ export const ChannelPanel = (props: { channel: Channel }) => {
                 {(a) => (
                   <div class={styles.card} data-testid="member-card" data-state={member.state}>
                     <div class={styles.cardHead}>
-                      <Face face={a().face} image={a().faceImage} size={24} agentId={a().id} />
-                      <span class={styles.cardName}>{a().name}</span>
+                      {/* The face and the name open the profile of the member (spec 004). */}
+                      <ProfileButton agent={a()} class={styles.cardProfile} testId="member-profile">
+                        <Face face={a().face} image={a().faceImage} size={24} agentId={a().id} />
+                        <span class={styles.cardName}>{a().name}</span>
+                      </ProfileButton>
                       <span class={styles.cardState} data-testid="member-state">
                         {t(stateLabel(member.state))}
                       </span>
+                      <Show when={ui.canChange()}>
+                        <IconButton
+                          label={t("channels.panel.remove", { name: a().name })}
+                          disabled={busy()}
+                          onClick={() => edit(idsAfterRemove(ids(), a().id))}
+                          data-testid={`panel-remove-${a().name}`}
+                        >
+                          <X size={12} />
+                        </IconButton>
+                      </Show>
                     </div>
                     {/* The tokens of the whole job, for the lead (spec 005, "Usage of a task"). */}
                     <Show when={member.usage}>
