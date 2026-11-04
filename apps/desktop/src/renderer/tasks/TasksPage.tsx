@@ -36,6 +36,7 @@ import { makeSkillFromWork } from "../skills/SkillForm.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
+import { quietOfTaskLine } from "../state/quiet.ts"
 import { openTarget, takeTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
@@ -51,6 +52,24 @@ const reasonKey = (task: Task): MessageKey =>
   task.error && `error.${task.error.code}` in catalogueKeys
     ? (`error.${task.error.code}` as MessageKey)
     : "error.unknown"
+
+/**
+ * The state of a task as text. While the turn of a running task is quiet, the quiet line replaces
+ * "Running" (spec 005, "Quiet line").
+ */
+const TaskStateText = (props: { task: Pick<Task, "id" | "state"> }) => {
+  const { t } = useApp()
+  const ui = useUi()
+  const quiet = () =>
+    props.task.state === "running"
+      ? quietOfTaskLine(ui.linked() ? ui.server()?.id : undefined, props.task.id)
+      : undefined
+  return (
+    <Show when={quiet()} fallback={t(`tasks.state.${props.task.state}` as MessageKey)}>
+      {(q) => t("quiet.line", { name: q().name, time: q().time })}
+    </Show>
+  )
+}
 
 /** The icon of a state that has one: a part in review has an eye, a blocked task a stop sign. */
 const StateIcon = (props: { state: Task["state"] }) => (
@@ -227,7 +246,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                 data-state={d().task.state}
               >
                 <StateIcon state={d().task.state} />
-                {t(`tasks.state.${d().task.state}` as MessageKey)}
+                <TaskStateText task={d().task} />
               </span>
             </p>
             <Show when={d().task.originName !== null}>
@@ -317,7 +336,7 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                     <li style={{ "padding-left": `${node.depth * 16}px` }}>
                       <span data-state={node.task.state} class={styles.state}>
                         <StateIcon state={node.task.state} />
-                        {t(`tasks.state.${node.task.state}` as MessageKey)}
+                        <TaskStateText task={node.task} />
                       </span>{" "}
                       {node.task.agentName}: {node.task.label}
                     </li>
@@ -638,7 +657,7 @@ export const TasksPage = () => {
                     <td>
                       <span class={styles.state} data-state={task.state} data-testid="task-state">
                         <StateIcon state={task.state} />
-                        {t(`tasks.state.${task.state}` as MessageKey)}
+                        <TaskStateText task={task} />
                       </span>
                       <Show when={task.waitsFor}>
                         {(name) => (

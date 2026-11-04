@@ -171,6 +171,19 @@ const answer = (body: ChatBody): Plan => {
       ],
       delay: 0,
     }
+  // A lead gives one part to Bo, who then goes quiet until the test lets the model go on.
+  if (text.includes("split quiet"))
+    return {
+      chunks: [
+        JSON.stringify({
+          plan: "One part that goes quiet",
+          parts: [
+            { member: "Bo", label: "Write the long answer", prompt: "go quiet on this part" },
+          ],
+        }),
+      ],
+      delay: 0,
+    }
   if (text.includes("split long"))
     return {
       chunks: [
@@ -398,6 +411,7 @@ const openAiReply = async (
   body: ChatBody,
   sent: SentPart[],
   dropped: string[],
+  quiet: (() => void)[],
 ) => {
   if (String(body.messages[0]?.content ?? "").startsWith("You write the summary"))
     return summaryReply(res, body)
@@ -445,6 +459,25 @@ const openAiReply = async (
         ? `From the past chats: ${quotes.slice(0, 400)}`
         : `Tool said: ${output.slice(0, 80)}`
     res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\n`)
+    return res.end("data: [DONE]\n\n")
+  }
+  // "go quiet" (spec 005, "Quiet line"): one part of the reply, then nothing until the test calls
+  // `releaseQuiet`. The rest of the reply is the next sign of life. The request also ends when the
+  // app closes it.
+  if ((body.messages.at(-1)?.content ?? "").split("\n").at(-1)?.includes("go quiet")) {
+    res.writeHead(200, { "content-type": "text/event-stream" })
+    res.write(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Thinking it over. " } }] })}\n\n`,
+    )
+    await new Promise<void>((resolve) => {
+      quiet.push(resolve)
+      res.on("close", resolve)
+    })
+    if (res.destroyed || res.writableEnded) return
+    res.write(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "Done after a quiet moment." } }] })}\n\n`,
+    )
+    res.write(`data: ${JSON.stringify({ choices: [], usage: usageOf(body) })}\n\n`)
     return res.end("data: [DONE]\n\n")
   }
   // "go silent": the answer opens and nothing follows, until the app closes the request.
@@ -559,6 +592,8 @@ export const startMockProvider = async (
   const sent: SentPart[] = []
   /** The draft requests that the app closed before the answer came (spec 017). */
   const dropped: string[] = []
+  /** The requests that "go quiet" holds. `releaseQuiet` lets them go on. */
+  const quiet: (() => void)[] = []
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost")
     const body = await readBody(req)
@@ -656,7 +691,7 @@ export const startMockProvider = async (
       return res.end(JSON.stringify({ error: { message: limit.message } }))
     }
     if (url.pathname === "/v1/chat/completions")
-      return openAiReply(res, body as ChatBody, sent, dropped)
+      return openAiReply(res, body as ChatBody, sent, dropped, quiet)
     if (url.pathname === "/anthropic/v1/messages") return anthropicReply(res, body as ChatBody)
     json(res, 404, { error: { message: "not found" } })
   })
@@ -672,6 +707,10 @@ export const startMockProvider = async (
     /** Adds a model to the OpenAI list. The app sees it at its next fetch. */
     addModel: (entry: Record<string, unknown>) => {
       extraModels.push(entry)
+    },
+    /** Lets the requests that "go quiet" holds send the rest of their reply (spec 005). */
+    releaseQuiet: () => {
+      for (const resolve of quiet.splice(0)) resolve()
     },
     requests,
     sent,

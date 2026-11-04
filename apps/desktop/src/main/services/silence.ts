@@ -1,6 +1,13 @@
-import { silentFailure, type TaskProgress } from "@robot/shared"
+import {
+  type QuietTurn,
+  quietTimeMs,
+  silentFailure,
+  type TaskProgress,
+  type TaskSource,
+} from "@robot/shared"
 import { Deferred, Effect } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
+import type { ActivityService } from "./Activity.ts"
 import { AppError } from "./errors.ts"
 
 /**
@@ -34,10 +41,19 @@ export const TICK_MS = 1000
 export const SLEEP_GAP_MS = 5000
 
 export interface SilenceTimerOptions {
+  /** `Infinity` for the choice "Never": the clock counts, and the turn does not fail by itself. */
   readonly limitMs: number
+  /** The quiet time (spec 005, "Quiet line"). The quiet clock is this same clock. */
+  readonly quietMs: number
   readonly clock: Clock
   /** Called once, when the limit is reached. */
   readonly onSilent: () => void
+  /**
+   * Called with the seconds on the clock when the turn becomes quiet, again when the computer
+   * wakes while the turn is quiet (so a client counts from the right value), and with null when
+   * the turn is not quiet any more.
+   */
+  readonly onQuiet?: (seconds: number | null) => void
   /** True while the user holds the browser of the agent (spec 007). Asked at each tick. */
   readonly userHoldsBrowser?: () => boolean
 }
@@ -53,6 +69,7 @@ export class SilenceTimer {
   private readonly holds = new Set<string>()
   private stopTicking: (() => void) | undefined
   private done = false
+  private quiet = false
 
   constructor(private readonly options: SilenceTimerOptions) {}
 
@@ -68,12 +85,14 @@ export class SilenceTimer {
   alive() {
     this.elapsed = 0
     this.last = this.options.clock.now()
+    this.endQuiet()
   }
 
   /** The clock stops, for example while a tool step runs. Holds with other keys add up. */
   hold(key: string) {
     this.holds.add(key)
     this.elapsed = 0
+    this.endQuiet()
   }
 
   /** The hold ends. When no hold is left the clock starts again at 0. */
@@ -81,6 +100,7 @@ export class SilenceTimer {
     if (!this.holds.delete(key)) return
     this.elapsed = 0
     this.last = this.options.clock.now()
+    this.endQuiet()
   }
 
   /** The turn is over. */
@@ -89,6 +109,18 @@ export class SilenceTimer {
     this.stopTicking?.()
     this.stopTicking = undefined
     this.holds.clear()
+    this.endQuiet()
+  }
+
+  /** True while the turn is quiet. For tests. */
+  get isQuiet() {
+    return this.quiet
+  }
+
+  private endQuiet() {
+    if (!this.quiet) return
+    this.quiet = false
+    this.options.onQuiet?.(null)
   }
 
   /** Time without a sign of life, in ms. For tests. */
@@ -103,12 +135,22 @@ export class SilenceTimer {
     this.last = now
     if (this.holds.size > 0 || this.options.userHoldsBrowser?.()) {
       this.elapsed = 0
+      this.endQuiet()
       return
     }
-    this.elapsed += gap > SLEEP_GAP_MS ? TICK_MS : gap
+    const slept = gap > SLEEP_GAP_MS
+    this.elapsed += slept ? TICK_MS : gap
     if (this.elapsed >= this.options.limitMs) {
       this.stop()
       this.options.onSilent()
+      return
+    }
+    if (!this.quiet && this.elapsed >= this.options.quietMs) {
+      this.quiet = true
+      this.options.onQuiet?.(Math.floor(this.elapsed / 1000))
+    } else if (this.quiet && slept) {
+      // The sleep did not count: a client that counted on by its own clock must start again.
+      this.options.onQuiet?.(Math.floor(this.elapsed / 1000))
     }
   }
 }
@@ -135,6 +177,11 @@ export interface TurnWatchOptions {
   readonly limitMinutes: number
   /** Called when the progress of the turn goes up. */
   readonly progress: (progress: TaskProgress) => void
+  /**
+   * The turn becomes quiet (the seconds on the quiet clock), or is not quiet any more (null). See
+   * `SilenceTimerOptions`. The quiet time is 90 seconds, or half of the limit when that is shorter.
+   */
+  readonly onQuiet?: (seconds: number | null) => void
   readonly userHoldsBrowser?: () => boolean
   readonly clock?: Clock
 }
@@ -149,40 +196,41 @@ export const turnWatch = (options: TurnWatchOptions): TurnWatch => {
   const never = options.limitMinutes <= 0
   const fired = Deferred.makeUnsafe<never, AppError>()
   const failure = silentFailure(options.limitMinutes)
-  const timer = never
-    ? undefined
-    : new SilenceTimer({
-        limitMs: options.limitMinutes * 60_000,
-        clock: options.clock ?? testClock ?? realClock,
-        onSilent: () => {
-          Deferred.doneUnsafe(fired, Effect.fail(new AppError(failure)))
-        },
-        ...(options.userHoldsBrowser ? { userHoldsBrowser: options.userHoldsBrowser } : {}),
-      })
+  // With the choice "Never" the clock still counts, for the quiet line (spec 005).
+  const timer = new SilenceTimer({
+    limitMs: never ? Number.POSITIVE_INFINITY : options.limitMinutes * 60_000,
+    quietMs: quietTimeMs(options.limitMinutes),
+    clock: options.clock ?? testClock ?? realClock,
+    onSilent: () => {
+      Deferred.doneUnsafe(fired, Effect.fail(new AppError(failure)))
+    },
+    ...(options.onQuiet ? { onQuiet: options.onQuiet } : {}),
+    ...(options.userHoldsBrowser ? { userHoldsBrowser: options.userHoldsBrowser } : {}),
+  })
   return {
     handedOver: () => {
       options.progress("sent")
-      timer?.start()
+      timer.start()
     },
     sense: (event) => {
       // The count of tokens is not a sign of life: it says nothing about the work.
       if (event.type === "usage") return
       options.progress("started")
-      timer?.alive()
+      timer.alive()
       if (event.type !== "tool") return
-      if (event.state === "running") timer?.hold(`tool:${event.call.id}`)
-      else timer?.release(`tool:${event.call.id}`)
+      if (event.state === "running") timer.hold(`tool:${event.call.id}`)
+      else timer.release(`tool:${event.call.id}`)
     },
     waiting: (on) => {
       if (on) {
         options.progress("started")
-        timer?.hold("user")
+        timer.hold("user")
       } else {
-        timer?.release("user")
+        timer.release("user")
       }
     },
     silent: never ? Effect.never : Deferred.await(fired),
-    stop: () => timer?.stop(),
+    stop: () => timer.stop(),
   }
 }
 
@@ -214,3 +262,26 @@ export const closing = (
     }
   },
 })
+
+/** Where a turn belongs: what the places that show the quiet line need to find it. */
+export interface QuietPlace {
+  readonly taskId: string
+  readonly agentId: string
+  readonly threadId: string | null
+  readonly source: TaskSource
+  readonly sourceId: string | null
+}
+
+/**
+ * The `onQuiet` of a turn: it tells `Activity` that the turn is quiet or not. `name` is asked
+ * when the turn becomes quiet, because the turn can go on with the backup model (spec 006).
+ */
+export const quietReporter =
+  (activity: ActivityService, place: QuietPlace, name: () => string) =>
+  (seconds: number | null): void => {
+    const turn: Omit<QuietTurn, "seconds"> = {
+      ...place,
+      name: seconds === null ? "" : name(),
+    }
+    activity.setQuiet(turn, seconds)
+  }

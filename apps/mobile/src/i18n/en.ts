@@ -157,6 +157,7 @@ export const en = {
     "The first try ran steps that may have changed things. Check them before you try again.",
   "chat.retryAnyway": "Retry anyway",
   "chat.working": "Working…",
+  "chat.quiet": "No answer from {name} for {time}",
   "chat.placeholder": "Message {name}",
   "chat.placeholder.channel": "Message #{name}",
   "chat.mentions": "Members",

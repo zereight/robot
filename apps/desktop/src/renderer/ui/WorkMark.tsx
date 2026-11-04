@@ -12,10 +12,17 @@ const Eyes = (props: { class?: string | undefined }) => (
  * The app mark as a small badge: two smiling eyes that glow on a dark tile. It stands for an
  * agent that works or speaks. The tile is dark in both themes, so the eyes can be light. The eyes
  * open when the badge comes in, and the glow breathes while the badge shows. With reduce motion
- * on, the eyes are open and the glow is still.
+ * on, the eyes are open and the glow is still. A quiet turn (spec 005) sets `still`: the light of
+ * the badge does not move.
  */
-export const WorkMark = () => (
-  <span class={styles.tile} data-testid="work-mark" aria-hidden="true">
+export const WorkMark = (props: { still?: boolean }) => (
+  <span
+    class={styles.tile}
+    classList={{ [styles.still ?? ""]: props.still === true }}
+    data-testid="work-mark"
+    data-still={props.still === true ? "true" : undefined}
+    aria-hidden="true"
+  >
     <span class={styles.eyes}>
       <Eyes class={styles.glow} />
       <Eyes class={styles.crisp} />

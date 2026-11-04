@@ -7,9 +7,11 @@ import {
   ISLAND_RESULT_MS,
   type IslandAttention,
   type IslandDoing,
+  type IslandRow,
   type IslandState,
   islandShape,
   type MessageKey,
+  quietShown,
   resolveLocale,
   translate,
 } from "@robot/shared"
@@ -98,7 +100,14 @@ const useFit = () => {
 
 const Island = () => {
   const [state, setState] = createSignal<IslandState>(initialState)
-  onCleanup(window.robot.on("island.state", setState))
+  // When the state came: the quiet time of a row counts on from here (spec 005, "Quiet line").
+  const [receivedAt, setReceivedAt] = createSignal(Date.now())
+  onCleanup(
+    window.robot.on("island.state", (next) => {
+      setReceivedAt(Date.now())
+      setState(next)
+    }),
+  )
   const fit = useFit()
 
   const shape = () => islandShape(state())
@@ -156,6 +165,13 @@ const Island = () => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
     onCleanup(() => clearInterval(timer))
   })
+
+  /** What the agent of a row does: the quiet line while its turn is quiet, else the usual text. */
+  const doingOf = (row: IslandRow) => {
+    if (!row.quiet) return doingText(row.doing)
+    const q = quietShown(row.quiet, receivedAt(), now())
+    return t("quiet.line", { name: q.name, time: q.time })
+  }
 
   // The attention card: which request shows.
   const [index, setIndex] = createSignal(0)
@@ -261,7 +277,7 @@ const Island = () => {
                 aria-label={t("island.row.label", {
                   name: row.agent.name,
                   place: placeText(row.place),
-                  doing: doingText(row.doing),
+                  doing: doingOf(row),
                   time: formatRunTime(now() - row.since),
                 })}
                 onClick={() => open(row.target)}
@@ -274,8 +290,13 @@ const Island = () => {
                       {placeText(row.place)}
                     </span>
                   </span>
-                  <span class="doing" data-testid="island-row-doing" data-kind={row.doing.kind}>
-                    {doingText(row.doing)}
+                  <span
+                    class="doing"
+                    data-testid="island-row-doing"
+                    data-kind={row.doing.kind}
+                    data-quiet={row.quiet ? "true" : undefined}
+                  >
+                    {doingOf(row)}
                   </span>
                 </span>
                 <span class="time" data-testid="island-row-time">

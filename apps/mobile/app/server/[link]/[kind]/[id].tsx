@@ -1,5 +1,5 @@
 import type { PlaceKind } from "@robot/phone"
-import type { Agent, ChannelMessage } from "@robot/shared"
+import { type Agent, type ChannelMessage, type QuietTurn, quietOfChat } from "@robot/shared"
 import * as Clipboard from "expo-clipboard"
 import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { AskCard } from "../../../../src/chat/AskCard.tsx"
 import { Composer } from "../../../../src/chat/Composer.tsx"
 import { MessageRow, type RowActions, type ShownMessage } from "../../../../src/chat/MessageRow.tsx"
+import { QuietLine } from "../../../../src/chat/QuietLine.tsx"
 import { buildRows, messageText, quoteText, type Row } from "../../../../src/chat/rows.ts"
 import { setShownPlace } from "../../../../src/notices.ts"
 import { downloadAndOpen, uploadSource } from "../../../../src/platform/files.ts"
@@ -91,6 +92,12 @@ export default function Conversation() {
   const title = kind === "agent" ? (agent?.name ?? "") : channel ? `#${channel.name}` : ""
   const nameOf = (m: ShownMessage | undefined) =>
     !m ? "" : m.author === "user" ? t("chat.you") : (agentOf(m.agentId)?.name ?? "?")
+  // The turn of this place that shows no sign of life (spec 005, "Quiet line"). A channel has no
+  // working line on the phone, so the first quiet part of the channel stands for it.
+  const quietTurn: QuietTurn | undefined =
+    kind === "agent"
+      ? quietOfChat(data?.quiet.turns ?? [], id, null)
+      : data?.quiet.turns.find((q) => q.source === "channel" && q.sourceId === id)
   const working =
     (kind === "agent"
       ? agent?.state === "working" || agent?.state === "waiting"
@@ -285,6 +292,7 @@ export default function Conversation() {
           ))}
         </View>
       ) : null}
+      {quietTurn ? <QuietLine turn={quietTurn} receivedAt={data?.quiet.receivedAt ?? 0} /> : null}
       <View style={styles.error}>
         <ErrorLine text={error} />
       </View>

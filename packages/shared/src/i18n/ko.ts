@@ -450,6 +450,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.stop": "멈추기",
   "chat.placeholder": "{name}에게 메시지 보내기",
   "chat.working": "작업하는 중…",
+  "quiet.line": "{name}에서 {time} 동안 응답이 없어요",
   "chat.stopped": "멈춤",
   "chat.retry": "다시 시도",
   "chat.limitResets": "한도는 {time}에 초기화돼요.",

@@ -42,6 +42,8 @@ import type {
   PlaceSection,
   QueuedMessage,
   QueueHold,
+  QuietState,
+  QuietTurn,
 } from "@robot/shared"
 import { type OrgChartPhase, OrgFeed } from "./orgChart.ts"
 import { newest, removeMessage, upsertMessage } from "./places.ts"
@@ -86,6 +88,16 @@ export interface ServerData {
   readonly channelMessages: Readonly<Record<string, readonly ChannelMessage[]>>
   /** Approvals and questions that wait (the "Needs you" list of spec 011). Never from the cache. */
   readonly attention: readonly WireNotice[]
+  /**
+   * The turns that are quiet now (spec 005, "Quiet line"; 011). The seconds count on from
+   * `receivedAt`. Never from the cache, and never written to it: a server that is not online
+   * has none.
+   */
+  readonly quiet: {
+    readonly turns: readonly QuietTurn[]
+    /** When the phone got the state, in ms. */
+    readonly receivedAt: number
+  }
 }
 
 export interface ServerView {
@@ -147,6 +159,7 @@ const EMPTY: ServerData = {
   chats: {},
   channelMessages: {},
   attention: [],
+  quiet: { turns: [], receivedAt: 0 },
 }
 
 /** The ids of a server come from the computer. They must not leave the folder of its cache. */
@@ -459,7 +472,16 @@ export class PhoneHub {
       ...(this.#options.random ? { random: this.#options.random } : {}),
       hooks: {
         onState: (state, side) => {
-          this.#update(link.id, (v) => ({ ...v, state, updateSide: side }))
+          // A server that is not online shows no quiet line: the pushes are not seen (spec 005).
+          this.#update(link.id, (v) => ({
+            ...v,
+            state,
+            updateSide: side,
+            data:
+              state === "online" || v.data.quiet.turns.length === 0
+                ? v.data
+                : { ...v.data, quiet: EMPTY.quiet },
+          }))
         },
         onEvent: (event, payload) => this.#onEvent(link.id, event, payload),
         onOnline: (info) => void this.#online(link.id, info),
@@ -558,18 +580,21 @@ export class PhoneHub {
     const serverId = view.link.serverId
     const read = <T>(method: string, input: unknown) =>
       this.request<T>(linkId, method, input).catch(() => undefined)
-    const [places, agents, channels, attention] = await Promise.all([
+    const [places, agents, channels, attention, quiet] = await Promise.all([
       read<PlaceSection[]>("places.list", { serverId }),
       read<Agent[]>("agents.list", { serverId, archived: false }),
       read<Channel[]>("channels.list", { serverId }),
       read<WireNotice[]>("attention.list", undefined),
+      read<QuietState>("quiet.list", undefined),
     ])
+    const at = this.#options.now?.() ?? Date.now()
     this.#setData(linkId, (d) => ({
       ...d,
       places: places ?? d.places,
       agents: agents ?? d.agents,
       channels: channels ?? d.channels,
       attention: attention ?? d.attention,
+      quiet: quiet && Array.isArray(quiet.turns) ? { turns: quiet.turns, receivedAt: at } : d.quiet,
     }))
     if (places) this.#save(linkId, "places", () => JSON.stringify(places))
     if (agents) this.#save(linkId, "agents", () => JSON.stringify(agents))
@@ -682,6 +707,14 @@ export class PhoneHub {
         return { ...d, channelMessages: { ...d.channelMessages, [channelId]: next } }
       })
       this.#saveChannel(linkId, channelId)
+    } else if (event === "quiet.changed") {
+      // The start and the end of a quiet turn, with the seconds at the push (spec 005, 012).
+      const turns = (payload as QuietState | undefined)?.turns
+      const at = this.#options.now?.() ?? Date.now()
+      this.#setData(linkId, (d) => ({
+        ...d,
+        quiet: Array.isArray(turns) ? { turns, receivedAt: at } : d.quiet,
+      }))
     } else if (event === "orgChart.model") {
       // The whole ready model (spec 029, 012). Only a screen that watches the chart gets it; the
       // phone keeps it nowhere else and never writes it to disk.

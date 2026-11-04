@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { ChannelMessage } from "@robot/shared"
 import { Effect } from "effect"
+import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Decision } from "./Decision.ts"
@@ -298,6 +299,36 @@ describe("channel jobs", () => {
     const failed = (await s.history()).find((m) => m.status === "failed")
     expect(failed?.error?.code).toBe("silent_limit_1")
     expect(failed?.progress).toBe("sent")
+  })
+
+  test("a part that shows no sign of life is quiet; the plan step finds it by the task (spec 005, 004)", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const s = await setup()
+    await s.run(SettingsStore.use((x) => x.update({ silentLimit: 10 })))
+    await s.send("@bo HANG here")
+    await until(async () => (await s.tasks())[0]?.progress === "sent")
+    const quiet = () => s.run(Activity.use((a) => Effect.sync(() => a.quietTurns().turns)))
+    fake.advance(89_000)
+    expect(await quiet()).toEqual([])
+    fake.advance(1_000)
+    const turns = await quiet()
+    const task = (await s.tasks())[0]
+    expect(turns).toHaveLength(1)
+    // The turn names the task, the member, and the channel that it belongs to. A channel part is
+    // not the turn of a chat.
+    expect(turns[0]).toMatchObject({
+      taskId: task?.id,
+      agentId: s.bo.id,
+      threadId: null,
+      source: "channel",
+      sourceId: s.channel.id,
+      name: "M",
+    })
+    expect(task?.state).toBe("running")
+    // Stop ends the turn, and the line goes with it.
+    await s.run(Channels.use((c) => c.stopAll(s.channel.id)))
+    await until(async () => (await quiet()).length === 0)
   })
 
   test("an ordinary answer of the lead is no plan", async () => {

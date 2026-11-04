@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { quietTimeMs } from "@robot/shared"
 import { Effect, Exit } from "effect"
 import { fakeClock } from "./silence.testing.ts"
 import { SilenceTimer, SLEEP_GAP_MS, TICK_MS, turnWatch } from "./silence.ts"
@@ -10,6 +11,7 @@ const timer = (limitMinutes: number, held: { browser: boolean } = { browser: fal
   const silent: number[] = []
   const t = new SilenceTimer({
     limitMs: limitMinutes * MINUTE,
+    quietMs: quietTimeMs(limitMinutes),
     clock: fake.clock,
     onSilent: () => silent.push(1),
     userHoldsBrowser: () => held.browser,
@@ -257,5 +259,230 @@ describe("the watch of a turn", () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(failed).toBe(true)
+  })
+})
+
+describe("the quiet line (spec 005)", () => {
+  /** A timer that records every call of `onQuiet`. */
+  const quietTimer = (limitMinutes: number, held: { browser: boolean } = { browser: false }) => {
+    const fake = fakeClock()
+    const quiet: (number | null)[] = []
+    const silent: number[] = []
+    const t = new SilenceTimer({
+      limitMs: limitMinutes <= 0 ? Number.POSITIVE_INFINITY : limitMinutes * MINUTE,
+      quietMs: quietTimeMs(limitMinutes),
+      clock: fake.clock,
+      onSilent: () => silent.push(1),
+      onQuiet: (s) => quiet.push(s),
+      userHoldsBrowser: () => held.browser,
+    })
+    return { fake, quiet, silent, t, held }
+  }
+
+  test("the quiet time is 90 seconds, or half of the limit when that is shorter", () => {
+    expect(quietTimeMs(10)).toBe(90_000)
+    expect(quietTimeMs(5)).toBe(90_000)
+    expect(quietTimeMs(3)).toBe(90_000)
+    expect(quietTimeMs(2)).toBe(60_000)
+    expect(quietTimeMs(1)).toBe(30_000)
+    // With the choice Never it is 90 seconds.
+    expect(quietTimeMs(0)).toBe(90_000)
+  })
+
+  test("a turn is quiet at the quiet time, not before, and says the seconds on the clock", () => {
+    const { fake, quiet, t } = quietTimer(10)
+    t.start()
+    fake.advance(89_000)
+    expect(quiet).toEqual([])
+    expect(t.isQuiet).toBe(false)
+    fake.advance(1_000)
+    expect(quiet).toEqual([90])
+    expect(t.isQuiet).toBe(true)
+    // It tells the start only: no call each second.
+    fake.advance(60_000)
+    expect(quiet).toEqual([90])
+    t.stop()
+  })
+
+  test("with the limit 1 minute the quiet line starts at 30 seconds and the turn fails at 60", () => {
+    const { fake, quiet, silent, t } = quietTimer(1)
+    t.start()
+    fake.advance(29_000)
+    expect(quiet).toEqual([])
+    fake.advance(1_000)
+    expect(quiet).toEqual([30])
+    expect(silent).toEqual([])
+    fake.advance(30_000)
+    // The failed row replaces the quiet line: the quiet state ends with the turn.
+    expect(silent).toEqual([1])
+    expect(quiet).toEqual([30, null])
+  })
+
+  test("a sign of life ends the quiet line at once, and the clock starts again at 0", () => {
+    const { fake, quiet, t } = quietTimer(10)
+    t.start()
+    fake.advance(100_000)
+    expect(quiet).toEqual([90])
+    t.alive()
+    expect(quiet).toEqual([90, null])
+    expect(t.silentFor).toBe(0)
+    fake.advance(89_000)
+    expect(quiet).toEqual([90, null])
+    // The second quiet time shows the line again.
+    fake.advance(1_000)
+    expect(quiet).toEqual([90, null, 90])
+    t.stop()
+  })
+
+  test("a sign of life with no quiet line calls nothing", () => {
+    const { fake, quiet, t } = quietTimer(10)
+    t.start()
+    fake.advance(30_000)
+    t.alive()
+    expect(quiet).toEqual([])
+    t.stop()
+  })
+
+  test("a wait for the user stops the clock: no quiet line, and it starts 90 seconds after the answer", () => {
+    const { fake, quiet, t } = quietTimer(10)
+    t.start()
+    fake.advance(20_000)
+    t.hold("user")
+    // The turn waits for 3 minutes.
+    fake.advance(3 * MINUTE)
+    expect(quiet).toEqual([])
+    t.release("user")
+    fake.advance(89_000)
+    expect(quiet).toEqual([])
+    fake.advance(1_000)
+    expect(quiet).toEqual([90])
+    t.stop()
+  })
+
+  test("a hold that begins while the turn is quiet ends the quiet line", () => {
+    const { fake, quiet, t } = quietTimer(10)
+    t.start()
+    fake.advance(95_000)
+    expect(quiet).toEqual([90])
+    t.hold("tool:a")
+    expect(quiet).toEqual([90, null])
+    fake.advance(10 * MINUTE)
+    expect(quiet).toEqual([90, null])
+    t.release("tool:a")
+    fake.advance(90_000)
+    expect(quiet).toEqual([90, null, 90])
+    t.stop()
+  })
+
+  test("the clock stops while the user holds the browser, and that ends a quiet line", () => {
+    const { fake, quiet, t, held } = quietTimer(10)
+    t.start()
+    fake.advance(100_000)
+    expect(quiet).toEqual([90])
+    held.browser = true
+    fake.advance(TICK_MS)
+    expect(quiet).toEqual([90, null])
+    held.browser = false
+    fake.advance(89_000)
+    expect(quiet).toEqual([90, null])
+    t.stop()
+  })
+
+  test("the time while the computer sleeps does not count; a quiet turn tells its seconds again", () => {
+    const { fake, quiet, t } = quietTimer(10)
+    t.start()
+    fake.advance(95_000)
+    expect(quiet).toEqual([90])
+    // The computer sleeps for 3 hours. One tick counts.
+    fake.sleep(3 * 60 * MINUTE)
+    expect(quiet).toEqual([90, 96])
+    t.stop()
+  })
+
+  test("a turn that sleeps through its quiet time becomes quiet by the ticks that counted", () => {
+    const { fake, quiet, t } = quietTimer(10)
+    t.start()
+    fake.advance(30_000)
+    fake.sleep(3 * 60 * MINUTE)
+    expect(quiet).toEqual([])
+    // 30 seconds and one tick for the sleep: 31 seconds. 59 more make the quiet time.
+    fake.advance(58_000)
+    expect(quiet).toEqual([])
+    fake.advance(1_000)
+    expect(quiet).toEqual([90])
+    t.stop()
+  })
+
+  test("a stopped timer ends the quiet line once", () => {
+    const { fake, quiet, t } = quietTimer(10)
+    t.start()
+    fake.advance(100_000)
+    t.stop()
+    t.stop()
+    expect(quiet).toEqual([90, null])
+    fake.advance(10 * MINUTE)
+    expect(quiet).toEqual([90, null])
+  })
+
+  test("with the choice Never a silent turn is quiet at 90 seconds and does not fail", () => {
+    const { fake, quiet, silent, t } = quietTimer(0)
+    t.start()
+    fake.advance(89_000)
+    expect(quiet).toEqual([])
+    fake.advance(1_000)
+    expect(quiet).toEqual([90])
+    fake.advance(24 * 60 * MINUTE)
+    expect(silent).toEqual([])
+    expect(t.isQuiet).toBe(true)
+    t.stop()
+  })
+})
+
+describe("the watch of a turn and the quiet line", () => {
+  const run = (limitMinutes: number) => {
+    const fake = fakeClock()
+    const quiet: (number | null)[] = []
+    const watch = turnWatch({
+      limitMinutes,
+      clock: fake.clock,
+      progress: () => {},
+      onQuiet: (s) => quiet.push(s),
+    })
+    return { fake, quiet, watch }
+  }
+
+  test("a part of the reply ends the quiet line; the count of tokens does not", () => {
+    const { fake, quiet, watch } = run(10)
+    watch.handedOver()
+    fake.advance(100_000)
+    expect(quiet).toEqual([90])
+    watch.sense({ type: "usage", input: 5, output: 1 })
+    expect(quiet).toEqual([90])
+    watch.sense({ type: "text", text: "a" })
+    expect(quiet).toEqual([90, null])
+    watch.stop()
+  })
+
+  test("an approval that waits makes no quiet line; the answer starts the clock at 0", () => {
+    const { fake, quiet, watch } = run(10)
+    watch.handedOver()
+    watch.waiting(true)
+    fake.advance(3 * MINUTE)
+    expect(quiet).toEqual([])
+    watch.waiting(false)
+    fake.advance(89_000)
+    expect(quiet).toEqual([])
+    fake.advance(1_000)
+    expect(quiet).toEqual([90])
+    watch.stop()
+  })
+
+  test("with the choice Never the clock counts for the quiet line", () => {
+    const { fake, quiet, watch } = run(0)
+    watch.handedOver()
+    fake.advance(90_000)
+    expect(quiet).toEqual([90])
+    watch.stop()
+    expect(quiet).toEqual([90, null])
   })
 })

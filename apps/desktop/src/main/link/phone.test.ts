@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -28,6 +28,10 @@ import { Devices } from "../services/Devices.ts"
 import { EventBus } from "../services/EventBus.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
+import { SettingsStore } from "../services/Settings.ts"
+import { fakeClock } from "../services/silence.testing.ts"
+import { useClockForTests } from "../services/silence.ts"
+import { Tasks } from "../services/Tasks.ts"
 import { testRuntime } from "../services/testing.ts"
 
 // The phone app (spec 011) runs its client core in React Native. Here the same core runs in Bun,
@@ -64,6 +68,11 @@ const model = Bun.serve({
     const last = body.messages.at(-1)
     if (last?.role === "tool") return sse([text("The file is gone."), { delay: 0, data: "[DONE]" }])
     const content = last?.content ?? ""
+    // A model that shows no sign of life: the answer opens and nothing follows.
+    if (content.includes("HANG"))
+      return new Response(new ReadableStream({ start() {} }), {
+        headers: { "content-type": "text/event-stream" },
+      })
     const call = /TOOL (\w+) (\{.*\})/.exec(content)
     if (call) {
       return sse([
@@ -133,6 +142,7 @@ const openPhone = async (
 }
 
 const sides: ReturnType<typeof testRuntime>[] = []
+afterEach(() => useClockForTests(undefined))
 beforeAll(() => {
   process.env.ROBOT_LINK_ADDRESSES = "127.0.0.1"
 })
@@ -604,4 +614,75 @@ describe("the phone on a real computer", () => {
     expect(error).toMatchObject({ code: "not_allowed" })
     expect(unsupportedByServer(error)).toBe(true)
   }, 30_000)
+
+  test("a quiet turn reaches the phone with its name and seconds, also a phone that connects later; Stop ends it (spec 005, 011, 012)", async () => {
+    const fake = fakeClock()
+    useClockForTests(fake.clock)
+    const pc = await computer("Quiet")
+    await pc.run(SettingsStore.use((x) => x.update({ silentLimit: 10 })))
+    const storage = new MemoryStorage()
+    const phone = await openPhone(storage)
+    await phone.setDeviceName("Pixel Q")
+    const { run } = await pair(pc, phone)
+    const link = await run.done
+    await waitFor(
+      () => view(phone, link.id).state,
+      (s) => s === "online",
+    )
+    await phone.openPlace(link.id, { kind: "agent", id: pc.agent.id })
+    await phone.send(link.id, { agentId: pc.agent.id, text: "HANG please", replyTo: null })
+    await waitFor(
+      () => pc.run(Tasks.use((x) => x.list(pc.local.id))),
+      (list) => list[0]?.progress === "sent",
+    )
+    // Not quiet before the quiet time.
+    fake.advance(89_000)
+    await Bun.sleep(100)
+    expect(view(phone, link.id).data.quiet.turns).toEqual([])
+    fake.advance(1_000)
+    const quiet = await waitFor(
+      () => view(phone, link.id).data.quiet,
+      (q) => q.turns.length === 1,
+    )
+    const task = (await pc.run(Tasks.use((x) => x.list(pc.local.id))))[0]
+    expect(quiet.turns[0]).toMatchObject({
+      taskId: task?.id,
+      agentId: pc.agent.id,
+      threadId: null,
+      source: "chat",
+      name: "M",
+    })
+    expect(quiet.turns[0]?.seconds).toBeGreaterThanOrEqual(90)
+    expect(quiet.receivedAt).toBeGreaterThan(0)
+
+    // A second phone that connects while the turn is quiet gets the state with the rest.
+    const other = await openPhone()
+    await other.setDeviceName("Pixel R")
+    const second = await pair(pc, other)
+    const link2 = await second.run.done
+    const late = await waitFor(
+      () => view(other, link2.id).data.quiet,
+      (q) => q.turns.length === 1,
+    )
+    expect(late.turns[0]).toMatchObject({ agentId: pc.agent.id, name: "M" })
+
+    // The quiet line is not stored: the cache of the phone holds none of it.
+    await Bun.sleep(600)
+    expect([...storage.files.keys()].some((path) => path.includes("quiet"))).toBe(false)
+    for (const text of storage.files.values()) {
+      expect(text).not.toContain("seconds")
+      expect(text).not.toContain('"turns"')
+    }
+
+    // Stop is the way out. Both phones drop the line.
+    await phone.stop(link.id, { kind: "agent", id: pc.agent.id })
+    await waitFor(
+      () => view(phone, link.id).data.quiet.turns,
+      (turns) => turns.length === 0,
+    )
+    await waitFor(
+      () => view(other, link2.id).data.quiet.turns,
+      (turns) => turns.length === 0,
+    )
+  }, 40_000)
 })
