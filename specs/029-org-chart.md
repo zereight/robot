@@ -107,7 +107,8 @@ channel settings (004, 030), with the same rules.
 - **Lines at the bottom**: one line shows at a time. A new line takes the place of the line that
   shows. A refusal line shows for 10 seconds and has no "Undo".
 - **Undo**: each change shows the line "<what changed>." with "Undo" at the bottom of the canvas for
-  10 seconds. After an Undo, the line "Undone." shows for 3 seconds. Undo puts back the members, the lead and the parent channel as they were before that
+  10 seconds. After an Undo, the line "Undone." shows for 3 seconds. Undo puts back the
+  members, the lead and the parent channel as they were before that
   change. Undo is refused with a reason when the change cannot go back, for example when the agent
   works now in the new channel. Cmd+Z does the same while the line shows.
 - No change on the chart needs a confirm. The chart cannot archive, delete or rename an agent or a
