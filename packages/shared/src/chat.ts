@@ -206,6 +206,11 @@ export interface ChatMessage {
   /** The name of the linked device that sent this message. Null for this computer (spec 012). */
   readonly fromDevice: string | null
   /**
+   * The name of the sender of a message from Teams, as the Teams page showed it (spec 028). The
+   * message shows the mark "From Teams" with this name. Absent for any other message.
+   */
+  readonly fromTeams?: string
+  /**
    * A message that the user sent into a running turn and that the agent did not read yet (spec
    * 003): "waiting" can still be deleted, "handed" went to the program already. Null otherwise.
    */

@@ -100,6 +100,7 @@ export type ProtectedPlace =
   | "devices"
   | "archive"
   | "other_agent"
+  | "teams"
 
 export const PROTECTED_PLACES: Readonly<Record<ProtectedPlace, string>> = {
   permission: "The permission level: the user changes it in the profile of the agent.",
@@ -117,6 +118,7 @@ export const PROTECTED_PLACES: Readonly<Record<ProtectedPlace, string>> = {
   archive:
     "Archive and delete: the user archives an agent in its profile, and deletes it in Settings → Archive.",
   other_agent: "Other agents: the user changes them in their own profiles.",
+  teams: "The Teams link: the user turns it on or off in Settings → Teams.",
 }
 
 /** The names that a model may give to a protected thing, and the place for each. */
@@ -157,6 +159,11 @@ const PROTECTED_NAMES: Readonly<Record<string, ProtectedPlace>> = {
   agent_id: "other_agent",
   other_agent: "other_agent",
   target: "other_agent",
+  teams: "teams",
+  teams_link: "teams",
+  link: "teams",
+  chat_bridge: "teams",
+  bridge: "teams",
 }
 
 /** The names of the arguments of the settings tool. */

@@ -578,6 +578,7 @@ export const en = {
   "tasks.source.workflow": "Workflow",
   "tasks.source.agent": "Another agent",
   "tasks.source.handover": "Handover",
+  "tasks.source.teams": "Teams",
   "tasks.detail.title": "Task",
   "tasks.prompt": "Prompt",
   "tasks.result": "Result",
@@ -2085,6 +2086,8 @@ export const en = {
   "teams.dialog.title": "Turn on the Teams link?",
   "teams.dialog.on": "Turn on",
   "teams.dialog.back": "Back",
+  "teams.mark.from": "From Teams",
+  "teams.mark.fromName": "From Teams · {name}",
   "browserProfiles.teamsName": "Teams link",
   "browserProfiles.usedByTeams": "Used by the Teams link",
   "error.browser_profile_reserved":

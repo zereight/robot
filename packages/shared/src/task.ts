@@ -15,9 +15,19 @@ export type TaskState = (typeof TASK_STATES)[number]
 
 /**
  * Where a task came from. "agent" is a message of another agent (spec 007). "handover" is the
- * message that starts a handover of a chat (spec 003, "Hand over"): its depth is 0.
+ * message that starts a handover of a chat (spec 003, "Hand over"): its depth is 0. "teams" is a
+ * message from Teams to the direct chat of an agent (spec 028): its depth is 0, and it is a normal
+ * source in the queue (spec 005).
  */
-export const TASK_SOURCES = ["chat", "channel", "routine", "workflow", "agent", "handover"] as const
+export const TASK_SOURCES = [
+  "chat",
+  "channel",
+  "routine",
+  "workflow",
+  "agent",
+  "handover",
+  "teams",
+] as const
 export type TaskSource = (typeof TASK_SOURCES)[number]
 
 /**

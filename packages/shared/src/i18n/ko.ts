@@ -577,6 +577,7 @@ export const ko: Record<MessageKey, string> = {
   "tasks.source.workflow": "워크플로",
   "tasks.source.agent": "다른 에이전트",
   "tasks.source.handover": "인계",
+  "tasks.source.teams": "Teams",
   "tasks.detail.title": "작업",
   "tasks.prompt": "요청 내용",
   "tasks.result": "결과",
@@ -2072,6 +2073,8 @@ export const ko: Record<MessageKey, string> = {
   "teams.dialog.title": "Teams 연동을 켤까요?",
   "teams.dialog.on": "켜기",
   "teams.dialog.back": "돌아가기",
+  "teams.mark.from": "Teams에서 보냄",
+  "teams.mark.fromName": "Teams에서 보냄 · {name}",
   "browserProfiles.teamsName": "Teams 연동",
   "browserProfiles.usedByTeams": "Teams 연동에서 사용 중",
   "error.browser_profile_reserved":
