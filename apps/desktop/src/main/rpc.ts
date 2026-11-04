@@ -547,6 +547,8 @@ export const handlers: Handlers = {
     )(input).pipe(Effect.flatMap(({ id, suffix }) => Agents.use((a) => a.duplicate(id, suffix)))),
   "agents.archive": (input) =>
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.archive(id)))),
+  "agents.useMain": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.useMain(id)))),
   "agents.restore": (input) =>
     decode(ById)(input).pipe(Effect.flatMap(({ id }) => Agents.use((a) => a.restore(id)))),
   "agents.delete": (input) =>

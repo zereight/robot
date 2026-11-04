@@ -1,8 +1,9 @@
 import { type Agent, type AgentModel, type MarkPlace, NO_MARKS, runtimeModel } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
-import { createEffect, createSignal, Show } from "solid-js"
+import { createEffect, createSignal, onCleanup, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
 import { ContextMeter } from "../chat/ContextMeter.tsx"
+import { formatUntil } from "../chat/format.ts"
 import { createHandoverState, HandoverDialog, offKey } from "../chat/Handover.tsx"
 import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
 import { ThreadList } from "../chat/ThreadList.tsx"
@@ -42,7 +43,8 @@ import {
 } from "./Teach.tsx"
 
 const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
-  const { t } = useApp()
+  const app = useApp()
+  const { t } = app
   const ui = useUi()
   const providers = useProviders()
   const [open, setOpen] = createSignal(false)
@@ -64,12 +66,30 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
   )
   const [handingOver, setHandingOver] = createSignal(false)
   // A runtime model shows with its version. An API model shows its id, which has the version.
-  const modelName = () => {
-    const model = props.agent.model
+  const nameOf = (model: AgentModel | null) => {
     if (!model) return t("agents.noModel")
     const known = runtimeModel(providers.byId(model.accountId)?.kind, model.model)
     return known?.labelKey ? t(known.labelKey) : (known?.label ?? model.model)
   }
+  // While the main model is held, the header shows the backup model that takes the turns, the
+  // time the hold ends, and a button that ends it (spec 006, "Backup model"). A linked device
+  // shows what its server tells it, and the button only with the switch "Can create and change
+  // agents" (spec 012). The hold also ends here when its time passes.
+  const [now, setNow] = createSignal(Date.now())
+  createEffect(() => {
+    const until = props.agent.hold?.until
+    if (until === undefined) return
+    const wait = until - Date.now()
+    if (wait <= 0) return setNow(Date.now())
+    const timer = setTimeout(() => setNow(Date.now()), Math.min(wait + 20, 2 ** 31 - 1))
+    onCleanup(() => clearTimeout(timer))
+  })
+  const hold = () => {
+    const held = props.agent.hold
+    return held && held.until > now() ? held : null
+  }
+  const modelName = () => nameOf(hold()?.model ?? props.agent.model)
+  const useMain = () => call("agents.useMain", { id: props.agent.id }).catch(() => undefined)
   return (
     <>
       {/* A client without the switch opens the profile too, as read-only text (spec 012). */}
@@ -107,6 +127,25 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
         >
           {modelName()}
         </button>
+      </Show>
+      <Show when={hold()}>
+        {(held) => (
+          <span class={styles.headerHold} data-testid="chat-header-hold">
+            <span data-testid="chat-header-backup">
+              {t("backup.until", { time: formatUntil(app.locale(), held().until) })}
+            </span>
+            <Show when={ui.canChange()}>
+              <button
+                type="button"
+                class={styles.headerHoldButton}
+                onClick={useMain}
+                data-testid="chat-header-use-main"
+              >
+                {t("backup.useMain", { model: nameOf(props.agent.model) })}
+              </button>
+            </Show>
+          </span>
+        )}
       </Show>
       {/* The Teams link serves this agent: a muted mark, with the state word if it is not On. */}
       <TeamsMark kind="agent" id={props.agent.id} />

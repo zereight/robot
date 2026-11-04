@@ -820,3 +820,56 @@
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
 }
+
+/* The backup model under the model field of the agent form (spec 006). */
+.backup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.backupSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.backupSummary > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The hold of the main model in the header of the chat (spec 006). */
+.headerHold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-shrink: 1;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
+.headerHold > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headerHoldButton {
+  flex-shrink: 0;
+  border: 1px solid var(--c-border);
+  background: transparent;
+  color: var(--c-text);
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  white-space: nowrap;
+}
+
+.headerHoldButton:hover {
+  background: var(--c-hover);
+}

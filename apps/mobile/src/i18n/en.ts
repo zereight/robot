@@ -187,6 +187,10 @@ export const en = {
   "chat.note.connection_down": "The connection {name} is not available.",
   "chat.note.connection_held": "Tools of the connection {name} wait for your review.",
   "chat.note.handed_over": "Handed over to {name}",
+  "chat.note.backup_goes_on": "{main} reached its limit. {backup} goes on.",
+  "chat.note.backup_goes_on_until":
+    "{main} reached its limit. {backup} goes on. The limit resets at {time}.",
+  "chat.backup_until": "Backup until {time}",
   "chat.note.starter.routine.limit":
     "Not made: the routine “{name}”. The server has no room for more routines.",
   "chat.note.starter.routine.error": "Not made: the routine “{name}”. An error stopped it.",

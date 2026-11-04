@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { createInterface } from "node:readline"
 import { EFFORTS, type ModelInfo, type PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { limitFailure, ProviderFailure } from "../providers/client.ts"
 import { stage } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
@@ -295,7 +295,7 @@ export const piFailure = (text: string): ProviderFailure => {
       text,
     )
   )
-    return new ProviderFailure("provider_limit", text)
+    return limitFailure(text)
   if (
     /unauthor|\b401\b|log ?in|credentials|not_ready|api key|authentication|no models?/i.test(text)
   )

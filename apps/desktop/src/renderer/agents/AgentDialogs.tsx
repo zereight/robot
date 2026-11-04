@@ -53,6 +53,11 @@ const changesOf = (agent: Agent, values: AgentFormValues): AgentPatch => ({
   values.model?.effort !== agent.model?.effort
     ? { model: values.model }
     : {}),
+  ...(values.backupModel?.accountId !== agent.backupModel?.accountId ||
+  values.backupModel?.model !== agent.backupModel?.model ||
+  values.backupModel?.effort !== agent.backupModel?.effort
+    ? { backupModel: values.backupModel }
+    : {}),
   ...(values.permission && values.permission !== agent.permission
     ? { permission: values.permission }
     : {}),
@@ -91,6 +96,11 @@ const AgentProfileView = (props: { agent: Agent; onClose: () => void }) => {
         "agents.field.model",
         props.agent.model?.model ?? t("agents.noModel"),
         "agent-view-model",
+      )}
+      {line(
+        "backup.label",
+        props.agent.backupModel?.model ?? t("backup.none"),
+        "agent-view-backup",
       )}
       {line(
         "agents.field.permission",

@@ -4,6 +4,7 @@ import {
   type Connection,
   failureFrom,
   headersFor,
+  limitFailure,
   ProviderFailure,
   request,
   urlFor,
@@ -541,12 +542,10 @@ async function* anthropicStream(req: ChatRequest): AsyncGenerator<StreamEvent | 
         break
       }
       case "error":
+        if (data.error?.type === "rate_limit_error")
+          throw limitFailure(data.error.message ?? "stream error")
         throw new ProviderFailure(
-          data.error?.type === "rate_limit_error"
-            ? "provider_limit"
-            : data.error?.type === "overloaded_error"
-              ? "provider_busy"
-              : "provider_error",
+          data.error?.type === "overloaded_error" ? "provider_busy" : "provider_error",
           data.error?.message ?? "stream error",
         )
       case "message_stop": {

@@ -4,6 +4,7 @@ import { join } from "node:path"
 import {
   type Agent,
   type AgentCreate,
+  type AgentModel,
   type AgentPatch,
   copyName,
   DEFAULT_PERMISSION,
@@ -13,6 +14,7 @@ import {
   nameKey,
   type PermissionLevel,
   parsePlaceOutside,
+  sameModelChoice,
 } from "@robot/shared"
 import { Context, Effect, Layer } from "effect"
 import { Activity } from "./Activity.ts"
@@ -22,6 +24,7 @@ import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { recordVersion } from "./instructionHistory.ts"
+import { ModelHolds } from "./ModelHolds.ts"
 import { Platform } from "./Platform.ts"
 import { Providers } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
@@ -39,6 +42,9 @@ interface AgentRow {
   model_account_id: string | null
   model_name: string | null
   model_effort: string | null
+  backup_account_id: string | null
+  backup_model: string | null
+  backup_effort: string | null
   workspace: string
   permission: PermissionLevel
   memory_enabled: number
@@ -68,6 +74,11 @@ export interface AgentsService {
   duplicate(id: string, suffix: string): Effect.Effect<Agent, AppError>
   archive(id: string): Effect.Effect<Agent, AppError>
   restore(id: string): Effect.Effect<Agent, AppError>
+  /**
+   * "Use the main model now" (spec 006): ends the hold of the main model of the agent. The next
+   * turn tries the main model. Nothing changes when no hold lasts.
+   */
+  useMain(id: string): Effect.Effect<Agent, AppError>
   remove(id: string): Effect.Effect<void, AppError>
   setFaceImage(id: string, dataUrl: string | null): Effect.Effect<Agent, AppError>
 }
@@ -97,9 +108,17 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
       const activity = yield* Activity
       const providers = yield* Providers
       const sections = yield* Sections
+      const holds = yield* ModelHolds
       const facesDir = join(platform.dataDir, "faces")
 
+      const backupOf = (row: AgentRow): AgentModel | null =>
+        row.backup_account_id && row.backup_model
+          ? { accountId: row.backup_account_id, model: row.backup_model, effort: row.backup_effort }
+          : null
+
       const toAgent = (row: AgentRow): Agent => {
+        const backup = backupOf(row)
+        const hold = backup ? holds.active(row.id) : null
         const imagePath = row.face_image ? join(facesDir, row.face_image) : null
         const faceImage =
           imagePath && existsSync(imagePath)
@@ -117,6 +136,11 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
             row.model_account_id && row.model_name
               ? { accountId: row.model_account_id, model: row.model_name, effort: row.model_effort }
               : null,
+          // The backup model, and whether it is ready here. The hold of the main model, while the
+          // backup takes the turns (spec 006). The hold is a state of this computer (spec 019).
+          backupModel: backup,
+          ...(backup ? { backupReady: providers.isConnected(backup.accountId) } : {}),
+          hold: hold && backup ? { until: hold.until, model: backup } : null,
           workspace: row.workspace,
           section: "agents",
           sectionId: row.place_section_id,
@@ -197,6 +221,9 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           !(yield* providers.readOnlySupported(input.model.accountId))
         )
           return yield* new AppError({ code: "read_only_unsupported" })
+        // The form refuses a backup that is the same as the main choice, and says why (spec 006).
+        if (sameModelChoice(input.model ?? null, input.backupModel ?? null))
+          return yield* new AppError({ code: "backup_same" })
         const id = randomUUID()
         const workspace = yield* makeWorkspace(name, id)
         const face = input.face ?? faceFromName(name)
@@ -204,9 +231,9 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         const by = yield* stamp
         db.run(
           `INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
-            model_account_id, model_name, model_effort, workspace, section, place_section_id,
-            created_at, updated_at, changed_by, changed_at, permission)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?, ?, ?)`,
+            model_account_id, model_name, model_effort, backup_account_id, backup_model, backup_effort,
+            workspace, section, place_section_id, created_at, updated_at, changed_by, changed_at, permission)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agents', ?, ?, ?, ?, ?, ?)`,
           id,
           input.serverId,
           name,
@@ -218,6 +245,9 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           input.model?.accountId ?? null,
           input.model?.model ?? null,
           input.model?.effort ?? null,
+          input.backupModel?.accountId ?? null,
+          input.backupModel?.model ?? null,
+          input.backupModel?.effort ?? null,
           workspace,
           sectionId,
           now,
@@ -252,6 +282,21 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           !(yield* providers.readOnlySupported(accountId))
         )
           return yield* new AppError({ code: "read_only_unsupported" })
+        // The backup must differ from the main choice. It is checked when either one changes,
+        // whoever asks: this computer, a client, or the settings tool of the agent (spec 006).
+        const main: AgentModel | null =
+          patch.model !== undefined
+            ? patch.model
+            : row.model_account_id && row.model_name
+              ? { accountId: row.model_account_id, model: row.model_name, effort: row.model_effort }
+              : null
+        const backup: AgentModel | null =
+          patch.backupModel !== undefined ? patch.backupModel : backupOf(row)
+        if (
+          (patch.model !== undefined || patch.backupModel !== undefined) &&
+          sameModelChoice(main, backup)
+        )
+          return yield* new AppError({ code: "backup_same" })
         const sets: string[] = []
         const values: (string | number | null)[] = []
         const set = (column: string, value: string | number | null) => {
@@ -273,6 +318,11 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           set("model_name", patch.model?.model ?? null)
           set("model_effort", patch.model?.effort ?? null)
         }
+        if (patch.backupModel !== undefined) {
+          set("backup_account_id", patch.backupModel?.accountId ?? null)
+          set("backup_model", patch.backupModel?.model ?? null)
+          set("backup_effort", patch.backupModel?.effort ?? null)
+        }
         if (patch.sectionId !== undefined) {
           set("place_section_id", yield* sections.check(row.server_id, "agent", patch.sectionId))
         }
@@ -285,6 +335,13 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
           set("knowledge_enabled", patch.knowledgeEnabled ? 1 : 0)
         set("updated_at", Date.now())
         db.run(`UPDATE agent SET ${sets.join(", ")} WHERE id = ?`, ...values, id)
+        // The hold is about the main model and the backup of this agent. A new main model is not
+        // the one that is held, and with no backup nothing takes the turns (spec 006).
+        const mainMoved =
+          patch.model !== undefined &&
+          (patch.model?.accountId !== row.model_account_id || patch.model?.model !== row.model_name)
+        if (mainMoved || (patch.backupModel !== undefined && patch.backupModel === null))
+          holds.clear(id)
         if (patch.instructions !== undefined)
           recordVersion(
             db,
@@ -399,6 +456,7 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
                     effort: row.model_effort,
                   }
                 : null,
+            backupModel: backupOf(row),
             // The copy joins the section of the original.
             sectionId: row.place_section_id,
           })
@@ -420,6 +478,12 @@ export class Agents extends Context.Service<Agents, AgentsService>()("robot/main
         }),
         archive: setArchived(true),
         restore: setArchived(false),
+        useMain: Effect.fn("Agents.useMain")(function* (id: string) {
+          const row = yield* findRow(id)
+          // The hold tells the windows and the linked devices by itself.
+          holds.release(id)
+          return toAgent(row)
+        }),
         remove,
         setFaceImage,
       })

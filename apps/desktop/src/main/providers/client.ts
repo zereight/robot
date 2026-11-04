@@ -1,8 +1,9 @@
-import type { ModelInfo, ProviderKind, RuntimeKind } from "@robot/shared"
+import type { LimitReason, ModelInfo, ProviderKind, RuntimeKind } from "@robot/shared"
 import {
   EFFORT_LEVELS,
   EFFORTS,
   effortsFor,
+  limitReasonOf,
   nearestEffort,
   takesThinkingBudget,
 } from "@robot/shared"
@@ -34,10 +35,20 @@ export class ProviderFailure extends Error {
     readonly detail?: string,
     /** When a usage limit resets, if the provider says. */
     readonly resetsAt?: number,
+    /** Which limit it is, for the code "provider_limit": the plan, the credit or the quota (spec 006). */
+    readonly reason?: LimitReason,
   ) {
     super(detail ?? code)
   }
 }
+
+/**
+ * A failure with the code "provider_limit" and its limit reason (spec 006, "Backup model"). The
+ * reason comes from the words of the report. A report that names none counts as the plan limit:
+ * the code was always the usage limit of the account.
+ */
+export const limitFailure = (text: string, resetsAt?: number): ProviderFailure =>
+  new ProviderFailure("provider_limit", text, resetsAt, limitReasonOf(text) ?? "plan")
 
 const join = (base: string, path: string) => `${base.replace(/\/+$/, "")}${path}`
 
@@ -79,8 +90,13 @@ export const failureFrom = async (response: Response): Promise<ProviderFailure> 
   const message = await errorMessage(response)
   if (response.status === 401 || response.status === 403)
     return new ProviderFailure("provider_auth", message)
-  if (response.status === 429)
-    return new ProviderFailure("provider_limit", message, resetTime(response))
+  if (response.status === 429) return limitFailure(message, resetTime(response))
+  // A spent credit or quota can come with another status (spec 006, "Backup model").
+  if (
+    (response.status === 400 || response.status === 402) &&
+    (["credit", "quota"].includes(limitReasonOf(message) ?? "") || /usage limits?/i.test(message))
+  )
+    return limitFailure(message, resetTime(response))
   // 503 is the status of an overloaded OpenAI model; 529 is the status that Anthropic uses.
   if (response.status === 503 || response.status === 529 || /overloaded/i.test(message))
     return new ProviderFailure("provider_busy", message)

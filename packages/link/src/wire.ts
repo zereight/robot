@@ -154,6 +154,8 @@ export const CLIENT_METHODS = [
   "agents.update",
   "agents.duplicate",
   "agents.archive",
+  // "Use the main model now": ends the hold of the main model (spec 006, 012).
+  "agents.useMain",
   "channels.create",
   "channels.update",
   "memory.list",
@@ -186,6 +188,8 @@ export const CHANGE_METHODS = [
   "agents.update",
   "agents.duplicate",
   "agents.archive",
+  // "Use the main model now": ends the hold of the main model (spec 006, 012).
+  "agents.useMain",
   "channels.create",
   "channels.update",
   "memory.list",
