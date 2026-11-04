@@ -1,14 +1,18 @@
 import {
+  afterOffline,
   type BaselineReason,
   botListWins,
   callMayStart,
   checkCall,
   checkTeamsLink,
+  countRead,
+  countSend,
   cutLineText,
   emptyTeamsFields,
   emptyTeamsView,
   failureReason,
   holdsChatTitle,
+  isTeamsPauseReason,
   isTeamsRecordReason,
   type Locale,
   lineText,
@@ -18,6 +22,7 @@ import {
   messageFiles,
   messageText,
   newReadSet,
+  noFailures,
   type OutboxTiming,
   patchTouchesLocked,
   pickNext,
@@ -40,22 +45,32 @@ import {
   TEAMS_OUTBOX_MAX,
   TEAMS_READ_MS,
   TEAMS_RECORDS_MAX,
+  type TeamsAttempt,
+  type TeamsAttention,
   type TeamsChatMatch,
   type TeamsChatOpened,
+  type TeamsFailCounts,
   type TeamsFields,
   type TeamsLine,
   type TeamsLinkView,
   type TeamsLogEvent,
   type TeamsLook,
   type TeamsMessage,
+  type TeamsNeed,
   type TeamsPatch,
+  type TeamsPauseReason,
   type TeamsRecord,
   type TeamsRecordReason,
   type TeamsState,
   type TeamsTargetKind,
   takeUnread,
+  teamsNeed,
+  teamsNoticeStep,
+  teamsNoticeTitleKey,
+  teamsPauseReasonKey,
   tidyTeamsFields,
   tooManyLineMayGo,
+  translate,
 } from "@robot/shared"
 import { Cause, Context, Effect, Layer } from "effect"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
@@ -114,6 +129,8 @@ interface Row {
   enabled: number
   signed_in: number
   last_read_at: number | null
+  paused: string | null
+  paused_at: number | null
 }
 
 export interface TeamsLinkService {
@@ -139,6 +156,13 @@ export interface TeamsLinkService {
   place(bounds: PageBounds | undefined): Effect.Effect<void>
   /** "Use this chat": reads the title of the open chat and puts it in the field "Chat title". */
   readonly useChat: Effect.Effect<TeamsLinkView, AppError>
+  /** "Resume": a paused link starts again with a baseline read (spec 028). */
+  readonly resume: Effect.Effect<TeamsLinkView, AppError>
+  /**
+   * The state that needs the user, for the Today page (spec 021, 028): Signed out or Paused, with
+   * the reason of a pause and the time the state began. Null when the link is fine or off.
+   */
+  readonly attention: Effect.Effect<TeamsAttention | null>
   /** "Sign out of Teams": deletes the saved sign-in and turns the link off. */
   readonly signOut: Effect.Effect<TeamsLinkView, AppError>
   /** "Remove link": deletes the link and the sign-in profile. */
@@ -154,7 +178,7 @@ const LOG_PRUNE_EVERY_MS = 24 * 3_600_000
 
 /**
  * The Teams link (spec 028): the form, the sign-in, the switch and the states (S101), the calls
- * (S102), and the answers and the outbox (S103). While the switch is on, the loop reads the new
+ * (S102), the answers and the outbox (S103), and the pause and the notices (S105). While the switch is on, the loop reads the new
  * messages of the chat every 3 seconds, applies "Who may call" to each one, and gives a call to the
  * agent or the channel of the link as work. When work that a message started ends or waits for the
  * user, the link makes an answer, and the outbox sends it in order to the linked chat.
@@ -220,6 +244,14 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           nextAnswer: 1,
           /** The window was hidden: the loop looks at the page before the next send. */
           loopFirst: false,
+          /** The failed reads and the failed tries to send, each in a row (spec 028, S105). */
+          fails: noFailures as TeamsFailCounts,
+          /** Why the link is paused, or null. The database keeps it too, for a restart. */
+          pause: null as TeamsPauseReason | null,
+          /** The need (Signed out or Paused) that the last notification was for, or null. */
+          noticed: null as TeamsNeed | null,
+          /** When the state that needs the user began. */
+          needSince: 0,
         }
 
         // ----------------------------------------------------------------- The link log
@@ -296,6 +328,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             fields,
             enabled,
             state: enabled ? run.state : "off",
+            pauseReason: enabled && run.state === "paused" ? run.pause : null,
             chat: enabled && run.state === "chatNotFound" ? run.chat : null,
             signedIn: r.signed_in === 1,
             lastReadAt: run.lastReadAt,
@@ -318,9 +351,41 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         // ----------------------------------------------------------------- The state
         const setState = (state: TeamsState, chat: TeamsChatMatch | null = null) => {
           const same = run.state === state && run.chat === chat
+          const before = run.state
           run.state = state
           run.chat = chat
+          if (run.state !== before) noteNeed(before)
           return !same
+        }
+        /** The id of this computer as a server. Mutes of a server work for the notice (spec 015). */
+        const localServerId = () =>
+          db.get<{ id: string }>("SELECT id FROM server WHERE kind = 'local'")?.id ?? ""
+        /**
+         * The notification "Teams link needs you" (spec 015, 028). It goes out when the state
+         * becomes Signed out or Paused, once for each change (`teamsNoticeStep`). It holds the
+         * state and, for a pause, the reason. It holds no name and no text of a message, not even
+         * the title of the chat. It goes to this computer only.
+         */
+        const noteNeed = (before: TeamsState) => {
+          const step = teamsNoticeStep(run.noticed, run.state)
+          run.noticed = step.memory
+          if (teamsNeed(run.state) !== null && teamsNeed(before) !== teamsNeed(run.state))
+            run.needSince = clock.now()
+          if (step.notify === null) return
+          const locale = localeNow()
+          const reason = run.pause ?? "read"
+          notifier.notify({
+            kind: "teams_link",
+            serverId: localServerId(),
+            title: translate(locale, teamsNoticeTitleKey),
+            body:
+              step.notify === "paused"
+                ? translate(locale, "teams.notice.paused", {
+                    reason: translate(locale, teamsPauseReasonKey(reason)),
+                  })
+                : translate(locale, "teams.notice.signedOut"),
+            page: "teams",
+          })
         }
         const setSignedIn = (signedIn: boolean) => {
           const r = row()
@@ -334,14 +399,18 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           }
         }
 
-        /** The link starts: Connecting, and the first look at once. */
-        const start = () => {
+        /**
+         * The link starts: Connecting, and the first look at once. The first read is a baseline
+         * read: after a switch on it has the reason "start", after "Resume" the reason "resume".
+         */
+        const start = (baseline: BaselineReason = "start") => {
           const now = clock.now()
           run.generation++
           run.readSet = newReadSet()
-          run.baseline = "start"
+          run.baseline = baseline
           run.lastFinishedAt = null
           run.callStarts = []
+          run.fails = noFailures
           setState("connecting")
           run.since = now
           run.nextAt = now
@@ -356,12 +425,57 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           run.generation++
           run.readSet = newReadSet()
           run.lastFinishedAt = null
+          run.fails = noFailures
+          // A switch off ends a pause: the next switch on starts clean.
+          run.pause = null
+          if (row()?.paused != null) save({ paused: null, paused_at: null })
           emptyOutbox(why)
           setState("off")
           run.pageShown = false
           surface.place(undefined)
           surface.allowUserInput(false)
           surface.close()
+        }
+
+        /**
+         * The repeated failure (spec 028): the link pauses itself. It reads nothing and sends
+         * nothing until the user presses "Resume". The outbox is emptied, and each message in it
+         * gets the record "Link paused". The Teams page closes, unless the user looks at it. The
+         * pause stays in the database, so a restart keeps it. Notification and Today row come from
+         * the state (`noteNeed`).
+         */
+        const pauseLink = (reason: TeamsPauseReason) => {
+          const now = clock.now()
+          run.generation++
+          run.readSet = newReadSet()
+          run.lastFinishedAt = null
+          run.fails = noFailures
+          run.pause = reason
+          emptyOutbox("linkPaused")
+          save({ paused: reason, paused_at: now })
+          setState("paused")
+          record("link_paused", reason)
+          if (!run.pageShown) {
+            surface.place(undefined)
+            surface.close()
+          }
+          changed()
+        }
+        /** Counts one read. Gives true when the 20th failed read in a row paused the link. */
+        const countReadAttempt = (attempt: TeamsAttempt): boolean => {
+          const counted = countRead(run.fails, attempt)
+          run.fails = counted.counts
+          if (counted.pause === null) return false
+          pauseLink(counted.pause)
+          return true
+        }
+        /** Counts one try to send. Gives true when the 6th failed try in a row paused the link. */
+        const countSendAttempt = (attempt: TeamsAttempt): boolean => {
+          const counted = countSend(run.fails, attempt)
+          run.fails = counted.counts
+          if (counted.pause === null) return false
+          pauseLink(counted.pause)
+          return true
         }
 
         // ----------------------------------------------------------------- The loop
@@ -398,6 +512,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           switch (seen.kind) {
             case "offline":
               setState("offline")
+              // A try to send that fails with no network says nothing about the page.
+              run.fails = afterOffline(run.fails)
               // The first read after Offline is a baseline read (spec 028, "Starts and gaps").
               run.baseline ??= "offline"
               run.nextAt = now + TEAMS_LOOK_AGAIN_MS
@@ -413,8 +529,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
               run.nextAt = now + TEAMS_READ_MS
               break
             case "unreadable":
-              // A page that cannot be read leaves the state as it is. The next slice counts the
-              // failed reads for the pause.
+              // A page that cannot be read leaves the state as it is. The loop counts it as a
+              // failed read, and 20 in a row pause the link.
               run.nextAt =
                 now +
                 (run.state === "offline" || run.state === "chatNotFound"
@@ -448,6 +564,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         }
 
         const loopStep = async (r: Row) => {
+          // A paused link reads nothing. Only "Resume" starts it (spec 028).
+          if (run.state === "paused") return
           const now = clock.now()
           const fields = fieldsOf(r)
           if (!targetFound(fields)) return targetGone()
@@ -468,6 +586,9 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           if (generation !== run.generation) return
           const before = `${run.state}|${run.chat}|${run.lastReadAt}`
           apply(seen, clock.now())
+          // A page that cannot be read is a failed read. The states Signed out, Chat not found and
+          // Offline are not failures.
+          if (seen.kind === "unreadable" && countReadAttempt("failed")) return
           if (seen.kind === "chat" && seen.opened.kind === "opened") await readStep(generation)
           if (before !== `${run.state}|${run.chat}|${run.lastReadAt}`) changed()
         }
@@ -545,9 +666,11 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             ? "linkOff"
             : run.state === "signedOut"
               ? "signedOut"
-              : run.state === "targetMissing"
-                ? "linkOff"
-                : null
+              : run.state === "paused"
+                ? "linkPaused"
+                : run.state === "targetMissing"
+                  ? "linkOff"
+                  : null
 
         /** The keys and values that a text must not hold (spec 014), as the export hides them. */
         const knownSecrets = (): string[] => [
@@ -722,6 +845,7 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             if (result.kind === "sent") {
               run.outbox = run.outbox.filter((m) => m !== message)
               run.sentAt = [...recentSends(run.sentAt, at), at]
+              countSendAttempt("good")
               continue
             }
             if (result.kind === "wrongChat") {
@@ -738,6 +862,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             message.nextTryAt = at + retryDelayMs(message.tries)
             record("send_failed", `try_${message.tries}`)
             if (message.tries === TEAMS_HOLD_TRIES) record("send_problem")
+            // The 6th failed try in a row pauses the link and empties the outbox (spec 028).
+            if (countSendAttempt("failed")) return
           }
         }
 
@@ -817,10 +943,14 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           const r = row()
           if (!r) return
           if (r.enabled !== 1) return
-          // The user looks at another chat, or the page cannot be read: this read did not finish.
           const fields = fieldsOf(r)
-          if (!read || read.openTitle === null || !holdsChatTitle(read.openTitle, fields.chatTitle))
+          // A page that cannot be read, or that shows no chat, is a failed read (spec 028).
+          if (!read || read.openTitle === null) {
+            countReadAttempt("failed")
             return
+          }
+          // The user looks at another chat: this read did not finish. It is no failure.
+          if (!holdsChatTitle(read.openTitle, fields.chatTitle)) return
           const now = clock.now()
           // More than 2 minutes since the last finished read: the computer slept, or the page could
           // not be read. The messages of that time get no answer.
@@ -850,6 +980,8 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
           if (generation !== run.generation) return
           run.lastFinishedAt = clock.now()
           noteRead(run.lastFinishedAt)
+          // A finished read sets the count of failed reads to 0.
+          countReadAttempt("good")
         }
 
         /** With the switch off, a page that the user shows is watched for the sign-in only. */
@@ -914,7 +1046,15 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
         run.lastReadAt = first?.last_read_at ?? null
         run.lastSavedAt = run.lastReadAt ?? 0
         // After a restart a link that is on starts again: Connecting, then the state that fits.
-        if (first?.enabled === 1) {
+        // A link that was paused stays paused until the user presses "Resume" (spec 028).
+        const keptPause = first?.enabled === 1 ? first.paused : null
+        if (first?.enabled === 1 && isTeamsPauseReason(keptPause)) {
+          run.state = "paused"
+          run.pause = keptPause
+          run.needSince = first.paused_at ?? clock.now()
+          // The user knows of this pause already: a start makes no second notification.
+          run.noticed = "paused"
+        } else if (first?.enabled === 1) {
           run.baseline = "start"
           run.state = "connecting"
           run.since = clock.now()
@@ -1076,6 +1216,31 @@ export class TeamsLink extends Context.Service<TeamsLink, TeamsLinkService>()(
             changed()
             return viewOf()
           })(),
+
+          resume: Effect.fn("TeamsLink.resume")(function* () {
+            const r = yield* needRow()
+            if (r.enabled !== 1 || run.state !== "paused") return viewOf()
+            save({ paused: null, paused_at: null })
+            run.pause = null
+            // The user answered the pause: a new pause is a new change, so it notifies again.
+            run.noticed = null
+            // The first read after "Resume" is a baseline read: nothing from the time of the
+            // pause gets an answer.
+            start("resume")
+            record("link_resumed")
+            return viewOf()
+          })(),
+
+          attention: Effect.sync((): TeamsAttention | null => {
+            const r = row()
+            const need = teamsNeed(run.state)
+            if (!r || r.enabled !== 1 || need === null) return null
+            return {
+              state: need,
+              reason: need === "paused" ? run.pause : null,
+              since: run.needSince,
+            }
+          }),
 
           signOut: Effect.fn("TeamsLink.signOut")(function* () {
             yield* needRow()

@@ -195,9 +195,13 @@ export const TEAMS_LOG_EVENTS = [
   "message_dropped",
   "send_failed",
   "send_problem",
+  // S105: the pause. The reason of "link_paused" is the reason of the pause (read or send). The
+  // reason of "link_resumed" is empty. No event holds a text or a name.
+  "link_paused",
+  "link_resumed",
 ] as const
 export type TeamsLogEvent = (typeof TEAMS_LOG_EVENTS)[number]
 
 /** Why a baseline read ran. */
-export const BASELINE_REASONS = ["start", "signed_out", "offline", "gap"] as const
+export const BASELINE_REASONS = ["start", "signed_out", "offline", "gap", "resume"] as const
 export type BaselineReason = (typeof BASELINE_REASONS)[number]

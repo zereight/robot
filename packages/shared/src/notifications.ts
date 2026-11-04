@@ -10,6 +10,8 @@ export const NOTIFY_KINDS = [
   "routine_failed",
   "part_review",
   "workflow_notice",
+  // The Teams link is signed out or paused (spec 028, 015). It never goes to a linked device.
+  "teams_link",
 ] as const
 export type NotifyKind = (typeof NOTIFY_KINDS)[number]
 

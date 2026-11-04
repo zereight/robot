@@ -10,6 +10,7 @@ import {
   type TeamsFieldName,
   type TeamsPatch,
   type TeamsTargetKind,
+  teamsPauseReasonKey,
   teamsRecordReasonKey,
   teamsStateTextKey,
 } from "@robot/shared"
@@ -339,6 +340,24 @@ export const TeamsSection = () => {
           >
             {stateText()}
           </p>
+          <Show when={view().state === "paused"}>
+            <Show when={view().pauseReason}>
+              {(reason) => (
+                <div class={teamStyles.note} data-testid="teams-state-reason">
+                  {t(teamsPauseReasonKey(reason()))}
+                </div>
+              )}
+            </Show>
+            <div class={teamStyles.actions}>
+              <Button
+                variant="primary"
+                onClick={() => void run(() => call("teams.resume"))}
+                data-testid="teams-resume"
+              >
+                {t("teams.resume")}
+              </Button>
+            </div>
+          </Show>
           <Show when={view().state !== "on" && view().lastReadAt !== null}>
             <div class={teamStyles.note} data-testid="teams-last-read">
               {t("teams.state.lastRead", {
