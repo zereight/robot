@@ -1,11 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import type {
-  Agent,
-  RpcResult,
-  Workflow,
-  WorkflowInput,
-  WorkflowRun,
-  WorkflowRunDetail,
+import {
+  type Agent,
+  buildTlaStarter,
+  type RpcResult,
+  type Workflow,
+  type WorkflowInput,
+  type WorkflowRun,
+  type WorkflowRunDetail,
+  workflowStarterText,
 } from "@robot/shared"
 import { Effect } from "effect"
 import { runRequest } from "../rpc.ts"
@@ -222,6 +224,51 @@ describe("a linked device and the workflows of the server (spec 012)", () => {
     expect(value<Workflow[]>(await p.onServer("workflows.list", { serverId: p.serverId }))).toEqual(
       [],
     )
+  })
+
+  test("a workflow from a starter is made over the link with the switch, in either language, and refused without it (spec 010)", async () => {
+    /** The server gets one agent. The graph of the starter names it, in the language asked for. */
+    const agentOf = async (p: Awaited<ReturnType<typeof pair>>) =>
+      value<Agent>(
+        await p.onServer("agents.create", {
+          serverId: p.serverId,
+          name: "Reviewer",
+          role: "",
+          instructions: "",
+        }),
+      )
+    const make = (p: Awaited<ReturnType<typeof pair>>, agent: Agent, locale: "en" | "ko") => {
+      const text = workflowStarterText(locale, "tla")
+      return buildTlaStarter({ serverId: p.serverId, name: text.name, agentId: agent.id, text })
+    }
+
+    const on = await pair(true)
+    const reviewer = await agentOf(on)
+    for (const locale of ["en", "ko"] as const) {
+      const input = make(on, reviewer, locale)
+      const made = value<Workflow>(await on.ask("workflows.create", input))
+      expect(made.name).toBe(input.name)
+      expect(made.steps.map((s) => s.kind)).toEqual([
+        "agent",
+        "agent",
+        "condition",
+        "notify",
+        "agent",
+        "notify",
+      ])
+      expect(made.notes).toHaveLength(1)
+      expect(made.trigger).toEqual({ kind: "manual" })
+    }
+    // The server holds both, and they are its own workflows.
+    const here = value<Workflow[]>(await on.onServer("workflows.list", { serverId: on.serverId }))
+    expect(here).toHaveLength(2)
+
+    const off = await pair(false)
+    const refused = make(off, await agentOf(off), "en")
+    expect(codeOf(await off.ask("workflows.create", refused))).toBe("change_off")
+    expect(
+      value<Workflow[]>(await off.onServer("workflows.list", { serverId: off.serverId })),
+    ).toEqual([])
   })
 
   test("a change may only name agents, places and model accounts of the server", async () => {
