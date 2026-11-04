@@ -287,20 +287,39 @@ export const createTeamsSurface = (
     }
   }
 
-  const look = async (): Promise<TeamsLook> => {
-    if (!driver.isOpen() || reload) {
-      try {
-        await driver.open(options.url ?? sel.url)
-        reload = false
-      } catch (error) {
-        if (isOfflineError(error)) {
-          reload = true
-          return { kind: "offline" }
-        }
-        // A load that stops for another reason (a redirect) leaves a page that can be read.
-        if (!driver.isOpen()) return { kind: "unreadable" }
-        reload = false
+  /**
+   * The load that runs now, with what it found when the page could not be used: `offline` or
+   * `unreadable`. The view of a page exists as soon as its load starts, but it has no document
+   * until the load ends, and it reads as a blank page. A look that comes while a load runs waits
+   * for it, so it never reads that blank page and never starts a second load.
+   */
+  let loading: Promise<TeamsLook | undefined> | undefined
+
+  const load = async (): Promise<TeamsLook | undefined> => {
+    try {
+      await driver.open(options.url ?? sel.url)
+      reload = false
+    } catch (error) {
+      if (isOfflineError(error)) {
+        reload = true
+        return { kind: "offline" }
       }
+      // A load that stops for another reason (a redirect) leaves a page that can be read.
+      if (!driver.isOpen()) return { kind: "unreadable" }
+      reload = false
+    }
+    return undefined
+  }
+
+  const look = async (): Promise<TeamsLook> => {
+    if (!loading && (!driver.isOpen() || reload)) {
+      loading = load().finally(() => {
+        loading = undefined
+      })
+    }
+    if (loading) {
+      const failed = await loading
+      if (failed) return failed
     }
     const raw = await read()
     if (!raw) return { kind: "unreadable" }
