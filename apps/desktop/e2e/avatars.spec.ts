@@ -206,7 +206,12 @@ test("avatars: they follow the theme, layers that follow the size, a still glow,
   await expect(picture).toBeVisible()
   await expect(picture).toHaveCSS("border-radius", "50%")
   await expect(picture).toHaveCSS("outline-style", "solid")
-  await expect(picture).toHaveCSS("outline-width", "1.5px")
+  // The rim is 1.5 px wide. A page draws an outline in whole pixels of the screen: 1.5 px on a
+  // screen with twice the pixels (a Mac with Retina), 1 px on a screen with the normal count. So
+  // the width that the page reports depends on the screen that runs the test.
+  const scale = await page.evaluate(() => window.devicePixelRatio)
+  const rim = await picture.evaluate((el) => Number.parseFloat(getComputedStyle(el).outlineWidth))
+  expect(rim).toBeCloseTo(Math.max(1, Math.floor(1.5 * scale)) / scale, 2)
   expect(await picture.evaluate((el) => getComputedStyle(el).outlineColor)).toMatch(
     /^rgba\(.+, 0\.4\)$/,
   )
