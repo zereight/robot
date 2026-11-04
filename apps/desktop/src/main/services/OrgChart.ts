@@ -122,8 +122,14 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
           members.set(m.channel_id, [...(members.get(m.channel_id) ?? []), m.agent_id])
         }
         const channels: OrgChannel[] = db
-          .all<{ id: string; name: string; lead_agent_id: string | null; created_at: number }>(
-            "SELECT id, name, lead_agent_id, created_at FROM channel ORDER BY created_at, id",
+          .all<{
+            id: string
+            name: string
+            lead_agent_id: string | null
+            created_at: number
+            parent_channel_id: string | null
+          }>(
+            "SELECT id, name, lead_agent_id, created_at, parent_channel_id FROM channel ORDER BY created_at, id",
           )
           .map((c) => ({
             id: c.id,
@@ -131,6 +137,7 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
             createdAt: c.created_at,
             leadId: c.lead_agent_id,
             memberIds: members.get(c.id) ?? [],
+            parentId: c.parent_channel_id,
           }))
 
         // Hand-offs: the tasks that made a "send" of the source "agent" in the last 7 days, of both

@@ -122,8 +122,8 @@ describe("the extent of a layout", () => {
       ...EMPTY_ORG_SNAPSHOT,
       agents: ["a", "b", "c", "d"].map(agent),
       channels: [
-        { id: "x", name: "X", createdAt: 1, leadId: "a", memberIds: ["a", "b"] },
-        { id: "y", name: "Y", createdAt: 2, leadId: null, memberIds: ["c", "d"] },
+        { id: "x", name: "X", createdAt: 1, leadId: "a", memberIds: ["a", "b"], parentId: null },
+        { id: "y", name: "Y", createdAt: 2, leadId: null, memberIds: ["c", "d"], parentId: null },
       ],
       handoffs: [
         { from: "a", to: "c", count: 12, newest: 3 },

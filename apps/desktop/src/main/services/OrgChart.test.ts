@@ -264,6 +264,7 @@ describe("agents, channels and states", () => {
         createdAt: expect.any(Number),
         leadId: ada.id,
         memberIds: [cy.id, ada.id, bo.id],
+        parentId: null,
       },
     ])
   })

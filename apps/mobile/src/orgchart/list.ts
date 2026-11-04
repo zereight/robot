@@ -57,6 +57,11 @@ export interface OrgBlock {
   readonly rows: readonly OrgAgentRow[]
   /** The members behind the row "+<n> more". Empty when every member has a row. */
   readonly more: readonly OrgMoreRow[]
+  /**
+   * 1 for a top channel and for "No channel". A sub-channel (030) is one more than its parent:
+   * the screen indents its block one step for each level under the top.
+   */
+  readonly level: number
 }
 
 /** One hand-off line: "<sender> → <receiver>" and the number. */
@@ -132,6 +137,8 @@ const block = (channel: ChartChannel): OrgBlock => {
         state: m.state,
       })),
     ],
+    // A server of an older build sends no level: every block is a top block.
+    level: Math.max(1, Math.min(3, Math.floor(channel.level ?? 1))),
   }
 }
 

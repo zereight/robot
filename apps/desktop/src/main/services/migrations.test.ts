@@ -1040,6 +1040,50 @@ describe("the step of the handbook and the instructions of a channel (spec 002, 
   })
 })
 
+describe("the step of the parent channel (spec 030)", () => {
+  const PARENT = migrations.findIndex((sql) => sql.includes("ADD COLUMN parent_channel_id"))
+  const server = `
+    INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
+  `
+
+  test("it only adds one nullable column, once", () => {
+    expect(PARENT).toBeGreaterThan(0)
+    expect(migrations.filter((sql) => sql.includes("ADD COLUMN parent_channel_id"))).toHaveLength(1)
+    const sql = migrations[PARENT] ?? ""
+    expect(sql).not.toMatch(/DROP|DELETE|UPDATE |NOT NULL/i)
+    expect(sql).toContain("ALTER TABLE channel ADD COLUMN parent_channel_id TEXT;")
+  })
+
+  test("a channel from before it keeps its row, as a top channel", () => {
+    const db = upTo(PARENT)
+    db.exec(server)
+    db.exec(`
+      INSERT INTO channel (id, server_id, name, name_key, topic, lead_agent_id, created_at, updated_at)
+        VALUES ('c', 's', 'Docs', 'docs', 'Write', NULL, 1, 1);
+    `)
+    db.exec(migrations[PARENT] as string)
+    expect(db.prepare("SELECT id, name, topic, parent_channel_id FROM channel").all()).toEqual([
+      { id: "c", name: "Docs", topic: "Write", parent_channel_id: null },
+    ])
+  })
+
+  test("a change of the parent marks the channel for sync, in a sync pair", () => {
+    const db = upTo(PARENT + 1)
+    db.exec(server)
+    db.exec(`
+      INSERT INTO channel (id, server_id, name, name_key, topic, created_at, updated_at)
+        VALUES ('p', 's', 'Product', 'product', '', 1, 1), ('c', 's', 'Docs', 'docs', '', 1, 1);
+      INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+        VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);
+    `)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE channel SET parent_channel_id = 'p' WHERE id = 'c'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "channel", id: "c" },
+    ])
+  })
+})
+
 describe("the step for the memory check", () => {
   /** The step that spec 008 added: the choice of an agent, the turns it counted, the source of a proposal. */
   const CHECK = migrations.findIndex((sql) => sql.includes("ADD COLUMN memory_check"))

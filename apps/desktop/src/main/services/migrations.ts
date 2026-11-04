@@ -1143,6 +1143,14 @@ export const migrations: readonly string[] = [
   ALTER TABLE channel ADD COLUMN lead_answers INTEGER NOT NULL DEFAULT 1;
   `,
   `
+  -- The parent channel (spec 030, S109). NULL is a top channel, as every channel was before this
+  -- step, so existing data keeps its meaning. The column has no foreign key: a sync (019) can bring
+  -- a sub-channel before its parent, and a parent that is gone counts as no parent. When the user
+  -- removes a channel, the app clears the field of its sub-channels. It syncs with the channel: the
+  -- dirty trigger of the channel already watches every column. An export keeps it (014).
+  ALTER TABLE channel ADD COLUMN parent_channel_id TEXT;
+  `,
+  `
   -- The picture of a channel (spec 004, S88): a square PNG of at most 256 px and 1 MB as a data
   -- address, or NULL. It is in the database, so an export keeps it, and the delete of a channel
   -- removes it. It syncs with the channel (the dirty trigger of the channel watches every column).

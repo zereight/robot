@@ -1,8 +1,9 @@
-import type { ChannelPatch } from "@robot/shared"
+import { type ChannelPatch, channelParent, parentRefusal } from "@robot/shared"
 
-// Edit on the org chart (spec 029, "Edit on the chart"). The chart changes the members and the lead
-// of a channel with the same change as the channel settings (004), so the server keeps its rules:
-// a member that works cannot leave its channel. This file holds no interface: it says which
+// Edit on the org chart (spec 029, "Edit on the chart"). The chart changes the members, the lead and
+// the parent channel (030) of a channel with the same change as the channel settings (004), so the
+// server keeps its rules: a member that works cannot leave its channel, and the tree has no loop
+// and at most 3 levels. This file holds no interface: it says which
 // channels a menu lists, where a drop is allowed, which patches a change sends, and how Undo puts
 // the channels back.
 
@@ -12,6 +13,8 @@ export interface EditChannel {
   readonly name: string
   readonly leadId: string | null
   readonly memberIds: readonly string[]
+  /** The parent channel as stored (spec 030). Absent counts as none. */
+  readonly parentId?: string | null
 }
 
 /** What the chart needs of an agent that is not archived. */
@@ -27,6 +30,8 @@ export type Edit =
   | { readonly kind: "remove"; readonly agentId: string; readonly from: string }
   | { readonly kind: "lead"; readonly agentId: string; readonly channelId: string }
   | { readonly kind: "unlead"; readonly agentId: string; readonly channelId: string }
+  /** "Put under…" (a parent) or "Move to the top" (null), also by a drag of a channel node. */
+  | { readonly kind: "parent"; readonly channelId: string; readonly parentId: string | null }
 
 /** One patch for one channel, in the order to send. */
 export interface Step {
@@ -34,12 +39,15 @@ export interface Step {
   readonly patch: ChannelPatch
 }
 
-/** The members and the lead of a channel before a change. Undo puts them back. */
-export interface Before {
-  readonly channelId: string
-  readonly memberIds: readonly string[]
-  readonly leadId: string | null
-}
+/** The members and the lead of a channel, or its parent channel, before a change. Undo puts them back. */
+export type Before =
+  | {
+      readonly kind?: "members"
+      readonly channelId: string
+      readonly memberIds: readonly string[]
+      readonly leadId: string | null
+    }
+  | { readonly kind: "parent"; readonly channelId: string; readonly parentId: string | null }
 
 export interface Plan {
   readonly steps: readonly Step[]
@@ -56,6 +64,44 @@ export const channelsFor = (agentId: string, channels: readonly EditChannel[]) =
 /** The agents that "Add member…" lists: not archived and not members. */
 export const agentsFor = (channel: EditChannel, agents: readonly EditAgent[]) =>
   agents.filter((a) => !channel.memberIds.includes(a.id)).sort(byName)
+
+/** The tree of the channels as the chart edits it. */
+const treeOf = (channels: readonly EditChannel[]) =>
+  channels.map((c) => ({ id: c.id, parentId: c.parentId ?? null }))
+
+/**
+ * The channels that "Put under…" lists for a channel (spec 029, 030): those that the rules of the
+ * tree allow, and not the parent that it has now.
+ */
+export const parentsFor = (channelId: string, channels: readonly EditChannel[]) => {
+  const tree = treeOf(channels)
+  const now = channelParent(tree, channelId)
+  return channels
+    .filter((c) => c.id !== channelId && c.id !== now && !parentRefusal(tree, channelId, c.id))
+    .sort(byName)
+}
+
+/** The parent channel of a channel in the tree as it is now, or null for a top channel. */
+export const parentOf = (channelId: string, channels: readonly EditChannel[]) =>
+  channelParent(treeOf(channels), channelId)
+
+/**
+ * The change that the drop of a channel node makes, or undefined when a drop there is not allowed
+ * (no ring, no change). `to` is the channel under the pointer, or null for the root: the channel
+ * moves to the top.
+ */
+export const channelDropEdit = (
+  channelId: string,
+  to: string | null,
+  channels: readonly EditChannel[],
+): Edit | undefined => {
+  if (!channels.some((c) => c.id === channelId)) return undefined
+  const now = parentOf(channelId, channels)
+  if (to === null) return now === null ? undefined : { kind: "parent", channelId, parentId: null }
+  if (to === now || to === channelId || !channels.some((c) => c.id === to)) return undefined
+  if (parentRefusal(treeOf(channels), channelId, to)) return undefined
+  return { kind: "parent", channelId, parentId: to }
+}
 
 /** Where a dragged agent node came from, and the channel node under the pointer. */
 export interface Drop {
@@ -93,6 +139,7 @@ const without = (ids: readonly string[], id: string) => ids.filter((m) => m !== 
  */
 export const planEdit = (edit: Edit, channels: readonly EditChannel[]): Plan | undefined => {
   const find = (id: string) => channels.find((c) => c.id === id)
+  const agentId = "agentId" in edit ? edit.agentId : ""
   const keep = (c: EditChannel): Before => ({
     channelId: c.id,
     memberIds: [...c.memberIds],
@@ -101,15 +148,24 @@ export const planEdit = (edit: Edit, channels: readonly EditChannel[]): Plan | u
   const leave = (c: EditChannel): Step => ({
     channelId: c.id,
     patch: {
-      memberIds: without(c.memberIds, edit.agentId),
-      ...(c.leadId === edit.agentId ? { leadId: null } : {}),
+      memberIds: without(c.memberIds, agentId),
+      ...(c.leadId === agentId ? { leadId: null } : {}),
     },
   })
   const join = (c: EditChannel): Step => ({
     channelId: c.id,
-    patch: { memberIds: [...without(c.memberIds, edit.agentId), edit.agentId] },
+    patch: { memberIds: [...without(c.memberIds, agentId), agentId] },
   })
   switch (edit.kind) {
+    case "parent": {
+      const c = find(edit.channelId)
+      return c
+        ? {
+            steps: [{ channelId: c.id, patch: { parentId: edit.parentId } }],
+            before: [{ kind: "parent", channelId: c.id, parentId: parentOf(c.id, channels) }],
+          }
+        : undefined
+    }
     case "add": {
       const to = find(edit.to)
       return to ? { steps: [join(to)], before: [keep(to)] } : undefined
@@ -141,14 +197,16 @@ export const planEdit = (edit: Edit, channels: readonly EditChannel[]): Plan | u
 }
 
 /**
- * The patches of Undo: each channel gets back its members and its lead. A channel that loses a
- * member goes first, so that a refusal (the member works there now) leaves everything as it is.
- * A channel that is gone is left out.
+ * The patches of Undo: each channel gets back its members and its lead, or its parent channel. A
+ * channel that loses a member goes first, so that a refusal (the member works there now) leaves
+ * everything as it is. A channel that is gone is left out.
  */
 export const undoSteps = (before: readonly Before[], channels: readonly EditChannel[]): Step[] => {
-  const steps = before.flatMap((b) => {
+  const steps = before.flatMap((b): { loses: boolean; step: Step }[] => {
     const now = channels.find((c) => c.id === b.channelId)
     if (!now) return []
+    if (b.kind === "parent")
+      return [{ loses: false, step: { channelId: b.channelId, patch: { parentId: b.parentId } } }]
     const loses = now.memberIds.some((m) => !b.memberIds.includes(m))
     return [
       {

@@ -1,4 +1,10 @@
-import type { Channel, ChartAgent, ChartChannel, MessageKey } from "@robot/shared"
+import {
+  type Channel,
+  type ChartAgent,
+  type ChartChannel,
+  type MessageKey,
+  ROOT_KEY,
+} from "@robot/shared"
 import { createSignal, onCleanup, onMount, Show } from "solid-js"
 import { NewAgentDialog } from "../agents/AgentDialogs.tsx"
 import { ChannelDialog } from "../channels/ChannelDialog.tsx"
@@ -13,12 +19,14 @@ import { Presence } from "../ui/Presence.tsx"
 import {
   agentsFor,
   type Before,
+  channelDropEdit,
   channelsFor,
   dropEdit,
   type Edit,
   leavingOf,
   type NoticeKind,
   noticeMs,
+  parentsFor,
   planEdit,
   type Step,
   undoSteps,
@@ -26,7 +34,8 @@ import {
 import styles from "./orgchart.module.css"
 
 // Edit on the org chart (spec 029, "Edit on the chart"): the menus of the nodes, the drag of an
-// agent node onto a channel node, and the line at the bottom of the canvas with "Undo". Every
+// agent node onto a channel node, the drag of a channel node onto a channel node or the root
+// (030), and the line at the bottom of the canvas with "Undo". Every
 // change is the change of the channel settings (004), so the server keeps the rules: a member that
 // works cannot leave its channel, and a linked computer changes only with the switch "Can create
 // and change agents" (012). Without the switch, the menus hold no change and there is no drag.
@@ -51,8 +60,11 @@ interface OpenMenu {
   readonly opener: HTMLElement | undefined
 }
 
-/** The agent node that is dragged now, and the channel node under the pointer. */
+/** The node that is dragged now, and the node under the pointer. */
 export interface Dragging {
+  /** Set for the drag of a channel node: the channel that moves in the tree (spec 030). */
+  readonly channelId?: string
+  /** The agent of a dragged agent node. Empty for a channel node. */
   readonly agentId: string
   readonly name: string
   /** The channel of the dragged copy, or null for "No channel". */
@@ -60,7 +72,7 @@ export interface Dragging {
   readonly key: string
   readonly x: number
   readonly y: number
-  /** The key of the channel node under the pointer. */
+  /** The key of the channel node (or the root, or the drop area) under the pointer. */
   readonly over: string | undefined
   /** Option is held: the agent is added and stays where it was. */
   readonly add: boolean
@@ -101,6 +113,12 @@ export const createChartEdit = (deps: {
   onCleanup(() => clearTimeout(timer))
 
   const doneText = (edit: Edit, list: readonly Channel[]) => {
+    if (edit.kind === "parent") {
+      const channel = channelName(list, edit.channelId)
+      return edit.parentId === null
+        ? t("orgchart.done.toTop", { channel })
+        : t("orgchart.done.putUnder", { channel, parent: channelName(list, edit.parentId) })
+    }
     const name = agentName(edit.agentId)
     const channel = channelName(
       list,
@@ -110,7 +128,7 @@ export const createChartEdit = (deps: {
           ? edit.from
           : edit.channelId,
     )
-    const key: Record<Edit["kind"], MessageKey> = {
+    const key: Record<Exclude<Edit["kind"], "parent">, MessageKey> = {
       add: "orgchart.done.added",
       move: "orgchart.done.moved",
       remove: "orgchart.done.removed",
@@ -364,6 +382,37 @@ export const createChartEdit = (deps: {
         }
       }),
       act(t("orgchart.edit.newAgentHere"), () => setCreating({ channelId }), "org-menu-new-agent"),
+      // The tree (spec 030): "Put under…" lists the channels that the rules allow, and a
+      // sub-channel has "Move to the top".
+      list(t("orgchart.edit.putUnder"), "org-menu-put-under", () => {
+        const choices = parentsFor(channelId, channels.channels())
+        const title = t("orgchart.edit.putUnderTitle", { channel: node.name })
+        return {
+          ...base,
+          label: title,
+          items: [
+            { label: title, heading: true, onSelect: () => {} },
+            ...(choices.length > 0
+              ? choices.map((c) =>
+                  act(
+                    c.name,
+                    () => void apply({ kind: "parent", channelId, parentId: c.id }),
+                    `org-menu-under-${c.id}`,
+                  ),
+                )
+              : [{ label: t("orgchart.edit.noParents"), disabled: true, onSelect: () => {} }]),
+          ],
+        }
+      }),
+      ...(node.parentKey !== null
+        ? [
+            act(
+              t("orgchart.edit.toTop"),
+              () => void apply({ kind: "parent", channelId, parentId: null }),
+              "org-menu-to-top",
+            ),
+          ]
+        : []),
       act(t("orgchart.edit.settings"), () => setSettingsOf(channelId), "org-menu-settings"),
     )
     return base
@@ -408,6 +457,7 @@ export const createChartEdit = (deps: {
         pointerId: number
         x: number
         y: number
+        channelId?: string
         agentId: string
         name: string
         from: string | null
@@ -421,11 +471,19 @@ export const createChartEdit = (deps: {
   const overAt = (x: number, y: number) => {
     const el = document.elementFromPoint(x, y)
     if (el?.closest("[data-drop-area]")) return DROP_AREA_KEY
+    if (el?.closest('[data-node][data-kind="root"]')) return ROOT_KEY
     return el?.closest<HTMLElement>('[data-node][data-kind="channel"]')?.dataset.key ?? undefined
   }
 
   const targetOf = (drag: Dragging, key: string | undefined) => {
     if (!key) return undefined
+    // A channel node: onto another channel node it goes under it, onto the root to the top.
+    if (drag.channelId) {
+      if (key === ROOT_KEY) return channelDropEdit(drag.channelId, null, channels.channels())
+      const to = deps.channelNode(key)?.channelId
+      return to ? channelDropEdit(drag.channelId, to, channels.channels()) : undefined
+    }
+    if (key === ROOT_KEY) return undefined
     // The drop area does what a drop on the channel node "No channel" does.
     if (key === DROP_AREA_KEY)
       return dropEdit(
@@ -462,6 +520,7 @@ export const createChartEdit = (deps: {
       setMenu(undefined)
     }
     setDragging({
+      ...(press.channelId ? { channelId: press.channelId } : {}),
       agentId: press.agentId,
       name: press.name,
       from: press.from,
@@ -519,6 +578,27 @@ export const createChartEdit = (deps: {
       agentId: node.agentId,
       name: node.name,
       from: from.channelId,
+      key: node.key,
+    }
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onCancel)
+    window.addEventListener("keydown", onDragKey, true)
+    window.addEventListener("keyup", onDragKey, true)
+  }
+  /** A press on a channel node (not "No channel"): it may become a drag in the tree (spec 030). */
+  const pressChannel = (event: PointerEvent, node: ChartChannel) => {
+    swallowClick = false
+    if (event.button !== 0 || !canEdit() || press || !node.channelId) return
+    press = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      channelId: node.channelId,
+      agentId: "",
+      name: node.name,
+      // The drop area "No channel" is for agents only.
+      from: null,
       key: node.key,
     }
     window.addEventListener("pointermove", onMove)
@@ -685,6 +765,7 @@ export const createChartEdit = (deps: {
     ringOf,
     pointerStays,
     pressAgent,
+    pressChannel,
     takeClick,
     Overlays,
     NoticeLine,

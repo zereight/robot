@@ -546,6 +546,8 @@ export const OrgChartPage = () => {
               data-lead={n().isLead}
               data-dim={nodeDim(props.nodeKey)}
               data-dragged={edit.dragging()?.key === props.nodeKey}
+              data-ring={isRoot ? edit.ringOf(ROOT_KEY) : undefined}
+              data-over={isRoot ? edit.dragging()?.over === ROOT_KEY : undefined}
               data-testid={isRoot ? "org-root" : "org-node"}
               aria-label={agentLabel(t, n())}
               aria-haspopup="menu"
@@ -623,6 +625,8 @@ export const OrgChartPage = () => {
       data-kind="root"
       data-key={ROOT_KEY}
       data-dim={nodeDim(ROOT_KEY)}
+      data-ring={edit.ringOf(ROOT_KEY)}
+      data-over={edit.dragging()?.over === ROOT_KEY}
       data-testid="org-root"
       aria-label={t("orgchart.you")}
       {...pointing(ROOT_KEY)}
@@ -654,6 +658,9 @@ export const OrgChartPage = () => {
             data-dim={nodeDim(props.nodeKey)}
             data-ring={edit.ringOf(props.nodeKey)}
             data-over={edit.dragging()?.over === props.nodeKey}
+            data-dragged={edit.dragging()?.key === props.nodeKey}
+            data-parent={c().parentKey ?? ""}
+            data-level={c().level}
             data-testid="org-channel"
             aria-label={channelLabel(t, c())}
             aria-haspopup={edit.hasMenu(c()) ? "menu" : undefined}
@@ -661,6 +668,7 @@ export const OrgChartPage = () => {
               const id = c().channelId
               if (!edit.takeClick() && id) openChannel(id)
             }}
+            onPointerDown={(event) => edit.pressChannel(event, c())}
             onContextMenu={(event) => {
               event.preventDefault()
               edit.openChannelMenu(c(), event.currentTarget, { x: event.clientX, y: event.clientY })

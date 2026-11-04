@@ -5,8 +5,11 @@ import {
   CHANNEL_PICTURE_EDGE,
   CHANNEL_TOPIC_MAX,
   type Channel,
+  channelParent,
   charLength,
   filterAgents,
+  type ParentRefusal,
+  parentChoices,
 } from "@robot/shared"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
@@ -15,6 +18,7 @@ import { squarePicture } from "../lib/image.ts"
 import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useChannels } from "../state/channels.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
 import { ChannelMark } from "../ui/ChannelMark.tsx"
@@ -29,6 +33,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const ui = useUi()
   const devices = useDevices()
   const agents = useAgents()
+  const channels = useChannels()
   const [name, setName] = createSignal(props.channel?.name ?? "")
   const [topic, setTopic] = createSignal(props.channel?.topic ?? "")
   const [instructions, setInstructions] = createSignal(props.channel?.instructions ?? "")
@@ -37,6 +42,33 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const [leadId, setLeadId] = createSignal<string | null>(props.channel?.leadId ?? null)
   const [sectionId, setSectionId] = createSignal<string | null>(props.channel?.sectionId ?? null)
   const [reviewParts, setReviewParts] = createSignal(props.channel?.reviewParts ?? false)
+  // The parent of the tree as it is now: a stored parent that is gone shows as "None" (spec 030).
+  const [parentId, setParentId] = createSignal<string | null>(
+    props.channel ? channelParent(channels.channels(), props.channel.id) : null,
+  )
+  /**
+   * The choices of "Parent channel": the other channels by name, each with the reason when the
+   * rules of the tree do not allow it. A channel that is not made yet has no lower channel.
+   */
+  const parents = createMemo(() => {
+    const all = channels.channels()
+    const reasons = new Map(
+      parentChoices(all, props.channel?.id ?? "").map((c) => [c.id, c.refusal]),
+    )
+    return all
+      .filter((c) => reasons.has(c.id))
+      .map((c) => ({ channel: c, refusal: reasons.get(c.id) }))
+      .sort((a, b) =>
+        a.channel.name.localeCompare(b.channel.name, undefined, { sensitivity: "base" }),
+      )
+  })
+  const reasonKey = (refusal: ParentRefusal) =>
+    refusal === "loop" ? "channels.parent.loop" : "channels.parent.levels"
+  /** The parent to send: unchanged when the user did not touch the field. */
+  const parentField = () =>
+    props.channel && parentId() === channelParent(channels.channels(), props.channel.id)
+      ? {}
+      : { parentId: parentId() }
   const [leadAnswers, setLeadAnswers] = createSignal(props.channel?.leadAnswers ?? true)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
@@ -112,6 +144,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             // A client sets it only with the switch "Can create and change agents" (spec 012).
             leadAnswers: leadAnswers(),
             ...sectionField(),
+            ...parentField(),
           },
         })
       } else {
@@ -125,6 +158,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           memberIds: members(),
           leadId: leadId(),
           ...sectionField(),
+          ...(parentId() ? { parentId: parentId() } : {}),
         })
         ui.selectPlace({ kind: "channel", id: channel.id })
       }
@@ -268,6 +302,36 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             </For>
           </select>
           <span class={styles.hint}>{t("channels.lead.hint")}</span>
+        </label>
+        <label class={styles.field}>
+          <span class={styles.label}>{t("channels.parent")}</span>
+          <select
+            class={styles.input}
+            onChange={(e) => setParentId(e.currentTarget.value || null)}
+            data-testid="channel-parent"
+          >
+            <option value="" selected={parentId() === null}>
+              {t("channels.parent.none")}
+            </option>
+            <For each={parents()}>
+              {(choice) => (
+                <option
+                  value={choice.channel.id}
+                  selected={parentId() === choice.channel.id}
+                  disabled={choice.refusal !== undefined && parentId() !== choice.channel.id}
+                  data-refusal={choice.refusal ?? ""}
+                >
+                  {choice.refusal
+                    ? t("channels.parent.option", {
+                        name: choice.channel.name,
+                        reason: t(reasonKey(choice.refusal)),
+                      })
+                    : choice.channel.name}
+                </option>
+              )}
+            </For>
+          </select>
+          <span class={styles.hint}>{t("channels.parent.hint")}</span>
         </label>
         <label class={styles.field}>
           <span class={styles.label}>{t("channels.instructions")}</span>

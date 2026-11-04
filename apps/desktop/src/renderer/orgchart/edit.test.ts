@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   agentsFor,
+  channelDropEdit,
   channelsFor,
   dropEdit,
   EDGE_PX,
@@ -10,6 +11,7 @@ import {
   leavingOf,
   NOTICE_MS,
   noticeMs,
+  parentsFor,
   planEdit,
   UNDONE_MS,
   undoSteps,
@@ -216,5 +218,65 @@ describe("the lines at the bottom of the canvas", () => {
     expect(noticeMs("done")).toBe(10_000)
     expect(noticeMs("refused")).toBe(10_000)
     expect(noticeMs("undone")).toBe(3_000)
+  })
+})
+
+describe("the tree on the chart (spec 029, 030)", () => {
+  // Product > Docs > Site, and Ops and Art at the top.
+  const product: EditChannel = { id: "product", name: "Product", leadId: null, memberIds: [] }
+  const docsIn: EditChannel = { ...docs, parentId: "product" }
+  const site: EditChannel = {
+    id: "site",
+    name: "Site",
+    leadId: null,
+    memberIds: [],
+    parentId: "docs",
+  }
+  const tree = [product, docsIn, site, ops, art]
+
+  test('"Put under…" lists the channels that the rules allow, not the parent it has now', () => {
+    // Product takes 3 levels: no channel can hold it.
+    expect(parentsFor("product", tree).map((c) => c.id)).toEqual([])
+    // Docs (with Site) takes 2 levels: under Art or Ops, not under Product (its parent) or Site.
+    expect(parentsFor("docs", tree).map((c) => c.id)).toEqual(["art", "ops"])
+    // Ops can go under Art, Docs or Product, not under Site (a fourth level).
+    expect(parentsFor("ops", tree).map((c) => c.id)).toEqual(["art", "docs", "product"])
+  })
+
+  test("a drop of a channel node: on an allowed channel it goes under it, on the root to the top", () => {
+    expect(channelDropEdit("ops", "docs", tree)).toEqual({
+      kind: "parent",
+      channelId: "ops",
+      parentId: "docs",
+    })
+    // Its own sub-channel, itself, its parent now, and a fourth level: no ring, no change.
+    expect(channelDropEdit("product", "docs", tree)).toBeUndefined()
+    expect(channelDropEdit("ops", "ops", tree)).toBeUndefined()
+    expect(channelDropEdit("site", "docs", tree)).toBeUndefined()
+    expect(channelDropEdit("ops", "site", tree)).toBeUndefined()
+    // The root: only a sub-channel moves to the top.
+    expect(channelDropEdit("site", null, tree)).toEqual({
+      kind: "parent",
+      channelId: "site",
+      parentId: null,
+    })
+    expect(channelDropEdit("ops", null, tree)).toBeUndefined()
+  })
+
+  test("a change of the parent has one patch, and Undo puts the parent back", () => {
+    const plan = planEdit({ kind: "parent", channelId: "site", parentId: null }, tree)
+    expect(plan?.steps).toEqual([{ channelId: "site", patch: { parentId: null } }])
+    expect(plan?.before).toEqual([{ kind: "parent", channelId: "site", parentId: "docs" }])
+    const moved = tree.map((c) => (c.id === "site" ? { ...c, parentId: null } : c))
+    expect(undoSteps(plan?.before ?? [], moved)).toEqual([
+      { channelId: "site", patch: { parentId: "docs" } },
+    ])
+    // A channel that is gone is left out.
+    expect(
+      undoSteps(
+        plan?.before ?? [],
+        moved.filter((c) => c.id !== "site"),
+      ),
+    ).toEqual([])
   })
 })

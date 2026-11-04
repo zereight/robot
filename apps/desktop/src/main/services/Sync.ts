@@ -187,6 +187,12 @@ const wall = () => Date.now() + (Number(process.env.ROBOT_SYNC_CLOCK_SKEW_MS) ||
 const HEARD_MAX_AGE_MS = 5 * 60_000
 const SNAPSHOT_DELAY_MS = Math.max(0, Number(process.env.ROBOT_SYNC_DELAY_MS) || 0)
 const yieldNow = () => new Promise<void>((resolve) => setImmediate(resolve))
+/**
+ * How long no batch of changes must come before the channel tree is checked (spec 030, "Repair").
+ * The batches of one sync follow each other with no pause, so this time only has to be longer than
+ * the gap between two of them. Tests turn it (`ROBOT_SYNC_REPAIR_MS`).
+ */
+const repairQuietMs = () => Math.max(0, Number(process.env.ROBOT_SYNC_REPAIR_MS ?? 800) || 0)
 const invalid = () => new AppError({ code: "invalid_input" })
 
 export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync") {
@@ -1067,10 +1073,51 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         await send(p)
       }
 
+      // ------------------------------------------------------------------ the channel tree
+      // The tree is checked after the sync has applied all the changes that it has, not between the
+      // batches of one sync (spec 030, "Repair"). A set of changes that makes a valid tree can cross
+      // in two batches, and the first one alone can show a loop that the second one removes. A batch
+      // does not say if more follow, so the check waits until no batch has come for a short time.
+      // The tree on the screen is safe in that time: the reading of the tree sets a broken line
+      // aside (`treeParents`).
+      let repairDue = false
+      let repairTimer: ReturnType<typeof setTimeout> | undefined
+      const repairNow = () => {
+        if (repairTimer) clearTimeout(repairTimer)
+        repairTimer = undefined
+        if (closed) return
+        // A first copy is checked when it is whole (`finishCopy`): it holds the channels in parts.
+        if (pairRow()?.phase === "copying") return
+        repairDue = false
+        touched(engine.repairTree())
+      }
+      /** The check is due. Each batch that comes in the meantime moves it back. */
+      const repairSoon = () => {
+        repairDue = true
+        if (closed) return
+        if (repairTimer) clearTimeout(repairTimer)
+        repairTimer = setTimeout(repairNow, repairQuietMs())
+        repairTimer.unref?.()
+      }
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          if (repairTimer) clearTimeout(repairTimer)
+        }),
+      )
+      // The app can close in that time. The next start checks the tree again.
+      if (pairRow()) repairSoon()
+
       const finishCopy = () => {
         engine.settleInitial()
+        // The channels came in parts, so the tree is checked now that the copy is whole (spec 030,
+        // "Repair").
+        if (repairTimer) clearTimeout(repairTimer)
+        repairTimer = undefined
+        repairDue = false
+        const repaired = engine.repairTree()
         updatePair({ phase: "live", synced_at: Date.now() })
         attendAll()
+        touched(repaired)
         changed()
       }
 
@@ -1243,6 +1290,13 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
           finishCopy()
         }
         touched(result.touches, parsed.snap === undefined)
+        // A first copy is checked when it is whole. Changes made since: the check waits for the
+        // end of the flow of batches.
+        if (parsed.snap === undefined) {
+          if (result.touches.some((t) => t.kind === "channel" && t.action !== "deleted"))
+            repairDue = true
+          if (repairDue) repairSoon()
+        }
         if (parsed.refused > 0) console.error("sync: refused changes", parsed.refused)
         // Changes that came in are not news to the other computer.
         return { applied: result.applied, dropped: result.dropped, refused: parsed.refused }

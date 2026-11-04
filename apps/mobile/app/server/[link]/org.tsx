@@ -120,7 +120,11 @@ const List = (props: { readonly link: string; readonly list: ReturnType<typeof b
       </View>
 
       {list.blocks.map((block) => (
-        <View key={block.key} style={styles.block}>
+        <View
+          key={block.key}
+          style={[styles.block, { marginLeft: space.l * (block.level - 1) }]}
+          testID={`org.blockBox.${block.name || "none"}`}
+        >
           <BlockHeader link={link} block={block} />
           <View style={[styles.card, cardColors(palette)]}>
             {block.rows.map((row, index) => (

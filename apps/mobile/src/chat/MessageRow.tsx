@@ -280,18 +280,23 @@ const Part = (props: {
                       t("chat.note.handed_over", { name: part.toName })
                     : part.note === "kept_going"
                       ? t("chat.note.kept_going", { n: part.n, of: part.of })
-                      : part.note === "backup_goes_on"
-                        ? part.until === null
-                          ? t("chat.note.backup_goes_on", { main: part.main, backup: part.backup })
-                          : t("chat.note.backup_goes_on_until", {
-                              main: part.main,
-                              backup: part.backup,
-                              time: new Date(part.until).toLocaleTimeString(locale, {
-                                hour: "numeric",
-                                minute: "2-digit",
-                              }),
-                            })
-                        : t(`chat.note.starter.${part.what}.${part.why}`, { name: part.name })}
+                      : part.note === "tree_repaired"
+                        ? t(`chat.note.tree_repaired.${part.why}`)
+                        : part.note === "backup_goes_on"
+                          ? part.until === null
+                            ? t("chat.note.backup_goes_on", {
+                                main: part.main,
+                                backup: part.backup,
+                              })
+                            : t("chat.note.backup_goes_on_until", {
+                                main: part.main,
+                                backup: part.backup,
+                                time: new Date(part.until).toLocaleTimeString(locale, {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                }),
+                              })
+                          : t(`chat.note.starter.${part.what}.${part.why}`, { name: part.name })}
         </Text>
       )
     case "tool":

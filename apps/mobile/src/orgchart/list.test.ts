@@ -26,7 +26,15 @@ const channel = (
   id: string,
   members: readonly string[],
   extra: Partial<Omit<OrgChannel, "id" | "memberIds">> = {},
-): OrgChannel => ({ id, name: id, createdAt: 1, leadId: null, memberIds: members, ...extra })
+): OrgChannel => ({
+  id,
+  name: id,
+  createdAt: 1,
+  leadId: null,
+  memberIds: members,
+  parentId: null,
+  ...extra,
+})
 const handoff = (from: string, to: string, count = 1, newest = 1): OrgHandoff => ({
   from,
   to,
@@ -415,5 +423,35 @@ describe("the list of the org chart on the phone", () => {
     // The model has structure lines and a lead line. None of them is a row.
     expect(buildChart(snapshot(parts)).lines.length).toBeGreaterThan(0)
     expect(listOf(parts).handoffs).toEqual([])
+  })
+})
+
+describe("sub-channels (spec 029, 030)", () => {
+  test("the block of a sub-channel is one level under the block of its parent", () => {
+    const list = buildOrgList(
+      buildChart({
+        ...snapshot({}),
+        agents: [agent("a"), agent("b"), agent("c")],
+        channels: [
+          channel("product", ["a"]),
+          channel("docs", ["b"], { parentId: "product" }),
+          channel("site", ["c"], { parentId: "docs" }),
+        ],
+      }),
+    )
+    expect(list.blocks.map((b) => [b.name, b.level])).toEqual([
+      ["product", 1],
+      ["docs", 2],
+      ["site", 3],
+    ])
+  })
+
+  test("a server of an older build sends no level: every block is a top block", () => {
+    const model = buildChart(snapshot({ agents: [agent("a")] }))
+    const old = {
+      ...model,
+      channels: model.channels.map(({ level: _level, parentKey: _parent, ...rest }) => rest),
+    } as unknown as ChartModel
+    expect(buildOrgList(old).blocks.map((b) => b.level)).toEqual([1])
   })
 })

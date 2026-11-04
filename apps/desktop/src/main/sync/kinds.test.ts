@@ -902,6 +902,16 @@ describe("a handover syncs as messages and a thread do (spec 003, 007, 019)", ()
       { kind: "note", note: "kept_going", n: 1, of: 8, extra: "x" },
     ])
       expect(opOf(fields, [bad]), JSON.stringify(bad)).toBeUndefined()
+    // The muted line of a repaired channel tree (spec 030, "Repair"): one of two reasons and nothing else.
+    for (const why of ["loop", "levels"])
+      expect(opOf(fields, [{ kind: "note", note: "tree_repaired", why }]), why).toBeDefined()
+    for (const bad of [
+      { kind: "note", note: "tree_repaired" },
+      { kind: "note", note: "tree_repaired", why: "other" },
+      { kind: "note", note: "tree_repaired", why: 3 },
+      { kind: "note", note: "tree_repaired", why: "loop", extra: "x" },
+    ])
+      expect(opOf(fields, [bad]), JSON.stringify(bad)).toBeUndefined()
     for (const bad of [
       { kind: "note", note: "connection_held" },
       { kind: "note", note: "connection_held", name: "" },
@@ -2050,5 +2060,51 @@ describe("the outside mark of a place and the program mark of a message sync (sp
         op("message", "m-1", { ...marked, programMark: bad }),
         JSON.stringify(bad),
       ).toBeUndefined()
+  })
+})
+
+describe("the parent channel crosses with the channel (spec 030, 019)", () => {
+  const op = (kind: string, id: string, fields: Record<string, unknown>) => ({
+    k: kind,
+    i: id,
+    o: "dev-a",
+    f: Object.fromEntries(Object.entries(fields).map(([n, v]) => [n, { v, s: stamp }])),
+  })
+
+  test("the parent is a field of the channel; a change reaches the other computer", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-parent")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    expect(KINDS.channel.read(ctxA, a.channel.id)?.fields.parentChannel).toBeNull()
+    a.db.run("UPDATE channel SET parent_channel_id = 'up' WHERE id = ?", a.channel.id)
+    const fields = copy(KINDS.channel.read(ctxA, a.channel.id)?.fields) as Fields
+    expect(fields.parentChannel).toBe("up")
+    expect(parseOp(op("channel", a.channel.id, fields), NOW)).toBeDefined()
+    expect(
+      parseOp(op("channel", a.channel.id, { ...fields, parentChannel: 3 }), NOW),
+    ).toBeUndefined()
+
+    // The parent has not come yet: the row is made all the same, and the field waits for it.
+    const b = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(b, a.channel.id, { ...fields, members: [] })).toBe(true)
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.parentChannel).toBe("up")
+    KINDS.channel.write(b, a.channel.id, { parentChannel: null })
+    expect(KINDS.channel.read(b, a.channel.id)?.fields.parentChannel).toBeNull()
+  })
+
+  test("a computer of an older step sends no parent: the field stays as it is", async () => {
+    const a = await source()
+    const dir = join(testRuntime().dataDir, "kinds-parent-old")
+    const ctxA: Ctx = { ...target(openDatabase(":memory:"), dir), db: a.db, self: "dev-a" }
+    const { parentChannel: _drop, ...older } = copy(
+      KINDS.channel.read(ctxA, a.channel.id)?.fields,
+    ) as Fields
+    expect(parseOp(op("channel", "older", older), NOW)).toBeDefined()
+    const b = target(openDatabase(":memory:"), dir)
+    expect(KINDS.channel.create(b, "older", { ...older, members: [] })).toBe(true)
+    expect(KINDS.channel.read(b, "older")?.fields.parentChannel).toBeNull()
+    b.db.run("UPDATE channel SET parent_channel_id = 'up' WHERE id = 'older'")
+    KINDS.channel.write(b, "older", { topic: "New" })
+    expect(KINDS.channel.read(b, "older")?.fields.parentChannel).toBe("up")
   })
 })
