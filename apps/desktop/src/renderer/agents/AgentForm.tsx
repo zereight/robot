@@ -14,6 +14,7 @@ import {
   type Locale,
   levelNeedsConfirm,
   type MessageKey,
+  NEW_AGENT_EFFORT,
   nameKey,
   PERMISSION_LEVELS,
   type PermissionLevel,
@@ -538,7 +539,13 @@ export const AgentForm = (props: AgentFormProps) => {
 
       <div class={styles.field}>
         <span class={styles.label}>{t("agents.field.model")}</span>
-        <ModelPicker value={model()} onChange={setModel} />
+        {/* A new agent starts at the middle effort level, here and on a linked computer. An agent
+            that exists keeps its level (spec 002, flow 1). */}
+        <ModelPicker
+          value={model()}
+          onChange={setModel}
+          startEffort={props.agent ? undefined : NEW_AGENT_EFFORT}
+        />
       </div>
 
       <Show when={!remote()}>

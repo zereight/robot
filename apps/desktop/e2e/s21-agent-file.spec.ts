@@ -94,6 +94,8 @@ test("agent file: export two agents, import the file in an empty app", async () 
     "ROBot will make 2 agents, 1 routines (paused).",
   )
   await dialog.getByTestId("model-model").selectOption("o3-mini")
+  // The effort starts at "Default" in an import, though the model offers "Medium" (spec 002).
+  await expect(dialog.getByTestId("model-effort")).toHaveValue("")
   await shot(page, "s21-03-import")
   await dialog.getByTestId("agent-import-submit").click()
   await expect(dialog).toHaveCount(0)
