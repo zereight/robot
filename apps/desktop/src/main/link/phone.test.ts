@@ -13,6 +13,7 @@ import {
 import {
   ATTACH_BYTES,
   ATTACH_MAX,
+  type ChartModel,
   type ChatMessage,
   type MessagePart,
   messageText,
@@ -487,5 +488,37 @@ describe("the phone on a real computer", () => {
     await expect(
       phone.download(link.id, { agentId: pc.agent.id, path: "../secret.txt" }, () => {}),
     ).rejects.toThrow()
+  }, 30_000)
+
+  test("the phone asks for the org chart with the same request as a computer, and needs no switch", async () => {
+    const pc = await computer("Studio")
+    const phone = await openPhone()
+    await phone.setDeviceName("Pixel")
+    const { run } = await pair(pc, phone)
+    const link = await run.done
+    await waitFor(
+      () => view(phone, link.id).state,
+      (s) => s === "online",
+    )
+    // The switch "Can create and change agents" is off for a phone, and the request works.
+    await expect(phone.request(link.id, "agents.create", {})).rejects.toMatchObject({
+      code: "change_off",
+    })
+    const model = await phone.request<ChartModel>(link.id, "orgChart.model", {
+      serverId: pc.local.id,
+    })
+    // The model is ready for a list: the nodes in order, the state and the counts of each block.
+    expect(model.root).toBeNull()
+    expect(model.channels.map((c) => [c.name, c.memberCount])).toEqual([["", 1]])
+    expect(model.channels[0]?.nodes.map((n) => [n.name, n.state])).toEqual([["Ada", "idle"]])
+    expect(model.channels[0]?.counts).toEqual({ working: 0, waiting: 0, idle: 1, offline: 0 })
+    // A change on the computer shows in the next read. The phone stays online.
+    await pc.run(Agents.use((x) => x.update(pc.agent.id, { name: "Ada L" })))
+    const again = await waitFor(
+      () => phone.request<ChartModel>(link.id, "orgChart.model", { serverId: pc.local.id }),
+      (m) => m.channels[0]?.nodes[0]?.name === "Ada L",
+    )
+    expect(again.channels[0]?.nodes[0]?.name).toBe("Ada L")
+    expect(view(phone, link.id).state).toBe("online")
   }, 30_000)
 })

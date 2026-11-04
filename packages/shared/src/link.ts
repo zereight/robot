@@ -52,10 +52,10 @@ export const defaultCanChange = (kind: DeviceKind): boolean => kind !== "phone"
 
 /**
  * Page buttons that a client cannot use on a linked server (spec 012, "What a client can do").
- * The org chart (029) is here until the read of the chart of a linked server comes (S106, part 2):
- * a linked server then shows the line "Open this on <name>", and never the chart of this computer.
+ * They show the muted line "Open this on <name>". The org chart (029) is not here: a client shows
+ * the chart of the server, read only, from the ready model that the server sends.
  */
-export const CLIENT_BLOCKED_PAGES = ["today", "orgchart", "usage"] as const
+export const CLIENT_BLOCKED_PAGES = ["today", "usage"] as const
 
 /** A model that a device with the switch may pick (spec 012). It holds no key. */
 export interface ModelChoice {

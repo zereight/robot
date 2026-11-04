@@ -146,6 +146,9 @@ export const CLIENT_METHODS = [
   "workflows.run",
   "workflows.stop",
   "workflows.approve",
+  // The org chart of the server (spec 029, 012), as a ready model. It needs only the link: it is
+  // read only, and a phone asks for it the same way (spec 011).
+  "orgChart.model",
   // Only with the switch "Can create and change agents" (spec 012). Each one checks it again.
   "agents.create",
   "agents.update",
@@ -217,6 +220,8 @@ export const PUSHED_EVENTS = [
   "memory.changed",
   "workflows.changed",
   "workflows.run",
+  // The org chart changed (spec 029, 012): the whole ready model, so a client reads nothing again.
+  "orgChart.model",
 ] as const
 export type PushedEvent = (typeof PUSHED_EVENTS)[number]
 

@@ -32,7 +32,7 @@ import type {
 } from "./link.ts"
 import type { MemoryHistoryRow, MemoryItem, MemoryMode, MemoryProposal } from "./memory.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
-import type { OrgSnapshot } from "./orgChart.ts"
+import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
 import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
 import type {
@@ -665,6 +665,13 @@ export interface RpcMethods {
   /** The org chart of this computer (spec 029). It reads local data only and sends nothing out. */
   "orgChart.get": { input: undefined; output: OrgSnapshot }
   /**
+   * The org chart of a server as a ready model (spec 029, 012): the nodes, the order, the counts,
+   * the states and the cut labels of the running tasks, and nothing else about tasks. A linked
+   * computer and the phone ask this; it needs only the link. `serverId` is the server, as in
+   * `workflows.list`.
+   */
+  "orgChart.model": { input: { serverId: string }; output: ChartModel }
+  /**
    * Message search (spec 001): one page of the messages of a server that hold every word of the
    * text, newest first. A linked server answers it; while the link is offline the answer comes
    * from the saved messages and says so.
@@ -786,6 +793,12 @@ export interface RpcEvents {
   "today.changed": TodaySnapshot
   /** The org chart changed: the whole snapshot, so the window needs no second request (spec 029). */
   "orgChart.changed": OrgSnapshot
+  /**
+   * The org chart of a linked server changed: its whole ready model (spec 029, 012). A server
+   * pushes it to its linked devices. This computer sends it to no window of its own, so a window
+   * gets it only with the id of the linked server that sent it.
+   */
+  "orgChart.model": ChartModel
   "app.openPlace": PlaceTarget
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
   "app.openPage": { page: "workflows" | "teams"; serverId?: string }
