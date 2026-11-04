@@ -207,6 +207,9 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     snapping,
     setSnapping,
     saveWidth: () => update({ placeListWidth: ui.placeListWidth }),
+    /** Changes the width of the workflow side column on screen only. Save it when the drag ends. */
+    previewWorkflowSideWidth: (workflowSideWidth: number) => setUi({ workflowSideWidth }),
+    saveWorkflowSideWidth: () => update({ workflowSideWidth: ui.workflowSideWidth }),
   }
 }
 

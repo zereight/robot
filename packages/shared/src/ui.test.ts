@@ -4,6 +4,7 @@ import {
   allPlaces,
   builtInSection,
   clampPlaceListWidth,
+  clampWorkflowSideWidth,
   defaultUiState,
   filterPlaces,
   type Place,
@@ -12,6 +13,11 @@ import {
   sectionKind,
   summarize,
   UiState,
+  WORKFLOW_CANVAS_MIN,
+  WORKFLOW_HANDLE_WIDTH,
+  WORKFLOW_SIDE_DEFAULT,
+  WORKFLOW_SIDE_MAX,
+  WORKFLOW_SIDE_MIN,
 } from "./ui.ts"
 
 const place = (name: string, extra: Partial<Place> = {}): Place => ({
@@ -35,6 +41,32 @@ describe("ui state", () => {
     expect(clampPlaceListWidth(512)).toBe(400)
     expect(clampPlaceListWidth(301.4)).toBe(301)
     expect(Schema.is(UiState)({ ...defaultUiState, placeListWidth: 401 })).toBe(false)
+  })
+
+  test("the workflow side column keeps its default and stays between its limits", () => {
+    expect(defaultUiState.workflowSideWidth).toBe(WORKFLOW_SIDE_DEFAULT)
+    expect(
+      Schema.is(UiState)({ ...defaultUiState, workflowSideWidth: WORKFLOW_SIDE_MIN - 1 }),
+    ).toBe(false)
+    expect(
+      Schema.is(UiState)({ ...defaultUiState, workflowSideWidth: WORKFLOW_SIDE_MAX + 1 }),
+    ).toBe(false)
+  })
+
+  test("a width of the workflow side column is clamped to the limits, and rounded", () => {
+    expect(clampWorkflowSideWidth(100)).toBe(WORKFLOW_SIDE_MIN)
+    expect(clampWorkflowSideWidth(5000)).toBe(WORKFLOW_SIDE_MAX)
+    expect(clampWorkflowSideWidth(401.4)).toBe(401)
+  })
+
+  test("a small workspace leaves room for the canvas, and never goes under the lowest width", () => {
+    expect(clampWorkflowSideWidth(WORKFLOW_SIDE_MAX, 700)).toBe(
+      700 - WORKFLOW_CANVAS_MIN - WORKFLOW_HANDLE_WIDTH,
+    )
+    expect(clampWorkflowSideWidth(WORKFLOW_SIDE_MAX, 300)).toBe(WORKFLOW_SIDE_MIN)
+    expect(clampWorkflowSideWidth(0, 300)).toBe(WORKFLOW_SIDE_MIN)
+    // A wide workspace does not raise the highest width.
+    expect(clampWorkflowSideWidth(WORKFLOW_SIDE_MAX + 200, 3000)).toBe(WORKFLOW_SIDE_MAX)
   })
 
   test("search keeps only places whose name matches", () => {
