@@ -67,7 +67,7 @@ import { Handover } from "./services/Handover.ts"
 import { Host, type HostMethod, isHostMethod } from "./services/Host.ts"
 import { KeepAwake } from "./services/KeepAwake.ts"
 import { Knowledge } from "./services/Knowledge.ts"
-import { Memory } from "./services/Memory.ts"
+import { Memory, MemoryFilterSchema } from "./services/Memory.ts"
 import { MemoryCheck } from "./services/MemoryCheck.ts"
 import { Notifier } from "./services/Notifier.ts"
 import { Organization } from "./services/Organization.ts"
@@ -881,9 +881,25 @@ export const handlers: Handlers = {
       ),
     ),
   "memory.list": (input) =>
-    decode(Schema.Struct({ agentId: Schema.String, query: Schema.optionalKey(Schema.String) }))(
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        query: Schema.optionalKey(Schema.String),
+        filter: Schema.optionalKey(MemoryFilterSchema),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, query, filter }) =>
+        Memory.use((m) => m.list(agentId, query, filter)),
+      ),
+    ),
+  "memory.scopes": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) => Memory.use((m) => m.scopes(agentId))),
+    ),
+  "memory.move": (input) =>
+    decode(Schema.Struct({ id: Schema.String, channelId: Schema.NullOr(Schema.String) }))(
       input,
-    ).pipe(Effect.flatMap(({ agentId, query }) => Memory.use((m) => m.list(agentId, query)))),
+    ).pipe(Effect.flatMap(({ id, channelId }) => Memory.use((m) => m.move(id, channelId)))),
   // Only the window of this computer clears a mark: the method is not on the list of a linked
   // device, so the phone and a linked computer get "not allowed" (spec 007, 012).
   "placeMarks.clear": (input) =>

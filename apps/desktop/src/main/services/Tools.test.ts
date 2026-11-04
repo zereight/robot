@@ -424,6 +424,17 @@ describe("memory control", () => {
     })
   })
 
+  test("for_channel outside a channel is refused and tells the agent (spec 008, flow 6)", async () => {
+    const s = await setup("full")
+    await s.send(call("save_memory", { text: "Ship on Friday", for_channel: true }))
+    await s.finished()
+    const part = await s.toolPart()
+    expect(part).toMatchObject({ state: "failed" })
+    expect(part?.output).toContain("not a channel")
+    expect(part?.memory).toBeUndefined()
+    expect(await items(s)).toEqual([])
+  })
+
   test("the tool refuses a long text, and says so to the agent", async () => {
     const s = await setup("full")
     await s.send(call("save_memory", { text: "x".repeat(501) }))

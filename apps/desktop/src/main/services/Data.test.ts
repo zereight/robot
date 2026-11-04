@@ -633,6 +633,59 @@ describe("export and import", () => {
     expect(await b.run(Memory.use((m) => m.mode(id)))).toBe("ask")
   })
 
+  test("channel notes are in the archive and come back with their channel; a general item comes back general (spec 008, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-notes.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const ada = await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const channel = await a.run(
+      Channels.use((c) =>
+        c.create({
+          serverId: local.id,
+          name: "Launch",
+          topic: "",
+          memberIds: [ada.id],
+          leadId: null,
+        }),
+      ),
+    )
+    await a.run(Memory.use((m) => m.save(ada.id, "Launch is on Friday", undefined, channel.id)))
+    await a.run(Memory.use((m) => m.save(ada.id, "Likes tea")))
+    const [note] = await a.run(
+      Memory.use((m) => m.list(ada.id, undefined, { kind: "channel", id: channel.id })),
+    )
+    await a.run(Memory.use((m) => m.move(note?.id ?? "", null)))
+    await a.run(Memory.use((m) => m.move(note?.id ?? "", channel.id)))
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const [agent] = await b.run(Agents.use((x) => x.list(bLocal.id, false)))
+    const [kept] = await b.run(Channels.use((c) => c.list(bLocal.id)))
+    const items = await b.run(Memory.use((m) => m.list(agent?.id ?? "")))
+    expect(
+      items.map((i) => [i.text, i.channel?.id ?? null, i.channel?.member ?? null]).sort(),
+    ).toEqual([
+      ["Launch is on Friday", kept?.id ?? "", true],
+      ["Likes tea", null, null],
+    ])
+    // The history keeps the channel of each row, with its name.
+    const rows = await b.run(Memory.use((m) => m.history(agent?.id ?? "")))
+    expect(
+      rows
+        .filter((r) => r.kind === "moved")
+        .map((r) => [r.channelBefore?.name ?? null, r.channelAfter?.name ?? null]),
+    ).toEqual([
+      [null, "Launch"],
+      ["Launch", null],
+    ])
+  })
+
   test("user sections and the places in them come back in the same order", async () => {
     const out = join(testPlatform().dataDir, "export-sections.zip")
     const a = app({ save: out })

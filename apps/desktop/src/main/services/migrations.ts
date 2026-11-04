@@ -1118,6 +1118,25 @@ export const migrations: readonly string[] = [
   ALTER TABLE memory_proposal ADD COLUMN from_check INTEGER NOT NULL DEFAULT 0;
   `,
   `
+  -- Channel notes (spec 008, 004, S65). A memory item may name one channel: it is then a note
+  -- that the agent reads only in turns of that channel. NULL is a general item. There is no
+  -- foreign key: the delete of a channel removes its notes in code, so that each one gets a
+  -- history row, and a channel that sync removes takes its notes with it. The column syncs
+  -- with the item (the dirty trigger of the table watches every column).
+  ALTER TABLE memory ADD COLUMN channel_id TEXT;
+  CREATE INDEX memory_channel ON memory (channel_id);
+  -- The channel that a proposal would make its item a note of, or NULL for a general item. It is
+  -- not the place where the proposal was made. Proposals do not sync (spec 019).
+  ALTER TABLE memory_proposal ADD COLUMN channel_id TEXT;
+  -- The channel of the item before and after a change, with the name of the channel at that
+  -- time (the channel may be gone later). A move is a change of kind 'moved'. The actor
+  -- 'channel_deleted' is the delete of a channel. History does not sync.
+  ALTER TABLE memory_history ADD COLUMN channel_before TEXT;
+  ALTER TABLE memory_history ADD COLUMN channel_after TEXT;
+  ALTER TABLE memory_history ADD COLUMN channel_name_before TEXT;
+  ALTER TABLE memory_history ADD COLUMN channel_name_after TEXT;
+  `,
+  `
   -- The parent channel (spec 030, S109). NULL is a top channel, as every channel was before this
   -- step, so existing data keeps its meaning. The column has no foreign key: a sync (019) can bring
   -- a sub-channel before its parent, and a parent that is gone counts as no parent. When the user

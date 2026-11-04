@@ -26,6 +26,17 @@ export const isMemoryMode = (value: unknown): value is MemoryMode =>
 /** Where an item came from: the user, the agent's own save, or a proposal that the user accepted. */
 export type MemorySource = "user" | "agent" | "proposal"
 
+/**
+ * The channel of a channel note (spec 008, "Channel notes"). `member` is false when the agent is
+ * not a member of the channel now: the note is kept and is not read ("Not a member").
+ */
+export interface MemoryChannel {
+  readonly id: string
+  /** The name of the channel now, or null when the channel is gone. */
+  readonly name: string | null
+  readonly member: boolean
+}
+
 export interface MemoryItem {
   readonly id: string
   readonly agentId: string
@@ -33,7 +44,25 @@ export interface MemoryItem {
   readonly source: MemorySource
   readonly createdAt: number
   readonly updatedAt: number
+  /** The channel of a channel note, or null for a general item. */
+  readonly channel: MemoryChannel | null
 }
+
+/** A channel with the notes of one agent, or that the agent is a member of (spec 008, flow 6). */
+export interface MemoryScope {
+  readonly id: string
+  readonly name: string
+  /** How many notes of the agent name this channel. */
+  readonly notes: number
+  /** True when the agent is a member now. A move goes only to such a channel. */
+  readonly member: boolean
+}
+
+/** What the filter of the tab Items shows: all items, general items only, or one channel. */
+export type MemoryFilter =
+  | { readonly kind: "all" }
+  | { readonly kind: "general" }
+  | { readonly kind: "channel"; readonly id: string }
 
 /** Where a proposal was made: the direct chat of the agent or a channel. */
 export interface MemoryPlace {
@@ -50,13 +79,25 @@ export interface MemoryProposal {
   readonly text: string
   readonly createdAt: number
   readonly place: MemoryPlace | null
+  /** The channel that the item will be a note of, with its name now, or null for a general item. */
+  readonly channel: { readonly id: string; readonly name: string | null } | null
   /** True when a memory check made it (spec 008): the tab shows "From a memory check". */
   readonly fromCheck: boolean
 }
 
-/** Who made a change: the user, the agent, a proposal that the user accepted, or an undo. */
-export type MemoryActor = "user" | "agent" | "proposal" | "undo"
-export type MemoryChange = "added" | "edited" | "deleted"
+/**
+ * Who made a change: the user, the agent, a proposal that the user accepted, an undo, or the
+ * delete of a channel (`channel_deleted`, spec 008).
+ */
+export type MemoryActor = "user" | "agent" | "proposal" | "undo" | "channel_deleted"
+/** A move changes the channel of an item (spec 008, flow 6). */
+export type MemoryChange = "added" | "edited" | "deleted" | "moved"
+
+/** The channel of an item before or after a change. The name is the one at that time. */
+export interface MemoryChannelRef {
+  readonly id: string
+  readonly name: string | null
+}
 
 /**
  * Whether Undo works on a row. It is off when the item is not as the change left it (`newer`),
@@ -64,7 +105,7 @@ export type MemoryChange = "added" | "edited" | "deleted"
  */
 export type MemoryUndo =
   | { readonly on: true }
-  | { readonly on: false; readonly why: "newer" | "secret" }
+  | { readonly on: false; readonly why: "newer" | "secret" | "channel_gone" }
 
 export interface MemoryHistoryRow {
   readonly id: string
@@ -79,6 +120,10 @@ export interface MemoryHistoryRow {
   readonly undo: MemoryUndo
   /** True when an undo took this change back and that undo still stands. */
   readonly undone: boolean
+  /** The channel of the item before the change, or null for a general item (or an added item). */
+  readonly channelBefore: MemoryChannelRef | null
+  /** The channel of the item after the change, or null for a general item (or a deleted item). */
+  readonly channelAfter: MemoryChannelRef | null
 }
 
 /** The line in the chat: what the memory tool did. It holds ids only, no text. */
@@ -97,6 +142,8 @@ export type MemorySave =
   | { readonly kind: "secret" }
   /** Memory is off for this agent. */
   | { readonly kind: "off" }
+  /** The save names a channel, and the agent is not a member of it (or the channel is gone). */
+  | { readonly kind: "not_member" }
 
 /** The reason that a row shows when its Undo is off. */
 export const MEMORY_UNDO_NEWER = "A newer change exists. Undo that one first."
@@ -108,10 +155,16 @@ export const sameMemoryText = (a: string, b: string): boolean =>
 /** What the rule for Undo needs to know about one history row and its item. */
 export interface UndoFacts {
   readonly kind: MemoryChange
-  /** The text that the change left (added, edited). */
+  /** The text that the change left (added, edited, moved). */
   readonly after: string | null
   /** The text of the item now, or null when the item is missing. */
   readonly itemText: string | null
+  /** The channel that the change left, or null. */
+  readonly afterChannel?: string | null
+  /** The channel of the item now, or null. */
+  readonly itemChannel?: string | null
+  /** For a move: false when the channel that the item came from is gone. */
+  readonly backExists?: boolean
   /** True when an undo already put back what a deletion took away. */
   readonly revived: boolean
   /** True when the text of the row looks like a secret. */
@@ -126,7 +179,16 @@ export interface UndoFacts {
 export const memoryUndo = (f: UndoFacts): MemoryUndo => {
   if (f.secret) return { on: false, why: "secret" }
   if (f.kind === "deleted") return f.revived ? { on: false, why: "newer" } : { on: true }
-  return f.itemText !== null && f.itemText === f.after ? { on: true } : { on: false, why: "newer" }
+  // The item must be as the change left it: the same text, and the same channel.
+  if (
+    f.itemText === null ||
+    f.itemText !== f.after ||
+    (f.itemChannel ?? null) !== (f.afterChannel ?? null)
+  )
+    return { on: false, why: "newer" }
+  // A move goes back to the place it came from, so that place must still be there.
+  if (f.kind === "moved" && f.backExists === false) return { on: false, why: "channel_gone" }
+  return { on: true }
 }
 
 const words = (text: string) =>
@@ -141,7 +203,10 @@ const words = (text: string) =>
  * Picks the items that relate to a message, by shared words, best first and newest first among
  * equals, within the item and size limits. A small memory is given whole.
  */
-export const relevantMemory = (items: readonly MemoryItem[], message: string): MemoryItem[] => {
+export const relevantMemory = <T extends Pick<MemoryItem, "text" | "createdAt">>(
+  items: readonly T[],
+  message: string,
+): T[] => {
   const wanted = words(message)
   const scored = items
     .map((item) => {
@@ -153,7 +218,7 @@ export const relevantMemory = (items: readonly MemoryItem[], message: string): M
     })
     .filter((x) => items.length < MEMORY_ALL_BELOW || x.score > 0)
     .sort((a, b) => b.score - a.score || b.item.createdAt - a.item.createdAt)
-  const out: MemoryItem[] = []
+  const out: T[] = []
   let chars = 0
   for (const { item } of scored) {
     if (out.length >= MEMORY_ITEMS_MAX || chars + item.text.length > MEMORY_CHARS_MAX) break
