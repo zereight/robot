@@ -158,6 +158,20 @@ test("paste a picture or text into the box, drop files that have no path, and se
   expect(fileChip?.y ?? 0).toBeGreaterThan(text?.y ?? 0)
   await expect(page.getByTestId("message-pictures")).toHaveCount(1)
   await shot(page, "paste-02-sent")
+
+  // A press on a small picture shows it enlarged, at the full size of the file. Escape closes it.
+  await page.getByRole("button", { name: "Enlarge wide.png" }).click()
+  const viewer = page.getByTestId("picture-viewer")
+  await expect(viewer).toBeVisible()
+  const large = page.getByTestId("picture-viewer-image")
+  await expect
+    .poll(() => large.evaluate((i: HTMLImageElement) => [i.naturalWidth, i.naturalHeight]))
+    .toEqual([600, 300])
+  const enlarged = await large.boundingBox()
+  expect(enlarged?.width).toBeGreaterThan(shown?.width ?? 0)
+  await shot(page, "paste-03-enlarged")
+  await page.keyboard.press("Escape")
+  await expect(viewer).toHaveCount(0)
   const copies = readdirSync(userData, { withFileTypes: true, recursive: true })
     .filter((e) => e.isFile() && e.parentPath.endsWith("attachments"))
     .sort((a, b) => a.name.localeCompare(b.name))

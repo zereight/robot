@@ -452,6 +452,8 @@ export const ko: Record<MessageKey, string> = {
   "chat.copyCode": "코드 복사",
   "picture.load": "이미지 불러오기",
   "picture.alt.empty": "이미지",
+  "picture.enlarge": "{name} 크게 보기",
+  "picture.close": "닫기",
   "chat.edit": "수정",
   "chat.edited": "(수정됨)",
   "chat.save": "저장",
