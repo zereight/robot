@@ -905,6 +905,36 @@ export const migrations: readonly string[] = [
   ALTER TABLE channel_message ADD COLUMN teams_sender TEXT;
   `,
   `
+  -- The records of the Teams link (spec 028, "Records"): an answer that did not go out, with the
+  -- time, the reason, the place and the task. A record holds no text of a message and no name of a
+  -- sender. The service keeps the newest 50. The table belongs to this computer and this profile:
+  -- sync (019) does not carry it, and an export deletes it. The place and the task have no foreign
+  -- key: an agent, a channel or a task that goes leaves the record, and the window shows no name.
+  CREATE TABLE teams_record (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    place_kind TEXT,
+    place_id TEXT,
+    task_id TEXT
+  );
+  `,
+  `
+  -- The pause of the Teams link (spec 028, "States and errors"): why it paused ('read' or 'send')
+  -- and when. NULL while the link is not paused. A restart keeps the pause until the user presses
+  -- "Resume". The columns hold no text of a message and no name.
+  ALTER TABLE teams_link ADD COLUMN paused TEXT;
+  ALTER TABLE teams_link ADD COLUMN paused_at INTEGER;
+  `,
+  `
+  -- How a channel job began, when a message from Teams began it (spec 028, "Answers and the
+  -- outbox"): 'lead' (the lead read it) or 'mention' (a member that was chosen answers it). The
+  -- parts, the retries, the nudges and the requests for changes of the job keep it. NULL for any
+  -- other task. The link reads it to know which work sends text to Teams. Sync (019) does not
+  -- carry it: the link belongs to one computer.
+  ALTER TABLE task ADD COLUMN teams_job TEXT;
+  `,
+  `
   -- Connections (spec 018): outside tool providers that speak MCP. A connection belongs to this
   -- computer and does not sync (spec 019): the table has no dirty trigger. Secret values are in the
   -- system keychain and never in this table (spec 014): \`env\` and \`headers\` are JSON lists of

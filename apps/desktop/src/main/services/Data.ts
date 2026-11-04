@@ -165,7 +165,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
             out.exec("DELETE FROM agent_browser; DELETE FROM browser_profile")
             // The Teams link and its sign-in belong to one computer and one profile (spec 028,
             // 014): an export holds none, so an import brings none back.
-            out.exec("DELETE FROM teams_link")
+            out.exec("DELETE FROM teams_link; DELETE FROM teams_record")
             // A saved secret keeps its name, agent, origin and way to send, never its value or the
             // name of the value in the keychain of this computer (spec 020).
             out.exec("UPDATE saved_secret SET value_ref = NULL; DELETE FROM saved_secret_drop")

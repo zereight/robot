@@ -15,6 +15,7 @@ import {
   Eye,
   Gauge,
   KeyRound,
+  Link2,
   MessageCircleQuestion,
   OctagonX,
   ShieldAlert,
@@ -44,6 +45,8 @@ const ICONS: Record<TodayKind, () => JSX.Element> = {
   routine_paused: () => <CirclePause size={18} />,
   account_signin: () => <KeyRound size={18} />,
   account_limit: () => <Gauge size={18} />,
+  teams_signed_out: () => <Link2 size={18} />,
+  teams_paused: () => <CirclePause size={18} />,
   routine_done: () => <CircleCheck size={18} />,
   workflow_done: () => <CircleCheck size={18} />,
   routine_next: () => <CalendarClock size={18} />,
@@ -126,6 +129,9 @@ export const TodayPage = () => {
       case "account":
         setOpenTarget({ kind: "account", id: target.id })
         ui.openSettings("providers")
+        return
+      case "teams":
+        ui.openSettings("teams")
     }
   }
 

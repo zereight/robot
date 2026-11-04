@@ -6,6 +6,7 @@ import {
   sameDay,
   type TodayReason,
   type TodayRow,
+  teamsPauseReasonKey,
   todayLine,
 } from "@robot/shared"
 
@@ -55,6 +56,12 @@ export const rowLine = (t: Translate, locale: Locale, row: TodayRow, now = Date.
           ? t("today.line.limit", { name: row.text })
           : t("today.line.limitReset", { name: row.text, time: time(row.resetsAt) }),
       )
+    case "teams_signed_out":
+      return todayLine(t("today.line.teamsSignedOut"))
+    case "teams_paused": {
+      const why = row.reason?.code === "send" ? "send" : "read"
+      return todayLine(t("today.line.teamsPaused", { reason: t(teamsPauseReasonKey(why)) }))
+    }
     case "routine_next":
     case "workflow_next":
       return todayLine(t("today.line.due", { name: row.text, time: time(row.at) }))

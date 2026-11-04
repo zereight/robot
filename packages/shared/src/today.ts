@@ -1,5 +1,6 @@
 import type { PlaceTarget } from "./notifications.ts"
 import type { TaskSource } from "./task.ts"
+import type { TeamsAttention } from "./teamsPause.ts"
 
 // The Today page (spec 021). This file holds the rules of the four groups as plain functions of
 // facts, so the main process reads the facts and the tests can run the rules with a fake clock.
@@ -29,6 +30,8 @@ export type TodayKind =
   | "routine_paused"
   | "account_signin"
   | "account_limit"
+  | "teams_signed_out"
+  | "teams_paused"
   | "routine_done"
   | "workflow_done"
   | "routine_next"
@@ -41,6 +44,8 @@ export type TodayOpen =
   | { readonly kind: "routine"; readonly id: string }
   | { readonly kind: "workflow"; readonly id: string }
   | { readonly kind: "account"; readonly id: string }
+  /** Settings, Teams (spec 028). */
+  | { readonly kind: "teams" }
 
 /** Where the work of a row happened. The name is the channel, routine or workflow. */
 export interface TodayWhere {
@@ -358,6 +363,28 @@ export const accountProblem = (account: AccountFacts, now: number): TodayRow | n
   }
 }
 
+/**
+ * The row of the Teams link for "Went wrong", or null (spec 021, 028). It shows while the link is
+ * signed out or paused, and it stays until the state changes, also from an earlier day. It holds
+ * no text of a message and no name: the line comes from the state and the reason.
+ */
+export const teamsProblem = (attention: TeamsAttention | null): TodayRow | null => {
+  if (!attention) return null
+  return {
+    id: "teams:link",
+    kind: attention.state === "paused" ? "teams_paused" : "teams_signed_out",
+    agentId: null,
+    text: "",
+    where: null,
+    computer: null,
+    reason: attention.reason === null ? null : { code: attention.reason, detail: "" },
+    count: 0,
+    at: attention.since,
+    resetsAt: null,
+    open: { kind: "teams" },
+  }
+}
+
 const byTime = (rows: TodayRow[], newestFirst: boolean) =>
   rows.sort((a, b) => (newestFirst ? b.at - a.at : a.at - b.at) || a.id.localeCompare(b.id))
 
@@ -409,6 +436,7 @@ export const wrongRows = (
   accounts: readonly AccountFacts[],
   day: { start: number; end: number },
   now: number,
+  teams: TeamsAttention | null = null,
 ) =>
   byTime(
     [
@@ -431,6 +459,7 @@ export const wrongRows = (
         ),
       ...routines.flatMap((r) => routineProblem(r, day) ?? []),
       ...accounts.flatMap((a) => accountProblem(a, now) ?? []),
+      ...[teamsProblem(teams)].flatMap((row) => row ?? []),
     ],
     true,
   )

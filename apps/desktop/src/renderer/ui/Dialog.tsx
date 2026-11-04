@@ -46,6 +46,8 @@ export const Dialog = (
     const onKey = (event: KeyboardEvent) => {
       // A box above this one handles Escape. This one waits.
       if (stack.at(-1) !== token) return
+      // A list inside the box that closes on Escape by itself keeps the key (it marks itself).
+      if (event.target instanceof Element && event.target.closest("[data-owns-escape]")) return
       if (event.key === "Escape" && !closing() && props.dismissible !== false) {
         event.stopPropagation()
         props.onClose()

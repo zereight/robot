@@ -24,8 +24,22 @@ export const TEAMS_PAGE = {
   /** An element that only a sign-in form holds (the field for the name or the password). */
   signInForm: 'input[type="password"], input[name="loginfmt"], input[name="passwd"]',
 
+  /**
+   * Hosts of the Teams app. A host matches when it is equal to one of these or ends with a dot and
+   * one of these. A signed-out user never stays on one of these hosts: Teams sends the user to the
+   * sign-in.
+   */
+  appHosts: ["teams.cloud.microsoft", "teams.microsoft.com", "teams.live.com"],
+
   /** An element that only the signed-in Teams app holds: its chat list or its app bar. */
   appShell: '[data-tid="app-bar"], [data-tid="chat-list"], [data-tid="chat-pane-list"]',
+
+  /**
+   * The standard regions of a page that has loaded the app (the accessibility roles of its lists
+   * and its panes). It is the second proof of the app, for the day when `appShell` does not match
+   * the real page. It counts only on a host of `appHosts`.
+   */
+  appLandmarks: '[role="tree"], [role="treeitem"], [role="navigation"], [role="main"], nav, main',
 
   /** The title in the header of the open chat. */
   openChatTitle: '[data-tid="chat-title"], [data-tid="chat-header-title"]',
@@ -57,6 +71,19 @@ export const TEAMS_PAGE = {
   messageTime: "time[datetime]",
   /** An element inside a message that only a message of the signed-in user holds. */
   messageOwn: '[data-tid="my-message-marker"]',
+
+  // --- Typing and sending (S103) ---------------------------------------------------------------
+  // STATUS: GUESSES, as all values in this file. No one checked them on the real page. The app types
+  // the text into the message box with the editing commands of the page (`insertText`) and presses
+  // the send button. It does not press a key. If the real page ignores a typed text of a script, the
+  // box keeps the text after the send: the app sees that, clears the box, and counts a failed try.
+  // Then no answer reaches Teams. Fix these values first.
+
+  /** The message box of the open chat: the element that takes the typed text. */
+  messageBox:
+    '[data-tid="ckeditor"][contenteditable="true"], [role="textbox"][contenteditable="true"]',
+  /** The button that sends the typed message. */
+  sendButton: '[data-tid="newMessageCommands-send"], [data-tid="send-message-button"]',
 } as const
 
 export type TeamsPageSelectors = typeof TEAMS_PAGE

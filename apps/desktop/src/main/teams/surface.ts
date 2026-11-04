@@ -4,14 +4,15 @@ import {
   type TeamsChatRead,
   type TeamsLook,
   type TeamsMessage,
+  teamsNameKey,
 } from "@robot/shared"
 import type { PageBounds } from "../services/Platform.ts"
 import { TEAMS_PAGE, type TeamsPageSelectors } from "./teamsPageSelectors.ts"
 
 /**
  * The Teams page, as the Teams link sees it (spec 028). The link opens the chat, reads its title
- * and the sign-in, and (S102) reads the messages of the open chat. The surface has no way to type:
- * the slice that sends adds that method here.
+ * and the sign-in, reads the messages of the open chat (S102), and types an answer into the message
+ * box and sends it (S103).
  *
  * The real one runs scripts in a web view. A test gives the stand-in Teams (`fakeChat.testing.ts`).
  */
@@ -31,6 +32,13 @@ export interface TeamsSurface {
    * read.
    */
   readMessages(): Promise<TeamsChatRead>
+  /**
+   * One try to write a message in the linked chat. It opens the chat when no chat is open. It reads
+   * the title of the open chat in the same script that types: when the title does not hold
+   * `chatTitle`, nothing is typed (`wrongChat`). Any other trouble, such as a page that does not
+   * take the message, is `failed`. It never rejects.
+   */
+  send(text: string, chatTitle: string): Promise<TeamsSendResult>
   /** Shows the page in a place of the app window, or hides it with `undefined`. */
   place(bounds: PageBounds | undefined): void
   /** Lets the input of the user reach the page (the user signs in by hand), or keeps it out. */
@@ -38,6 +46,13 @@ export interface TeamsSurface {
   /** Closes the page at once. */
   close(): void
 }
+
+/** The result of one try to send a message. */
+export type TeamsSendResult =
+  | { readonly kind: "sent" }
+  /** The open chat has another title. Nothing was typed. */
+  | { readonly kind: "wrongChat" }
+  | { readonly kind: "failed" }
 
 /** What the surface needs from a web view. The real one is the browser page of the platform. */
 export interface TeamsPageDriver {
@@ -66,6 +81,8 @@ export interface RawTeamsRead {
   readonly online: boolean
   readonly signInForm: boolean
   readonly shell: boolean
+  /** The page holds the standard regions of a loaded app (`appLandmarks`). */
+  readonly landmarks: boolean
   readonly openTitle: string | null
   readonly chatTitles: readonly string[]
 }
@@ -82,6 +99,7 @@ export const readScript = (sel: TeamsPageSelectors = TEAMS_PAGE): string => `(()
     online: navigator.onLine !== false,
     signInForm: first(sel.signInForm) !== null,
     shell: first(sel.appShell) !== null,
+    landmarks: first(sel.appLandmarks) !== null,
     openTitle: open === "" ? null : open,
     chatTitles: items.map((item) => text(first(sel.chatListItemTitle, item) || item)),
   }
@@ -133,6 +151,63 @@ export const clickChatScript = (
   return true
 })()`
 
+/** What the script that sends gives back. Plain data. */
+export type RawSend =
+  | { readonly kind: "sent" }
+  | { readonly kind: "wrongChat"; readonly title: string }
+  | {
+      readonly kind: "noTitle" | "noBox" | "noSend" | "notTyped" | "offline"
+    }
+
+/**
+ * The script that types a message and sends it. It reads the title of the open chat first, in the
+ * same run, and types nothing when the title does not hold the wanted text. `wanted` is the key of
+ * the title of the link (`teamsNameKey`): the compare is the one of `holdsChatTitle`.
+ */
+export const sendScript = (
+  text: string,
+  wanted: string,
+  sel: TeamsPageSelectors = TEAMS_PAGE,
+): string => `(() => {
+  const sel = ${JSON.stringify(sel)}
+  const body = ${JSON.stringify(text)}
+  const wanted = ${JSON.stringify(wanted)}
+  const first = (selector) => document.querySelector(selector)
+  const text = (el) => (el ? String(el.innerText || el.textContent || "").trim() : "")
+  const key = (value) => String(value).normalize("NFC").trim().replace(/\\s+/g, " ").toLocaleLowerCase()
+  if (navigator.onLine === false) return { kind: "offline" }
+  const title = text(first(sel.openChatTitle))
+  if (title === "") return { kind: "noTitle" }
+  if (wanted === "" || !key(title).includes(wanted)) return { kind: "wrongChat", title }
+  const box = first(sel.messageBox)
+  if (!box) return { kind: "noBox" }
+  box.focus()
+  // The box is empty before the text goes in, so that a text of an earlier try is never sent twice.
+  document.execCommand("selectAll", false)
+  document.execCommand("delete", false)
+  if (!document.execCommand("insertText", false, body)) return { kind: "notTyped" }
+  const send = first(sel.sendButton)
+  if (!send) return { kind: "noSend" }
+  send.click()
+  return { kind: "sent" }
+})()`
+
+/**
+ * The script that looks at the message box after the send. A box that still holds text means that
+ * the page did not take the message: the script clears the box, so that the next try starts clean.
+ */
+export const settleScript = (sel: TeamsPageSelectors = TEAMS_PAGE): string => `(() => {
+  const sel = ${JSON.stringify(sel)}
+  const box = document.querySelector(sel.messageBox)
+  const left = box ? String(box.innerText || box.textContent || "").trim() : ""
+  if (box && left !== "") {
+    box.focus()
+    document.execCommand("selectAll", false)
+    document.execCommand("delete", false)
+  }
+  return { left: left !== "" }
+})()`
+
 // --- What the page shows ----------------------------------------------------------------------
 
 const hostOf = (url: string): string => {
@@ -143,11 +218,18 @@ const hostOf = (url: string): string => {
   }
 }
 
-/** True when the address is a page of the Microsoft sign-in. */
-export const isSignInAddress = (url: string, hosts: readonly string[] = TEAMS_PAGE.signInHosts) => {
+const onHost = (url: string, hosts: readonly string[]) => {
   const host = hostOf(url)
   return host !== "" && hosts.some((h) => host === h || host.endsWith(`.${h}`))
 }
+
+/** True when the address is a page of the Teams app. */
+export const isTeamsAddress = (url: string, hosts: readonly string[] = TEAMS_PAGE.appHosts) =>
+  onHost(url, hosts)
+
+/** True when the address is a page of the Microsoft sign-in. */
+export const isSignInAddress = (url: string, hosts: readonly string[] = TEAMS_PAGE.signInHosts) =>
+  onHost(url, hosts)
 
 /**
  * A load failure that means "the page cannot reach Microsoft". Other failures (a redirect that
@@ -158,11 +240,16 @@ export const isOfflineError = (error: unknown): boolean =>
     String(error instanceof Error ? error.message : error),
   )
 
-/** What the read says about the page. A sign-in form comes before the app. */
+/**
+ * What the read says about the page. A sign-in form comes before the app. The app shows when the
+ * page holds its shell, or when a page of the Teams host holds the regions of a loaded app: the
+ * selector of the shell is a guess, and a user who is signed in must not see "not signed in".
+ */
 export const interpretRead = (raw: RawTeamsRead): TeamsLook => {
   if (!raw.online || raw.url.startsWith("chrome-error:")) return { kind: "offline" }
   if (raw.signInForm || isSignInAddress(raw.url)) return { kind: "signIn" }
-  if (raw.shell) return { kind: "teams", openTitle: raw.openTitle }
+  if (raw.shell || (raw.landmarks && isTeamsAddress(raw.url)))
+    return { kind: "teams", openTitle: raw.openTitle }
   return { kind: "unreadable" }
 }
 
@@ -179,6 +266,8 @@ export interface TeamsSurfaceOptions {
 /** How long a click on a chat may take to show in the header: 12 reads, 250 ms apart. */
 const OPEN_READS = 12
 const OPEN_WAIT_MS = 250
+/** How long the page may take to clear the message box after the send button was pressed. */
+const SEND_SETTLE_MS = 600
 
 /** Builds the surface on a web view. All the knowledge of the page is in the selectors module. */
 export const createTeamsSurface = (
@@ -254,11 +343,35 @@ export const createTeamsSurface = (
     return { openTitle: raw.openTitle, messages }
   }
 
+  const send = async (text: string, chatTitle: string): Promise<TeamsSendResult> => {
+    const failed = { kind: "failed" } as const
+    try {
+      const raw = await read()
+      if (!raw?.online) return failed
+      // The link opens its chat when no chat is open (after a reload of the page, for example). A
+      // chat that is open with another title is not changed: the script below refuses it.
+      if (raw.openTitle === null) {
+        const opened = await openChat(chatTitle)
+        if (opened.kind !== "opened") return failed
+      }
+      const result = await driver.evaluate<RawSend>(sendScript(text, teamsNameKey(chatTitle), sel))
+      if (!result) return failed
+      if (result.kind === "wrongChat") return { kind: "wrongChat" }
+      if (result.kind !== "sent") return failed
+      await wait(SEND_SETTLE_MS)
+      const after = await driver.evaluate<{ left: boolean }>(settleScript(sel))
+      return after && !after.left ? { kind: "sent" } : failed
+    } catch {
+      return failed
+    }
+  }
+
   return {
     isOpen: () => driver.isOpen(),
     look,
     openChat,
     readMessages,
+    send,
     place: (bounds) => driver.place(bounds),
     allowUserInput: (allowed) => driver.allowUserInput(allowed),
     close: () => {

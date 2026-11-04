@@ -99,6 +99,7 @@ export const en = {
   "places.working": "working",
   "places.unread": "{count} unread",
   "places.row": "{name}, {details}",
+  "places.role": "Role: {role}",
   "places.section.open": "{name}, open",
   "places.section.closed": "{name}, closed",
 

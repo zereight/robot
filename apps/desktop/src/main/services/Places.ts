@@ -113,6 +113,9 @@ export class Places extends Context.Service<Places, PlacesService>()("robot/main
                     working: a.state === "working",
                     lastMessage: lastMessage(a.id),
                     sectionId: a.sectionId,
+                    // The role line goes with the place, so a row, a linked computer and the phone
+                    // show the badge from one answer (spec 001, 012). An agent with none sends none.
+                    ...(a.role.trim() ? { role: a.role.trim() } : {}),
                   }),
                 ),
                 userSections,

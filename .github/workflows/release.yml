@@ -2,15 +2,26 @@ name: Release
 
 # A tag `v<version>` builds, tests and attaches the app (macOS, Apple silicon) to a draft release.
 # "Run workflow", and PRs that change packaging, build and test the same way without a release.
+#
+# Signing (docs/release.md): with the secret CSC_LINK set, a tag build is signed with a Developer
+# ID and notarized. A PR never signs, so it never reads a secret. "Run workflow" with "sign" on
+# is a dry run of the signed build, and it fails when the secrets are missing.
 on:
   push:
     tags: ["v*.*.*"]
   workflow_dispatch:
+    inputs:
+      sign:
+        description: "Sign with the Developer ID and notarize (needs the signing secrets)"
+        type: boolean
+        default: false
   pull_request:
     paths:
       - .github/workflows/release.yml
       - apps/desktop/electron-builder.yml
       - apps/desktop/scripts/packaged-path.ts
+      - apps/desktop/scripts/check-dist.ts
+      - apps/desktop/scripts/check-dist-lib.ts
       - apps/desktop/package.json
 
 permissions:
@@ -37,6 +48,22 @@ jobs:
           key: deps-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: deps-${{ runner.os }}-
       - run: bun install --frozen-lockfile
+      # A release is made from code that was reviewed and merged. A tag on a commit of a branch
+      # that is not in main is refused. "behind" means the commit is already part of main.
+      - name: Tag is on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_SHA" --jq .status)"
+          echo "main...$GITHUB_SHA: $status"
+          case "$status" in
+            identical | behind) ;;
+            *)
+              echo "::error::Tag $GITHUB_REF_NAME is not on main. Merge the release PR first, then tag the merge commit."
+              exit 1
+              ;;
+          esac
       - name: Tag matches the app version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -54,6 +81,9 @@ jobs:
   # only build. macos-latest is an Apple silicon runner.
   package:
     runs-on: macos-latest
+    # Notarization waits for Apple. Most runs take a few minutes; a stuck one must not hold the
+    # runner for the six hours that are the default.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -76,12 +106,73 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: host
-      # "bun run build" builds the host first; electron-builder puts it in the bundle.
-      - name: Build and package
-        working-directory: apps/desktop
+      # Signed or ad-hoc. A tag, or a dry run with "sign" on, signs when the certificate is there.
+      # A PR never signs. A tag without the certificate stays ad-hoc, as before, with a warning.
+      - name: Choose the signing
+        id: signing
+        env:
+          HAVE_CERT: ${{ secrets.CSC_LINK != '' }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          ASKED: ${{ github.event_name == 'workflow_dispatch' && inputs.sign }}
         run: |
-          bun run build
-          bunx electron-builder --mac --arm64 --publish never
+          if [ "$ASKED" = "true" ] && [ "$HAVE_CERT" != "true" ]; then
+            echo "::error::\"sign\" is on, but the secret CSC_LINK is not set. See docs/release.md."
+            exit 1
+          fi
+          if { [ "$ASKED" = "true" ] || [ "$IS_TAG" = "true" ]; } && [ "$HAVE_CERT" = "true" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            [ "$IS_TAG" = "true" ] && echo "::warning::No CSC_LINK secret: this release is ad-hoc signed."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+      # "bun run build" builds the host first; electron-builder puts it in the bundle.
+      - name: Build
+        working-directory: apps/desktop
+        run: bun run build
+      # electron-builder skips all signing in a pull request, ad-hoc signing too, and then the app
+      # has no seal and the check below fails. CSC_FOR_PULL_REQUEST turns signing back on. It is
+      # safe here: its warning is about secrets, and this step reads none (no certificate, the
+      # identity "-" of electron-builder.yml). The Developer ID step below never runs in a PR.
+      - name: Package, ad-hoc signed
+        if: steps.signing.outputs.signed != 'true'
+        working-directory: apps/desktop
+        env:
+          CSC_FOR_PULL_REQUEST: "true"
+        run: bunx electron-builder --mac --arm64 --publish never
+      # The settings of the file electron-builder.yml stay. These flags replace the ad-hoc identity
+      # with the Developer ID, turn the hardened runtime on, and notarize. The name of the
+      # certificate is the repository variable MAC_IDENTITY, for example
+      # "Developer ID Application: Name (TEAMID)". It is not a secret.
+      - name: Package, Developer ID signed and notarized
+        if: steps.signing.outputs.signed == 'true'
+        working-directory: apps/desktop
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MAC_IDENTITY: ${{ vars.MAC_IDENTITY }}
+        run: |
+          if [ -z "$MAC_IDENTITY" ]; then
+            echo "::error::The repository variable MAC_IDENTITY is not set. See docs/release.md."
+            exit 1
+          fi
+          bunx electron-builder --mac --arm64 --publish never \
+            -c.mac.identity="$MAC_IDENTITY" \
+            -c.mac.hardenedRuntime=true \
+            -c.mac.notarize=true
+      # Users get the disk image or the zip file, not the unpacked app that the tests below use.
+      - name: Check the disk image and the zip file
+        working-directory: apps/desktop
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          if [ "$SIGNED" = "true" ]; then
+            bun scripts/check-dist.ts --signed
+          else
+            bun scripts/check-dist.ts
+          fi
       - name: End-to-end tests against the packaged app
         working-directory: apps/desktop
         run: |

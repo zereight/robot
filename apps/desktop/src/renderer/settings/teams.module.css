@@ -86,6 +86,7 @@
 .state[data-state="signedOut"],
 .state[data-state="chatNotFound"],
 .state[data-state="offline"],
+.state[data-state="paused"],
 .state[data-state="targetMissing"] {
   border-color: var(--c-danger);
 }
@@ -117,6 +118,50 @@
   font-size: var(--text-l);
   font-weight: 600;
   margin: 0 0 8px;
+}
+
+/* The records: the answers that did not go out (spec 028). */
+.records {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.record {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.record:last-child {
+  border-bottom: 0;
+}
+
+.recordTime {
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+}
+
+.recordReason {
+  font-weight: 600;
+}
+
+.recordLink {
+  all: unset;
+  cursor: pointer;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  text-decoration: underline;
+}
+
+.recordLink:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
 }
 
 /* The muted mark in the header of the linked place. */

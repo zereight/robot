@@ -57,11 +57,13 @@ export const App = () => {
       setFocusMessage(target.messageId)
     }),
   )
-  // A notice from a workflow opens the page of workflows.
+  // A notice from a workflow opens the page of workflows. A notice of the Teams link opens
+  // Settings, Teams (spec 028).
   onCleanup(
     window.robot.on("app.openPage", ({ page, serverId }) => {
       if (serverId) ui.selectServer(serverId)
-      ui.selectPage(page)
+      if (page === "teams") ui.openSettings("teams")
+      else ui.selectPage(page)
     }),
   )
   const [newChannel, setNewChannel] = createSignal(false)

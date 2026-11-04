@@ -100,6 +100,7 @@ export const ko: Record<MessageKey, string> = {
   "places.working": "작업 중",
   "places.unread": "읽지 않음 {count}개",
   "places.row": "{name}, {details}",
+  "places.role": "역할: {role}",
   "places.section.open": "{name}, 열림",
   "places.section.closed": "{name}, 닫힘",
 

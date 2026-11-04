@@ -407,6 +407,31 @@ describe("Today", () => {
       expect(await s.rows("wrong")).toEqual([])
     })
 
+    // A deleted routine leaves nothing behind on the page: not a failed run, not a done run, not a
+    // mark on the badge. Its old runs stay in the task history only.
+    test("deleting a routine takes its failed and done runs off the page", async () => {
+      const s = await setup()
+      const ada = await s.agent("Ada")
+      const routineId = s.routine(ada.id)
+      for (const h of [1, 2])
+        s.task(ada.id, { source: "routine", sourceId: routineId, created: at(h) })
+      s.task(ada.id, {
+        source: "routine",
+        sourceId: routineId,
+        state: "done",
+        code: null,
+        created: at(3),
+      })
+      expect((await s.rows("wrong")).length).toBeGreaterThan(0)
+      expect((await s.rows("done")).length).toBe(1)
+
+      s.db.run("DELETE FROM routine WHERE id = ?", routineId)
+
+      expect(await s.rows("wrong")).toEqual([])
+      expect(await s.rows("done")).toEqual([])
+      expect((await s.page()).badge).toBe(0)
+    })
+
     test("a watch paused after 3 failed checks has the row marked paused, and no next run", async () => {
       const s = await setup()
       const ada = await s.agent("Ada")

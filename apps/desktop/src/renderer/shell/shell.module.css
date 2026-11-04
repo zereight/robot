@@ -448,9 +448,55 @@
 
 .rowName {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * The role badge of an agent row (spec 001, "Place rows"). The name comes first and keeps its
+ * width. The slot after it takes what is left of the row, and the badge is cut with an ellipsis
+ * inside the slot. The unread count stays at the right end, after the slot.
+ */
+.rowName[data-with-badge="true"] {
+  flex: 0 1 auto;
+}
+
+.roleSlot {
+  flex: 1 1 0;
+  min-width: 0;
+  /* The row has a gap before the slot. A slot with no room must not keep it: the name takes it. */
+  margin-inline-start: -8px;
+  display: flex;
+  font-size: var(--text-xs);
+  container-type: inline-size;
+  pointer-events: none;
+}
+
+.roleBadge {
+  /* Hidden until the slot can show 4 characters, a padding and a border on each side. */
+  display: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  /* The margin gives back the gap that the slot took from the row. */
+  margin-inline-start: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  color: var(--c-text-muted);
+  font-weight: 400;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+@container (min-width: calc(4ch + 22px)) {
+  .roleBadge {
+    display: block;
+  }
 }
 
 .mark {

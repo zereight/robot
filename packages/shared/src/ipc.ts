@@ -252,6 +252,8 @@ export interface RpcMethods {
   }
   /** "Use this chat": the title of the chat that is open in the Teams page fills the form. */
   "teams.useChat": { input: undefined; output: TeamsLinkView }
+  /** "Resume": a paused link starts again with a baseline read (spec 028). */
+  "teams.resume": { input: undefined; output: TeamsLinkView }
   /** "Sign out of Teams": deletes the saved sign-in and turns the link off. */
   "teams.signOut": { input: undefined; output: TeamsLinkView }
   /** "Remove link": deletes the link and the sign-in profile. */
@@ -758,7 +760,7 @@ export interface RpcEvents {
   "today.changed": TodaySnapshot
   "app.openPlace": PlaceTarget
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
-  "app.openPage": { page: "workflows"; serverId?: string }
+  "app.openPage": { page: "workflows" | "teams"; serverId?: string }
   "notifications.changed": Record<string, never>
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }

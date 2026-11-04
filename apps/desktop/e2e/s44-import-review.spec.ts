@@ -135,7 +135,10 @@ test("review before an import: agent file and workflow file, ticks, not imported
   await expect(dialog).toHaveCount(0)
 
   // One agent is made, with one paused routine.
-  await expect(placeRows(page)).toHaveText(["Ada"])
+  // The row shows the role line of the file as a badge after the name (spec 001).
+  await expect(placeRows(page)).toHaveCount(1)
+  await expect(placeRows(page).first()).toHaveAttribute("data-place-name", "Ada")
+  await expect(placeRows(page).first().getByTestId("role-badge")).toHaveText("Researcher")
   await placeRows(page).first().click()
   const checklist = page.getByTestId("chat-checklist")
   await expect(checklist).toBeVisible()

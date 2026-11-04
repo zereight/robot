@@ -66,6 +66,7 @@ import {
   type Task,
   type TaskProgress,
   type TaskState,
+  type TeamsJobKind,
   type TurnMark,
   type TurnStarter,
   toldAboutBlocked,
@@ -1012,11 +1013,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           )
         })
 
+      /**
+       * A member answers a job. `teamsJob` is "mention" when a message from Teams began the job
+       * (spec 028): the reply of the member goes to Teams. A retry keeps it without this argument.
+       */
       const startDirect = (
         channel: ChannelRow,
         agentId: string,
         prompt: string,
         retryOf: string | null = null,
+        teamsJob?: TeamsJobKind,
       ) =>
         Effect.gen(function* () {
           const agent = agentRow(agentId)
@@ -1028,6 +1034,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             source: "channel",
             sourceId: channel.id,
             retryOf,
+            ...(teamsJob ? { teamsJob } : {}),
           })
           yield* background(memberTurn(channel, agent, task, null))
         })
@@ -1460,11 +1467,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           }),
         )
 
+      /**
+       * The lead reads a job. `teamsJob` is "lead" when a message from Teams began the job (spec
+       * 028): the summary of the lead goes to Teams. A retry keeps it without this argument.
+       */
       const startLead = (
         channel: ChannelRow,
         lead: AgentRow,
         text: string,
         retryOf: string | null = null,
+        teamsJob?: TeamsJobKind,
       ) =>
         Effect.gen(function* () {
           yield* checkQueue(lead.id)
@@ -1474,6 +1486,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             source: "channel",
             sourceId: channel.id,
             retryOf,
+            ...(teamsJob ? { teamsJob } : {}),
           })
           yield* background(runLead(channel, lead, task))
         })
@@ -1786,6 +1799,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         job: string,
         members: readonly { id: string; name: string; role: string }[],
         leadId: string | null,
+        fromTeams = false,
       ) =>
         Effect.gen(function* () {
           const result = yield* decision.pick(pickInput(channel, jobId, job, members))
@@ -1811,11 +1825,18 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
             probability: result.probability,
             ms: result.ms,
           })
-          if (taker) return yield* startDirect(channel, taker.id, job)
+          if (taker)
+            return yield* startDirect(
+              channel,
+              taker.id,
+              job,
+              null,
+              fromTeams ? "mention" : undefined,
+            )
           const leadAgent = leadId ? agentRow(leadId) : undefined
           // A lead whose queue is full takes no job: the user picks, as with no lead (spec 005).
           if (leadAgent && tasks.queueFull(leadAgent.id) === null)
-            return yield* startLead(channel, leadAgent, job)
+            return yield* startLead(channel, leadAgent, job, null, fromTeams ? "lead" : undefined)
           // No lead: the user picks. The job waits, and the row shows the member buttons.
           db.run("UPDATE channel_message SET awaiting = 1 WHERE id = ?", jobId)
           emitMessage(jobId)
@@ -1920,14 +1941,18 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
         placesChanged(channel.server_id)
         for (const handler of messageHandlers) handler(channelId, value)
         if (awaiting) return { awaiting: true }
+        // A job that a message from Teams began: its answer goes back to Teams (spec 028).
+        const fromTeams = program?.kind === "teams"
         if (direct.length > 0) {
-          for (const id of direct) yield* startDirect(channel, id, value)
+          for (const id of direct)
+            yield* startDirect(channel, id, value, null, fromTeams ? "mention" : undefined)
         } else if (picking) {
           // The answer takes up to 3 seconds. The message shows at once, and the send does not wait.
-          yield* background(fastPick(channel, jobId, value, candidates, lead))
+          yield* background(fastPick(channel, jobId, value, candidates, lead, fromTeams))
         } else {
           const leadAgent = agentRow(lead as string)
-          if (leadAgent) yield* startLead(channel, leadAgent, value)
+          if (leadAgent)
+            yield* startLead(channel, leadAgent, value, null, fromTeams ? "lead" : undefined)
         }
         return { awaiting: false }
       })
@@ -1951,6 +1976,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           channel,
           agentId,
           messageText({ parts: JSON.parse(message.parts) as MessagePart[] }),
+          null,
+          // The user picks a member for a job from Teams: the reply goes to Teams (spec 028).
+          message.teams_sender ? "mention" : undefined,
         )
       })
 
