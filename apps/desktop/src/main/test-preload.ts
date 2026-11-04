@@ -1,5 +1,8 @@
-import { setDefaultTimeout } from "bun:test"
+import { afterAll, setDefaultTimeout } from "bun:test"
 import { ChildProcess } from "node:child_process"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { Readable } from "node:stream"
 
 /**
@@ -10,6 +13,24 @@ import { Readable } from "node:stream"
  * fails, a little later. A test that sets its own limit keeps it.
  */
 setDefaultTimeout(30_000)
+
+/**
+ * Each test process makes its temporary folders inside one folder of its own, and removes that
+ * folder when its tests end. Before, many tests made a folder (a data folder, a home folder, an
+ * upload folder) and nothing removed it. One computer had 955 000 of them in its temporary folder.
+ * A program that starts in a working folder inside the temporary folder reads the folders above
+ * it, so each start took 7 to 10 seconds there, against 0.1 second in a small folder. Tests that
+ * start a program ran into their time limit, and each run of the tests made it worse.
+ *
+ * It is `afterAll` and not the `exit` event of the process: a test worker of `bun test --parallel`
+ * ends with no `exit` event. A test that sets its own `TMPDIR`, for a program that it starts, is
+ * not changed by this.
+ */
+const ownTemporaryFolder = mkdtempSync(join(tmpdir(), "robot-test-"))
+for (const name of ["TMPDIR", "TMP", "TEMP"]) process.env[name] = ownTemporaryFolder
+afterAll(() => {
+  rmSync(ownTemporaryFolder, { recursive: true, force: true })
+})
 
 /**
  * Loaded before every unit test file (bunfig.toml). Test runs only; the app runs on Node.
