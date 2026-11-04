@@ -1,4 +1,10 @@
-import type { ModelInfo, PermissionLevel, RepairReason, RuntimeLimit } from "@robot/shared"
+import type {
+  ModelInfo,
+  PermissionLevel,
+  RepairReason,
+  RuleStep,
+  RuntimeLimit,
+} from "@robot/shared"
 import type { TurnInbox } from "../providers/turn.ts"
 import type { BridgeAccess } from "./bridge.ts"
 
@@ -11,6 +17,12 @@ export interface ApprovalRequest {
   readonly key: string
   /** What the card shows. */
   readonly summary: string
+  /**
+   * The step as the permission rules see it (spec 007): a file with its path, a command, a host.
+   * A step that has no rules, such as a search of the web or a tool that the app does not know,
+   * leaves it out, and its card has no "Always allow".
+   */
+  readonly step?: RuleStep
 }
 
 /** One turn for a vendor program. */

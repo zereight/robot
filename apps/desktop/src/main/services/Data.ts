@@ -230,6 +230,18 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               out
                 .prepare("UPDATE instruction_version SET text = ? WHERE id = ?")
                 .run(redactSecrets(row.text, known), row.id)
+            // A rule keeps the text of a step, which can hold a key. The key is hidden like a key
+            // in a chat; the restored rule then matches no step (spec 014).
+            for (const row of out
+              .prepare("SELECT id, match_text, detail FROM permission_rule")
+              .all() as { id: string; match_text: string; detail: string | null }[]) {
+              const text = redactSecrets(row.match_text, known)
+              const detail = row.detail === null ? null : redactSecrets(row.detail, known)
+              if (text !== row.match_text || detail !== row.detail)
+                out
+                  .prepare("UPDATE permission_rule SET match_text = ?, detail = ? WHERE id = ?")
+                  .run(text, detail, row.id)
+            }
             for (const row of out.prepare("SELECT id, text FROM memory").all() as {
               id: string
               text: string
@@ -447,7 +459,16 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run("INSERT INTO memory_history SELECT * FROM imp.memory_history")
               db.run("INSERT INTO knowledge_file SELECT * FROM imp.knowledge_file")
               db.run("INSERT INTO knowledge_change SELECT * FROM imp.knowledge_change")
-              db.run("INSERT INTO agent_allow SELECT * FROM imp.agent_allow")
+              // The rules come back with the agents that they name; a rule for all agents moves to
+              // this computer's server (spec 014). A rule that this build cannot read stays.
+              db.run(
+                `INSERT INTO permission_rule (id, server_id, agent_id, kind, match_text, detail, decision, source, created_at)
+                 SELECT id, ?, agent_id, kind, match_text, detail, decision, source, created_at
+                 FROM imp.permission_rule WHERE agent_id IS NULL OR agent_id IN (SELECT id FROM agent)`,
+                local.id,
+              )
+              // The log keeps the entries and the rules that decided them (spec 007, 014).
+              db.run(`INSERT INTO action_log SELECT * FROM imp.action_log`)
               // The values stay in the keychain of the other computer: each secret shows
               // "Value missing" until the user replaces it (spec 020).
               db.run(

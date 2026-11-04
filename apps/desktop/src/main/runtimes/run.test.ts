@@ -201,7 +201,14 @@ describe("claude program", () => {
       ),
     )
     expect(asked).toEqual([
-      { callId: "toolu_fake1", risky: false, key: "run_command:touch", summary: "touch a.txt" },
+      {
+        callId: "toolu_fake1",
+        risky: false,
+        key: "run_command:touch",
+        summary: "touch a.txt",
+        // The step as the permission rules see it (spec 007).
+        step: { kind: "shell", command: "touch a.txt" },
+      },
     ])
     const tool = events.filter((e) => e.type === "tool")
     expect(tool.map((e) => (e.type === "tool" ? e.state : ""))).toEqual(["running", "done"])
@@ -402,6 +409,8 @@ describe("muse program", () => {
         risky: true,
         key: "run_command:rm /etc/robot-test",
         summary: "rm /etc/robot-test",
+        // The step as the permission rules see it (spec 007).
+        step: { kind: "shell", command: "rm /etc/robot-test" },
       },
     ])
     expect(text(events)).toBe("Ran it.")

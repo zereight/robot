@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import type { RuleInput } from "@robot/shared"
 import { Effect, ManagedRuntime } from "effect"
 import { unzipSync } from "fflate"
 import { appLayer } from "../layers.ts"
+import { ActionLog } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
 import { BrowserProfiles } from "./BrowserProfiles.ts"
 import { copyAttachments } from "./Chat.ts"
@@ -15,6 +17,7 @@ import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
 import { Places } from "./Places.ts"
 import { Providers } from "./Providers.ts"
+import { Rules } from "./Rules.ts"
 import { Search } from "./Search.ts"
 import { Secrets } from "./Secrets.ts"
 import { Sections } from "./Sections.ts"
@@ -157,6 +160,70 @@ describe("export and import", () => {
     expect(bDb.get<{ context: string }>("SELECT context FROM message")?.context).toBe(
       "What you remember:\n- the key is [redacted]",
     )
+  })
+
+  test("the rules and the action log are in the archive and come back; a key in a rule is hidden (spec 014, 007)", async () => {
+    const out = join(testPlatform().dataDir, "export-rules.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const agent = await a.run(
+      Agents.use((x) =>
+        x.create({ serverId: local.id, name: "Ada", role: "", instructions: "", model: null }),
+      ),
+    )
+    const made = (rule: RuleInput) => a.run(Rules.use((r) => r.add(rule)))
+    const own = await made({ agentId: agent.id, kind: "shell", text: "ls", decision: "allow" })
+    const all = await made({ agentId: null, kind: "web", text: "example.com", decision: "deny" })
+    const keyed = await made({
+      agentId: agent.id,
+      kind: "shell",
+      text: `curl -H "Authorization: Bearer ${KEY}" https://example.com`,
+      decision: "allow",
+    })
+    a.run(
+      ActionLog.use((l) =>
+        Effect.sync(() =>
+          l.add({
+            agentId: agent.id,
+            kind: "shell",
+            target: "ls",
+            decidedBy: "allow_rule",
+            result: "ran",
+            taskId: null,
+            outside: null,
+            rule: { id: own.id, kind: "shell", text: "ls", detail: null },
+          }),
+        ),
+      ),
+    )
+    await a.run(Data.use((d) => d.export()))
+    const entries = unzipSync(readFileSync(out))
+    for (const data of Object.values(entries)) expect(Buffer.from(data).includes(KEY)).toBe(false)
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const restored = await b.run(Rules.use((r) => r.list()))
+    expect(restored.map((r) => r.id).sort()).toEqual([keyed.id, all.id, own.id].sort())
+    expect(restored.find((r) => r.id === all.id)).toMatchObject({ agentId: null, decision: "deny" })
+    expect(restored.find((r) => r.id === own.id)).toMatchObject({ agentId: agent.id })
+    // The rule for all agents is on the server of this computer now, and applies to the agent.
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(
+      bDb.all<{ server_id: string }>("SELECT DISTINCT server_id FROM permission_rule"),
+    ).toEqual([{ server_id: bLocal.id }])
+    const [bAgent] = await b.run(Agents.use((x) => x.list(bLocal.id, false)))
+    const verdict = await b.run(
+      Rules.use((r) =>
+        Effect.sync(() => r.verdict(bAgent?.id ?? "", { kind: "web", host: "example.com" })),
+      ),
+    )
+    expect(verdict).toMatchObject({ kind: "deny", rule: { id: all.id } })
+    // The key left the text of the rule: the rule matches no command now.
+    expect(restored.find((r) => r.id === keyed.id)?.text).toContain("[redacted]")
+    // The entry of the log comes back and names its rule.
+    const log = await b.run(ActionLog.use((l) => l.list()))
+    expect(log).toMatchObject([{ decidedBy: "allow_rule", rule: { id: own.id, deleted: false } }])
   })
 
   test("a hidden key leaves no trace in the pages of the database file", async () => {

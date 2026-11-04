@@ -414,6 +414,8 @@ export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => 
           ? { refused: existing.refused }
           : {}),
       ...(existing?.kind === "tool" && existing.reason ? { reason: existing.reason } : {}),
+      // An Allow rule let the step run: the card keeps saying so (spec 007).
+      ...(existing?.kind === "tool" && existing.ruleAllowed ? { ruleAllowed: true as const } : {}),
     }
     if (index >= 0) {
       parts[index] = next
@@ -1068,7 +1070,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               ...step,
               agentId,
               taskId: task.id,
-              decidedBy: tools.decidedBy(agentId, callId),
+              ...tools.decision(agentId, callId),
               outside: mark.source,
               sensitive: mark.sensitive,
             }),
@@ -1230,6 +1232,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             onDecision: (callId, answer, by) =>
               changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
             onRefused: (callId, refused) => changePart(callId, (p) => ({ ...p, refused })),
+            onRuleAllowed: (callId) => changePart(callId, (p) => ({ ...p, ruleAllowed: true })),
             onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
             onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
             onSettings: (callId, note) => changePart(callId, (p) => ({ ...p, settings: note })),

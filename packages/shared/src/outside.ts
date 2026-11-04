@@ -1,5 +1,6 @@
 import type { MessagePart } from "./chat.ts"
 import { toolStepKind } from "./notifications.ts"
+import type { RuleKind } from "./rules.ts"
 import type { SensitiveLabel } from "./sensitive.ts"
 import type { LoggedKind, StepAccess } from "./steps.ts"
 import type { TaskSource } from "./task.ts"
@@ -307,9 +308,28 @@ export const parseOutsideSource = (text: string | null | undefined): OutsideSour
 
 /**
  * Who decided a step of the action log (spec 007, "Action log"). `app` is the app itself, for an
- * address that is never allowed (spec 007, "Sensitive places").
+ * address that is never allowed (spec 007, "Sensitive places"). `unreadable_rule` is a rule that
+ * the app could not read, followed by the user on a card.
  */
-export type ActionDecider = "level" | "allow_rule" | "deny_rule" | "user" | "app"
+export type ActionDecider =
+  | "level"
+  | "allow_rule"
+  | "deny_rule"
+  | "user"
+  | "app"
+  | "unreadable_rule"
+
+/**
+ * The rule that decided a step, as the log keeps it. The text stays when the rule is deleted
+ * later: the row then shows `deleted` (spec 007, "Action log").
+ */
+export interface ActionRule {
+  readonly id: string
+  readonly kind: RuleKind
+  readonly text: string
+  readonly detail: string | null
+  readonly deleted: boolean
+}
 /** The result of a step of the action log. */
 export type ActionResult = "ran" | "failed" | "refused" | "stopped"
 
@@ -318,6 +338,17 @@ export type ActionResult = "ran" | "failed" | "refused" | "stopped"
  * of the four kinds of "Permission rules": file, shell command, web page, tool of a connection.
  */
 export type ActionKind = GuardedStep | LoggedKind
+/** Every kind of step that the action log holds, for its filter (spec 007). */
+export const ACTION_KINDS = [
+  "memory",
+  "settings",
+  "secret_request",
+  "secret_new",
+  "file",
+  "shell",
+  "web",
+  "connection",
+] as const satisfies readonly ActionKind[]
 
 /** One entry of the action log. */
 export interface ActionLogEntry {
@@ -338,6 +369,8 @@ export interface ActionLogEntry {
   readonly outside: OutsideSource | null
   /** The label of the first credential place, when the turn held a sensitive read. */
   readonly sensitive: SensitiveLabel | null
+  /** The rule that decided the step, or the rule that could not be read. Null when none did. */
+  readonly rule: ActionRule | null
 }
 
 export const ACTION_LOG_DAYS = 90

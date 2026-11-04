@@ -12,6 +12,7 @@ import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { Memory } from "./Memory.ts"
 import { Providers } from "./Providers.ts"
+import { Rules } from "./Rules.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
 import { type ToolContext, Tools } from "./Tools.ts"
@@ -241,20 +242,65 @@ describe("tools in a chat turn", () => {
     expect((await s.toolPart())?.output).toBe("blue")
   })
 
-  test("always allow remembers the step for this agent", async () => {
+  test("always allow saves a rule for this step only, and the same step then runs", async () => {
     const s = await setup()
     const first = join(s.t.dataDir, "f1.txt")
     const second = join(s.t.dataDir, "f2.txt")
     writeFileSync(first, "1")
     writeFileSync(second, "2")
     await s.send(call("run_command", { command: `rm "${first}"` }))
-    await s.waitingCard()
+    // The card offers "Always allow" (it has no `once`).
+    expect(await s.waitingCard()).toMatchObject({ kind: "approval" })
+    expect(((await s.waitingCard()) as { once?: boolean }).once).toBeUndefined()
     await s.respond("always")
     await s.finished()
     expect(existsSync(first)).toBe(false)
-    await s.send(call("run_command", { command: `rm "${second}"` }))
-    await until(() => !existsSync(second))
+    const saved = await s.run(Rules.use((r) => r.list()))
+    expect(saved).toMatchObject([
+      {
+        agentId: s.agent.id,
+        kind: "shell",
+        text: `rm "${first}"`,
+        decision: "allow",
+        source: "card",
+        readable: true,
+      },
+    ])
+    // The same command runs with no question, and the card says that a rule allowed it.
+    writeFileSync(first, "1")
+    await s.send(call("run_command", { command: `rm "${first}"` }))
     await s.finished()
+    expect(existsSync(first)).toBe(false)
+    expect((await s.toolPart())?.ask).toBeUndefined()
+    expect(await s.toolPart()).toMatchObject({ state: "done", ruleAllowed: true })
+    const log = await s.run(ActionLog.use((l) => l.list()))
+    expect(log[0]).toMatchObject({
+      kind: "shell",
+      decidedBy: "allow_rule",
+      result: "ran",
+      rule: { id: saved[0]?.id, text: `rm "${first}"`, deleted: false },
+    })
+    expect(log[1]).toMatchObject({ decidedBy: "user", result: "ran", rule: null })
+    // Another command is not covered: the rule is not wider than the step on its card.
+    await s.send(call("run_command", { command: `rm "${second}"` }))
+    expect(await s.waitingCard()).toMatchObject({ kind: "approval" })
+    expect(existsSync(second)).toBe(true)
+    await s.respond("deny")
+    await s.finished()
+    expect(existsSync(second)).toBe(true)
+    // Delete the rule: the next run of the same command asks again.
+    await s.run(Rules.use((r) => r.remove(saved[0]?.id ?? "")))
+    writeFileSync(first, "1")
+    await s.send(call("run_command", { command: `rm "${first}"` }))
+    expect(await s.waitingCard()).toMatchObject({ kind: "approval" })
+    await s.respond("deny")
+    await s.finished()
+    // The old entry shows the text of the deleted rule, marked as deleted.
+    const later = await s.run(ActionLog.use((l) => l.list()))
+    expect(later.find((e) => e.decidedBy === "allow_rule")?.rule).toMatchObject({
+      text: `rm "${first}"`,
+      deleted: true,
+    })
   })
 
   test("ask for everything also asks for a write inside the workspace; full access asks nothing", async () => {

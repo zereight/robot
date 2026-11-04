@@ -1,13 +1,6 @@
 import { spawn } from "node:child_process"
-import {
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-  writeFileSync,
-} from "node:fs"
-import { basename, dirname, join, relative, resolve } from "node:path"
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
 import {
   type ActionDecider,
   type ApprovalAnswer,
@@ -38,7 +31,6 @@ import {
   MEMORY_TEXT_MAX,
   type MemoryNote,
   makePlaces,
-  needsApproval,
   type PermissionLevel,
   type PlaceEnv,
   parseOrigin,
@@ -46,9 +38,13 @@ import {
   REPEATED_READ_TEXT,
   type ReadGuard,
   type RefusalReason,
+  type RuleRef,
+  type RuleStep,
+  type RuleVerdict,
   readOnlyRefuses,
   readOnlyRefusesKey,
   riskyReason,
+  ruleOutcome,
   SECRET_CANCELLED,
   SECRET_FIELD_MAX,
   SECRET_LABEL_MAX,
@@ -62,7 +58,6 @@ import {
   type SecretMethod,
   type SensitiveLabel,
   type SettingsNote,
-  secretNameKey,
   sendDecision,
   sendsData,
   type ToolAsk,
@@ -84,6 +79,8 @@ import { AppError } from "./errors.ts"
 import { Knowledge, type KnowledgePlan } from "./Knowledge.ts"
 import { Memory, type MemoryOrigin } from "./Memory.ts"
 import { type PageBounds, Platform } from "./Platform.ts"
+import { Rules } from "./Rules.ts"
+import { realOf } from "./realPath.ts"
 import { SavedSecrets } from "./SavedSecrets.ts"
 import { Search } from "./Search.ts"
 import { SettingsStore } from "./Settings.ts"
@@ -110,6 +107,11 @@ export interface ToolContext {
    * The steps of the app itself carry the mark in their outcome.
    */
   readonly onRefused?: (callId: string, reason: RefusalReason) => void
+  /**
+   * Records that an Allow rule let the step run with no question, so its card says "Allowed by a
+   * rule" (spec 007, "Permission rules").
+   */
+  readonly onRuleAllowed?: (callId: string) => void
   /** Records what a knowledge call read or changed, so its card can show it and offer undo. */
   readonly onKnowledge: (callId: string, note: KnowledgeNote) => void
   /**
@@ -164,14 +166,15 @@ export interface Messenger {
  * A guarded step (spec 007, "Outside content"): its kind, the text that the card and the log
  * show, and the work. `usual` is the way the step goes in a turn with no outside content; it
  * resolves with who decided, or throws to refuse. With no `usual`, the step runs at once.
- * `denied` is true when a Deny rule matches the step.
+ * `rule` is what the rules say about the step (spec 007): a Deny rule refuses it at every level,
+ * and a rule that cannot be read asks the user, also at "Full access".
  */
 export interface GuardedRequest<A> {
   readonly step: GuardedStep
   readonly target: string
   readonly work: () => Promise<A>
   readonly usual?: () => Promise<ActionDecider>
-  readonly denied?: boolean
+  readonly rule?: RuleVerdict
 }
 
 export interface ToolsService {
@@ -182,6 +185,11 @@ export interface ToolsService {
    * answered, else the permission level. It reads the decision once and forgets it.
    */
   decidedBy(agentId: string, callId: string): ActionDecider
+  /**
+   * Who decided the step of a call, and the rule that decided it or that could not be read, for
+   * the action log (spec 007). It reads the decision once and forgets it.
+   */
+  decision(agentId: string, callId: string): { decidedBy: ActionDecider; rule: RuleRef | null }
   /**
    * The tools that an agent may call. Memory and knowledge tools are left out when they are off.
    * The settings tool is only for an agent of an API provider in its direct chat (spec 002).
@@ -608,8 +616,21 @@ const SECRET_REFUSALS: Record<SecretAddressError, string> = {
 }
 
 class Denied extends Error {}
-/** A guarded step that a Deny rule or the level "Read only" refuses. The agent reads the message. */
+/** A guarded step that the level "Read only" refuses. The agent reads the message. */
 class Refused extends Error {}
+/**
+ * A step that a Deny rule refuses (spec 007, "Permission rules"). It holds at every level. The
+ * card says "Denied by a rule", the agent gets a failed step, and the turn goes on.
+ */
+class RuleDenied extends Error {
+  constructor(readonly rule: RuleRef) {
+    super("Denied by a rule.")
+  }
+}
+
+/** What the model reads when a Deny rule refuses a step. The card shows its own translated text. */
+const RULE_DENIED_MESSAGE =
+  "Denied by a rule: the user keeps a rule that does not let you take this step. Do not look for another way to take it; tell the user what you needed."
 /**
  * A web page fetch that reached an address that is never allowed: a link-local or a cloud
  * metadata address (spec 007, "Addresses of a web page fetch"). The app decides, at every level.
@@ -644,6 +665,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const agentSettings = yield* AgentSettings
       const knowledge = yield* Knowledge
       const saved = yield* SavedSecrets
+      const rules = yield* Rules
       const settingsStore = yield* SettingsStore
       const platform = yield* Platform
       const bus = yield* EventBus
@@ -659,6 +681,11 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const answered = new Set<string>()
       /** The calls that the app refused for an address that is never allowed, until the log has read them. */
       const refusedByApp = new Set<string>()
+      /**
+       * The calls that a rule decided, or that met a rule that cannot be read, until the log has
+       * read them (spec 007). The rule stays with the entry.
+       */
+      const ruled = new Map<string, { by: ActionDecider; rule: RuleRef }>()
       const browserChanged = (agentId: string) => bus.emit("browser.changed", { agentId })
       const pageOf = (agentId: string) => {
         const page = platform.browser(agentId)
@@ -680,11 +707,57 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       /** The switch "Allow saved secrets on this computer and the local network". */
       const allowLocal = () => Effect.runSync(settingsStore.get).secretsLocal
 
-      const allowed = (agentId: string, key: string) =>
-        db.get("SELECT 1 AS x FROM agent_allow WHERE agent_id = ? AND key = ?", agentId, key) !==
-        undefined
-      const allow = (agentId: string, key: string) =>
-        db.run("INSERT OR IGNORE INTO agent_allow (agent_id, key) VALUES (?, ?)", agentId, key)
+      /** Keeps the rule that decided a call, until the log has read it. */
+      const noteRule = (
+        ctx: ToolContext,
+        callId: string,
+        by: "allow_rule" | "deny_rule" | "unreadable_rule",
+        rule: RuleRef,
+      ) => {
+        if (ruled.size >= 1000) ruled.clear()
+        ruled.set(`${ctx.agentId}:${callId}`, { by, rule })
+      }
+
+      /**
+       * Who decided the step of a call, without forgetting it: the app (an address that is never
+       * allowed), a rule (or a rule that cannot be read, then the user), the user on a card, or
+       * the level.
+       */
+      const peekBy = (
+        ctx: ToolContext,
+        callId: string,
+        otherwise: ActionDecider,
+      ): ActionDecider => {
+        const id = `${ctx.agentId}:${callId}`
+        return refusedByApp.has(id)
+          ? "app"
+          : (ruled.get(id)?.by ?? (answered.has(id) ? "user" : otherwise))
+      }
+
+      const decision = (agentId: string, callId: string) => {
+        const id = `${agentId}:${callId}`
+        const rule = ruled.get(id)
+        ruled.delete(id)
+        const by = refusedByApp.delete(id)
+          ? "app"
+          : (rule?.by ?? (answered.has(id) ? "user" : "level"))
+        answered.delete(id)
+        return { decidedBy: by as ActionDecider, rule: rule?.rule ?? null }
+      }
+
+      /**
+       * What the rules say about a step, or "none" for a step that has no rules. A Deny rule
+       * refuses the step here, at every level (spec 007, "Permission rules").
+       */
+      const checkRules = (ctx: ToolContext, callId: string, step: RuleStep | null): RuleVerdict => {
+        if (!step) return { kind: "none" }
+        const verdict = rules.verdict(ctx.agentId, step)
+        if (verdict.kind === "deny") {
+          noteRule(ctx, callId, "deny_rule", verdict.rule)
+          throw new RuleDenied(verdict.rule)
+        }
+        return verdict
+      }
 
       /** True while memory is on for the agent. The tool "search chats" is on only then (spec 007). */
       const memoryOn = (agentId: string) =>
@@ -709,25 +782,53 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           ctx.onWaiting(callId, { ...ask, askedAt: Date.now() })
         }).finally(() => ctx.onWaiting(callId, null))
 
-      /** Asks for approval when the level and the risk need it. Throws `Denied` on a no. */
+      /**
+       * Asks for approval, in the order of spec 007: a Deny rule refuses the step (`RuleDenied`),
+       * a rule that cannot be read asks, an Allow rule lets the step run with no question, and
+       * then the permission level and the risk decide. Throws `Denied` on a no.
+       *
+       * `step` is the step as the rules see it. A step with no rules (a browser step, or a tool
+       * that the app does not know) passes null: it follows the level, and its card has no
+       * "Always allow". `verdict` is the answer of the rules when the caller asked already.
+       */
       const approve = async (
         ctx: ToolContext,
-        call: ToolCall,
+        call: { readonly id: string },
         risky: boolean,
-        key: string,
+        step: RuleStep | null,
         summary: string,
+        verdict: RuleVerdict = checkRules(ctx, call.id, step),
       ) => {
-        if (!needsApproval(ctx.permission, risky) || allowed(ctx.agentId, key)) return
-        const reply = await wait(ctx, call.id, { kind: "approval", summary })
+        const outcome = ruleOutcome({ level: ctx.permission, risky, verdict })
+        if (outcome === "refuse_rule" && verdict.kind === "deny") throw new RuleDenied(verdict.rule)
+        if (outcome === "allow_rule" && verdict.kind === "allow") {
+          noteRule(ctx, call.id, "allow_rule", verdict.rule)
+          ctx.onRuleAllowed?.(call.id)
+          return
+        }
+        if (outcome === "run") return
+        const unreadable = outcome === "ask_unreadable"
+        // "Always allow" saves a rule that is not wider than the step. A card for a step with no
+        // rules, one whose rule would not fit, and one that a rule that cannot be read stopped,
+        // asks again the next time.
+        const save = !unreadable && step !== null && rules.canSave(ctx.agentId, step)
+        const reply = await wait(ctx, call.id, {
+          kind: "approval",
+          summary,
+          ...(save ? {} : { once: true }),
+          ...(unreadable ? { unreadable: true as const } : {}),
+        })
         // A small cap: a card that no log entry reads must not grow the set for ever.
         if (answered.size >= 1000) answered.clear()
         answered.add(`${ctx.agentId}:${call.id}`)
         const answer = reply.answer as ApprovalAnswer
         if (reply.by) ctx.onDecision?.(call.id, answer === "deny" ? "deny" : "allow", reply.by)
+        if (unreadable && verdict.kind === "unreadable")
+          noteRule(ctx, call.id, "unreadable_rule", verdict.rule)
         // A linked device cannot change what an agent may always do (spec 012): its "always" is
         // one "allow", and the next step asks again.
         if (answer === "always") {
-          if (!reply.by) allow(ctx.agentId, key)
+          if (!reply.by && save && step) rules.saveFromCard(ctx.agentId, step)
         } else if (answer !== "allow") throw new Denied()
       }
 
@@ -785,9 +886,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         call: ToolCall,
         summary: string,
         held: SensitiveLabel | null,
+        rule: RuleVerdict,
       ): Promise<boolean> => {
         const verdict = sendDecision({ level: ctx.permission, sensitive: held !== null })
         if (verdict === "usual") return false
+        // A rule that cannot be read asks, also at "Full access": the usual card does it.
+        if (verdict === "run" && rule.kind === "unreadable") return false
         if (
           verdict === "ask" &&
           held &&
@@ -805,7 +909,12 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       ): Promise<A> => {
         // The source as it is now: a step that gives outside content later does not change it.
         const outside = ctx.turn.source
-        const log = (decidedBy: ActionDecider, result: "ran" | "failed" | "refused" | "stopped") =>
+        const ruleOf = request.rule?.kind === "none" ? undefined : request.rule
+        const log = (
+          decidedBy: ActionDecider,
+          result: "ran" | "failed" | "refused" | "stopped",
+          rule?: RuleRef,
+        ) =>
           actionLog.add({
             agentId: ctx.agentId,
             kind: request.step,
@@ -815,6 +924,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             taskId: ctx.taskId,
             outside,
             sensitive: ctx.turn.sensitive,
+            ...(rule ? { rule } : {}),
           })
         const verdict = guardDecision({
           step: request.step,
@@ -822,18 +932,23 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           outside: outside !== null,
           program: ctx.turn.program,
           starter: ctx.turn.starter,
-          denied: request.denied === true,
+          // "Read only" comes before the rules (spec 007): there it refuses the step first.
+          denied: request.rule?.kind === "deny" && ctx.permission !== "read_only",
         })
-        if (verdict === "refuse_rule") {
-          log("deny_rule", "refused")
-          throw new Refused("Denied by a rule.")
+        if (verdict === "refuse_rule" && ruleOf) {
+          log("deny_rule", "refused", ruleOf.rule)
+          noteRule(ctx, callId, "deny_rule", ruleOf.rule)
+          throw new RuleDenied(ruleOf.rule)
         }
         if (verdict === "refuse_read_only") {
           log("level", "refused")
           throw new Refused("Refused: read only.")
         }
         let decidedBy: ActionDecider = "level"
-        if (verdict === "ask") {
+        let ruleSaw: RuleRef | undefined
+        // A rule that cannot be read asks the user, also where the guard lets the step run.
+        const unreadable = verdict === "run" && ruleOf?.kind === "unreadable" ? ruleOf : undefined
+        if (verdict === "ask" || unreadable) {
           let reply: { answer: string; by: string | null }
           try {
             reply = await wait(ctx, callId, {
@@ -841,6 +956,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               summary: request.target,
               once: true,
               ...(outside ? { outside } : {}),
+              ...(unreadable ? { unreadable: true as const } : {}),
             })
           } catch (error) {
             log("level", "stopped")
@@ -848,14 +964,17 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
           const yes = reply.answer === "allow" || reply.answer === "always"
           if (reply.by) ctx.onDecision?.(callId, yes ? "allow" : "deny", reply.by)
-          decidedBy = "user"
+          decidedBy = unreadable ? "unreadable_rule" : "user"
+          ruleSaw = unreadable?.rule
           if (!yes) {
-            log("user", "refused")
+            log(decidedBy, "refused", ruleSaw)
             throw new Denied()
           }
         } else if (verdict === "usual" && request.usual) {
           try {
             decidedBy = await request.usual()
+            if (decidedBy === "allow_rule" || decidedBy === "unreadable_rule")
+              ruleSaw = ruleOf?.rule
           } catch (error) {
             log(
               error instanceof Denied ? "user" : "level",
@@ -866,21 +985,11 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
         try {
           const value = await request.work()
-          log(decidedBy, "ran")
+          log(decidedBy, "ran", ruleSaw)
           return value
         } catch (error) {
-          log(decidedBy, ctx.signal.aborted ? "stopped" : "failed")
+          log(decidedBy, ctx.signal.aborted ? "stopped" : "failed", ruleSaw)
           throw error
-        }
-      }
-
-      /** The real path of a file or of its nearest folder that exists, so symlinks count. */
-      const realOf = (path: string): string => {
-        try {
-          return realpathSync(path)
-        } catch {
-          const parent = dirname(path)
-          return parent === path ? path : join(realOf(parent), basename(path))
         }
       }
 
@@ -1074,20 +1183,38 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         } catch {}
         const writing = classifyHostWriting(host)
         if (writing.kind === "never") throw new AddressNotAllowed(host)
+        // A Deny rule for the host refuses the page at every level, before any question.
+        const step: RuleStep = { kind: "web", host }
+        const verdict = checkRules(ctx, call.id, step)
         // The card that asks for a local address in its own right takes the place of the usual one.
-        if (!(await sensitiveSend(ctx, call, url, ctx.turn.sensitive)) && writing.kind !== "local")
-          await approve(ctx, call, false, "fetch_url", url)
+        if (
+          !(await sensitiveSend(ctx, call, url, ctx.turn.sensitive, verdict)) &&
+          writing.kind !== "local"
+        )
+          await approve(ctx, call, false, step, url, verdict)
+        // A Deny rule for the host of a hop (a redirect, or the name that leads to a local address).
+        let hopDenied: RuleRef | undefined
         const result = await checkedFetch({
           url,
           signal: ctx.signal,
           resolve: platform.resolveHost,
           timeoutMs: FETCH_TIMEOUT_MS,
           allowLocal: async ({ host: local, url: stepUrl, byName }) => {
-            // "Full access" runs a hard step with no question.
-            if (ctx.permission === "full") return true
-            if (byName) return await askOnce(ctx, call.id, { summary: stepUrl })
+            const hopStep: RuleStep = { kind: "web", host: local }
+            const hop = rules.verdict(ctx.agentId, hopStep)
+            if (hop.kind === "deny") {
+              hopDenied = hop.rule
+              noteRule(ctx, call.id, "deny_rule", hop.rule)
+              return false
+            }
+            // A name that leads to a local address always asks: a rule for the name does not
+            // count. "Full access" runs a hard step with no question.
+            if (byName) {
+              if (ctx.permission === "full" && hop.kind !== "unreadable") return true
+              return await askOnce(ctx, call.id, { summary: stepUrl })
+            }
             try {
-              await approve(ctx, call, true, `fetch_url:local:${local}`, stepUrl)
+              await approve(ctx, call, true, hopStep, stepUrl, hop)
               return true
             } catch (error) {
               if (error instanceof Denied) return false
@@ -1096,7 +1223,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           },
         })
         if (result.kind === "refused") throw new AddressNotAllowed(result.host)
-        if (result.kind === "denied") throw new Denied()
+        if (result.kind === "denied") throw hopDenied ? new RuleDenied(hopDenied) : new Denied()
         if (result.kind === "failed") {
           if (result.reason === "stopped" || ctx.signal.aborted) throw new Error("stopped")
           throw new Error(FETCH_FAILURES[result.reason])
@@ -1159,14 +1286,14 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const url = text(args, "url")
             if (!/^https?:\/\//i.test(url))
               return { output: "Only http and https addresses work.", failed: true }
-            await approve(ctx, call, false, "browser_open", url)
+            await approve(ctx, call, false, null, url)
             await whileUserHolds(ctx)
             const opened = await page.open(url)
             holdOutside(ctx.turn, { kind: "page", host: hostOf(opened.url || url) })
             browserChanged(ctx.agentId)
             return { output: `Opened ${opened.url}\nTitle: ${opened.title}`, failed: false }
           }
-          await approve(ctx, call, false, "browser_act", `${call.name} ${call.input}`)
+          await approve(ctx, call, false, null, `${call.name} ${call.input}`)
           await whileUserHolds(ctx)
           if (ctx.signal.aborted) throw new Error("stopped")
           if (call.name === "browser_read") {
@@ -1572,7 +1699,6 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             `Value missing: this computer holds no value for the secret ${secret.name}. The user must replace the value in settings, or you ask again with replace true.`,
           )
         const target = `[${secret.name}] ${method} ${address.url.toString()}`
-        const nameKey = secretNameKey(secret.name)
         const send = async () => {
           const value = secret.value()
           if (value === null)
@@ -1599,26 +1725,28 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           return result
         }
         // A rule matches the name and the method, or the name and any method (spec 007).
-        const ruleKey = `secret_request:${nameKey}:${method}`
-        const anyKey = `secret_request:${nameKey}:*`
+        const step: RuleStep = { kind: "secret", name: secret.name, method }
         const result =
           method === "GET"
             ? await (async () => {
-                if (!allowed(ctx.agentId, anyKey)) await approve(ctx, call, false, ruleKey, target)
+                await approve(ctx, call, false, step, target)
                 return send()
               })()
-            : await guarded(ctx, call.id, {
-                step: "secret_request",
-                target,
-                work: send,
-                usual: async () => {
-                  if (!needsApproval(ctx.permission, true)) return "level"
-                  if (allowed(ctx.agentId, ruleKey) || allowed(ctx.agentId, anyKey))
-                    return "allow_rule"
-                  await approve(ctx, call, true, ruleKey, target)
-                  return "user"
-                },
-              })
+            : await (async () => {
+                const verdict = rules.verdict(ctx.agentId, step)
+                return guarded(ctx, call.id, {
+                  step: "secret_request",
+                  target,
+                  work: send,
+                  rule: verdict,
+                  usual: async () => {
+                    // The request meets the rules in the order of spec 007: an Allow rule, a
+                    // rule that cannot be read, then the level. A Deny rule has refused it.
+                    await approve(ctx, call, true, step, target, verdict)
+                    return peekBy(ctx, call.id, "level")
+                  },
+                })
+              })()
         // The answer of the service reaches the agent: it is outside content (spec 007).
         holdOutside(ctx.turn, { kind: "secret", name: secret.name })
         saved.touch(secret.id)
@@ -1648,7 +1776,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         const name = text(args, "name").trim()
         const secret = saved.find(ctx.agentId, name)
         if (!secret) return failed(`There is no saved secret named ${name}.`)
-        await approve(ctx, call, false, "forget_secret", `[${secret.name}] ${secret.origin}`)
+        await approve(ctx, call, false, null, `[${secret.name}] ${secret.origin}`)
         saved.remove(secret.id)
         return {
           output: `Forgot the secret ${secret.name}. Its value left the keychain.`,
@@ -1775,7 +1903,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const p = place(ctx, text(args, "path"))
             const blocked = knowledgeBlock(ctx, p.full)
             if (blocked) return { output: blocked, failed: true }
-            await approve(ctx, call, !p.inside, `list_files${p.inside ? "" : ":outside"}`, p.full)
+            await approve(ctx, call, !p.inside, { kind: "file", path: p.full }, p.full)
             const entries = readdirSync(p.full, { withFileTypes: true })
               .slice(0, LIST_MAX)
               .map((e) => `${e.isDirectory() ? "dir " : "file"} ${e.name}`)
@@ -1787,7 +1915,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const p = place(ctx, text(args, "path"))
             const blocked = knowledgeBlock(ctx, p.full)
             if (blocked) return { output: blocked, failed: true }
-            await approve(ctx, call, !p.inside, `read_file${p.inside ? "" : ":outside"}`, p.full)
+            await approve(ctx, call, !p.inside, { kind: "file", path: p.full }, p.full)
             const output = cut(readFileSync(p.full, "utf8"), READ_MAX)
             // The agent has the text of a file of a credential place now (spec 007).
             markSensitive(ctx, makePlaces(placeEnv(ctx)).credential(p.full))
@@ -1800,10 +1928,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             // A change to a control place is a hard step (spec 007): it asks as a risky step does,
             // also inside the workspace, and "Always allow" keeps a rule for this one path.
             const control = makePlaces(placeEnv(ctx)).control(p.full)
-            if (control)
-              await approve(ctx, call, true, `write_file:control:${realOf(p.full)}`, p.full)
-            else
-              await approve(ctx, call, !p.inside, `write_file${p.inside ? "" : ":outside"}`, p.full)
+            await approve(ctx, call, control || !p.inside, { kind: "file", path: p.full }, p.full)
             mkdirSync(dirname(p.full), { recursive: true })
             const content = text(args, "content")
             writeFileSync(p.full, content)
@@ -1827,20 +1952,20 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const command = text(args, "command")
             if (!command.trim()) return { output: "No command.", failed: true }
             const reason = riskyReason(command, ctx.workspace)
-            const first = command.trim().split(/\s+/)[0] ?? ""
             const env = placeEnv(ctx)
             // The text of the command can name a credential place: this step is a sensitive read,
             // and it counts for its own decision when it also sends data out.
             const reads = commandReads(env, command)
+            // A Deny rule refuses the command at every level, before any question.
+            const step: RuleStep = { kind: "shell", command }
+            const verdict = checkRules(ctx, call.id, step)
             const decided =
               sendsData(command) &&
-              (await sensitiveSend(ctx, call, command, ctx.turn.sensitive ?? reads))
+              (await sensitiveSend(ctx, call, command, ctx.turn.sensitive ?? reads, verdict))
             if (!decided) {
               // A change to a control place is a hard step (spec 007), with a rule for this command.
-              if (commandChangesControl(env, command, ctx.workspace))
-                await approve(ctx, call, true, `run_command:control:${command}`, command)
-              else
-                await approve(ctx, call, reason !== null, `run_command:${reason ?? first}`, command)
+              const hard = commandChangesControl(env, command, ctx.workspace)
+              await approve(ctx, call, hard || reason !== null, step, command, verdict)
             }
             markSensitive(ctx, reads)
             return await runCommand(ctx, command)
@@ -1921,6 +2046,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           if (error instanceof Denied)
             return { output: "The user denied this step.", failed: true, notRun: true }
           if (error instanceof Refused) return { output: error.message, failed: true, notRun: true }
+          if (error instanceof RuleDenied)
+            return { output: RULE_DENIED_MESSAGE, failed: true, notRun: true, refused: "rule" }
           if (error instanceof AddressNotAllowed) {
             // The app decided: the card says so, and the action log names the app (spec 007).
             refusedByApp.add(`${ctx.agentId}:${call.id}`)
@@ -1933,12 +2060,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       }
 
       return Tools.of({
-        decidedBy: (agentId, callId) =>
-          refusedByApp.delete(`${agentId}:${callId}`)
-            ? "app"
-            : answered.delete(`${agentId}:${callId}`)
-              ? "user"
-              : "level",
+        decision,
+        decidedBy: (agentId, callId) => decision(agentId, callId).decidedBy,
         setMessenger: (m) => {
           messenger = m
         },
@@ -1992,10 +2115,20 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           }
           try {
             const call = { id: request.callId, name: "", input: "" }
-            await approve(ctx, call, request.risky, request.key, request.summary)
+            // A path from a program can be relative to the workspace of the agent.
+            const step: RuleStep | null =
+              request.step?.kind === "file" && !isAbsolute(request.step.path)
+                ? { kind: "file", path: resolve(ctx.workspace, request.step.path) }
+                : (request.step ?? null)
+            await approve(ctx, call, request.risky, step, request.summary)
             return true
           } catch (error) {
             if (error instanceof Denied) return false
+            if (error instanceof RuleDenied) {
+              // The program is told that the user denied the step; the card says why.
+              ctx.onRefused?.(request.callId, "rule")
+              return false
+            }
             throw error
           }
         },

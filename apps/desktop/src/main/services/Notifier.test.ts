@@ -517,16 +517,22 @@ describe("the island, other computers and Always allow", () => {
     })
     await s.idle()
     expect(existsSync(first)).toBe(false)
-    // The rule holds: the next step of that kind asks nothing.
-    await s.send(removal(second))
+    // The rule holds for this command: the same step asks nothing (spec 007).
+    writeFileSync(first, "x")
+    await s.send(removal(first))
     await s.idle()
-    expect(existsSync(second)).toBe(false)
+    expect(existsSync(first)).toBe(false)
+    // The rule is not wider than the step on the card: another command asks.
+    await s.send(removal(second))
+    await waitingIsland(s)
+    expect(existsSync(second)).toBe(true)
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "call_1", "deny")))
+    await s.idle()
   })
 
   test("a request of the other computer has no Always allow on the island, and its answer is one Allow", async () => {
     const s = await setup()
     const first = file(s, "peer1.txt")
-    const second = file(s, "peer2.txt")
     await s.send(removal(first))
     const own = await waitingIsland(s)
     // The same request shown as one of the other computer of a sync pair, as the sync service does.
@@ -553,10 +559,12 @@ describe("the island, other computers and Always allow", () => {
     })
     await s.idle()
     expect(existsSync(first)).toBe(false)
-    await s.send(removal(second))
+    // No rule was saved: the same command asks again.
+    writeFileSync(first, "x")
+    await s.send(removal(first))
     const next = await waitingIsland(s)
     expect(next.always).toBe(true)
-    expect(existsSync(second)).toBe(true)
+    expect(existsSync(first)).toBe(true)
     await s.run(Tools.use((x) => x.respond(s.agent.id, "call_1", "deny")))
     await s.idle()
   })
@@ -566,8 +574,6 @@ describe("the island, other computers and Always allow", () => {
     const peer = await s.addAgent("Bo")
     const ownFile = file(s, "list-own.txt")
     const peerFile = file(s, "list-peer.txt")
-    const ownNext = file(s, "list-own-next.txt")
-    const peerNext = file(s, "list-peer-next.txt")
     await s.send(removal(ownFile))
     // The two turns run at once, so the request of this agent must be there before Bo asks:
     // otherwise a slow machine can show the two in the other order.
@@ -623,9 +629,11 @@ describe("the island, other computers and Always allow", () => {
     })
     await until(() => !existsSync(peerFile))
     expect((await s.island()).waiting.map((w) => w.agentId)).toEqual([s.agent.id])
-    await s.sendTo(peer.id, removal(peerNext))
+    // No rule was saved: the same command asks again.
+    writeFileSync(peerFile, "x")
+    await s.sendTo(peer.id, removal(peerFile))
     await until(async () => (await s.island()).waiting.length === 2)
-    expect(existsSync(peerNext)).toBe(true)
+    expect(existsSync(peerFile)).toBe(true)
     expect((await s.island()).waiting.find((w) => w.agentId === peer.id)?.always).toBe(true)
 
     // "Always allow" for the request of this computer saves the rule.
@@ -635,8 +643,10 @@ describe("the island, other computers and Always allow", () => {
       answer: "always",
     })
     await until(() => !existsSync(ownFile))
-    await s.send(removal(ownNext))
-    await until(() => !existsSync(ownNext))
+    // The rule holds for this command: the same step runs with no card.
+    writeFileSync(ownFile, "x")
+    await s.send(removal(ownFile))
+    await until(() => !existsSync(ownFile))
     await s.run(Tools.use((x) => x.respond(peer.id, "call_1", "deny")))
     await s.idle()
   })

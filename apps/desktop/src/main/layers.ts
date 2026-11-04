@@ -27,6 +27,7 @@ import { Platform, type PlatformService } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
+import { Rules } from "./services/Rules.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
 import { Search } from "./services/Search.ts"
@@ -104,6 +105,7 @@ export const appLayer = (options: AppLayerOptions) => {
   const memory = Layer.mergeAll(
     Memory.layer,
     ActionLog.layer,
+    Rules.layer,
     Search.layer,
     SavedSecrets.layer,
     Decision.layer(options.decisionUrl ? { url: options.decisionUrl } : {}),

@@ -1,4 +1,5 @@
 import {
+  ACTION_KINDS,
   AgentCreate,
   AgentModel,
   AgentPatch,
@@ -69,6 +70,7 @@ import { Platform } from "./services/Platform.ts"
 import { Providers } from "./services/Providers.ts"
 import { Remote } from "./services/Remote.ts"
 import { Routines } from "./services/Routines.ts"
+import { Rules } from "./services/Rules.ts"
 import { Runtimes } from "./services/Runtimes.ts"
 import { SavedSecrets } from "./services/SavedSecrets.ts"
 import { Search } from "./services/Search.ts"
@@ -107,6 +109,14 @@ const decode =
     )
 
 const ById = Schema.Struct({ id: Schema.String })
+/** A rule that the user adds or edits in the rules list (spec 007). */
+const RuleInputSchema = Schema.Struct({
+  agentId: Schema.NullOr(Schema.String),
+  kind: Schema.Literals(["file", "shell", "web", "connection", "secret"]),
+  text: Schema.String,
+  detail: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  decision: Schema.Literals(["allow", "deny"]),
+})
 const SettingsLine = Schema.Struct({
   agentId: Schema.String,
   messageId: Schema.String,
@@ -763,8 +773,28 @@ export const handlers: Handlers = {
       Schema.Struct({
         agentId: Schema.optionalKey(Schema.String),
         result: Schema.optionalKey(Schema.Literals(["ran", "failed", "refused", "stopped"])),
+        kind: Schema.optionalKey(Schema.Literals(ACTION_KINDS)),
+        search: Schema.optionalKey(Schema.String),
       }),
     )(input).pipe(Effect.flatMap((filter) => ActionLog.use((log) => log.list(filter)))),
+  "rules.list": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+        decision: Schema.optionalKey(Schema.Literals(["allow", "deny"])),
+      }),
+    )(input).pipe(Effect.flatMap((filter) => Rules.use((r) => r.list(filter)))),
+  "rules.add": (input) =>
+    decode(RuleInputSchema)(input).pipe(Effect.flatMap((rule) => Rules.use((r) => r.add(rule)))),
+  "rules.update": (input) =>
+    decode(Schema.Struct({ id: Schema.String, rule: RuleInputSchema }))(input).pipe(
+      Effect.flatMap(({ id, rule }) => Rules.use((r) => r.update(id, rule))),
+    ),
+  "rules.delete": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Rules.use((r) => r.remove(id))),
+      done,
+    ),
   "secrets.list": (input) =>
     decode(Schema.Struct({ agentId: Schema.optionalKey(Schema.String) }))(input).pipe(
       Effect.flatMap(({ agentId }) => SavedSecrets.use((s) => Effect.sync(() => s.list(agentId)))),

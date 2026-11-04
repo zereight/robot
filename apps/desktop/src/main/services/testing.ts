@@ -7,8 +7,8 @@ import { appLayer } from "../layers.ts"
 import { MemoryNetwork } from "../link/nearby.testing.ts"
 import { bindLinkDispatcher } from "../rpc.ts"
 import { FakeChat } from "../teams/fakeChat.testing.ts"
-import { Database } from "./Database.ts"
 import type { BrowserPage, PlatformService } from "./Platform.ts"
+import { Rules } from "./Rules.ts"
 import { Secrets } from "./Secrets.ts"
 import { fakeClock } from "./silence.testing.ts"
 
@@ -279,14 +279,10 @@ export type TestRuntime = ReturnType<typeof testRuntime>["runtime"]
  */
 export const allowLocalHost = (runtime: TestRuntime, agentId: string, host = "127.0.0.1") =>
   runtime.runPromise(
-    Database.use((db) =>
-      Effect.sync(() =>
-        db.run(
-          "INSERT OR IGNORE INTO agent_allow (agent_id, key) VALUES (?, ?)",
-          agentId,
-          `fetch_url:local:${host}`,
-        ),
-      ),
+    Rules.use((rules) =>
+      Effect.sync(() => {
+        rules.saveFromCard(agentId, { kind: "web", host })
+      }),
     ),
   )
 export { Effect, Layer }

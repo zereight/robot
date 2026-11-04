@@ -362,10 +362,10 @@ test("island attention card: place, kind of step, 1 of N, previous and next, ans
   await expect.poll(() => existsSync(paths.Ada), { timeout: 15_000 }).toBe(false)
   expect(existsSync(paths.Bo)).toBe(true)
   expect(existsSync(paths.Cy)).toBe(true)
-  // The next step of the same kind from the same agent asks no more.
-  const again = victim("a-again")
-  await sendTo(page, id("Ada"), rm(again))
-  await expect.poll(() => existsSync(again), { timeout: 15_000 }).toBe(false)
+  // The same command from the same agent asks no more. The rule is not wider than the step.
+  writeFileSync(paths.Ada, "x")
+  await sendTo(page, id("Ada"), rm(paths.Ada))
+  await expect.poll(() => existsSync(paths.Ada), { timeout: 15_000 }).toBe(false)
   await expect(position).toHaveText("1 of 2")
   await expect(summary).toContainText("b-second.txt")
 

@@ -811,4 +811,90 @@ export const migrations: readonly string[] = [
   ALTER TABLE message ADD COLUMN program_mark TEXT;
   ALTER TABLE channel_message ADD COLUMN program_mark TEXT;
   `,
+  `
+  -- Permission rules (spec 007, "Permission rules"). A rule is for one agent (agent_id) or for all
+  -- agents of the server (agent_id is NULL). The column kind is file, shell, web, connection or
+  -- secret. The column match_text is the path, the command, the host, the connection or the
+  -- secret. The column detail is the tool or the method, and NULL for "any tool" or "any method".
+  -- A rule that this build cannot read (an unknown kind or decision) stays in the table and
+  -- allows or denies nothing. Deleting an agent deletes its rules. The rules stay on this
+  -- computer and do not sync (spec 019): the table has no dirty trigger.
+  CREATE TABLE permission_rule (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    agent_id TEXT REFERENCES agent (id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    match_text TEXT NOT NULL,
+    detail TEXT,
+    decision TEXT NOT NULL,
+    source TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX permission_rule_server ON permission_rule (server_id, created_at);
+  CREATE INDEX permission_rule_agent ON permission_rule (agent_id);
+  -- The rule that decided a step, kept with the entry. The text stays when the rule is deleted.
+  ALTER TABLE action_log ADD COLUMN rule_id TEXT;
+  ALTER TABLE action_log ADD COLUMN rule_kind TEXT;
+  ALTER TABLE action_log ADD COLUMN rule_text TEXT;
+  ALTER TABLE action_log ADD COLUMN rule_detail TEXT;
+  -- The old "Always allow" keys become Allow rules. A rule is never wider than its key was. A key
+  -- of a whole class of steps (all commands that install software, every read outside the
+  -- workspace, every fetch of a page, a browser step, a tool that the app does not know) has no
+  -- rule that means the same. It is dropped, and the step asks again.
+  -- Shell command: the key holds the command, or the first word of a command.
+  INSERT INTO permission_rule (id, server_id, agent_id, kind, match_text, detail, decision, source, created_at)
+  SELECT lower(hex(randomblob(16))), a.server_id, k.agent_id, 'shell', k.text, NULL, 'allow', 'card',
+         CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  FROM (
+    SELECT agent_id,
+           CASE WHEN key LIKE 'run_command:control:%' THEN substr(key, 21) ELSE substr(key, 13) END AS text
+    FROM agent_allow WHERE key LIKE 'run_command:%'
+  ) k JOIN agent a ON a.id = k.agent_id
+  WHERE k.text <> '' AND length(k.text) <= 500
+    AND k.text NOT IN ('sudo', 'install', 'network', 'shell_pipe', 'delete_outside');
+  -- Files: the key holds the full path. A key of the class "inside the workspace" or "outside"
+  -- has no path and is dropped.
+  INSERT INTO permission_rule (id, server_id, agent_id, kind, match_text, detail, decision, source, created_at)
+  SELECT lower(hex(randomblob(16))), a.server_id, k.agent_id, 'file', k.text, NULL, 'allow', 'card',
+         CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  FROM (
+    SELECT agent_id,
+           CASE WHEN key LIKE 'write_file:control:%' THEN substr(key, 20)
+                WHEN key LIKE 'write_file:%' OR key LIKE 'list_files:%' THEN substr(key, 12)
+                ELSE substr(key, 11) END AS text
+    FROM agent_allow
+    WHERE key LIKE 'write_file:control:/%' OR key LIKE 'write_file:/%'
+       OR key LIKE 'read_file:/%' OR key LIKE 'list_files:/%'
+  ) k JOIN agent a ON a.id = k.agent_id
+  WHERE length(k.text) BETWEEN 1 AND 500;
+  -- Web pages: the key holds the host.
+  INSERT INTO permission_rule (id, server_id, agent_id, kind, match_text, detail, decision, source, created_at)
+  SELECT lower(hex(randomblob(16))), a.server_id, k.agent_id, 'web', lower(k.text), NULL, 'allow', 'card',
+         CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  FROM (
+    SELECT agent_id,
+           CASE WHEN key LIKE 'fetch_url:local:%' THEN substr(key, 17) ELSE substr(key, 9) END AS text
+    FROM agent_allow WHERE key LIKE 'fetch_url:local:%' OR key LIKE 'network:%'
+  ) k JOIN agent a ON a.id = k.agent_id
+  WHERE length(k.text) BETWEEN 1 AND 500;
+  -- Requests with a saved secret: the key holds the name and the method, or * for any method.
+  INSERT INTO permission_rule (id, server_id, agent_id, kind, match_text, detail, decision, source, created_at)
+  SELECT lower(hex(randomblob(16))), a.server_id, k.agent_id, 'secret',
+         substr(k.rest, 1, length(k.rest) - length(m.suffix)), m.method, 'allow', 'card',
+         CAST(strftime('%s', 'now') AS INTEGER) * 1000
+  FROM (SELECT agent_id, substr(key, 16) AS rest FROM agent_allow WHERE key LIKE 'secret_request:%') k
+  JOIN (
+    SELECT ':GET' AS suffix, 'GET' AS method UNION ALL SELECT ':POST', 'POST'
+    UNION ALL SELECT ':PUT', 'PUT' UNION ALL SELECT ':PATCH', 'PATCH'
+    UNION ALL SELECT ':DELETE', 'DELETE' UNION ALL SELECT ':*', NULL
+  ) m ON substr(k.rest, -length(m.suffix)) = m.suffix
+  JOIN agent a ON a.id = k.agent_id
+  WHERE length(k.rest) > length(m.suffix) AND length(k.rest) - length(m.suffix) <= 500;
+  -- Two keys can make the same rule. One stays.
+  DELETE FROM permission_rule WHERE rowid NOT IN (
+    SELECT MIN(rowid) FROM permission_rule
+    GROUP BY server_id, agent_id, kind, match_text, IFNULL(detail, ''), decision
+  );
+  DROP TABLE agent_allow;
+  `,
 ]

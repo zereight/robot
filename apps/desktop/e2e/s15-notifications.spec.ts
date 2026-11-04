@@ -93,7 +93,8 @@ test("notifications: settings, a notification per kind, the island, Allow on the
   await expect(island.getByTestId("island-attention")).toHaveCount(0, { timeout: 10_000 })
   await expect(page.getByTestId("tool-card").last()).toContainText("Done")
 
-  // Always allow on the island: this step runs, and the next step of the same kind asks no more.
+  // Always allow on the island: this step runs, and the same command asks no more. The rule is
+  // not wider than the step on the card, so another command still asks (spec 007).
   const second = join(outside, "second.txt")
   const third = join(outside, "third.txt")
   writeFileSync(second, "x")
@@ -105,9 +106,17 @@ test("notifications: settings, a notification per kind, the island, Allow on the
   await island.getByTestId("island-always").click()
   await expect.poll(() => existsSync(second), { timeout: 15_000 }).toBe(false)
   await expect(island.getByTestId("island-attention")).toHaveCount(0, { timeout: 10_000 })
-  await send(page, `TOOL run_command ${JSON.stringify({ command: `rm "${third}"` })}`)
-  await expect.poll(() => existsSync(third), { timeout: 15_000 }).toBe(false)
+  writeFileSync(second, "x")
+  await send(page, `TOOL run_command ${JSON.stringify({ command: `rm "${second}"` })}`)
+  await expect.poll(() => existsSync(second), { timeout: 15_000 }).toBe(false)
   await expect(island.getByTestId("island-attention")).toHaveCount(0)
+  await send(page, `TOOL run_command ${JSON.stringify({ command: `rm "${third}"` })}`)
+  await expect(island.getByTestId("island-attention")).toBeVisible({ timeout: 15_000 })
+  await expect(island.getByTestId("island-summary")).toContainText("third.txt")
+  expect(existsSync(third)).toBe(true)
+  await island.getByTestId("island-deny").click()
+  await expect(island.getByTestId("island-attention")).toHaveCount(0, { timeout: 10_000 })
+  expect(existsSync(third)).toBe(true)
 
   // Working agents show on the island, then it is idle again.
   await send(page, "please go slow")

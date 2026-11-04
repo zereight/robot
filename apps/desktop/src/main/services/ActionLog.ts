@@ -7,10 +7,13 @@ import {
   type ActionKind,
   type ActionLogEntry,
   type ActionResult,
+  type ActionRule,
   isOutsideSource,
+  isRuleKind,
   isSensitiveLabel,
   LOGGED_KINDS,
   type OutsideSource,
+  type RuleRef,
   redactSecrets,
   type SensitiveLabel,
   type StepAccess,
@@ -32,11 +35,17 @@ export interface ActionLogInput {
   readonly outside: OutsideSource | null
   /** The label of the first credential place that the turn read, or none (spec 007). */
   readonly sensitive?: SensitiveLabel | null
+  /** The rule that decided the step, or the rule that could not be read (spec 007). */
+  readonly rule?: RuleRef | null
 }
 
 export interface ActionLogFilter {
   readonly agentId?: string
   readonly result?: ActionResult
+  /** The kind of step (spec 007: the log has filters for the agent, the result and the step kind). */
+  readonly kind?: ActionKind
+  /** A search of the target: the entries whose target holds this text, with no regard to case. */
+  readonly search?: string
 }
 
 export interface ActionLogService {
@@ -64,7 +73,17 @@ interface Row {
   task_id: string | null
   outside: string | null
   sensitive: string | null
+  rule_id: string | null
+  rule_kind: string | null
+  rule_text: string | null
+  rule_detail: string | null
+  /** 1 while the rule that decided the step still exists. */
+  rule_alive: number | null
 }
+
+/** The columns of an entry, and whether its rule still exists. */
+const COLUMNS = `l.*, CASE WHEN l.rule_id IS NULL THEN NULL
+  ELSE EXISTS (SELECT 1 FROM permission_rule r WHERE r.id = l.rule_id) END AS rule_alive`
 
 const parseOutside = (text: string | null): OutsideSource | null => {
   if (!text) return null
@@ -75,6 +94,17 @@ const parseOutside = (text: string | null): OutsideSource | null => {
     return null
   }
 }
+
+const toRule = (r: Row): ActionRule | null =>
+  r.rule_id !== null && r.rule_text !== null && isRuleKind(r.rule_kind)
+    ? {
+        id: r.rule_id,
+        kind: r.rule_kind,
+        text: r.rule_text,
+        detail: r.rule_detail,
+        deleted: r.rule_alive !== 1,
+      }
+    : null
 
 const toEntry = (r: Row): ActionLogEntry => ({
   id: r.id,
@@ -89,6 +119,7 @@ const toEntry = (r: Row): ActionLogEntry => ({
   taskId: r.task_id,
   outside: parseOutside(r.outside),
   sensitive: isSensitiveLabel(r.sensitive) ? r.sensitive : null,
+  rule: toRule(r),
 })
 
 /** The target as the log keeps it: secrets hidden, then cut at 200 characters. */
@@ -108,6 +139,8 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
     Effect.gen(function* () {
       const db = yield* Database
       const bus = yield* EventBus
+      // The entries of the last 90 days stay, also when no step adds one (spec 007).
+      db.run("DELETE FROM action_log WHERE at < ?", Date.now() - ACTION_LOG_DAYS * DAY_MS)
       return ActionLog.of({
         add: (input) => {
           const id = randomUUID()
@@ -116,8 +149,8 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", input.agentId)?.name ??
             ""
           db.run(
-            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside, sensitive)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO action_log (id, at, agent_id, agent_name, kind, access, target, decided_by, result, task_id, outside, sensitive, rule_id, rule_kind, rule_text, rule_detail)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             at,
             input.agentId,
@@ -130,6 +163,10 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             input.taskId,
             input.outside ? JSON.stringify(input.outside) : null,
             input.sensitive ?? null,
+            input.rule?.id ?? null,
+            input.rule?.kind ?? null,
+            input.rule ? logTarget(input.rule.text) : null,
+            input.rule?.detail ? logTarget(input.rule.detail) : null,
           )
           db.run("DELETE FROM action_log WHERE at < ?", at - ACTION_LOG_DAYS * DAY_MS)
           db.run(
@@ -138,13 +175,15 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             ACTION_LOG_MAX,
           )
           bus.emit("actionLog.changed", {})
-          return toEntry(db.get<Row>("SELECT * FROM action_log WHERE id = ?", id) as Row)
+          return toEntry(
+            db.get<Row>(`SELECT ${COLUMNS} FROM action_log l WHERE l.id = ?`, id) as Row,
+          )
         },
         ofTask: (taskId) =>
           db
             .all<Row>(
-              `SELECT * FROM action_log WHERE task_id = ? AND kind IN (${LOGGED_KINDS.map(() => "?").join(", ")})
-               ORDER BY at, rowid`,
+              `SELECT ${COLUMNS} FROM action_log l WHERE l.task_id = ? AND l.kind IN (${LOGGED_KINDS.map(() => "?").join(", ")})
+               ORDER BY l.at, l.rowid`,
               taskId,
               ...LOGGED_KINDS,
             )
@@ -154,17 +193,26 @@ export class ActionLog extends Context.Service<ActionLog, ActionLogService>()(
             const where: string[] = []
             const params: (string | number)[] = []
             if (filter.agentId) {
-              where.push("agent_id = ?")
+              where.push("l.agent_id = ?")
               params.push(filter.agentId)
             }
             if (filter.result) {
-              where.push("result = ?")
+              where.push("l.result = ?")
               params.push(filter.result)
+            }
+            if (filter.kind) {
+              where.push("l.kind = ?")
+              params.push(filter.kind)
+            }
+            const search = filter.search?.trim()
+            if (search) {
+              where.push("l.target LIKE ? ESCAPE '\\'")
+              params.push(`%${search.replace(/[\\%_]/g, "\\$&")}%`)
             }
             return db
               .all<Row>(
-                `SELECT * FROM action_log ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-                 ORDER BY at DESC, rowid DESC LIMIT ?`,
+                `SELECT ${COLUMNS} FROM action_log l ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+                 ORDER BY l.at DESC, l.rowid DESC LIMIT ?`,
                 ...params,
                 Math.max(1, Math.min(limit, 1000)),
               )

@@ -12,7 +12,7 @@ import {
 } from "@robot/shared"
 import { Effect, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
-import { ActionLog, logTarget } from "./ActionLog.ts"
+import { ActionLog, type ActionLogService, logTarget } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
 import { Chat, type TaskOrigin } from "./Chat.ts"
 import { Database } from "./Database.ts"
@@ -461,7 +461,14 @@ describe("the guard that later slices use", () => {
               .guarded(context, "g1", {
                 step: o.step ?? "settings",
                 target: "name: Ada → Bob",
-                denied: o.denied === true,
+                ...(o.denied === true
+                  ? {
+                      rule: {
+                        kind: "deny" as const,
+                        rule: { id: "r1", kind: "file" as const, text: "/x", detail: null },
+                      },
+                    }
+                  : {}),
                 work: async () => {
                   ran++
                   return "changed"
@@ -529,6 +536,52 @@ describe("the guard that later slices use", () => {
   })
 })
 
+describe("Read only comes before a Deny rule (spec 007)", () => {
+  test("a guarded step at Read only is refused by the level, not by the rule", async () => {
+    const s = await setup("read_only")
+    const outcome = await s
+      .run(
+        Tools.use((x) =>
+          Effect.promise(() =>
+            x
+              .guarded(
+                {
+                  agentId: s.agent.id,
+                  workspace: s.agent.workspace,
+                  permission: "read_only",
+                  signal: new AbortController().signal,
+                  onWaiting: () => {},
+                  onMemory: () => {},
+                  onKnowledge: () => {},
+                  knowledgeChanges: { count: 0 },
+                  turn: newTurnMark("user"),
+                  taskId: null,
+                },
+                "g1",
+                {
+                  step: "secret_request",
+                  target: "[stripe] POST https://example.com/",
+                  rule: {
+                    kind: "deny",
+                    rule: { id: "r1", kind: "secret", text: "stripe", detail: "POST" },
+                  },
+                  work: async () => "sent",
+                },
+              )
+              .then(
+                (v) => v,
+                (e: unknown) => `refused: ${e instanceof Error ? e.message : String(e)}`,
+              ),
+          ),
+        ),
+      )
+      .catch((e: unknown) => String(e))
+    expect(outcome).toBe("refused: Refused: read only.")
+    const log = await s.log()
+    expect(log[0]).toMatchObject({ decidedBy: "level", result: "refused", rule: null })
+  })
+})
+
 describe("the action log", () => {
   test("a target is cut at 200 characters and hides what looks like a secret", () => {
     expect(logTarget(`key sk-${"a".repeat(30)} end`)).toBe("key [redacted] end")
@@ -571,5 +624,42 @@ describe("the action log", () => {
     expect((await s.log()).map((e) => e.target)).toEqual(["second", "first"])
     const refused = await s.run(ActionLog.use((l) => l.list({ result: "refused" })))
     expect(refused).toEqual([])
+  })
+
+  test("the list filters by agent, result, step kind and a search of the target (spec 007)", async () => {
+    const s = await setup("full")
+    const add = (kind: "file" | "shell", target: string, result: "ran" | "refused" = "ran") =>
+      s.run(
+        ActionLog.use((l) =>
+          Effect.sync(() =>
+            l.add({
+              agentId: s.agent.id,
+              kind,
+              target,
+              decidedBy: "level",
+              result,
+              taskId: null,
+              outside: null,
+            }),
+          ),
+        ),
+      )
+    await add("file", "/work/Report_100%.txt")
+    await add("shell", "git status")
+    await add("shell", "rm -rf build", "refused")
+    const targets = async (filter: Parameters<ActionLogService["list"]>[0]) =>
+      (await s.run(ActionLog.use((l) => l.list(filter)))).map((e) => e.target)
+    expect(await targets({ kind: "shell" })).toEqual(["rm -rf build", "git status"])
+    expect(await targets({ kind: "shell", result: "refused" })).toEqual(["rm -rf build"])
+    expect(await targets({ kind: "connection" })).toEqual([])
+    // A search ignores case, and a % or _ in it is a plain character.
+    expect(await targets({ search: "GIT" })).toEqual(["git status"])
+    expect(await targets({ search: "100%" })).toEqual(["/work/Report_100%.txt"])
+    expect(await targets({ search: "_100" })).toEqual(["/work/Report_100%.txt"])
+    expect(await targets({ search: "Report_1_0" })).toEqual([])
+    expect(await targets({ agentId: s.agent.id, search: "  work " })).toEqual([
+      "/work/Report_100%.txt",
+    ])
+    expect(await targets({ agentId: "nobody" })).toEqual([])
   })
 })

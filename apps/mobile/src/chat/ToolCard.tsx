@@ -22,7 +22,13 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
   const { t, palette } = useApp()
   const [open, setOpen] = useState(false)
   const state = tool.refused
-    ? t("tool.refused")
+    ? t(
+        tool.refused === "rule"
+          ? "tool.refusedRule"
+          : tool.refused === "address"
+            ? "tool.refusedAddress"
+            : "tool.refused",
+      )
     : tool.state === "running"
       ? t("tool.running")
       : tool.state === "waiting"
@@ -65,6 +71,9 @@ export const ToolCard = ({ tool }: { readonly tool: Tool }) => {
       </Pressable>
       {decision ? (
         <Text style={[styles.decision, { color: palette.textMuted }]}>{decision}</Text>
+      ) : null}
+      {tool.ruleAllowed ? (
+        <Text style={[styles.decision, { color: palette.textMuted }]}>{t("tool.ruleAllowed")}</Text>
       ) : null}
       {tool.answeredInChat ? (
         <Text style={[styles.decision, { color: palette.textMuted }]}>

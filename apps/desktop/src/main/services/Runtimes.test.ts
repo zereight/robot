@@ -947,7 +947,7 @@ describe("the browser step of a subscription agent, seen and answered from other
     )
   }
 
-  test("a linked device and the sync peer answer the card; their Always allow is one Allow and saves no rule; the card passes the sync check", async () => {
+  test("a linked device and the sync peer answer the card; their Always allow is one Allow and saves no rule, also on this computer; the card passes the sync check", async () => {
     const s = await chatSetup("claude_code", "ask_all")
     /** The answer of a linked device: the sync peer is a linked device too (spec 012, 019). */
     const answer = (name: string, value: string) =>
@@ -970,14 +970,15 @@ describe("the browser step of a subscription agent, seen and answered from other
     })
     // The card that waits, with its ask, is a card that the other computer takes.
     expect(await syncAccepts(s)).toBe(true)
-    // The island and the system notice show the request, with the choice to always allow.
+    // The island and the system notice show the request. A step of the browser has no rules, so
+    // there is no choice to always allow (spec 007, "Permission rules").
     const waiting = await s.run(Notifier.use((n) => Effect.succeed(n.island().waiting)))
     expect(waiting).toHaveLength(1)
     expect(waiting[0]).toMatchObject({
       callId: "app-1",
       kind: "approval",
       step: "browser",
-      always: true,
+      always: false,
     })
 
     // A linked device says "Always allow": the page opens once, and the card names the device.
@@ -1006,14 +1007,16 @@ describe("the browser step of a subscription agent, seen and answered from other
     await s.send(open)
     await until(async () => (await s.card())?.state === "waiting")
 
-    // The window of this computer can make the rule, and then the step asks nothing.
+    // The window of this computer has no rule to make for a step of the browser: its "always" is
+    // one Allow too, and the step asks again afterwards.
     await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "always")))
     await until(async () => (await done()) === 4)
     expect(opened(s)).toBe(3)
     await s.send(open)
+    await until(async () => (await s.card())?.state === "waiting")
+    await s.run(Tools.use((x) => x.respond(s.agent.id, "app-1", "deny")))
     await until(async () => (await done()) === 5)
-    expect(opened(s)).toBe(4)
-    expect((await s.card())?.decision).toBeUndefined()
+    expect(opened(s)).toBe(3)
     expect(await syncAccepts(s)).toBe(true)
   })
 })
