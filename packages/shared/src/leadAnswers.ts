@@ -1,3 +1,4 @@
+import type { MessagePart } from "./chat.ts"
 import {
   CHECK_MESSAGE_MAX,
   CHECK_MESSAGES,
@@ -276,3 +277,47 @@ export const passLabelKey = (pass: Pick<QuestionPass, "kind" | "reason">) => {
     ? ("lead.pass.user_choice" as const)
     : ("lead.pass.not_sure" as const)
 }
+
+// --- the questions of a part in the task view --------------------------------------------------
+
+/** One question of a part, for the task view (spec 005): who answered it, or where it waits. */
+export interface TaskQuestion {
+  readonly question: string
+  /** `user` and `lead` answered it. `with_lead` and `passed` and `open` wait for an answer. */
+  readonly by: "user" | "lead" | "with_lead" | "passed" | "open"
+  /** The name of the lead, for `lead`, `with_lead` and `passed`. */
+  readonly name: string | null
+  /** The reason of the lead, for `lead` and `passed`. */
+  readonly reason: string
+}
+
+const questionText = (input: string): string => {
+  try {
+    const value = JSON.parse(input) as { question?: unknown }
+    return typeof value.question === "string" ? value.question : ""
+  } catch {
+    return ""
+  }
+}
+
+/** The questions in the parts of the messages of a part, in order. */
+export const questionsOf = (parts: readonly MessagePart[]): TaskQuestion[] =>
+  parts.flatMap((part): TaskQuestion[] => {
+    if (part.kind !== "tool" || part.name !== "ask_user") return []
+    const ask = part.ask?.kind === "question" ? part.ask : undefined
+    const question = ask?.question ?? questionText(part.input)
+    if (part.answeredByLead)
+      return [
+        {
+          question,
+          by: "lead",
+          name: part.answeredByLead.name,
+          reason: part.answeredByLead.reason,
+        },
+      ]
+    if (ask?.lead) return [{ question, by: "with_lead", name: ask.lead.name, reason: "" }]
+    if (ask?.passed)
+      return [{ question, by: "passed", name: ask.passed.name, reason: ask.passed.reason }]
+    if (part.state === "done") return [{ question, by: "user", name: null, reason: "" }]
+    return [{ question, by: "open", name: null, reason: "" }]
+  })

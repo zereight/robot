@@ -67,6 +67,8 @@ const script = {
   plan: "",
   /** The answer of the lead to a look at a question. */
   look: '{"action":"pass","kind":"not_sure","reason":"No fact for it."}',
+  /** Answers for the next looks, one each. When it is empty, `look` answers. */
+  queue: [] as string[],
   /** The wait before the lead answers a look, in ms. */
   lookDelay: 0,
   /** The status of the answer to a look. 0 is an answer. */
@@ -104,7 +106,7 @@ const server = Bun.serve({
           status: script.lookStatus,
           headers: { "content-type": "application/json" },
         })
-      return sse(script.look, script.lookUsage)
+      return sse(script.queue.shift() ?? script.look, script.lookUsage)
     }
     if (system.includes("The work in the channel has stopped"))
       return sse('{"verdicts":[],"action":"nothing"}')
@@ -144,6 +146,7 @@ beforeEach(() => {
   lookRequests.length = 0
   memberRequests.length = 0
   script.look = '{"action":"pass","kind":"not_sure","reason":"No fact for it."}'
+  script.queue = []
   script.lookDelay = 0
   script.lookStatus = 0
   script.lookUsage = { prompt_tokens: 111, completion_tokens: 22 }
@@ -326,6 +329,33 @@ describe("the lead answers a question", () => {
     // The plan (7 and 3), the look (111 and 22) and the summary (7 and 3).
     expect(lead?.usage.input).toBe(7 + 111 + 7)
     expect(lead?.usage.output).toBe(3 + 22 + 3)
+  })
+
+  test("the task view of the part lists its questions, with who answered each one", async () => {
+    // The lead answers the first question and passes the second one: the user answers that.
+    script.queue = [
+      '{"action":"answer","choice":1,"reason":"The shop ships to the EU only."}',
+      '{"action":"pass","kind":"user_choice","reason":"Taste."}',
+    ]
+    const s = await setup({ prompt: "ASK 2 sizes" })
+    await s.send("split sizes")
+    await until(async () => (await s.waiting()).length === 1)
+    await s.answer((await s.cards())[1]?.id ?? "", "No")
+    await s.finished()
+    const part = (await s.tasks()).find((x) => x.parentId !== null)
+    const detail = await s.run(Tasks.use((x) => x.get(part?.id ?? "")))
+    expect(detail.questions).toEqual([
+      {
+        question: "Question 1: use the EU sizes only?",
+        by: "lead",
+        name: "Lia",
+        reason: "The shop ships to the EU only.",
+      },
+      { question: "Question 2: use the EU sizes only?", by: "user", name: null, reason: "" },
+    ])
+    // The job task is no part and has no questions.
+    const job = (await s.tasks()).find((x) => x.parentId === null)
+    expect((await s.run(Tasks.use((x) => x.get(job?.id ?? "")))).questions).toEqual([])
   })
 
   test("each look writes one line to the log: the result and the time, and no text", async () => {

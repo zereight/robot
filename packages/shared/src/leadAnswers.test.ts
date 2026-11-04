@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { MessagePart } from "./chat.ts"
 import {
   type FirstReaderFacts,
   firstReader,
@@ -12,6 +13,7 @@ import {
   leadLookText,
   parseLeadLook,
   passLabelKey,
+  questionsOf,
   readerAfterPass,
 } from "./leadAnswers.ts"
 
@@ -286,5 +288,79 @@ describe("the line of a pass", () => {
     expect(passLabelKey({ kind: "not_sure", reason: "Missing fact." })).toBe("lead.pass.reason")
     expect(passLabelKey({ kind: "not_sure", reason: "" })).toBe("lead.pass.not_sure")
     expect(passLabelKey({ kind: "user_choice", reason: "" })).toBe("lead.pass.user_choice")
+  })
+})
+
+describe("the questions of a part in the task view", () => {
+  const tool = (
+    id: string,
+    over: Partial<Extract<MessagePart, { kind: "tool" }>> = {},
+  ): MessagePart => ({
+    kind: "tool",
+    id,
+    name: "ask_user",
+    label: "",
+    state: "done",
+    input: JSON.stringify({ question: `Question ${id}?`, choices: ["Yes", "No"] }),
+    output: "Yes",
+    ...over,
+  })
+
+  test("it lists each question with who answered it", () => {
+    const parts: MessagePart[] = [
+      { kind: "text", text: "Hello" },
+      tool("1", { answeredByLead: { agentId: "lead", name: "Lia", reason: "The job says so." } }),
+      tool("2"),
+      tool("3", {
+        state: "waiting",
+        output: "",
+        ask: {
+          kind: "question",
+          question: "Question 3?",
+          choices: [],
+          lead: { agentId: "lead", name: "Lia" },
+        },
+      }),
+      tool("4", {
+        state: "waiting",
+        output: "",
+        ask: {
+          kind: "question",
+          question: "Question 4?",
+          choices: [],
+          passed: { agentId: "lead", name: "Lia", kind: "not_sure", reason: "No fact." },
+        },
+      }),
+      tool("5", {
+        state: "waiting",
+        output: "",
+        ask: { kind: "question", question: "Question 5?", choices: [] },
+      }),
+      {
+        kind: "tool",
+        id: "x",
+        name: "read_file",
+        label: "",
+        state: "done",
+        input: "{}",
+        output: "",
+      },
+    ]
+    expect(questionsOf(parts)).toEqual([
+      { question: "Question 1?", by: "lead", name: "Lia", reason: "The job says so." },
+      { question: "Question 2?", by: "user", name: null, reason: "" },
+      { question: "Question 3?", by: "with_lead", name: "Lia", reason: "" },
+      { question: "Question 4?", by: "passed", name: "Lia", reason: "No fact." },
+      { question: "Question 5?", by: "open", name: null, reason: "" },
+    ])
+  })
+
+  test("a card that failed, or whose input cannot be read, has no answer", () => {
+    expect(questionsOf([tool("1", { state: "failed", output: "" })])).toEqual([
+      { question: "Question 1?", by: "open", name: null, reason: "" },
+    ])
+    expect(questionsOf([tool("1", { input: "{broken" })])).toEqual([
+      { question: "", by: "user", name: null, reason: "" },
+    ])
   })
 })

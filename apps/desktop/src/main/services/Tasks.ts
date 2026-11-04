@@ -17,8 +17,10 @@ import {
   type LoggedStep,
   lastChange,
   limitState,
+  type MessagePart,
   messageText,
   type OutsideSource,
+  questionsOf,
   queueRank,
   RECENT_WORK_MAX,
   type RecentPlace,
@@ -36,6 +38,7 @@ import {
   type Task,
   type TaskDetail,
   type TaskProgress,
+  type TaskQuestion,
   type TaskSource,
   type TaskState,
   type TaskUsage,
@@ -1219,6 +1222,20 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
             )?.name ?? null)
           : null
 
+      /**
+       * The questions that a part asked, with who answered each one (spec 005, "Tasks page"; spec
+       * 004). Only a part of a channel job has them.
+       */
+      const questionsOfTask = (task: Task): readonly TaskQuestion[] =>
+        task.source === "channel" && task.parentId
+          ? db
+              .all<{ parts: string }>(
+                "SELECT parts FROM channel_message WHERE task_id = ? AND author = 'agent' ORDER BY created_at, rowid",
+                task.id,
+              )
+              .flatMap((r) => questionsOf(JSON.parse(r.parts) as MessagePart[]))
+          : []
+
       /** The messages that the user sent into the turn of the task (spec 003). */
       const joinedOf = (task: Task) =>
         task.messageId
@@ -1553,6 +1570,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
               joined: joinedOf(task),
               leadName: leadNameOf(task),
               tree,
+              questions: questionsOfTask(task),
             })
           }),
         children: (parentId) => childRows(parentId).map((r) => toTask(r, remote)),

@@ -223,6 +223,13 @@ export const ko: Record<MessageKey, string> = {
   "tool.answer": "답변",
   "tool.answer.send": "보내기",
   "tool.answeredInChat": "채팅에서 답했어요",
+  "tool.leadLooks": "{name}이(가) 보고 있어요",
+  "tool.leadPass.reason": "{name}: {reason}",
+  "tool.leadPass.late": "{name}이(가) 제때 답하지 못했어요.",
+  "tool.leadPass.failure": "{name}이(가) 답하지 못했어요.",
+  "tool.leadPass.user_choice": "{name}: 사용자만 고를 수 있어요.",
+  "tool.leadPass.not_sure": "{name}: 확실하지 않아요.",
+  "tool.answeredByLead": "{name}이(가) 답했어요",
   "tool.askedAt": "{time}에 물어봤어요",
   "tool.outside": "이 턴에는 외부 내용이 있어요. 허용하기 전에 단계를 확인해 주세요.",
   "tool.sensitive":
