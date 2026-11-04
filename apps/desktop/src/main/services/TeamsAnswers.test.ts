@@ -295,6 +295,25 @@ describe("the line for a card that waits", () => {
     await dispose(s)
   })
 
+  test("a question that waits gets the same line, with no text of the question", async () => {
+    const s = await running(model)
+    s.chat.say(
+      ROOM,
+      MARTA,
+      `@ROBot ${calls({ name: "ask_user", args: { question: "Which colour do you want?", choices: ["red", "blue"] } })}`,
+    )
+    await s.pass(3000)
+    expect(await s.card("call_1")).toMatchObject({ kind: "question" })
+    await s.pass(5000)
+    expect(s.typedTexts()).toEqual(["[ROBot] Ada waits for you in ROBot. Open the app to answer."])
+    expect(s.typedTexts().join("")).not.toContain("colour")
+    await s.respond("call_1", "red")
+    await s.quiet(1)
+    await s.pass(3000)
+    expect(s.typedTexts().at(-1)).toBe("[ROBot] Done.")
+    await dispose(s)
+  })
+
   test("one line goes out for each card", async () => {
     const s = await running(model, "full")
     s.chat.say(ROOM, MARTA, `@ROBot ${calls(change("one"), change("two"))}`)

@@ -10,6 +10,7 @@ import {
   type TeamsFieldName,
   type TeamsPatch,
   type TeamsTargetKind,
+  teamsRecordReasonKey,
   teamsStateTextKey,
 } from "@robot/shared"
 import {
@@ -22,10 +23,11 @@ import {
   Show,
   Switch as SwitchCase,
 } from "solid-js"
-import { formatTime } from "../chat/format.ts"
+import { formatDateTime, formatTime } from "../chat/format.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { setOpenTarget } from "../state/target.ts"
 import { useTeams } from "../state/teams.tsx"
 import { useUi } from "../state/ui.tsx"
 import { clipBox } from "../teams/place.ts"
@@ -263,6 +265,13 @@ export const TeamsSection = () => {
       {reasons(options.field)}
     </div>
   )
+
+  /** Shows the task of a record on the Tasks page; the settings close. */
+  const openTask = (taskId: string) => {
+    setOpenTarget({ kind: "task", id: taskId })
+    ui.closeSettings()
+    ui.selectPage("tasks")
+  }
 
   const targetList = () =>
     kind() === "agent"
@@ -543,6 +552,57 @@ export const TeamsSection = () => {
             {t("teams.locked")}
           </div>
         </Show>
+
+        <div class={teamStyles.field} data-testid="teams-records">
+          <div class={styles.label}>{t("teams.records.title")}</div>
+          <div class={teamStyles.note}>{t("teams.records.hint")}</div>
+          <Show
+            when={view().records.length > 0}
+            fallback={
+              <div class={teamStyles.note} data-testid="teams-records-empty">
+                {t("teams.records.empty")}
+              </div>
+            }
+          >
+            <ul class={teamStyles.records} data-testid="teams-records-list">
+              <For each={view().records}>
+                {(record) => (
+                  <li
+                    class={teamStyles.record}
+                    data-testid="teams-record"
+                    data-reason={record.reason}
+                  >
+                    <span class={teamStyles.recordTime}>
+                      {formatDateTime(app.locale(), record.at)}
+                    </span>
+                    <span class={teamStyles.recordReason}>
+                      {t(teamsRecordReasonKey(record.reason))}
+                    </span>
+                    <Show when={record.placeName}>
+                      {(name) => (
+                        <span class={teamStyles.note} data-user-data>
+                          {name()}
+                        </span>
+                      )}
+                    </Show>
+                    <Show when={record.taskId}>
+                      {(taskId) => (
+                        <button
+                          type="button"
+                          class={teamStyles.recordLink}
+                          onClick={() => openTask(taskId())}
+                          data-testid="teams-record-task"
+                        >
+                          {t("teams.record.openTask")}
+                        </button>
+                      )}
+                    </Show>
+                  </li>
+                )}
+              </For>
+            </ul>
+          </Show>
+        </div>
 
         <div class={teamStyles.field}>
           <div class={teamStyles.actions}>
