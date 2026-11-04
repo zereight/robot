@@ -20,6 +20,7 @@ import {
   raiseProgress,
   requestOpen,
   silentFailure,
+  TASK_SOURCES,
   TASK_STATES,
   type Task,
   taskDuration,
@@ -80,6 +81,12 @@ describe("tasks", () => {
     expect(filterTasks(list, { state: "failed" }).map((t) => t.id)).toEqual(["2"])
     expect(filterTasks(list, { agentId: "b", source: "channel" }).map((t) => t.id)).toEqual(["2"])
     expect(filterTasks(list, { query: " REPORT " }).map((t) => t.id)).toEqual(["3"])
+  })
+
+  test("a task from Teams has its own source, and the filter finds it (spec 028)", () => {
+    expect(TASK_SOURCES).toContain("teams")
+    const list = [task("1"), task("2", { source: "teams" }), task("3", { source: "teams" })]
+    expect(filterTasks(list, { source: "teams" }).map((t) => t.id)).toEqual(["2", "3"])
   })
 
   test("duration needs a start; a running task counts to now", () => {
@@ -319,7 +326,8 @@ describe("Review (spec 004, 005)", () => {
 describe("queue order (spec 005)", () => {
   test("a pick of Run next first, then normal sources, then background sources", () => {
     expect(queueRank("routine", true)).toBe(1)
-    for (const source of ["chat", "channel", "agent"] as const)
+    // Teams is a normal source (spec 005).
+    for (const source of ["chat", "channel", "agent", "teams"] as const)
       expect(queueRank(source, false)).toBe(2)
     expect(queueRank("routine", false)).toBe(3)
     expect(queueRank("workflow", false)).toBe(3)

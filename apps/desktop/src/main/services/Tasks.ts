@@ -522,7 +522,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("robot/main/Ta
              JOIN message m ON m.id = t.message_id
              LEFT JOIN provider_account p ON p.id = a.model_account_id
            WHERE t.state = 'waiting' AND t.origin IS NULL AND t.parent_id IS NULL
-             AND t.source IN ('chat', 'routine') AND a.archived_at IS NULL
+             AND t.source IN ('chat', 'teams', 'routine') AND a.archived_at IS NULL
              AND m.status = 'streaming' AND m.origin IS NULL`,
         )
         .filter((r) => r.kind !== null && !isRuntimeKind(r.kind))

@@ -20,7 +20,8 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Data } from "./Data.ts"
 import { Database } from "./Database.ts"
-import { Providers } from "./Providers.ts"
+import { Providers, secretKey } from "./Providers.ts"
+import { Secrets } from "./Secrets.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
 import { TeamsLink } from "./TeamsLink.ts"
@@ -136,7 +137,6 @@ const toolOf = (message: ChatMessage | ChannelMessage | undefined, callId: strin
 
 const setup = async (
   permission: PermissionLevel = "ask_risky",
-  over: TeamsPatch = {},
   options: { chat?: FakeChat; databaseFile?: string } = {},
 ) => {
   seen.length = 0
@@ -283,7 +283,7 @@ const dispose = (s: S) => s.runtime.dispose()
 
 /** A link that is on, with the baseline read done. */
 const running = async (permission: PermissionLevel = "ask_risky", over: TeamsPatch = {}) => {
-  const s = await setup(permission, over)
+  const s = await setup(permission)
   await s.prepare(over)
   await s.turnOn()
   return s
@@ -539,7 +539,7 @@ describe("gaps and baselines", () => {
     const dir = mkdtempSync(join(tmpdir(), "robot-teams-calls-"))
     const file = join(dir, "robot.db")
     const chat = new FakeChat()
-    const first = await setup("ask_risky", {}, { databaseFile: file, chat })
+    const first = await setup("ask_risky", { databaseFile: file, chat })
     await first.prepare()
     await first.turnOn()
     chat.say(ROOM, MARTA, "@ROBot before the restart")
@@ -745,6 +745,55 @@ describe("a retry keeps the source", () => {
     const second = (await s.taskList())[1]
     expect(second).toMatchObject({ source: "teams", retryOf: failed?.id })
     await dispose(s)
+  })
+})
+
+describe("a message from Teams in the chat", () => {
+  test("it has no edit: the app refuses an edit of it", async () => {
+    const s = await running()
+    s.chat.say(ROOM, MARTA, "@ROBot hello")
+    await s.pass(3000)
+    await s.quiet(1)
+    const asked = (await s.messages()).find((m) => m.author === "user")
+    const exit = await s.runtime.runPromiseExit(
+      Chat.use((c) => c.edit(s.ada.id, asked?.id as string, "changed")),
+    )
+    expect(exit._tag).toBe("Failure")
+    expect(
+      s.db.get<{ parts: string }>("SELECT parts FROM message WHERE id = ?", asked?.id as string)
+        ?.parts,
+    ).toContain("hello")
+    await dispose(s)
+  })
+
+  test("a retry after a restart keeps the source and the program mark", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "robot-teams-calls-"))
+    const file = join(dir, "robot.db")
+    const chat = new FakeChat()
+    const first = await setup("ask_risky", { databaseFile: file, chat })
+    await first.prepare()
+    await first.turnOn()
+    chat.say(ROOM, MARTA, "@ROBot BREAK this")
+    await first.pass(3000)
+    await until(async () => (await first.tasks()).some((x) => x.state === "failed"))
+    const failed = (await first.tasks())[0]
+    const account = (await first.run(Providers.use((p) => p.list)))[0]
+    await dispose(first)
+
+    const second = testRuntime({ databaseFile: file, chat })
+    const run = second.runtime.runPromise
+    // The key of the account stays across a restart, as in the keychain.
+    await run(
+      Secrets.use((x) =>
+        Effect.sync(() => x.set(secretKey(account?.id as string), "sk-teams-calls-test")),
+      ),
+    )
+    await run(Tasks.use((t) => t.retry(failed?.id as string, { confirmed: true })))
+    const local = await run(Servers.use((x) => x.local))
+    const list = () => run(Tasks.use((t) => t.list(local.id)))
+    await until(async () => (await list()).length === 2)
+    expect((await list())[0]).toMatchObject({ source: "teams", retryOf: failed?.id })
+    await second.runtime.dispose()
   })
 })
 

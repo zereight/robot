@@ -213,3 +213,68 @@ describe("the surface on the stand-in Teams", () => {
     expect(chat.placed).toBeUndefined()
   })
 })
+
+describe("the read of the messages of the open chat (S102)", () => {
+  const surface = (chat: FakeChat) => chat.surface
+  const room = async (chat: FakeChat) => {
+    chat.signedIn = true
+    chat.addChat("Team A")
+    chat.addChat("Team B")
+    await surface(chat).look()
+    await surface(chat).openChat("Team A")
+  }
+
+  test("gives the title of the open chat and its messages in the order that the chat shows", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    const one = chat.say("Team A", "Marta Kim", "first", 1_700_000_000_000)
+    chat.say("Team A", "Joe Lee", "second", 1_700_000_060_000)
+    chat.say("Team B", "Marta Kim", "in the other chat", 1_700_000_090_000)
+    chat.type("[ROBot] typed by the app")
+    const read = await surface(chat).readMessages()
+    expect(read.openTitle).toBe("Team A")
+    expect(read.messages.map((m) => [m.sender, m.text, m.time, m.own])).toEqual([
+      ["Marta Kim", "first", 1_700_000_000_000, false],
+      ["Joe Lee", "second", 1_700_000_060_000, false],
+      ["Marta Kim", "[ROBot] typed by the app", expect.any(Number), true],
+    ])
+    expect(read.messages[0]?.id).toBe(one.id)
+    expect(chat.messageReads).toBe(1)
+  })
+
+  test("an edit keeps the identity, a delete removes the message, a reload shows no open chat", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    const message = chat.say("Team A", "Marta Kim", "before")
+    chat.edit(message, "after")
+    const read = await surface(chat).readMessages()
+    expect(read.messages.map((m) => [m.id, m.text])).toEqual([[message.id, "after"]])
+    chat.remove(message)
+    expect((await surface(chat).readMessages()).messages).toEqual([])
+    chat.reload()
+    expect((await surface(chat).readMessages()).openTitle).toBeNull()
+  })
+
+  test("a page that gives no identity and no sender gives null and an empty name", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    chat.identities = false
+    chat.say("Team A", "", "a card alone")
+    const [message] = (await surface(chat).readMessages()).messages
+    expect(message).toMatchObject({ id: null, sender: "", text: "a card alone" })
+  })
+
+  test("a page that cannot be read fails the read, and the read types nothing", async () => {
+    const chat = new FakeChat()
+    await room(chat)
+    chat.failScripts(1)
+    await expect(surface(chat).readMessages()).rejects.toThrow()
+    expect(chat.typed).toEqual([])
+  })
+
+  test("the stand-in accepts a typed message only in an open chat", () => {
+    const chat = new FakeChat()
+    chat.addChat("Team A")
+    expect(() => chat.type("hello")).toThrow()
+  })
+})

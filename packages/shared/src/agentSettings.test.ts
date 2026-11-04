@@ -4,6 +4,7 @@ import {
   describeSettings,
   matchAccount,
   matchModels,
+  PROTECTED_PLACES,
   planSettings,
   type SettingsAccount,
   type SettingsCurrent,
@@ -117,6 +118,17 @@ describe("a call of the settings tool", () => {
     const none = plan({ model: "gemini" })
     expect(none.kind === "refused" && none.reason).toContain("No connected model matches")
     expect(none.kind === "refused" && none.reason).toContain("gpt-5-mini")
+  })
+
+  test("the Teams link is a thing the agent may not change, and the reason says where", () => {
+    for (const name of ["teams", "teams_link", "link", "bridge"]) {
+      const refused = plan({ [name]: false })
+      expect(refused.kind).toBe("refused")
+      expect(refused.kind === "refused" && refused.reason).toContain("Nothing changed")
+      expect(refused.kind === "refused" && refused.reason).toContain("Settings → Teams")
+    }
+    // The text that the agent reads when it asks what it may not change names the link too.
+    expect(PROTECTED_PLACES.teams).toContain("Settings → Teams")
   })
 
   test("the effort must be a level of the model", () => {

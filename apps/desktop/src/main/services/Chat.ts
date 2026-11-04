@@ -695,7 +695,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           progress: string | null
         }>(
           `SELECT id, state, error_code, progress FROM task
-           WHERE message_id = ? AND source = 'chat' AND origin IS NULL
+           WHERE message_id = ? AND source IN ('chat', 'teams') AND origin IS NULL
            ORDER BY created_at DESC, rowid DESC LIMIT 1`,
           replyId,
         )
