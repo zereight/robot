@@ -1,8 +1,9 @@
-import { appendFileSync, existsSync, mkdirSync, renameSync } from "node:fs"
-import { homedir } from "node:os"
+import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from "node:fs"
+import { homedir, arch as osArch, release as osRelease, type as osType } from "node:os"
 import { basename, join, join as joinPath } from "node:path"
 import {
   type IslandShape,
+  PAGE_INPUT_CHANNEL,
   TEACH_CHANNEL,
   TEACH_ON_CHANNEL,
   type TeachEvent,
@@ -23,9 +24,19 @@ import {
   shell,
   WebContentsView,
 } from "electron"
+import { appendLog, readLogTail } from "./services/logs.ts"
 import type { BrowserPage, PageBounds, PlatformService } from "./services/Platform.ts"
 import { createTeamsSurface, TEAMS_PAGE_KEY, type TeamsSurface } from "./teams/surface.ts"
 import { type Resolver, systemResolver } from "./web/fetch.ts"
+import {
+  BOX_SCRIPT,
+  type BoxMeasure,
+  buildReport,
+  cleanInputNote,
+  createInputDiagnostics,
+  type DiagWrite,
+  type PageSnapshot,
+} from "./web/pageDiagnostics.ts"
 import { fitPage, PAGE_VIEW } from "./web/pageFit.ts"
 import { pageUserAgent } from "./web/userAgent.ts"
 
@@ -57,6 +68,23 @@ const browserProfiles = new Map<string, string>()
 const partitionOf = (agentId: string) => {
   const profile = browserProfiles.get(agentId)
   return profile ? `persist:browser-${profile}` : `persist:agent-${agentId}`
+}
+
+/** What each page says about itself for the diagnostic report. */
+const snapshots = new Map<string, () => PageSnapshot>()
+/**
+ * Each page checks a press that the app screen got: did it land inside the place of the page? Then
+ * the page is drawn there, but the system gave the press to the screen under it.
+ */
+const screenPresses = new Map<string, (x: number, y: number) => void>()
+
+/** The host of an address, or an empty text. The report never holds a path or a query. */
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return ""
+  }
 }
 
 let mainWindow: BrowserWindow | undefined
@@ -97,6 +125,11 @@ const hostWindow = (): BaseWindow =>
  */
 export const setMainWindow = (win: BrowserWindow) => {
   mainWindow = win
+  // Only counts: this never stops a press.
+  win.webContents.on("before-mouse-event", (_, mouse) => {
+    if (mouse.type !== "mouseDown") return
+    for (const check of screenPresses.values()) check(mouse.x, mouse.y)
+  })
   for (const move of rehomers.values()) move(() => win)
   win.on("close", () => {
     if (process.platform !== "darwin" || quitting) return
@@ -118,7 +151,12 @@ export const setMainWindow = (win: BrowserWindow) => {
  * One page per agent, inside the main window. Its session is kept on disk, so logins stay between
  * runs. The session is the one of the browser profile of the agent, or its own. The screen of the chat says where the page shows. Until it does, the page is hidden.
  */
-const electronBrowser = (agentId: string, options: { fixedLayout?: boolean } = {}): BrowserPage => {
+const electronBrowser = (
+  agentId: string,
+  options: { fixedLayout?: boolean; log?: DiagWrite } = {},
+): BrowserPage => {
+  /** The counts of input and the lines of the log about this page (the diagnostic report). */
+  const diag = createInputDiagnostics(options.log ?? (() => {}))
   /**
    * A fixed layout keeps the size of PAGE_VIEW whatever the size of its place. A plain view (the
    * Teams page) fills its place exactly, so the clicks of the user land where the page shows them.
@@ -285,6 +323,8 @@ const electronBrowser = (agentId: string, options: { fixedLayout?: boolean } = {
     if (!v) return
     view = undefined
     bounds = undefined
+    lastPlaceKey = ""
+    diag.state("closed", {})
     scaleNow = 1
     started = false
     emulated = undefined
@@ -327,6 +367,50 @@ const electronBrowser = (agentId: string, options: { fixedLayout?: boolean } = {
       from.destroy()
   }
   rehomers.set(agentId, rehome)
+  /** The last place that was logged, so the log holds a line for each change and no more. */
+  let lastPlaceKey = ""
+  const logPlace = () => {
+    const v = live()
+    const key = `${bounds ? `${bounds.x},${bounds.y},${bounds.width},${bounds.height}` : "hidden"}|${v?.getVisible()}`
+    if (key === lastPlaceKey) return
+    lastPlaceKey = key
+    const now = v?.getBounds()
+    diag.state("placed", {
+      placed: bounds ?? null,
+      view: now ?? null,
+      visible: v?.getVisible() ?? null,
+      zoom: screenOf()?.getZoomFactor() ?? null,
+    })
+  }
+  screenPresses.set(agentId, (x, y) => {
+    const v = live()
+    if (!v?.getVisible()) return
+    const b = v.getBounds()
+    if (x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height) diag.screen({ x, y })
+  })
+  snapshots.set(agentId, () => {
+    const v = live()
+    const stack = host && !host.isDestroyed() && v ? host.contentView.children : []
+    const index = v ? stack.indexOf(v) : -1
+    return {
+      page: agentId === TEAMS_PAGE_KEY ? "teams" : "agent",
+      open: v !== undefined,
+      plain: !fixedLayout,
+      userInput,
+      placed: bounds ? { ...bounds } : null,
+      view: v ? v.getBounds() : null,
+      visible: v ? v.getVisible() : null,
+      zoom: screenOf()?.getZoomFactor() ?? null,
+      inWindow: !host || host.isDestroyed() ? "none" : host === mainWindow ? "main" : "shelf",
+      stackIndex: index >= 0 ? index : null,
+      stackSize: index >= 0 ? stack.length : null,
+      pageFocused: v ? v.webContents.isFocused() : null,
+      windowFocused: host && !host.isDestroyed() ? host.isFocused() : null,
+      loading: v ? v.webContents.isLoading() : null,
+      host: v ? hostOf(v.webContents.getURL()) : "",
+      counts: diag.counts(),
+    }
+  })
   return {
     isOpen: () => live() !== undefined,
     open: async (url) => {
@@ -360,7 +444,10 @@ const electronBrowser = (agentId: string, options: { fixedLayout?: boolean } = {
           const step = teachEventOf(payload)
           if (step && recorder) recorder(step)
         })
-        wc.on("did-finish-load", () => reportPage(wc))
+        wc.on("did-finish-load", () => {
+          diag.state("loaded", { host: hostOf(wc.getURL()) })
+          reportPage(wc)
+        })
         wc.on("did-navigate-in-page", (_, __, isMainFrame) => {
           if (isMainFrame) reportPage(wc)
         })
@@ -375,12 +462,26 @@ const electronBrowser = (agentId: string, options: { fixedLayout?: boolean } = {
           if (!userInput && !input.control && !input.meta && !input.alt) event.preventDefault()
         })
         wc.on("before-mouse-event", (event, mouse) => {
-          if (
+          const refused =
             !userInput &&
             (mouse.type === "mouseDown" || mouse.type === "mouseUp" || mouse.type === "contextMenu")
-          )
-            event.preventDefault()
+          // Every press is counted, kept out or not: the report tells a quiet window from a flag.
+          diag.native(mouse.type, { x: mouse.x, y: mouse.y }, refused)
+          if (refused) event.preventDefault()
         })
+        // The document of the page tells what reached it: the other half of the count above.
+        wc.ipc.on(PAGE_INPUT_CHANNEL, (_, payload: unknown) => {
+          const note = cleanInputNote(payload)
+          if (note) diag.page(note)
+        })
+        wc.on("did-fail-load", (_, code, __, url, isMainFrame) => {
+          if (isMainFrame) diag.state("load_failed", { code, host: hostOf(url) })
+        })
+        wc.on("render-process-gone", (_, details) => {
+          diag.state("page_process_gone", { reason: details.reason, exitCode: details.exitCode })
+        })
+        wc.on("unresponsive", () => diag.state("page_unresponsive", {}))
+        wc.on("responsive", () => diag.state("page_responsive", {}))
         // The page takes the focus (a load, a new address, a link): the chat gets it back.
         wc.on("focus", returnFocusSoon)
         // The window gets the focus while the page holds it: the chat gets it back.
@@ -395,6 +496,8 @@ const electronBrowser = (agentId: string, options: { fixedLayout?: boolean } = {
         wc.once("destroyed", () => {
           if (view === created) release()
         })
+        diag.reset()
+        lastPlaceKey = ""
         created.setVisible(false)
         h.contentView.addChildView(created)
         view = created
@@ -448,12 +551,14 @@ const electronBrowser = (agentId: string, options: { fixedLayout?: boolean } = {
     place: (next) => {
       bounds = next
       apply()
+      logPlace()
     },
     allowUserInput: (allowed) => {
       // The Teams link says this again on each place and each tick while its page shows, so a
       // page that was made again takes input: only a change moves the focus, never a repeat.
       if (allowed === userInput) return
       userInput = allowed
+      diag.state("user_input", { allowed })
       // A test run never moves the system focus: this call makes the app the active program.
       // No test checks where the keys go.
       if (isTestRun) return
@@ -595,7 +700,12 @@ export const electronPlatform = (): PlatformService => {
     // The Teams page is for the hands of the user (spec 028): it fills its place exactly, with
     // no fixed layout and no scale, so a click lands where the page shows. An agent keeps the
     // fixed layout, so its place never changes what the agent reads or where a click lands.
-    const page = electronBrowser(agentId, agentId === TEAMS_PAGE_KEY ? { fixedLayout: false } : {})
+    const isTeams = agentId === TEAMS_PAGE_KEY
+    // The browser log (spec 014) gets the input that the page took or refused, and the changes of
+    // its place. The line says "teams" or "agent", never the id of an agent.
+    const log: DiagWrite = (event, data) =>
+      appendLog(dataDir, "browser", { event, page: isTeams ? "teams" : "agent", ...data })
+    const page = electronBrowser(agentId, isTeams ? { fixedLayout: false, log } : { log })
     browsers.set(agentId, page)
     return page
   }
@@ -825,6 +935,71 @@ export const electronPlatform = (): PlatformService => {
       return teamsSurface
     },
     setTeamsProfile: (profileId) => platformSetBrowserProfile(TEAMS_PAGE_KEY, profileId),
+    diagnosticReport: async () => {
+      const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+      // The screen measures the box of the Teams page. A screen that does not answer must not stop
+      // the report.
+      const box = win
+        ? await Promise.race([
+            win.webContents
+              .executeJavaScript(BOX_SCRIPT, true)
+              .catch(() => null) as Promise<BoxMeasure | null>,
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_500)),
+          ])
+        : null
+      const content = win?.webContents
+      const text = buildReport({
+        madeAt: new Date().toISOString(),
+        app: {
+          name: app.getName(),
+          version: app.getVersion(),
+          packaged: app.isPackaged,
+          electron: process.versions.electron,
+          chrome: process.versions.chrome,
+          platform: process.platform,
+          arch: osArch(),
+          os: `${osType()} ${osRelease()}`,
+          locale: app.getLocale(),
+        },
+        displays: screen.getAllDisplays().map((d) => ({
+          scaleFactor: d.scaleFactor,
+          size: d.size,
+          workArea: d.workArea,
+          rotation: d.rotation,
+          internal: d.internal,
+          touchSupport: d.touchSupport,
+        })),
+        window: win
+          ? {
+              bounds: win.getBounds(),
+              content: win.getContentBounds(),
+              focused: win.isFocused(),
+              visible: win.isVisible(),
+              minimized: win.isMinimized(),
+              maximized: win.isMaximized(),
+              fullScreen: win.isFullScreen(),
+              zoomFactor: content?.getZoomFactor(),
+              zoomLevel: content?.getZoomLevel(),
+              views: win.contentView.children.length,
+            }
+          : null,
+        box,
+        // The Teams page first: it is the one that the report is about.
+        pages: [...snapshots.values()]
+          .map((snapshot) => snapshot())
+          .sort((a, b) => Number(b.page === "teams") - Number(a.page === "teams")),
+        logs: [
+          { name: "teams", lines: readLogTail(dataDir, "teams", 60) },
+          { name: "browser", lines: readLogTail(dataDir, "browser", 150) },
+        ],
+      })
+      // The text also stays on disk, in the logs folder, so it can be found again.
+      const dir = join(dataDir, "logs")
+      mkdirSync(dir, { recursive: true })
+      const path = join(dir, "diagnostic-report.txt")
+      writeFileSync(path, text)
+      return { text, path }
+    },
     setBrowserProfile: platformSetBrowserProfile,
     clearBrowserProfile: async (profileId) => {
       const data = session.fromPartition(`persist:browser-${profileId}`)

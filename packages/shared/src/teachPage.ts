@@ -8,6 +8,32 @@ export const TEACH_CHANNEL = "robot:teach-step"
 /** The recorder in an agent page asks whether the app records, and hears when that changes. */
 export const TEACH_ON_CHANNEL = "robot:teach-on"
 
+/**
+ * A page of the app tells the diagnostic report that a click, a tap or a touch reached its
+ * document. It holds the kind of event, the kind of pointer, a place, and the tag of the target. It
+ * never holds text of the page.
+ */
+export const PAGE_INPUT_CHANNEL = "robot:page-input"
+
+/** The kinds of event that a page reports on `PAGE_INPUT_CHANNEL`. */
+export const PAGE_INPUT_TYPES: readonly string[] = ["pointerdown", "click", "touchstart"]
+
+/** One input that reached the document of a page. Plain data, so it crosses the process line. */
+export interface PageInputNote {
+  readonly type: string
+  /** "mouse", "touch" or "pen"; empty when the event does not say. */
+  readonly pointer: string
+  /** False when a script of the page made the event. */
+  readonly trusted: boolean
+  /** The tag of the target, in lower case. Nothing else about it. */
+  readonly tag: string
+  readonly x: number
+  readonly y: number
+  /** The size of the document view, in CSS px. */
+  readonly width: number
+  readonly height: number
+}
+
 /** The keys that make a step. Letters and digits are typed text, not steps. */
 export const TEACH_KEYS: readonly string[] = [
   "Enter",

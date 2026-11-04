@@ -227,6 +227,14 @@ export const handlers: Handlers = {
       Effect.flatMap(({ text }) => Platform.use((p) => Effect.sync(() => p.copyText(text)))),
       done,
     ),
+  "app.diagnosticReport": () =>
+    Platform.use((p) =>
+      Effect.promise(async () => {
+        const { text, path } = await p.diagnosticReport()
+        p.copyText(text)
+        return { path }
+      }),
+    ),
   "app.openExternal": (input) =>
     decode(Schema.Struct({ url: Schema.String }))(input).pipe(
       Effect.flatMap(({ url }) =>

@@ -2105,6 +2105,12 @@ export const en = {
   "teams.page.show": "Show the Teams page",
   "teams.page.hide": "Hide the Teams page",
   "teams.page.label": "Teams page",
+  "teams.report.button": "Copy a diagnostic report",
+  "teams.report.title": "Diagnostic report",
+  "teams.report.hint":
+    "Use this when the Teams page does not take clicks. Move the pointer over the page and click in it a few times first. Then press the button. The report holds sizes, places and counts of clicks. It holds no password, no text of a page and no message.",
+  "teams.report.done": "Copied. A copy is also saved in {path}.",
+  "teams.report.failed": "The report could not be made.",
   "teams.page.hint":
     "The page is hidden. Show it to sign in or to solve a prompt of Teams. While it shows, the app reads but sends nothing.",
   "teams.target": "Target",

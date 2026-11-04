@@ -138,6 +138,12 @@ export interface PlatformService {
    * open Teams page closes when this changes the data it uses.
    */
   setTeamsProfile(profileId: string | undefined): void
+  /**
+   * The diagnostic report of the browser pages: sizes, places, counts of clicks, the tail of the
+   * teams and browser logs. It holds no secret, no text of a page and no message (spec 000). The
+   * text also stays in a file of the logs folder, and `path` says where.
+   */
+  diagnosticReport(): Promise<{ text: string; path: string }>
 }
 
 export class Platform extends Context.Service<Platform, PlatformService>()("robot/main/Platform") {}

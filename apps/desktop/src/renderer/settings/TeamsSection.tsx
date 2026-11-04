@@ -139,6 +139,18 @@ export const TeamsSection = () => {
   }
   const commit = (patch: TeamsPatch) => run(() => call("teams.update", patch))
 
+  /** The file of the last diagnostic report, or "failed" when the report could not be made. */
+  const [report, setReport] = createSignal<{ path: string } | "failed">()
+  /** Makes the diagnostic report, copies it, and says where the file is. */
+  const copyReport = async () => {
+    setReport(undefined)
+    try {
+      setReport(await call("app.diagnosticReport"))
+    } catch {
+      setReport("failed")
+    }
+  }
+
   /** Fields that the switch locks while it is on. */
   const locked = () => view().enabled
 
@@ -428,6 +440,31 @@ export const TeamsSection = () => {
           </div>
           <Show when={view().pageShown}>
             <PageBox />
+          </Show>
+        </div>
+
+        {/* Below the Teams page, so a note that shows here never moves the place of the page. */}
+        <div class={teamStyles.field} data-testid="teams-report-field">
+          <div class={teamStyles.fieldBar}>
+            <div>
+              <div class={styles.label}>{t("teams.report.title")}</div>
+              <div class={styles.hint}>{t("teams.report.hint")}</div>
+            </div>
+            <Button onClick={() => void copyReport()} data-testid="teams-report">
+              {t("teams.report.button")}
+            </Button>
+          </div>
+          <Show when={report()}>
+            {(done) => (
+              <div class={teamStyles.note} role="status" data-testid="teams-report-state">
+                {(() => {
+                  const value = done()
+                  return value === "failed"
+                    ? t("teams.report.failed")
+                    : t("teams.report.done", { path: value.path })
+                })()}
+              </div>
+            )}
           </Show>
         </div>
 

@@ -181,6 +181,7 @@ export const testPlatform = (options: { chat?: FakeChat } = {}) => {
       if (profileId !== teamsProfile.id) chat.closeByUser()
       teamsProfile.id = profileId
     },
+    diagnosticReport: async () => ({ text: "report", path: join(dataDir, "logs", "report.txt") }),
   }
   return {
     platform,
