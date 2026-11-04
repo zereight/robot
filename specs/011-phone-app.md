@@ -102,8 +102,10 @@ start a handover (003) and does not make a skill from work (017). It shows the m
   sends nothing. The phone keeps no copy of the shared item. If the server is offline, the sheet
   says so and sends nothing.
 - **Avatars**: the phone draws the avatars of 002 (faces, pictures, the mark of the user and the
-  mark of a channel) with the same drawing and colours as the desktop. A long list of messages
-  stays smooth.
+  mark of a channel) with the same drawing and colours as the desktop in the same theme. They
+  follow the theme of the phone. A change of the theme changes every avatar at once, with no
+  motion. The choice "system" works as it does for the rest of the phone app. A long list of
+  messages stays smooth.
 - **Face in a notice**: a notice of a reply, a mention, an approval or a failed task shows the face
   or the picture of the agent when the system allows an image in a notice. If not, it shows the
   mark of the app.
@@ -165,6 +167,8 @@ start a handover (003) and does not make a skill from work (017). It shows the m
 - A message with three images shows a stack. A tap opens the viewer, and a swipe goes to the next
   image.
 - Open the thinking row of a reply: the sheet lists every thought of the turn.
+- Change the theme of the phone from dark to light: every avatar changes at once, with no motion.
+  A face has a light disc, dark features and no glow. A picture does not change.
 - Open the screen "Org chart": it lists the main agent, each channel with its members and lead, and
   the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer off, the
   screen says so and shows no list (029).

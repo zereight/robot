@@ -278,37 +278,48 @@ agent.
 
 An avatar is the small round mark that shows who speaks, or whose place it is. ROBot has four: the
 face of an agent, the picture of an agent, the mark of the user, and the mark of a channel. They
-are one family, as the app mark is: a very dark disc with a thin rim of light, and features or a
-glyph of light that glow.
+follow the theme. In the dark theme they are one family with the app mark: a very dark disc with
+a thin rim of light, and features or a glyph of light that glow. The app mark is not an avatar.
+It does not change with the theme.
 
-- **Drawn face**: a very dark disc that the hue tints, with a thin rim of light in the colour of
-  the hue. The features of the shape are near white, and a soft glow of the colour of the hue
-  lies round them. There are six shapes and ten hues, as before. The hue picks the colour of the
-  light. It does not pick the colour of the disc. Every shape shows its features, the first shape
-  too.
-- **Dark in both themes**: the disc is as dark in the light theme as in the dark theme, as the
-  tile of the app mark is. A face does not change when the user changes the theme. The features
-  stand out from the disc by a contrast of 7 to 1 or more.
+- **Drawn face in the dark theme**: a very dark disc that the hue tints, with a thin rim of light
+  in the colour of the hue. The features of the shape are near white, and a soft glow of the
+  colour of the hue lies round them. There are six shapes and ten hues, as before. The hue picks
+  the colour of the light. It does not pick the colour of the disc. Every shape shows its
+  features, the first shape too.
+- **Drawn face in the light theme**: a light disc that the hue tints, with a thin rim in the
+  colour of the hue. The rim is dark enough to show on a light surface. The features of the shape
+  are dark, and the hue tints them. A face has no glow in the light theme, because a glow does
+  not show on a light disc. The six shapes, the ten hues, and the rule for the first shape are
+  the same as in the dark theme.
+- **Contrast**: in both themes, the features of a face stand out from the disc by a contrast of
+  7 to 1 or more, at every size.
 - **Picture**: an uploaded picture is round and has the same thin rim as a drawn face, in the
-  hue of the agent. The picture itself is not changed. A channel picture (004) has the same rim,
-  in the colour of the light of the app mark.
-- **Mark of the user**: a dark disc with the same rim and one glyph of light: a person on the
-  desktop, and the first letter of the word for "you" on the phone.
-- **Mark of a channel**: a dark disc with the same rim and a `#` of light. A channel with a
-  picture shows the picture in its place.
-- **The glow is still.** It does not pulse, move, or change when the pointer is over it. A drawn
-  face moves only once, for under 300 ms, at these moments: its agent ends a reply (a small nod
-  and a blink), a reply fails (a shake), the agent asks the user a question (a small nod), and the
-  agent is new (the face drops in and blinks). A face with closed eyes does not blink. With
-  reduced motion, nothing moves.
-- **Sizes**: the same drawing at every size, from 16 px to 80 px. The glow of a small avatar is
-  quieter than the glow of a large one, because a small glow cannot show detail.
+  hue of the agent. The theme does not change the picture. Its rim shows in both themes: it
+  has the colour of the rim of a drawn face in that theme. A channel picture (004) has the same
+  rim, in the colour of the light of the app mark in the dark theme, and in a darker form of that
+  colour in the light theme.
+- **Mark of the user**: a disc with the same thin rim and one glyph: a person on the desktop, and
+  the first letter of the word for "you" on the phone. In the dark theme, the disc is dark and
+  the glyph is light. In the light theme, the disc is light and the glyph is dark.
+- **Mark of a channel**: a disc with the same thin rim and a `#`. The colours follow the rule of
+  the mark of the user. A channel with a picture shows the picture in its place.
+- **Theme change**: a change of the theme changes every avatar at once, with no motion. The
+  choice "system" works as it does for the rest of the app (013).
+- **The glow is still.** It shows in the dark theme only. It does not pulse, move, or change when
+  the pointer is over it. A drawn face moves only once, for under 300 ms, at these moments: its
+  agent ends a reply (a small nod and a blink), a reply fails (a shake), the agent asks the user a
+  question (a small nod), and the agent is new (the face drops in and blinks). A face with closed
+  eyes does not blink. With reduced motion, nothing moves.
+- **Sizes**: the same drawing at every size, from 16 px to 80 px. In the dark theme, the glow of a
+  small avatar is quieter than the glow of a large one, because a small glow cannot show detail.
 - **Cost**: avatars must not slow the app. A chat of 500 messages scrolls as smoothly with its
   avatars as it would with flat ones. A list of many avatars, such as the place list or the list
   of messages, draws as fast as a list of flat discs of the same size.
-- **Phone**: the phone draws the same avatars, with the same shapes and colours as the desktop.
-- **Form**: the colour swatches of the hues show the colour of the light, and the preview shows
-  the face as it will look.
+- **Phone**: the phone draws the same avatars, with the same shapes and colours as the desktop
+  in the same theme. It follows the theme of the phone (see 011).
+- **Form**: the colour swatches of the hues show the colour of the hue, and the preview shows
+  the face as it will look in the theme that shows now.
 
 ## Rules
 
@@ -316,7 +327,8 @@ glyph of light that glow.
 - A working agent cannot be deleted; the user must stop it first.
 - A linked device that the user allows can create, edit, duplicate and archive agents on this
   computer, with limits on the folder, the permission level and the model accounts (012).
-- The avatar of an agent is the same everywhere: list, messages, activity panel, phone.
+- The avatar of an agent is the same everywhere in the same theme: list, messages, activity
+  panel, phone.
 - Agents made by other ways than the form (an import, a tool of another agent, a starter) keep
   the name they were given.
 
@@ -385,11 +397,21 @@ glyph of light that glow.
   channel does not exist.
 - Import a file with a handbook into an app that has a handbook: the review screen shows the
   handbook not ticked. Import without the tick: the handbook does not change.
-- Make agents of all six shapes: each face shows its features and its glow, the first shape too.
-  Pick another hue in the form: the colour of the light changes, and the disc stays dark.
-- Switch from the dark theme to the light theme: no avatar changes.
-- Upload a picture: it shows round with a thin rim of light in the hue of the agent, in the
-  place list, in messages and in the form. Remove it: the drawn face comes back.
-- Look at a chat with many messages from the user and from agents: the mark of the user is a dark
-  disc with a person glyph of light, and the avatars of agents are the faces. Scroll through the
-  chat: nothing stutters because of the avatars.
+- Make agents of all six shapes. In the dark theme, each face shows its features and its glow, the
+  first shape too. Pick another hue in the form: the colour of the light changes, and the disc
+  stays dark.
+- In the light theme, the same six faces show dark features on a light disc, with a thin rim in
+  the colour of the hue and no glow. Pick another hue in the form: the tint and the rim change,
+  and the disc stays light. For all six shapes and ten hues, at 16 px and at 80 px, the features
+  stand out from the disc by a contrast of 7 to 1 or more.
+- Switch from the dark theme to the light theme: every avatar changes at once, with no motion.
+  The mark of the user and the mark of a channel have a light disc and a dark glyph. A picture
+  does not change, and its rim shows. The app mark does not change. Switch back: the dark discs
+  and the glow come back.
+- Choose the theme "system" and change the theme of the system: the avatars follow it.
+- Upload a picture: it shows round with a thin rim in the hue of the agent, in the place list, in
+  messages and in the form, in both themes. Remove it: the drawn face comes back.
+- Look at a chat with many messages from the user and from agents. In the dark theme, the mark of
+  the user is a dark disc with a person glyph of light. In the light theme, it is a light disc
+  with a dark person glyph. The avatars of agents are the faces. Scroll through the chat in both
+  themes: nothing stutters because of the avatars.
