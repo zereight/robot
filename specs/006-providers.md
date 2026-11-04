@@ -13,7 +13,8 @@ The user connects the model accounts they already have, and each agent uses one 
     Muse Code, pi, and Pi-Bolt are also agent runtimes. Pi-Bolt is a build of pi that reads the
     same agent folder as pi. It has its own row, so its models list under its own name and not
     under pi. The app finds Pi-Bolt by a path variable or on the PATH of the computer. It has no
-    download. It runs only on this computer.
+    download. It runs only on this computer. Cursor is an agent runtime too. The user installs
+    it. The app does not download it and does not sign in for it. See "Cursor".
     Any program that speaks the Agent Client Protocol (ACP, an open standard) can be added as an
     agent runtime too. See "Programs with ACP".
   - **API providers**: an HTTPS model API with a key (OpenAI-compatible, Anthropic, and a custom
@@ -203,6 +204,31 @@ limit is spent.
 - A client of a linked server sees the row and its state, and has no buttons on it (012). A
   program does not sync (019), like the other runtimes.
 
+## Cursor
+
+Cursor is an agent runtime. The user installs the program. The app does not download it and does
+not sign in for it. The sign-in stays in the program on this computer.
+
+- The check asks for the version and for who is signed in. It makes no model turn.
+- The account is connected when the program says that someone is signed in, or when the program
+  lists at least one model. The second case is an account key that the user already gave the
+  program. The app does not read that key and does not store it. The row shows the email when
+  the program tells it.
+- The model list is the list the program gives, in the order of the program. The list names no
+  effort levels, so the picker shows none. A level is never sent.
+- A turn sends one prompt. The program does not read a message that the user sends during the
+  turn (003). The prompt holds the instructions of the agent. A turn that may only answer starts
+  in the read-only mode and tells the program to answer in text and not to use its tools.
+- The program reads files and runs commands itself. The app shows the steps as cards (003, 007).
+  The program does not ask the user during a run from the app. The permission level follows 007.
+- The result that the app knows reports no token counts, so the usage shows "—" (005) and the
+  token limit of a routine stays off (009). When a result includes counts, the usage page counts
+  them. The token limit stays off.
+- The program reports no list of steps that the app knows, so "Keep going" has nothing to go on
+  (005).
+- An import leaves the account disconnected, as for the other runtimes. An export holds no secret
+  of the sign-in.
+
 ## Busy provider
 
 - When a provider says that it is busy, or that it gets too many requests, the app tries the
@@ -305,3 +331,18 @@ limit is spent.
 - Remove an ACP program: its agents show "Provider not connected" and the button "Providers".
   An export holds the name, the command, the arguments and the names of the rows, not their
   secret values.
+- A stand-in for Cursor answers the version check, says that someone is signed in, and lists two
+  models: the row shows Ready, the picker shows those models and no effort, and a reply shows in
+  the chat. A message sent during the turn waits, and the muted line names Cursor.
+- The stand-in is not signed in and lists no model: the row shows Needs sign-in and tells the
+  user to sign in inside Cursor. The row has no Sign in button. The program was never found: the
+  row shows Not installed and tells the user to install Cursor. The row has no Download button.
+- The stand-in is not signed in and lists one model: the row shows Ready and the picker shows
+  that model.
+- The help text of the stand-in names its read-only mode: Read only can be picked, and a turn at
+  Read only starts in that mode. A help text that does not name the mode: Read only is off.
+- A turn at Ask for risky steps tells the program to apply changes with its sandbox on. A turn at
+  Full access tells the program to apply changes with its sandbox off. Neither turn shows an
+  approval card from the program.
+- The stand-in ends with no token counts: the task shows "—" for the tokens, and the token limit
+  of a routine for that agent is off.

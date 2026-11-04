@@ -207,9 +207,9 @@ export const limitState = (used: number, limit: number): "ok" | "near" | "over" 
 /**
  * Whether a program reports its tokens. A program that reports none cannot use the token limit
  * (spec 009): the field is off for its agent. Every program that the app starts reports tokens at
- * the end of a turn; a program that does not is listed here when it joins.
+ * the end of a turn. Cursor's documented result has no counts, so Cursor is listed here.
  */
-const SILENT_PROGRAMS: ReadonlySet<string> = new Set([])
+const SILENT_PROGRAMS: ReadonlySet<string> = new Set(["cursor"])
 export const programReportsTokens = (kind: string): boolean => !SILENT_PROGRAMS.has(kind)
 
 /** The names of the programs, as the products call themselves. They are not translated. */
@@ -219,5 +219,6 @@ const PROGRAM_NAMES: Readonly<Record<string, string>> = {
   muse: "Muse Code",
   pi: "pi",
   opencode: "opencode",
+  cursor: "Cursor",
 }
 export const programName = (kind: string): string => PROGRAM_NAMES[kind] ?? kind
