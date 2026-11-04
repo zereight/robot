@@ -5,12 +5,14 @@ import {
   type ActionCheck,
   type ActionDecider,
   type ApprovalAnswer,
+  allowedSends,
   CHAIN_LIMIT,
   CHAIN_LIMIT_TEXT,
   type CheckTarget,
   type ConnectionNote,
   chainAtLimit,
   changeSummary,
+  checkHandOff,
   checkRequestAddress,
   classifyHostWriting,
   commandChangesControl,
@@ -20,6 +22,10 @@ import {
   connectionToolLabel,
   type GuardedStep,
   guardDecision,
+  HAND_OFF_LIST_EMPTY,
+  HAND_OFF_LIST_RULE,
+  handOffLink,
+  handOffRefusalText,
   holdOutside,
   holdProgram,
   holdSensitive,
@@ -89,7 +95,9 @@ import { Decision } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge, type KnowledgePlan } from "./Knowledge.ts"
+import { appendLog } from "./logs.ts"
 import { Memory, type MemoryOrigin } from "./Memory.ts"
+import { Organization } from "./Organization.ts"
 import { type PageBounds, Platform } from "./Platform.ts"
 import { Rules } from "./Rules.ts"
 import { realOf } from "./realPath.ts"
@@ -147,7 +155,10 @@ export interface ToolContext {
   /** Watches the reads of this turn, so that a read with the same result is refused (spec 005). */
   readonly guard?: ReadGuard
   /** Records why a step failed, as a code that the card translates. */
-  readonly onReason?: (callId: string, reason: { code: string; detail?: string }) => void
+  readonly onReason?: (
+    callId: string,
+    reason: { code: string; detail?: string; next?: string },
+  ) => void
   /**
    * The turn read a credential place for the first time (spec 007, "Sensitive places"): the place
    * of the turn holds the mark from now on, so its next turns hold the sensitive read too.
@@ -446,7 +457,7 @@ const DEFS: Record<string, ToolDef> = {
   list_agents: {
     name: "list_agents",
     description:
-      "List the other agents of this server that are not archived: name, role line and state.",
+      "List the other agents of this server that you may send a message to: name, role line and state. Archived agents are not listed.",
     schema: object({}, []),
   },
   send_message: {
@@ -717,6 +728,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const rules = yield* Rules
       const decisionModel = yield* Decision
       const settingsStore = yield* SettingsStore
+      const organization = yield* Organization
       const platform = yield* Platform
       const bus = yield* EventBus
       const control = new Set<string>()
@@ -1932,15 +1944,20 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         return { output: REPEATED_READ_TEXT, failed: true }
       }
 
+      /** The name of an agent, as stored. */
+      const names = (agentId: string) =>
+        db.get<{ name: string }>("SELECT name FROM agent WHERE id = ?", agentId)?.name
+
       const listAgents = (ctx: ToolContext): ToolOutcome => {
         const server = db.get<{ server_id: string }>(
           "SELECT server_id FROM agent WHERE id = ?",
           ctx.agentId,
         )
+        const serverId = server?.server_id ?? ""
         const rows = db.all<{ id: string; name: string; role: string }>(
           `SELECT id, name, role FROM agent
            WHERE server_id = ? AND id != ? AND archived_at IS NULL ORDER BY name_key`,
-          server?.server_id ?? "",
+          serverId,
           ctx.agentId,
         )
         const busy = new Set(
@@ -1950,10 +1967,24 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             )
             .map((r) => r.agent_id),
         )
-        const lines = rows.map(
-          (r) =>
-            `- ${r.name}: ${r.role || "(no role line)"} [${busy.has(r.id) ? "working" : "idle"}]`,
-        )
+        const line = (r: { id: string; name: string; role: string }, link?: string) =>
+          `- ${r.name}: ${r.role || "(no role line)"} [${busy.has(r.id) ? "working" : "idle"}]${link ? ` (${link})` : ""}`
+        // With the hand-off rule "Along the channels" the list holds only the agents that the agent
+        // may send to, each with the channel that links them or "main agent" (spec 030).
+        if (organization.rule() === "channels") {
+          const targets = allowedSends(organization.model(serverId), ctx.agentId)
+          const byId = new Map(rows.map((r) => [r.id, r]))
+          const lines = targets.flatMap((t) => {
+            const row = byId.get(t.agentId)
+            return row ? [line(row, handOffLink(t))] : []
+          })
+          return {
+            output:
+              lines.length > 0 ? `${HAND_OFF_LIST_RULE}\n${lines.join("\n")}` : HAND_OFF_LIST_EMPTY,
+            failed: false,
+          }
+        }
+        const lines = rows.map((r) => line(r))
         return { output: lines.join("\n") || "There are no other agents.", failed: false }
       }
 
@@ -1986,6 +2017,33 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           return { output: "An agent cannot send a message to itself.", failed: true }
         if (target.archived_at !== null)
           return { output: "This agent is archived. Choose another agent.", failed: true }
+        // With the hand-off rule "Along the channels" the app checks each send now (spec 030). A
+        // refused send makes no task and counts for no limit; the step fails and the turn goes on.
+        if (organization.rule() === "channels") {
+          const refusal = checkHandOff(
+            organization.model(server?.server_id ?? ""),
+            ctx.agentId,
+            target.id,
+          )
+          if (refusal) {
+            const receiver = names(target.id) ?? name
+            ctx.onReason?.(call.id, {
+              code: refusal.next ? "hand_off_path" : "hand_off_none",
+              detail: receiver,
+              ...(refusal.next ? { next: refusal.next.name } : {}),
+            })
+            // One line for the channel log: the sender, the receiver and the time (spec 014).
+            appendLog(platform.dataDir, "channels", {
+              event: "hand_off_refused",
+              from: names(ctx.agentId) ?? "",
+              to: receiver,
+            })
+            return {
+              output: handOffRefusalText(receiver, refusal.next?.name ?? null),
+              failed: true,
+            }
+          }
+        }
         if (!messenger)
           return { output: "Messages to other agents are not available.", failed: true }
         // A message from a turn that holds the program mark starts a turn that holds it too.

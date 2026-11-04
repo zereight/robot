@@ -707,7 +707,7 @@ describe("browser for an agent runtime", () => {
     return { s, bridge, shown, asks, controller, states }
   }
 
-  test("offers the browser tools and the search of past chats", async () => {
+  test("offers the browser tools, the search of past chats and the tools for other agents", async () => {
     const { bridge } = await open("full")
     expect(bridge.tools.map((t) => t.name)).toEqual([...BRIDGE_TOOL_NAMES])
     expect(bridge.tools.map((t) => t.name)).toContain("search_chats")
@@ -723,6 +723,8 @@ describe("browser for an agent runtime", () => {
       "browser_type",
       "browser_close",
       "browser_ask_look",
+      "list_agents",
+      "send_message",
     ])
   })
 

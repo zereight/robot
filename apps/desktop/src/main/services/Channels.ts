@@ -102,6 +102,7 @@ import { appendLog } from "./logs.ts"
 import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
+import { Organization } from "./Organization.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
@@ -269,6 +270,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       const connections = yield* Connections
       const placeMarks = yield* PlaceMarks
       const knowledge = yield* Knowledge
+      const organization = yield* Organization
       const notifier = yield* Notifier
       const agentActivity = yield* Activity
       const agents = yield* Agents
@@ -855,6 +857,8 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                   ? [
                       `${o.system}\n\nYour workspace folder is ${o.agent.workspace}. Use your tools when the job needs files, commands, pages or a decision from the user.`,
                       CHAIN_LIMIT_RULE,
+                      // The main agent is told what the hand-off rule means for it (spec 030).
+                      organization.told(o.agent.id),
                       connected?.rule() ?? "",
                       // An agent in a channel uses its own knowledge only.
                       knowledge.prompt(
