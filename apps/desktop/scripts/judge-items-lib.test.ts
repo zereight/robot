@@ -36,6 +36,7 @@ import {
   writeItems,
 } from "./judge-items-lib.ts"
 import { callsFor, groupState, parseItems } from "./judge-replay-lib.ts"
+import { spawnGuarded } from "./spawn-guard.ts"
 
 // All data here is made for the tests, on the real schema of the app: the database is made with the
 // real migrations, and the rows are written with plain SQL, so a change of the schema breaks a
@@ -1625,24 +1626,13 @@ describe("the command", () => {
   const script = resolve(import.meta.dirname, "judge-items.ts")
   const [root] = repositoryRoots() as [string]
   // The same Bun as the one that runs the tests, not the first "bun" on the PATH.
-  const exec = async (
+  // A child that has not ended after 15 s fails the test with a text that says where it stopped.
+  const exec = (
     args: string[],
     cwd = tempDir(),
     command: string[] = [process.execPath, script],
     env: Record<string, string> = {},
-  ) => {
-    const child = Bun.spawn([...command, ...args], {
-      cwd,
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, ...env },
-    })
-    const [out, err] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ])
-    return { code: await child.exited, out, err }
-  }
+  ) => spawnGuarded([...command, ...args], { cwd, env: { ...process.env, ...env } })
   const dbFile = () => {
     const w = base()
     w.job("JOBID-1", LAUNCH, "AGENTID-lia", at(100))
