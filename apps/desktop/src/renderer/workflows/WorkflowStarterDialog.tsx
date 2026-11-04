@@ -16,6 +16,7 @@ import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import workflowStyles from "./workflows.module.css"
 
 /**
  * "New from a starter" (spec 010, "Starters"): the list of starters, the field "Agent", and
@@ -76,7 +77,7 @@ export const WorkflowStarterDialog = (props: {
         <p class={styles.hint}>{t("workflowStarter.hint")}</p>
         <fieldset class={`${styles.field} ${styles.group}`}>
           <legend class={styles.label}>{t("workflowStarter.list")}</legend>
-          <div class={styles.starters}>
+          <div class={workflowStyles.starterRows}>
             <For each={WORKFLOW_STARTERS}>
               {(id) => {
                 const text = () => workflowStarterText(app.locale(), id)

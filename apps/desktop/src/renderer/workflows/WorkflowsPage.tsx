@@ -29,7 +29,9 @@ import {
 import { WorkflowStarterDialog } from "./WorkflowStarterDialog.tsx"
 import styles from "./workflows.module.css"
 
-const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) => {
+const WorkflowList = (props: {
+  onOpen: (workflow: Workflow | null, options?: { frame?: boolean }) => void
+}) => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
@@ -162,7 +164,7 @@ const WorkflowList = (props: { onOpen: (workflow: Workflow | null) => void }) =>
             onClose={() => setStarting(false)}
             onCreated={(workflow) => {
               setStarting(false)
-              props.onOpen(workflow)
+              props.onOpen(workflow, { frame: true })
             }}
           />
         )}
@@ -255,7 +257,7 @@ export const WorkflowsPage = () => {
   const { t } = useApp()
   const ui = useUi()
   const [tab, setTab] = createSignal<"routines" | "workflows">("routines")
-  const [open, setOpen] = createSignal<{ workflow: Workflow | null }>()
+  const [open, setOpen] = createSignal<{ workflow: Workflow | null; frame?: boolean }>()
   // The Today page asks for a routine or a workflow: the page shows the tab that holds it.
   createEffect(() => {
     const target = openTarget()
@@ -305,7 +307,11 @@ export const WorkflowsPage = () => {
                     </p>
                   }
                 >
-                  <WorkflowList onOpen={(workflow) => setOpen({ workflow })} />
+                  <WorkflowList
+                    onOpen={(workflow, options) =>
+                      setOpen({ workflow, ...(options?.frame ? { frame: true } : {}) })
+                    }
+                  />
                 </Show>
               }
             >
@@ -324,7 +330,13 @@ export const WorkflowsPage = () => {
           </>
         }
       >
-        {(o) => <WorkflowEditor workflow={o().workflow} onBack={() => setOpen(undefined)} />}
+        {(o) => (
+          <WorkflowEditor
+            workflow={o().workflow}
+            onBack={() => setOpen(undefined)}
+            {...(o().frame ? { frame: true } : {})}
+          />
+        )}
       </Show>
     </div>
   )
