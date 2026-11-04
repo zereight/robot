@@ -1130,7 +1130,7 @@ describe("read-only marks (spec 018, Read-only mark, Trust read-only marks)", ()
   })
 
   test("an unknown connection cannot be set", async () => {
-    const { connections, run } = setup()
+    const { run } = setup()
     const error = await run(Connections.use((c) => c.setTrust("nope", true)).pipe(Effect.flip))
     expect(error.code).toBe("connection_not_found")
   })

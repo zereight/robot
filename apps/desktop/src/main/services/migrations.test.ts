@@ -873,6 +873,30 @@ describe("the migration for the review of connection tools (spec 018)", () => {
   })
 })
 
+describe('the migration for the switch "Trust read-only marks" (spec 018)', () => {
+  const TRUST = migrations.findIndex((sql) => sql.includes("ADD COLUMN trust_read_only"))
+
+  test("it only adds one column with a default of off, once", () => {
+    expect(TRUST).toBeGreaterThan(0)
+    expect(migrations.filter((sql) => sql.includes("ADD COLUMN trust_read_only"))).toHaveLength(1)
+    const sql = migrations[TRUST] ?? ""
+    expect(sql).not.toMatch(/DROP|DELETE|UPDATE /i)
+    expect(sql).toContain("ADD COLUMN trust_read_only INTEGER NOT NULL DEFAULT 0")
+  })
+
+  test("a connection from before keeps its row with the switch off", () => {
+    const db = upTo(TRUST)
+    db.prepare(
+      `INSERT INTO tool_connection (id, server_id, name, name_key, kind, enabled, created_at)
+       VALUES ('old', 's', 'Old', 'old', 'program', 1, 1)`,
+    ).run()
+    db.exec(migrations[TRUST] as string)
+    expect(db.prepare("SELECT id, enabled, trust_read_only FROM tool_connection").all()).toEqual([
+      { id: "old", enabled: 1, trust_read_only: 0 },
+    ])
+  })
+})
+
 describe("the step of the mark of a message from another agent", () => {
   const server = `
     INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);

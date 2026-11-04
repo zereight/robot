@@ -13,9 +13,11 @@ import { ActionLog } from "./ActionLog.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
 import { Connections } from "./Connections.ts"
+import { Decision } from "./Decision.ts"
 import { Providers } from "./Providers.ts"
 import { Rules } from "./Rules.ts"
 import { Servers } from "./Servers.ts"
+import { SettingsStore } from "./Settings.ts"
 import { Tools } from "./Tools.ts"
 import { testRuntime } from "./testing.ts"
 
@@ -75,7 +77,30 @@ const server = Bun.serve({
     ])
   },
 })
-afterAll(() => server.stop())
+
+/** The requests that the stand-in decision service got (the check of "Ask when unsure"). */
+const checks: unknown[] = []
+const decisionServer = Bun.serve({
+  port: 0,
+  async fetch(req) {
+    checks.push(await req.json().catch(() => ({})))
+    // Always sure. A test that expects no request fails on the count, not on this answer.
+    return Response.json({
+      answers: {
+        ask: {
+          type: "choice",
+          choice: "asked",
+          confidence: 0.9,
+          probabilities: { asked: 0.95, not_asked: 0.05 },
+        },
+      },
+    })
+  },
+})
+afterAll(() => {
+  server.stop()
+  decisionServer.stop(true)
+})
 
 const SERVER = join(import.meta.dir, "../../../e2e/fakes/mcp-server.mjs")
 const calls = (...list: { name: string; args: unknown }[]) => `CALLS ${JSON.stringify(list)}`
@@ -92,9 +117,26 @@ const until = async (check: () => boolean | Promise<boolean>, ms = 8000) => {
   throw new Error("timed out")
 }
 
-const setup = async (permission: PermissionLevel = "ask_risky", tools = 0) => {
-  const t = testRuntime()
+const setup = async (
+  permission: PermissionLevel = "ask_risky",
+  tools = 0,
+  options: { check?: boolean } = {},
+) => {
+  checks.length = 0
+  const t = testRuntime(
+    options.check ? { decisionUrl: `http://127.0.0.1:${decisionServer.port}` } : {},
+  )
   const run = t.runtime.runPromise
+  if (options.check) {
+    // The check of "Ask when unsure" is set up, so a step that it should not see would reach it.
+    await run(
+      SettingsStore.use((x) =>
+        x.update({ decisionModel: "openrouter", decisionModelName: "jev-test" }),
+      ),
+    )
+    await run(Decision.use((d) => d.keys({ openrouter: "sk-or-connections-check-key" })))
+    await run(SettingsStore.use((x) => x.update({ permissionChecks: true })))
+  }
   const account = await run(
     Providers.use((p) =>
       p.connect({
@@ -595,5 +637,172 @@ describe("many tools: the step Search tools", () => {
     await s.send(calls({ name: "search_tools", args: { query: "echo" } }))
     await s.finished()
     expect((await s.part("call_1"))?.output).toBe("Unknown tool: search_tools")
+  })
+})
+
+describe("the read-only mark (spec 018, Rules; spec 007, Rules)", () => {
+  const lookup = (word = "tea") => ({ name: "mcp__notes__lookup", args: { word } })
+
+  test("with the switch off a call of a marked tool asks as any tool does", async () => {
+    const s = await setup("ask_risky")
+    await s.connect()
+    await s.send(calls(lookup()))
+    expect(await s.card("call_1")).toMatchObject({ kind: "approval" })
+    await s.respond("call_1", "allow")
+    await s.finished()
+    expect((await s.part("call_1"))?.readOnlyTrusted).toBeUndefined()
+  })
+
+  test("with the switch on a call of a marked tool runs with no card at Ask for risky steps, and the card says why; a tool with no mark still asks", async () => {
+    const s = await setup("ask_risky")
+    const saved = await s.connect()
+    await s.run(Connections.use((c) => c.setTrust(saved.id, true)))
+    await s.send(calls(lookup("tea")))
+    await s.finished()
+    const first = await s.part("call_1")
+    expect(first).toMatchObject({ state: "done", readOnlyTrusted: true })
+    expect(first?.ask).toBeUndefined()
+    expect(s.programCalls()).toEqual([{ tool: "lookup", args: { word: "tea" } }])
+    // The log has the entry, decided by the level, with the names and not the arguments.
+    const entry = (await s.entries())[0]
+    expect(entry).toMatchObject({
+      kind: "connection",
+      target: "Notes · lookup",
+      decidedBy: "level",
+      result: "ran",
+    })
+    expect(JSON.stringify(entry)).not.toContain("tea")
+    // A tool with no mark is still a risky step.
+    await s.send(calls(echo()))
+    expect(await s.card("call_1")).toMatchObject({ kind: "approval" })
+    await s.respond("call_1", "deny")
+    await s.finished()
+    expect((await s.part("call_1"))?.readOnlyTrusted).toBeUndefined()
+  })
+
+  test("at Ask when unsure it runs with no card and the decision model gets no request", async () => {
+    const s = await setup("ask_unsure", 0, { check: true })
+    const saved = await s.connect()
+    await s.run(Connections.use((c) => c.setTrust(saved.id, true)))
+    await s.send(calls(lookup()))
+    await s.finished()
+    expect(await s.part("call_1")).toMatchObject({ state: "done", readOnlyTrusted: true })
+    expect(checks).toEqual([])
+    expect((await s.entries())[0]).toMatchObject({ decidedBy: "level", result: "ran" })
+    // The check is set up: in a chat with no outside content a tool with no mark goes to it, and
+    // its card says "Allowed by the check".
+    const other = await setup("ask_unsure", 0, { check: true })
+    await other.connect()
+    await other.send(calls(echo()))
+    await other.finished()
+    expect(await other.part("call_1")).toMatchObject({ state: "done" })
+    expect((await other.part("call_1"))?.checkAllowed).toBeDefined()
+    expect(checks).toHaveLength(1)
+  })
+
+  test("at Ask for everything it still asks, at Read only it is still refused, and at Full access the card does not claim the mark", async () => {
+    for (const [level, expected] of [
+      ["ask_all", "ask"],
+      ["read_only", "refused"],
+      ["full", "ran"],
+    ] as const) {
+      const s = await setup(level)
+      const saved = await s.connect()
+      await s.run(Connections.use((c) => c.setTrust(saved.id, true)))
+      await s.send(calls(lookup()))
+      if (expected === "ask") {
+        expect(await s.card("call_1")).toMatchObject({ kind: "approval" })
+        await s.respond("call_1", "allow")
+      }
+      await s.finished()
+      const card = await s.part("call_1")
+      expect(card?.readOnlyTrusted).toBeUndefined()
+      if (expected === "refused") {
+        expect(card).toMatchObject({ state: "failed", refused: "read_only" })
+        expect(s.programCalls()).toEqual([])
+      } else expect(card?.state).toBe("done")
+    }
+  })
+
+  test("in a turn that holds outside content the call is a risky step again, with the normal card", async () => {
+    const s = await setup("ask_risky")
+    const saved = await s.connect()
+    await s.run(Connections.use((c) => c.setTrust(saved.id, true)))
+    // The result of the first call is outside content: the second call of the same turn asks.
+    await s.send(calls(lookup("one"), lookup("two")))
+    // The first call ran with no card; the second one waits.
+    const ask = await s.card("call_2")
+    expect(ask).toMatchObject({ kind: "approval" })
+    expect(await s.part("call_1")).toMatchObject({ state: "done", readOnlyTrusted: true })
+    expect((await s.part("call_2"))?.readOnlyTrusted).toBeUndefined()
+    await s.respond("call_2", "allow")
+    await s.finished()
+    expect(s.programCalls().map((c) => c.args.word)).toEqual(["one", "two"])
+  })
+
+  test("a later turn of the same chat holds the outside content too, so the call asks until the user clears it", async () => {
+    const s = await setup("ask_risky")
+    const saved = await s.connect()
+    await s.run(Connections.use((c) => c.setTrust(saved.id, true)))
+    await s.send(calls(lookup("one")))
+    await s.finished()
+    expect((await s.part("call_1"))?.readOnlyTrusted).toBe(true)
+    // The first turn got outside content; the place holds the mark for the next turn.
+    await s.send(calls(lookup("two")))
+    expect(await s.card("call_1")).toMatchObject({ kind: "approval" })
+    await s.respond("call_1", "deny")
+    await s.finished()
+    expect(s.programCalls().map((c) => c.args.word)).toEqual(["one"])
+  })
+
+  test("a rule decides before the mark: an Allow rule says so on the card, and a Deny rule refuses", async () => {
+    const s = await setup("ask_risky")
+    const saved = await s.connect()
+    await s.run(Connections.use((c) => c.setTrust(saved.id, true)))
+    await s.run(
+      Rules.use((r) =>
+        r.add({
+          agentId: null,
+          kind: "connection",
+          text: "Notes",
+          detail: "lookup",
+          decision: "allow",
+        }),
+      ),
+    )
+    await s.send(calls(lookup()))
+    await s.finished()
+    expect(await s.part("call_1")).toMatchObject({ state: "done", ruleAllowed: true })
+    expect((await s.part("call_1"))?.readOnlyTrusted).toBeUndefined()
+    const rule = (await s.rules())[0]
+    await s.run(Rules.use((r) => r.remove(rule?.id ?? "")))
+    await s.run(
+      Rules.use((r) =>
+        r.add({
+          agentId: null,
+          kind: "connection",
+          text: "Notes",
+          detail: "lookup",
+          decision: "deny",
+        }),
+      ),
+    )
+    await s.send(calls(lookup("again")))
+    await s.finished()
+    expect(await s.part("call_1")).toMatchObject({ state: "failed", refused: "rule" })
+    expect(s.programCalls()).toHaveLength(1)
+  })
+
+  test("the switch is read at the call: turning it off makes the next call ask", async () => {
+    const s = await setup("ask_risky")
+    const saved = await s.connect()
+    await s.run(Connections.use((c) => c.setTrust(saved.id, true)))
+    await s.send(calls(lookup("one")))
+    await s.finished()
+    await s.run(Connections.use((c) => c.setTrust(saved.id, false)))
+    await s.send(calls(lookup("two")))
+    expect(await s.card("call_1")).toMatchObject({ kind: "approval" })
+    await s.respond("call_1", "deny")
+    await s.finished()
   })
 })
