@@ -22,6 +22,7 @@ import { Devices } from "../services/Devices.ts"
 import { Remote } from "../services/Remote.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
+import { pairRuntimes } from "./pairing.testing.ts"
 
 // The org chart of a linked server (spec 029, 012). A client asks the server for a ready model and
 // the server pushes it when it changes. Both computers run the real link, the real Devices
@@ -62,19 +63,7 @@ afterAll(async () => {
 const pair = async (canChange: boolean) => {
   const server = side("MacBook 2")
   const client = side("MacBook 1")
-  const pairing = await server.runtime.runPromise(Devices.use((d) => d.pairStart()))
-  const found = await client.runtime.runPromise(Remote.use((r) => r.probe({ link: pairing.link })))
-  const done = client.runtime.runPromise(Remote.use((r) => r.finish(found.session, false)))
-  const request = await waitFor(
-    () => server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.joins()[0]))),
-    (j) => j !== undefined,
-  )
-  await server.runtime.runPromise(Devices.use((d) => d.decide(request?.id ?? "", true, canChange)))
-  const entry = await done
-  await waitFor(
-    () => client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.stateOf(entry.id)))),
-    (state) => state === "online",
-  )
+  const { entry } = await pairRuntimes(server, client, { canChange })
   const serverId = entry.serverId
   const clientDevice = await client.runtime.runPromise(
     Devices.use((d) => Effect.sync(() => d.self())),

@@ -14,6 +14,7 @@ import { Devices } from "../services/Devices.ts"
 import { Providers } from "../services/Providers.ts"
 import { Remote } from "../services/Remote.ts"
 import { testRuntime } from "../services/testing.ts"
+import { pairRuntimes } from "./pairing.testing.ts"
 
 /** Workflows of a server on a linked computer (spec 012, "Workflows"). */
 
@@ -64,19 +65,7 @@ afterAll(async () => {
 const pair = async (canChange: boolean) => {
   const server = side("MacBook 2")
   const client = side("MacBook 1")
-  const pairing = await server.runtime.runPromise(Devices.use((d) => d.pairStart()))
-  const found = await client.runtime.runPromise(Remote.use((r) => r.probe({ link: pairing.link })))
-  const done = client.runtime.runPromise(Remote.use((r) => r.finish(found.session, false)))
-  const request = await waitFor(
-    () => server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.joins()[0]))),
-    (j) => j !== undefined,
-  )
-  await server.runtime.runPromise(Devices.use((d) => d.decide(request?.id ?? "", true, canChange)))
-  const entry = await done
-  await waitFor(
-    () => client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.stateOf(entry.id)))),
-    (state) => state === "online",
-  )
+  const { entry } = await pairRuntimes(server, client, { canChange })
   const serverId = entry.serverId
   const clientName = (
     await client.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.self())))

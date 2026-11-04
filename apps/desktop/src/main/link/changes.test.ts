@@ -1,14 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { existsSync, readdirSync } from "node:fs"
-import { inspect } from "node:util"
-import type {
-  Agent,
-  DevicesState,
-  JoinRequest,
-  PlaceSection,
-  RpcResult,
-  UserSection,
-} from "@robot/shared"
+import type { Agent, DevicesState, PlaceSection, RpcResult, UserSection } from "@robot/shared"
 import { Effect } from "effect"
 import { runRequest } from "../rpc.ts"
 import { Activity } from "../services/Activity.ts"
@@ -20,6 +12,7 @@ import { Providers } from "../services/Providers.ts"
 import { Remote } from "../services/Remote.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
+import { pairRuntimes, waitFor } from "./pairing.testing.ts"
 
 type Rt = ReturnType<typeof testRuntime>
 
@@ -44,45 +37,6 @@ const side = (name: string) => {
   return s
 }
 
-/**
- * Reads until `ok` holds. A wait that ends with no result fails at once, and the message says
- * what the test waited for (`what`) and the last value, so the test never goes on with a value
- * that is not there. With a type guard for `ok`, the result has the type of the guard.
- */
-const waitFor = async <T, U extends T = T>(
-  what: string,
-  read: () => Promise<T> | T,
-  ok: ((v: T) => v is U) | ((v: T) => boolean),
-  ms = 8000,
-): Promise<U> => {
-  const end = Date.now() + ms
-  let last = await read()
-  while (!ok(last) && Date.now() < end) {
-    await new Promise((r) => setTimeout(r, 40))
-    last = await read()
-  }
-  if (!ok(last)) {
-    throw new Error(`${what} in ${ms} ms (the last value: ${inspect(last, { depth: 2 })})`)
-  }
-  return last as U
-}
-
-/** A message for a failure: the code of an error of the app when it has one. */
-const reason = (error: unknown) => {
-  const code = (error as { code?: unknown } | null)?.code
-  if (typeof code === "string") return code
-  return error instanceof Error ? error.message : String(error)
-}
-
-/** Runs one step of the pairing. A failure names the step and the reason, and keeps the cause. */
-const step = async <T>(what: string, run: () => Promise<T>): Promise<T> => {
-  try {
-    return await run()
-  } catch (error) {
-    throw new Error(`pairing: ${what}: ${reason(error)}`, { cause: error })
-  }
-}
-
 beforeAll(() => {
   process.env.ROBOT_LINK_ADDRESSES = "127.0.0.1"
   process.env.ROBOT_LINK_RETRY_MAX_MS = "300"
@@ -100,42 +54,7 @@ afterAll(async () => {
 const pair = async (canChange: boolean | undefined) => {
   const server = side("MacBook 2")
   const client = side("MacBook 1")
-  const pairing = await step("the server did not start a pairing", () =>
-    server.runtime.runPromise(Devices.use((d) => d.pairStart())),
-  )
-  const where = pairing.addresses.map((a) => a.address).join(", ")
-  const found = await step(`the client could not open the link of the server (${where})`, () =>
-    client.runtime.runPromise(Remote.use((r) => r.probe({ link: pairing.link }))),
-  )
-  const done = step("the client could not finish", () =>
-    client.runtime.runPromise(Remote.use((r) => r.finish(found.session, false))),
-  )
-  // The client answers when the server decides. If it fails before that, the join request never
-  // comes, and the failure of the client is the cause: say that and not the wait.
-  let finishFailure: unknown
-  done.catch((error: unknown) => {
-    finishFailure = error
-  })
-  const request = await waitFor(
-    "pairing: the join request did not arrive",
-    () => server.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.joins()[0]))),
-    (j): j is JoinRequest => j !== undefined,
-  ).catch((error: unknown) => {
-    throw finishFailure ?? error
-  })
-  await step("the server could not decide", () =>
-    server.runtime.runPromise(
-      Devices.use((d) =>
-        d.decide(request.id, true, ...(canChange === undefined ? [] : [canChange])),
-      ),
-    ),
-  )
-  const entry = await done
-  await waitFor(
-    "pairing: the client did not go online",
-    () => client.runtime.runPromise(Remote.use((r) => Effect.sync(() => r.stateOf(entry.id)))),
-    (state) => state === "online",
-  )
+  const { entry } = await pairRuntimes(server, client, { canChange })
   const serverId = entry.serverId
   const clientName = (
     await client.runtime.runPromise(Devices.use((d) => Effect.sync(() => d.self())))
