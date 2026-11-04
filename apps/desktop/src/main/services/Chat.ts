@@ -57,6 +57,7 @@ import {
   type RetryResult,
   routineTurnEffort,
   runningStepKind,
+  runtimeModel,
   runtimeTakesInput,
   type SkillPart,
   type StepEffort,
@@ -81,17 +82,19 @@ import { Cause, Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer, Stream 
 import type { AgentEvent } from "../providers/agent.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
-import { resumeOf } from "../providers/resume.ts"
+import { goOnTurns, resumeOf } from "../providers/resume.ts"
 import type { JoinedMessage, TurnInbox } from "../providers/turn.ts"
 import { bridgeToolName } from "../runtimes/bridge.ts"
 import { Activity } from "./Activity.ts"
 import { type Actor, CurrentActor } from "./actor.ts"
+import { type Attempt, withBackup } from "./backupTurn.ts"
 import { Connections } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { Memory } from "./Memory.ts"
+import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
@@ -148,6 +151,9 @@ interface AgentModelRow {
   model_account_id: string | null
   model_name: string | null
   model_effort: string | null
+  backup_account_id: string | null
+  backup_model: string | null
+  backup_effort: string | null
   workspace: string
   permission: PermissionLevel
   memory_enabled: number
@@ -546,6 +552,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const tools = yield* Tools
       const connections = yield* Connections
       const placeMarks = yield* PlaceMarks
+      const holds = yield* ModelHolds
       const memory = yield* Memory
       const knowledge = yield* Knowledge
       const notifier = yield* Notifier
@@ -632,9 +639,31 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       const agentRow = (agentId: string) =>
         db.get<AgentModelRow>(
-          "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort, workspace, permission, memory_enabled FROM agent WHERE id = ?",
+          "SELECT id, server_id, name, instructions, archived_at, model_account_id, model_name, model_effort, backup_account_id, backup_model, backup_effort, workspace, permission, memory_enabled FROM agent WHERE id = ?",
           agentId,
         )
+      /** The backup model of an agent, or null for "None" (spec 006). */
+      const backupOf = (row: AgentModelRow): AgentModel | null =>
+        row.backup_account_id && row.backup_model
+          ? { accountId: row.backup_account_id, model: row.backup_model, effort: row.backup_effort }
+          : null
+      /** The agent as it runs on another model: the same agent, with the model fields replaced. */
+      const withModel = (row: AgentModelRow, model: AgentModel): AgentModelRow => ({
+        ...row,
+        model_account_id: model.accountId,
+        model_name: model.model,
+        model_effort: model.effort,
+      })
+      /**
+       * The backup is ready when this computer has its account, the account is connected and, for
+       * a program, Ready (spec 006). A program is looked at again when the last look is old.
+       */
+      const backupReady = (backup: AgentModel) => providers.verify(backup.accountId)
+      /** The name of a model as the chat line shows it: the version of a program model, else the id. */
+      const modelLabel = (accountId: string | null, model: string | null) => {
+        const kind = accountId ? providers.runtimeKind(accountId) : null
+        return (kind ? runtimeModel(kind, model ?? "")?.label : undefined) ?? model ?? ""
+      }
       const messageRow = (id: string) =>
         db.get<MessageRow>("SELECT * FROM message WHERE id = ?", id)
       /** The messages of one conversation, oldest first. */
@@ -972,7 +1001,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             offeredEfforts(kind, ownModel.model, listed),
           )
         }
-        const agent: AgentModelRow = ownModel
+        const mainRow: AgentModelRow = ownModel
           ? {
               ...own,
               model_account_id: ownModel.accountId,
@@ -980,6 +1009,19 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               model_effort: routineEffort,
             }
           : own
+        // The backup model (spec 006, "Backup model"). A routine with its own model keeps it and
+        // gets no backup: the hold is about the main model of the agent.
+        const backup = ownModel ? null : backupOf(own)
+        // While the hold lasts, every turn of the agent starts on the backup model. A backup that
+        // is not ready ends the hold at once, and the turn tries the main model.
+        let onBackup = false
+        if (backup && holds.active(agentId)) {
+          if (yield* backupReady(backup)) onBackup = true
+          else holds.clear(agentId)
+        }
+        const agent: AgentModelRow = onBackup && backup ? withModel(own, backup) : mainRow
+        /** The model that runs the turn now: it changes once, when the main model reaches its limit. */
+        let running: AgentModelRow = agent
         const reply =
           kept ??
           insertMessage(
@@ -1095,7 +1137,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             )
           : undefined
         const usage = { input: counted?.input_tokens ?? 0, output: counted?.output_tokens ?? 0 }
-        const controller = new AbortController()
+        let controller = new AbortController()
         /** Where a notice of this turn leads: the reply, in its thread. */
         const replyTarget = {
           kind: "agent" as const,
@@ -1105,9 +1147,15 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         }
         // The silent limit counts for every kind of turn. A change of the setting counts for the
         // turns that start after it (spec 013).
+        // Whether the try that runs now got a sign back: the backup model goes on from the start, or
+        // with a message that asks it to go on (spec 006).
+        let attemptStarted = false
         const silence = turnWatch({
           limitMinutes: (yield* settings.get).silentLimit,
-          progress: (progress) => tasks.setProgress(task.id, progress),
+          progress: (progress) => {
+            if (progress === "started") attemptStarted = true
+            tasks.setProgress(task.id, progress)
+          },
           userHoldsBrowser: () => tools.browserState(agentId).control,
         })
         let lastEmit = 0
@@ -1229,227 +1277,297 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             watch.see(event, parts)
           })
 
-        const stream = Effect.gen(function* () {
-          if (!agent.model_account_id || !agent.model_name) {
-            return yield* new AppError({ code: "provider_not_connected" })
-          }
-          // The data changed since the restart, so the card cannot go on.
-          if (resumed && !resume) return yield* new AppError({ code: "app_stopped" })
-          const isRuntime = providers.isRuntime(agent.model_account_id)
-          // Only an agent whose model comes from an API provider gets connections (spec 018).
-          // A connection that does not start is left out, and the chat says so once (spec 018,
-          // "States"). The turn goes on without its tools.
-          const connected = isRuntime ? undefined : yield* connections.forTurn(agentId)
-          if (connected && (connected.down.length > 0 || connected.held.length > 0) && !resumed) {
-            for (const name of connected.down)
-              parts.push({ kind: "note", note: "connection_down", name })
-            // Tools that are new or changed wait for the user's review: the turn goes on without
-            // them, and the chat says so once (spec 018, "States", "Tool review").
-            for (const name of connected.held)
-              parts.push({ kind: "note", note: "connection_held", name })
-            save("streaming")
-            publish()
-          }
-          // At 85 percent or more of the context, the app compacts first (spec 003). A turn that
-          // goes on after a restart does not: its request is made already.
-          if (!resumed && !isRuntime)
-            yield* autoCompact(place, agent, reply.id, (code) => {
-              parts.push({ kind: "note", note: "compact_failed", code })
+        let noted = false
+        /**
+         * One try of the turn on one model. `goOn` is true for the backup model when the first try
+         * ran steps: it gets the work so far and a short message that asks it to go on (spec 006).
+         * A try after the first one has its own signal, because the first one is closed.
+         */
+        const streamOn = (agent: AgentModelRow, attempt: Attempt) =>
+          Effect.gen(function* () {
+            if (attempt !== "first") controller = new AbortController()
+            const resumeNow = attempt === "first" ? resume : undefined
+            if (!agent.model_account_id || !agent.model_name) {
+              return yield* new AppError({ code: "provider_not_connected" })
+            }
+            // The data changed since the restart, so the card cannot go on.
+            if (resumed && !resume) return yield* new AppError({ code: "app_stopped" })
+            const isRuntime = providers.isRuntime(agent.model_account_id)
+            // Only an agent whose model comes from an API provider gets connections (spec 018).
+            // A connection that does not start is left out, and the chat says so once (spec 018,
+            // "States"). The turn goes on without its tools.
+            const connected = isRuntime ? undefined : yield* connections.forTurn(agentId)
+            if (
+              connected &&
+              (connected.down.length > 0 || connected.held.length > 0) &&
+              !resumed &&
+              !noted
+            ) {
+              noted = true
+              for (const name of connected.down)
+                parts.push({ kind: "note", note: "connection_down", name })
+              // Tools that are new or changed wait for the user's review: the turn goes on without
+              // them, and the chat says so once (spec 018, "States", "Tool review").
+              for (const name of connected.held)
+                parts.push({ kind: "note", note: "connection_held", name })
               save("streaming")
               publish()
-            })
-          const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
-          // Claude Code reads the start of a request from the cache of the model, but only when
-          // that start is the same as in the turn before. What the app tells it about this
-          // message therefore goes with the message, and is kept with it, and not into the
-          // instructions, which come first in the request and would change at each message.
-          const withNotes = providers.runtimeKind(agent.model_account_id) === "claude_code"
-          const notes =
-            remembered.length > 0
-              ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
-              : ""
-          if (withNotes && lastUser)
-            db.run("UPDATE message SET context = ? WHERE id = ?", notes || null, lastUser.id)
-          const known = knowledge.prompt(
-            agentId,
-            asked ? messageText(asked) : "",
-            isRuntime ? "files" : "tools",
-          )
-          const system = [
-            agent.instructions,
-            `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
-            CHAIN_LIMIT_RULE,
-            connected?.rule() ?? "",
-            // A task of a routine, a workflow or another agent can say that it was blocked.
-            toldAboutBlocked(task) ? BLOCKED_RULE : "",
-            // A new try reads which steps of the earlier try may have changed things (spec 005).
-            tasks.retryNoteForModel(task),
-            withNotes ? "" : notes,
-            known ?? "",
-          ]
-            .filter(Boolean)
-            .join("\n\n")
-          const changePart = (
-            callId: string,
-            change: (p: Extract<MessagePart, { kind: "tool" }>) => MessagePart,
-          ) => {
-            // After a stop the reply is saved as stopped, and a late change must not undo that.
-            if (controller.signal.aborted) return
-            const index = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
-            const part = parts[index]
-            if (part?.kind !== "tool") return
-            parts[index] = change(part)
-            save("streaming")
-            publish()
-            // A question card or an approval card is a reply that the user sees.
-            if (firstReply()) markReplied()
-          }
-          const context: ToolContext = {
-            agentId,
-            workspace: agent.workspace,
-            permission: agent.permission,
-            signal: controller.signal,
-            onWaiting: (callId, ask) => {
-              // An answer needs a slot again (spec 005): the step goes on when the task has one.
-              const back = tasks.setWaiting(task.id, ask !== null)
-              if (ask) silence.waiting(true)
-              if (ask)
-                notifier.attention({
-                  agentId,
-                  serverId: agent.server_id,
-                  channelId: null,
-                  callId,
-                  kind: askKind(ask),
-                  always: askAllowsAlways(ask),
-                  summary: askSummary(ask),
-                  step: askStep(ask, toolNameOf(parts, callId)),
-                  target: replyTarget,
-                  ...(ask.askedAt !== undefined ? { askedAt: ask.askedAt } : {}),
-                })
-              else notifier.clearAttention(agentId, callId)
-              changePart(callId, (p) => {
-                const { ask: _drop, ...rest } = p
-                if (!ask) return { ...rest, state: "running" }
-                // A card that waited through a restart keeps the time of its first ask.
-                return {
-                  ...rest,
-                  state: "waiting",
-                  ask: p.ask && sameAsk(p.ask, ask) ? p.ask : ask,
-                }
+            }
+            // At 85 percent or more of the context, the app compacts first (spec 003). A turn that
+            // goes on after a restart does not: its request is made already.
+            if (!resumed && !isRuntime && attempt === "first")
+              yield* autoCompact(place, agent, reply.id, (code) => {
+                parts.push({ kind: "note", note: "compact_failed", code })
+                save("streaming")
+                publish()
               })
-              // The silent limit counts again when the task runs again.
-              return ask ? undefined : back.then(() => silence.waiting(false))
-            },
-            onMemory: (callId, memory) => changePart(callId, (p) => ({ ...p, memory })),
-            origin: { kind: "agent", id: agentId, messageId: reply.id },
-            onDecision: (callId, answer, by) =>
-              changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
-            onRefused: (callId, refused) => changePart(callId, (p) => ({ ...p, refused })),
-            onRuleAllowed: (callId) => changePart(callId, (p) => ({ ...p, ruleAllowed: true })),
-            onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
-            onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
-            onSettings: (callId, note) => changePart(callId, (p) => ({ ...p, settings: note })),
-            knowledgeChanges: { count: 0 },
-            turn: mark,
-            taskId: task.id,
-            depth,
-            guard: createReadGuard(),
-            onReason: (callId, reason) => changePart(callId, (p) => ({ ...p, reason })),
-            // The chat holds the mark from the first read, so the next turns hold it too.
-            onSensitive: (label) => placeMarks.holdSensitive(markPlace, label),
-            // The turn got the program mark in a step (a hit of "search chats").
-            onProgram: markProgram,
-            ...(connected ? { connections: connected } : {}),
-            onConnection: (callId, connection) => changePart(callId, (p) => ({ ...p, connection })),
-          }
-          // A call that waited for the user through a restart may name a tool that the agent found.
-          if (resume?.call.name) connected?.reopen(resume.call.name)
-          // A step of a workflow can ask for its own effort for this one turn. It is read for each
-          // turn, so a retry decides again from the step and the model, not from the first try.
-          // The levels come from the model list of the account, as for the effort of an agent. A
-          // list that cannot be read leaves the levels that the vendor documents for the model.
-          let offered: readonly string[] = []
-          if (turnEffort) {
-            const accounts = yield* providers.accounts
-            const listed = yield* providers
-              .models(agent.model_account_id)
-              .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
-            const kind = accounts.find((a) => a.id === agent.model_account_id)?.kind ?? "custom"
-            offered = offeredEfforts(kind, agent.model_name, listed)
-          }
-          const events = yield* providers.events(
-            agent.model_account_id,
-            {
-              model: agent.model_name,
-              effort: stepTurnEffort(turnEffort, agent.model_effort, offered),
-              system,
-              turns: buildTurns(place, reply.id, withNotes),
-              tools: tools.defs({
-                memory: agent.memory_enabled === 1,
-                knowledge: knowledge.enabled(agentId),
-                // Changes from the chat are for agents of an API provider (spec 002).
-                settings: !isRuntime,
-              }),
-              // The tools of the connections of the agent, and the ones it found by search.
-              ...(connected ? { moreTools: () => connected.defs() } : {}),
-              // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
-              // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
-              // message of another agent) keeps the short one.
-              cache:
-                task.source === "chat" || task.source === "handover" || task.source === "teams"
-                  ? "long"
-                  : "short",
-              signal: controller.signal,
+            const remembered = memory.forTurn(agentId, asked ? messageText(asked) : "")
+            // Claude Code reads the start of a request from the cache of the model, but only when
+            // that start is the same as in the turn before. What the app tells it about this
+            // message therefore goes with the message, and is kept with it, and not into the
+            // instructions, which come first in the request and would change at each message.
+            const withNotes = providers.runtimeKind(agent.model_account_id) === "claude_code"
+            const notes =
+              remembered.length > 0
+                ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
+                : ""
+            if (withNotes && lastUser)
+              db.run("UPDATE message SET context = ? WHERE id = ?", notes || null, lastUser.id)
+            const known = knowledge.prompt(
+              agentId,
+              asked ? messageText(asked) : "",
+              isRuntime ? "files" : "tools",
+            )
+            const system = [
+              agent.instructions,
+              `Your workspace folder is ${agent.workspace}. Files you write go there. Use your tools to work with files, run commands and fetch pages, and ask the user when you need a decision.`,
+              CHAIN_LIMIT_RULE,
+              connected?.rule() ?? "",
+              // A task of a routine, a workflow or another agent can say that it was blocked.
+              toldAboutBlocked(task) ? BLOCKED_RULE : "",
+              // A new try reads which steps of the earlier try may have changed things (spec 005).
+              tasks.retryNoteForModel(task),
+              withNotes ? "" : notes,
+              known ?? "",
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+            const changePart = (
+              callId: string,
+              change: (p: Extract<MessagePart, { kind: "tool" }>) => MessagePart,
+            ) => {
+              // After a stop the reply is saved as stopped, and a late change must not undo that.
+              if (controller.signal.aborted) return
+              const index = parts.findIndex((p) => p.kind === "tool" && p.id === callId)
+              const part = parts[index]
+              if (part?.kind !== "tool") return
+              parts[index] = change(part)
+              save("streaming")
+              publish()
+              // A question card or an approval card is a reply that the user sees.
+              if (firstReply()) markReplied()
+            }
+            const context: ToolContext = {
+              agentId,
               workspace: agent.workspace,
               permission: agent.permission,
-              useTools: true,
-              ...(resume ? { resume } : {}),
-              inbox,
-            },
-            {
-              execute: (call) => tools.execute(context, call),
-              approve: (request) => tools.approval(context, request),
-              // An agent runtime has no browser of its own. It calls the app for it, and the
-              // card of each call is the one that an API agent would show.
-              ...(isRuntime
-                ? {
-                    bridge: tools.bridge(context, (event) => {
-                      if (!controller.signal.aborted) Effect.runSync(onEvent(event))
-                    }),
+              signal: controller.signal,
+              onWaiting: (callId, ask) => {
+                // An answer needs a slot again (spec 005): the step goes on when the task has one.
+                const back = tasks.setWaiting(task.id, ask !== null)
+                if (ask) silence.waiting(true)
+                if (ask)
+                  notifier.attention({
+                    agentId,
+                    serverId: agent.server_id,
+                    channelId: null,
+                    callId,
+                    kind: askKind(ask),
+                    always: askAllowsAlways(ask),
+                    summary: askSummary(ask),
+                    step: askStep(ask, toolNameOf(parts, callId)),
+                    target: replyTarget,
+                    ...(ask.askedAt !== undefined ? { askedAt: ask.askedAt } : {}),
+                  })
+                else notifier.clearAttention(agentId, callId)
+                changePart(callId, (p) => {
+                  const { ask: _drop, ...rest } = p
+                  if (!ask) return { ...rest, state: "running" }
+                  // A card that waited through a restart keeps the time of its first ask.
+                  return {
+                    ...rest,
+                    state: "waiting",
+                    ask: p.ask && sameAsk(p.ask, ask) ? p.ask : ask,
                   }
-                : {}),
-            },
-          )
-          yield* Stream.fromAsyncIterable(closing(events, controller, silence), (e) => e).pipe(
-            // The program also reports its own calls of these tools. The app shows its own cards.
-            Stream.runForEach((event) => {
-              if (isRuntime && event.type === "tool" && bridgeToolName(event.call.name) !== null) {
-                silence.sense(event)
-                return Effect.void
-              }
-              // A web, browser or connection step of the program itself gives outside content.
-              if (isRuntime && event.type === "tool" && event.state !== "running")
-                holdOutside(mark, outsideOfCall(event.call.name, event.call.input))
-              return onEvent(event)
-            }),
-            // A turn that reached the step limit was stopped by the app. The turn fails with the
-            // reason, whatever the provider reported when the stop cut it off (spec 005).
-            Effect.catchCause((cause) =>
-              watch.hit
-                ? Effect.fail(new AppError({ code: "step_limit", detail: String(stepLimit) }))
-                : Effect.failCause(cause),
-            ),
-            Effect.tap(() =>
-              watch.hit
-                ? Effect.fail(new AppError({ code: "step_limit", detail: String(stepLimit) }))
-                : Effect.void,
-            ),
-          )
+                })
+                // The silent limit counts again when the task runs again.
+                return ask ? undefined : back.then(() => silence.waiting(false))
+              },
+              onMemory: (callId, memory) => changePart(callId, (p) => ({ ...p, memory })),
+              origin: { kind: "agent", id: agentId, messageId: reply.id },
+              onDecision: (callId, answer, by) =>
+                changePart(callId, (p) => ({ ...p, decision: { answer, by } })),
+              onRefused: (callId, refused) => changePart(callId, (p) => ({ ...p, refused })),
+              onRuleAllowed: (callId) => changePart(callId, (p) => ({ ...p, ruleAllowed: true })),
+              onKnowledge: (callId, note) => changePart(callId, (p) => ({ ...p, knowledge: note })),
+              onSecret: (callId, result) => changePart(callId, (p) => ({ ...p, secret: result })),
+              onSettings: (callId, note) => changePart(callId, (p) => ({ ...p, settings: note })),
+              knowledgeChanges: { count: 0 },
+              turn: mark,
+              taskId: task.id,
+              depth,
+              guard: createReadGuard(),
+              onReason: (callId, reason) => changePart(callId, (p) => ({ ...p, reason })),
+              // The chat holds the mark from the first read, so the next turns hold it too.
+              onSensitive: (label) => placeMarks.holdSensitive(markPlace, label),
+              // The turn got the program mark in a step (a hit of "search chats").
+              onProgram: markProgram,
+              ...(connected ? { connections: connected } : {}),
+              onConnection: (callId, connection) =>
+                changePart(callId, (p) => ({ ...p, connection })),
+            }
+            // A call that waited for the user through a restart may name a tool that the agent found.
+            if (resumeNow?.call.name) connected?.reopen(resumeNow.call.name)
+            // A step of a workflow can ask for its own effort for this one turn. It is read for each
+            // turn, so a retry decides again from the step and the model, not from the first try.
+            // The levels come from the model list of the account, as for the effort of an agent. A
+            // list that cannot be read leaves the levels that the vendor documents for the model.
+            let offered: readonly string[] = []
+            if (turnEffort) {
+              const accounts = yield* providers.accounts
+              const listed = yield* providers
+                .models(agent.model_account_id)
+                .pipe(Effect.orElseSucceed((): readonly ModelInfo[] | undefined => undefined))
+              const kind = accounts.find((a) => a.id === agent.model_account_id)?.kind ?? "custom"
+              offered = offeredEfforts(kind, agent.model_name, listed)
+            }
+            const events = yield* providers.events(
+              agent.model_account_id,
+              {
+                model: agent.model_name,
+                effort: stepTurnEffort(turnEffort, agent.model_effort, offered),
+                system,
+                // The backup model that goes on with a turn that ran steps gets the work so far and a
+                // short message that asks it to go on (spec 006). It is no message of the user.
+                turns:
+                  attempt === "goOn"
+                    ? goOnTurns(buildTurns(place, reply.id, withNotes), parts, { steps: isRuntime })
+                    : buildTurns(place, reply.id, withNotes),
+                tools: tools.defs({
+                  memory: agent.memory_enabled === 1,
+                  knowledge: knowledge.enabled(agentId),
+                  // Changes from the chat are for agents of an API provider (spec 002).
+                  settings: !isRuntime,
+                }),
+                // The tools of the connections of the agent, and the ones it found by search.
+                ...(connected ? { moreTools: () => connected.defs() } : {}),
+                // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
+                // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
+                // message of another agent) keeps the short one.
+                cache:
+                  task.source === "chat" || task.source === "handover" || task.source === "teams"
+                    ? "long"
+                    : "short",
+                signal: controller.signal,
+                workspace: agent.workspace,
+                permission: agent.permission,
+                useTools: true,
+                ...(resumeNow ? { resume: resumeNow } : {}),
+                inbox,
+              },
+              {
+                execute: (call) => tools.execute(context, call),
+                approve: (request) => tools.approval(context, request),
+                // An agent runtime has no browser of its own. It calls the app for it, and the
+                // card of each call is the one that an API agent would show.
+                ...(isRuntime
+                  ? {
+                      bridge: tools.bridge(context, (event) => {
+                        if (!controller.signal.aborted) Effect.runSync(onEvent(event))
+                      }),
+                    }
+                  : {}),
+              },
+            )
+            yield* Stream.fromAsyncIterable(closing(events, controller, silence), (e) => e).pipe(
+              // The program also reports its own calls of these tools. The app shows its own cards.
+              Stream.runForEach((event) => {
+                if (
+                  isRuntime &&
+                  event.type === "tool" &&
+                  bridgeToolName(event.call.name) !== null
+                ) {
+                  silence.sense(event)
+                  return Effect.void
+                }
+                // A web, browser or connection step of the program itself gives outside content.
+                if (isRuntime && event.type === "tool" && event.state !== "running")
+                  holdOutside(mark, outsideOfCall(event.call.name, event.call.input))
+                return onEvent(event)
+              }),
+              // A turn that reached the step limit was stopped by the app. The turn fails with the
+              // reason, whatever the provider reported when the stop cut it off (spec 005).
+              Effect.catchCause((cause) =>
+                watch.hit
+                  ? Effect.fail(new AppError({ code: "step_limit", detail: String(stepLimit) }))
+                  : Effect.failCause(cause),
+              ),
+              Effect.tap(() =>
+                watch.hit
+                  ? Effect.fail(new AppError({ code: "step_limit", detail: String(stepLimit) }))
+                  : Effect.void,
+              ),
+            )
+          })
+
+        /** A step that did not end cannot keep a running mark or a question card. */
+        const closeOpenSteps = () => {
+          for (const [i, part] of parts.entries()) {
+            if (part.kind !== "tool" || (part.state !== "running" && part.state !== "waiting"))
+              continue
+            const { ask: _ask, ...rest } = part
+            parts[i] = { ...rest, state: "failed" }
+          }
+        }
+
+        /**
+         * The turn. It starts on the model that the agent has now. When the main model fails with
+         * a limit reason and the backup is ready, the main model is held until the reset time and
+         * the turn goes on with the backup, in the same task (spec 006, "Backup model").
+         */
+        const stream = withBackup({
+          agentId,
+          holds,
+          backup,
+          onBackup,
+          ready: backupReady,
+          started: () => attemptStarted,
+          run: (attempt) => {
+            if (attempt !== "first") attemptStarted = false
+            return streamOn(attempt === "first" ? agent : running, attempt)
+          },
+          switchTo: ({ backup: next, fresh, resetsAt }) => {
+            watch.end(parts)
+            closeOpenSteps()
+            if (fresh)
+              parts.push({
+                kind: "note",
+                note: "backup_goes_on",
+                main: modelLabel(mainRow.model_account_id, mainRow.model_name),
+                backup: modelLabel(next.accountId, next.model),
+                until: resetsAt,
+              })
+            running = withModel(own, next)
+            db.run("UPDATE message SET model = ? WHERE id = ?", next.model, reply.id)
+            save("streaming")
+            publish()
+          },
         })
 
         activity.setWorking(agentId, agent.server_id, true)
         // A vendor program writes the Knowledge folder itself. The folder is read again after it.
-        const writesFiles = !!agent.model_account_id && providers.isRuntime(agent.model_account_id)
+        const writesFiles = () =>
+          !!running.model_account_id && providers.isRuntime(running.model_account_id)
         knowledge.begin(agentId)
         // A turn that shows no sign of life for the silent limit stops like after a Stop, and its
         // task fails with the reason (spec 005).
@@ -1484,17 +1602,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 }
                 unreadLeft.add(key)
               }
-              knowledge.end(agentId, writesFiles ? "agent" : "user")
+              knowledge.end(agentId, writesFiles() ? "agent" : "user")
               notifier.clearAgent(agentId)
               // A step that was running when the turn ended may have run in part.
               watch.end(parts)
-              // A step that did not finish cannot keep a running mark or a question card.
-              for (const [i, part] of parts.entries()) {
-                if (part.kind !== "tool" || (part.state !== "running" && part.state !== "waiting"))
-                  continue
-                const { ask: _ask, ...rest } = part
-                parts[i] = { ...rest, state: "failed" }
-              }
+              closeOpenSteps()
               if (Exit.isSuccess(exit)) {
                 save("done")
                 // A reply to another agent is no news for the user. A blocked task has its own
@@ -1529,7 +1641,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               if (row) emitMessage(row)
               activity.setWorking(agentId, agent.server_id, false)
               placesChanged(agentId)
-              turnEnded(place, reply.id, agent)
+              turnEnded(place, reply.id, running)
               bus.emit("chat.meter", { agentId, threadId: place.threadId })
               bus.emit("chat.threads", { agentId })
             }),

@@ -187,6 +187,10 @@ export const ko: Record<MessageKey, string> = {
   "chat.note.connection_down": "연결 {name}을(를) 쓸 수 없어요.",
   "chat.note.connection_held": "연결 {name}의 도구가 검토를 기다리고 있어요.",
   "chat.note.handed_over": "{name}에게 인계함",
+  "chat.note.backup_goes_on": "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}",
+  "chat.note.backup_goes_on_until":
+    "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}. 한도는 {time}에 풀려요.",
+  "chat.backup_until": "{time}까지 백업",
   "chat.note.starter.routine.limit":
     "만들지 못한 루틴: “{name}”. 서버에 루틴을 더 둘 자리가 없어요.",
   "chat.note.starter.routine.error": "만들지 못한 루틴: “{name}”. 오류로 멈췄어요.",

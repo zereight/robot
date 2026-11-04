@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { createInterface } from "node:readline"
 import type { RuntimeLimit } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { limitFailure, ProviderFailure } from "../providers/client.ts"
 import { bridgeToolName, museBridge } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
@@ -232,7 +232,7 @@ export const mapMuseLine = (message: unknown, state: MuseState): MuseMapped[] =>
 
 export const museFailure = (text: string): ProviderFailure => {
   if (/allowance|usage limit|rate.?limit|quota|too many requests|\b429\b/i.test(text))
-    return new ProviderFailure("provider_limit", text)
+    return limitFailure(text)
   if (/not logged in|log ?in|sign ?in|unauthor|credential|token|\b401\b/i.test(text))
     return new ProviderFailure("runtime_signed_out", text)
   return new ProviderFailure("provider_error", text || "The program ended with an error.")

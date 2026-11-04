@@ -4,7 +4,7 @@ import { join } from "node:path"
 import { createInterface } from "node:readline"
 import type { ModelInfo, PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { limitFailure, ProviderFailure } from "../providers/client.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
 import { execute } from "./proc.ts"
@@ -199,7 +199,7 @@ export const opencodeFailure = (error: {
 }): ProviderFailure => {
   const { type = "", status = 0, message } = error
   if (status === 429 || /rate-?limit/i.test(type) || LIMIT.test(message))
-    return new ProviderFailure("provider_limit", message)
+    return limitFailure(message)
   if (status === 401 || status === 403 || /auth/i.test(type) || SIGNED_OUT.test(message))
     return new ProviderFailure("runtime_signed_out", message)
   return new ProviderFailure("provider_error", message || "The program ended with an error.")

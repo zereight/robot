@@ -567,6 +567,15 @@ export class Providers extends Context.Service<Providers, ProvidersService>()(
                     "UPDATE agent SET model_account_id = NULL, model_name = NULL, model_effort = NULL WHERE model_account_id = ?",
                     id,
                   )
+                  // A backup on the account goes with it, and so does the hold it served (spec 006).
+                  db.run(
+                    "DELETE FROM model_hold WHERE agent_id IN (SELECT id FROM agent WHERE backup_account_id = ?)",
+                    id,
+                  )
+                  db.run(
+                    "UPDATE agent SET backup_account_id = NULL, backup_model = NULL, backup_effort = NULL WHERE backup_account_id = ?",
+                    id,
+                  )
                   db.run("DELETE FROM provider_model WHERE account_id = ?", id)
                   db.run("DELETE FROM provider_account WHERE id = ?", id)
                   changed()

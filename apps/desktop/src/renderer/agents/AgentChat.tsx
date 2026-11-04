@@ -1,8 +1,9 @@
 import { type Agent, type AgentModel, type MarkPlace, NO_MARKS, runtimeModel } from "@robot/shared"
 import { Ellipsis } from "lucide-solid"
-import { createEffect, createSignal, Show } from "solid-js"
+import { createEffect, createSignal, onCleanup, Show } from "solid-js"
 import { ChatView } from "../chat/ChatView.tsx"
 import { ContextMeter } from "../chat/ContextMeter.tsx"
+import { formatUntil } from "../chat/format.ts"
 import { createHandoverState, HandoverDialog, offKey } from "../chat/Handover.tsx"
 import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
 import { ThreadList } from "../chat/ThreadList.tsx"
@@ -41,10 +42,79 @@ import {
   useTeach,
 } from "./Teach.tsx"
 
-const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
+/**
+ * A runtime model shows with its version. An API model shows its id, which has the version. A
+ * model of none shows the words for "no model".
+ */
+const useModelName = () => {
   const { t } = useApp()
-  const ui = useUi()
   const providers = useProviders()
+  return (model: AgentModel | null) => {
+    if (!model) return t("agents.noModel")
+    const known = runtimeModel(providers.byId(model.accountId)?.kind, model.model)
+    return known?.labelKey ? t(known.labelKey) : (known?.label ?? model.model)
+  }
+}
+
+/**
+ * The hold of the main model of an agent while it lasts (spec 006, "Backup model"). A linked device
+ * shows what its server tells it. The hold also ends here when its time passes, with no new push.
+ */
+const createHold = (agent: () => Agent) => {
+  const [now, setNow] = createSignal(Date.now())
+  createEffect(() => {
+    const until = agent().hold?.until
+    if (until === undefined) return
+    const wait = until - Date.now()
+    if (wait <= 0) return setNow(Date.now())
+    const timer = setTimeout(() => setNow(Date.now()), Math.min(wait + 20, 2 ** 31 - 1))
+    onCleanup(() => clearTimeout(timer))
+  })
+  return () => {
+    const held = agent().hold
+    return held && held.until > now() ? held : null
+  }
+}
+
+/**
+ * The line under the header while the main model is held: "Backup until <time>" and the button
+ * that ends the hold (spec 006). A linked device shows the button only with the switch "Can create
+ * and change agents" (spec 012). It is a line of its own because the header has no room for it.
+ */
+const HoldLine = (props: { agent: Agent }) => {
+  const app = useApp()
+  const { t } = app
+  const ui = useUi()
+  const nameOf = useModelName()
+  const hold = createHold(() => props.agent)
+  const useMain = () => call("agents.useMain", { id: props.agent.id }).catch(() => undefined)
+  return (
+    <Show when={hold()}>
+      {(held) => (
+        <div class={styles.holdLine} data-testid="chat-header-hold">
+          <span data-testid="chat-header-backup">
+            {t("backup.until", { time: formatUntil(app.locale(), held().until) })}
+          </span>
+          <Show when={ui.canChange()}>
+            <button
+              type="button"
+              class={styles.holdButton}
+              onClick={useMain}
+              data-testid="chat-header-use-main"
+            >
+              {t("backup.useMain", { model: nameOf(props.agent.model) })}
+            </button>
+          </Show>
+        </div>
+      )}
+    </Show>
+  )
+}
+
+const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolean) => void }) => {
+  const app = useApp()
+  const { t } = app
+  const ui = useUi()
   const [open, setOpen] = createSignal(false)
   // The line "Suggested for memory" in the chat opens the profile on the tab Proposals (spec 008).
   createEffect(() => {
@@ -63,13 +133,13 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
     () => openThreadOf(props.agent.id),
   )
   const [handingOver, setHandingOver] = createSignal(false)
-  // A runtime model shows with its version. An API model shows its id, which has the version.
-  const modelName = () => {
-    const model = props.agent.model
-    if (!model) return t("agents.noModel")
-    const known = runtimeModel(providers.byId(model.accountId)?.kind, model.model)
-    return known?.labelKey ? t(known.labelKey) : (known?.label ?? model.model)
-  }
+  const nameOf = useModelName()
+  // While the main model is held, the header shows the backup model that takes the turns (spec
+  // 006, "Backup model"). The time the hold ends, and the button that ends it, are in the line
+  // under the header (`HoldLine`): the header is one row and has no room for them in a narrow
+  // chat. The hold also ends here when its time passes.
+  const hold = createHold(() => props.agent)
+  const modelName = () => nameOf(hold()?.model ?? props.agent.model)
   return (
     <>
       {/* A client without the switch opens the profile too, as read-only text (spec 012). */}
@@ -289,6 +359,7 @@ export const agentPlaceView = (agent: () => Agent | undefined): PlaceView | unde
           <div class={styles.split}>
             {/* The chat keeps its whole width. The large browser covers it only when the user asks. */}
             <div class={styles.chatColumn} inert={browser.large()}>
+              <HoldLine agent={a()} />
               <AgentMarksLine agent={a()} />
               <ChatView
                 agent={a()}

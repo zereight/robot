@@ -550,6 +550,11 @@ export const startMockProvider = async (
 ) => {
   /** Models that a test added to the OpenAI list after the start. */
   const extraModels: Record<string, unknown>[] = []
+  /**
+   * While set, every chat request of the OpenAI API ends with this report of a spent limit (spec
+   * 006, "Backup model"): the model list and the key check still answer. `retryAfter` is in seconds.
+   */
+  let limit: { message: string; retryAfter?: number } | null = null
   const requests: RecordedRequest[] = []
   const sent: SentPart[] = []
   /** The draft requests that the app closed before the answer came (spec 017). */
@@ -643,6 +648,13 @@ export const startMockProvider = async (
         ],
       })
     }
+    if (url.pathname === "/v1/chat/completions" && limit) {
+      res.writeHead(429, {
+        "content-type": "application/json",
+        ...(limit.retryAfter ? { "retry-after": String(limit.retryAfter) } : {}),
+      })
+      return res.end(JSON.stringify({ error: { message: limit.message } }))
+    }
     if (url.pathname === "/v1/chat/completions")
       return openAiReply(res, body as ChatBody, sent, dropped)
     if (url.pathname === "/anthropic/v1/messages") return anthropicReply(res, body as ChatBody)
@@ -653,6 +665,10 @@ export const startMockProvider = async (
   return {
     openaiUrl: `http://127.0.0.1:${port}/v1`,
     anthropicUrl: `http://127.0.0.1:${port}/anthropic`,
+    /** Makes every chat request fail with a spent limit, or (with null) stops that. */
+    setLimit: (next: { message: string; retryAfter?: number } | null) => {
+      limit = next
+    },
     /** Adds a model to the OpenAI list. The app sees it at its next fetch. */
     addModel: (entry: Record<string, unknown>) => {
       extraModels.push(entry)

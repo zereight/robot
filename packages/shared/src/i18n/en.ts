@@ -396,6 +396,23 @@ export const en = {
   "model.noAccounts": "Connect a model account in settings first.",
   "model.noAccounts.remote": "No model account is connected on {name}.",
   "model.save": "Save",
+  "backup.label": "Backup model",
+  "backup.none": "None",
+  "backup.choose": "Choose a backup model",
+  "backup.hint": "Takes the turns of this agent while the main model has spent its limit.",
+  "backup.same":
+    "The backup is the same as the main model. Choose another account, model or effort.",
+  "backup.noMain": "Choose a main model first.",
+  "backup.notReady": "Not ready on this computer: its account is not connected or is missing.",
+  "backup.remove": "Remove the backup model",
+  "backup.until": "Backup until {time}",
+  "backup.useMain": "Use {model} now",
+  "backup.header": "Backup model {model}",
+  "chat.note.backupGoesOn": "{main} reached its limit. {backup} goes on.",
+  "chat.note.backupGoesOnUntil":
+    "{main} reached its limit. {backup} goes on. The limit resets at {time}.",
+  "error.backup_same":
+    "The backup is the same as the main model. Choose another account, model or effort.",
 
   "error.provider_auth": "The provider refused the key.",
   "error.provider_unreachable":

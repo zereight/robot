@@ -25,6 +25,15 @@ import { Button, ErrorLine, Notice } from "../../../../src/ui/kit.tsx"
 import { Sheet } from "../../../../src/ui/Sheet.tsx"
 import { stateText } from "../../../../src/ui/states.ts"
 
+/** The time a hold ends: the clock time within the day, else with the weekday (spec 006). */
+const untilText = (locale: string, at: number) =>
+  new Intl.DateTimeFormat(
+    locale,
+    at - Date.now() < 20 * 3_600_000
+      ? { hour: "numeric", minute: "2-digit" }
+      : { weekday: "short", hour: "numeric", minute: "2-digit" },
+  ).format(at)
+
 /** The conversation of an agent or a channel (spec 011, 003, 004). */
 export default function Conversation() {
   const params = useLocalSearchParams<{ link: string; kind: string; id: string; call?: string }>()
@@ -169,6 +178,16 @@ export default function Conversation() {
                   : t("places.noCache", { name: view.link.name })
                 : stateText(t, view)
             }
+          />
+        </View>
+      ) : null}
+      {/* The main model of the agent is held: the server tells until when (spec 006, 012). The
+          phone has no button to end the hold in this version. */}
+      {kind === "agent" && agent?.hold && agent.hold.until > Date.now() ? (
+        <View style={styles.banner}>
+          <Notice
+            tone="muted"
+            text={t("chat.backup_until", { time: untilText(locale, agent.hold.until) })}
           />
         </View>
       ) : null}

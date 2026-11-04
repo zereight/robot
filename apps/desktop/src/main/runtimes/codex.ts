@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs"
 import { createInterface } from "node:readline"
 import type { PermissionLevel } from "@robot/shared"
 import type { AgentEvent } from "../providers/agent.ts"
-import { ProviderFailure } from "../providers/client.ts"
+import { limitFailure, ProviderFailure } from "../providers/client.ts"
 import { codexBridgeArgs, type Staged, stage } from "./bridge.ts"
 import { parseVersion } from "./claude.ts"
 import { runtimeEnv } from "./env.ts"
@@ -192,7 +192,7 @@ export const mapCodexEvent = (message: unknown, state: CodexState): AgentEvent[]
 
 export const codexFailure = (text: string): ProviderFailure => {
   if (/usage limit|rate limit|quota|too many requests|\b429\b/i.test(text))
-    return new ProviderFailure("provider_limit", text)
+    return limitFailure(text)
   if (/not logged in|log ?in|sign ?in|unauthorized|\b401\b|token.*(expired|invalid)/i.test(text))
     return new ProviderFailure("runtime_signed_out", text)
   return new ProviderFailure("provider_error", text || "The program ended with an error.")

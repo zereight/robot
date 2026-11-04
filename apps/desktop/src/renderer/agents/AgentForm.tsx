@@ -25,6 +25,7 @@ import {
   STARTERS,
   type StarterId,
   type StarterSetup,
+  sameModelChoice,
   starterExtras,
   starterSetup,
   starterText,
@@ -55,6 +56,7 @@ import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
 import styles from "./agents.module.css"
+import { BackupModelField } from "./BackupModelField.tsx"
 import { Face, faceColour } from "./Face.tsx"
 import { InstructionHistory } from "./InstructionHistory.tsx"
 import { MemoryPanel } from "./MemoryPanel.tsx"
@@ -66,6 +68,8 @@ export interface AgentFormValues {
   instructions: string
   face: FaceValue
   model: AgentModel | null
+  /** The backup model (spec 006), or null for "None". */
+  backupModel: AgentModel | null
   /** The user section of the Agents list, or null for "No section". A client sends none. */
   sectionId?: string | null
   /** The level of the agent. A form on a linked server sends it only for an agent that exists. */
@@ -124,6 +128,9 @@ export const AgentForm = (props: AgentFormProps) => {
   /** The face the user picked. Until then a new agent's face follows its name. */
   const [pickedFace, setPickedFace] = createSignal<FaceValue | undefined>(props.agent?.face)
   const [model, setModel] = createSignal<AgentModel | null>(props.agent?.model ?? null)
+  const [backupModel, setBackupModel] = createSignal<AgentModel | null>(
+    props.agent?.backupModel ?? null,
+  )
   const [sectionId, setSectionId] = createSignal<string | null>(props.agent?.sectionId ?? null)
   const [permission, setPermission] = createSignal<PermissionLevel>(
     props.agent?.permission ?? "ask_risky",
@@ -198,7 +205,9 @@ export const AgentForm = (props: AgentFormProps) => {
     charLength(role()) > AGENT_ROLE_MAX
       ? { key: "agents.error.role_long", params: { max: AGENT_ROLE_MAX } }
       : undefined
-  const valid = () => !nameProblem() && !roleProblem()
+  // The backup must differ from the main choice. The field says why while it does not (spec 006).
+  const backupProblem = () => sameModelChoice(model(), backupModel())
+  const valid = () => !nameProblem() && !roleProblem() && !backupProblem()
   /**
    * Save stays on when a field is wrong, so that pressing it can say what is wrong. The reasons
    * show after the first press, and they follow the fields from then on: a field that is fixed
@@ -275,7 +284,7 @@ export const AgentForm = (props: AgentFormProps) => {
       setTried(true)
       // The focus goes to the first field that blocks Save. The field shows in the middle, so
       // that its label and its reason stay in view.
-      const first = nameProblem() ? nameInput : roleInput
+      const first = nameProblem() ? nameInput : roleProblem() ? roleInput : undefined
       first?.focus({ preventScroll: true })
       first?.scrollIntoView({ block: "center" })
       return
@@ -290,6 +299,7 @@ export const AgentForm = (props: AgentFormProps) => {
         instructions: instructions(),
         face: face(),
         model: model(),
+        backupModel: backupModel(),
         // A linked server gets the three fields only: it has no routine or skill to make (012).
         ...(extra ? { starter: extra } : {}),
         // A client has no sections (012). A section that was deleted while the form was open
@@ -547,6 +557,14 @@ export const AgentForm = (props: AgentFormProps) => {
           startEffort={props.agent ? undefined : NEW_AGENT_EFFORT}
         />
       </div>
+
+      {/* The backup model takes the turns while the main model has spent its limit (spec 006). */}
+      <BackupModelField
+        main={model()}
+        value={backupModel()}
+        onChange={setBackupModel}
+        ready={props.agent?.backupReady}
+      />
 
       <Show when={!remote()}>
         <div class={styles.field}>

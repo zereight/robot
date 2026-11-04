@@ -274,6 +274,11 @@ export interface RpcMethods {
   "agents.update": { input: { id: string; patch: AgentPatch }; output: Agent }
   "agents.duplicate": { input: { id: string; suffix: string }; output: Agent }
   "agents.archive": { input: { id: string }; output: Agent }
+  /**
+   * "Use the main model now" (spec 006, "Backup model"): ends the hold of the main model. The next
+   * turn tries the main model. A linked device needs the switch "Can create and change agents".
+   */
+  "agents.useMain": { input: { id: string }; output: Agent }
   "agents.restore": { input: { id: string }; output: Agent }
   "agents.delete": { input: { id: string }; output: undefined }
   /** The versions of the instructions of an agent, newest first (spec 002). */

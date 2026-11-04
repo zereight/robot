@@ -51,7 +51,7 @@ import { useUi } from "../state/ui.tsx"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
 import styles from "./chat.module.css"
-import { fileSize, formatTime } from "./format.ts"
+import { fileSize, formatTime, formatUntil } from "./format.ts"
 import { HandedOverText, HandoverCard } from "./Handover.tsx"
 import { Markdown } from "./Markdown.tsx"
 
@@ -107,6 +107,34 @@ const ConnectionHeldLine = (props: { name: string }) => {
   return (
     <p class={styles.compactFailed} data-testid="connection-held">
       {t("chat.note.connectionHeld", { name: props.name })}
+    </p>
+  )
+}
+
+/**
+ * The words of the muted line "<main model> reached its limit. <backup model> goes on." (spec 006,
+ * "Backup model"). It gives the reset time when the provider named one.
+ */
+const backupWords = (
+  app: ReturnType<typeof useApp>,
+  part: Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }>,
+) =>
+  part.until === null
+    ? app.t("chat.note.backupGoesOn", { main: part.main, backup: part.backup })
+    : app.t("chat.note.backupGoesOnUntil", {
+        main: part.main,
+        backup: part.backup,
+        time: formatUntil(app.locale(), part.until),
+      })
+
+/** The muted line that tells that the backup model goes on (spec 006, "Backup model"). */
+const BackupGoesOnLine = (props: {
+  part: Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }>
+}) => {
+  const app = useApp()
+  return (
+    <p class={styles.compactFailed} data-testid="backup-line">
+      {backupWords(app, props.part)}
     </p>
   )
 }
@@ -1122,6 +1150,7 @@ const NoteLine = (props: { message: ChatMessage }) => {
       return t("chat.compact.failed", { reason: errorWords(t, part.code) })
     if (part.note === "connection_down") return t("chat.note.connectionDown", { name: part.name })
     if (part.note === "connection_held") return t("chat.note.connectionHeld", { name: part.name })
+    if (part.note === "backup_goes_on") return backupWords(app, part)
     return t(`starters.note.${part.what}.${part.why}` as MessageKey, {
       name: part.name,
       n: part.what === "routine" ? ROUTINES_MAX : SKILLS_MAX,
@@ -1346,6 +1375,17 @@ const FullMessageRow = (props: MessageRowProps) => {
                     }
                   >
                     {(note) => <ConnectionHeldLine name={(note() as { name: string }).name} />}
+                  </Match>
+                  <Match
+                    when={part.kind === "note" && part.note === "backup_goes_on" ? part : undefined}
+                  >
+                    {(note) => (
+                      <BackupGoesOnLine
+                        part={
+                          note() as Extract<MessagePart, { kind: "note"; note: "backup_goes_on" }>
+                        }
+                      />
+                    )}
                   </Match>
                   <Match when={part.kind === "tool"}>
                     <ToolStep
