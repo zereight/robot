@@ -24,19 +24,30 @@ the teams on the chart.
   field.
 - **Repair**: a state that breaks the rules of the tree is repaired at once, by a change of the
   parent field that syncs like any other change (019). The tree never stays broken, and no channel
-  counts as a top channel only because its field is wrong. There are two cases.
-  1. A restore of a channel would put another channel below the third level. The restore works. The
-     app checks from the top down, and clears the parent field of each channel that would be on the
-     fourth level. That channel becomes a top channel, and the channels under it count from their
-     new level.
-  2. A sync brings a change that makes a loop or a fourth level. The app clears the parent field of
-     the channel whose parent change is the later one. When both changes carry the same time, it
-     clears the field of the channel that was made later. Both computers choose the same channel, so
-     they end with the same tree. The computer that finds the break first repairs it. The repaired
-     field syncs, and the other computer finds nothing to repair.
-  Each repair posts one muted line in the channel whose field was cleared: "The parent channel was
-  cleared. The tree would have a loop." or "The parent channel was cleared. The tree would have more
-  than 3 levels." It makes no notification. A repair is not a change of the user, so it has no Undo.
+  counts as a top channel only because its field is wrong. A break has one of two shapes, and it
+  can come from a sync, from a restore (013), or from an import (014).
+  1. **A fourth level.** The app clears the parent field of the channel that would be on the fourth
+     level. After a restore or an import, it checks from the top down. A channel that is cleared
+     becomes a top channel, and the channels under it count from their new level. After a sync, it
+     clears the field of the channel with the latest parent change on that line of four channels.
+  2. **A loop.** The app clears the parent field of the channel with the latest parent change among
+     the channels of the loop. A restore or an import has no parent change of its own, so it uses
+     the changes that the fields carry.
+  - **Which change is later**: the time that sync (019) gives to the change, whichever computer
+    made it. When the times are equal, the channel that was made later. When that is equal too, the
+    channel with the later id. Both computers choose the same channel, so they end with the same
+    tree.
+  - **More than one break**: the app clears one field for each break, nearest the top first, and
+    checks again, until the tree holds the rules.
+  - **When it runs**: on the computer that finds the break first, after the sync has applied all
+    the changes that it has. A set of changes that makes a valid tree is not cut in the middle. The
+    repaired field syncs, and the other computer finds nothing to repair.
+  - **The line**: each repair posts one muted line in the channel whose field was cleared: "The
+    parent channel was cleared. The tree would have a loop." or "The parent channel was cleared.
+    The tree would have more than 3 levels." It makes no notification and has no Undo, because a
+    repair is not a change of the user. The line is not a message of an agent: it adds no unread
+    count and does not replace the preview of the place. It has the same identity on both
+    computers, so a sync keeps one line.
 - **Hand-off rule**: a setting of the profile (022) in the settings part "Organization" (013). It
   has two values:
   - **Any agent** (the default): every agent can send a message to every other agent (007), as
@@ -273,13 +284,19 @@ the lead, and the parent channel.
 - The header of "Docs" shows "In Product". A click opens "Product".
 - Archive "Product": the confirm names 1 sub-channel. "Docs" is a top channel. Restore "Product":
   "Docs" is under it again.
-- Archive "Product" while "Docs" has "Site" under it and "Site" has "Wiki" under it. Then "Docs" is
-  a
-  top channel, and "Wiki" is on its third level. Put "Docs" back as a top channel and add "Lab"
-  under
-  "Wiki". Restore "Product": the restore works, "Lab" would be on the fourth level, so its parent
-  field is cleared. "Lab" is a top channel and shows the muted line "The parent channel was cleared.
-  The tree would have more than 3 levels." No notification shows.
+- "Docs" is under "Product", and "Site" is under "Docs". Archive "Product": "Docs" is a top channel.
+  Put "Wiki" under "Site": "Wiki" is on the third level. Restore "Product": the restore works,
+  "Wiki" would be on the fourth level, so its parent field is cleared. "Wiki" is a top channel and
+  shows the muted line "The parent channel was cleared. The tree would have more than 3 levels."
+  No notification shows, and the place shows no unread count for the line.
+- A restore that closes a loop: "Docs" is under "Wiki", and "Site" is under "Docs". Archive "Docs":
+  "Site" is a top channel. Put "Wiki" under "Site": it is allowed, because "Docs" counts as no
+  channel now. Restore "Docs": the restore works. "Docs", "Wiki" and "Site" would be a loop, so the
+  parent field of "Wiki" is cleared, because its change is the latest. "Wiki" is a top channel with
+  "Docs" under it and "Site" under "Docs". "Wiki" shows the muted line "The parent channel was
+  cleared. The tree would have a loop."
+- An import holds a fourth level and a loop: after the import, the same repairs have run, and each
+  cleared channel shows its line.
 - Two computers sync. Before they sync, computer 1 puts "Docs" under "Site", and computer 2 puts
   "Site" under "Docs". After the sync both computers hold the same tree: the parent field of the
   channel with the later change is cleared, and that channel shows the muted line "The parent
