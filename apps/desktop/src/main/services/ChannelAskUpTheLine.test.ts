@@ -111,16 +111,27 @@ const server = Bun.serve({
     const last = body.messages.at(-1)
     const content = last?.content ?? ""
     if (system.includes("A member asks a question")) {
-      if (!staleRequest(content)) lookRequests.push({ who, system, content })
-      const wait = script.delay[who] ?? 0
+      // The request takes everything it needs from the script NOW, at its arrival, and not after
+      // its wait. One server serves the whole file, and a request that sleeps (`script.delay`, up
+      // to 8 seconds) can outlive its test. When it woke up, it used to read the script of the
+      // test that ran by then and take the answer that this test had queued for its own look.
+      // That test then got a different answer and waited for ever for the user. A request of an
+      // older test (it arrives late, under load) takes nothing: it gets a plain pass at once.
+      const stale = staleRequest(content)
+      if (!stale) lookRequests.push({ who, system, content })
+      const wait = stale ? 0 : (script.delay[who] ?? 0)
+      const status = stale ? 0 : (script.status[who] ?? 0)
+      const reply = stale
+        ? NOT_SURE
+        : (script.queue[who]?.shift() ?? script.default[who] ?? NOT_SURE)
+      const usage = script.usage
       if (wait) await Bun.sleep(wait)
-      const status = script.status[who]
       if (status)
         return new Response(JSON.stringify({ error: { message: "boom" } }), {
           status,
           headers: { "content-type": "application/json" },
         })
-      return sse(script.queue[who]?.shift() ?? script.default[who] ?? NOT_SURE, script.usage)
+      return sse(reply, usage)
     }
     if (system.includes("The work in the channel has stopped"))
       return sse('{"verdicts":[],"action":"nothing"}')
@@ -147,7 +158,12 @@ const server = Bun.serve({
 })
 afterAll(() => server.stop(true))
 
-const until = async (check: () => Promise<boolean> | boolean, ms = 8000) => {
+/**
+ * Waits for the state that a test needs. The limit is far above the normal time of any wait here
+ * (under 1 second), so a busy computer does not fail a test that is only slow. A test that really
+ * hangs still fails with "timed out", before the time limit of the test.
+ */
+const until = async (check: () => Promise<boolean> | boolean, ms = 20_000) => {
   const end = Date.now() + ms
   while (Date.now() < end) {
     if (await check()) return
@@ -679,7 +695,7 @@ describe("the times of the line", () => {
     script.delay.Max = 8000
     const s = await setup()
     await s.send("split sizes")
-    await until(async () => (await s.waiting()).length === 1, 12_000)
+    await until(async () => (await s.waiting()).length === 1)
     const ask = askOf((await s.cards())[0])
     expect(ask?.lineLate).toBe(true)
     expect(ask?.passes?.map((p) => `${p.name}:${p.kind}`)).toEqual([
@@ -1012,5 +1028,48 @@ describe("the card and the task view", () => {
     const list = (await s.tasks()).filter((x) => x.source === "question")
     expect(list).toHaveLength(1)
     expect(list[0]).toMatchObject({ agentName: "Pia", source: "question", label: "Docs" })
+  })
+})
+
+describe("the stand-in server", () => {
+  /** A look at a question, sent straight to the stand-in server as the app sends it. */
+  const lookAt = async (who: string, testNumber: number) => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: who,
+        stream: true,
+        messages: [
+          { role: "system", content: "A member asks a question" },
+          { role: "user", content: `The question (test ${testNumber})` },
+        ],
+      }),
+    })
+    return res.text()
+  }
+
+  test("a request that sleeps while the next test begins takes nothing from the script of that test", async () => {
+    // This request sleeps with the answer that it took when it arrived.
+    script.queue.Dan = [ANSWER]
+    script.delay.Dan = 300
+    const sleeper = lookAt("Dan", testNo)
+    await Bun.sleep(50)
+    // The next test begins: a new script, with an answer and a failure of its own for Dan.
+    script.queue = { Dan: [NOT_SURE] }
+    script.delay = {}
+    script.status = { Dan: 500 }
+    const text = await sleeper
+    expect(text).toContain("The shop ships to the EU only.")
+    expect(script.queue.Dan).toEqual([NOT_SURE])
+  })
+
+  test("a request of an older test gets a plain pass at once and takes no answer from this test", async () => {
+    script.queue.Dan = [ANSWER]
+    script.delay.Dan = 5000
+    const text = await lookAt("Dan", testNo + 1)
+    expect(text).toContain("not_sure")
+    expect(script.queue.Dan).toEqual([ANSWER])
+    expect(lookRequests).toHaveLength(0)
   })
 })
