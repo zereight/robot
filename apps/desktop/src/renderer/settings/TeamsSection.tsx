@@ -30,7 +30,7 @@ import { useApp } from "../state/app.tsx"
 import { setOpenTarget } from "../state/target.ts"
 import { useTeams } from "../state/teams.tsx"
 import { useUi } from "../state/ui.tsx"
-import { clipBox } from "../teams/place.ts"
+import { wholeBox } from "../teams/place.ts"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -46,13 +46,18 @@ const COVERS = '[role="dialog"]:not([data-testid="settings"]), [role="menu"]'
 
 /**
  * The empty box where the Teams page shows. The page is a native view above this screen: this box
- * only keeps its place and tells the app where it is, on each frame. Only the part that the scroll
- * area shows is given, so the page never covers the list of settings beside it.
+ * only keeps its place and tells the app where it is, on each frame. The place is given only while
+ * the scroll area shows all of the box. A native view cannot show a part of itself, and a cut place
+ * would make the page smaller as the box scrolls out. So the page hides until the box is whole
+ * again, and it never covers the list of settings beside it.
  */
 const PageBox = () => {
   const { t } = useApp()
   let box: HTMLElement | undefined
   onMount(() => {
+    // The page shows only while the whole box shows, so a box that opens below the fold scrolls
+    // into view once. Otherwise "Show the Teams page" would seem to do nothing.
+    box?.scrollIntoView?.({ block: "nearest" })
     let last = ""
     const send = (bounds: { x: number; y: number; width: number; height: number } | null) => {
       const key = bounds ? `${bounds.x},${bounds.y},${bounds.width},${bounds.height}` : "hidden"
@@ -64,7 +69,7 @@ const PageBox = () => {
       const rect = box?.getBoundingClientRect()
       const area = box?.parentElement?.closest("section")?.getBoundingClientRect()
       const covered = document.querySelector(COVERS) !== null
-      send(rect && area && !covered ? clipBox(rect, area) : null)
+      send(rect && area && !covered ? wholeBox(rect, area) : null)
       frame = requestAnimationFrame(measure)
     })
     onCleanup(() => {
