@@ -62,6 +62,7 @@ const text = (content: string, delay = 0) => ({
 // A model that streams its answer in pieces, and asks for a tool when the message says so.
 const model = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     if (new URL(req.url).pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
     const body = (await req.json()) as { messages: { role: string; content: string }[] }

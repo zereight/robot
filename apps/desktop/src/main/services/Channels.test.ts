@@ -41,6 +41,7 @@ const plan = (parts: { member: string; label: string; prompt: string }[]) =>
 
 const server = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     const url = new URL(req.url)
     if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "mock" }] })
@@ -120,6 +121,7 @@ const asked: { auth: string | null; body: string }[] = []
 let decide: () => Response = () => new Response("none set", { status: 500 })
 const decisionServer = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   async fetch(req) {
     asked.push({ auth: req.headers.get("authorization"), body: await req.text() })
     return decide()

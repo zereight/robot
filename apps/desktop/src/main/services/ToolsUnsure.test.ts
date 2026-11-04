@@ -33,6 +33,7 @@ const sse = (chunks: unknown[]) =>
 
 /** A model that calls the tool named in the user text ("CALL name {json}"), then repeats the result. */
 const model = Bun.serve({
+  hostname: "127.0.0.1",
   port: 0,
   async fetch(req) {
     const url = new URL(req.url)
@@ -81,6 +82,7 @@ const seen: Seen[] = []
 let next: () => Promise<Response> | Response = () => Response.json({})
 
 const decision = Bun.serve({
+  hostname: "127.0.0.1",
   port: 0,
   async fetch(req) {
     const body = (await req.json().catch(() => ({}))) as Seen["body"]

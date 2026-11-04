@@ -14,6 +14,7 @@ const GOOD_KEY = "sk-test-good"
 let listed: Record<string, unknown>[] = []
 const server = Bun.serve({
   port: 0,
+  hostname: "127.0.0.1",
   fetch(req) {
     const url = new URL(req.url)
     if (req.headers.get("authorization") !== `Bearer ${GOOD_KEY}`)

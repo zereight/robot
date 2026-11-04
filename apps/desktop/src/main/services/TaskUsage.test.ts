@@ -20,6 +20,7 @@ import { testRuntime } from "./testing.ts"
  * The words `CALL` make the model call a tool in its first request, so that a turn has 2 requests.
  */
 const server = Bun.serve({
+  hostname: "127.0.0.1",
   port: 0,
   async fetch(req) {
     const url = new URL(req.url)
