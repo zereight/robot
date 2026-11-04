@@ -1065,8 +1065,12 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
 
       const finishCopy = () => {
         engine.settleInitial()
+        // The channels came in parts, so the tree is checked now that the copy is whole (spec 030,
+        // "Repair").
+        const repaired = engine.repairTree()
         updatePair({ phase: "live", synced_at: Date.now() })
         attendAll()
+        touched(repaired)
         changed()
       }
 

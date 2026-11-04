@@ -492,6 +492,92 @@ describe("two computers that were apart", () => {
     expect(rowsA[0]).toContain("|Writer|From B, later.")
   })
 
+  test("two computers put a channel under each other while apart: both end with the same tree, and the channel with the later change shows one muted line and no notice (spec 030, Repair)", async () => {
+    const { a, b } = await pair([])
+    const serverA = await localId(a)
+    const make = (name: string) =>
+      run(
+        a,
+        Channels.use((c) =>
+          c.create({ serverId: serverA, name, topic: "", memberIds: [], leadId: null }),
+        ),
+      )
+    const docs = await make("Docs")
+    const site = await make("Site")
+    const tree = async (rt: Rt) => {
+      const id = await localId(rt)
+      const list = await run(
+        rt,
+        Channels.use((c) => c.list(id)),
+      )
+      const name = new Map(list.map((c) => [c.id, c.name]))
+      return list.map((c) => `${c.name}<${c.parentId ? name.get(c.parentId) : "-"}`).sort()
+    }
+    await waitFor(
+      () => tree(b),
+      (x) => x.length === 2,
+    )
+    const linesOf = async (rt: Rt, channelId: string) =>
+      (
+        await run(
+          rt,
+          Channels.use((c) => c.history(channelId)),
+        )
+      ).map((m) => m.parts)
+
+    await apart(a, b)
+    // Each change is right alone. "Docs" under "Site" on the first computer; a little later "Site"
+    // under "Docs" on the second one.
+    await run(
+      a,
+      Channels.use((c) => c.update(docs.id, { parentId: site.id })),
+    )
+    await settle()
+    await run(
+      b,
+      Channels.use((c) => c.update(site.id, { parentId: docs.id })),
+    )
+    await together(a, b)
+
+    // The field of "Site" (the later change) is cleared on both computers, and the tree has no loop.
+    const want = ["Docs<Site", "Site<-"]
+    expect(
+      await waitFor(
+        () => tree(a),
+        (x) => x.join() === want.join(),
+      ),
+    ).toEqual(want)
+    expect(
+      await waitFor(
+        () => tree(b),
+        (x) => x.join() === want.join(),
+      ),
+    ).toEqual(want)
+    // One line in "Site" on both computers: the same row, not a line from each computer.
+    const line = [{ kind: "note", note: "tree_repaired", why: "loop" }] as const
+    for (const rt of [a, b]) {
+      expect(
+        await waitFor(
+          () => linesOf(rt, site.id),
+          (x) => x.length >= 1,
+        ),
+      ).toEqual([line])
+    }
+    await settle()
+    for (const rt of [a, b]) {
+      expect(await linesOf(rt, site.id)).toEqual([line])
+      expect(await linesOf(rt, docs.id)).toEqual([])
+      // A repair makes no notice and no card that waits for the user.
+      expect(rt.shell.notices).toEqual([])
+      expect(
+        await run(
+          rt,
+          Notifier.use((n) => Effect.sync(() => n.island().waiting)),
+        ),
+      ).toEqual([])
+    }
+  })
+
   test("the same memory item edited on both: the newest text stays and the other text is saved as a new item", async () => {
     const { a, b, agents } = await pair()
     const ada = agents[0]

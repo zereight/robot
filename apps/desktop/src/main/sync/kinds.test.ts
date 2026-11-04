@@ -902,6 +902,16 @@ describe("a handover syncs as messages and a thread do (spec 003, 007, 019)", ()
       { kind: "note", note: "kept_going", n: 1, of: 8, extra: "x" },
     ])
       expect(opOf(fields, [bad]), JSON.stringify(bad)).toBeUndefined()
+    // The muted line of a repaired channel tree (spec 030, "Repair"): one of two reasons and nothing else.
+    for (const why of ["loop", "levels"])
+      expect(opOf(fields, [{ kind: "note", note: "tree_repaired", why }]), why).toBeDefined()
+    for (const bad of [
+      { kind: "note", note: "tree_repaired" },
+      { kind: "note", note: "tree_repaired", why: "other" },
+      { kind: "note", note: "tree_repaired", why: 3 },
+      { kind: "note", note: "tree_repaired", why: "loop", extra: "x" },
+    ])
+      expect(opOf(fields, [bad]), JSON.stringify(bad)).toBeUndefined()
     for (const bad of [
       { kind: "note", note: "connection_held" },
       { kind: "note", note: "connection_held", name: "" },
