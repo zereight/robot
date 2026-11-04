@@ -4,6 +4,7 @@ import { createResource, onCleanup, Show } from "solid-js"
 import chat from "../chat/chat.module.css"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
+import { limitLineOf } from "./limit.ts"
 
 /** A little after midnight, so a day that just began is counted. */
 const MIDNIGHT_SLACK_MS = 1000
@@ -39,12 +40,13 @@ export const LimitLine = (props: { channel: Channel }) => {
   arm()
   onCleanup(() => clearTimeout(timer))
 
-  const line = (limit: ChannelLimitInfo) =>
-    limit.stoppedBy
-      ? t("channels.limit.over", { channel: limit.stoppedBy.name })
-      : limit.state === "near"
-        ? t("channels.limit.near")
-        : ""
+  const line = (limit: ChannelLimitInfo) => {
+    const found = limitLineOf(limit)
+    if (!found) return ""
+    return found.key === "channels.limit.over"
+      ? t(found.key, { channel: found.channel })
+      : t(found.key)
+  }
 
   return (
     <Show when={info()}>

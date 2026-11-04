@@ -84,38 +84,6 @@ export const UsagePage = () => {
         />
       </div>
 
-      <Show when={limits().length > 0}>
-        <h2>{t("usage.channels")}</h2>
-        <table class={styles.table} data-testid="usage-channels">
-          <thead>
-            <tr>
-              <th scope="col">{t("usage.col.channel")}</th>
-              <th scope="col" class={styles.num}>
-                {t("usage.col.usedToday")}
-              </th>
-              <th scope="col" class={styles.num}>
-                {t("usage.col.limit")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={limits()}>
-              {(c) => (
-                <tr data-testid="usage-channel-row" data-channel={c.name}>
-                  <th scope="row">{c.name}</th>
-                  <td class={styles.num} data-testid="usage-channel-used">
-                    {number().format(c.used)}
-                  </td>
-                  <td class={styles.num} data-testid="usage-channel-limit">
-                    {number().format(c.limit)}
-                  </td>
-                </tr>
-              )}
-            </For>
-          </tbody>
-        </table>
-      </Show>
-
       <Show
         when={rows().length > 0}
         fallback={
@@ -189,6 +157,38 @@ export const UsagePage = () => {
           )}
         </For>
         <p class={styles.muted}>{t("usage.note")}</p>
+      </Show>
+
+      <Show when={limits().length > 0}>
+        <h2>{t("usage.channels")}</h2>
+        <table class={styles.table} data-testid="usage-channels">
+          <thead>
+            <tr>
+              <th scope="col">{t("usage.col.channel")}</th>
+              <th scope="col" class={styles.num}>
+                {t("usage.col.usedToday")}
+              </th>
+              <th scope="col" class={styles.num}>
+                {t("usage.col.limit")}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={limits()}>
+              {(c) => (
+                <tr data-testid="usage-channel-row" data-channel={c.name}>
+                  <th scope="row">{c.name}</th>
+                  <td class={styles.num} data-testid="usage-channel-used">
+                    {number().format(c.used)}
+                  </td>
+                  <td class={styles.num} data-testid="usage-channel-limit">
+                    {number().format(c.limit)}
+                  </td>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
       </Show>
     </div>
   )

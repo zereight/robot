@@ -6,6 +6,7 @@ import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Switch } from "../ui/controls.tsx"
 import styles from "./channels.module.css"
+import { switchOf, toolsOfKind } from "./toolsView.ts"
 
 /**
  * The part "Tools of this channel" of the channel settings (spec 030): the skills and the
@@ -41,7 +42,7 @@ export const ChannelToolsPart = (props: { channelId: string }) => {
     }
   }
 
-  const group = (kind: ChannelToolRow["kind"]) => (rows() ?? []).filter((r) => r.kind === kind)
+  const group = (kind: ChannelToolRow["kind"]) => toolsOfKind(rows() ?? [], kind)
 
   const section = (kind: ChannelToolRow["kind"], title: string) => (
     <Show when={group(kind).length > 0}>
@@ -58,8 +59,8 @@ export const ChannelToolsPart = (props: { channelId: string }) => {
               </Show>
               <Switch
                 label={row.name}
-                checked={row.on}
-                disabled={ui.linked() || row.all}
+                checked={switchOf(row, ui.linked()).checked}
+                disabled={switchOf(row, ui.linked()).disabled}
                 onChange={(on) => void toggle(row, on)}
                 testId="channel-tool-switch"
               />

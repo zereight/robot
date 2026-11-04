@@ -1,5 +1,6 @@
 import type { Agent, AgentChannelTool } from "@robot/shared"
 import { createResource, For, onCleanup, Show } from "solid-js"
+import { fromChannels } from "../channels/toolsView.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import styles from "./agents.module.css"
@@ -38,9 +39,7 @@ export const ChannelToolsLines = (props: { agent: Agent }) => {
                   {row.name}
                 </span>
                 <span class={styles.hint} data-testid="channel-tool-from">
-                  {t("agents.channelTools.from", {
-                    channel: row.channels.map((c) => c.name).join(", "),
-                  })}
+                  {t("agents.channelTools.from", { channel: fromChannels(row) })}
                 </span>
               </li>
             )}

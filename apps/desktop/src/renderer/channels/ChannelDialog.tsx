@@ -9,7 +9,6 @@ import {
   filterAgents,
   type ParentRefusal,
   parentChoices,
-  validDailyLimit,
 } from "@robot/shared"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
@@ -25,6 +24,7 @@ import { Dialog } from "../ui/Dialog.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
 import { ChannelToolsPart } from "./ChannelTools.tsx"
 import styles from "./channels.module.css"
+import { limitFieldValid, limitPatch, limitText as textOfLimit } from "./limit.ts"
 
 /** Makes a channel, or changes the name, topic, members and lead of one. */
 export const ChannelDialog = (props: { channel?: Channel; onClose: () => void }) => {
@@ -71,18 +71,10 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   // The daily token limit (spec 030): off by default. On, it takes a whole number in a range.
   const was = props.channel?.dailyTokenLimit ?? null
   const [limitOn, setLimitOn] = createSignal(was !== null)
-  const [limitText, setLimitText] = createSignal(was === null ? "" : String(was))
-  /** The number in the box, or null while it is not a whole number. Commas and spaces are fine. */
-  const limitNumber = () => {
-    const digits = limitText().replace(/[,\s]/g, "")
-    return /^\d+$/.test(digits) ? Number(digits) : null
-  }
-  const limitValid = () => !limitOn() || validDailyLimit(limitNumber())
+  const [limitText, setLimitText] = createSignal(textOfLimit(was))
+  const limitValid = () => limitFieldValid(limitOn(), limitText())
   /** The limit to send: only when the user changed it. */
-  const limitField = () => {
-    const next = limitOn() ? limitNumber() : null
-    return next === was ? {} : { dailyTokenLimit: next }
-  }
+  const limitField = () => limitPatch(was, limitOn(), limitText())
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
   const [confirmDelete, setConfirmDelete] = createSignal(false)
