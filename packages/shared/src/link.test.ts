@@ -139,6 +139,7 @@ describe("client requests", () => {
         "agents.create",
         "agents.duplicate",
         "agents.update",
+        "agents.useMain",
         "channels.create",
         "channels.update",
         "memory.add",
