@@ -94,6 +94,19 @@ test("the window follows DESIGN.md", async () => {
     })
     expect(look.opacity).toBeLessThan(1)
     expect(look.cursor).toBe("not-allowed")
+
+    // A disabled filled button keeps its own colour and only fades. It must not take the colour of
+    // the box behind it, which is what `background: inherit` did: the button disappeared into the
+    // dialog surface.
+    const filled = await next.evaluate((el) => {
+      const dialog = el.closest("[class*=dialog]")
+      return {
+        button: getComputedStyle(el).backgroundColor,
+        dialog: dialog ? getComputedStyle(dialog).backgroundColor : "",
+      }
+    })
+    expect(filled.dialog).not.toBe("")
+    expect(filled.button).not.toBe(filled.dialog)
   } finally {
     await app.close()
   }

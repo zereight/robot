@@ -192,10 +192,16 @@
   filter: none;
 }
 
-.primary:disabled:hover,
+/* A filled button that cannot be pressed keeps its own colour, so it still reads as a button, and
+   only fades. `background: inherit` would take the colour of the box behind it and erase it. */
+.primary:disabled:hover {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
 .danger:disabled:hover {
-  background: inherit;
-  filter: none;
+  background: var(--c-danger);
+  border-color: var(--c-danger);
 }
 
 .iconButton {
