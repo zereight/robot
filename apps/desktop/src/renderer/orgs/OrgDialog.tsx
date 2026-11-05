@@ -3,12 +3,14 @@ import {
   charLength,
   filterAgents,
   type HandOffRange,
+  memberLineConflict,
   ORG_NAME_MAX,
   type Org,
   type OrgCreate,
-  orgDeleteLowerCount,
+  orgDeleteSubCount,
   orgParentOptions,
   orgPatchOf,
+  parentLineReasons,
 } from "@robot/shared"
 import { createMemo, createResource, createSignal, For, Show, untrack } from "solid-js"
 import { Face } from "../agents/Face.tsx"
@@ -87,19 +89,31 @@ export const OrgDialog = (props: {
 
   // An archived agent stays a member (spec 030). The form lists it, marked, so the user can remove
   // it. Only the archived agents that are members are offered.
-  const [archived] = createResource(
-    () => (was.memberIds.length > 0 ? ui.server()?.id : undefined),
-    (serverId) =>
-      call("agents.list", { serverId, archived: true })
-        .then((list) => list.filter((a) => was.memberIds.includes(a.id)))
-        .catch((): Agent[] => []),
+  // The rule "One line" counts the archived agents too, so the form reads all of them.
+  const [archivedAll] = createResource(
+    () => ui.server()?.id,
+    (serverId) => call("agents.list", { serverId, archived: true }).catch((): Agent[] => []),
   )
+  const archived = () => (archivedAll() ?? []).filter((a) => was.memberIds.includes(a.id))
   const choices = createMemo<MemberChoice[]>(() => [
     ...agents.agents().map((agent) => ({ agent, archived: false })),
-    ...(archived() ?? [])
+    ...archived()
       .filter((a) => !agents.agents().some((x) => x.id === a.id))
       .map((agent) => ({ agent, archived: true })),
   ])
+  // Every agent that the rule "One line" reads: the ones in the list and the archived ones.
+  const lineAgents = createMemo(() => [
+    ...agents.agents(),
+    ...(archivedAll() ?? []).filter((a) => !agents.agents().some((x) => x.id === a.id)),
+  ])
+  // The organization that keeps an agent out of this one, or undefined (spec 030, "One line"): the
+  // field "Members" shows it as "In <other>." The parent that the form holds now counts.
+  const memberConflict = (agentId: string) =>
+    memberLineConflict(orgs.orgs(), lineAgents(), agentId, org?.id ?? NEW_ORG, {
+      parentId: parentId(),
+    })
+  const otherName = (id: string | undefined) =>
+    id === undefined ? "" : (orgs.byId(id)?.name ?? "")
   // Members that the search hides stay chosen: the choice lives in `members`, not in the list.
   const shown = createMemo(() => {
     const matches = new Set(
@@ -112,6 +126,7 @@ export const OrgDialog = (props: {
   })
   const toggle = (agentId: string) => {
     const on = members().includes(agentId)
+    if (!on && memberConflict(agentId) !== undefined) return
     setMembers(on ? members().filter((m) => m !== agentId) : [...members(), agentId])
     // A member that is removed is no longer the lead (spec 030).
     if (on && leadId() === agentId) setLeadId(null)
@@ -123,6 +138,14 @@ export const OrgDialog = (props: {
   const parents = createMemo(() => orgParentOptions(orgs.orgs(), org?.id ?? NEW_ORG))
   const reasonKey = (refusal: "loop" | "levels") =>
     refusal === "loop" ? "orgs.parent.loop" : "orgs.parent.levels"
+  // The organizations that would split the line of an agent as the parent (spec 030, "One line"):
+  // the members that the form holds now count. The reasons of the tree come first.
+  const splits = createMemo(() =>
+    parentLineReasons(orgs.orgs(), lineAgents(), org?.id ?? NEW_ORG, members()),
+  )
+  const refused = (choice: { id: string; refusal: unknown }) =>
+    choice.refusal !== undefined || splits().has(choice.id)
+  const agentName = (id: string | undefined) => lineAgents().find((a) => a.id === id)?.name ?? ""
 
   const limitValid = () => limitFieldValid(limitOn(), limitText())
   const valid = () => {
@@ -182,7 +205,9 @@ export const OrgDialog = (props: {
     }
   }
 
-  const lower = () => (org ? orgDeleteLowerCount(orgs.orgs(), org.id) : 0)
+  // <n> and <parent> of the confirm: the direct sub-organizations move up (spec 030, flow 4).
+  const subCount = () => (org ? orgDeleteSubCount(orgs.orgs(), org.id) : 0)
+  const upTo = () => (org ? orgs.byId(orgs.parentOf(org.id) ?? "") : undefined)
   let backButton: HTMLButtonElement | undefined
   const title = () => (isNew ? t("orgs.create.title") : t("orgs.edit.title"))
 
@@ -272,22 +297,47 @@ export const OrgDialog = (props: {
                   }
                 >
                   <For each={shown()}>
-                    {(choice) => (
-                      <label class={styles.member}>
-                        <input
-                          type="checkbox"
-                          checked={members().includes(choice.agent.id)}
-                          disabled={readOnly()}
-                          onChange={() => toggle(choice.agent.id)}
-                          data-testid={`org-member-${choice.agent.name}`}
-                        />
-                        <Face face={choice.agent.face} image={choice.agent.faceImage} size={20} />
-                        <span class={styles.memberName}>{memberName(choice)}</span>
-                        <Show when={choice.agent.role}>
-                          <span class={styles.memberRole}>{choice.agent.role}</span>
-                        </Show>
-                      </label>
-                    )}
+                    {(choice) => {
+                      // An agent that "One line" keeps out shows muted with "In <other>." and cannot
+                      // be ticked. A member that is in already is never muted: a removal is allowed.
+                      const conflict = () =>
+                        members().includes(choice.agent.id)
+                          ? undefined
+                          : memberConflict(choice.agent.id)
+                      return (
+                        <label
+                          class={`${styles.member} ${conflict() ? styles.memberMuted : ""}`}
+                          data-line={conflict() ?? ""}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={members().includes(choice.agent.id)}
+                            disabled={readOnly() || conflict() !== undefined}
+                            onChange={() => toggle(choice.agent.id)}
+                            data-testid={`org-member-${choice.agent.name}`}
+                          />
+                          <Face face={choice.agent.face} image={choice.agent.faceImage} size={20} />
+                          <span class={styles.memberName}>{memberName(choice)}</span>
+                          <Show
+                            when={conflict()}
+                            fallback={
+                              <Show when={choice.agent.role}>
+                                <span class={styles.memberRole}>{choice.agent.role}</span>
+                              </Show>
+                            }
+                          >
+                            {(other) => (
+                              <span
+                                class={styles.memberRole}
+                                data-testid={`org-member-line-${choice.agent.name}`}
+                              >
+                                {t("orgs.line.in", { other: otherName(other()) })}
+                              </span>
+                            )}
+                          </Show>
+                        </label>
+                      )
+                    }}
                   </For>
                 </Show>
               </div>
@@ -340,15 +390,22 @@ export const OrgDialog = (props: {
                 <option
                   value={choice.id}
                   selected={parentId() === choice.id}
-                  disabled={choice.refusal !== undefined && parentId() !== choice.id}
-                  data-refusal={choice.refusal ?? ""}
+                  disabled={refused(choice) && parentId() !== choice.id}
+                  data-refusal={choice.refusal ?? (splits().has(choice.id) ? "line" : "")}
                 >
                   {choice.refusal
                     ? t("orgs.parent.option", {
                         name: choice.name,
                         reason: t(reasonKey(choice.refusal)),
                       })
-                    : choice.name}
+                    : splits().has(choice.id)
+                      ? t("orgs.parent.option", {
+                          name: choice.name,
+                          reason: t("orgs.line.split", {
+                            agent: agentName(splits().get(choice.id)),
+                          }),
+                        })
+                      : choice.name}
                 </option>
               )}
             </For>
@@ -424,11 +481,12 @@ export const OrgDialog = (props: {
                 <legend class={styles.confirmTitle}>
                   {t("orgs.delete.title", { name: org?.name ?? "" })}
                 </legend>
-                <Show when={lower() > 0}>
+                <Show when={subCount() > 0}>
                   <p data-testid="org-delete-lower">
-                    {t(lower() === 1 ? "orgs.delete.lower.one" : "orgs.delete.lower.other", {
-                      count: lower(),
-                    })}
+                    {t(
+                      `orgs.delete.${upTo() ? "up" : "top"}.${subCount() === 1 ? "one" : "other"}`,
+                      { count: subCount(), parent: upTo()?.name ?? "" },
+                    )}
                   </p>
                 </Show>
                 <p class={styles.hint}>{t("orgs.delete.confirm")}</p>

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   addMemberChange,
+  lineRefusalCode,
+  lineRefusalDetail,
   memberLineConflict,
   moveMemberChanges,
   onOneLine,
@@ -8,6 +10,7 @@ import {
   orgsOnOneLine,
   parentLineConflict,
   parentLineReasons,
+  parseLineDetail,
 } from "./orgLine.ts"
 
 const agent = (id: string, name = id) => ({ id, name })
@@ -315,5 +318,42 @@ describe("a save of the form is one change (030 'One line')", () => {
     const reasons = parentLineReasons(state, agents, "site", ["a"])
     expect(reasons.get("product")).toBe("a")
     expect(reasons.has("docs")).toBe(false)
+  })
+})
+
+describe("the words of a refusal", () => {
+  const state = [
+    org("product", "Product"),
+    org("docs", "Docs", "product", ["a"]),
+    org("ops", "Ops"),
+  ]
+
+  test("a refused member: the code and the names of the long line", () => {
+    const refusal = orgLineRefusal(state, agents, [addMemberChange(state, "ops", "a")])
+    if (!refusal) throw new Error("expected a refusal")
+    expect(lineRefusalCode(refusal)).toBe("org_line_member")
+    expect(parseLineDetail(lineRefusalDetail(refusal, state, agents))).toEqual({
+      agent: "A",
+      other: "Docs",
+      organization: "Ops",
+    })
+  })
+
+  test("a refused parent: the code and the names of the long line", () => {
+    const both = [org("product", "Product", null, ["a"]), ...state.slice(1)]
+    const refusal = orgLineRefusal(both, agents, [{ id: "docs", parentId: "ops" }])
+    if (!refusal) throw new Error("expected a refusal")
+    expect(lineRefusalCode(refusal)).toBe("org_line_parent")
+    expect(parseLineDetail(lineRefusalDetail(refusal, both, agents))).toEqual({
+      agent: "A",
+      a: "Docs",
+      b: "Product",
+    })
+  })
+
+  test("a detail that is no JSON gives no names", () => {
+    expect(parseLineDetail("not json")).toEqual({})
+    expect(parseLineDetail("[1]")).toEqual({})
+    expect(parseLineDetail("null")).toEqual({})
   })
 })

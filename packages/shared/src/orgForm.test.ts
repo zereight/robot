@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   agentOrgNames,
-  orgDeleteLowerCount,
+  orgDeleteMoveUp,
+  orgDeleteSubCount,
   orgParentOptions,
   orgPatchOf,
   orgPickerEntries,
@@ -55,12 +56,31 @@ describe("orgParentOptions", () => {
   })
 })
 
-describe("orgDeleteLowerCount", () => {
-  test("counts the lower organizations at any depth, and none for a leaf", () => {
-    expect(orgDeleteLowerCount(tree, "o-product")).toBe(2)
-    expect(orgDeleteLowerCount(tree, "o-docs")).toBe(1)
-    expect(orgDeleteLowerCount(tree, "o-site")).toBe(0)
-    expect(orgDeleteLowerCount(tree, "o-ops")).toBe(0)
+describe("orgDeleteSubCount and orgDeleteMoveUp (spec 030, flow 4)", () => {
+  test("counts the sub-organizations of the organization, not the ones below them", () => {
+    // Product has Docs, and Docs has Site: <n> for Product is 1, not 2 (030, flow 4).
+    expect(orgDeleteSubCount(tree, "o-product")).toBe(1)
+    expect(orgDeleteSubCount(tree, "o-docs")).toBe(1)
+    expect(orgDeleteSubCount(tree, "o-site")).toBe(0)
+    expect(orgDeleteSubCount(tree, "o-ops")).toBe(0)
+  })
+
+  test("the sub-organizations move up to the parent of the deleted organization", () => {
+    expect(orgDeleteMoveUp(tree, "o-docs")).toEqual({ subIds: ["o-site"], parentId: "o-product" })
+  })
+
+  test("an organization with no parent gives its sub-organizations the empty parent", () => {
+    expect(orgDeleteMoveUp(tree, "o-product")).toEqual({ subIds: ["o-docs"], parentId: null })
+  })
+
+  test("a leaf moves none", () => {
+    expect(orgDeleteMoveUp(tree, "o-site")).toEqual({ subIds: [], parentId: "o-docs" })
+  })
+
+  test("two sub-organizations both move up", () => {
+    const two = [org("p", "P"), org("d", "D", "p"), org("s", "S", "p"), org("x", "X", "d")]
+    expect(orgDeleteSubCount(two, "p")).toBe(2)
+    expect(orgDeleteMoveUp(two, "p").subIds.sort()).toEqual(["d", "s"])
   })
 })
 

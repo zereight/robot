@@ -1,7 +1,7 @@
 import { nameKey } from "./agents.ts"
 import type { HandOffRange } from "./organizations.ts"
 import type { AgentOrgTool, OrgToolChoice, OrgToolEntry, OrgToolValue } from "./orgTools.ts"
-import { lowerOrgs, type OrgParentRefusal, orgParentRefusal, type TreeOrg } from "./orgTree.ts"
+import { type OrgParentRefusal, orgParentRefusal, orgParents, type TreeOrg } from "./orgTree.ts"
 
 // What the form of an organization needs (spec 030, "Flows" 1, 2 and 4). These are plain functions,
 // so the dialog, the list in the settings and the org chart (029) read the same rules.
@@ -38,9 +38,24 @@ export const orgParentOptions = (orgs: readonly NamedOrg[], id: string): OrgPare
       return byName !== 0 ? byName : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
     })
 
-/** How many lower organizations become top organizations when `id` is deleted (flow 4). */
-export const orgDeleteLowerCount = (orgs: readonly TreeOrg[], id: string): number =>
-  lowerOrgs(orgs, id).size
+/**
+ * The sub-organizations that move up when `id` is deleted, and the parent they get (spec 030,
+ * flow 4): the parent of the deleted organization, or null when it had none. Only the direct
+ * sub-organizations move. The ones below them keep their parents, so the tree gets no deeper and
+ * no agent gets off its line.
+ */
+export const orgDeleteMoveUp = (
+  orgs: readonly TreeOrg[],
+  id: string,
+): { subIds: string[]; parentId: string | null } => {
+  const parents = orgParents(orgs)
+  const subIds = orgs.filter((o) => parents.get(o.id) === id).map((o) => o.id)
+  return { subIds, parentId: parents.get(id) ?? null }
+}
+
+/** <n> of the confirm of a delete: the sub-organizations of `id`, not the ones below them. */
+export const orgDeleteSubCount = (orgs: readonly TreeOrg[], id: string): number =>
+  orgDeleteMoveUp(orgs, id).subIds.length
 
 /** The fields of the form that the tree and the service read. */
 export interface OrgFormValues {

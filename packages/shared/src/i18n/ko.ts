@@ -2837,6 +2837,9 @@ export const ko: Record<MessageKey, string> = {
   "orgs.parent.loop": "이 조직의 하위 조직이에요.",
   "orgs.parent.levels": "트리가 3단계를 넘게 돼요.",
   "orgs.parent.option": "{name} — {reason}",
+  "orgs.line.in": "{other}에 속해 있어요.",
+  "orgs.line.notWith": "{other}과(와) 한 줄에 있지 않아요.",
+  "orgs.line.split": "{agent}의 한 줄이 나뉘어요.",
   "orgs.dailyLimit": "하루 토큰 한도",
   "orgs.dailyLimit.placeholder": "하루 토큰 수",
   "orgs.dailyLimit.hint":
@@ -2870,8 +2873,10 @@ export const ko: Record<MessageKey, string> = {
   "orgs.delete": "조직 삭제",
   "orgs.delete.title": "{name}을(를) 삭제할까요?",
   "orgs.delete.confirm": "이 조직이 주던 권한은 사라져요. 멤버는 에이전트로 남아요.",
-  "orgs.delete.lower.one": "하위 조직 1개가 최상위 조직이 돼요.",
-  "orgs.delete.lower.other": "하위 조직 {count}개가 최상위 조직이 돼요.",
+  "orgs.delete.up.one": "하위 조직 1개가 {parent} 아래로 올라가요.",
+  "orgs.delete.up.other": "하위 조직 {count}개가 {parent} 아래로 올라가요.",
+  "orgs.delete.top.one": "하위 조직 1개가 최상위 조직이 돼요.",
+  "orgs.delete.top.other": "하위 조직 {count}개가 최상위 조직이 돼요.",
   "orgs.delete.back": "돌아가기",
   "orgs.delete.go": "삭제",
   "orgs.save": "저장",
@@ -2893,4 +2898,7 @@ export const ko: Record<MessageKey, string> = {
   "error.org_parent_loop": "이 조직의 하위 조직이에요.",
   "error.org_parent_levels": "트리가 3단계를 넘게 돼요.",
   "error.org_parent_not_found": "그 상위 조직은 더 이상 없어요.",
+  "error.org_line_member":
+    "{agent}은(는) {other}에 속해 있어서, {organization}과(와) 한 줄에 있지 않아요.",
+  "error.org_line_parent": "{agent}은(는) {a}과(와) {b}에 속해 있어서 한 줄에 있지 않게 돼요.",
 }

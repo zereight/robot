@@ -232,3 +232,40 @@ export const parentLineReasons = (
   }
   return out
 }
+
+/** The error code of a refusal: the code that the window and a linked computer read. */
+export const lineRefusalCode = (refusal: LineRefusal): "org_line_member" | "org_line_parent" =>
+  refusal.kind === "member" ? "org_line_member" : "org_line_parent"
+
+/**
+ * The words that fill the long line of a refusal, as the error detail carries them (a JSON text of
+ * names): `agent`, `other` and `organization` for "<agent> is in <other>, which is not on one line
+ * with <organization>."; `agent`, `a` and `b` for "<agent> is in <A> and <B>, which would not be on
+ * one line." A name that is gone reads as an empty text.
+ */
+export const lineRefusalDetail = (
+  refusal: LineRefusal,
+  orgs: readonly { readonly id: string; readonly name: string }[],
+  agents: readonly OneLineAgent[],
+): string => {
+  const org = (id: string) => orgs.find((o) => o.id === id)?.name ?? ""
+  const agent = agents.find((a) => a.id === refusal.agentId)?.name ?? ""
+  return JSON.stringify(
+    refusal.kind === "member"
+      ? { agent, other: org(refusal.otherId), organization: org(refusal.orgId) }
+      : { agent, a: org(refusal.aId), b: org(refusal.bId) },
+  )
+}
+
+/** Reads the detail of `lineRefusalDetail`: the names by word, or none when the text is not one. */
+export const parseLineDetail = (detail: string): Record<string, string> => {
+  try {
+    const value: unknown = JSON.parse(detail)
+    if (typeof value !== "object" || value === null) return {}
+    return Object.fromEntries(
+      Object.entries(value).filter((e): e is [string, string] => typeof e[1] === "string"),
+    )
+  } catch {
+    return {}
+  }
+}

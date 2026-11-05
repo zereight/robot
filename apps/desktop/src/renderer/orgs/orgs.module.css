@@ -94,6 +94,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.memberMuted .memberName {
+  color: var(--c-text-muted);
+}
 .memberRole {
   min-width: 0;
   overflow: hidden;

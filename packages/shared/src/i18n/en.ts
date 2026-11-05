@@ -2857,6 +2857,9 @@ export const en = {
   "orgs.parent.loop": "This is a sub-organization of this organization.",
   "orgs.parent.levels": "The tree would have more than 3 levels.",
   "orgs.parent.option": "{name} — {reason}",
+  "orgs.line.in": "In {other}.",
+  "orgs.line.notWith": "Not on one line with {other}.",
+  "orgs.line.split": "Would split the line of {agent}.",
   "orgs.dailyLimit": "Daily token limit",
   "orgs.dailyLimit.placeholder": "Tokens a day",
   "orgs.dailyLimit.hint":
@@ -2892,8 +2895,10 @@ export const en = {
   "orgs.delete.title": "Delete {name}?",
   "orgs.delete.confirm":
     "The access that this organization gives is gone. The members stay agents.",
-  "orgs.delete.lower.one": "1 lower organization becomes a top organization.",
-  "orgs.delete.lower.other": "{count} lower organizations become top organizations.",
+  "orgs.delete.up.one": "1 sub-organization moves up to {parent}.",
+  "orgs.delete.up.other": "{count} sub-organizations move up to {parent}.",
+  "orgs.delete.top.one": "1 sub-organization becomes a top organization.",
+  "orgs.delete.top.other": "{count} sub-organizations become top organizations.",
   "orgs.delete.back": "Back",
   "orgs.delete.go": "Delete",
   "orgs.save": "Save",
@@ -2916,6 +2921,8 @@ export const en = {
   "error.org_parent_loop": "This is a sub-organization of this organization.",
   "error.org_parent_levels": "The tree would have more than 3 levels.",
   "error.org_parent_not_found": "That parent organization does not exist any more.",
+  "error.org_line_member": "{agent} is in {other}, which is not on one line with {organization}.",
+  "error.org_line_parent": "{agent} is in {a} and {b}, which would not be on one line.",
 } as const
 
 export type MessageKey = keyof typeof en

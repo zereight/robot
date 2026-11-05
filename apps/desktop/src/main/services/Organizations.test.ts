@@ -47,7 +47,8 @@ describe("make and edit", () => {
     const s = await setup()
     const ada = await s.agent("Ada")
     const bo = await s.agent("Bo")
-    const b = await s.org("beta", [bo.id])
+    // Bo cannot be in two top organizations (spec 030, "One line"), so beta has no member here.
+    const b = await s.org("beta", [])
     const a = await s.org("Alpha", [ada.id, bo.id, ada.id], { leadId: bo.id })
     expect(a.memberIds).toEqual([ada.id, bo.id])
     expect(a.leadId).toBe(bo.id)
@@ -147,16 +148,176 @@ describe("the tree", () => {
     expect((await s.run(Organizations.use((o) => o.get(company.id)))).parentId).toBeNull()
   })
 
-  test("a deleted organization frees its sub-organizations; the members stay agents", async () => {
+  test("a deleted organization gives its sub-organizations to its parent (030, flow 4); the members stay agents", async () => {
     const s = await setup()
     const ada = await s.agent("Ada")
     const company = await s.org("Company", [ada.id])
     const support = await s.org("Support", [ada.id], { parentId: company.id })
+    const tier = await s.org("Tier 1", [ada.id], { parentId: support.id })
+    // Delete the middle one: Tier 1 moves up to Company, and Ada is still a member of both.
+    await s.run(Organizations.use((o) => o.remove(support.id)))
+    const moved = await s.run(Organizations.use((o) => o.get(tier.id)))
+    expect(moved.parentId).toBe(company.id)
+    expect(moved.memberIds).toEqual([ada.id])
+    // Delete the top one: Tier 1 has no parent now.
     await s.run(Organizations.use((o) => o.remove(company.id)))
-    expect((await s.run(Organizations.use((o) => o.get(support.id)))).parentId).toBeNull()
+    expect((await s.run(Organizations.use((o) => o.get(tier.id)))).parentId).toBeNull()
     expect(await s.codeOf(Organizations.use((o) => o.get(company.id)))).toBe("org_not_found")
     expect(await s.run(Agents.use((a) => a.get(ada.id)))).toBeDefined()
     expect(s.db.get("SELECT 1 FROM org_member WHERE org_id = ?", company.id)).toBeUndefined()
+  })
+
+  test("only the direct sub-organizations move up; the ones below them keep their parent", async () => {
+    const s = await setup()
+    const product = await s.org("Product", [])
+    const docs = await s.org("Docs", [], { parentId: product.id })
+    const press = await s.org("Press", [], { parentId: product.id })
+    const site = await s.org("Site", [], { parentId: docs.id })
+    await s.run(Organizations.use((o) => o.remove(product.id)))
+    const parents = await Promise.all(
+      [docs, press, site].map(
+        async (o) => (await s.run(Organizations.use((x) => x.get(o.id)))).parentId,
+      ),
+    )
+    expect(parents).toEqual([null, null, docs.id])
+  })
+})
+
+describe("one line (spec 030, 'One line')", () => {
+  const detailOf = <A, E>(
+    effect: Effect.Effect<A, E, Organizations>,
+    run: (e: never) => Promise<unknown>,
+  ) =>
+    run(
+      effect.pipe(
+        Effect.match({
+          onFailure: (e) => {
+            const f = e as { code?: string; detail?: string }
+            return {
+              code: f.code,
+              detail: f.detail === undefined ? undefined : JSON.parse(f.detail),
+            }
+          },
+          onSuccess: () => ({ code: "ok", detail: undefined }),
+        }),
+      ) as never,
+    ) as Promise<{ code: string; detail: Record<string, string> | undefined }>
+
+  const world = async () => {
+    const s = await setup()
+    const a = await s.agent("A")
+    const b = await s.agent("B")
+    const product = await s.org("Product", [])
+    const docs = await s.org("Docs", [a.id], { parentId: product.id })
+    const ops = await s.org("Ops", [])
+    const set = (id: string, patch: { memberIds?: string[]; parentId?: string | null }) =>
+      detailOf(
+        Organizations.use((o) => o.update(id, patch)),
+        s.run as never,
+      )
+    return { s, a, b, product, docs, ops, set }
+  }
+
+  test("A in Docs: adding A to Product works; adding A to Ops is refused with the names", async () => {
+    const { s, a, product, docs, ops, set } = await world()
+    expect((await set(product.id, { memberIds: [a.id] })).code).toBe("ok")
+    const refused = await set(ops.id, { memberIds: [a.id] })
+    expect(refused.code).toBe("org_line_member")
+    expect(refused.detail).toEqual({ agent: "A", other: "Docs", organization: "Ops" })
+    expect((await s.run(Organizations.use((o) => o.get(ops.id)))).memberIds).toEqual([])
+    expect((await s.run(Organizations.use((o) => o.get(docs.id)))).memberIds).toEqual([a.id])
+  })
+
+  test("a new organization that starts with an agent that is off the line is refused", async () => {
+    const { s, a, docs } = await world()
+    const make = (parentId: string | null) =>
+      detailOf(
+        Organizations.use((o) =>
+          o.create({
+            serverId: s.local.id,
+            name: "New",
+            memberIds: [a.id],
+            leadId: null,
+            parentId,
+          }),
+        ),
+        s.run as never,
+      )
+    const refused = await make(null)
+    expect(refused.code).toBe("org_line_member")
+    expect(refused.detail).toEqual({ agent: "A", other: "Docs", organization: "New" })
+    expect((await make(docs.id)).code).toBe("ok")
+  })
+
+  test("two sub-organizations of one parent: B cannot be in both; B can be in Docs and below it", async () => {
+    const { s, b, product, docs, set } = await world()
+    const site = await s.org("Site", [], { parentId: product.id })
+    const blog = await s.org("Blog", [], { parentId: docs.id })
+    expect((await set(docs.id, { memberIds: [b.id] })).code).toBe("ok")
+    expect((await set(site.id, { memberIds: [b.id] })).code).toBe("org_line_member")
+    expect((await set(blog.id, { memberIds: [b.id] })).code).toBe("ok")
+  })
+
+  test("Put under and Move to the top: A in Product and Docs; Docs under Ops is refused until A leaves Product", async () => {
+    const { a, product, docs, ops, set } = await world()
+    await set(product.id, { memberIds: [a.id] })
+    const refused = await set(docs.id, { parentId: ops.id })
+    expect(refused.code).toBe("org_line_parent")
+    expect(refused.detail).toEqual({ agent: "A", a: "Docs", b: "Product" })
+    expect((await set(docs.id, { parentId: null })).code).toBe("org_line_parent")
+    await set(product.id, { memberIds: [] })
+    expect((await set(docs.id, { parentId: ops.id })).code).toBe("ok")
+  })
+
+  test("the tree reasons come first: a loop is a loop, not a line", async () => {
+    const { product, docs, set } = await world()
+    expect((await set(product.id, { parentId: docs.id })).code).toBe("org_parent_loop")
+  })
+
+  test("a save of the form is one change: A and a new parent together work when they keep the line", async () => {
+    const { s, a, docs } = await world()
+    const site = await s.org("Site", [])
+    expect(
+      (
+        await detailOf(
+          Organizations.use((o) => o.update(site.id, { memberIds: [a.id] })),
+          s.run as never,
+        )
+      ).code,
+    ).toBe("org_line_member")
+    const both = await detailOf(
+      Organizations.use((o) => o.update(site.id, { memberIds: [a.id], parentId: docs.id })),
+      s.run as never,
+    )
+    expect(both.code).toBe("ok")
+  })
+
+  test("an archived agent counts: the move that would split its line is refused", async () => {
+    const { s, a, product, docs, ops, set } = await world()
+    await set(product.id, { memberIds: [a.id] })
+    await s.run(Agents.use((x) => x.archive(a.id)))
+    expect((await set(docs.id, { parentId: ops.id })).code).toBe("org_line_parent")
+  })
+
+  test("a move after the agent left: Docs to Ops, with Ops under Product, works in two steps", async () => {
+    const { s, a, product, docs, set } = await world()
+    await set(product.id, { memberIds: [a.id] })
+    const ops = await s.org("Ops2", [], { parentId: product.id })
+    expect((await set(ops.id, { memberIds: [a.id] })).code).toBe("org_line_member")
+    expect((await set(docs.id, { memberIds: [] })).code).toBe("ok")
+    expect((await set(ops.id, { memberIds: [a.id] })).code).toBe("ok")
+  })
+
+  test("a removal is always allowed", async () => {
+    const { s, a, product, docs, set } = await world()
+    // The data is off the line (as a sync could leave it before a repair): a removal still works.
+    s.db.run(
+      "INSERT INTO org_member (org_id, agent_id, position) VALUES (?, ?, 0)",
+      product.id,
+      a.id,
+    )
+    s.db.run("UPDATE org_unit SET parent_id = NULL WHERE id = ?", docs.id)
+    expect((await set(product.id, { memberIds: [] })).code).toBe("ok")
   })
 })
 

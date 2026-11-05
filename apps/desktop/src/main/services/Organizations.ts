@@ -1,15 +1,20 @@
 import { randomUUID } from "node:crypto"
 import {
   type AgentOrgTool,
+  lineRefusalCode,
+  lineRefusalDetail,
   nameKey,
   ORGS_MAX,
   type Org,
   type OrgCreate,
   type OrgLimitView,
+  type OrgLineChange,
   type OrgPatch,
   type OrgToolChoice,
   type OrgToolRow,
   type OrgUsageRow,
+  orgDeleteMoveUp,
+  orgLineRefusal,
   orgNameProblem,
   orgParentRefusal,
   orgToolNow,
@@ -60,7 +65,7 @@ export interface OrganizationsService {
   update(id: string, patch: OrgPatch): Effect.Effect<Org, AppError>
   /**
    * Delete (spec 030, flow 4). The members stay agents. The organization leaves every skill and
-   * connection list. Its sub-organizations become top organizations. There is no Undo.
+   * connection list. Its sub-organizations move up to its parent. There is no Undo.
    */
   remove(id: string): Effect.Effect<void, AppError>
   /** The skills and connections of this computer, with the value of this organization (part "Tools"). */
@@ -192,6 +197,29 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
           )
         })
 
+      /**
+       * The rule "One line" (spec 030) for one change: a save of the form is one change with all its
+       * fields, and a move on the chart is a removal and an add. The tree rules run first. An
+       * archived agent counts. A removal is never refused.
+       */
+      const checkLine = (serverId: string, changes: readonly OrgLineChange[]) =>
+        Effect.suspend(() => {
+          const orgs = readOrgs(db, serverId)
+          const agents = db.all<{ id: string; name: string }>(
+            "SELECT id, name FROM agent WHERE server_id = ?",
+            serverId,
+          )
+          const refusal = orgLineRefusal(orgs, agents, changes)
+          if (refusal === undefined) return Effect.void
+          const named = [...orgs, ...changes.map((c) => ({ id: c.id, name: c.name ?? "" }))]
+          return Effect.fail(
+            new AppError({
+              code: lineRefusalCode(refusal),
+              detail: lineRefusalDetail(refusal, named, agents),
+            }),
+          )
+        })
+
       /** The daily token limit (spec 030): off, or a whole number from 10,000 to 100,000,000. */
       const checkLimit = (limit: number | null) =>
         limit === null || validDailyLimit(limit)
@@ -230,6 +258,7 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
         const id = randomUUID()
         const parentId = input.parentId ?? null
         yield* checkParent(input.serverId, id, parentId)
+        yield* checkLine(input.serverId, [{ id, name, parentId, memberIds }])
         const limit = yield* checkLimit(input.dailyTokenLimit ?? null)
         const now = Date.now()
         db.transaction(() => {
@@ -271,6 +300,14 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
         // The same parent again needs no check: a parent that the rules allowed stays allowed.
         const parentId = patch.parentId !== undefined ? patch.parentId : row.parent_id
         if (parentId !== row.parent_id) yield* checkParent(row.server_id, id, parentId)
+        // One change with all its fields: the new parent and the new members together.
+        const change: OrgLineChange = {
+          id,
+          ...(parentId !== row.parent_id ? { parentId } : {}),
+          ...(patch.memberIds ? { memberIds } : {}),
+        }
+        if (change.parentId !== undefined || change.memberIds !== undefined)
+          yield* checkLine(row.server_id, [change])
         const limit =
           patch.dailyTokenLimit !== undefined && patch.dailyTokenLimit !== row.daily_token_limit
             ? yield* checkLimit(patch.dailyTokenLimit)
@@ -319,13 +356,17 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
       const remove = Effect.fn("Organizations.remove")(function* (id: string) {
         const row = yield* need(id)
         const lists = db.transaction(() => {
-          // A deleted parent clears the field of its sub-organizations: they are top organizations
-          // now, here and, after a sync, on the other computer (spec 030).
-          db.run(
-            "UPDATE org_unit SET parent_id = NULL, updated_at = ? WHERE parent_id = ?",
-            Date.now(),
-            id,
-          )
+          // The sub-organizations move up to the parent of the deleted organization, here and, after
+          // a sync, on the other computer (spec 030, flow 4). The tree gets no deeper, and no agent
+          // gets off its line.
+          const { subIds, parentId } = orgDeleteMoveUp(orgTreeOf(db, row.server_id), id)
+          for (const sub of subIds)
+            db.run(
+              "UPDATE org_unit SET parent_id = ?, updated_at = ? WHERE id = ?",
+              parentId,
+              Date.now(),
+              sub,
+            )
           const left = leaveToolLists(id)
           db.run("DELETE FROM org_unit WHERE id = ?", id)
           return left
