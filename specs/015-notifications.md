@@ -37,6 +37,8 @@ The user knows when an agent needs them or finishes, without watching the window
 - Attention: an approval or question expands the island with the agent face, a short summary
   and buttons to answer or open the app (see "Attention card").
 - The user can turn it off, or show it only for attention.
+- Settings → Notifications has "Island bar width" with two choices, "Compact" and "Wide". The
+  default is "Compact". The setting belongs to this computer and does not sync (019).
 - The island shows work and requests of this computer, and of tasks of the computer that this one
   syncs with (019). It never shows those of a linked server. An approval of a task that runs on
   the other computer has no "Always allow" button on the island: only the computer that runs the
@@ -190,11 +192,20 @@ The user knows when an agent needs them or finishes, without watching the window
   that the mark and the faces need at each side of it. The mark sits in the left wing and the
   faces and the count sit in the right wing, each group centred in its wing, so the bar never
   puts content behind the notch. On a screen with no notch, the bar is 340 px wide and the two
-  groups keep the two ends of it.
+  groups keep the two ends of it. This is the choice "Compact".
+- With "Wide", each wing has 24 px more room, so the bar is 48 px wider than with "Compact", and
+  the groups stay centred in their wings. On a screen with no notch, the bar is 388 px wide. "Wide"
+  never makes the bar narrower, and no choice puts content behind the notch.
+- A bar keeps the width of its choice, not the width of the card that was open before. When the
+  card closes, the bar goes back to its width at once.
+- A change of the choice shows on the island at once, with no restart, and stays after a restart.
 - The island follows a change of language or of reduce motion at once, while it is open.
 
 ## Acceptance
 
+- On a screen with a camera notch, open the detail card and close it. The bar is as wide as the
+  notch and its two wings, not as wide as the card. Choose "Wide": the bar is 48 px wider at
+  once. Restart the app: the choice is still "Wide".
 - An approval request with the window hidden shows a notification and expands the island; Allow
   on the island lets the task continue.
 - Three agents work and the window is hidden. The user points at the island: a card shows three
