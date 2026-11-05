@@ -42,7 +42,6 @@ test("workflows: a channel message starts a flow, and the editor survives a rest
 
   // A workflow with a channel trigger and one agent step.
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await page.getByTestId("wf-new").click()
   await page.getByTestId("wf-name").fill("On deploy")
   await page.getByTestId("wf-trigger-kind").selectOption("channel")
@@ -61,7 +60,6 @@ test("workflows: a channel message starts a flow, and the editor survives a rest
   await page.getByTestId("channel-input").fill("@Ada please deploy now")
   await page.getByTestId("channel-input").press("Enter")
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await page.getByTestId("wf-open").click()
   await expect(page.getByTestId("wf-run-row")).toHaveCount(1, { timeout: 20_000 })
   await expect(page.getByTestId("wf-run-row")).toContainText("Channel message")
@@ -77,7 +75,6 @@ test("workflows: a channel message starts a flow, and the editor survives a rest
   const second = await launch(userData, env)
   await resizeWindow(second.app, 1500, 1000)
   await second.page.getByTestId("page-workflows").click()
-  await second.page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await second.page.getByTestId("wf-open").click()
   await expect(second.page.getByTestId("wf-node")).toHaveCount(1)
   await expect(second.page.getByTestId("wf-trigger-kind")).toHaveValue("channel")
@@ -95,9 +92,9 @@ test("korean: routines, workflows, approval cards and memory have no English lef
   await createAgent(page, "에이다")
 
   // Routines page, dialog and list.
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await expect(page.getByTestId("routines-view")).toBeVisible()
-  expect(await latinWords(page, "[data-testid=workflows-page]")).toEqual([])
+  expect(await latinWords(page, "[data-testid=routines-view]")).toEqual([])
   await page.getByTestId("routine-new").click()
   await page.getByTestId("routine-name").fill("아침 점검")
   await page.getByTestId("routine-prompt").fill("좋은 아침이라고 말해줘")
@@ -109,14 +106,13 @@ test("korean: routines, workflows, approval cards and memory have no English lef
   await page.getByTestId("routine-kind").selectOption("daily")
   await page.getByTestId("routine-save").click()
   await expect(page.getByTestId("routine-card")).toHaveCount(1)
-  expect(await latinWords(page, "[data-testid=workflows-page]")).toEqual([])
+  expect(await latinWords(page, "[data-testid=routines-view]")).toEqual([])
   await shot(page, "s16-02-routines-ko")
   await page.getByTestId("routine-view").getByText("주", { exact: true }).click()
-  expect(await latinWords(page, "[data-testid=workflows-page]")).toEqual([])
+  expect(await latinWords(page, "[data-testid=routines-view]")).toEqual([])
 
   // Workflows list and editor.
-  await page.getByTestId("routine-view").getByText("목록", { exact: true }).click()
-  await page.getByTestId("wf-tabs").getByText("워크플로우", { exact: true }).click()
+  await page.getByTestId("page-workflows").click()
   expect(await latinWords(page, "[data-testid=workflows-page]")).toEqual([])
   await page.getByTestId("wf-new").click()
   for (const kind of ["agent", "condition", "approval", "post"])

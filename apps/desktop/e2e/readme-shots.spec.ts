@@ -395,7 +395,7 @@ test("readme: pictures of the app", async () => {
   await pic(page, "today")
 
   // 6. Routines, and a workflow.
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await expect(page.getByTestId("routine-card")).toHaveCount(3)
   await pic(page, "routines")
   await rpc(page, "workflows.create", {
@@ -468,7 +468,7 @@ test("readme: pictures of the app", async () => {
       },
     ],
   })
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
+  await page.getByTestId("page-workflows").click()
   await page.getByTestId("wf-open").first().click()
   await expect(page.getByTestId("wf-node").first()).toBeVisible()
   for (let i = 0; i < 3; i++) await page.getByTestId("wf-zoom-out").click()

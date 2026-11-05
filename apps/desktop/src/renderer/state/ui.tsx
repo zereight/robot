@@ -1,5 +1,6 @@
 import {
   builtInSection,
+  listPage,
   type MoveDirection,
   NARROW_WIDTH,
   type Page,
@@ -30,7 +31,7 @@ export const loadUi = async () => {
   return { ui, servers }
 }
 
-/** A routine or workflow that the page of routines and workflows shows and focuses. */
+/** A routine or workflow that its own page shows and focuses. */
 export interface RevealTarget {
   readonly kind: "routine" | "workflow"
   readonly id: string
@@ -146,10 +147,10 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     },
     selectPage: (page: Page) => update({ page }),
     revealTarget,
-    /** Opens the page of routines and workflows at one routine or workflow (spec 014). */
+    /** Opens the page of one routine or one workflow (spec 014). */
     reveal: (target: RevealTarget) => {
       setRevealTarget(target)
-      update({ page: "workflows" })
+      update({ page: listPage(target.kind) })
     },
     clearReveal: () => setRevealTarget(undefined),
     toggleSection: (sectionId: string) =>

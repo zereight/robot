@@ -31,6 +31,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
+import shell from "../shell/shell.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
@@ -625,7 +626,7 @@ export const RoutinesView = () => {
   }
 
   return (
-    <div class={styles.page} data-testid="routines-view">
+    <div class={`${shell.page} ${styles.page}`} data-testid="routines-view">
       <div class={styles.bar}>
         <Segmented
           label={t("routines.view")}

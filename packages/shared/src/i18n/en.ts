@@ -81,6 +81,7 @@ export const en = {
 
   "page.chats": "Agents and chats",
   "page.workflows": "Workflows",
+  "page.routines": "Routines",
   "page.tasks": "Tasks",
   "page.usage": "Usage",
   "page.help": "Help",
@@ -1271,9 +1272,6 @@ export const en = {
   "error.routine_not_found": "This routine does not exist any more.",
   "error.routine_running": "This routine is still running.",
   "error.agent_not_in_channel": "The agent is not a member of that channel.",
-  "workflows.tab.routines": "Routines",
-  "workflows.tab.workflows": "Workflows",
-  "workflows.tabs": "Routines and workflows",
   "workflows.new": "New workflow",
   "workflows.open": "Open",
   "workflows.run": "Run",

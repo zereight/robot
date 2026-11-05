@@ -40,7 +40,7 @@ test("watch routines: folder watch, change text, muted line, confirm, own model,
   const report: string[] = ["# S43 watch routines", ""]
 
   // 1. A watch on a folder, every 5 minutes, with "Post when nothing changed" and its own model.
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await page.getByTestId("routine-new").click()
   await page.getByTestId("routine-name").fill("Inbox watch")
   await page.getByTestId("routine-prompt").fill("Sort the new files.")
@@ -100,7 +100,7 @@ test("watch routines: folder watch, change text, muted line, confirm, own model,
   report.push("3. Next check with no change: a muted line, and no new request to the model.")
 
   // 4. A watch on a command needs the confirm, which shows the full command.
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await page.getByTestId("routine-new").click()
   await page.getByTestId("routine-name").fill("Missing file")
   await page.getByTestId("routine-prompt").fill("Tell me when it shows.")

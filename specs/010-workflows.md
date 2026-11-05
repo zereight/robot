@@ -6,7 +6,8 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 
 ## Concepts
 
-- **Workflow**: a name, a trigger, and a graph of steps on a canvas.
+- **Workflow**: a name, a trigger, and a graph of steps on a canvas. The workflow list is its own
+  page. The Workflows button on the rail opens it (001). The page does not show routines.
 - **Trigger**: manual, schedule (as in 009), a message in a chosen channel that matches text, or
   a web hook (see "Web hook").
 - **Step kinds**: agent step (an agent and a prompt that can use earlier results), model step (a

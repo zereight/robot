@@ -51,7 +51,6 @@ test("workflows: build, connect, zoom and pan, run, history, approval and read-o
   await expect(page.getByTestId("channel-header-name")).toHaveText("Out")
 
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await expect(page.getByTestId("wf-list-empty")).toBeVisible()
   await page.getByTestId("wf-new").click()
   await expect(page.getByTestId("wf-empty")).toBeVisible()

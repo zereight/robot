@@ -13,7 +13,10 @@ new user knows where to look.
   order of pairing. A linked tile shows the first letter of the computer's name and the
   connection state (012).
 - **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
-  (see 021), workflows, tasks, the board (see 024), the org chart (see 029), test devices (see 032), usage. At the bottom: help and settings, then the profile button
+  (see 021), workflows (see 010), routines (see 009), tasks, the board (see 024), the org chart
+  (see 029), test devices (see 032), usage. The workflows button opens the workflow list. The
+  routines button opens the routines list. Each page shows only its own list. At the bottom: help
+  and settings, then the profile button
   when the computer has two or more profiles (see 022). The Today button shows a badge with the
   number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
   above 99. It hides when a linked server is on the screen.
@@ -244,6 +247,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - Selecting a server, then a place, opens the right conversation; the selection survives a
   restart. This also holds for a linked computer.
 - The add button opens the connect dialog.
+- The Workflows button opens the workflow list. The routines list is not on that page. The
+  Routines button opens the routines list. The workflow list is not on that page.
 - At 760 px width, the panel column is closed and the rail is 56 px wide.
 - Make the agent section "Research", then use "Move to section" on one agent: the agent shows
   under "Research" and not among the other agents. After a restart, it still does.

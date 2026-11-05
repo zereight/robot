@@ -993,7 +993,7 @@ export interface RpcEvents {
   "orgChart.model": ChartModel
   "app.openPlace": PlaceTarget
   /** `serverId` is set for a page of a linked server (spec 012): the window opens it first. */
-  "app.openPage": { page: "workflows" | "teams"; serverId?: string }
+  "app.openPage": { page: "workflows" | "routines" | "teams"; serverId?: string }
   "notifications.changed": Record<string, never>
   /** The members, the plan steps or the state of a channel changed. */
   "channels.changed": { channelId: string }

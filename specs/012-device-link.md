@@ -103,7 +103,7 @@ client shows it and sends commands.
 A client sees the user sections and the pinned places of the server (001). It cannot make,
 rename, order or delete a section, move a place into another section, or pin or unpin a place.
 A client can mark a place or a message as read or as unread (001, 003). The read state follows
-the server. The Today, Board and usage page buttons and pages, and the
+the server. The Today, Board, Routines and usage page buttons and pages, and the
 other parts in the right column, show a muted line on a client: "Open this on <server name>."
 A client cannot make an agent less careful than it is now (007). For this reason an approval
 card on a client has no "Always allow" choice. If a client sends one, the server takes it as one

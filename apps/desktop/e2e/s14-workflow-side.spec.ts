@@ -7,7 +7,6 @@ import { freshUserData, launch, resizeWindow, shot } from "./harness.ts"
 
 const openEditor = async (page: Page) => {
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await page.getByTestId("wf-new").click()
   await expect(page.getByTestId("wf-editor")).toBeVisible()
 }
@@ -117,7 +116,6 @@ test("workflow editor: it fills the window, the runs sit on the right, and the c
   const korean = await launch(userData, { ROBOT_SYSTEM_LOCALE: "ko-KR" })
   await resizeWindow(korean.app, 1500, 1000)
   await korean.page.getByTestId("page-workflows").click()
-  await korean.page.getByTestId("wf-tabs").getByText("워크플로우", { exact: true }).click()
   await korean.page.getByTestId("wf-new").click()
   await expect(korean.page.getByTestId("wf-editor")).toBeVisible()
   await expect(korean.page.getByRole("separator", { name: "오른쪽 열 크기 조절" })).toBeVisible()

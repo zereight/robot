@@ -11,12 +11,17 @@ export const Page = Schema.Literals([
   "chats",
   "today",
   "workflows",
+  "routines",
   "tasks",
   "orgchart",
   "usage",
   "help",
 ])
 export type Page = typeof Page.Type
+
+/** The page that shows this list. Routines and workflows are separate pages (spec 001). */
+export const listPage = (kind: "routine" | "workflow") =>
+  kind === "routine" ? "routines" : "workflows"
 
 export const PLACE_LIST_MIN = 200
 export const PLACE_LIST_MAX = 400

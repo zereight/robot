@@ -23,7 +23,7 @@ test("watch routines: Record only shows a change in the calendar and starts no t
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, "Ada")
 
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await page.getByTestId("routine-new").click()
   await page.getByTestId("routine-name").fill("Inbox watch")
   await page.getByTestId("routine-prompt").fill("Sort the new files.")
@@ -70,7 +70,6 @@ test("workflows: a message trigger with Record only records the run and runs no 
   await expect(page.getByTestId("channel-header-name")).toHaveText("Ops")
 
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await page.getByTestId("wf-new").click()
   await page.getByTestId("wf-name").fill("On deploy")
   // A manual trigger has no switch. A message trigger has it.
@@ -91,7 +90,6 @@ test("workflows: a message trigger with Record only records the run and runs no 
   await page.getByTestId("channel-input").fill("please deploy now")
   await page.getByTestId("channel-input").press("Enter")
   await page.getByTestId("page-workflows").click()
-  await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
   await page.getByTestId("wf-open").click()
   await expect(page.getByTestId("wf-trigger-record-only")).toHaveAttribute("aria-checked", "true")
   const row = page.getByTestId("wf-run-row")

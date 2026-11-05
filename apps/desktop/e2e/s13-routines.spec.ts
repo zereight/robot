@@ -10,7 +10,7 @@ test("routines: create, preview, run now, calendar, pause, edit, delete", async 
   await connectMock(page, mock.openaiUrl, GOOD_KEY)
   await createAgent(page, "Ada")
 
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await expect(page.getByTestId("routines-empty")).toBeVisible()
   await page.getByTestId("routine-new").click()
   await page.getByTestId("routine-name").fill("Morning check")
@@ -38,7 +38,7 @@ test("routines: create, preview, run now, calendar, pause, edit, delete", async 
   await expect(page.getByTestId("tasks-table")).toContainText("Done", { timeout: 15_000 })
 
   // The calendar shows the run, and planned runs.
-  await page.getByTestId("page-workflows").click()
+  await page.getByTestId("page-routines").click()
   await page.getByTestId("routine-view").getByText("Week").click()
   await expect(page.getByTestId("routine-calendar")).toBeVisible()
   await expect(page.locator("[data-testid=calendar-entry][data-state=done]")).toHaveCount(1)

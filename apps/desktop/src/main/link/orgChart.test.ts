@@ -119,7 +119,7 @@ describe("a client and the org chart of a server (spec 029, 012)", () => {
     expect((PUSHED_EVENTS as readonly string[]).includes("orgChart.changed")).toBe(false)
     expect((CLIENT_BLOCKED_PAGES as readonly string[]).includes("orgchart")).toBe(false)
     // The other pages of the window that a client cannot use stay blocked.
-    expect([...CLIENT_BLOCKED_PAGES]).toEqual(["today", "usage"])
+    expect([...CLIENT_BLOCKED_PAGES]).toEqual(["today", "routines", "usage"])
     expect(CLIENT_METHODS.filter((m) => m.startsWith("orgChart."))).toEqual(["orgChart.model"])
   })
 

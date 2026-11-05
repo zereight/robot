@@ -249,7 +249,6 @@ test("effort levels and the model list: order, older models, New, hide, nearest 
 
     // 8. A step of a workflow lists every level.
     await page.getByTestId("page-workflows").click()
-    await page.getByTestId("wf-tabs").getByText("Workflows", { exact: true }).click()
     await page.getByTestId("wf-new").click()
     await page.getByTestId("wf-name").fill("Effort check")
     await page.getByTestId("wf-add-agent").click()
@@ -287,7 +286,6 @@ test("effort levels and the model list: order, older models, New, hide, nearest 
     await shot(page, "s93-09-models-part-ko")
     await page.getByTestId("settings-close").click()
     await page.getByTestId("page-workflows").click()
-    await page.getByTestId("wf-tabs").getByText("워크플로우", { exact: true }).click()
     await page.getByTestId("wf-open").click()
     await page.getByTestId("wf-node").first().click()
     await page.getByTestId("wf-step-effort").waitFor()
