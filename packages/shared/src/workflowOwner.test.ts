@@ -90,9 +90,9 @@ describe("who takes part in a workflow (spec 010, Owner and participants)", () =
     expect(ids(agent("bo"), model({ agents: [{ id: "bo", archived: true }] }))).toEqual([])
   })
 
-  test("an owner who is gone counts as no owner", () => {
-    expect(ids(org("gone"))).toEqual(["ada", "bo", "cy", "dee", "eve"])
-    expect(ids(agent("gone"))).toEqual(["ada", "bo", "cy", "dee", "eve"])
+  test("an owner that the model does not hold has no participants: the caller reads an owner that exists", () => {
+    expect(ids(org("gone"))).toEqual([])
+    expect(ids(agent("gone"))).toEqual([])
   })
 
   test("isParticipant answers for one agent", () => {

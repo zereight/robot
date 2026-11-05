@@ -25,9 +25,9 @@ export interface ParticipantModel {
 }
 
 /**
- * The agents that may be the agent of an agent step. An archived agent never is. An owner that is
- * not in the model any more counts as no owner, so the workflow is shared again (spec 010, "When
- * the owner is gone").
+ * The agents that may be the agent of an agent step. An archived agent never is. The owner is one
+ * that exists (`Workflow.owner` is none when the organization or the agent is gone, spec 010, "When
+ * the owner is gone"). An owner that the model does not hold has no participants.
  */
 export const workflowParticipants = (
   owner: WorkflowOwner | null,
@@ -35,10 +35,10 @@ export const workflowParticipants = (
 ): ReadonlySet<string> => {
   const archived = new Set(model.agents.filter((a) => a.archived === true).map((a) => a.id))
   const alive = new Set(model.agents.filter((a) => a.archived !== true).map((a) => a.id))
-  if (owner?.kind === "agent" && model.agents.some((a) => a.id === owner.id))
-    return new Set(alive.has(owner.id) ? [owner.id] : [])
-  const own = owner?.kind === "organization" ? model.orgs.find((o) => o.id === owner.id) : undefined
-  if (!own) return alive
+  if (owner === null) return alive
+  if (owner.kind === "agent") return new Set(alive.has(owner.id) ? [owner.id] : [])
+  const own = model.orgs.find((o) => o.id === owner.id)
+  if (!own) return new Set()
   const leads = model.orgs
     .filter((o) => o.id !== own.id)
     .map((o) => effectiveLead(o, archived))

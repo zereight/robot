@@ -201,6 +201,10 @@
   font-size: var(--text-xs);
 }
 
+.nodeWarn {
+  color: var(--c-danger);
+}
+
 .nodeName {
   overflow: hidden;
   text-overflow: ellipsis;

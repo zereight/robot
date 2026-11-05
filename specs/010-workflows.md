@@ -77,7 +77,9 @@ this spec.
   hook) and the assistant (flow 4) are no participants and need no right. The user can always
   edit and run the workflow, and any agent can be the assistant.
 - **In the editor**: the agent list of an agent step shows the participants only. A step that names
-  an agent who is not a participant shows "Not a participant" on its node.
+  an agent who is not a participant shows "Not a participant" on its node, in the place of the
+  kind of the step. The agent that the step names stays in its list, with "Not a participant"
+  after the name, so that the user can read the step. The user cannot pick that line again.
 - **In a run**: the app reads the participants when an agent step starts. A step whose agent is
   not a participant fails with the reason "Not a participant", and no task starts. The step rules
   of "Rules" apply to it, so "Continue on failure" lets the run go on.
