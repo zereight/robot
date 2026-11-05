@@ -250,7 +250,7 @@ export const copyKey = (orgKey: string, agentId: string) => `${orgKey}/${agentId
 
 /** The rule goes into the model only when it is "Along the organizations"; "Any agent" is the absence. */
 const ruleOf = (snapshot: OrgSnapshot): { handOffRule?: HandOffRule } =>
-  snapshot.handOffRule === "channels" ? { handOffRule: "channels" } : {}
+  snapshot.handOffRule === "organizations" ? { handOffRule: "organizations" } : {}
 
 /**
  * Turns a snapshot into the nodes and lines of the chart (spec 029): the root, the organization

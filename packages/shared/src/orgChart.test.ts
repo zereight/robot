@@ -560,7 +560,7 @@ describe("a stored tree that breaks the rules (spec 030, 'Repair')", () => {
 describe("the hand-off rule", () => {
   test("the rule 'along the organizations' goes into the model; 'any' is the absence", () => {
     const some = snap({ agents: [agent("a")] })
-    expect(buildChart({ ...some, handOffRule: "channels" }).handOffRule).toBe("channels")
+    expect(buildChart({ ...some, handOffRule: "organizations" }).handOffRule).toBe("organizations")
     expect(buildChart({ ...some, handOffRule: "any" }).handOffRule).toBeUndefined()
     expect(buildChart(some).handOffRule).toBeUndefined()
   })
