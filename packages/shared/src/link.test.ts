@@ -198,6 +198,10 @@ describe("client requests", () => {
     expect(isChangeMethod("memory.check.set")).toBe(true)
     expect(isClientMethod("memory.check.now")).toBe(false)
     // A client hears about workflows and runs.
+    expect(CLIENT_METHODS).toContain("followups.list")
+    expect(CLIENT_METHODS).toContain("followups.remove")
+    expect(isChangeMethod("followups.remove")).toBe(false)
+    expect(PUSHED_EVENTS).toContain("followups.changed")
     expect(PUSHED_EVENTS).toContain("workflows.changed")
     expect(PUSHED_EVENTS).toContain("workflows.run")
     // The event that tells one device about its switch goes to that device only.

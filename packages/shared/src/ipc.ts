@@ -17,6 +17,7 @@ import type {
 } from "./channelTools.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
+import type { FollowUp } from "./followUp.ts"
 import type { Handbook, HandbookVersion } from "./handbook.ts"
 import type { HandoverOpen, HandoverState } from "./handover.ts"
 import type { AgentPick, ImportChecklist } from "./importReview.ts"
@@ -472,6 +473,13 @@ export interface RpcMethods {
   "tasks.requestChanges": { input: { id: string; text: string }; output: undefined }
   /** Cancels every task of the request of this task that is not final (spec 004, 005). */
   "tasks.endRequest": { input: { id: string }; output: undefined }
+  /**
+   * The follow-ups that wait in the details of one task (spec 005, "Follow-up"). A linked device
+   * may call it: the rows stay on the computer that runs them.
+   */
+  "followups.list": { input: { taskId: string }; output: readonly FollowUp[] }
+  /** Deletes one follow-up. No task starts for it. A linked device may call it (spec 005, 012). */
+  "followups.remove": { input: { id: string }; output: undefined }
   "channels.list": { input: { serverId: string }; output: readonly Channel[] }
   "channels.create": { input: ChannelCreate; output: Channel }
   "channels.update": { input: { id: string; patch: ChannelPatch }; output: Channel }

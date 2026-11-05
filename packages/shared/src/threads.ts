@@ -40,6 +40,11 @@ export interface ChatThread {
   readonly fork: { readonly threadId: string | null; readonly messageId: string } | null
   readonly unread: number
   readonly busy: ThreadBusy | null
+  /**
+   * True while the turn that runs here is a follow-up (spec 003, 005). The working line then says
+   * that the agent looks again.
+   */
+  readonly followUp: boolean
   /** The marks that the thread holds: a thread is a place of its own (spec 007). */
   readonly marks: PlaceMarks
   /** The task of the thread that waits in the queue, and what it waits behind (spec 005). */
@@ -57,6 +62,8 @@ export interface ChatThreads {
   readonly main: {
     readonly unread: number
     readonly busy: ThreadBusy | null
+    /** True while the turn that runs in the main thread is a follow-up (spec 003, 005). */
+    readonly followUp: boolean
     readonly queued?: QueuedLine | null
   }
   /** Threads other than the main thread, the newest first. Archived threads too. */
