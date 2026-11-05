@@ -7,6 +7,7 @@ import {
   freshUserData,
   type Launched,
   launch,
+  pickRole,
   resizeWindow,
   shot,
   shotsDir,
@@ -252,6 +253,22 @@ const scenario = (words: Words) => async () => {
     report.push(
       "8. In a channel: handbook, then the instructions of the agent, then those of the channel.",
     )
+
+    // ---- the role line: a label, and no text of a turn (spec 002, "Role label") ----
+    const role = `Role ${Date.now()}`
+    // Back to the direct chat of Ada: the profile of an agent opens from its own chat.
+    await page.locator('[data-place-row][data-place-name="Ada"]').click()
+    await page.getByTestId("chat-header-agent").click()
+    await expect(page.getByTestId("agent-profile")).toBeVisible()
+    await pickRole(page, role)
+    await page.getByTestId("agent-submit").click()
+    await expect(page.getByTestId("agent-profile")).toBeHidden()
+    await send(page, "fourth")
+    await settled(page)
+    const withRole = lastSystem(mock)
+    expect(withRole).not.toContain(role)
+    expect(withRole).toContain("Be brief.")
+    report.push("9. A role line is on the agent, and no text of the turn holds it.")
   } finally {
     writeReport(`s66-handbook-${words.shots}`, report)
     await app.close()

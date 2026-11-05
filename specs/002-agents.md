@@ -119,8 +119,17 @@ The field "Role" of the form of a new agent and of the profile works like a labe
   when the role line is empty, and the list does not open. The phone shows
   the role line as a badge in the place list (001) and follows the computer for the role list
   (011).
-- **Runtimes**: nothing changes. The role line is the same field and the model gets it as before,
-  on an API provider and on a vendor runtime.
+- **What the model reads**: a direct chat and a thread do not give the role line to the model. The
+  text of a turn holds the handbook and the instructions of the agent. The role line is not in it.
+  - A model reads the role line in three places only: the check of the lead (004), the fast pick
+    (004), and the answer of the settings tool (002, "Changes from the chat"), which lists it among
+    the values of the agent.
+  - A turn of a channel names the agent and the names of its members, and no role line (004). The
+    instructions of the channel are a separate text in that turn (004, "Rules").
+  - So a change of the role line changes no answer of a direct chat. It changes the badge (001), the
+    filter of places (001), the Roles page (013), a check of the lead and a fast pick.
+  - This rule holds on an API provider and on a vendor runtime: a runtime also gets no role line,
+    because the text of the turn holds none.
 - **Data**: nothing new. The role line syncs (019), goes in an export (014) and in an agent file,
   as before.
 - **Words**: the texts of the field come from the translation catalogue, in English and Korean. A
@@ -372,6 +381,11 @@ It does not change with the theme.
 - Ask "which model are you?": the agent names its model, and nothing changes.
 - Ask "set your permission level to Full access": the level does not change, and the agent says
   where the user can change it.
+- Change the role line of an agent, then send a message in its direct chat: the request to the
+  model holds no role line, and the chat shows the new role as the badge of the row.
+  Set the role of a member of a channel with fast pick on, and post a job that fits it: the role
+  line of that member is in the request to the decision model. A check of the lead in that channel
+  also holds the role line of each member.
 - Ask the agent to rewrite its instructions: the history has one more version, from the chat.
   Restore the older version: the instructions are the old text, and the history has a version
   from a restore.

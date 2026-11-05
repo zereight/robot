@@ -217,7 +217,7 @@ packages/link/       The device link: identity, pairing, encrypted messages
 packages/phone/      The phone's side of the link: hub, places, cache
 packages/teams-bridge/  A stand-alone Teams reader for tests (not part of the app)
 specs/               Behaviour specs: the only source for implementation
-docs/                Spec questions, release process, formats, measures
+docs/                Spec questions, release process, formats, measures, what an agent is
 ```
 
 ### App icon
