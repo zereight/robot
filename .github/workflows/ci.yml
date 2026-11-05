@@ -35,7 +35,5 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
-      # Sizes of the built files against apps/desktop/perf/size-baseline.json (docs/performance.md).
-      # Times, CPU use and memory are measured by hand with "bun run perf" and never fail CI.
+      # Sizes, times, CPU use and memory are measured by hand and never fail CI (docs/performance.md).
       - run: bun run build
-      - run: bun run sizes

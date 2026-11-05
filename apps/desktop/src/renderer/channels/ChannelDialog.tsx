@@ -5,20 +5,17 @@ import {
   CHANNEL_PICTURE_EDGE,
   CHANNEL_TOPIC_MAX,
   type Channel,
-  channelParent,
   charLength,
   filterAgents,
-  type ParentRefusal,
-  parentChoices,
 } from "@robot/shared"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
 import { call } from "../lib/rpc.ts"
+import { AgentName, useShownText } from "../orgs/AgentName.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { useUi } from "../state/ui.tsx"
 import { ChannelMark } from "../ui/ChannelMark.tsx"
@@ -26,9 +23,7 @@ import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
-import { ChannelToolsPart } from "./ChannelTools.tsx"
 import styles from "./channels.module.css"
-import { limitFieldValid, limitPatch, limitText as textOfLimit } from "./limit.ts"
 
 /** Makes a channel, or changes the name, topic, members and lead of one. */
 export const ChannelDialog = (props: { channel?: Channel; onClose: () => void }) => {
@@ -36,7 +31,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const ui = useUi()
   const devices = useDevices()
   const agents = useAgents()
-  const channels = useChannels()
+  const shownText = useShownText()
   const [name, setName] = createSignal(props.channel?.name ?? "")
   const [topic, setTopic] = createSignal(props.channel?.topic ?? "")
   const [instructions, setInstructions] = createSignal(props.channel?.instructions ?? "")
@@ -45,40 +40,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const [leadId, setLeadId] = createSignal<string | null>(props.channel?.leadId ?? null)
   const [sectionId, setSectionId] = createSignal<string | null>(props.channel?.sectionId ?? null)
   const [reviewParts, setReviewParts] = createSignal(props.channel?.reviewParts ?? false)
-  // The parent of the tree as it is now: a stored parent that is gone shows as "None" (spec 030).
-  const [parentId, setParentId] = createSignal<string | null>(
-    props.channel ? channelParent(channels.channels(), props.channel.id) : null,
-  )
-  /**
-   * The choices of "Parent channel": the other channels by name, each with the reason when the
-   * rules of the tree do not allow it. A channel that is not made yet has no lower channel.
-   */
-  const parents = createMemo(() => {
-    const all = channels.channels()
-    const reasons = new Map(
-      parentChoices(all, props.channel?.id ?? "").map((c) => [c.id, c.refusal]),
-    )
-    return all
-      .filter((c) => reasons.has(c.id))
-      .map((c) => ({ channel: c, refusal: reasons.get(c.id) }))
-      .sort((a, b) =>
-        a.channel.name.localeCompare(b.channel.name, undefined, { sensitivity: "base" }),
-      )
-  })
-  const reasonKey = (refusal: ParentRefusal) =>
-    refusal === "loop" ? "channels.parent.loop" : "channels.parent.levels"
-  /** The parent to send: unchanged when the user did not touch the field. */
-  const parentField = () =>
-    props.channel && parentId() === channelParent(channels.channels(), props.channel.id)
-      ? {}
-      : { parentId: parentId() }
-  // The daily token limit (spec 030): off by default. On, it takes a whole number in a range.
-  const was = props.channel?.dailyTokenLimit ?? null
-  const [limitOn, setLimitOn] = createSignal(was !== null)
-  const [limitText, setLimitText] = createSignal(textOfLimit(was))
-  const limitValid = () => limitFieldValid(limitOn(), limitText())
-  /** The limit to send: only when the user changed it. */
-  const limitField = () => limitPatch(was, limitOn(), limitText())
   const [leadAnswers, setLeadAnswers] = createSignal(props.channel?.leadAnswers ?? true)
   const [error, setError] = createSignal<ErrorText>()
   const [busy, setBusy] = createSignal(false)
@@ -118,8 +79,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
     charLength(name().trim()) >= 1 &&
     charLength(name().trim()) <= CHANNEL_NAME_MAX &&
     charLength(topic().trim()) <= CHANNEL_TOPIC_MAX &&
-    charLength(instructions()) <= CHANNEL_INSTRUCTIONS_MAX &&
-    limitValid()
+    charLength(instructions()) <= CHANNEL_INSTRUCTIONS_MAX
   // Members that the search hides stay chosen: the choice lives in `members`, not in the list.
   const shown = createMemo(() => filterAgents(agents.agents(), query()))
   const toggle = (agent: Agent) => {
@@ -155,8 +115,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             // A client sets it only with the switch "Can create and change agents" (spec 012).
             leadAnswers: leadAnswers(),
             ...sectionField(),
-            ...parentField(),
-            ...limitField(),
           },
         })
       } else {
@@ -170,8 +128,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
           memberIds: members(),
           leadId: leadId(),
           ...sectionField(),
-          ...(parentId() ? { parentId: parentId() } : {}),
-          ...limitField(),
         })
         ui.selectPlace({ kind: "channel", id: channel.id })
       }
@@ -275,7 +231,9 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
                           data-testid={`channel-member-${agent.name}`}
                         />
                         <Face face={agent.face} image={agent.faceImage} size={20} />
-                        <span class={styles.memberName}>{agent.name}</span>
+                        <span class={styles.memberName}>
+                          <AgentName id={agent.id} name={agent.name} />
+                        </span>
                         <Show when={agent.role}>
                           <span class={styles.memberRole}>{agent.role}</span>
                         </Show>
@@ -309,42 +267,12 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             <For each={agents.agents().filter((a) => members().includes(a.id))}>
               {(a) => (
                 <option value={a.id} selected={leadId() === a.id}>
-                  {a.name}
+                  {shownText(a.id, a.name)}
                 </option>
               )}
             </For>
           </select>
           <span class={styles.hint}>{t("channels.lead.hint")}</span>
-        </label>
-        <label class={styles.field}>
-          <span class={styles.label}>{t("channels.parent")}</span>
-          <select
-            class={styles.input}
-            onChange={(e) => setParentId(e.currentTarget.value || null)}
-            data-testid="channel-parent"
-          >
-            <option value="" selected={parentId() === null}>
-              {t("channels.parent.none")}
-            </option>
-            <For each={parents()}>
-              {(choice) => (
-                <option
-                  value={choice.channel.id}
-                  selected={parentId() === choice.channel.id}
-                  disabled={choice.refusal !== undefined && parentId() !== choice.channel.id}
-                  data-refusal={choice.refusal ?? ""}
-                >
-                  {choice.refusal
-                    ? t("channels.parent.option", {
-                        name: choice.channel.name,
-                        reason: t(reasonKey(choice.refusal)),
-                      })
-                    : choice.channel.name}
-                </option>
-              )}
-            </For>
-          </select>
-          <span class={styles.hint}>{t("channels.parent.hint")}</span>
         </label>
         <label class={styles.field}>
           <span class={styles.label}>{t("channels.instructions")}</span>
@@ -368,42 +296,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             </span>
           </span>
         </label>
-        <div class={styles.field} data-testid="channel-daily-limit">
-          <span class={styles.label}>{t("channels.dailyLimit")}</span>
-          <div class={styles.limitRow}>
-            <Switch
-              label={t("channels.dailyLimit")}
-              checked={limitOn()}
-              onChange={setLimitOn}
-              testId="channel-limit-switch"
-            />
-            <Show when={limitOn()}>
-              <input
-                class={`${styles.input} ${styles.limitInput}`}
-                inputmode="numeric"
-                value={limitText()}
-                placeholder={t("channels.dailyLimit.placeholder")}
-                aria-label={t("channels.dailyLimit")}
-                aria-invalid={!limitValid()}
-                onInput={(e) => setLimitText(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  // Enter in the field sends the form, as in any other field.
-                  if (e.key === "Escape") e.stopPropagation()
-                }}
-                data-testid="channel-limit"
-              />
-            </Show>
-          </div>
-          <span class={styles.hint}>{t("channels.dailyLimit.hint")}</span>
-          <Show when={limitOn() && !limitValid()}>
-            <span class={styles.hint} role="alert" data-testid="channel-limit-error">
-              {t("error.invalid_daily_limit")}
-            </span>
-          </Show>
-        </div>
-        <Show when={props.channel}>
-          {(channel) => <ChannelToolsPart channelId={channel().id} />}
-        </Show>
         {/* The picture of a channel that exists. A client sets it with the switch (spec 012). */}
         <Show when={props.channel}>
           <div class={styles.field}>

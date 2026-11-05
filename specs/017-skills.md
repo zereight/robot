@@ -15,15 +15,16 @@ and short notes of its skills, and loads the full text of one only when the task
   - The description holds up to 140 characters. It may be empty.
   - The instructions hold 1 to 20000 characters of plain text.
   - The agents: "All agents" (the default), or a list that the user picks. The list can hold
-    agents and channels. A channel in the list gives the skill to its members and to the members
-    of its lower channels (030, "Channel tools").
+    agents and organizations. An organization in the list has the value "On" or "Off", and it gives
+    or takes away the skill for its members and for the members of its lower organizations (030,
+    "Tools").
 - **Skill chip**: a small tag with the name of a skill. It sits in the message box, and later in
   the message row.
 - A **runtime skill** is a skill that an agent runtime reports (see 006). The user cannot edit
   it here. It is not a skill of this spec.
 - **Skill list for the agent**: the names and descriptions of the usable skills that have a
-  description. "Usable" means on, and for this agent (by agent or by channel, as the slash
-  list). A skill with an empty description stays for slash use only.
+  description. "Usable" means on, and for this agent (by agent or by organization, as the
+  slash list). A skill with an empty description stays for slash use only.
 
 ## Flows
 

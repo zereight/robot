@@ -45,11 +45,13 @@ The user follows and directs agents from an iPhone or Android phone while away f
    the switch "Can create and change agents" of that computer (012). The diagram of a workflow
    (010) is on the computer only in this version.
 7. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
-   switch "Show tool steps", on at first.
-8. **Org chart**: a read-only list of the main agent, the channels with their members and leads
-   (a sub-channel indented under its parent channel, 030), the state of each agent, and the work that agents handed to each other in the last 7 days. It
-   is a list, not a canvas (see 029, "Phone"). A tap on an agent opens its chat, and a tap on a
-   channel header opens the channel. It needs only the link.
+   switch "Show tool steps", on at first, and the switch "Show the organization before an agent
+   name" (036), on at first.
+8. **Org chart**: a read-only list of the main agent, the organizations with their members and
+   leads (a sub-organization indented under its parent, 030), the state of each agent, and the work
+   that agents handed to each other in the last 7 days. It is a list, not a canvas (see 029,
+   "Phone"). A tap on an agent opens its chat. A tap on an organization header does nothing, because
+   the phone has no form of an organization. It needs only the link.
 
 ## First start
 
@@ -90,7 +92,7 @@ shows works.
 ## Same as the computer
 
 The phone follows the computer in these points: the `@all` mention in channels (004), the random
-name button and the role list for agents (002, 013), the role badge on the row of an agent (001),
+name button and the role list for agents (002, 013), the role badge on the row of an agent (001), the organization prefix of an agent (036),
 the word "archived" for channels (004), the context meter (003), "Mark as unread" (003), the
 command list (003), the main agent switch (002), the end of a request (004), the search of messages (001), and the
 line that tells how far a failed turn went, with the button "Send again" (003, 005), the box
@@ -179,8 +181,8 @@ start a handover (003) and does not make a skill from work (017). It shows the m
 - Open the thinking row of a reply: the sheet lists every thought of the turn.
 - Change the theme of the phone from dark to light: every avatar changes at once, with no motion.
   A face has a light disc, dark features and no glow. A picture does not change.
-- Open the screen "Org chart": it lists the main agent, each channel with its members and lead, and
-  the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer off, the
-  screen says so and shows no list (029).
+- Open the screen "Org chart": it lists the main agent, each organization with its members and
+  lead, and the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer
+  off, the screen says so and shows no list (029).
 - Turn off "Show tool steps" in Settings: a reply with finished steps shows one folded line per
   run, and a tap opens the cards. A step that waits still shows as its own card.

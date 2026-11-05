@@ -1,4 +1,8 @@
 import {
+  type OrgToolChoice,
+  type OrgToolValue,
+  orgPickerEntries,
+  orgPickerValues,
   SKILL_DESCRIPTION_MAX,
   SKILL_INSTRUCTIONS_MAX,
   SKILL_NAME_MAX,
@@ -9,9 +13,11 @@ import { createSignal, For, onMount, Show } from "solid-js"
 import styles from "../agents/agents.module.css"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
+import { OrgPickerRows } from "../orgs/OrgPickerRows.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -53,7 +59,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
-  const channels = useChannels()
+  const orgs = useOrgs()
   const work = props.open.kind === "work" ? props.open.source : undefined
   const edited = props.open.kind === "edit" ? props.open.skill : undefined
   const [name, setName] = createSignal(edited?.name ?? "")
@@ -61,9 +67,10 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const [instructions, setInstructions] = createSignal(edited?.instructions ?? "")
   const [all, setAll] = createSignal(edited ? edited.agentIds === null : true)
   const [chosen, setChosen] = createSignal<readonly string[]>(edited?.agentIds ?? [])
-  // The channels in the list (spec 017, 030). A channel that is gone is left out.
-  const [chosenChannels, setChosenChannels] = createSignal<readonly string[]>(
-    (edited?.channelIds ?? []).filter((id) => channels.byId(id) !== undefined),
+  // The organizations of the list with their value "On" or "Off" (spec 017, 030). One that is gone
+  // is left out. An organization that is not in the map has "Inherit".
+  const [orgValues, setOrgValues] = createSignal<ReadonlyMap<string, OrgToolValue>>(
+    orgPickerValues(edited?.organizations ?? [], (id) => orgs.byId(id) !== undefined),
   )
   const [phase, setPhase] = createSignal<"writing" | "ready" | "failed">(work ? "writing" : "ready")
   const [failure, setFailure] = createSignal<ErrorText>()
@@ -88,7 +95,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
       setInstructions(result.draft.instructions)
       setAll(false)
       setChosen([result.agentId])
-      setChosenChannels([])
+      setOrgValues(new Map())
       setOutside(result.outside)
       setPhase("ready")
     } catch (e) {
@@ -109,12 +116,12 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const toggle = (id: string) =>
     setChosen(chosen().includes(id) ? chosen().filter((x) => x !== id) : [...chosen(), id])
 
-  const toggleChannel = (id: string) =>
-    setChosenChannels(
-      chosenChannels().includes(id)
-        ? chosenChannels().filter((x) => x !== id)
-        : [...chosenChannels(), id],
-    )
+  const setOrg = (id: string, choice: OrgToolChoice) => {
+    const next = new Map(orgValues())
+    if (choice === "inherit") next.delete(id)
+    else next.set(id, choice)
+    setOrgValues(next)
+  }
 
   const save = async (event?: SubmitEvent) => {
     event?.preventDefault()
@@ -128,7 +135,13 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
         description: description(),
         instructions: instructions(),
         agentIds: all() ? null : chosen(),
-        channelIds: all() ? [] : chosenChannels(),
+        organizations: all()
+          ? []
+          : orgPickerEntries(
+              edited?.organizations ?? [],
+              orgValues(),
+              (id) => orgs.byId(id) !== undefined,
+            ),
       }
       if (edited) await call("skills.update", { id: edited.id, ...fields })
       else await call("skills.create", { serverId, ...fields })
@@ -268,30 +281,14 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
                           data-testid="skill-agent"
                           data-agent={agent.name}
                         />
-                        <span>{agent.name}</span>
-                      </label>
-                    </li>
-                  )}
-                </For>
-                <For each={channels.channels()}>
-                  {(channel) => (
-                    <li>
-                      <label class={skillStyles.agentRow}>
-                        <input
-                          type="checkbox"
-                          checked={chosenChannels().includes(channel.id)}
-                          onChange={() => toggleChannel(channel.id)}
-                          data-testid="skill-channel"
-                          data-channel={channel.name}
-                        />
-                        <span>{channel.name}</span>
-                        <span class={skillStyles.channelMark} data-testid="skill-channel-mark">
-                          {t("tools.channelMark")}
+                        <span>
+                          <AgentName id={agent.id} name={agent.name} />
                         </span>
                       </label>
                     </li>
                   )}
                 </For>
+                <OrgPickerRows prefix="skill" values={orgValues()} onChange={setOrg} />
               </ul>
             </Show>
             {under("agents")}

@@ -278,3 +278,49 @@ describe("the filter of places by role line", () => {
     expect(placeMatches(place("Cy", { role: "" }), "x")).toBe(false)
   })
 })
+
+describe("the filter of places by organization name (spec 036, Rules)", () => {
+  const list = (): PlaceSection[] => [
+    {
+      id: "channels",
+      places: [place("docs-team", { kind: "channel", id: "c1" })],
+      sections: [],
+    },
+    {
+      id: "agents",
+      places: [place("Ada", { id: "ada" }), place("Bo", { id: "bo" })],
+      sections: [{ id: "t", name: "Team", places: [place("Cy", { id: "cy", sectionId: "t" })] }],
+    },
+  ]
+  const organizationOf = (p: Place) =>
+    p.kind === "agent"
+      ? ({ ada: "Docs", cy: "Research and Development Group" }[p.id] ?? null)
+      : null
+  const agentNames = (sections: readonly PlaceSection[]) =>
+    allPlaces(sections.find((s) => s.id === "agents") as PlaceSection).map((p) => p.name)
+
+  test("an agent matches on part of the whole name of its organization, ignoring case", () => {
+    expect(agentNames(filterPlaces(list(), "docs", organizationOf))).toEqual(["Ada"])
+    expect(agentNames(filterPlaces(list(), "DOC", organizationOf))).toEqual(["Ada"])
+    // The part after the cut of the prefix still matches.
+    expect(agentNames(filterPlaces(list(), "development group", organizationOf))).toEqual(["Cy"])
+  })
+
+  test("without the lookup (the switch is off) the organization never matches", () => {
+    expect(agentNames(filterPlaces(list(), "docs"))).toEqual([])
+    expect(placeMatches(place("Ada", { id: "ada" }), "docs")).toBe(false)
+  })
+
+  test("a channel never matches on an organization, and the order does not change", () => {
+    const found = filterPlaces(list(), "docs", () => "Docs")
+    expect(
+      allPlaces(found.find((s) => s.id === "channels") as PlaceSection).map((p) => p.name),
+    ).toEqual(["docs-team"])
+    // The sections come first and the agents with no section last (spec 001); the filter keeps it.
+    expect(agentNames(filterPlaces(list(), "o", () => "Docs"))).toEqual(["Cy", "Ada", "Bo"])
+  })
+
+  test("an empty text keeps every place", () => {
+    expect(agentNames(filterPlaces(list(), "  ", organizationOf))).toEqual(["Cy", "Ada", "Bo"])
+  })
+})

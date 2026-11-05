@@ -1,14 +1,14 @@
 import {
   type AgentState,
   type ChartAgent,
-  type ChartChannel,
   type ChartLine,
+  type ChartOrg,
   countList,
   type MessageKey,
   type StateCounts,
 } from "@robot/shared"
 
-// The words of the org chart (spec 029): the state words, the counts of a channel node and the
+// The words of the org chart (spec 029): the state words, the counts of an organization node and the
 // accessible names of the nodes. They take the function `t`, so a test can check them in English
 // and in Korean. Names, role lines and task labels are text of the user and are not translated.
 
@@ -33,29 +33,29 @@ export const countsLine = (t: Translate, counts: StateCounts) =>
 export const membersWord = (t: Translate, count: number) =>
   count === 1 ? t("orgchart.members.one") : t("orgchart.members", { count })
 
-/** The name of a channel node. The node "No channel" has none of its own, so it takes its words. */
-export const channelTitle = (t: Translate, channel: ChartChannel) =>
-  channel.channelId === null ? t("orgchart.noChannel") : channel.name
+/** The name of an organization node. The node "No organization" has none of its own, so it takes its words. */
+export const orgTitle = (t: Translate, org: ChartOrg) =>
+  org.orgId === null ? t("orgchart.noOrganization") : org.name
 
 export const moreWord = (t: Translate, count: number) => t("orgchart.more", { count })
 
-/** The accessible name of a channel node: the name, the number of members and the counts. */
-export const channelLabel = (t: Translate, channel: ChartChannel) =>
+/** The accessible name of an organization node: the name, the number of members and the counts. */
+export const orgLabel = (t: Translate, org: ChartOrg) =>
   [
-    channelTitle(t, channel),
-    membersWord(t, channel.memberCount),
-    countsLine(t, channel.counts).replaceAll(" · ", ", "),
+    orgTitle(t, org),
+    membersWord(t, org.memberCount),
+    countsLine(t, org.counts).replaceAll(" · ", ", "),
   ]
     .filter((part) => part !== "")
     .join(". ")
 
 /** The accessible name of the tile "+<n> more". */
-export const moreLabel = (t: Translate, channel: ChartChannel) =>
-  t("orgchart.more.label", { count: channel.more.length, channel: channelTitle(t, channel) })
+export const moreLabel = (t: Translate, org: ChartOrg) =>
+  t("orgchart.more.label", { count: org.more.length, organization: orgTitle(t, org) })
 
 /**
  * The accessible name of an agent node: the name, the role line, the state, the mark "Lead", the
- * label of the task, the words "Also in <channel>" for each other copy, and the hand-offs.
+ * label of the task, the words "Also in <organization>" for each other copy, and the hand-offs.
  */
 export const agentLabel = (t: Translate, node: ChartAgent) =>
   [
@@ -64,7 +64,7 @@ export const agentLabel = (t: Translate, node: ChartAgent) =>
     stateWord(t, node.state),
     node.isLead ? t("orgchart.lead") : "",
     node.label ?? "",
-    ...node.alsoIn.map((channel) => t("orgchart.alsoIn", { channel })),
+    ...node.alsoIn.map((organization) => t("orgchart.alsoIn", { organization })),
     node.handedTo > 0
       ? node.handedTo === 1
         ? t("orgchart.handedTo.one")

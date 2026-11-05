@@ -7,8 +7,9 @@ The user gives an agent work in plain language and sees what the agent does whil
 ## Message rows
 
 - A row starts with the sender's avatar at the left (see 002, "Avatars"): the face of an agent, or
-  the mark of the user. Then comes a header line: name, a small "BOT" tag
-  for agents, and the time. Rows from the same sender within 5 minutes join under one header.
+  the mark of the user. Then comes a header line: name (an agent
+  shows its organization prefix before the name, see 036), a small "BOT" tag for agents, and the
+  time. Rows from the same sender within 5 minutes join under one header.
 - Day changes show as a centred date line.
 - Agent replies render Markdown: headings, lists, tables, code blocks with copy buttons, links,
   and images. The app adds no automatic image preview below a reply. An image shows only where the

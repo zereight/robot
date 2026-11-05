@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test"
+import { ORG_LIMIT_CODE } from "./orgLimit.ts"
 import {
   BLOCKED_EMPTY_CODE,
   BLOCKED_REASON_MAX,
   BLOCKED_RULE,
   blockedError,
   blockedReason,
+  blockedReasonForAgent,
   changesLabel,
   endOfTurn,
   filterTasks,
@@ -333,5 +335,15 @@ describe("queue order (spec 005)", () => {
       expect(queueRank(source, false)).toBe(2)
     expect(queueRank("routine", false)).toBe(3)
     expect(queueRank("workflow", false)).toBe(3)
+  })
+})
+
+describe("the reason of a task that the daily token limit blocked (spec 005 'Blocked', 030)", () => {
+  test("an agent that reads it gets the plain English sentence with the organization", () => {
+    expect(blockedReasonForAgent({ code: ORG_LIMIT_CODE, detail: "Docs" })).toBe(
+      "The daily token limit of Docs is used.",
+    )
+    expect(blockedReasonForAgent({ code: "blocked", detail: "no access" })).toBe("no access")
+    expect(blockedReasonForAgent(null)).toBe("")
   })
 })

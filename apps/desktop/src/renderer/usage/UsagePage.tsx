@@ -1,6 +1,6 @@
 import {
-  type ChannelUsageRow,
   type MessageKey,
+  type OrgUsageRow,
   USAGE_RANGES,
   type UsageRange,
   usageByAgent,
@@ -10,6 +10,7 @@ import {
 import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -29,14 +30,14 @@ export const UsagePage = () => {
     (key) => call("usage.summary", key),
     { initialValue: [] },
   )
-  // The channels with a daily token limit and the tokens used today (spec 006, 030). They do not
-  // depend on the range. A channel that works changes them, so they are read again.
+  // The organizations with a daily token limit and the tokens used today (spec 006, 030). They do
+  // not depend on the range. A task of a member changes them, so they are read again.
   const [limits, { refetch: refetchLimits }] = createResource(
     () => ui.server()?.id,
-    (serverId) => call("usage.channels", { serverId }).catch((): readonly ChannelUsageRow[] => []),
-    { initialValue: [] as readonly ChannelUsageRow[] },
+    (serverId) => call("usage.organizations", { serverId }).catch((): readonly OrgUsageRow[] => []),
+    { initialValue: [] as readonly OrgUsageRow[] },
   )
-  onCleanup(window.robot.on("channels.changed", () => void refetchLimits()))
+  onCleanup(window.robot.on("organizations.changed", () => void refetchLimits()))
   onCleanup(window.robot.on("tasks.changed", () => void refetchLimits()))
   const number = createMemo(() => new Intl.NumberFormat(locale()))
   const dayLabel = (day: string) => {
@@ -116,7 +117,9 @@ export const UsagePage = () => {
             <For each={usageByAgent(rows())}>
               {(a) => (
                 <tr data-testid="usage-agent-row">
-                  <th scope="row">{a.agentName}</th>
+                  <th scope="row">
+                    <AgentName id={a.agentId} name={a.agentName} />
+                  </th>
                   <td class={styles.num}>{number().format(a.replies)}</td>
                   <td class={styles.num}>{number().format(a.inputTokens)}</td>
                   <td class={styles.num}>{number().format(a.outputTokens)}</td>
@@ -138,7 +141,9 @@ export const UsagePage = () => {
                 <For each={day.agents}>
                   {(a) => (
                     <tr data-testid="usage-day-row">
-                      <th scope="row">{a.agentName}</th>
+                      <th scope="row">
+                        <AgentName id={a.agentId} name={a.agentName} />
+                      </th>
                       <td class={styles.num}>{number().format(a.replies)}</td>
                       <td class={styles.num}>{number().format(a.inputTokens)}</td>
                       <td class={styles.num}>{number().format(a.outputTokens)}</td>
@@ -160,11 +165,11 @@ export const UsagePage = () => {
       </Show>
 
       <Show when={limits().length > 0}>
-        <h2>{t("usage.channels")}</h2>
-        <table class={styles.table} data-testid="usage-channels">
+        <h2>{t("usage.orgs")}</h2>
+        <table class={styles.table} data-testid="usage-orgs">
           <thead>
             <tr>
-              <th scope="col">{t("usage.col.channel")}</th>
+              <th scope="col">{t("usage.col.org")}</th>
               <th scope="col" class={styles.num}>
                 {t("usage.col.usedToday")}
               </th>
@@ -176,12 +181,12 @@ export const UsagePage = () => {
           <tbody>
             <For each={limits()}>
               {(c) => (
-                <tr data-testid="usage-channel-row" data-channel={c.name}>
+                <tr data-testid="usage-org-row" data-org={c.name}>
                   <th scope="row">{c.name}</th>
-                  <td class={styles.num} data-testid="usage-channel-used">
+                  <td class={styles.num} data-testid="usage-org-used">
                     {number().format(c.used)}
                   </td>
-                  <td class={styles.num} data-testid="usage-channel-limit">
+                  <td class={styles.num} data-testid="usage-org-limit">
                     {number().format(c.limit)}
                   </td>
                 </tr>

@@ -9,11 +9,10 @@ The user gives a job to a group of agents in one place and watches them divide a
 - **Channel**: name (1 to 60 characters), topic (up to 200), instructions (up to 4000 characters,
   empty by default), members (agents), one optional lead agent, the setting "Review parts" (off by
   default), the setting "The lead answers questions" (on by default, see "Questions of members"),
-  the setting "Own copies for parts" (off by default, see 025), a parent channel (empty by
-  default), the tools of the channel and a daily token limit (off by default; for these three see
-  030), and an optional section: a user
+  the setting "Own copies for parts" (off by default, see 025), and an optional section: a user
   section of the Channels list (see 001, "User sections"). With no section, the channel shows in
-  the Channels list itself.
+  the Channels list itself. A channel has no parent, no tools and no token limit: what agents may
+  do and use belongs to organizations (030), and a channel is a place for jobs.
 - **Lead**: the agent that reads each new job first. It can answer itself or split the job into
   parts and give each part to a member.
 - **Part**: a child task (see 005) given to one member, with a short label and, when the lead
@@ -25,7 +24,9 @@ The user gives a job to a group of agents in one place and watches them divide a
   verdict has a reason of up to 160 characters. A verdict is a field of the part, not a state of
   the task. The part stays Done. The user's review (see "Review of parts") is a different thing:
   it has its own state, and it is the user's decision.
-- **Mention**: `@Name` in a message sends that message to the named agent directly.
+- **Mention**: `@Name` in a message sends that message to the named agent directly. The mention
+  list shows each agent with its organization prefix (036); the text that the pick makes is `@Name`
+  only.
 - **Everyone mention**: `@all` in a message gives the message to every available member. An
   available member is a member that is not archived. The mention list offers `@all` only when the
   channel has two or more members.

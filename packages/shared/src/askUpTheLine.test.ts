@@ -4,7 +4,9 @@ import {
   LINE_AGENTS_MAX,
   LINE_MS,
   type LineAgent,
+  type LineOrg,
   lineAfter,
+  lineLeadIds,
   lineLookInstruction,
   lineLookMs,
   readerAfterPass,
@@ -53,8 +55,85 @@ const next = (f: AfterPassFacts) => {
   return r.kind === "agent" ? r.agent.id : `user:${r.why}`
 }
 
+// The organizations of spec 030: Product (lead P) holds Docs (lead D), which holds Site (lead S).
+const org = (
+  id: string,
+  over: Partial<LineOrg> & { memberIds?: readonly string[] } = {},
+): LineOrg => ({
+  id,
+  name: id,
+  parentId: null,
+  memberIds: [],
+  leadId: null,
+  ...over,
+})
+
+describe("the leads on the way up from the deepest organization", () => {
+  const product = org("product", { leadId: "p", memberIds: ["p"] })
+  const docs = org("docs", { parentId: "product", leadId: "d", memberIds: ["d", "a"] })
+  const site = org("site", { parentId: "docs", leadId: "s", memberIds: ["s"] })
+
+  test("a member of Docs: the lead of Docs, then the lead of Product (030 acceptance)", () => {
+    expect(lineLeadIds([product, docs], "a")).toEqual(["d", "p"])
+  })
+
+  test("a member of Docs and Site: Site first, then Docs, then Product (030 acceptance)", () => {
+    const both = org("site", { ...site, memberIds: ["s", "a"] })
+    expect(lineLeadIds([product, docs, both], "a")).toEqual(["s", "d", "p"])
+  })
+
+  test("the walk starts at the deepest organization, not at the first one", () => {
+    const shallow = org("ops", { leadId: "o", memberIds: ["a"] })
+    const both = org("site", { ...site, memberIds: ["s", "a"] })
+    // Ops is a top organization with depth 1; Site has depth 3. Site wins (orgPrefix).
+    expect(lineLeadIds([shallow, product, docs, both], "a")).toEqual(["s", "d", "p"])
+  })
+
+  test("an organization shows once and an agent that leads two of them shows once", () => {
+    const twice = org("docs", { ...docs, leadId: "p" })
+    expect(lineLeadIds([product, twice], "a")).toEqual(["p"])
+  })
+
+  test("an organization with no lead gives nobody and the walk goes on", () => {
+    const leaderless = org("docs", { ...docs, leadId: null })
+    expect(lineLeadIds([product, leaderless], "a")).toEqual(["p"])
+  })
+
+  test("a member in no organization has no leads (the main agent comes after)", () => {
+    expect(lineLeadIds([product, docs], "x")).toEqual([])
+    expect(lineLeadIds([], "a")).toEqual([])
+  })
+
+  test("a tree that breaks the rules of the tree is read as it is now (a loop is a top one)", () => {
+    const loopA = org("a1", { parentId: "b1", leadId: "x", memberIds: ["a"] })
+    const loopB = org("b1", { parentId: "a1", leadId: "y" })
+    expect(lineLeadIds([loopA, loopB], "a")).toEqual(["x"])
+  })
+
+  test("the cut after 3 and the main agent: Site, Docs, Product, then M is skipped (030)", () => {
+    const both = org("site", { ...site, memberIds: ["s", "a"] })
+    const leads = lineLeadIds([product, docs, both], "a")
+    const candidates = [...leads, "m"].map((id) => agent(id))
+    expect(lineAfter(facts({ candidates, passes: [pass("l")] })).map((a) => a.id)).toEqual([
+      "s",
+      "d",
+      "p",
+    ])
+  })
+
+  test("the main agent comes after one lead and one parent lead (A in Docs: D, P, M)", () => {
+    const leads = lineLeadIds([product, docs], "a")
+    const candidates = [...leads, "m"].map((id) => agent(id))
+    expect(lineAfter(facts({ candidates, passes: [pass("l")] })).map((a) => a.id)).toEqual([
+      "d",
+      "p",
+      "m",
+    ])
+  })
+})
+
 describe("the line", () => {
-  test("it is the lead of each higher channel from the nearest, then the main agent", () => {
+  test("it keeps the order of the candidates: the leads from the nearest, then the main agent", () => {
     expect(lineAfter(facts()).map((a) => a.id)).toEqual(["p", "q", "m"])
   })
 
@@ -69,7 +148,7 @@ describe("the line", () => {
     expect(lineAfter(facts({ candidates })).map((a) => a.id)).toEqual(["m"])
   })
 
-  test("an agent that leads two higher channels looks once", () => {
+  test("an agent that leads two organizations looks once", () => {
     const candidates = [agent("p"), agent("p"), agent("m")]
     expect(lineAfter(facts({ candidates })).map((a) => a.id)).toEqual(["p", "m"])
   })

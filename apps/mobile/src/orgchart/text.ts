@@ -32,9 +32,9 @@ export const membersText = (t: Translate, count: number) =>
 export const countsText = (t: Translate, counts: readonly OrgCount[]) =>
   counts.map((c) => t(COUNT[c.state], { count: c.count })).join(" · ")
 
-/** The name that a block shows. The block "No channel" takes its name from the catalogue. */
-export const blockName = (t: Translate, block: Pick<OrgBlock, "channelId" | "name">) =>
-  block.channelId === null ? t("org.noChannel") : block.name
+/** The name that a block shows. The block "No organization" takes its name from the catalogue. */
+export const blockName = (t: Translate, block: Pick<OrgBlock, "orgId" | "name">) =>
+  block.orgId === null ? t("org.noOrganization") : block.name
 
 /** The line under the name of a block: the number of members and the counts by state. */
 export const blockLine = (t: Translate, block: OrgBlock) =>
@@ -59,7 +59,7 @@ export const agentLabel = (t: Translate, row: OrgAgentRow, mark?: "main") =>
 
 /** The accessible name of the row "+<n> more". */
 export const moreLabel = (t: Translate, block: OrgBlock) =>
-  t("org.more.label", { count: block.more.length, channel: blockName(t, block) })
+  t("org.more.label", { count: block.more.length, organization: blockName(t, block) })
 
 /** The accessible name of a hand-off row. */
 export const handoffLabel = (t: Translate, row: OrgHandoffRow) =>

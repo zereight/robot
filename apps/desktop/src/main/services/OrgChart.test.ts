@@ -8,13 +8,14 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database, type DatabaseService } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
+import { Organizations } from "./Organizations.ts"
 import { OrgChart } from "./OrgChart.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
 import { testRuntime } from "./testing.ts"
 
-// The org chart reads agents, channels and tasks (spec 029). These tests put rows in the
+// The org chart reads agents, organizations and tasks (spec 029). These tests put rows in the
 // database and read the snapshot, and one test runs two agents with a stand-in model to see which
 // marks the send and the reply of the tool "send message" get.
 
@@ -173,20 +174,55 @@ const setup = async (options: { connected?: boolean } = {}) => {
   )
   const emit = () =>
     run(EventBus.use((bus) => Effect.sync(() => bus.emit("tasks.changed", { serverId: local.id }))))
-  return { t, run, db, local, account, agent, task, snapshot, pushed, toLinked, emit }
+  const org = (
+    name: string,
+    memberIds: string[],
+    extra: { leadId?: string | null; parentId?: string | null } = {},
+  ) =>
+    run(
+      Organizations.use((o) =>
+        o.create({ serverId: local.id, name, memberIds, leadId: extra.leadId ?? null, ...extra }),
+      ),
+    )
+  return { t, run, db, local, account, agent, org, task, snapshot, pushed, toLinked, emit }
 }
 
-describe("agents, channels and states", () => {
+describe("agents, organizations and states", () => {
   test("a profile with no agent gives an empty snapshot", async () => {
     const s = await setup()
     expect(await s.snapshot()).toEqual({
       mainAgentId: null,
       agents: [],
-      channels: [],
+      orgs: [],
       handoffs: [],
       handOffRule: "any",
     })
     expect(buildChart(await s.snapshot()).empty).toBe(true)
+  })
+
+  test("the root is the main agent; with none, or when it is archived, the root is 'You' (spec 029, 002)", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    const bo = await s.agent("Bo")
+    expect((await s.snapshot()).mainAgentId).toBeNull()
+    expect(buildChart(await s.snapshot()).root).toBeNull()
+
+    await s.run(Agents.use((a) => a.update(ada.id, { isMain: true })))
+    expect((await s.snapshot()).mainAgentId).toBe(ada.id)
+    expect(buildChart(await s.snapshot()).root?.agentId).toBe(ada.id)
+
+    // Turn it on for Bo: the root moves to Bo in the same step.
+    await s.run(Agents.use((a) => a.update(bo.id, { isMain: true })))
+    expect((await s.snapshot()).mainAgentId).toBe(bo.id)
+
+    // An archived main agent leaves the chart: the root is "You". A restore brings the root back.
+    await s.run(Agents.use((a) => a.archive(bo.id)))
+    expect((await s.snapshot()).mainAgentId).toBeNull()
+    await s.run(Agents.use((a) => a.restore(bo.id)))
+    expect((await s.snapshot()).mainAgentId).toBe(bo.id)
+
+    await s.run(Agents.use((a) => a.update(bo.id, { isMain: false })))
+    expect((await s.snapshot()).mainAgentId).toBeNull()
   })
 
   test("an agent that is archived is not in the snapshot", async () => {
@@ -243,55 +279,79 @@ describe("agents, channels and states", () => {
     expect((await s.snapshot()).agents[0]).toMatchObject({ state: "idle", task: null })
   })
 
-  test("a channel gives its members in the order of the channel and its lead", async () => {
+  test("an organization gives its members in the order of the form, its lead and its parent", async () => {
     const s = await setup()
     const [ada, bo, cy] = [await s.agent("Ada"), await s.agent("Bo"), await s.agent("Cy")] as const
-    const channel = await s.run(
-      Channels.use((c) =>
-        c.create({
-          serverId: s.local.id,
-          name: "Docs",
-          topic: "",
-          memberIds: [cy.id, ada.id, bo.id],
-          leadId: ada.id,
-        }),
-      ),
-    )
-    const { channels } = await s.snapshot()
-    expect(channels).toEqual([
+    const product = await s.org("Product", [])
+    const docs = await s.org("Docs", [cy.id, ada.id, bo.id], {
+      leadId: ada.id,
+      parentId: product.id,
+    })
+    // The order of the rows is the order of the time of making; the model sorts by name.
+    const orgs = [...(await s.snapshot()).orgs].sort((x, y) => x.name.localeCompare(y.name))
+    expect(orgs).toEqual([
       {
-        id: channel.id,
+        id: docs.id,
         name: "Docs",
         createdAt: expect.any(Number),
         leadId: ada.id,
         memberIds: [cy.id, ada.id, bo.id],
+        parentId: product.id,
+      },
+      {
+        id: product.id,
+        name: "Product",
+        createdAt: expect.any(Number),
+        leadId: null,
+        memberIds: [],
         parentId: null,
       },
     ])
   })
 
-  test("an archived member leaves the node; the lead that is archived counts as no lead", async () => {
+  test("a channel is not on the chart: it makes no node and no event of the chart (spec 029, 031)", async () => {
     const s = await setup()
-    const [ada, bo, cy] = [await s.agent("Ada"), await s.agent("Bo"), await s.agent("Cy")] as const
+    const [ada, bo] = [await s.agent("Ada"), await s.agent("Bo")] as const
+    await s.snapshot()
     await s.run(
       Channels.use((c) =>
         c.create({
           serverId: s.local.id,
           name: "Docs",
           topic: "",
-          memberIds: [ada.id, bo.id, cy.id],
+          memberIds: [ada.id, bo.id],
           leadId: ada.id,
         }),
       ),
     )
+    const model = buildChart(await s.snapshot())
+    expect(model.orgs.map((o) => o.key)).toEqual(["o:none"])
+    expect(JSON.stringify(model)).not.toContain("Docs")
+  })
+
+  test("an archived member leaves the node; the lead that is archived counts as no lead", async () => {
+    const s = await setup()
+    const [ada, bo, cy] = [await s.agent("Ada"), await s.agent("Bo"), await s.agent("Cy")] as const
+    await s.org("Docs", [ada.id, bo.id, cy.id], { leadId: ada.id })
     await s.run(Agents.use((a) => a.archive(cy.id)))
     let model = buildChart(await s.snapshot())
-    expect(model.channels[0]?.nodes.map((n) => n.name)).toEqual(["Ada", "Bo"])
+    expect(model.orgs[0]?.nodes.map((n) => n.name)).toEqual(["Ada", "Bo"])
     await s.run(Agents.use((a) => a.archive(ada.id)))
     model = buildChart(await s.snapshot())
-    expect(model.channels[0]?.leadKey).toBeNull()
+    expect(model.orgs[0]?.leadKey).toBeNull()
     expect(model.lines.filter((l) => l.kind === "lead")).toEqual([])
-    expect(model.channels[0]?.nodes.map((n) => n.name)).toEqual(["Bo"])
+    expect(model.orgs[0]?.nodes.map((n) => n.name)).toEqual(["Bo"])
+  })
+
+  test("an organization with no member has a node; a change of an organization is pushed", async () => {
+    const s = await setup()
+    await s.snapshot()
+    await s.org("Docs", [])
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    expect(s.pushed()).toHaveLength(1)
+    expect(
+      buildChart(s.pushed()[0] as OrgSnapshot).orgs.map((o) => [o.name, o.memberCount]),
+    ).toEqual([["Docs", 0]])
   })
 })
 
@@ -400,6 +460,19 @@ describe("pushing the chart", () => {
     expect(s.pushed()[0]?.agents.map((a) => a.name)).toEqual(["Ada Lovelace"])
   })
 
+  test("the switch 'Main agent' moves the root and is pushed once to the window and to the linked devices (spec 029, 012)", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    await s.snapshot()
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    expect(s.pushed()).toHaveLength(0)
+    await s.run(Agents.use((a) => a.update(ada.id, { isMain: true })))
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    expect(s.pushed()).toHaveLength(1)
+    expect(s.pushed()[0]?.mainAgentId).toBe(ada.id)
+    expect(s.toLinked.at(-1)?.root?.agentId).toBe(ada.id)
+  })
+
   test("a hand-off that leaves the window of 7 days is pushed as gone at the next look", async () => {
     const s = await setup()
     const [ada, bo] = [await s.agent("Ada"), await s.agent("Bo")] as const
@@ -431,7 +504,7 @@ describe("the ready model for a linked computer and the phone (spec 029, 012)", 
     await s.run(Activity.use((a) => Effect.sync(() => a.setWorking(ada.id, s.local.id, true))))
     const model = await s.run(OrgChart.use((o) => o.model(NOW)))
     expect(model).toEqual(buildChart(await s.snapshot(NOW)))
-    const node = model.channels[0]?.nodes.find((n) => n.name === "Ada")
+    const node = model.orgs[0]?.nodes.find((n) => n.name === "Ada")
     expect([...(node?.label ?? "")]).toHaveLength(90)
     expect(node?.role).toBe("Writes docs")
     // The prompt of the task, written by hand as "p", is not in the model, and no task id is.
@@ -447,7 +520,7 @@ describe("the ready model for a linked computer and the phone (spec 029, 012)", 
     await s.run(Agents.use((a) => a.update(ada.id, { name: "Ada Lovelace" })))
     // A client asks before the loop looked: this must not count as a push to the window.
     const model = await s.run(OrgChart.use((o) => o.model(NOW)))
-    expect(model.channels[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
+    expect(model.orgs[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
     await s.run(OrgChart.use((o) => o.check(NOW)))
     expect(s.pushed()).toHaveLength(1)
     expect(s.pushed()[0]?.agents.map((a) => a.name)).toEqual(["Ada Lovelace"])
@@ -459,7 +532,7 @@ describe("the ready model for a linked computer and the phone (spec 029, 012)", 
     await s.run(Agents.use((a) => a.update(ada.id, { name: "Ada Lovelace" })))
     await s.run(OrgChart.use((o) => o.check(NOW)))
     expect(s.toLinked).toHaveLength(1)
-    expect(s.toLinked[0]?.channels[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
+    expect(s.toLinked[0]?.orgs[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
     expect(s.toLinked[0]).toEqual(buildChart(s.pushed()[0] as OrgSnapshot))
     // The window gets the snapshot only. The model is no event of a window.
     expect(s.t.events.some((e) => e.event === "orgChart.model")).toBe(false)
@@ -480,6 +553,6 @@ describe("the ready model for a linked computer and the phone (spec 029, 012)", 
     expect(s.pushed()).toHaveLength(0)
     // The linked devices were never told, so they get it.
     expect(s.toLinked).toHaveLength(1)
-    expect(s.toLinked[0]?.channels[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
+    expect(s.toLinked[0]?.orgs[0]?.nodes.map((n) => n.name)).toEqual(["Ada Lovelace"])
   })
 })

@@ -1,7 +1,7 @@
 import {
   type Agent,
-  CHANNEL_LIMIT_CODE,
   type MessageKey,
+  ORG_LIMIT_CODE,
   type RecentWorkRow,
   recentReason,
   recentWords,
@@ -42,11 +42,11 @@ export const RecentWork = (props: { agent: Agent; onNavigate: () => void }) => {
     return t(key, params)
   }
   // A blocked task shows its reason after the word. A task with no reason shows none.
-  // The daily token limit of a channel is a reason that the app wrote (spec 030): it shows in the
-  // language of the user.
+  // The daily token limit of an organization is a reason that the app wrote (spec 030): it shows in
+  // the language of the user.
   const reason = (row: RecentWorkRow) =>
-    row.task.state === "blocked" && row.task.error?.code === CHANNEL_LIMIT_CODE
-      ? t("error.channel_limit", { detail: row.task.error.detail })
+    row.task.state === "blocked" && row.task.error?.code === ORG_LIMIT_CODE
+      ? t("error.org_limit", { detail: row.task.error.detail })
       : recentReason(row.task) || null
   const open = (row: RecentWorkRow) => {
     setOpenTarget({ kind: "task", id: row.task.id })

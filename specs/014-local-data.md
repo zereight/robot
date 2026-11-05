@@ -81,11 +81,13 @@ The user owns their data. It lives on their computer, it is easy to back up, and
 
 - Logs are files in a logs folder inside the data folder. The user opens the folder from settings
   (see 013). Each log has a size limit; the oldest lines go first.
-- There is one log for each of these areas: channels, browser, workflows, outside programs, and
-  the Teams link.
+- There is one log for each of these areas: channels, organizations, browser, workflows, outside
+  programs, and the Teams link.
   - Channels: one line for each answer of the decision model (see 004), and one line for each
-    look of the lead at a question of a member (004). It holds no job text, no question text, no
-    answer text and no key.
+    look of the lead at a question of a member (004), and one line for each look of an agent on the
+    line (030). It holds no job text, no question text, no answer text and no key.
+  - Organizations: one line for each repair of the tree and one line for each send that the
+    hand-off rule refused (030). It holds no message text.
   - Browser: failed tool calls, Stop requests with their result, warnings, and live view input
     that the app dropped or refused (see 007).
   - Workflows: retries, final failures of model steps and conditions (see 010).
@@ -104,12 +106,12 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   the connections without their secret values.
 - The cards of the board and their comments (024) are in the archive, with their numbers and
   their links to tasks. An import restores them.
-- The org chart (029) holds no data of its own. It is drawn from agents, channels and tasks, which
-  the archive holds. So the archive has no part for it, and an import into an empty profile draws
+- The org chart (029) holds no data of its own. It is drawn from agents, organizations and tasks,
+  which the archive holds. So the archive has no part for it, and an import into an empty profile draws
   the same chart.
-- The organization (030) is in the archive: the parent channel and the daily token limit of each
-  channel, the hand-off rule, the switch "Ask up the line", and the channels in the agent lists of
-  skills and connections. An import restores them.
+- The organizations (030) are in the archive: each one with its name, members, lead, parent, hand-off
+  range and daily token limit, the hand-off rule, the switch "Ask up the line", and the
+  organizations in the agent lists of skills and connections. An import restores them.
 - The memory history in the archive follows the rule for secrets above: text that looks like a
   secret is replaced with "[redacted]".
 - Import of a ROBot export into an empty profile (022) restores everything except secrets. Every

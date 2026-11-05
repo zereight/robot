@@ -106,7 +106,7 @@ describe("the skill list of a turn (spec 017, flow 8)", () => {
     description,
     instructions,
     agentIds: null,
-    channelIds: [],
+    organizations: [],
     enabled: true,
     createdAt: 0,
   })

@@ -5,6 +5,8 @@ import {
   ClientAgentPatch,
   ClientChannelCreate,
   ClientChannelPatch,
+  ClientOrgCreate,
+  ClientOrgPatch,
   isLooser,
   MEMORY_TEXT_MAX,
   type ModelChoice,
@@ -21,6 +23,7 @@ import { AppError } from "../services/errors.ts"
 import { Handbook } from "../services/Handbook.ts"
 import { Memory, MemoryFilterSchema } from "../services/Memory.ts"
 import { MemoryCheck } from "../services/MemoryCheck.ts"
+import { Organizations } from "../services/Organizations.ts"
 import { Providers } from "../services/Providers.ts"
 import { Servers } from "../services/Servers.ts"
 
@@ -237,6 +240,30 @@ export const changeHandlers: Record<string, ChangeHandler> = {
         input,
       )
       return yield* Channels.use((c) => c.update(id, patch))
+    }),
+
+  // Make, edit and delete an organization (spec 012, 030). The service checks the rules of the tree.
+  "organizations.create": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const data = yield* strict(ClientOrgCreate)(input)
+      yield* ownServer(data.serverId)
+      return yield* Organizations.use((o) => o.create(data))
+    }),
+
+  "organizations.update": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const { id, patch } = yield* strict(Schema.Struct({ id: Id, patch: ClientOrgPatch }))(input)
+      return yield* Organizations.use((o) => o.update(id, patch))
+    }),
+
+  "organizations.delete": (input) =>
+    E.gen(function* () {
+      yield* allowed
+      const { id } = yield* strict(ById)(input)
+      yield* Organizations.use((o) => o.remove(id))
+      return undefined
     }),
 
   "channels.setPicture": (input) =>

@@ -1,4 +1,4 @@
-import { buildChart, type ChartModel, type OrgSnapshot } from "@robot/shared"
+import { buildChart, type ChartModel, isOrgModel, type OrgSnapshot } from "@robot/shared"
 import {
   createContext,
   createEffect,
@@ -60,7 +60,10 @@ const createOrgChartState = () => {
   onCleanup(
     window.robot.on("orgChart.model", (next, from) => {
       const id = wanted()
-      if (id && isForView(id, from)) feed.pushed(next)
+      if (!id || !isForView(id, from)) return
+      // A server of an older step sends a chart of channels: the page says "Open this on <server>".
+      if (isOrgModel(next)) feed.pushed(next)
+      else setUnsupported(true)
     }),
   )
   // A server that comes back online is asked again: the pushes of the time away were not seen.
@@ -73,7 +76,10 @@ const createOrgChartState = () => {
       }
       const question = feed.begin()
       call("orgChart.model", { serverId })
-        .then((model) => void feed.answered(question, model))
+        .then((model) => {
+          if (isOrgModel(model)) void feed.answered(question, model)
+          else if (feed.current(question)) setUnsupported(true)
+        })
         .catch((error) => {
           if (!feed.current(question)) return
           // A server that did not know the request answers "Not allowed" (spec 012, "Messages").

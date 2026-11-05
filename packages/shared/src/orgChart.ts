@@ -1,13 +1,13 @@
 import type { AgentState, Face } from "./agents.ts"
-import { treeParents } from "./channelTree.ts"
 import { DEFAULT_HAND_OFF_RULE, type HandOffRule } from "./organization.ts"
+import { orgParents } from "./orgTree.ts"
 
 // The org chart (spec 029). The chart stores nothing. A snapshot is read from the agents, the
-// channels and the tasks of a server. The functions below turn a snapshot into the nodes and lines
+// organizations (spec 030) and the tasks of a server. The functions below turn a snapshot into the nodes and lines
 // of the chart. They hold no layout: the window computes the positions.
 
-/** A channel node draws at most this many agent nodes. More members go behind the tile "+<n> more". */
-export const ORG_CHANNEL_NODES_MAX = 12
+/** An organization node draws at most this many agent nodes. More members go behind the tile "+<n> more". */
+export const ORG_NODES_MAX = 12
 /** The chart draws at most this many hand-off lines. */
 export const ORG_HANDOFF_LINES_MAX = 40
 /** A hand-off counts for this many days after its task was made. The window is not a setting. */
@@ -15,7 +15,7 @@ export const ORG_HANDOFF_DAYS = 7
 export const ORG_HANDOFF_WINDOW_MS = ORG_HANDOFF_DAYS * 24 * 60 * 60 * 1000
 /** The label of a running task is cut at this many characters. */
 export const ORG_LABEL_MAX = 90
-/** A state of an agent, in the order that the counts of a channel node use. */
+/** A state of an agent, in the order that the counts of an organization node use. */
 export const ORG_STATES = [
   "working",
   "waiting",
@@ -43,15 +43,15 @@ export interface OrgAgent {
   readonly task: OrgTask | null
 }
 
-/** One channel. Its members are the members that are not archived. */
-export interface OrgChannel {
+/** One organization. Its members are the members that are not archived. */
+export interface OrgChartOrg {
   readonly id: string
   readonly name: string
   readonly createdAt: number
   /** The lead, or null. A lead that is archived or not a member counts as no lead. */
   readonly leadId: string | null
   readonly memberIds: readonly string[]
-  /** The parent channel as stored (spec 030), or null. One that is not in the snapshot counts as none. */
+  /** The parent organization as stored (spec 030), or null. One that is not in the snapshot counts as none. */
   readonly parentId: string | null
 }
 
@@ -69,7 +69,7 @@ export interface OrgSnapshot {
   /** The main agent, or null. With none (or an archived one) the root is "You". */
   readonly mainAgentId: string | null
   readonly agents: readonly OrgAgent[]
-  readonly channels: readonly OrgChannel[]
+  readonly orgs: readonly OrgChartOrg[]
   readonly handoffs: readonly OrgHandoff[]
   /** The hand-off rule (spec 030). Absent counts as "Any agent", as for a server of an older step. */
   readonly handOffRule?: HandOffRule
@@ -79,7 +79,7 @@ export interface OrgSnapshot {
 export const EMPTY_ORG_SNAPSHOT: OrgSnapshot = {
   mainAgentId: null,
   agents: [],
-  channels: [],
+  orgs: [],
   handoffs: [],
   handOffRule: DEFAULT_HAND_OFF_RULE,
 }
@@ -90,15 +90,15 @@ export const EMPTY_ORG_SNAPSHOT: OrgSnapshot = {
 
 export type StateCounts = Readonly<Record<AgentState, number>>
 
-export const NO_CHANNEL_KEY = "c:none"
+export const NO_ORG_KEY = "o:none"
 export const ROOT_KEY = "root"
 
-/** The node of an agent: the root, or one copy in a channel node. */
+/** The node of an agent: the root, or one copy in an organization node. */
 export interface ChartAgent {
-  /** The key of this node. A copy in each channel node has its own key. */
+  /** The key of this node. A copy in each organization node has its own key. */
   readonly key: string
   readonly agentId: string
-  /** The key of the channel node that holds it, or `root`. */
+  /** The key of the organization node that holds it, or `root`. */
   readonly parent: string
   readonly name: string
   readonly role: string
@@ -107,14 +107,14 @@ export interface ChartAgent {
   /** The label of the running task, cut at 90 characters. Null when the agent does not work. */
   readonly label: string | null
   readonly isLead: boolean
-  /** The names of the channels of the other copies of this agent, in the order of the page. */
+  /** The names of the organizations of the other copies of this agent, in the order of the page. */
   readonly alsoIn: readonly string[]
   /** How many agents this agent handed work to, and how many handed work to it. */
   readonly handedTo: number
   readonly gotFrom: number
 }
 
-/** A member that a channel node does not draw. A click on the tile "+<n> more" lists them. */
+/** A member that an organization node does not draw. A click on the tile "+<n> more" lists them. */
 export interface ChartOverflow {
   readonly agentId: string
   readonly name: string
@@ -122,11 +122,11 @@ export interface ChartOverflow {
   readonly state: AgentState
 }
 
-export interface ChartChannel {
-  /** `c:<channel id>`, or `c:none` for the channel node "No channel". */
+export interface ChartOrg {
+  /** `o:<organization id>`, or `o:none` for the organization node "No organization". */
   readonly key: string
-  /** Null for the channel node "No channel": the window writes its name from the catalogue. */
-  readonly channelId: string | null
+  /** Null for the organization node "No organization": the window writes its name from the catalogue. */
+  readonly orgId: string | null
   readonly name: string
   readonly memberCount: number
   readonly counts: StateCounts
@@ -137,11 +137,11 @@ export interface ChartChannel {
   /** The members that are not drawn. Empty when all are drawn. */
   readonly more: readonly ChartOverflow[]
   /**
-   * The key of the channel node of the parent channel (spec 030), or null for a top channel node
-   * and for "No channel": those hang from the root.
+   * The key of the organization node of the parent organization (spec 030), or null for a top
+   * organization node and for "No organization": those hang from the root.
    */
   readonly parentKey: string | null
-  /** 1 for a top channel node and for "No channel", 2 for a sub-channel, 3 for the next level. */
+  /** 1 for a top organization node and for "No organization", 2 for a sub-organization, 3 for the next level. */
   readonly level: number
 }
 
@@ -151,7 +151,7 @@ export interface ChartLine {
   /** Unique in the model. */
   readonly id: string
   readonly kind: ChartLineKind
-  /** The keys of the nodes at the ends. A channel node has a key too. */
+  /** The keys of the nodes at the ends. An organization node has a key too. */
   readonly from: string
   readonly to: string
   /** The number of hand-offs, for a hand-off line. */
@@ -164,15 +164,15 @@ export interface ChartLine {
 export interface ChartModel {
   /** The root: the main agent, or null for "You". */
   readonly root: ChartAgent | null
-  readonly channels: readonly ChartChannel[]
+  readonly orgs: readonly ChartOrg[]
   readonly lines: readonly ChartLine[]
   /** True when more than 40 hand-off lines were possible and the chart draws the 40 busiest. */
   readonly handoffsCapped: boolean
   /** True when no agent exists: the page shows no canvas. */
   readonly empty: boolean
   /**
-   * The hand-off rule (spec 030). With "Along the channels" the legend ends with the muted line
-   * "Hand-offs follow the channels." Absent counts as "Any agent".
+   * The hand-off rule (spec 030). With "Along the organizations" the legend ends with the muted
+   * line "Hand-offs follow the organizations." Absent counts as "Any agent".
    */
   readonly handOffRule?: HandOffRule
 }
@@ -192,8 +192,8 @@ const byName = (a: { name: string; id: string }, b: { name: string; id: string }
   return x < y ? -1 : x > y ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
 
-/** The order of the channel nodes: by name without case, the older first on a tie, then by id. */
-export const compareChannels = (a: OrgChannel, b: OrgChannel) => {
+/** The order of the organization nodes: by name without case, the older first on a tie, then by id. */
+export const compareOrgs = (a: OrgChartOrg, b: OrgChartOrg) => {
   const x = lower(a.name)
   const y = lower(b.name)
   if (x !== y) return x < y ? -1 : 1
@@ -209,46 +209,36 @@ const emptyCounts = (): Record<AgentState, number> => ({
 })
 
 /**
- * The channel nodes that a snapshot has, in the order of the page (spec 029, 030): a channel that
- * has a member that is not archived, or a lower channel with a channel node. Each top channel
- * node comes by name, and under it its sub-channel nodes by name, and so on.
+ * The organization nodes that a snapshot has, in the order of the page (spec 029, 030): every
+ * organization, also one with no member. Each top organization node comes by name, and under it its
+ * sub-organization nodes by name, and so on. A parent that breaks the rules of the tree counts as
+ * none (`orgParents`), so the page stays safe before the repair of 030.
  */
-const channelsOf = (snapshot: OrgSnapshot) => {
+const orgsOf = (snapshot: OrgSnapshot) => {
   const known = new Set(snapshot.agents.map((a) => a.id))
-  const parents = treeParents(snapshot.channels)
-  const cleaned = snapshot.channels.map((c) => {
+  const parents = orgParents(snapshot.orgs)
+  const cleaned = snapshot.orgs.map((o) => {
     const seen = new Set<string>()
-    const memberIds = c.memberIds.filter((id) => {
+    const memberIds = o.memberIds.filter((id) => {
       if (!known.has(id) || seen.has(id)) return false
       seen.add(id)
       return true
     })
     return {
-      ...c,
+      ...o,
       memberIds,
-      leadId: c.leadId && seen.has(c.leadId) ? c.leadId : null,
-      parentId: parents.get(c.id) ?? null,
+      leadId: o.leadId && seen.has(o.leadId) ? o.leadId : null,
+      parentId: parents.get(o.id) ?? null,
     }
   })
   const children = new Map<string | null, typeof cleaned>()
-  for (const c of cleaned) children.set(c.parentId, [...(children.get(c.parentId) ?? []), c])
-  for (const list of children.values()) list.sort(compareChannels)
-  const drawn = new Map<string, boolean>()
-  const hasNode = (c: (typeof cleaned)[number]): boolean => {
-    const known = drawn.get(c.id)
-    if (known !== undefined) return known
-    // `some` runs every child once its answer is needed; a child is drawn only with a node.
-    const result =
-      c.memberIds.length > 0 || (children.get(c.id) ?? []).some((child) => hasNode(child))
-    drawn.set(c.id, result)
-    return result
-  }
+  for (const o of cleaned) children.set(o.parentId, [...(children.get(o.parentId) ?? []), o])
+  for (const list of children.values()) list.sort(compareOrgs)
   const out: ((typeof cleaned)[number] & { level: number })[] = []
   const walk = (parent: string | null, level: number) => {
-    for (const c of children.get(parent) ?? []) {
-      if (!hasNode(c)) continue
-      out.push({ ...c, level })
-      walk(c.id, level + 1)
+    for (const o of children.get(parent) ?? []) {
+      out.push({ ...o, level })
+      walk(o.id, level + 1)
     }
   }
   walk(null, 1)
@@ -256,21 +246,21 @@ const channelsOf = (snapshot: OrgSnapshot) => {
 }
 
 /** The key of the node of an agent copy. */
-export const copyKey = (channelKey: string, agentId: string) => `${channelKey}/${agentId}`
+export const copyKey = (orgKey: string, agentId: string) => `${orgKey}/${agentId}`
 
-/** The rule goes into the model only when it is "Along the channels"; "Any agent" is the absence. */
+/** The rule goes into the model only when it is "Along the organizations"; "Any agent" is the absence. */
 const ruleOf = (snapshot: OrgSnapshot): { handOffRule?: HandOffRule } =>
-  snapshot.handOffRule === "channels" ? { handOffRule: "channels" } : {}
+  snapshot.handOffRule === "organizations" ? { handOffRule: "organizations" } : {}
 
 /**
- * Turns a snapshot into the nodes and lines of the chart (spec 029): the root, the channel nodes
- * with their copies of agents, the caps of 12 nodes and 40 hand-off lines, and the lines.
+ * Turns a snapshot into the nodes and lines of the chart (spec 029): the root, the organization
+ * nodes with their copies of agents, the caps of 12 nodes and 40 hand-off lines, and the lines.
  */
 export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
-  if (snapshot.agents.length === 0) {
+  if (snapshot.agents.length === 0 && snapshot.orgs.length === 0) {
     return {
       root: null,
-      channels: [],
+      orgs: [],
       lines: [],
       handoffsCapped: false,
       empty: true,
@@ -279,41 +269,41 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
   }
   const agents = new Map(snapshot.agents.map((a) => [a.id, a]))
   const main = snapshot.mainAgentId ? agents.get(snapshot.mainAgentId) : undefined
-  const channels = channelsOf(snapshot)
+  const orgs = orgsOf(snapshot)
 
-  // Which agents are in a channel node. The others go to "No channel".
-  const inChannel = new Set(channels.flatMap((c) => c.memberIds))
-  const loose = snapshot.agents.filter((a) => !inChannel.has(a.id)).sort(byName)
+  // Which agents are in an organization node. The others go to "No organization".
+  const inOrg = new Set(orgs.flatMap((o) => o.memberIds))
+  const loose = snapshot.agents.filter((a) => !inOrg.has(a.id)).sort(byName)
 
-  // The groups of the page, in order: each channel node, then "No channel".
+  // The groups of the page, in order: each organization node, then "No organization".
   interface Group {
     readonly key: string
-    readonly channelId: string | null
+    readonly orgId: string | null
     readonly name: string
     readonly leadId: string | null
     readonly members: readonly OrgAgent[]
     readonly parentKey: string | null
     readonly level: number
   }
-  const groups: Group[] = channels.map((c) => {
-    const members = c.memberIds.flatMap((id) => agents.get(id) ?? [])
+  const groups: Group[] = orgs.map((o) => {
+    const members = o.memberIds.flatMap((id) => agents.get(id) ?? [])
     // The lead first, then the other members by name without case.
-    const lead = c.leadId ? members.find((m) => m.id === c.leadId) : undefined
+    const lead = o.leadId ? members.find((m) => m.id === o.leadId) : undefined
     const rest = members.filter((m) => m !== lead).sort(byName)
     return {
-      key: `c:${c.id}`,
-      channelId: c.id,
-      name: c.name,
+      key: `o:${o.id}`,
+      orgId: o.id,
+      name: o.name,
       leadId: lead?.id ?? null,
       members: lead ? [lead, ...rest] : rest,
-      parentKey: c.parentId ? `c:${c.parentId}` : null,
-      level: c.level,
+      parentKey: o.parentId ? `o:${o.parentId}` : null,
+      level: o.level,
     }
   })
   if (loose.length > 0) {
     groups.push({
-      key: NO_CHANNEL_KEY,
-      channelId: null,
+      key: NO_ORG_KEY,
+      orgId: null,
       name: "",
       leadId: null,
       members: loose,
@@ -333,15 +323,12 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
     got.set(h.to, (got.get(h.to) ?? new Set()).add(h.from))
   }
 
-  // The names of the channels of every copy of an agent, for the line "Also in <channel>".
-  const channelsOfAgent = new Map<string, { key: string; name: string }[]>()
+  // The names of the organizations of every copy of an agent, for the line "Also in <organization>".
+  const orgsOfAgent = new Map<string, { key: string; name: string }[]>()
   for (const g of groups) {
-    if (g.channelId === null) continue
+    if (g.orgId === null) continue
     for (const m of g.members) {
-      channelsOfAgent.set(m.id, [
-        ...(channelsOfAgent.get(m.id) ?? []),
-        { key: g.key, name: g.name },
-      ])
+      orgsOfAgent.set(m.id, [...(orgsOfAgent.get(m.id) ?? []), { key: g.key, name: g.name }])
     }
   }
 
@@ -355,25 +342,25 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
     state: a.state,
     label: a.task ? cutLabel(a.task.label) || null : null,
     isLead,
-    alsoIn: (channelsOfAgent.get(a.id) ?? []).filter((c) => c.key !== parent).map((c) => c.name),
+    alsoIn: (orgsOfAgent.get(a.id) ?? []).filter((o) => o.key !== parent).map((o) => o.name),
     handedTo: gave.get(a.id)?.size ?? 0,
     gotFrom: got.get(a.id)?.size ?? 0,
   })
 
-  const channelNodes: ChartChannel[] = groups.map((g) => {
+  const orgNodes: ChartOrg[] = groups.map((g) => {
     const counts = emptyCounts()
     for (const m of g.members) counts[m.state]++
-    const drawn = g.members.slice(0, ORG_CHANNEL_NODES_MAX)
+    const drawn = g.members.slice(0, ORG_NODES_MAX)
     const nodes = drawn.map((m) => node(m, g.key, copyKey(g.key, m.id), m.id === g.leadId))
     return {
       key: g.key,
-      channelId: g.channelId,
+      orgId: g.orgId,
       name: g.name,
       memberCount: g.members.length,
       counts,
       nodes,
       leadKey: g.leadId ? copyKey(g.key, g.leadId) : null,
-      more: g.members.slice(ORG_CHANNEL_NODES_MAX).map((m) => ({
+      more: g.members.slice(ORG_NODES_MAX).map((m) => ({
         agentId: m.id,
         name: m.name,
         face: m.face,
@@ -386,7 +373,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
 
   const root = main ? node(main, ROOT_KEY, ROOT_KEY, false) : null
 
-  // The home node of an agent: the root for the main agent, else its copy in the first channel
+  // The home node of an agent: the root for the main agent, else its copy in the first organization
   // node. A copy that is not drawn leaves the agent without a home node on the chart.
   const home = new Map<string, string>()
   if (root) home.set(root.agentId, ROOT_KEY)
@@ -396,7 +383,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
       if (firstCopy.has(m.id)) return
       firstCopy.set(m.id, {
         key: copyKey(g.key, m.id),
-        drawn: i < ORG_CHANNEL_NODES_MAX,
+        drawn: i < ORG_NODES_MAX,
       })
     })
   }
@@ -405,9 +392,10 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
   }
 
   const lines: ChartLine[] = []
-  // Structure lines: the root to each top channel node, a channel node to the channel nodes of its
-  // sub-channels, and a channel node to its lead, or to its members.
-  for (const c of channelNodes) {
+  // Structure lines: the root to each top organization node, an organization node to the
+  // organization nodes of its sub-organizations, and an organization node to its lead, or to its
+  // members.
+  for (const c of orgNodes) {
     const up = c.parentKey ?? ROOT_KEY
     lines.push({ id: `s:${up}>${c.key}`, kind: "structure", from: up, to: c.key })
     if (c.leadKey) {
@@ -419,7 +407,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
     }
   }
   // Lead lines: the lead to each other member that is drawn.
-  for (const c of channelNodes) {
+  for (const c of orgNodes) {
     if (!c.leadKey) continue
     for (const n of c.nodes) {
       if (n.key === c.leadKey) continue
@@ -452,7 +440,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
 
   return {
     root,
-    channels: channelNodes,
+    orgs: orgNodes,
     lines,
     handoffsCapped: drawable.length > ORG_HANDOFF_LINES_MAX,
     empty: false,
@@ -465,20 +453,20 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Every key of a node of the model, in the order of the page: the root, then each channel node
- * followed by its agents and then the channel nodes of its sub-channels (the channels of the model
- * are in that order).
+ * Every key of a node of the model, in the order of the page: the root, then each organization node
+ * followed by its agents and then the organization nodes of its sub-organizations (the
+ * organizations of the model are in that order).
  */
 export const chartOrder = (model: ChartModel): string[] => [
   ROOT_KEY,
-  ...model.channels.flatMap((c) => [c.key, ...c.nodes.map((n) => n.key)]),
+  ...model.orgs.flatMap((o) => [o.key, ...o.nodes.map((n) => n.key)]),
 ]
 
 /** The agent node (or the root) with this key. */
 export const findAgent = (model: ChartModel, key: string): ChartAgent | undefined =>
   key === ROOT_KEY
     ? (model.root ?? undefined)
-    : model.channels.flatMap((c) => c.nodes).find((n) => n.key === key)
+    : model.orgs.flatMap((o) => o.nodes).find((n) => n.key === key)
 
 /**
  * What stays lit when the user points at a node (spec 029, "The page"): the lines of the node, the
@@ -497,13 +485,21 @@ export const litBy = (model: ChartModel, key: string) => {
   if (self) {
     // The copies of the same agent, also the root when the main agent has one.
     if (model.root?.agentId === self.agentId) nodes.add(ROOT_KEY)
-    for (const c of model.channels) {
-      for (const n of c.nodes) if (n.agentId === self.agentId) nodes.add(n.key)
+    for (const o of model.orgs) {
+      for (const n of o.nodes) if (n.agentId === self.agentId) nodes.add(n.key)
     }
   }
   return { nodes, lines }
 }
 
-/** The state counts of a channel node as pairs, in the order working, waiting, idle, offline, without zeros. */
+/** The state counts of an organization node as pairs, in the order working, waiting, idle, offline, without zeros. */
 export const countList = (counts: StateCounts) =>
   ORG_STATES.flatMap((state) => (counts[state] > 0 ? [{ state, count: counts[state] }] : []))
+
+/**
+ * True when a model from a linked server draws organizations. A server of an older step sends a
+ * model of channels (no `orgs`); the client then shows "Open this on <server name>." as for a
+ * server that does not know the request (spec 012, "Messages").
+ */
+export const isOrgModel = (model: unknown): model is ChartModel =>
+  typeof model === "object" && model !== null && Array.isArray((model as ChartModel).orgs)

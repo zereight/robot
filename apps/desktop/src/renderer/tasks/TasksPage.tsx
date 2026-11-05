@@ -30,6 +30,7 @@ import { openThread } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
+import { AgentName, useShownText } from "../orgs/AgentName.tsx"
 import { useRetry } from "../retry/RetryNote.tsx"
 import { useEndRequest, useReview } from "../review/Review.tsx"
 import shell from "../shell/shell.module.css"
@@ -287,7 +288,8 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
           <div class={styles.detail}>
             <h2 class={styles.title}>{taskTitle(d().task, t)}</h2>
             <p class={styles.meta}>
-              {d().task.agentName} · {sourceWords(d().task, t)} ·{" "}
+              <AgentName id={d().task.agentId} name={d().task.agentName} /> ·{" "}
+              {sourceWords(d().task, t)} ·{" "}
               <span
                 class={styles.state}
                 data-testid="task-detail-state"
@@ -418,7 +420,8 @@ const TaskDetailDialog = (props: { id: string; onClose: () => void }) => {
                         <StateIcon state={node.task.state} />
                         <TaskStateText task={node.task} />
                       </span>{" "}
-                      {node.task.agentName}: {taskTitle(node.task, t)}
+                      <AgentName id={node.task.agentId} name={node.task.agentName} />:{" "}
+                      {taskTitle(node.task, t)}
                     </li>
                   )}
                 </For>
@@ -560,6 +563,7 @@ export const TasksPage = () => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
+  const shownText = useShownText()
   const devices = useDevices()
   const [filter, setFilter] = createSignal<TaskFilter>({})
   const [openId, setOpenId] = createSignal<string>()
@@ -637,7 +641,7 @@ export const TasksPage = () => {
             <For each={agents.agents()}>
               {(a) => (
                 <option value={a.id} selected={filter().agentId === a.id}>
-                  {a.name}
+                  {shownText(a.id, a.name)}
                 </option>
               )}
             </For>
@@ -719,7 +723,9 @@ export const TasksPage = () => {
               <For each={shown()}>
                 {(task) => (
                   <tr data-testid="task-row" data-state={task.state}>
-                    <td>{task.agentName}</td>
+                    <td>
+                      <AgentName id={task.agentId} name={task.agentName} />
+                    </td>
                     <th scope="row">
                       <button
                         type="button"

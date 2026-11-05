@@ -45,7 +45,7 @@ new user knows where to look.
    sections show only when that computer lets this device create and change agents.
 2. The user clicks a place. The conversation opens it. The place row shows as selected.
 3. The user types in search. The list shows only the places whose name matches, the agents whose
-   role line matches, and a group of matching messages (see "Message search"). Escape clears
+   role line or whose organization (036) matches, and a group of matching messages (see "Message search"). Escape clears
    it.
 4. The user collapses a section by clicking its name. The app remembers this per section.
 5. The user hides or shows the panel column with a header button. The app remembers this, and which
@@ -114,9 +114,10 @@ The Channels section holds channel sections. The Agents section holds agent sect
   same ones. The open or closed state of a section belongs to the device (step 4 of "Flows"
   above).
 - Section names are text of the user. They are not translated.
-- The filter of places (step 3 of "Flows" above) looks at the names of places and at the role
-  line of agents. A place matches when the typed text is a part of its name, or of its role line,
-  ignoring case. A channel has no role line, so only its name counts, also when a member has a
+- The filter of places (step 3 of "Flows" above) looks at the names of places, at the role
+  line of agents, and at the name of the deepest organization of agents (036). A place matches when
+  the typed text is a part of its name, or of its role line, or of that organization name, ignoring
+  case. A channel has no role line, so only its name counts, also when a member has a
   role that matches. Cmd+K focuses the same field. The order of the places does not change.
   Messages have their own group (see "Message search"), and it does not look at role lines. A
   section with no match hides, and a section with a match opens, also when it is collapsed.
@@ -192,6 +193,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 - One line, 34 px high: a 24 px avatar (see 002, "Avatars"): the face for an agent, or the
   picture or the `#` mark for a channel, then the name.
+- An agent that is in an organization shows the organization prefix before the name (036), for
+  example "[Docs] Ada". It is a part of the name for the cut below: the prefix is cut last.
 - An agent with a role line shows it as a **role badge** after the name: a small, muted label with
   the role line on one line. An agent with no role line, and a channel, show no badge. The badge
   is text of the user and is not translated.

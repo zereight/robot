@@ -7,25 +7,11 @@ import {
 import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
-import { loadHandOffModel, readAskUpTheLine, readHandOffRule } from "./handOff.ts"
+import { loadHandOffModel, readAskUpTheLine, readHandOffRule, readMainAgent } from "./handOff.ts"
 import { Servers } from "./Servers.ts"
 
-export interface OrganizationOptions {
-  /**
-   * The main agent of a server (spec 002, flow 7), or null. The app has no switch for the main
-   * agent yet, so the answer is null; the work that adds the switch fills this. Tests give one.
-   */
-  readonly mainAgent?: (serverId: string) => string | null
-  /**
-   * The name of the main agent, for the end-to-end run only (spec 002): the app has no switch for
-   * the main agent yet, so a test names one. The agent of that name on the server counts as the
-   * main agent. `mainAgent` wins when both are given.
-   */
-  readonly mainAgentName?: string
-}
-
 export interface OrganizationService {
-  /** The part "Organization" of this profile (spec 013, 030). */
+  /** The part "Hand-off rules" of this profile (spec 013, 030). */
   readonly get: Effect.Effect<OrganizationState>
   /**
    * Sets the hand-off rule (spec 030). A change counts from the next send: a send that started
@@ -47,13 +33,16 @@ export interface OrganizationService {
   onAskUpTheLineOff(listener: () => void): void
   /** The hand-off rule now, read at once. The tools read it at the time of each send. */
   rule(): HandOffRule
-  /** The main agent of a server, or null. An archived main agent counts as none. */
+  /**
+   * The main agent of a server, or null (spec 002, flow 7): the agent with the switch "Main agent"
+   * on. An archived main agent counts as none.
+   */
   mainAgent(serverId: string): string | null
-  /** The agents and channels of a server, as the hand-off rule reads them, at this moment. */
+  /** The agents and organizations of a server, as the hand-off rule reads them, at this moment. */
   model(serverId: string): HandOffModel
   /**
    * What the app tells an agent about the hand-off rule in its instructions: the text for the main
-   * agent while the rule is "Along the channels", else an empty text (spec 030, "Main agent").
+   * agent while the rule is "Along the organizations", else an empty text (spec 030, "Main agent").
    */
   told(agentId: string): string
 }
@@ -61,7 +50,7 @@ export interface OrganizationService {
 export class Organization extends Context.Service<Organization, OrganizationService>()(
   "robot/main/Organization",
 ) {
-  static readonly layer = (options: OrganizationOptions = {}) =>
+  static readonly layer = () =>
     Layer.effect(
       Organization,
       Effect.gen(function* () {
@@ -85,24 +74,7 @@ export class Organization extends Context.Service<Organization, OrganizationServ
         bus.tap((event) => {
           if (event === "organization.changed") noteSwitch()
         })
-        const mainAgent = (serverId: string): string | null => {
-          const id =
-            options.mainAgent?.(serverId) ??
-            (options.mainAgentName === undefined
-              ? null
-              : (db.get<{ id: string }>(
-                  "SELECT id FROM agent WHERE server_id = ? AND name = ? AND archived_at IS NULL",
-                  serverId,
-                  options.mainAgentName,
-                )?.id ?? null))
-          if (id === null) return null
-          const row = db.get<{ archived_at: number | null }>(
-            "SELECT archived_at FROM agent WHERE id = ? AND server_id = ?",
-            id,
-            serverId,
-          )
-          return row && row.archived_at === null ? id : null
-        }
+        const mainAgent = (serverId: string): string | null => readMainAgent(db, serverId)
 
         return Organization.of({
           get: Effect.sync(read),
@@ -144,7 +116,7 @@ export class Organization extends Context.Service<Organization, OrganizationServ
           mainAgent,
           model: (serverId) => loadHandOffModel(db, serverId, mainAgent(serverId)),
           told: (agentId) => {
-            if (readHandOffRule(db) !== "channels") return ""
+            if (readHandOffRule(db) !== "organizations") return ""
             const row = db.get<{ server_id: string }>(
               "SELECT server_id FROM agent WHERE id = ?",
               agentId,

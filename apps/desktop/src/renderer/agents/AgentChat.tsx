@@ -10,6 +10,7 @@ import { ThreadList } from "../chat/ThreadList.tsx"
 import { createThreads, openThreadOf } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { TeamsMark } from "../settings/TeamsMark.tsx"
 import type { PlaceView } from "../shell/Shell.tsx"
@@ -159,7 +160,9 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
           size={24}
           agentId={props.agent.id}
         />
-        <span>{props.agent.name}</span>
+        <span>
+          <AgentName id={props.agent.id} name={props.agent.name} />
+        </span>
       </button>
       <Show
         when={ui.canChange()}
@@ -317,7 +320,9 @@ const Start = (props: { agent: Agent }) => {
   return (
     <div class={styles.start} data-testid="chat-start">
       <Face face={props.agent.face} image={props.agent.faceImage} size={80} />
-      <h2>{props.agent.name}</h2>
+      <h2>
+        <AgentName id={props.agent.id} name={props.agent.name} />
+      </h2>
       <p>{t("chat.start")}</p>
       <Show when={props.agent.role}>
         <p>{props.agent.role}</p>

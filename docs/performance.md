@@ -39,11 +39,11 @@ the numbers fair, and which numbers can stop a pull request. Choose your own too
 
 ## What can fail a pull request
 
-- Only the sizes of the built files are stable enough. CI fails when a size grows by more than
-  10 percent over the baseline in the repository. A pull request that grows a size on purpose
-  updates the baseline and says why.
-- The times, the CPU use and the memory are for information. They do not fail CI, because shared
-  CI computers are not stable.
+- Nothing in this plan fails CI. The times, the CPU use and the memory are not stable on shared CI
+  computers, and a size that grew by a few percent is not a fault in itself. All of them are for
+  information. A person runs `bun run sizes` and `bun run perf` by hand and reads
+  the result. `bun run sizes` compares the sizes with the baseline in
+  `apps/desktop/perf/size-baseline.json`, and nobody has to update that file for a pull request.
 
 ## Phone app
 

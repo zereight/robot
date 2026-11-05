@@ -1,5 +1,6 @@
 /** Skills (spec 017): saved instructions that the user calls in a chat. */
 
+import type { OrgToolEntry } from "./orgTools.ts"
 import type { TaskSource } from "./task.ts"
 
 export const SKILL_NAME_MAX = 40
@@ -16,10 +17,10 @@ export interface Skill {
   /** The agents that may use the skill. `null` means all agents. */
   readonly agentIds: readonly string[] | null
   /**
-   * The channels in the list of the skill (spec 017, 030): each gives the skill to its members and
-   * to the members of its lower channels. Empty for "All agents" and for a list of agents only.
+   * The organizations in the list of the skill (spec 017, 030) with the value "On" or "Off". An
+   * organization that is not here has the value "Inherit". Empty for "All agents".
    */
-  readonly channelIds: readonly string[]
+  readonly organizations: readonly OrgToolEntry[]
   readonly enabled: boolean
   readonly createdAt: number
 }
@@ -102,18 +103,18 @@ export type SkillAfterAgentDelete =
  * that does not name the agent, stay as they are. The agent leaves the list of the others. A skill
  * that was only for this agent is deleted: no agent that still exists is left in its list.
  * `exists` tells whether an agent is still there, in the archive or not; an id of an agent that
- * went before this rule counts as gone. A channel that is still there and that is in the list keeps
- * the skill (spec 030): the skill is not only for this agent.
+ * went before this rule counts as gone. An organization that is still there and that is in the list
+ * keeps the skill (spec 030): the skill is not only for this agent.
  */
 export const skillAfterAgentDelete = (
   agentIds: readonly string[] | null,
   agentId: string,
   exists: (id: string) => boolean,
-  channelsLeft = 0,
+  orgsLeft = 0,
 ): SkillAfterAgentDelete => {
   if (agentIds === null || !agentIds.includes(agentId)) return { kind: "same" }
   const rest = agentIds.filter((id) => id !== agentId)
-  return rest.some(exists) || channelsLeft > 0
+  return rest.some(exists) || orgsLeft > 0
     ? { kind: "shorter", agentIds: rest }
     : { kind: "delete" }
 }

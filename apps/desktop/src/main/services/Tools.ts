@@ -2114,9 +2114,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         )
         const line = (r: { id: string; name: string; role: string }, link?: string) =>
           `- ${r.name}: ${r.role || "(no role line)"} [${busy.has(r.id) ? "working" : "idle"}]${link ? ` (${link})` : ""}`
-        // With the hand-off rule "Along the channels" the list holds only the agents that the agent
-        // may send to, each with the channel that links them or "main agent" (spec 030).
-        if (organization.rule() === "channels") {
+        // With the hand-off rule "Along the organizations" the list holds only the agents that the
+        // agent may send to, each with the organization that gives the right or "main agent"
+        // (spec 030).
+        if (organization.rule() === "organizations") {
           const targets = allowedSends(organization.model(serverId), ctx.agentId)
           const byId = new Map(rows.map((r) => [r.id, r]))
           const lines = targets.flatMap((t) => {
@@ -2162,9 +2163,9 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           return { output: "An agent cannot send a message to itself.", failed: true }
         if (target.archived_at !== null)
           return { output: "This agent is archived. Choose another agent.", failed: true }
-        // With the hand-off rule "Along the channels" the app checks each send now (spec 030). A
-        // refused send makes no task and counts for no limit; the step fails and the turn goes on.
-        if (organization.rule() === "channels") {
+        // With the hand-off rule "Along the organizations" the app checks each send now (spec 030).
+        // A refused send makes no task and counts for no limit; the step fails and the turn goes on.
+        if (organization.rule() === "organizations") {
           const refusal = checkHandOff(
             organization.model(server?.server_id ?? ""),
             ctx.agentId,
@@ -2177,8 +2178,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               detail: receiver,
               ...(refusal.next ? { next: refusal.next.name } : {}),
             })
-            // One line for the channel log: the sender, the receiver and the time (spec 014).
-            appendLog(platform.dataDir, "channels", {
+            // One line for the organization log: the sender, the receiver and the time (spec 014).
+            appendLog(platform.dataDir, "organizations", {
               event: "hand_off_refused",
               from: names(ctx.agentId) ?? "",
               to: receiver,
