@@ -1,5 +1,12 @@
-import { type ChartAgent, type ChartOrg, type MessageKey, type Org, ROOT_KEY } from "@robot/shared"
-import { createSignal, onCleanup, onMount, Show } from "solid-js"
+import {
+  type Agent,
+  type ChartAgent,
+  type ChartOrg,
+  type MessageKey,
+  type Org,
+  ROOT_KEY,
+} from "@robot/shared"
+import { createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { NewAgentDialog } from "../agents/AgentDialogs.tsx"
 import { describeError } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
@@ -94,6 +101,14 @@ export const createChartEdit = (deps: {
     return serverId ? await call("organizations.list", { serverId }) : orgs.orgs()
   }
   const agentName = (id: string) => agents.byId(id)?.name ?? ""
+  // The rule "One line" counts the archived agents too (spec 030). The list "Put under…" names the
+  // agent whose line it would split, so the chart reads the archived agents as well.
+  const [archivedAgents] = createResource(
+    () => [ui.server()?.id, agents.agents().length] as const,
+    ([serverId]) =>
+      serverId ? call("agents.list", { serverId, archived: true }).catch((): Agent[] => []) : [],
+  )
+  const lineAgents = () => [...agents.agents(), ...(archivedAgents() ?? [])]
   const orgName = (list: readonly Org[], id: string) =>
     list.find((o) => o.id === id)?.name ?? orgs.byId(id)?.name ?? ""
 
@@ -265,15 +280,22 @@ export const createChartEdit = (deps: {
     agentId: string,
     pick: (orgId: string) => Edit,
     testId: string,
+    leavingId?: string,
   ): OpenMenu => {
-    const targets = orgsFor(agentId, orgs.orgs())
+    const targets = orgsFor(agentId, orgs.orgs(), leavingId)
     return {
       ...at,
       label: title,
       items: [
         { label: title, heading: true, onSelect: () => {} },
         ...(targets.length > 0
-          ? targets.map((o) => act(o.name, () => void apply(pick(o.id)), `${testId}-${o.id}`))
+          ? targets.map((o) => ({
+              ...act(o.name, () => void apply(pick(o.id)), `${testId}-${o.id}`),
+              // The rule "One line" (spec 030): muted, with the organization that keeps the agent out.
+              ...(o.conflict !== undefined
+                ? { disabled: true, reason: t("orgs.line.notWith", { other: o.conflict }) }
+                : {}),
+            }))
           : [{ label: t("orgchart.edit.noOrganizations"), disabled: true, onSelect: () => {} }]),
       ],
     }
@@ -325,6 +347,7 @@ export const createChartEdit = (deps: {
             node.agentId,
             (to) => ({ kind: "move", agentId: node.agentId, from: orgId, to }),
             "org-menu-move-to",
+            orgId,
           ),
         ),
         act(
@@ -363,7 +386,7 @@ export const createChartEdit = (deps: {
     items.push(
       list(t("orgchart.edit.addMember"), "org-menu-add-member", () => {
         const org = orgs.byId(orgId) ?? { id: orgId, name: node.name, leadId: null, memberIds: [] }
-        const choices = agentsFor(org, agents.agents())
+        const choices = agentsFor(org, agents.agents(), orgs.orgs())
         const title = t("orgchart.edit.addMemberTitle", { organization: node.name })
         return {
           ...base,
@@ -371,13 +394,16 @@ export const createChartEdit = (deps: {
           items: [
             { label: title, heading: true, onSelect: () => {} },
             ...(choices.length > 0
-              ? choices.map((a) =>
-                  act(
+              ? choices.map((a) => ({
+                  ...act(
                     a.name,
                     () => void apply({ kind: "add", agentId: a.id, to: orgId }),
                     `org-menu-member-${a.id}`,
                   ),
-                )
+                  ...(a.conflict !== undefined
+                    ? { disabled: true, reason: t("orgs.line.in", { other: a.conflict }) }
+                    : {}),
+                }))
               : [{ label: t("orgchart.edit.noAgents"), disabled: true, onSelect: () => {} }]),
           ],
         }
@@ -387,7 +413,7 @@ export const createChartEdit = (deps: {
       // organization", without the parent now. One that the rules refuse is muted, with the
       // reason. A sub-organization has "Move to the top".
       list(t("orgchart.edit.putUnder"), "org-menu-put-under", () => {
-        const choices = parentChoices(orgId, orgs.orgs())
+        const choices = parentChoices(orgId, orgs.orgs(), lineAgents())
         const title = t("orgchart.edit.putUnderTitle", { organization: node.name })
         return {
           ...base,
@@ -406,7 +432,9 @@ export const createChartEdit = (deps: {
                         disabled: true,
                         reason: t(c.refusal === "loop" ? "orgs.parent.loop" : "orgs.parent.levels"),
                       }
-                    : {}),
+                    : c.split !== undefined
+                      ? { disabled: true, reason: t("orgs.line.split", { agent: c.split }) }
+                      : {}),
                 }))
               : [{ label: t("orgchart.edit.noParents"), disabled: true, onSelect: () => {} }]),
           ],

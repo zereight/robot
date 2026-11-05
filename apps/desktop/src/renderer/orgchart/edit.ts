@@ -1,9 +1,13 @@
 import {
+  memberLineConflict,
+  type OneLineAgent,
+  type OneLineOrg,
   type OrgParentOption,
   type OrgPatch,
   orgParent,
   orgParentOptions,
   orgParentRefusal,
+  parentLineConflict,
   type TreeOrg,
 } from "@robot/shared"
 
@@ -75,13 +79,80 @@ export interface Plan {
 const byName = (a: { name: string }, b: { name: string }) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
 
-/** The organizations that "Add to organization…" and "Move to organization…" list: the agent is no member. */
-export const orgsFor = (agentId: string, orgs: readonly EditOrg[]) =>
-  orgs.filter((o) => !o.memberIds.includes(agentId)).sort(byName)
+/** The organizations as the rule "One line" reads them (spec 030). */
+const lineOrgs = (orgs: readonly EditOrg[]): OneLineOrg[] =>
+  orgs.map((o) => ({
+    id: o.id,
+    name: o.name,
+    parentId: o.parentId ?? null,
+    memberIds: o.memberIds,
+  }))
 
-/** The agents that "Add member…" lists: not archived and not members. */
-export const agentsFor = (org: EditOrg, agents: readonly EditAgent[]) =>
-  agents.filter((a) => !org.memberIds.includes(a.id)).sort(byName)
+/**
+ * Every agent that the rule "One line" reads: the agents of the list, and each member of an
+ * organization that the list does not name (an archived agent counts, spec 030). A member without a
+ * name reads by its id.
+ */
+const lineAgents = (orgs: readonly EditOrg[], agents: readonly EditAgent[]): OneLineAgent[] => {
+  const known = new Set(agents.map((a) => a.id))
+  const rest = [...new Set(orgs.flatMap((o) => o.memberIds))].filter((id) => !known.has(id))
+  return [...agents, ...rest.map((id) => ({ id, name: id }))]
+}
+
+/** An organization of a list, with the organization that keeps the agent out of it (spec 030, "One line"). */
+export type OrgChoice = EditOrg & {
+  /** The name of the first organization of the agent that is not on one line with this one. */
+  readonly conflict?: string
+}
+
+/**
+ * The organizations that "Add to organization…" and "Move to organization…" list: the agent is no
+ * member. One that the rule "One line" refuses stays in the list with `conflict`, so the menu can
+ * show it muted with "Not on one line with <other>." For a move, `leavingId` is the organization
+ * that the agent leaves: the rule is checked after it has left (spec 029, 030).
+ */
+export const orgsFor = (
+  agentId: string,
+  orgs: readonly EditOrg[],
+  leavingId?: string,
+): OrgChoice[] => {
+  const line = lineOrgs(orgs)
+  const agents = [{ id: agentId, name: agentId }]
+  return orgs
+    .filter((o) => !o.memberIds.includes(agentId))
+    .sort(byName)
+    .map((o) => {
+      const other = memberLineConflict(line, agents, agentId, o.id, {
+        ...(leavingId !== undefined ? { leavingId } : {}),
+      })
+      const name = other === undefined ? undefined : orgs.find((x) => x.id === other)?.name
+      return name === undefined ? o : { ...o, conflict: name }
+    })
+}
+
+/** An agent of the list "Add member…", with the organization that keeps it out of the organization. */
+export type AgentChoice = EditAgent & { readonly conflict?: string }
+
+/**
+ * The agents that "Add member…" lists: not archived and not members. One that the rule "One line"
+ * refuses stays in the list with `conflict`, the name of the organization it is in, so the menu can
+ * show it muted with "In <other>." (spec 029).
+ */
+export const agentsFor = (
+  org: EditOrg,
+  agents: readonly EditAgent[],
+  orgs: readonly EditOrg[],
+): AgentChoice[] => {
+  const line = lineOrgs(orgs)
+  return agents
+    .filter((a) => !org.memberIds.includes(a.id))
+    .sort(byName)
+    .map((a) => {
+      const other = memberLineConflict(line, [a], a.id, org.id)
+      const name = other === undefined ? undefined : orgs.find((x) => x.id === other)?.name
+      return name === undefined ? a : { ...a, conflict: name }
+    })
+}
 
 /** The tree of the organizations as the chart edits it. */
 const treeOf = (orgs: readonly EditOrg[]): (TreeOrg & { name: string })[] =>
@@ -95,9 +166,23 @@ export const parentOf = (orgId: string, orgs: readonly EditOrg[]) => orgParent(t
  * field "Parent organization" of the form, without "None" and without the parent now. One that the
  * rules of the tree refuse stays in the list, with the reason, so the menu can show it muted.
  */
-export const parentChoices = (orgId: string, orgs: readonly EditOrg[]): OrgParentOption[] => {
+export const parentChoices = (
+  orgId: string,
+  orgs: readonly EditOrg[],
+  agents: readonly EditAgent[] = [],
+): (OrgParentOption & { readonly split?: string })[] => {
   const now = parentOf(orgId, orgs)
-  return orgParentOptions(treeOf(orgs), orgId).filter((o) => o.id !== now)
+  const line = lineOrgs(orgs)
+  const known = lineAgents(orgs, agents)
+  return orgParentOptions(treeOf(orgs), orgId)
+    .filter((o) => o.id !== now)
+    .map((o) => {
+      // The reasons of the tree come first. "Would split the line of <agent>." is the next one.
+      if (o.refusal !== undefined) return o
+      const agentId = parentLineConflict(line, known, orgId, o.id)
+      const name = agentId === undefined ? undefined : known.find((a) => a.id === agentId)?.name
+      return name === undefined ? o : { ...o, split: name }
+    })
 }
 
 /**
@@ -112,9 +197,17 @@ export const orgDropEdit = (
 ): Edit | undefined => {
   if (!orgs.some((o) => o.id === orgId)) return undefined
   const now = parentOf(orgId, orgs)
-  if (to === null) return now === null ? undefined : { kind: "parent", orgId, parentId: null }
+  if (to === null) {
+    if (now === null) return undefined
+    // "Move to the top" splits the line of a member of this organization and a higher one.
+    if (parentLineConflict(lineOrgs(orgs), lineAgents(orgs, []), orgId, null) !== undefined)
+      return undefined
+    return { kind: "parent", orgId, parentId: null }
+  }
   if (to === now || to === orgId || !orgs.some((o) => o.id === to)) return undefined
   if (orgParentRefusal(treeOf(orgs), orgId, to)) return undefined
+  if (parentLineConflict(lineOrgs(orgs), lineAgents(orgs, []), orgId, to) !== undefined)
+    return undefined
   return { kind: "parent", orgId, parentId: to }
 }
 
@@ -141,6 +234,16 @@ export const dropEdit = (drop: Drop, orgs: readonly EditOrg[]): Edit | undefined
   }
   const target = orgs.find((o) => o.id === drop.to)
   if (!target || target.memberIds.includes(drop.agentId)) return undefined
+  // A node that the rule "One line" refuses shows no ring (spec 029, 030). A move is checked after
+  // the agent has left the organization it comes from.
+  const leaving = drop.from !== null && !drop.add ? drop.from : undefined
+  const agents = [{ id: drop.agentId, name: drop.agentId }]
+  if (
+    memberLineConflict(lineOrgs(orgs), agents, drop.agentId, target.id, {
+      ...(leaving !== undefined ? { leavingId: leaving } : {}),
+    }) !== undefined
+  )
+    return undefined
   if (drop.from === null || drop.add) return { kind: "add", agentId: drop.agentId, to: target.id }
   return { kind: "move", agentId: drop.agentId, from: drop.from, to: target.id }
 }

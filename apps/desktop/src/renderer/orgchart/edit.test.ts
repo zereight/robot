@@ -59,7 +59,7 @@ describe("the lists of the menus", () => {
       { id: "e", name: "Eve" },
       { id: "b", name: "Bo" },
     ]
-    expect(agentsFor(docs, agents).map((a) => a.name)).toEqual(["dee", "Eve"])
+    expect(agentsFor(docs, agents, all).map((a) => a.name)).toEqual(["dee", "Eve"])
   })
 })
 
@@ -71,7 +71,11 @@ describe("a drop", () => {
       from: "docs",
       to: "ops",
     })
-    expect(dropEdit({ agentId: "b", from: "docs", to: "ops", add: true }, all)).toEqual({
+    // With Option the agent stays in Docs, so Ops must be on one line with Docs (spec 029
+    // acceptance: "Drag with Option from Docs onto Ops: no ring shows"). Here it is not.
+    expect(dropEdit({ agentId: "b", from: "docs", to: "ops", add: true }, all)).toBeUndefined()
+    const opsInDocs = all.map((o) => (o.id === "ops" ? { ...o, parentId: "docs" } : o))
+    expect(dropEdit({ agentId: "b", from: "docs", to: "ops", add: true }, opsInDocs)).toEqual({
       kind: "add",
       agentId: "b",
       to: "ops",
@@ -329,5 +333,106 @@ describe("the tree on the chart (spec 029, 030)", () => {
       art,
     ])
     expect(undoSteps(plan?.before ?? [], [product, art])).toEqual({ gone: "Docs" })
+  })
+})
+
+describe("one line on the chart (spec 029, 030 'One line')", () => {
+  // Product > Docs, and Ops at the top. A is in Docs. B is in Docs and Product.
+  const product: EditOrg = { id: "product", name: "Product", leadId: null, memberIds: ["b"] }
+  const docsIn: EditOrg = {
+    id: "docs",
+    name: "Docs",
+    leadId: null,
+    memberIds: ["a", "b"],
+    parentId: "product",
+  }
+  const opsTop: EditOrg = { id: "ops", name: "Ops", leadId: null, memberIds: [] }
+  const world = [product, docsIn, opsTop]
+  const people = [
+    { id: "a", name: "A" },
+    { id: "b", name: "B" },
+  ]
+
+  test("'Add to organization…' shows Ops muted with the organization A is in", () => {
+    const choices = orgsFor("a", world)
+    expect(choices.map((c) => [c.id, c.conflict])).toEqual([
+      ["ops", "Docs"],
+      ["product", undefined],
+    ])
+  })
+
+  test("'Move to organization…' reads the line after A has left Docs", () => {
+    // A leaves Docs: it is in no other organization, so Ops is allowed.
+    expect(orgsFor("a", world, "docs").find((c) => c.id === "ops")?.conflict).toBeUndefined()
+    // B leaves Docs but stays in Product: Ops is still off the line of Product.
+    expect(orgsFor("b", world, "docs").find((c) => c.id === "ops")?.conflict).toBe("Product")
+  })
+
+  test("'Add member…' shows A muted with 'In Docs.' in the form of Ops", () => {
+    const choices = agentsFor(opsTop, people, world)
+    expect(choices.map((c) => [c.id, c.conflict])).toEqual([
+      ["a", "Docs"],
+      ["b", "Docs"],
+    ])
+    // The first conflicting organization in the order of names, ignoring case.
+    expect(agentsFor(product, people, world).map((c) => c.id)).toEqual(["a"])
+    expect(agentsFor(product, people, world)[0]?.conflict).toBeUndefined()
+  })
+
+  test("'Put under…' shows Ops muted with 'Would split the line of B.' (B is in Docs and Product)", () => {
+    const choices = parentChoices("docs", world, people)
+    expect(choices.map((c) => [c.id, c.refusal, c.split])).toEqual([["ops", undefined, "B"]])
+  })
+
+  test("after B leaves Product, Ops is allowed as the parent of Docs", () => {
+    const left = world.map((o) => (o.id === "product" ? { ...o, memberIds: [] } : o))
+    expect(parentChoices("docs", left, people).map((c) => c.split)).toEqual([undefined])
+  })
+
+  test("the tree reason comes before the line reason", () => {
+    const deep: EditOrg = {
+      id: "site",
+      name: "Site",
+      leadId: null,
+      memberIds: [],
+      parentId: "docs",
+    }
+    const choices = parentChoices("ops", [...world, deep], people)
+    expect(choices.find((c) => c.id === "site")?.refusal).toBe("levels")
+    expect(choices.find((c) => c.id === "site")?.split).toBeUndefined()
+  })
+
+  test("a drag: a drop on Ops shows no ring for A in Docs (Option or not), a drop on Product does", () => {
+    expect(dropEdit({ agentId: "a", from: "docs", to: "ops", add: true }, world)).toBeUndefined()
+    expect(dropEdit({ agentId: "a", from: "docs", to: "product", add: true }, world)).toEqual({
+      kind: "add",
+      agentId: "a",
+      to: "product",
+    })
+    // A moves from Docs to Ops: A leaves Docs, so the move is allowed.
+    expect(dropEdit({ agentId: "a", from: "docs", to: "ops", add: false }, world)).toEqual({
+      kind: "move",
+      agentId: "a",
+      from: "docs",
+      to: "ops",
+    })
+    // B stays in Product, so a move to Ops is refused.
+    expect(dropEdit({ agentId: "b", from: "docs", to: "ops", add: false }, world)).toBeUndefined()
+  })
+
+  test("a drag of Docs onto Ops or the root shows no ring while B is in Docs and Product", () => {
+    expect(orgDropEdit("docs", "ops", world)).toBeUndefined()
+    expect(orgDropEdit("docs", null, world)).toBeUndefined()
+    const left = world.map((o) => (o.id === "product" ? { ...o, memberIds: [] } : o))
+    expect(orgDropEdit("docs", "ops", left)).toEqual({
+      kind: "parent",
+      orgId: "docs",
+      parentId: "ops",
+    })
+    expect(orgDropEdit("docs", null, left)).toEqual({
+      kind: "parent",
+      orgId: "docs",
+      parentId: null,
+    })
   })
 })
