@@ -2,6 +2,7 @@ import type { AgentFileExported, AgentFileImported, AgentFilePreview } from "./a
 import type { InstructionVersion, SettingsLineState } from "./agentSettings.ts"
 import type { Agent, AgentCreate, AgentModel, AgentPatch } from "./agents.ts"
 import type { BrowserProfile, BrowserProfileCreate } from "./browserProfiles.ts"
+import type { CcNotExported } from "./ccWorkflowExport.ts"
 import type {
   Channel,
   ChannelActivity,
@@ -777,14 +778,23 @@ export interface RpcMethods {
     input: { serverId: string; workflowIds: readonly string[] }
     output: { path: string | null; count: number }
   }
+  /**
+   * Asks where to save, then writes one workflow as a file of CC Workflow Studio. `path` is null
+   * when cancelled. `notExported` lists what the file does not hold.
+   */
+  "workflowFile.exportCc": {
+    input: { serverId: string; workflowId: string }
+    output: { path: string | null; notExported: readonly CcNotExported[] }
+  }
   /** Asks for a workflow file and reads it. `null` when cancelled. Nothing is made yet. */
   "workflowFile.open": { input: { serverId: string }; output: WorkflowFilePreview | null }
   /**
    * Makes the workflows of the file that `workflowFile.open` read that the user ticked (`pick`:
-   * their places in the file, from 0). All of them are off.
+   * their places in the file, from 0). All of them are off. For a file of CC Workflow Studio,
+   * `agentId` is the agent of every agent step (the file names none).
    */
   "workflowFile.apply": {
-    input: { serverId: string; pick: readonly number[] }
+    input: { serverId: string; pick: readonly number[]; agentId?: string }
     output: WorkflowFileImported
   }
   "notifications.mutes": { input: undefined; output: readonly Mute[] }

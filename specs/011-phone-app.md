@@ -41,7 +41,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
 6. **Workflows**: the workflows of a server. The user sees them as numbered step lists, runs one,
    reads the runs, edits steps, and asks the assistant, as on the computer (see 010). Running a
    workflow and reading its runs need only the link. Editing steps and asking the assistant need
-   the switch "Can create and change agents" of that computer (012).
+   the switch "Can create and change agents" of that computer (012). The diagram of a workflow
+   (010) is on the computer only in this version.
 7. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
    switch "Show tool steps", on at first.
 8. **Org chart**: a read-only list of the main agent, the channels with their members and leads
