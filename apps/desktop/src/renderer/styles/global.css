@@ -13,13 +13,16 @@
   --radius-s: 4px;
   --radius-m: 8px;
   --radius-l: 12px;
-  /* Text steps. The root size scales all of them (see Settings). */
-  --text-xs: 0.85rem;
-  --text-s: 0.92rem;
-  --text-m: 1rem;
-  --text-l: 1.12rem;
-  --text-xl: 1.3rem;
-  --text-2xl: 1.6rem;
+  /* Text steps. The root size scales all of them (see Settings).
+     Two neighbouring steps are always at least 1.11 apart, so a heading reads as a heading.
+     A sentence is set at --text-m or above. --text-xs and --text-s are for a label, a timestamp
+     and a role line only (DESIGN.md, "The Prose Rule"). */
+  --text-xs: 0.8125rem;
+  --text-s: 0.9375rem;
+  --text-m: 1.0625rem;
+  --text-l: 1.1875rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
   --motion-fast: 120ms;
   --motion-medium: 200ms;
   --motion-slow: 260ms;

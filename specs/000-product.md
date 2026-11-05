@@ -85,7 +85,13 @@ tag, so the user reads their work as they read messages from colleagues.
   line with this fact (see 008 and 016).
 - The visual style is calm: flat surfaces, no decorative gradients, sentence case, medium and
   semibold weights only, one line icon set, motion under 300 ms that respects reduced motion
-  settings.
+  settings. The look follows `DESIGN.md`: two lights carry meaning and nothing else does. The
+  accent violet shows where the user is and what can be pressed. The mint glow shows an agent, a
+  channel or a task that works now. The surfaces of the window are told apart by their lightness,
+  so a panel shows as its own plane and not as a box with a line around it. A sentence that the
+  user reads is set at the body text size, never at the size of a label.
+- A block shows what kind it is by the tint of its surface or by a mark at its start. It does not
+  carry a stripe of colour on its side.
 - A **danger button** deletes or removes something that exists: a workflow or a step of one, a
   routine, an agent, a channel, a thread, a skill, a connection, an account, a linked device, a
   saved secret, a browser profile, an article or a source of knowledge, a rule, or a memory item.

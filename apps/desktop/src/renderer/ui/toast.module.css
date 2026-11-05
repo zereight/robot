@@ -18,17 +18,31 @@
   gap: 8px;
   max-width: min(420px, calc(100vw - 32px));
   padding: 8px 8px 8px 12px;
-  background: var(--c-elevated);
+  /* The kind shows in the tint of the surface and in the mark at the start, not in a stripe
+     (DESIGN.md, "Don't"). The toast floats over the page, so it takes the one shadow that this
+     system allows a floating panel: it is the only thing that can sit above a dialog. */
+  background: color-mix(in srgb, var(--c-success) 12%, var(--c-elevated));
   color: var(--c-text);
   border: 1px solid var(--c-border);
-  border-inline-start: 3px solid var(--c-success);
   border-radius: var(--radius-m);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.25);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
   animation: toast-in var(--motion-medium) var(--ease-out);
 }
 
 .toast[data-tone="error"] {
-  border-inline-start-color: var(--c-danger);
+  background: color-mix(in srgb, var(--c-danger) 12%, var(--c-elevated));
+}
+
+/* The mark of the kind: a tick or an alert, in the colour of that kind. */
+.mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--c-success);
+}
+
+.toast[data-tone="error"] .mark {
+  color: var(--c-danger);
 }
 
 .text {
