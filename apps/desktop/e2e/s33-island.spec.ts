@@ -647,6 +647,31 @@ test("island bar: the mark and the faces stay out of the camera notch", async ()
   const rightWingWidth = (rightGroup.x + rightGroup.right) / 2 - notchRight
   expect(Math.abs(wingWidth - rightWingWidth)).toBeLessThan(6)
 
+  // The count grows when more agents work, and the widest count that the bar can hold still fits
+  // in the wing: the bar is built for the worst case, not only for "3".
+  const widest = await island.evaluate(() => {
+    const count = document.querySelector(".count")
+    const wing = document.querySelector('[data-wing="end"]')
+    const islandEl = document.querySelector(".island")
+    if (!count || !wing || !islandEl) return null
+    const before = count.textContent
+    count.textContent = "88"
+    const box = count.getBoundingClientRect()
+    const wingBox = wing.getBoundingClientRect()
+    const islandBox = islandEl.getBoundingClientRect()
+    const out = {
+      pastWing: box.right > wingBox.right + 0.5,
+      pastIsland: box.right > islandBox.right + 0.5,
+      overflows: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    }
+    count.textContent = before
+    return out
+  })
+  expect(widest).not.toBeNull()
+  expect(widest?.pastWing).toBe(false)
+  expect(widest?.pastIsland).toBe(false)
+  expect(widest?.overflows).toBe(false)
+
   for (const name of ["Ada", "Bo", "Cy"]) await rpc(page, "chat.stop", { agentId: id(name) })
   await app.close()
 })

@@ -7,6 +7,7 @@ import {
   firstLine,
   formatRunTime,
   ISLAND_BAR_WIDTH,
+  ISLAND_PADDING,
   ISLAND_WORKING_MAX,
   type IslandAttention,
   type IslandResult,
@@ -212,8 +213,8 @@ test("mentions of the user", () => {
 
 describe("When the island bar has a camera notch", () => {
   describe("with a notch on the screen", () => {
-    test("is the notch plus a wing at each side of it", () => {
-      expect(islandBarWidth(185)).toBe(185 + islandWingWidth() * 2)
+    test("is the notch plus a wing at each side of it, and the padding", () => {
+      expect(islandBarWidth(185)).toBe(185 + islandWingWidth() * 2 + ISLAND_PADDING * 2)
     })
 
     test("is wider than the bar of a screen with no notch", () => {
@@ -225,7 +226,8 @@ describe("When the island bar has a camera notch", () => {
     })
 
     test("keeps 340 px for a notch that the two wings already fit in", () => {
-      expect(islandBarWidth(120)).toBe(ISLAND_BAR_WIDTH)
+      // 340 - 2 * 98 - 2 * 14 is 116, so a notch narrower than that keeps the usual width.
+      expect(islandBarWidth(100)).toBe(ISLAND_BAR_WIDTH)
     })
 
     test("is a whole number of px, for the window", () => {
