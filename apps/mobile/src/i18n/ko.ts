@@ -147,6 +147,8 @@ export const ko: Record<MessageKey, string> = {
 
   "chat.empty": "대화가 여기서 시작돼요.",
   "chat.empty.channel": "#{name} 채널이 여기서 시작돼요.",
+  "channels.in": "{parent} 소속",
+  "channels.in.open": "{parent} 열기",
   "chat.bot": "BOT",
   "chat.you": "나",
   "chat.from": "{name}에서 보냄",

@@ -146,6 +146,8 @@ export const en = {
 
   "chat.empty": "This is the start of your chat.",
   "chat.empty.channel": "This is the start of #{name}.",
+  "channels.in": "In {parent}",
+  "channels.in.open": "Open {parent}",
   "chat.bot": "BOT",
   "chat.you": "You",
   "chat.from": "from {name}",
