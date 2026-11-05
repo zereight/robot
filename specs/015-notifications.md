@@ -31,6 +31,7 @@ The user knows when an agent needs them or finishes, without watching the window
 ## Status island (optional)
 
 - A small dark shape at the top centre of the screen, around the camera notch when there is one.
+  Nothing of the island sits behind the notch.
 - Idle: the app mark at the left and a still muted dot at the right. Nothing moves when idle.
 - Working: the faces of working agents (up to 3) and a count.
 - Attention: an approval or question expands the island with the agent face, a short summary
@@ -183,8 +184,13 @@ The user knows when an agent needs them or finishes, without watching the window
   the cards still show and close, with no movement.
 - Each part of the island has a text label for screen readers: the rows, the count, "1 of N",
   and the buttons.
-- The island keeps its size to its content. It never needs a scroll bar. The bar is 340 px wide,
-  a card is 460 px wide, and the height fits the content, up to 560 px.
+- The island keeps its size to its content. It never needs a scroll bar. A card is 460 px wide,
+  and the height fits the content, up to 560 px.
+- The bar is wide enough for its content, and never narrower than the camera notch plus the place
+  that the mark and the faces need at each side of it. The mark sits in the left wing and the
+  faces and the count sit in the right wing, each group centred in its wing, so the bar never
+  puts content behind the notch. On a screen with no notch, the bar is 340 px wide and the two
+  groups keep the two ends of it.
 - The island follows a change of language or of reduce motion at once, while it is open.
 
 ## Acceptance

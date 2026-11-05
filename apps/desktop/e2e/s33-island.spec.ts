@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -556,5 +557,96 @@ test("island in Korean with reduce motion: texts, cards still show and close", a
   await island.getByTestId("island-deny").click()
   await island.getByTestId("island-deny").click()
   await expect(island.getByTestId("island-attention")).toHaveCount(0, { timeout: 15_000 })
+  await app.close()
+})
+
+/**
+ * Where the camera notch of this screen is, in px from the top left corner of the screen, or null
+ * when the screen has none. The notch comes from AppKit, as the island reads it, because a
+ * `Display` of Electron holds only its bounds and its work area.
+ */
+const notchOf = (): Promise<{ x: number; width: number } | null> =>
+  new Promise((resolve) => {
+    execFile(
+      "osascript",
+      [
+        "-l",
+        "JavaScript",
+        "-e",
+        `ObjC.import("AppKit");const s=$.NSScreen.mainScreen;const l=s.auxiliaryTopLeftArea;const r=s.auxiliaryTopRightArea;if(!l||!r)JSON.stringify({notch:null});else JSON.stringify({x:l.origin.x+l.size.width,width:r.origin.x-(l.origin.x+l.size.width)});`,
+      ],
+      { timeout: 5000 },
+      (error, stdout) => {
+        if (error) return resolve(null)
+        try {
+          const value = JSON.parse(stdout) as { notch?: null; x?: number; width?: number }
+          if (value.notch === null) return resolve(null)
+          if (typeof value.x !== "number" || typeof value.width !== "number") return resolve(null)
+          resolve({ x: Math.round(value.x), width: Math.round(value.width) })
+        } catch {
+          resolve(null)
+        }
+      },
+    )
+  })
+
+test("island bar: the mark and the faces stay out of the camera notch", async () => {
+  test.setTimeout(120_000)
+  const notch = await notchOf()
+  test.skip(process.platform !== "darwin" || notch === null, "The notch is a part of a Mac")
+  if (notch === null) return
+  const { app, page } = await setup()
+  for (const name of ["Ada", "Bo", "Cy"]) await createAgent(page, name)
+  const { id } = await agentsOf(page)
+  const island = await islandPage(app)
+
+  // Three agents work: the worst case for the right wing, which holds three faces and a count.
+  for (const name of ["Ada", "Bo", "Cy"]) await sendTo(page, id(name), "run long")
+  await expect(island.getByTestId("island-count")).toHaveText("3", { timeout: 30_000 })
+  await expectFitted(app, island)
+
+  const bar = await islandWindow(app)
+  if (!bar) throw new Error("no island window")
+  // The place of the notch, in the coordinates of the island page.
+  const notchLeft = notch.x - bar.x
+  const notchRight = notchLeft + notch.width
+
+  const parts = await island.evaluate(() => {
+    const at = (selector: string) => {
+      const el = document.querySelector(selector)
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return { x: r.x, right: r.right }
+    }
+    return {
+      mark: at("[data-testid=app-mark]"),
+      faces: [...document.querySelectorAll(".face")].map((el) => {
+        const r = el.getBoundingClientRect()
+        return { x: r.x, right: r.right }
+      }),
+      count: at(".count"),
+    }
+  })
+
+  // The mark is left of the notch, and the faces and the count are right of it. Nothing of the
+  // bar sits behind the notch (spec 015).
+  expect(parts.mark).not.toBeNull()
+  expect(parts.mark?.right ?? 0).toBeLessThanOrEqual(notchLeft)
+  expect(parts.faces).toHaveLength(3)
+  for (const face of parts.faces) expect(Math.round(face.x)).toBeGreaterThanOrEqual(notchRight)
+  expect(Math.round(parts.count?.x ?? 0)).toBeGreaterThanOrEqual(notchRight)
+
+  // Each group is centred in its wing, so the bar does not lean to one side (spec 015). The mark
+  // sits in the left wing and the faces with the count in the right wing, and the two wings are
+  // the same width, so each group is as far from the notch as it is from its outer edge.
+  const wingWidth = notchLeft - (parts.mark ? (parts.mark.x + parts.mark.right) / 2 : 0)
+  const rightGroup = {
+    x: Math.min(...parts.faces.map((f) => f.x), parts.count?.x ?? Number.POSITIVE_INFINITY),
+    right: Math.max(...parts.faces.map((f) => f.right), parts.count?.right ?? 0),
+  }
+  const rightWingWidth = (rightGroup.x + rightGroup.right) / 2 - notchRight
+  expect(Math.abs(wingWidth - rightWingWidth)).toBeLessThan(6)
+
+  for (const name of ["Ada", "Bo", "Cy"]) await rpc(page, "chat.stop", { agentId: id(name) })
   await app.close()
 })

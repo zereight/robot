@@ -37,6 +37,17 @@ const [initialSettings, info] = await Promise.all([call("settings.get"), call("a
 // The language and the motion setting can change while the island is open.
 const [settings, setSettings] = createSignal(initialSettings)
 window.robot.on("settings.changed", setSettings)
+/**
+ * Where the camera notch of the screen is, or null when the screen has none (spec 015). The main
+ * process reads it, because Electron does not give it, and sends it once the window is made.
+ */
+const [notch, setNotch] = createSignal<{ width: number; height: number } | null>(null)
+window.robot.on("island.notch", (payload) => {
+  const value = payload as { width?: unknown; height?: unknown } | null
+  if (value && typeof value.width === "number" && typeof value.height === "number")
+    setNotch({ width: value.width, height: value.height })
+  else setNotch(null)
+})
 const locale = () => resolveLocale(settings().language, info.systemLocale)
 const t = (key: MessageKey, params?: Record<string, string | number>) =>
   translate(locale(), key, params)
@@ -231,34 +242,44 @@ const Island = () => {
       onPointerEnter={enter}
       onPointerLeave={leave}
     >
-      {/* The bar stays above the detail card and the result card. The attention card replaces it. */}
+      {/* The bar stays above the detail card and the result card. The attention card replaces it.
+          The mark sits in the left wing of the camera notch and the faces and the count sit in
+          the right wing, so that nothing of the bar is behind the notch (spec 015). */}
       <Show when={view() !== "attention"}>
         <button
           type="button"
           class="bar"
           data-testid="island-bar"
+          data-notch={notch() ? "true" : undefined}
           aria-expanded={view() === "detail"}
           aria-label={
             state().count > 0 ? t("island.count.label", { count: state().count }) : t("app.name")
           }
           onClick={toggle}
         >
-          <AppMark size={28} />
-          <span class="spacer" />
-          <Show when={state().count > 0} fallback={<span class="dot" data-testid="island-idle" />}>
-            <span class="faces" data-testid="island-working">
-              <For each={state().working}>
-                {(a) => (
-                  <span class="face" title={a.name}>
-                    <Face face={a.face} size={22} />
-                  </span>
-                )}
-              </For>
-            </span>
-            <span class="count" data-testid="island-count" aria-hidden="true">
-              {state().count}
-            </span>
-          </Show>
+          <span class="wing" data-wing="start">
+            <AppMark size={28} />
+          </span>
+          <span class="notch" style={{ width: `${notch()?.width ?? 0}px` }} aria-hidden="true" />
+          <span class="wing" data-wing="end">
+            <Show
+              when={state().count > 0}
+              fallback={<span class="dot" data-testid="island-idle" />}
+            >
+              <span class="faces" data-testid="island-working">
+                <For each={state().working}>
+                  {(a) => (
+                    <span class="face" title={a.name}>
+                      <Face face={a.face} size={22} />
+                    </span>
+                  )}
+                </For>
+              </span>
+              <span class="count" data-testid="island-count" aria-hidden="true">
+                {state().count}
+              </span>
+            </Show>
+          </span>
         </button>
       </Show>
 

@@ -2,7 +2,11 @@ import { appendFileSync, existsSync, mkdirSync, renameSync, writeFileSync } from
 import { homedir, arch as osArch, release as osRelease, type as osType } from "node:os"
 import { basename, join, join as joinPath } from "node:path"
 import {
+  EVENT_CHANNEL,
+  ISLAND_BAR_WIDTH,
+  ISLAND_CARD_WIDTH,
   type IslandShape,
+  islandBarWidth,
   PAGE_INPUT_CHANNEL,
   SCREEN_INPUT_CHANNEL,
   TEACH_CHANNEL,
@@ -25,6 +29,7 @@ import {
   shell,
   WebContentsView,
 } from "electron"
+import { type Notch, readNotch } from "./notch.ts"
 import { appendLog, readLogTail } from "./services/logs.ts"
 import type {
   BrowserAct,
@@ -854,16 +859,21 @@ const electronBrowser = (
  * the island page measures its content and the window takes that size.
  */
 const ISLAND_SIZE: Record<Exclude<IslandShape, "hidden">, { width: number; height: number }> = {
-  bar: { width: 340, height: 34 },
-  attention: { width: 460, height: 204 },
-  result: { width: 460, height: 132 },
+  bar: { width: ISLAND_BAR_WIDTH, height: 34 },
+  attention: { width: ISLAND_CARD_WIDTH, height: 204 },
+  result: { width: ISLAND_CARD_WIDTH, height: 132 },
 }
 /** The window never gets a size outside this, whatever the page asks for. */
-const ISLAND_LIMIT = { width: [120, 640], height: [20, 560] } as const
-/** A menu bar this tall or taller means that the screen has a camera notch. */
+const ISLAND_LIMIT = { width: [120, 960], height: [20, 560] } as const
+/** A menu bar this tall or taller means that the screen may have a camera notch. */
 const NOTCH_MENU_BAR_MIN = 30
 let island: BrowserWindow | undefined
 let islandShapeNow: IslandShape = "hidden"
+/** Where the camera notch of the screen is, or null when the screen has none (spec 015). */
+let islandNotch: Notch | null = null
+
+/** The width of the bar on the screen that shows now: the notch plus a wing at each side. */
+const islandBarWidthNow = () => islandBarWidth(islandNotch?.width ?? 0)
 
 /**
  * The island is for macOS. A test run has no island unless the test asks for it, on any system,
@@ -876,15 +886,16 @@ const islandAllowed = () =>
 const placeIsland = (win: BrowserWindow, size: { width: number; height: number }) => {
   const display = screen.getPrimaryDisplay()
   const { bounds } = display
-  // The menu bar of a screen with a camera notch is as tall as the notch. The island joins the
-  // notch there. A screen without a notch keeps the island under the menu bar.
+  // The island joins the camera notch, so that the bar sits around it. A screen without a notch
+  // keeps the island under the menu bar.
   const menuBar = display.workArea.y - bounds.y
-  const notch = menuBar >= NOTCH_MENU_BAR_MIN ? menuBar : 0
+  const notchHeight = islandNotch?.height ?? 0
+  const joinsNotch = notchHeight > 0 && menuBar >= NOTCH_MENU_BAR_MIN
   const next = {
     x: Math.round(bounds.x + (bounds.width - size.width) / 2),
-    y: notch > 0 ? bounds.y : bounds.y + menuBar,
+    y: joinsNotch ? bounds.y : bounds.y + menuBar,
     width: size.width,
-    height: Math.max(size.height, notch),
+    height: Math.max(size.height, joinsNotch ? notchHeight : 0),
   }
   const now = win.getBounds()
   if (
@@ -895,6 +906,9 @@ const placeIsland = (win: BrowserWindow, size: { width: number; height: number }
   )
     win.setBounds(next)
 }
+
+/** The event that tells the island page where the camera notch is (spec 015). */
+const ISLAND_NOTCH_EVENT = "island.notch"
 
 const setIslandShape = (shape: IslandShape) => {
   if (!islandAllowed()) return
@@ -937,18 +951,34 @@ const setIslandShape = (shape: IslandShape) => {
     else void island.loadFile(joinPath(import.meta.dirname, "../renderer/island.html"))
     islandShapeNow = "hidden"
   }
+  const win = island
+  const size = (): { width: number; height: number } => ({
+    width: shape === "bar" ? islandBarWidthNow() : ISLAND_SIZE[shape].width,
+    height: ISLAND_SIZE[shape].height,
+  })
   // A new shape starts at its own size. The page then fits the window to its content.
-  if (shape !== islandShapeNow) placeIsland(island, ISLAND_SIZE[shape])
+  if (shape !== islandShapeNow) placeIsland(win, size())
   islandShapeNow = shape
-  island.showInactive()
+  win.showInactive()
+  // The notch is known a moment later, because another program reads it. The page gets the notch
+  // so that it can centre each group in a wing, and the bar takes the width that the notch needs
+  // (spec 015). A card that is open by then keeps the width of its content.
+  void readNotch().then((notch) => {
+    if (island !== win || win.isDestroyed() || islandShapeNow === "hidden") return
+    islandNotch = notch
+    win.webContents.send(EVENT_CHANNEL, ISLAND_NOTCH_EVENT, notch)
+  })
 }
 
 const fitIsland = (size: { width: number; height: number }) => {
   if (!island || island.isDestroyed() || islandShapeNow === "hidden") return
   const clamp = (value: number, [min, max]: readonly [number, number]) =>
     Math.min(max, Math.max(min, Math.ceil(Number.isFinite(value) ? value : min)))
+  // The bar never gets narrower than the notch needs, whatever the page measures (spec 015). A
+  // card is wider than that, so it keeps the width of its content.
+  const width = islandShapeNow === "bar" ? Math.max(size.width, islandBarWidthNow()) : size.width
   placeIsland(island, {
-    width: clamp(size.width, ISLAND_LIMIT.width),
+    width: clamp(width, ISLAND_LIMIT.width),
     height: clamp(size.height, ISLAND_LIMIT.height),
   })
 }
@@ -959,6 +989,12 @@ export const electronPlatform = (): PlatformService => {
   const dataDir = app.getPath("userData")
   mkdirSync(dataDir, { recursive: true })
   watchApp()
+  // The camera notch is read once, so that the first bar already has the width that it needs
+  // (spec 015). A read that fails leaves the island at 340 px.
+  if (islandAllowed())
+    void readNotch().then((notch) => {
+      islandNotch = notch
+    })
   let teamsSurface: TeamsSurface | undefined
   const pageOf = (agentId: string): BrowserPage => {
     const known = browsers.get(agentId)
