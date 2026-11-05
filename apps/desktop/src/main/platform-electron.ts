@@ -29,7 +29,7 @@ import {
   shell,
   WebContentsView,
 } from "electron"
-import { type Notch, readNotch } from "./notch.ts"
+import { type Notch, notchReader } from "./notch.ts"
 import { appendLog, readLogTail } from "./services/logs.ts"
 import type {
   BrowserAct,
@@ -907,6 +907,13 @@ const placeIsland = (win: BrowserWindow, size: { width: number; height: number }
     win.setBounds(next)
 }
 
+/**
+ * The notch of the screen, read once. A screen does not change its notch while the app runs, so
+ * the read runs one time and every later caller waits on the same promise. A read that fails
+ * leaves null, and the island keeps 340 px (spec 015).
+ */
+const onceNotch = notchReader()
+
 /** The event that tells the island page where the camera notch is (spec 015). */
 const ISLAND_NOTCH_EVENT = "island.notch"
 
@@ -949,6 +956,12 @@ const setIslandShape = (shape: IslandShape) => {
     const devUrl = process.env.ELECTRON_RENDERER_URL
     if (devUrl) void island.loadURL(`${devUrl}/island.html`)
     else void island.loadFile(joinPath(import.meta.dirname, "../renderer/island.html"))
+    // The page asks for nothing at load: this one event tells it where the notch is. A reload
+    // (a crash of the page, a new build in a development run) must send it again.
+    island.webContents.on("did-finish-load", () => {
+      if (island && !island.isDestroyed())
+        island.webContents.send(EVENT_CHANNEL, ISLAND_NOTCH_EVENT, islandNotch)
+    })
     islandShapeNow = "hidden"
   }
   const win = island
@@ -960,13 +973,16 @@ const setIslandShape = (shape: IslandShape) => {
   if (shape !== islandShapeNow) placeIsland(win, size())
   islandShapeNow = shape
   win.showInactive()
-  // The notch is known a moment later, because another program reads it. The page gets the notch
-  // so that it can centre each group in a wing, and the bar takes the width that the notch needs
-  // (spec 015). A card that is open by then keeps the width of its content.
-  void readNotch().then((notch) => {
+  // The notch is known a moment after the first shape, because another program reads it. The
+  // page gets it once, so that it can centre each group in a wing, and the bar keeps the width
+  // that the notch needs (spec 015). A card that is open by then keeps the width of its content.
+  void onceNotch().then((notch) => {
     if (island !== win || win.isDestroyed() || islandShapeNow === "hidden") return
+    if (islandNotch?.width === notch?.width) return
     islandNotch = notch
     win.webContents.send(EVENT_CHANNEL, ISLAND_NOTCH_EVENT, notch)
+    // The bar was placed at 340 px when the notch was not known yet.
+    if (islandShapeNow === "bar") placeIsland(win, size())
   })
 }
 
@@ -989,10 +1005,10 @@ export const electronPlatform = (): PlatformService => {
   const dataDir = app.getPath("userData")
   mkdirSync(dataDir, { recursive: true })
   watchApp()
-  // The camera notch is read once, so that the first bar already has the width that it needs
-  // (spec 015). A read that fails leaves the island at 340 px.
+  // The camera notch is read once, at the start, so that the first bar already has the width that
+  // it needs (spec 015). A read that fails leaves the island at 340 px.
   if (islandAllowed())
-    void readNotch().then((notch) => {
+    void onceNotch().then((notch) => {
       islandNotch = notch
     })
   let teamsSurface: TeamsSurface | undefined

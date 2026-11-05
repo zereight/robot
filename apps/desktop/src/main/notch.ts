@@ -67,3 +67,18 @@ export const readNotch = (): Promise<Notch | null> =>
       },
     )
   })
+
+/**
+ * The notch of a screen, read one time. A screen keeps its notch while the app runs, and the
+ * island asks for it each time its shape changes, which is many times in a busy turn: the read
+ * starts a program, so it must not run again. Every later caller gets the same promise.
+ */
+export const notchReader = (
+  read: () => Promise<Notch | null> = readNotch,
+): (() => Promise<Notch | null>) => {
+  let once: Promise<Notch | null> | undefined
+  return () => {
+    once ??= read()
+    return once
+  }
+}
