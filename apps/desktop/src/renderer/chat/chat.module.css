@@ -1132,6 +1132,11 @@
   font-size: var(--text-xs);
 }
 
+.noteStack {
+  display: flex;
+  flex-direction: column;
+}
+
 .toolReason {
   color: var(--c-danger);
   font-size: var(--text-xs);

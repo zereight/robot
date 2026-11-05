@@ -195,6 +195,7 @@ export const en = {
   "chat.note.setup_failed_spawn": "Setup failed: {name}. It did not start.",
   "chat.note.handed_over": "Handed over to {name}",
   "chat.note.kept_going": "Kept going ({n} of {of})",
+  "chat.note.busy_retry": "The model is busy. Trying again ({n} of {of}).",
   "chat.note.tree_repaired.loop": "The parent channel was cleared. The tree would have a loop.",
   "chat.note.tree_repaired.levels":
     "The parent channel was cleared. The tree would have more than 3 levels.",

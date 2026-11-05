@@ -92,6 +92,7 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, FiberMap, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
+import { BUSY_TRIES } from "../providers/busyRetry.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { goOnTurns, resumeOf } from "../providers/resume.ts"
@@ -1645,6 +1646,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 useTools: true,
                 ...(resumeNow ? { resume: resumeNow } : {}),
                 inbox,
+                // A vendor runtime shows what its program reports. It is not tried again (spec 006).
+                ...(!isRuntime
+                  ? {
+                      busy: {
+                        wait: (n: number) => {
+                          parts.push({ kind: "note", note: "busy_retry", n, of: BUSY_TRIES })
+                          save("streaming")
+                          publish()
+                          silence.pulse()
+                        },
+                        again: () => silence.pulse(),
+                      },
+                    }
+                  : {}),
               },
               {
                 execute: (call) => tools.execute(context, call),

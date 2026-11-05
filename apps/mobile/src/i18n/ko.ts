@@ -195,6 +195,7 @@ export const ko: Record<MessageKey, string> = {
   "chat.note.setup_failed_spawn": "준비에 실패했어요: {name}. 시작하지 못했어요.",
   "chat.note.handed_over": "{name}에게 인계함",
   "chat.note.kept_going": "이어서 진행했어요 ({n}/{of})",
+  "chat.note.busy_retry": "모델이 바빠요. 다시 시도하는 중 ({n}/{of}).",
   "chat.note.tree_repaired.loop": "상위 채널을 비웠어요. 이대로면 트리에 순환이 생겨요.",
   "chat.note.tree_repaired.levels": "상위 채널을 비웠어요. 이대로면 트리가 3단계를 넘게 돼요.",
   "chat.note.backup_goes_on": "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}",

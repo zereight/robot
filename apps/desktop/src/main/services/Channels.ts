@@ -128,6 +128,7 @@ import {
 } from "@robot/shared"
 import { Cause, Context, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect"
 import type { AgentEvent } from "../providers/agent.ts"
+import { BUSY_TRIES } from "../providers/busyRetry.ts"
 import type { Turn } from "../providers/chat.ts"
 import { offeredEfforts, ProviderFailure } from "../providers/client.ts"
 import { goOnTurns } from "../providers/resume.ts"
@@ -1097,6 +1098,21 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 workspace: o.agent.workspace,
                 permission: levelOnRuntime(o.agent.permission, isRuntime),
                 useTools,
+                // A vendor runtime shows what its program reports. A call with no tools of the app
+                // is not tried again (spec 006).
+                ...(!isRuntime && useTools
+                  ? {
+                      busy: {
+                        wait: (n: number) => {
+                          parts.push({ kind: "note", note: "busy_retry", n, of: BUSY_TRIES })
+                          save("streaming")
+                          emitMessage(id)
+                          silence.pulse()
+                        },
+                        again: () => silence.pulse(),
+                      },
+                    }
+                  : {}),
               },
               {
                 execute: async (call) =>
