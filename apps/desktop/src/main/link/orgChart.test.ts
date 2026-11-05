@@ -16,9 +16,9 @@ import { Effect } from "effect"
 import { runRequest } from "../rpc.ts"
 import { Activity } from "../services/Activity.ts"
 import { Agents } from "../services/Agents.ts"
-import { Channels } from "../services/Channels.ts"
 import { Database } from "../services/Database.ts"
 import { Devices } from "../services/Devices.ts"
+import { Organizations } from "../services/Organizations.ts"
 import { Remote } from "../services/Remote.ts"
 import { Servers } from "../services/Servers.ts"
 import { testRuntime } from "../services/testing.ts"
@@ -99,7 +99,7 @@ const value = <T>(result: RpcResult<unknown>) => {
 }
 const codeOf = (result: RpcResult<unknown>) => (result.ok ? "ok" : result.error.code)
 
-const names = (model: ChartModel) => model.channels.flatMap((c) => c.nodes.map((n) => n.name))
+const names = (model: ChartModel) => model.orgs.flatMap((c) => c.nodes.map((n) => n.name))
 
 /** The pushes of the org chart that the window of the client got from a linked server. */
 const pushesOf = (client: Rt, serverId: string) =>
@@ -130,11 +130,10 @@ describe("a client and the org chart of a server (spec 029, 012)", () => {
     // The client has agents too. They must not show in the chart of the server.
     await p.onClientAgent("Zed", "Lives on the client")
     await p.server.runtime.runPromise(
-      Channels.use((c) =>
-        c.create({
+      Organizations.use((o) =>
+        o.create({
           serverId: p.serverId,
           name: "Docs",
-          topic: "",
           memberIds: [ada.id, bo.id],
           leadId: ada.id,
         }),
@@ -143,10 +142,10 @@ describe("a client and the org chart of a server (spec 029, 012)", () => {
     const model = await p.model()
     expect(model.empty).toBe(false)
     expect(names(model)).toEqual(["Ada", "Bo"])
-    expect(model.channels.map((c) => [c.name, c.memberCount, c.leadKey !== null])).toEqual([
+    expect(model.orgs.map((c) => [c.name, c.memberCount, c.leadKey !== null])).toEqual([
       ["Docs", 2, true],
     ])
-    const [lead, other] = model.channels[0]?.nodes ?? []
+    const [lead, other] = model.orgs[0]?.nodes ?? []
     expect(lead).toMatchObject({ name: "Ada", role: "Writes docs", isLead: true })
     expect(other).toMatchObject({ name: "Bo", role: "Checks facts", isLead: false })
     expect(JSON.stringify(model)).not.toContain("Zed")
@@ -169,7 +168,7 @@ describe("a client and the org chart of a server (spec 029, 012)", () => {
         root: m.root,
         empty: m.empty,
         capped: m.handoffsCapped,
-        nodes: m.channels.map((c) => [c.name, c.memberCount, c.nodes.map((n) => n.name)]),
+        nodes: m.orgs.map((c) => [c.name, c.memberCount, c.nodes.map((n) => n.name)]),
       })
     expect(shape(await off.model())).toBe(shape(await on.model()))
     expect(names(await off.model())).toEqual(["Ada"])
@@ -184,7 +183,7 @@ describe("a client and the org chart of a server (spec 029, 012)", () => {
 
   test("a server with no agent gives the empty chart", async () => {
     const p = await pair(false)
-    expect(await p.model()).toMatchObject({ empty: true, root: null, channels: [], lines: [] })
+    expect(await p.model()).toMatchObject({ empty: true, root: null, orgs: [], lines: [] })
   })
 
   test("the request names this server; any other id or any other field is refused", async () => {
@@ -228,13 +227,13 @@ describe("a client and the org chart of a server (spec 029, 012)", () => {
       Activity.use((a) => Effect.sync(() => a.setWorking(ada.id, p.serverId, true))),
     )
     const model = await p.model()
-    const node = model.channels[0]?.nodes[0]
+    const node = model.orgs[0]?.nodes[0]
     expect(node?.state).toBe("working")
     // The label is the label of the task, cut at 90 characters with "…".
     expect([...(node?.label ?? "")]).toHaveLength(90)
     expect(node?.label?.endsWith("…")).toBe(true)
     expect(node?.label?.startsWith("Draft the release notes")).toBe(true)
-    expect(model.channels[0]?.counts).toEqual({ working: 1, waiting: 0, idle: 0, offline: 0 })
+    expect(model.orgs[0]?.counts).toEqual({ working: 1, waiting: 0, idle: 0, offline: 0 })
     // Nothing else about the task is in the model.
     const text = JSON.stringify(model)
     expect(text).not.toContain("PROMPT-TEXT-THAT-MUST-NOT-LEAVE")
@@ -308,12 +307,12 @@ describe("the server pushes the chart (spec 012, 'Messages')", () => {
       () =>
         pushesOf(p.client, p.serverId)
           .slice(before)
-          .findLast((e) => (e.payload as ChartModel).channels[0]?.nodes[0]?.state === "working"),
+          .findLast((e) => (e.payload as ChartModel).orgs[0]?.nodes[0]?.state === "working"),
       (e) => e !== undefined,
     )
     expect(push).toBeDefined()
     const model = push?.payload as ChartModel
-    expect(model.channels[0]?.nodes[0]).toMatchObject({
+    expect(model.orgs[0]?.nodes[0]).toMatchObject({
       name: "Ada",
       state: "working",
       label: "Draft the release notes",
