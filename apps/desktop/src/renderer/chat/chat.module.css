@@ -911,7 +911,7 @@
 
 .leadSpin {
   flex: none;
-  animation: lead-spin 1s linear infinite;
+  animation: lead-spin var(--motion-spin) linear infinite;
 }
 
 @keyframes lead-spin {

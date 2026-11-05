@@ -241,7 +241,7 @@
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--c-success);
-  animation: dot-pulse 1.4s ease-in-out infinite;
+  animation: dot-pulse var(--motion-pulse) ease-in-out infinite;
 }
 
 /* A section of the user: 12 px further in, for the header and for its places. */
@@ -521,7 +521,7 @@
   box-shadow:
     0 0 0 2px var(--c-sidebar),
     0 0 0 4px color-mix(in srgb, var(--c-success) 30%, transparent);
-  animation: dot-pulse 1.4s ease-in-out infinite;
+  animation: dot-pulse var(--motion-pulse) ease-in-out infinite;
 }
 
 /* With reduce motion the dot is still, as the light of the badge is (spec 000). */
@@ -867,8 +867,11 @@
 }
 
 .spin {
-  /* A turn takes four slow motions, so reduce motion (a duration of 0) stops it. */
-  animation: spin calc(var(--motion-slow) * 4) linear infinite;
+  animation: spin var(--motion-spin) linear infinite;
+}
+
+:root[data-reduce-motion="true"] .spin {
+  animation: none;
 }
 
 @keyframes spin {

@@ -35,7 +35,7 @@
 .glow {
   fill: var(--c-mark-glow);
   filter: blur(1.5px) drop-shadow(0 0 3px var(--c-mark-glow));
-  animation: mark-pulse 1.4s ease-in-out infinite;
+  animation: mark-pulse var(--motion-pulse) ease-in-out infinite;
 }
 
 /* A quiet turn: the light does not breathe. It is the same still light as with reduced motion. */

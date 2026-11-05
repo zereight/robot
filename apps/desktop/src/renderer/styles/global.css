@@ -40,6 +40,10 @@
   --motion-slow: 260ms;
   /* Delay between the items of a group that enters together. At most six items are staggered. */
   --motion-stagger: 40ms;
+  /* One period for a turning mark and one for a pulse. They never end, so reduce motion stops them
+     one by one: each one has its own rule (specs/039). */
+  --motion-spin: 1000ms;
+  --motion-pulse: 1400ms;
   /* One strong curve for things that enter and leave, one for things that move on screen. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
