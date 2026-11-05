@@ -58,6 +58,8 @@ export const ko: Record<MessageKey, string> = {
   "settings.compactPlaces.hint": "행 높이를 줄여 더 많은 항목을 보여줘요.",
   "settings.showToolSteps": "도구 단계 표시",
   "settings.showToolSteps.hint": "끄면 끝난 단계를 한 줄로 접어요.",
+  "settings.showOrgPrefix": "에이전트 이름 앞에 조직 표시",
+  "settings.showOrgPrefix.hint": "켜면 조직에 속한 에이전트 이름 앞에 [Docs]처럼 조직을 보여줘요.",
   "settings.reduceMotion": "움직임 줄이기",
   "settings.reduceMotion.system": "시스템 설정 따르기",
   "settings.reduceMotion.on": "켜기",

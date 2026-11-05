@@ -53,6 +53,12 @@ describe("settings", () => {
     expect(Schema.is(SettingsPatch)({ showToolSteps: "no" })).toBe(false)
   })
 
+  test("the organization prefix shows at first, and the switch takes true or false (spec 035)", () => {
+    expect(defaultSettings.showOrgPrefix).toBe(true)
+    expect(Schema.is(SettingsPatch)({ showOrgPrefix: false })).toBe(true)
+    expect(Schema.is(SettingsPatch)({ showOrgPrefix: "no" })).toBe(false)
+  })
+
   test("agents working at once: a whole number from 1 to 8, 4 at first", () => {
     expect(defaultSettings.agentsAtOnce).toBe(4)
     for (const agentsAtOnce of [1, 8]) {

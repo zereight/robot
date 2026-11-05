@@ -122,6 +122,12 @@ export const Settings = Schema.Struct({
    * run. A step that runs, waits, failed, was refused, or carries a note always stays open.
    */
   showToolSteps: Schema.Boolean,
+  /**
+   * "Show the organization before an agent name" (Appearance, spec 035): when on, the name of an
+   * agent in an organization shows as "[Docs] Ada". A setting of this computer. A setting saved
+   * before this existed has none, and the switch is on.
+   */
+  showOrgPrefix: Schema.Boolean,
 })
 export type Settings = typeof Settings.Type
 
@@ -164,6 +170,7 @@ export const defaultSettings: Settings = {
   agentsAtOnce: AGENTS_AT_ONCE_DEFAULT,
   keepAwake: KEEP_AWAKE_DEFAULT,
   showToolSteps: true,
+  showOrgPrefix: true,
 }
 
 export type Locale = "en" | "ko"

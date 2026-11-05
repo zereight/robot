@@ -37,9 +37,11 @@ import { formatHitTime } from "../chat/format.ts"
 import { openThread } from "../chat/threads.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
 import { useApp } from "../state/app.tsx"
 import { setFocusMessage, setSearchOrigin } from "../state/focus.ts"
 import { linkEpoch } from "../state/link.ts"
+import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -160,6 +162,7 @@ export const PlaceList = (props: PlaceListProps) => {
   const app = useApp()
   const { t } = app
   const ui = useUi()
+  const orgs = useOrgs()
   const [query, setQuery] = createSignal("")
   const [menu, setMenu] = createSignal<MenuState>()
   const [renaming, setRenaming] = createSignal<string>()
@@ -177,7 +180,12 @@ export const PlaceList = (props: PlaceListProps) => {
    */
   const readOnly = () => ui.linked()
 
-  const sections = createMemo(() => filterPlaces(ui.sections(), query()))
+  // The search also matches the whole name of the organization of an agent, with the prefix on (spec 035).
+  const sections = createMemo(() =>
+    filterPlaces(ui.sections(), query(), (place) =>
+      place.kind === "agent" ? orgs.prefixOrg(place.id) : null,
+    ),
+  )
   const searching = () => query().trim().length > 0
   const anyMatch = () => sections().some((s) => allPlaces(s).length > 0)
 
@@ -369,9 +377,13 @@ export const PlaceList = (props: PlaceListProps) => {
   const roleOf = (place: Place) =>
     place.kind === "agent" && place.role?.trim() ? place.role.trim() : undefined
 
+  /** The name of a row for a screen reader: the prefix adds the whole organization name (spec 035). */
+  const labelOf = (place: Place) =>
+    place.kind === "agent" ? orgs.shown(place.id, place.name).label : place.name
+
   const accessibleName = (place: Place) =>
     [
-      place.name,
+      labelOf(place),
       // The whole role line is part of the name of an agent row (spec 001).
       roleOf(place) ? t("places.role", { role: roleOf(place) ?? "" }) : "",
       place.working ? t("places.working") : "",
@@ -579,7 +591,7 @@ export const PlaceList = (props: PlaceListProps) => {
           </Show>
         </span>
         <span class={styles.rowName} data-with-badge={roleOf(place) ? "true" : undefined}>
-          {place.name}
+          {place.kind === "agent" ? <AgentName id={place.id} name={place.name} /> : place.name}
         </span>
         {/* The badge is the role line of an agent. A channel never has one. The name comes first:
             the slot is what is left of the row, the badge is cut with an ellipsis inside it, and
@@ -730,7 +742,12 @@ export const PlaceList = (props: PlaceListProps) => {
         data-testid="search-hit"
         data-message-id={hit.messageId}
         data-hit-place={hit.placeName}
-        aria-label={t("search.hit", { place: hit.placeName, time: time(), text: hit.snippet })}
+        aria-label={t("search.hit", {
+          place:
+            hit.kind === "agent" ? orgs.shown(hit.placeId, hit.placeName).label : hit.placeName,
+          time: time(),
+          text: hit.snippet,
+        })}
         onClick={() => openHit(hit)}
       >
         <span class={styles.hitHead}>
@@ -740,7 +757,11 @@ export const PlaceList = (props: PlaceListProps) => {
               : hitFace(hit)}
           </span>
           <span class={styles.hitPlace} data-user-data>
-            {hit.placeName}
+            {hit.kind === "agent" ? (
+              <AgentName id={hit.placeId} name={hit.placeName} />
+            ) : (
+              hit.placeName
+            )}
           </span>
           <span class={styles.hitTime}>{time()}</span>
         </span>

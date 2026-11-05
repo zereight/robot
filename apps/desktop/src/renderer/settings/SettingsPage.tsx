@@ -347,6 +347,14 @@ const Appearance = () => {
           onChange={(showToolSteps) => app.update({ showToolSteps })}
         />
       </Row>
+      <Row label={t("settings.showOrgPrefix")} hint={t("settings.showOrgPrefix.hint")}>
+        <Switch
+          label={t("settings.showOrgPrefix")}
+          testId="setting-show-org-prefix"
+          checked={app.settings.showOrgPrefix}
+          onChange={(showOrgPrefix) => app.update({ showOrgPrefix })}
+        />
+      </Row>
       <Row label={t("settings.reduceMotion")}>
         <Segmented
           label={t("settings.reduceMotion")}

@@ -1,0 +1,8 @@
+/*
+ * The organization prefix of an agent name (spec 035): a muted label in front of the name. The name
+ * keeps its own look. The prefix is cut last, because it comes first in the line.
+ */
+.prefix {
+  color: var(--c-text-muted);
+  font-weight: 400;
+}
