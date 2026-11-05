@@ -87,6 +87,9 @@ export const SetupActionDialog = (props: {
           onInput={(e) => setCommand(e.currentTarget.value)}
           data-testid="setup-command"
         />
+        <div class={styles.setupPath} data-testid="setup-command-hint">
+          {t("setup.command.hint")}
+        </div>
       </div>
       <div class={styles.setupMarks}>
         <span class={styles.setupMark}>

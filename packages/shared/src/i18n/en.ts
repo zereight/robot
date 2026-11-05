@@ -2786,6 +2786,7 @@ export const en = {
   "setup.delete": "Delete",
   "setup.name": "Name",
   "setup.command": "Command",
+  "setup.command.hint": "A shell command. It runs in the workspace. The agent does not read it.",
   "setup.mark.ownCopy": "On the first turn in an own copy",
   "setup.mark.turn": "On every turn",
   "setup.invalid.name": "A name holds 1 to 80 characters.",
