@@ -2815,12 +2815,6 @@ export const en = {
   "routines.runTokens": "Tokens: {line}",
   "error.token_limit": "Token limit reached ({detail}).",
   "error.invalid_token_limit": "Use a whole number from 1,000 to 10,000,000 for the token limit.",
-  "channels.dailyLimit": "Daily token limit",
-  "channels.dailyLimit.placeholder": "Tokens a day",
-  "channels.dailyLimit.hint":
-    "From 10,000 to 100,000,000 tokens a day. The tasks of this channel and of its lower channels count, from midnight to midnight. At the limit, new work of the channel is blocked.",
-  "channels.limit.near": "80% of the daily token limit is used.",
-  "channels.limit.over": "The daily token limit of {channel} is used.",
   "usage.orgs": "Daily token limit of organizations",
   "usage.col.org": "Organization",
   "usage.col.usedToday": "Used today",

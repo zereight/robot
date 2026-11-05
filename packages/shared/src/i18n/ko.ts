@@ -2795,12 +2795,6 @@ export const ko: Record<MessageKey, string> = {
   "routines.runTokens": "토큰: {line}",
   "error.token_limit": "토큰 한도({detail})에 도달했어요.",
   "error.invalid_token_limit": "토큰 한도는 1,000에서 10,000,000 사이의 정수로 입력하세요.",
-  "channels.dailyLimit": "하루 토큰 한도",
-  "channels.dailyLimit.placeholder": "하루 토큰 수",
-  "channels.dailyLimit.hint":
-    "하루 10,000에서 100,000,000 토큰까지예요. 이 채널과 하위 채널의 작업을 자정부터 자정까지 합산해요. 한도에 닿으면 이 채널의 새 작업은 막혀요.",
-  "channels.limit.near": "하루 토큰 한도의 80%를 사용했어요.",
-  "channels.limit.over": "{channel}의 하루 토큰 한도를 모두 사용했어요.",
   "usage.orgs": "조직의 하루 토큰 한도",
   "usage.col.org": "조직",
   "usage.col.usedToday": "오늘 사용량",
