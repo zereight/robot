@@ -643,7 +643,28 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ),
     ).toBe("invalid_daily_limit")
 
-    // The delete frees the organizations under it.
+    // One line (spec 030, 012): a client gets the same refusal as the form, with the names.
+    const ops = value<Org>(
+      await p.ask("organizations.create", {
+        serverId: p.serverId,
+        name: "Ops",
+        memberIds: [],
+        leadId: null,
+      }),
+    )
+    const refused = await p.ask("organizations.update", {
+      id: ops.id,
+      patch: { memberIds: [a.id] },
+    })
+    expect(codeOf(refused)).toBe("org_line_member")
+    expect(JSON.parse(refused.ok ? "{}" : refused.error.message)).toEqual({
+      agent: "Writer",
+      other: "Company",
+      organization: "Ops",
+    })
+    expect(codeOf(await p.ask("organizations.delete", { id: ops.id }))).toBe("ok")
+
+    // The delete moves the organizations under it up to its parent (here: none, so they are top).
     expect(codeOf(await p.ask("organizations.delete", { id: company.id }))).toBe("ok")
     const after = value<Org[]>(await p.onServer("organizations.list", { serverId: p.serverId }))
     expect(after.map((o) => [o.name, o.parentId])).toEqual([["Help", null]])
