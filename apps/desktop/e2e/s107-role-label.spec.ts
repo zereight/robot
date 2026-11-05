@@ -468,7 +468,7 @@ test("role badge and the filter of places by role line (spec 001)", async () => 
   await rpc(page, "settings.update", { compactPlaces: false })
   await expect
     .poll(() => row(page, "Ada").evaluate((el) => el.getBoundingClientRect().height))
-    .toBe(34)
+    .toBe(38)
 
   // Korean: the badge is the text of the user; the accessible name uses the catalogue.
   await app.close()

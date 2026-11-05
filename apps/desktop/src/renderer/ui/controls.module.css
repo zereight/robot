@@ -117,16 +117,18 @@
 .button {
   transition:
     background var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
   border: 1px solid var(--c-border);
   background: var(--c-elevated);
   border-radius: var(--radius-m);
-  padding: 0.35rem 0.8rem;
+  padding: 0.45rem 0.9rem;
   font-weight: 500;
 }
 
 .button:hover {
   background: var(--c-hover);
+  box-shadow: var(--halo);
 }
 
 .primary {
@@ -139,6 +141,7 @@
 .primary:hover {
   background: var(--c-accent-hover);
   border-color: var(--c-accent-hover);
+  box-shadow: var(--halo);
 }
 
 /* A button that deletes or removes something that exists (spec 000, "Danger buttons"). */
@@ -185,6 +188,7 @@
 .iconButton:disabled:hover {
   background: var(--c-elevated);
   color: var(--c-text-muted);
+  box-shadow: none;
 }
 
 .primary:disabled,
@@ -197,6 +201,7 @@
 .primary:disabled:hover {
   background: var(--c-accent);
   border-color: var(--c-accent);
+  box-shadow: none;
 }
 
 .danger:disabled:hover {
@@ -208,12 +213,14 @@
   transition:
     background var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
 }
 
 .iconButton:hover {
   background: var(--c-hover);
   color: var(--c-text);
+  box-shadow: var(--halo);
 }
 
 .menu {
@@ -222,7 +229,8 @@
   min-width: 160px;
   display: flex;
   flex-direction: column;
-  padding: 4px;
+  gap: 2px;
+  padding: 6px;
   background: var(--c-elevated);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-m);
@@ -234,12 +242,13 @@
   border: 0;
   background: transparent;
   text-align: start;
-  padding: 6px 10px;
-  /* The menu has 4px of padding, so an item takes the box radius minus 4px. */
-  border-radius: calc(var(--radius-m) - 4px);
+  padding: 8px 12px;
+  /* The menu has 6px of padding, so an item takes the box radius minus 6px. */
+  border-radius: calc(var(--radius-m) - 6px);
   color: var(--c-text);
   transition:
     background var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
 }
 
@@ -247,6 +256,10 @@
 .menuItem:focus-visible {
   background: var(--c-hover);
   outline: none;
+}
+
+.menuItem:hover {
+  box-shadow: var(--halo-soft);
 }
 
 .menuItem:active:not(:disabled) {

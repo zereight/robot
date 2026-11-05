@@ -58,9 +58,9 @@ sky, a glowing dot that says an agent is alive. That is the whole emotional voca
 1. **State before style.** Every visual difference answers a question the user has. If a new
    border, glow or motion answers no question, it does not ship.
 
-2. **Two lights, two meanings.** The accent violet shows where the user is and what they can
-   press. The mint glow shows what is alive and working. These two never trade places, and
-   nothing else glows.
+2. **Three lights, three meanings.** The accent violet shows where the user is and what they can
+   press. The mint glow shows what is alive and working. The rose neon shows that the app answers
+   the user's hand. These three never trade places, and nothing else glows.
 
 3. **The surface carries the structure.** Panels are told apart by their surface step, not by
    a box drawn around them. If the user cannot see a panel without its border, the step is wrong.

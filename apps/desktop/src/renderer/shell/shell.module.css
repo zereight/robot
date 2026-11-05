@@ -159,7 +159,7 @@
 }
 
 .placesTop {
-  padding: 10px;
+  padding: var(--spacing-md);
   -webkit-app-region: drag;
 }
 
@@ -412,7 +412,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 34px;
+  height: 38px;
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-m);
@@ -425,7 +425,8 @@
 .row {
   transition:
     background var(--motion-fast) var(--ease-out),
-    color var(--motion-fast) var(--ease-out);
+    color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
 }
 
 .places[data-compact="true"] .row {
@@ -435,6 +436,7 @@
 .row:hover {
   background: var(--c-hover);
   color: var(--c-text);
+  box-shadow: var(--halo-soft);
 }
 
 .row[data-unread="true"] {
@@ -652,7 +654,12 @@
   flex-direction: column;
 }
 
+/* Rows sit apart, and the pad leaves room for the halo of a row: overflow would cut it. */
 .sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--spacing-xs);
   overflow: hidden;
   animation: section-open var(--motion-medium) var(--ease-out);
 }
@@ -821,7 +828,7 @@
 @keyframes pop-in {
   from {
     opacity: 0;
-    transform: scale(0.6);
+    transform: scale(0.9);
   }
 }
 

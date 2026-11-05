@@ -5,6 +5,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { echo } from "../ui/echo.ts"
 import styles from "./devices.module.css"
 import { countdown } from "./format.ts"
 import { QrCode } from "./QrCode.tsx"
@@ -155,9 +156,11 @@ export const PairDialog = (props: { accept: boolean; onClose: () => void }) => {
               </Button>
               <Button
                 variant="primary"
-                onClick={async () => {
+                onClick={async (e) => {
+                  const button = e.currentTarget
                   await call("app.copy", { text: pairing().link })
                   setCopied(true)
+                  echo(button)
                 }}
                 data-testid="pair-copy"
               >

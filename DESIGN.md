@@ -1,6 +1,6 @@
 ---
 name: ROBot
-description: A night desk for a small team of AI agents. Deep violet-neutrals, one accent that shows where you are, one glow that shows what is alive.
+description: A night desk for a small team of AI agents. Deep violet-neutrals, one accent that shows where you are, one glow that shows what is alive, one neon that answers your hand.
 colors:
   rail: "#0b0b12"
   sidebar: "#15151e"
@@ -16,6 +16,7 @@ colors:
   accent-text: "#fdfdfd"
   accent-hover: "#5a44c4"
   success: "#48deb3"
+  neon: "#ff87d0"
   danger: "#ff9492"
   danger-hover: "#ffaba7"
   danger-text: "#0d0c13"
@@ -68,28 +69,28 @@ components:
     backgroundColor: "{colors.accent}"
     textColor: "{colors.accent-text}"
     rounded: "{rounded.md}"
-    padding: "6px 12px"
+    padding: "7px 14px"
     typography: "label"
   button-primary-hover:
     backgroundColor: "{colors.accent-hover}"
     textColor: "{colors.accent-text}"
     rounded: "{rounded.md}"
-    padding: "6px 12px"
+    padding: "7px 14px"
   button-primary-disabled:
     backgroundColor: "{colors.accent}"
     textColor: "{colors.accent-text}"
     rounded: "{rounded.md}"
-    padding: "6px 12px"
+    padding: "7px 14px"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.text-muted}"
     rounded: "{rounded.md}"
-    padding: "6px 12px"
+    padding: "7px 14px"
   button-danger:
     backgroundColor: "{colors.danger}"
     textColor: "{colors.danger-text}"
     rounded: "{rounded.md}"
-    padding: "6px 12px"
+    padding: "7px 14px"
   input-search:
     backgroundColor: "{colors.main}"
     textColor: "{colors.text}"
@@ -100,13 +101,13 @@ components:
     textColor: "{colors.text-muted}"
     rounded: "{rounded.md}"
     padding: "0 8px"
-    height: "34px"
+    height: "38px"
   place-row-selected:
     backgroundColor: "{colors.selected}"
     textColor: "{colors.text}"
     rounded: "{rounded.md}"
     padding: "0 8px"
-    height: "34px"
+    height: "38px"
   message-row:
     backgroundColor: "transparent"
     textColor: "{colors.text}"
@@ -128,10 +129,11 @@ ROBot is a desk lamp in a dark room. The room is deep violet-black, not grey, be
 mark is a night sky and the interface should belong to it. Most of the screen sits at a low
 lightness, so the few things that matter can glow without shouting.
 
-The system is built on one idea: **two lights, two meanings.** The accent violet marks the place
-the user is and the thing they can press. The mint glow marks what is alive: a working agent, a
-running task. They never swap roles. Nothing else glows. A screen with no work in it has no
-glow at all, and that is the correct look for an idle app.
+The system is built on one idea: **three lights, three meanings.** The accent violet marks the
+place the user is and the thing they can press. The mint glow marks what is alive: a working
+agent, a running task. The rose neon marks that the app answers: a soft halo that comes to the
+control under the user's hand and fades. They never swap roles. Nothing else glows. A screen with
+no work in it and no hand on it has no glow at all, and that is the correct look for an idle app.
 
 Surfaces carry the structure. A panel is a step in lightness, not a box with a border around
 it. Borders exist to seal an edge at a boundary, not to draw furniture. This is what separates a
@@ -145,7 +147,10 @@ layout of a chat server, never its look).
 **Key Characteristics:**
 
 - Deep violet-tinted neutrals at seven lightness steps, each step visible without a border.
-- One accent (violet, hue 285) for position and action. One glow (mint, hue 170) for life.
+- One accent (violet, hue 285) for position and action. One glow (mint, hue 170) for life. One
+  neon (rose, hue 345) for the answer to the user's hand.
+- Interactive feedback is light: a soft halo on hover, focus and press, and one echo after an
+  action. The halo is not a border, a gradient fill or a glass card.
 - Prose-size body text. A glance at arm's length must be enough to read a sentence.
 - Flat surfaces, no decorative gradients, sentence case, one line icon set.
 - Motion under 300 ms, and only for state.
@@ -174,6 +179,13 @@ not a coloured surface. Above that the room reads as "purple app", which is the 
   eye glow (hue 169.5). It means one thing only: this agent, channel or task is working right
   now. It is never decoration, never a "success" badge on a finished thing, and never a border.
 
+- **Answer Rose** (`#ff87d0`, oklch 0.780 0.170 345): The neon. It means one thing only: the app
+  answers the user now. It shows as a halo on the control that has the pointer, the keyboard
+  focus or the press, and once as an echo after an action the user did. It lasts under 300 ms. It
+  is never a fill, never a border, never a resting state, and never a mark for something the app
+  keeps (selected, working, unread). It reaches 6.6:1 on the lightest dark surface, so text in
+  this colour reads.
+
 ### Neutral
 
 - **Room Black** (`#0b0b12`): The server rail, behind everything. The darkest step.
@@ -196,9 +208,11 @@ not a coloured surface. Above that the room reads as "purple app", which is the 
 
 ### Named Rules
 
-**The Two Lights Rule.** The accent violet is for position and action. The mint glow is for work
-in progress. No third colour carries meaning. If a new state needs a colour, it maps to one of
-these two or to the danger red, and nothing else.
+**The Three Lights Rule.** The accent violet is for position and action. The mint glow is for
+work in progress. The rose neon is for the answer to the user's hand. No fourth colour carries
+meaning. If a new state needs a colour, it maps to one of these three or to the danger red, and
+nothing else. Mint and rose never swap roles: a halo under the pointer is rose even on a working
+agent, and a working agent keeps its mint after the pointer leaves.
 
 **The Tinted-Neutral Rule.** Every neutral carries 0.014 to 0.022 chroma at hue 285. Never a
 pure grey, and never above 0.025. A pure grey next to the app mark looks like a different
@@ -278,7 +292,7 @@ shadow. A shadow in this app means the system has failed to find the right step.
 
 - **Shape:** Gently curved (`{rounded.md}`, 8 px). A pressable part inside a padded box takes
   4 px, so the curve stays parallel to its parent.
-- **Primary:** Fill `{colors.accent}`, text `{colors.accent-text}`, padding `6px 12px`, weight
+- **Primary:** Fill `{colors.accent}`, text `{colors.accent-text}`, padding `7px 14px`, weight
   500. One per region, and only for the action the user came to do.
 - **Hover / Focus:** Fill moves to `{colors.accent-hover}`, a token that steps away from the
   button's own text so the label reads easier under the pointer, never harder. A ghost button
@@ -313,7 +327,8 @@ shadow. A shadow in this app means the system has failed to find the right step.
 ### Inputs / Fields
 
 - **Style:** 1 px `{colors.border}`, fill `{colors.main}`, `{rounded.md}`, 5px 10px padding.
-- **Focus:** Border to `{colors.focus}`. No box-shadow ring, no glow.
+- **Focus:** Border to `{colors.focus}`, and the rose halo of keyboard focus around it. No hard
+  box-shadow ring.
 - **Error / Disabled:** Error text in `{colors.danger}` at `label` size under the field. A
   disabled field drops to `{colors.text-muted}` and keeps its border.
 - **Placeholder:** Must reach 4.5:1 on `{colors.main}`. A placeholder is text the user reads.
