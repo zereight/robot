@@ -92,6 +92,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M38 | The changes to 001, 011 and 036 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S138: agents by organization |
 | M39 | 038, and the changes to 001, 005, 009, 010, 023 and 028 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S139: the tab "Events" and "Check where this goes" |
 | M40 | The changes to 014, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S140 to S143: org chart arrange, outlines, details and step |
+| M41 | The changes to 002, 010 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S144 to S146: the owner of a workflow and the participants of its agent steps, the workflows of organizations and agents, and the button "New agent" in the form of an organization |
 
 ## Surfaces check
 

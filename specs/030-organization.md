@@ -15,8 +15,8 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
 
 - **Organization**: a name (1 to 60 characters, unique, the check ignores case), a goal (see
   "Goal"), members (agents), one optional lead, a parent organization (empty by default), and
-  access (see "Access"). It has no messages, no tasks and no workspace. A profile (022) holds at
-  most 100 organizations.
+  access (see "Access"). It has no messages, no tasks and no workspace. It can own workflows (010,
+  "Owner and participants"). A profile (022) holds at most 100 organizations.
   - **Member**: an agent can be a member of more than one organization, but only of organizations
     that are on one line (see "One line"). Membership does not go up or down the tree. An agent that
     is archived stays a member, and every rule below skips it while it is archived.
@@ -60,12 +60,25 @@ lead of a channel cannot answer can go to higher agents before it goes to the us
 4. Delete: the user presses "Delete organization" in the form. A confirm says: "Delete <name>? <n>
    sub-organizations move up to <parent>. The access that this organization gives is gone." When
    the organization has no parent, the words are "become top organizations". <n> counts the sub-organizations of the organization, not the ones below them. The line
-   with <n> shows only when <n> is more than 0. The buttons are "Back" and "Delete". The members
-   stay as agents. A deleted organization leaves every skill and connection list. The
-   delete has no Undo.
+   with <n> shows only when <n> is more than 0. When the organization owns <w> workflows (010), a
+   second line says: "<w> workflows have no owner then. Any agent can work in them." It shows only
+   when <w> is more than 0. The buttons are "Back" and "Delete". The members
+   stay as agents. A deleted organization leaves every skill and connection list. Its workflows stay
+   with the owner "None". The delete has no Undo.
 5. See the organizations of an agent: the profile of an agent (002) has a row "Organizations". A
    click on a name opens the form. The profile also lists each skill and connection that the agent
    has from an organization, with the line "From <organization>".
+6. Make an agent in the form: the field Members has a button "New agent". It opens the form of a
+   new agent (002, flow 1) over the form of the organization. When the user saves it, the app
+   makes the agent at once, as in 002, and adds it to the members in the form. The app does not
+   open the direct chat. The agent is a member only when the user saves the organization. When
+   the user closes the form of the organization without saving, the agent stays and is a member
+   of no organization. The field Lead lists the new agent as a member, so the user can pick it as
+   the lead. The button works in the form of a new organization and in the form of an organization
+   that exists. A new agent is in no other organization, so it never breaks "One line".
+7. See the workflows of an organization: the form has a row "Workflows" with the workflows that
+   the organization owns (010, "Owner and participants"). A click on a name opens the workflow on
+   the Workflows page. The row shows only when the organization owns a workflow.
 
 ## Goal
 
@@ -473,14 +486,15 @@ The first start of this version changes the data of each profile once.
 ## Surfaces
 
 - **Ways in**: the org chart (029): "New organization", a click on a node, and the menus and drags
-  of "Edit on the chart". The row "Organizations" of the agent profile (002). The settings part "Hand-off
+  of "Edit on the chart". The button "New agent" and the row "Workflows" of the form. The row
+  "Organizations" of the agent profile (002). The settings part "Hand-off
   rules" (hand-off rule, ask up the line). The forms of skills and connections (organizations in the
   picker). No key, no command of the message box, and no entry in the search of the place list.
 - **Devices**:
   - The computer can do all of this.
   - A linked computer (012) with the switch "Can create and change agents" can make, edit and
     delete organizations, set the hand-off range and the daily token limit, and edit on the chart.
-    It cannot change the part "Hand-off rules", the tools of an organization, skills or connections
+    The same switch allows the button "New agent" of the form. It cannot change the part "Hand-off rules", the tools of an organization, skills or connections
     (012). It sees them read-only. Without the switch it sees the form read-only, and it changes
     nothing.
   - The phone (011) shows the organizations in the list of the org chart, the blocked parts with
@@ -517,6 +531,8 @@ The first start of this version changes the data of each profile once.
 - **Agent file (002)**: holds no organization, no hand-off rule and no "Ask up the line". Those
   belong to the profile. An organization in a file is not in this version.
 - **Workflow file (010)**: holds nothing of this spec.
+- **Owner of a workflow (010)**: the owner syncs with the workflow. The export (014) holds it. An
+  organization that is deleted leaves its workflows with no owner.
 - **Phone cache (011)**: no change.
 - **Organization log (014)**: one line for each repair of the tree and of a line (the organization,
   the agent for a line, the kind and the time), and one line for each send that the hand-off rule refused, with the sender, the
@@ -691,3 +707,18 @@ The first start of this version changes the data of each profile once.
   read-only and changes nothing.
 - Switch to the Korean interface: the fields, the reasons of a refused send, the pass lines, the
   token lines and the part "Hand-off rules" are Korean.
+- Open the form of a new organization, press "New agent" next to Members, give the name "Ada" and a
+  model, and save: the form of the organization is still open, "Ada" is in the members, and no
+  direct chat opened. Pick "Ada" as the lead and save the organization: "Docs" has "Ada" as a
+  member and as the lead.
+- Press "New agent" and save the agent, then close the form of the organization without saving:
+  "Ada" exists as an agent, in no organization, and "Docs" does not exist.
+- The button "New agent" adds an agent who is in no organization, so "One line" never refuses the
+  save because of it.
+- The organization "Docs" owns the workflows "Weekly" and "Digest". The row "Workflows" of its form
+  lists both. A click on "Weekly" opens it on the Workflows page. Delete "Docs": the confirm says
+  that two workflows have no owner then, and after the delete both workflows show no owner.
+- An organization with no workflow shows no row "Workflows" in its form and no line about workflows
+  in its delete confirm.
+- A linked computer without the switch "Can create and change agents" sees the button "New agent"
+  off.

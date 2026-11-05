@@ -32,7 +32,7 @@ service holds it.
 | Messages | Direct chats with their threads, and channels, with tool cards, plan steps, reply chips and the rows "Compacted". |
 | Tasks | State (also in review and blocked), reason and result, how far a failed turn went, and the usage of the task (005). For a part also its done test, its verdict and its moments. They show on the tasks page with the name of the origin. |
 | Memory | The items of each agent, with the channel of a channel note. |
-| Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes), the run history, and the "Runs on" computer. |
+| Routines and workflows | The definition (for a routine also its token limit, for a workflow also its canvas notes and its owner (010)), the run history, and the "Runs on" computer. |
 | Board (024) | The cards with their number, title, description, column, place, agent, Mine switch and writer, their comments, and their links to tasks. The card follows its newest task on both computers. |
 | Read state | The last place that the user read in each chat. |
 | The mark of outside content and the mark of a sensitive read of a place (007) | The marks and their clear. A turn on either computer then asks in the same way. |

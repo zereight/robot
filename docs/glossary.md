@@ -105,6 +105,10 @@ A new word goes here in the same pull request as the spec that brings it.
 | Recorded | A run of "Record only": what fired, with no task (spec question of 009, 010). | 기록됨 | skipped, ignored |
 | Workflow | Connected steps that run when a trigger fires (010). | 워크플로, 워크플로우 (see "Open points") | automation, pipeline |
 | Diagram | The Mermaid text of the open workflow. The app shows the text and does not draw the picture (010). | 다이어그램 | chart, graph image |
+| Owner (of a workflow) | The organization or the agent that a workflow belongs to. "None" is the default (010). | 소유자 (proposed) | creator, author |
+| Shared workflow | A workflow with no owner. Every agent can work in it (010). | 공용 워크플로우 (proposed) | public workflow, global workflow |
+| Participant | An agent that may be the agent of an agent step of a workflow with an owner (010). | 참석자 (proposed) | member (that is 030), guest |
+| Not a participant | The reason on a step and on a failed run when the agent of the step is no participant (010). | 참석자가 아니에요 (proposed) | no access, forbidden |
 | Starter | A ready setup for one job. It fills the new agent form (002), makes a workflow (010), or makes a channel with its agents (031). | — (proposed: 스타터) | template, preset |
 | Channel starter | A ready channel with its agents and lead, made in one step from a fixed list (031). | — (proposed: 채널 스타터) | team starter, team, squad |
 | CC Workflow Studio file | A JSON file of the public tool CC Workflow Studio. ROBot imports it as a workflow and writes a workflow to it (010). The name of the tool stays in English. | CC Workflow Studio 파일 (proposed) | workflow file (that name is the ROBot file), project file |

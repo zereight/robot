@@ -8,6 +8,11 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
 
 - **Workflow**: a name, a trigger, and a graph of steps on a canvas. The workflow list is its own
   page. The Workflows button on the rail opens it (001). The page does not show routines.
+- **Owner**: none (the default), one organization (030), or one agent (002). A workflow with no
+  owner is a **shared workflow**. The owner decides who can work in the workflow (see "Owner and
+  participants").
+- **Participant**: an agent that may be the agent of an agent step of a workflow. A shared workflow
+  has every agent as a participant. See "Owner and participants".
 - **Trigger**: manual, schedule (as in 009), a message in a chosen channel that matches text, or
   a web hook (see "Web hook").
 - **Step kinds**: agent step (an agent and a prompt that can use earlier results), model step (a
@@ -53,6 +58,49 @@ The user connects steps into a reusable flow, for work that needs a fixed order 
    workflows", or exports one workflow with "Export for CC Workflow Studio" (see "CC Workflow Studio
    files").
 9. Diagram: the editor shows the Mermaid text of the open workflow (see "Diagram").
+10. Own a workflow: the user sets the field "Owner" of a workflow to an organization or to an
+    agent, or back to "None" (see "Owner and participants").
+
+## Owner and participants
+
+A workflow can have an owner: one organization or one agent. The owner makes the workflow private
+to a group of agents. A workflow with no owner is shared, and it works as in all other parts of
+this spec.
+
+- **Who participates**: an archived agent is never a participant. For the others:
+  - A shared workflow: every agent.
+  - A workflow of an organization: the members of that organization, and the lead of every other
+    organization. Membership does not go up or down the tree (030). The members of its lower
+    organizations are not participants, unless they lead an organization.
+  - A workflow of an agent: that agent only.
+- **What is checked**: the agent steps only. A person, a trigger (a schedule, a message, a web
+  hook) and the assistant (flow 4) are no participants and need no right. The user can always
+  edit and run the workflow, and any agent can be the assistant.
+- **In the editor**: the agent list of an agent step shows the participants only. A step that names
+  an agent who is not a participant shows "Not a participant" on its node.
+- **In a run**: the app reads the participants when an agent step starts. A step whose agent is
+  not a participant fails with the reason "Not a participant", and no task starts. The step rules
+  of "Rules" apply to it, so "Continue on failure" lets the run go on.
+- **A change of the group**: a change of the owner, of the members of an organization, of a lead
+  or of the archive state of an agent changes no step. The step keeps its agent. The next run
+  reads the participants again, so a step can fail, or work again, with no edit.
+- **Set the owner**: the editor has a field "Owner" with the choices "None", the organizations and
+  the agents. The dialog of a new workflow has the same field. It starts at "None", or at the owner
+  that the filter of the page names. The field is read-only while the workflow runs.
+- **See the owner**: the Workflows page has a filter "Owner" (All, None, an organization, an
+  agent), and each card shows the name of its owner. The form of an organization (030) and the
+  profile of an agent (002) have a row "Workflows" with the workflows that they own. A click opens
+  the workflow.
+- **When the owner is gone**: an organization or an agent that is deleted leaves its workflows
+  with the owner "None". The workflows, their runs and their steps stay. The confirm of the
+  delete says how many workflows then have no owner and that any agent can work in them (030, 002).
+  An archived agent stays the owner. It is no participant while it is archived.
+- **Linked client**: it sees the owner and the participants as on the server. It changes the owner
+  only with the switch "Can create and change agents" (012). The phone shows no owner.
+- **Runtimes**: the app checks the step. It is the same for agents that use the tools of the app
+  and for agents on each vendor runtime (006).
+- **Data**: the owner syncs with the workflow (019) and is in the export of the data (014). A
+  workflow file and a CC Workflow Studio file hold no owner. Import makes shared workflows.
 
 ## Workflow file
 
@@ -384,6 +432,25 @@ a new issue. ROBot runs no service on the internet for this (000).
 ## Acceptance
 
 - A two-step workflow passes the first agent's result to the second and posts the final message.
+- Organization "Docs" has the lead Ada and the member Bo. Organization "Ops" has the lead Cy and
+  the member Dee. Eve is in no organization. Set the owner of the workflow "Weekly" to "Docs": the
+  agent list of a step shows Ada, Bo and Cy, and not Dee and not Eve. The card shows "Docs".
+- A step of "Weekly" names Dee. Run it: the run fails at that step with "Not a participant", no
+  task starts, and the node of the step shows "Not a participant". Make Dee the lead of "Ops"
+  and run again: the step works.
+- Remove Bo from "Docs" while a step names Bo: the node shows "Not a participant". Add Bo again: it
+  shows no problem, and the step was not edited.
+- Set the owner of "Weekly" to the agent Ada: the agent list shows Ada only. Archive Ada: no agent
+  is in the list, and a run fails at the agent step. Restore Ada: it works again.
+- Open "Weekly" as the user: it opens, edits and runs although the user is no agent. Pick Eve as
+  the assistant of "Weekly": the panel works.
+- Delete "Docs" from its form: the confirm says that one workflow then has no owner. After the
+  delete, "Weekly" shows no owner, its runs stay, and its agent list shows every agent.
+- Filter the page by the owner "Docs": only the workflows of "Docs" show. Open the form of
+  "Docs": the row "Workflows" lists them, and a click opens one on the page.
+- Export "Weekly" to a file and import it: the new workflow is off and has no owner.
+- Sync two computers: the owner of "Weekly" shows on both. A linked client without the switch
+  "Can create and change agents" sees the field "Owner" read-only.
 - Ask the assistant to add a step after step 2: the canvas shows a new node 3, and the version
   list holds the graph from before.
 - Ask the assistant to run the workflow: one run starts, and the assistant reports its status.
