@@ -181,8 +181,13 @@ harness does this for you.
 
 ### Git hooks
 
-`bun install` sets `core.hooksPath` to `.githooks`. Two hooks run on your computer:
+`bun install` sets `core.hooksPath` to `.githooks`. Three hooks run on your computer:
 
+- `commit-msg` takes AI co-author trailers out of the commit message, such as
+  `Co-authored-by: Cursor <cursoragent@cursor.com>` (see `AGENTS.md`). A trailer for a person
+  stays. A tool can add one after you write the message, and `git commit --amend` keeps it, so
+  the hook cleans the message at the last point before the commit is made. It never stops a
+  commit.
 - `pre-commit` runs Biome on the staged files. It writes no fixes.
 - `pre-push` runs lint, typecheck, `test:fast` and the host checks in parallel, plus the
   slow test files touched by the push. It does not run the end-to-end suite. A push that
