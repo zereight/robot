@@ -9,11 +9,12 @@ and workflows.
 
 - **Task**: who does it (agent), what (prompt), where it came from (chat, channel, routine,
   workflow, another agent, a memory check (008), a card of the board (024), an outside program
-  (023), a message from Teams (028), a handover (003), or a follow-up (see "Follow-up")), its
-  parent task if any, its state, start and end time, and its result or error.
+  (023), a message from Teams (028), a handover (003), a follow-up (see "Follow-up"), or a
+  mention in a direct chat (003)), its parent task if any, its state, start and end time, and
+  its result or error.
 - **Depth**: a number. A task that the user, a routine, a workflow, a memory check, a handover,
-  an outside program, a message from Teams or a follow-up starts has depth 0. See
-  "Limits of a task".
+  an outside program, a message from Teams, a follow-up or a mention in a direct chat starts has
+  depth 0. See "Limits of a task".
 - **States**: queued → running → (waiting for user ↔ running) → done | failed | blocked |
   cancelled. A part of a channel that asks for review has one more state, in review, before done
   (see "Review").
@@ -123,7 +124,8 @@ cost of many tasks.
 - A task from a part of a plan, a message of another agent, a routine or a workflow tells its
   agent this: if you could not do the work, end the reply with a last line that starts with
   "Blocked:" and gives the reason in one sentence. Write that line in no other case. A task from
-  a direct chat gets no such text, because the user reads the reply there.
+  a direct chat, including a mention in that chat, gets no such text, because the user reads the
+  reply there.
 - When a turn ends with no error, the app reads the last line of the reply that has text. If it
   starts with "Blocked:" (in any letter case), the task ends as Blocked. Its reason is the text
   after the colon, cut at 200 characters. The line stays in the reply.

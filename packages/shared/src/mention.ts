@@ -1,4 +1,4 @@
-import { EVERYONE_MENTION } from "./channels.ts"
+import { EVERYONE_MENTION, parseMentions } from "./channels.ts"
 
 // The `@` list of the message box of a channel (spec 004, "Mention"). These functions hold the
 // rules of the list. The computer and the phone draw it.
@@ -55,6 +55,28 @@ export const mentionEntries = <T extends { readonly name: string }>(
     .map((member) => ({ kind: "member", member }))
   if (!withAll || !EVERYONE_MENTION.startsWith(q)) return lines
   return q === EVERYONE_MENTION ? [{ kind: "all" }, ...lines] : [...lines, { kind: "all" }]
+}
+
+/**
+ * The other agents that a direct chat names with `@Name` (spec 003, "Mention another agent").
+ * The chat's own agent, an archived agent and an unknown name are not mentions. `@all` is one
+ * only when an agent has that name. The order is the order of `agents`.
+ */
+export const directMentions = <
+  T extends { readonly id: string; readonly name: string; readonly archived: boolean },
+>(
+  agents: readonly T[],
+  chatAgentId: string,
+  text: string,
+): T[] => {
+  const open = agents.filter((agent) => !agent.archived && agent.id !== chatAgentId)
+  const named = new Set(
+    parseMentions(
+      text,
+      open.map((agent) => agent.name),
+    ),
+  )
+  return open.filter((agent) => named.has(agent.name))
 }
 
 /**

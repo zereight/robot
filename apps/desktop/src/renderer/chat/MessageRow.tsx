@@ -53,6 +53,7 @@ import { describeError, type ErrorText } from "../lib/errors.ts"
 import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
 import { sensitiveLabelText } from "../lib/sensitive.ts"
+import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { openMemory } from "../state/memoryLink.ts"
@@ -1509,9 +1510,25 @@ export const MessageRow = (props: MessageRowProps) => (
   </Show>
 )
 
+/** The name on a quote: the agent who wrote it, or the user. */
+function nameOfQuote(
+  quoted: ChatMessage,
+  current: Agent,
+  lookup: (id: string) => Agent | undefined,
+  removed: string,
+  you: string,
+) {
+  if (quoted.author !== "agent") return you
+  const id = quoted.speakerId ?? quoted.agentId
+  const found = lookup(id)
+  if (found) return found.name
+  return id === current.id ? current.name : removed
+}
+
 const FullMessageRow = (props: MessageRowProps) => {
   const app = useApp()
   const { t } = app
+  const agents = useAgents()
   const devices = useDevices()
   const [editing, setEditing] = createSignal(false)
   const [draft, setDraft] = createSignal("")
@@ -1581,7 +1598,13 @@ const FullMessageRow = (props: MessageRowProps) => {
             >
               <Reply size={12} />
               {t("chat.repliesTo", {
-                name: quoted().author === "agent" ? props.agent.name : t("chat.you"),
+                name: nameOfQuote(
+                  quoted(),
+                  props.agent,
+                  (id) => agents.byId(id),
+                  t("channels.removedAgent"),
+                  t("chat.you"),
+                ),
                 excerpt: messageText(quoted()).slice(0, 80),
               })}
             </button>

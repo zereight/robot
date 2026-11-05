@@ -1359,6 +1359,7 @@ interface MessageRow {
   program_mark: string | null
   outside_mark: string | null
   teams_sender: string | null
+  speaker_id: string | null
 }
 
 const errorOf = (r: {
@@ -1411,6 +1412,9 @@ const message: KindDef = {
     // The name of the sender of a message from Teams, as the Teams page showed it (spec 028). It is
     // stored with the message, as the text is. A computer of an older step has none.
     teamsSender: { check: nullable(str(TEAMS_SENDER_MAX * 4)) },
+    // The agent who wrote a reply in another agent's chat (spec 003). Null is the chat's own
+    // agent. A computer of an older step has none.
+    speakerId: { check: nullable(str(100, 1)) },
   },
   required: [
     "agentId",
@@ -1426,7 +1430,16 @@ const message: KindDef = {
     "sender",
     "origin",
   ],
-  fixed: ["agentId", "author", "createdAt", "sender", "origin", "threadId", "teamsSender"],
+  fixed: [
+    "agentId",
+    "author",
+    "createdAt",
+    "sender",
+    "origin",
+    "threadId",
+    "teamsSender",
+    "speakerId",
+  ],
   count: (db) => q.count(db, "message"),
   ids: (db, after, limit) => q.ids(db, "message", after, limit),
   read: (ctx, id) => {
@@ -1450,6 +1463,7 @@ const message: KindDef = {
         programMark: parseOutsideSource(r.program_mark),
         outsideMark: parseOutsideSource(r.outside_mark),
         teamsSender: r.teams_sender,
+        speakerId: r.speaker_id,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: Math.max(r.created_at, r.finished_at ?? 0, r.edited_at ?? 0),
@@ -1491,6 +1505,7 @@ const message: KindDef = {
       program_mark: markColumn(f.programMark),
       outside_mark: markColumn(f.outsideMark),
       teams_sender: (f.teamsSender as string | null | undefined) ?? null,
+      speaker_id: typeof f.speakerId === "string" ? f.speakerId : null,
     })
     return true
   },

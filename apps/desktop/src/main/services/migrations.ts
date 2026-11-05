@@ -1217,4 +1217,10 @@ export const migrations: readonly string[] = [
   ALTER TABLE follow_up ADD COLUMN action TEXT NOT NULL DEFAULT 'queue'
     CHECK (action IN ('queue', 'steer'));
   `,
+  `
+  -- The agent who wrote a reply in another agent's chat (spec 003, "Mention another agent").
+  -- Null means the chat's own agent. The id stays after that agent is deleted, so the row can
+  -- still show a removed face. It syncs with the message (019). An export holds it (014).
+  ALTER TABLE message ADD COLUMN speaker_id TEXT;
+  `,
 ]

@@ -89,6 +89,9 @@ A long run of tool steps fills the chat. The user can fold it away.
     of the messages of that chat only, not at tool cards or thinking. It ignores letter case.
     Cmd+K (001) searches all places and stays as it is. The phone has no find bar in this version.
 11. Dictate: the microphone button of the message box turns speech into text in the box (027).
+12. Mention: the user types `@` and picks another agent. The message goes to this agent and to
+    each named agent. Each named agent answers in this chat, with their own face. See "Mention
+    another agent".
 
 ## Messages during a turn
 
@@ -123,6 +126,41 @@ The user can change the course of a turn without stopping it.
   work, as before.
 - The message queue of a thread holds at most 10 messages. The message over the limit is not
   queued. The box keeps its text and the line above it says "10 messages wait. Remove one or wait."
+
+## Mention another agent
+
+The user can name another agent in a direct chat or in one of its threads. The named agent
+answers in that same chat.
+
+- Typing `@` in the message box opens a list of the other agents that are not archived. The list
+  follows the rules of the mention list of a channel (004), and it has no `@all`.
+- A name that the list can insert is a mention: `@Name`, in any letter case, where the `@` opens
+  the text or follows a character that is no letter, no digit and no underscore. The chat's own
+  agent, an archived agent, and a name of no agent are plain text. `@all` is plain text unless an
+  agent has that name.
+- A message that holds one or more mentions still goes to the chat's own agent. It also starts
+  work for each named agent, with the same text. A file on that message is in the named agent's
+  workspace too, so that agent can read it. Each named agent answers with their own
+  workspace, their own tools and their own permission level. They read the messages of that chat
+  up to and including the message that names them. A later message is a new mention. The words of
+  the other agents are input from a colleague, not an order.
+- The reply shows in the chat where the user wrote the mention, with the face and the name of the
+  agent who wrote it. It does not start a new turn of the chat's own agent. It is not copied into
+  the named agent's own chat.
+- A mention in a thread stays in that thread.
+- Stop in that chat ends the turn of the chat's own agent and any mention that is still writing
+  into that chat.
+- This is work that the user gives. The hand-off rule (030) does not block it. When the named
+  agent then uses "send message", the rules of that tool apply, including the chain depth (005,
+  007).
+- The reply makes the same notice as a reply in a direct chat (015). The notice names the agent
+  who answered and opens this chat.
+- The phone has the same list and shows the same reply (011).
+- A message that the user sends, including one that joins a running turn, one that leaves the
+  queue, and one that the user edits, can name agents. A message that a routine, another agent,
+  Teams or a follow-up sends does not.
+- When the named agent cannot take more work, the user's message still goes to the chat's own
+  agent. The chat shows a failed reply from the named agent, and no turn of that agent starts.
 
 ## Context meter
 

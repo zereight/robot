@@ -107,6 +107,7 @@ These are in the code today and the specs now say something else.
 | 035, 013 | The user edits `robot.json` by hand. | The user makes and changes the list in the app: "Manage setup actions" in the chat menu, and the section "Setup actions" in Settings with the agents of this computer. The editor names the file it writes. A save clears the allow, so the user allows the list again. |
 | 035 | The chat header shows nothing when the workspace has no list. | The header always shows the setup entry. With no list it shows "Manage setup actions", which opens the empty editor. |
 | 035 | The editor edits every row in one form. | The editor lists the actions: each row runs its action, shows the name and the start of the command, and opens the row for a change. "Add action" and a change open a row with the name, the command, and the two marks. |
+| 003, 005, 011 | A direct chat has no way to name another agent. | In a direct chat and its threads, `@` lists the other agents. A message that names them also starts their work. Their reply shows in that chat, with their face, and does not start a turn of the chat's own agent. |
 
 ## Slices
 
@@ -218,6 +219,7 @@ These are in the code today and the specs now say something else.
 | S123 | Setup editor: "Manage setup actions" in the chat menu, the section "Setup actions" in Settings with the agents of this computer, the editor with the path of the file, add and delete, the limits that block a save, "Cancel", the replace of an unreadable file that asks first, and the cleared allow after a save. The editor is on the computer that holds the workspace. | 035, 013 |
 | S124 | Setup entry always in the chat header: with no list it shows "Manage setup actions" and opens the empty editor. | 035 |
 | S125 | Setup editor as a list: each row with a run, the name, the start of the command, and a change; a row dialog with the name, the command, the two marks, and "Delete"; "Add action" until 20 rows. | 035 |
+| S126 | Direct chat mentions: `@` lists the other agents, and a named agent answers in that chat. | 003, 005, 011, 030 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.

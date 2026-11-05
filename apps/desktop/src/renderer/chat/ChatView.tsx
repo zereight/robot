@@ -27,6 +27,7 @@ import { AgentChecklist } from "../imports/ImportChecklist.tsx"
 import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useRetry } from "../retry/RetryNote.tsx"
+import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
 import { quietOfChatLine } from "../state/quiet.ts"
@@ -132,9 +133,33 @@ const QueuedTaskLine = (props: { line: QueuedLine; canRunNext: boolean }) => {
   )
 }
 
+/** A stand-in for an agent that was deleted after it wrote in this chat (spec 003). */
+const removedSpeaker = (name: string): Agent => ({
+  id: "",
+  serverId: "",
+  name,
+  role: "",
+  instructions: "",
+  readHandbook: false,
+  face: { shape: 0, hue: 5 },
+  faceImage: null,
+  model: null,
+  workspace: "",
+  section: "agents",
+  sectionId: null,
+  archived: true,
+  state: "offline",
+  permission: "ask_risky",
+  memoryEnabled: false,
+  knowledgeEnabled: false,
+  createdAt: 0,
+  changedBy: null,
+})
+
 export const ChatView = (props: ChatViewProps) => {
   const app = useApp()
   const { t } = app
+  const agents = useAgents()
   const ui = useUi()
   const server = () => (ui.linked() ? ui.server()?.id : undefined)
   const chat = createChat(props.agent.id, server, () => props.threadId)
@@ -205,6 +230,11 @@ export const ChatView = (props: ChatViewProps) => {
   let scroller: HTMLDivElement | undefined
 
   const byId = createMemo(() => new Map(chat.messages.map((m) => [m.id, m])))
+  const speakerOf = (message: ChatMessage): Agent => {
+    if (message.author !== "agent" || !message.speakerId || message.speakerId === props.agent.id)
+      return props.agent
+    return agents.byId(message.speakerId) ?? removedSpeaker(t("channels.removedAgent"))
+  }
   const streaming = () => chat.messages.find((m) => m.status === "streaming")
   const retry = useRetry()
   // A memo, so that a new list of threads or a new meter with the same answer does not count as new
@@ -343,7 +373,7 @@ export const ChatView = (props: ChatViewProps) => {
                     </div>
                   </Show>
                   <MessageRow
-                    agent={props.agent}
+                    agent={speakerOf(message)}
                     message={message}
                     first={startsGroup(previous(), message)}
                     canEdit={message.id === lastUserId() && !working() && !message.fromTeams}

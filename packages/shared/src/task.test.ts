@@ -263,6 +263,7 @@ describe("Blocked (spec 005)", () => {
     expect(told("workflow")).toBe(true)
     // A direct chat reads the reply itself. A reply to a mention in a channel is no part.
     expect(told("chat")).toBe(false)
+    expect(told("mention")).toBe(false)
     expect(told("channel")).toBe(false)
     expect(BLOCKED_RULE).toContain('"Blocked:"')
   })

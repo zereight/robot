@@ -89,8 +89,8 @@ shows works.
 
 ## Same as the computer
 
-The phone follows the computer in these points: the `@all` mention in channels (004), the random
-name button and the role list for agents (002, 013), the role badge on the row of an agent (001),
+The phone follows the computer in these points: the `@all` mention in channels (004), the mention
+list of a direct chat (003), the random name button and the role list for agents (002, 013), the role badge on the row of an agent (001),
 the word "archived" for channels (004), the context meter (003), "Mark as unread" (003), the
 command list (003), the main agent switch (002), the end of a request (004), the search of messages (001), and the
 line that tells how far a failed turn went, with the button "Send again" (003, 005), the box

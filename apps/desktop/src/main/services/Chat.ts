@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs"
-import { basename, extname, join } from "node:path"
+import { basename, dirname, extname, join, sep } from "node:path"
 import {
   type AgentMessageKind,
   type AgentModel,
@@ -26,6 +26,7 @@ import {
   compactDue,
   composeInstructions,
   createReadGuard,
+  directMentions,
   endOfTurn,
   type FilePart,
   FOLLOW_UP_REPLIES,
@@ -157,6 +158,8 @@ interface MessageRow {
   outside_mark?: string | null
   /** The name of the sender of a message from Teams, as the Teams page showed it (spec 028). */
   teams_sender?: string | null
+  /** The agent who wrote this reply in another agent's chat. Null for the chat's own agent. */
+  speaker_id: string | null
   input_tokens: number | null
   output_tokens: number | null
   finished_at: number | null
@@ -374,7 +377,7 @@ const QUOTE_MAX = 500
  * workflow and a message of another agent keep the short cache (spec 003).
  */
 function keepsHourCache(source: TaskSource): boolean {
-  return source === "chat" || source === "handover" || source === "teams"
+  return source === "chat" || source === "handover" || source === "teams" || source === "mention"
 }
 
 /** The words around the summary of a compact, as the model reads it (spec 003). */
@@ -459,8 +462,28 @@ const toMessage = (row: MessageRow, unread?: "waiting" | "handed"): ChatMessage 
   editedAt: row.edited_at,
   fromDevice: row.from_name,
   ...(row.teams_sender ? { fromTeams: row.teams_sender } : {}),
+  ...(row.speaker_id ? { speakerId: row.speaker_id } : {}),
   ...(unread ? { unread } : {}),
 })
+
+/**
+ * Copies files the user attached into the named agent's workspace, under the same
+ * `attachments/` path (spec 003). A path that leaves that folder is left alone.
+ */
+const copyMentionFiles = (fromWorkspace: string, toWorkspace: string, row: MessageRow) => {
+  if (fromWorkspace === toWorkspace) return
+  const root = join(fromWorkspace, "attachments") + sep
+  const destRoot = join(toWorkspace, "attachments") + sep
+  for (const file of messageFiles(toMessage(row))) {
+    if (!file.path.startsWith("attachments/") || file.path.includes("..")) continue
+    const source = join(fromWorkspace, file.path)
+    const dest = join(toWorkspace, file.path)
+    if (!source.startsWith(root) || !dest.startsWith(destRoot)) continue
+    if (!existsSync(source)) continue
+    mkdirSync(dirname(dest), { recursive: true })
+    copyFileSync(source, dest)
+  }
+}
 
 /** Adds a stream event to the parts. Returns true when a new part starts (a part boundary). */
 export const applyEvent = (parts: MessagePart[], event: AgentEvent): boolean => {
@@ -610,6 +633,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       // Set when a task retry starts a turn, so the new task links to the old one.
       const retryLinks = new Map<string, string>()
       const workers = yield* FiberMap.make<string>()
+      /** Mention turns that write into a chat, by the key of that chat (spec 003). */
+      const mentionKeys = new Map<string, Set<string>>()
       const queues = new Map<string, QueuedMessage[]>()
       /** Origins of user messages and queued items, by their ids. */
       const origins = new Map<string, TaskOrigin>()
@@ -655,8 +680,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           .map((r) => messageText({ parts: JSON.parse(r.parts) }))
         return joinWords([tasks.userWords(task.id), ...joined])
       }
-      /** Writes a queued item as a message, and moves its origin to the message. */
-      const insertQueued = (place: Place, next: QueuedMessage) => {
+      /**
+       * Writes a queued item as a message, and moves its origin to the message. Returns the row
+       * when the message can name other agents. A message with an origin does not.
+       */
+      const insertQueued = (place: Place, next: QueuedMessage): MessageRow | null => {
         const sender = senders.get(next.id)
         senders.delete(next.id)
         const row = insertMessage(
@@ -681,6 +709,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           asks.delete(next.id)
           asks.set(row.id, asked)
         }
+        return origin ? null : row
       }
 
       // A task that waited for the user when the app closed waits on (spec 005). Its reply keeps
@@ -880,11 +909,12 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         skill: SkillPart | null = null,
         threadId: string | null = null,
         teamsSender: string | null = null,
+        speakerId: string | null = null,
       ) => {
         const id = randomUUID()
         db.run(
-          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name, joined_to, read_at, thread_id, teams_sender)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO message (id, agent_id, author, parts, status, reply_to, model, created_at, from_device, from_name, joined_to, read_at, thread_id, teams_sender, speaker_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           id,
           agentId,
           author,
@@ -903,6 +933,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           joined?.readAt ?? null,
           threadId,
           teamsSender,
+          speakerId,
         )
         const row = messageRow(id) as MessageRow
         // A new thread takes the first line of its first message as its title (spec 003).
@@ -955,11 +986,19 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
        * brings the notes that it had when it was asked. A message that joined a turn and was read
        * there goes before the reply of that turn, because the reply answers it too.
        */
-      const buildTurns = (place: Place, exceptId: string, notes: boolean): Turn[] => {
-        const all = rows(place)
+      const buildTurns = (
+        place: Place,
+        exceptId: string,
+        notes: boolean,
+        actorId: string = place.agentId,
+        until?: number,
+      ): Turn[] => {
+        const all = rows(place).filter(
+          (r) => until === undefined || r.created_at <= until || r.id === exceptId,
+        )
         const mark = all.findLastIndex((r) => compactedOf(r) !== undefined)
         const summary = mark >= 0 ? compactedOf(all[mark] as MessageRow)?.summary : undefined
-        const turns = modelTurns(orderedRows(all.slice(mark + 1), exceptId), notes)
+        const turns = modelTurns(orderedRows(all.slice(mark + 1), exceptId), notes, actorId)
         if (summary === undefined) return turns
         // The model gets one summary in place of everything older (spec 003, "Compact").
         return [{ role: "user", content: summaryTurn(summary) }, ...turns]
@@ -970,7 +1009,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const kept = list.filter(
           (r) =>
             r.id !== exceptId &&
-            !(r.author === "agent" && r.status === "failed") &&
+            !(r.author === "agent" && (r.status === "failed" || r.status === "streaming")) &&
             !isNoteOnly(r.parts),
         )
         const replies = new Set(kept.filter((r) => r.author === "agent").map((r) => r.id))
@@ -987,13 +1026,25 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return ordered
       }
 
-      const modelTurns = (ordered: readonly MessageRow[], notes: boolean): Turn[] =>
-        ordered.map((r) => ({
-          role: r.author === "user" ? "user" : "assistant",
-          content:
-            turnText(r) +
-            (notes && r.author === "user" && r.context ? `\n\n${NOTES_LEAD}\n${r.context}` : ""),
-        }))
+      const modelTurns = (
+        ordered: readonly MessageRow[],
+        notes: boolean,
+        actorId: string,
+      ): Turn[] =>
+        ordered.map((r) => {
+          const speaker = r.author === "agent" ? (r.speaker_id ?? r.agent_id) : null
+          const own = speaker === actorId
+          const text =
+            speaker !== null && !own
+              ? colleague("Message", agentRow(speaker)?.name ?? "another agent", turnText(r))
+              : turnText(r)
+          return {
+            role: r.author === "user" || (speaker !== null && !own) ? "user" : "assistant",
+            content:
+              text +
+              (notes && r.author === "user" && r.context ? `\n\n${NOTES_LEAD}\n${r.context}` : ""),
+          }
+        })
 
       /**
        * The words around a message that another agent sent. The receiver reads it as input from a
@@ -1043,18 +1094,30 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           ).pipe(Effect.ignore)
         })
 
-      /** Answers the last message. `resumed` is a task that waited through a restart: it goes on. */
-      const runTurn = Effect.fn("Chat.runTurn")(function* (place: Place, resumed?: Task) {
-        const agentId = place.agentId
-        const key = keyOf(place)
+      /**
+       * Answers the last message. `resumed` is a task that waited through a restart: it goes on.
+       * `mention` is a named agent answering in this chat (spec 003). The reply is stored here.
+       */
+      const runTurn = Effect.fn("Chat.runTurn")(function* (
+        place: Place,
+        resumed?: Task,
+        mention?: { readonly actorId: string; readonly messageId: string },
+      ) {
+        const hostId = place.agentId
+        const agentId = mention?.actorId ?? hostId
+        const key = mention ? `mention:${mention.messageId}:${mention.actorId}` : keyOf(place)
         const own = agentRow(agentId)
         if (!own) return
         const kept = resumed?.messageId ? messageRow(resumed.messageId) : undefined
-        const lastUser = rows(place)
-          .filter((r) => r.author === "user")
-          .at(-1)
-        // A routine with a model of its own uses it for its turn (spec 009).
-        const ownModel = lastUser && !resumed ? origins.get(lastUser.id)?.model : undefined
+        const lastUser = mention
+          ? rows(place).find((r) => r.id === mention.messageId && r.author === "user")
+          : rows(place)
+              .filter((r) => r.author === "user")
+              .at(-1)
+        // A routine with a model of its own uses it for its turn (spec 009). A mention uses the
+        // named agent's own model: the origin of the message belongs to the chat's own turn.
+        const ownModel =
+          lastUser && !resumed && !mention ? origins.get(lastUser.id)?.model : undefined
         // When the model of the routine does not list the effort of the routine, the run uses the
         // effort of the agent (spec 009). The turn then sends the nearest level that the model
         // lists (spec 006).
@@ -1095,7 +1158,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const reply =
           kept ??
           insertMessage(
-            agentId,
+            hostId,
             "agent",
             "",
             null,
@@ -1105,9 +1168,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             null,
             null,
             place.threadId,
+            null,
+            mention ? agentId : null,
           )
         const asked = lastUser ? toMessage(lastUser) : undefined
-        const origin = lastUser ? originOf(lastUser) : undefined
+        const origin = mention || !lastUser ? undefined : originOf(lastUser)
         const turnEffort = origin?.effort
         const textOf = (m: ChatMessage) =>
           messageText(m) ||
@@ -1123,33 +1188,42 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const open = all
           .slice(lastReply + 1)
           .filter((r) => r.author === "user" && r.joined_to === null)
-        const askedAt = lastUser ? asks.get(lastUser.id) : undefined
-        if (lastUser) asks.delete(lastUser.id)
-        const source = origin?.source ?? "chat"
+        const askedAt = mention
+          ? lastUser?.created_at
+          : lastUser
+            ? asks.get(lastUser.id)
+            : undefined
+        if (lastUser && !mention) asks.delete(lastUser.id)
+        const source = mention ? "mention" : (origin?.source ?? "chat")
         const turnFromTeams = source === "teams"
         // A message from another agent has its own text for the task, without the words around it.
-        const prompt =
-          origin?.prompt ??
-          ((open.length > 1
-            ? open.map((r) => textOf(toMessage(r))).join("\n\n")
-            : asked
-              ? textOf(asked)
-              : "") ||
-            "(no text)")
+        // A mention is the one message that named the agent, not the messages that came after.
+        const prompt = mention
+          ? (asked ? textOf(asked) : "") || "(no text)"
+          : (origin?.prompt ??
+            ((open.length > 1
+              ? open.map((r) => textOf(toMessage(r))).join("\n\n")
+              : asked
+                ? textOf(asked)
+                : "") ||
+              "(no text)"))
         const task =
           resumed ??
           (yield* tasks.create({
             agentId,
             prompt,
             source,
-            sourceId: origin?.sourceId ?? agentId,
+            sourceId: mention ? hostId : (origin?.sourceId ?? agentId),
             ...(origin?.label !== undefined ? { label: origin.label } : {}),
             messageId: reply.id,
             retryOf: retryLinks.get(key) ?? origin?.retryOf ?? null,
             // A routine or a workflow starts its task with no message of the user (spec 005).
             // A handover starts with a message of the user, so its times count from there too.
             askedAt:
-              (source === "chat" || source === "handover" || source === "teams") &&
+              (source === "chat" ||
+                source === "handover" ||
+                source === "teams" ||
+                source === "mention") &&
               !retryLinks.has(key)
                 ? (askedAt ?? null)
                 : null,
@@ -1216,7 +1290,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         /** Where a notice of this turn leads: the reply, in its thread. */
         const replyTarget = {
           kind: "agent" as const,
-          id: agentId,
+          id: hostId,
           messageId: reply.id,
           ...(place.threadId ? { threadId: place.threadId } : {}),
         }
@@ -1244,7 +1318,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             activity,
             {
               taskId: task.id,
-              agentId,
+              agentId: hostId,
               threadId: place.threadId,
               source: task.source,
               sourceId: task.sourceId,
@@ -1452,7 +1526,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                       account.id === agent.model_account_id && account.kind === "anthropic",
                   )
                 : false
-            if (!resumed && attempt === "first" && (!isRuntime || claude))
+            if (!mention && !resumed && attempt === "first" && (!isRuntime || claude))
               yield* autoCompact(place, agent, reply.id, task.id, claude || anthropic, (code) => {
                 parts.push({ kind: "note", note: "compact_failed", code })
                 save("streaming")
@@ -1468,7 +1542,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               remembered.length > 0
                 ? `What you remember:\n${remembered.map((m) => `- ${m.text}`).join("\n")}`
                 : ""
-            if (withNotes && lastUser)
+            if (withNotes && lastUser && !mention)
               db.run("UPDATE message SET context = ? WHERE id = ?", notes || null, lastUser.id)
             const known = knowledge.prompt(
               agentId,
@@ -1492,7 +1566,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               toldAboutBlocked(task) ? BLOCKED_RULE : "",
               // A new try reads which steps of the earlier try may have changed things (spec 005).
               tasks.retryNoteForModel(task),
-              withNotes ? "" : notes,
+              withNotes && !mention ? "" : notes,
               known ?? "",
             ]
               .filter(Boolean)
@@ -1623,11 +1697,27 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 // short message (spec 005, "Keep going"). That message has no row either.
                 turns:
                   attempt === "goOn" || keeping
-                    ? goOnTurns(buildTurns(place, reply.id, withNotes), parts, {
-                        steps: isRuntime,
-                        ...(keeping ? { message: keepGoingMessage(keeping) } : {}),
-                      })
-                    : buildTurns(place, reply.id, withNotes),
+                    ? goOnTurns(
+                        buildTurns(
+                          place,
+                          reply.id,
+                          withNotes,
+                          agentId,
+                          mention && lastUser ? lastUser.created_at : undefined,
+                        ),
+                        parts,
+                        {
+                          steps: isRuntime,
+                          ...(keeping ? { message: keepGoingMessage(keeping) } : {}),
+                        },
+                      )
+                    : buildTurns(
+                        place,
+                        reply.id,
+                        withNotes,
+                        agentId,
+                        mention && lastUser ? lastUser.created_at : undefined,
+                      ),
                 tools: tools.defs({
                   memory: agent.memory_enabled === 1,
                   knowledge: knowledge.enabled(agentId),
@@ -1783,6 +1873,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         })
 
         activity.setWorking(agentId, agent.server_id, true)
+        if (mention) activity.setWorking(hostId, agent.server_id, true)
         // A vendor program writes the Knowledge folder itself. The folder is read again after it.
         const writesFiles = () =>
           !!running.model_account_id && providers.isRuntime(running.model_account_id)
@@ -1805,7 +1896,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               silence.stop()
               controller.abort()
               live.delete(key)
-              setCompacting(place, false)
+              if (mention) {
+                const set = mentionKeys.get(keyOf(place))
+                set?.delete(key)
+                if (set && set.size === 0) mentionKeys.delete(keyOf(place))
+              } else setCompacting(place, false)
               // A message that the agent did not read starts the next turn (spec 003). It is a
               // plain message after the reply now.
               const unread = [...turn.waiting.map((m) => m.id), ...turn.handed]
@@ -1821,7 +1916,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 unreadLeft.add(key)
               }
               knowledge.end(agentId, writesFiles() ? "agent" : "user")
-              notifier.clearAgent(agentId)
+              if (mention) {
+                for (const part of parts)
+                  if (part.kind === "tool") notifier.clearAttention(agentId, part.id)
+              } else notifier.clearAgent(agentId)
               // A step that was running when the turn ended may have run in part.
               watch.end(parts)
               closeOpenSteps()
@@ -1858,10 +1956,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               const row = messageRow(reply.id)
               if (row) emitMessage(row)
               activity.setWorking(agentId, agent.server_id, false)
-              placesChanged(agentId)
-              turnEnded(place, reply.id, running)
-              bus.emit("chat.meter", { agentId, threadId: place.threadId })
-              bus.emit("chat.threads", { agentId })
+              if (mention) activity.setWorking(hostId, agent.server_id, false)
+              placesChanged(hostId)
+              if (mention) placesChanged(agentId)
+              if (!mention) {
+                turnEnded(place, reply.id, running)
+                bus.emit("chat.meter", { agentId: hostId, threadId: place.threadId })
+              }
+              bus.emit("chat.threads", { agentId: hostId })
             }),
           ),
           Effect.ignore,
@@ -1870,6 +1972,86 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (origin?.requester)
           yield* returnReply(agent, task, reply.id, origin.requester, mark.program)
       })
+
+      /**
+       * Starts one named agent's answer in this chat (spec 003). A full queue writes a failed
+       * reply and does not start a turn. The user's own send is left as it is.
+       */
+      const startOne = (place: Place, messageId: string, actorId: string, text: string) =>
+        Effect.gen(function* () {
+          const full = tasks.queueFull(actorId)
+          if (full) {
+            const row = insertMessage(
+              place.agentId,
+              "agent",
+              "",
+              null,
+              null,
+              [],
+              null,
+              null,
+              null,
+              place.threadId,
+              null,
+              actorId,
+            )
+            db.run(
+              `UPDATE message SET status = 'failed', error_code = ?, error_detail = ?, finished_at = ?
+               WHERE id = ?`,
+              full.code,
+              full.detail ?? "",
+              Date.now(),
+              row.id,
+            )
+            const failed = messageRow(row.id)
+            if (failed) emitMessage(failed)
+            const asked = messageRow(messageId)
+            yield* tasks.create({
+              agentId: actorId,
+              prompt: text || "(no text)",
+              source: "mention",
+              sourceId: place.agentId,
+              messageId: row.id,
+              failed: { code: full.code, detail: full.detail ?? "" },
+              askedAt: asked?.created_at ?? null,
+              depth: 0,
+            })
+            return
+          }
+          const host = agentRow(place.agentId)
+          const actor = agentRow(actorId)
+          const named = messageRow(messageId)
+          if (host && actor && named) copyMentionFiles(host.workspace, actor.workspace, named)
+          const key = `mention:${messageId}:${actorId}`
+          const hostKey = keyOf(place)
+          const set = mentionKeys.get(hostKey) ?? new Set<string>()
+          set.add(key)
+          mentionKeys.set(hostKey, set)
+          yield* FiberMap.run(workers, key, runTurn(place, undefined, { actorId, messageId }), {
+            onlyIfMissing: true,
+          })
+        })
+
+      /** Starts a turn for each other agent that the text names (spec 003). */
+      const startMentions = (place: Place, messageId: string, text: string) =>
+        Effect.gen(function* () {
+          const host = agentRow(place.agentId)
+          if (!host) return
+          const roster = db.all<{ id: string; name: string; archived_at: number | null }>(
+            "SELECT id, name, archived_at FROM agent WHERE server_id = ?",
+            host.server_id,
+          )
+          const named = directMentions(
+            roster.map((agent) => ({
+              id: agent.id,
+              name: agent.name,
+              archived: agent.archived_at !== null,
+            })),
+            place.agentId,
+            text,
+          )
+          for (const one of named) yield* startOne(place, messageId, one.id, text)
+        })
 
       /** Answers the last message, then each queued message in order. */
       const worker = (place: Place, resumed?: Task) =>
@@ -1887,7 +2069,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
        * first queued message, start the next turn.
        */
       const nextQueued = (place: Place) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           const key = keyOf(place)
           // Messages that the turn did not read go first: they are in the chat already.
           if (unreadLeft.delete(key)) return true
@@ -1905,7 +2087,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           queue.shift()
           emitQueue(place)
           const { blocked: _blocked, ...next } = head
-          insertQueued(place, next)
+          const row = insertQueued(place, next)
+          if (row) yield* startMentions(place, row.id, next.text)
           return true
         })
 
@@ -1967,6 +2150,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           { onlyIfMissing: true },
         )
       const isRunning = (place: Place) => FiberMap.has(workers, keyOf(place))
+      /** True while a named agent is still writing into this chat (spec 003). */
+      const guestsLive = (place: Place) =>
+        Effect.gen(function* () {
+          for (const key of mentionKeys.get(keyOf(place)) ?? []) {
+            if (yield* FiberMap.has(workers, key)) return true
+          }
+          return false
+        })
 
       const usableAgent = (agentId: string, model?: AgentModel) =>
         Effect.gen(function* () {
@@ -2024,10 +2215,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         if (question) {
           turn.answeredInChat(question)
           yield* tools.respond(place.agentId, question, turnText(row))
-          return
+        } else {
+          turn.waiting.push({ id: row.id, text: turnText(row) })
+          for (const ready of [...turn.watchers]) ready()
         }
-        turn.waiting.push({ id: row.id, text: turnText(row) })
-        for (const ready of [...turn.watchers]) ready()
+        yield* startMentions(place, row.id, message.text)
       })
 
       /**
@@ -2194,12 +2386,17 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         asks.set(row.id, row.created_at)
         if (origin) origins.set(row.id, origin)
         yield* kick(place)
+        if (!origin) yield* startMentions(place, row.id, input.text)
         return { queued: false }
       })
 
       const stop = Effect.fn("Chat.stop")(function* (place: Place) {
         const fiber = yield* FiberMap.get(workers, keyOf(place))
         if (fiber._tag === "Some") yield* Fiber.interrupt(fiber.value)
+        for (const key of [...(mentionKeys.get(keyOf(place)) ?? [])]) {
+          const extra = yield* FiberMap.get(workers, key)
+          if (extra._tag === "Some") yield* Fiber.interrupt(extra.value)
+        }
         // Messages that the turn did not read start the next turn (spec 003). Else the turn has
         // ended, so the next queued message goes now.
         if (yield* nextQueued(place)) yield* kick(place)
@@ -2218,8 +2415,42 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       ) {
         yield* usableAgent(agentId)
         const place = placeOfMessage(agentId, messageId)
+        const target = messageRow(messageId)
+        if (
+          target &&
+          target.agent_id === agentId &&
+          target.author === "agent" &&
+          target.speaker_id &&
+          (target.status === "failed" ||
+            (target.status === "stopped" && target.error_code !== null))
+        ) {
+          if ((yield* isRunning(place)) || (yield* guestsLive(place)))
+            return yield* new AppError({ code: "agent_working" })
+          yield* usableAgent(target.speaker_id)
+          const full = tasks.queueFull(target.speaker_id)
+          if (full) return yield* full
+          const user = rows(place)
+            .filter((r) => r.author === "user" && r.created_at <= target.created_at)
+            .at(-1)
+          if (!user) return yield* new AppError({ code: "cannot_retry" })
+          const old = db.get<{ id: string }>(
+            "SELECT id FROM task WHERE message_id = ? AND agent_id = ? ORDER BY created_at DESC LIMIT 1",
+            messageId,
+            target.speaker_id,
+          )
+          if (old && !options?.confirmed) {
+            const note = tasks.noteFor(old.id, options)
+            if (note) return { started: false, note } as const
+          }
+          db.run("DELETE FROM message WHERE id = ?", messageId)
+          bus.emit("chat.removed", { agentId, messageId })
+          if (old) retryLinks.set(`mention:${user.id}:${target.speaker_id}`, old.id)
+          yield* startOne(place, user.id, target.speaker_id, messageText(toMessage(user)))
+          return { started: true } as const
+        }
         const key = keyOf(place)
-        if (yield* isRunning(place)) return yield* new AppError({ code: "agent_working" })
+        if ((yield* isRunning(place)) || (yield* guestsLive(place)))
+          return yield* new AppError({ code: "agent_working" })
         const full = tasks.queueFull(agentId)
         if (full) return yield* full
         const last = rows(place).at(-1)
@@ -2269,7 +2500,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       ) {
         yield* usableAgent(agentId)
         const place = placeOfMessage(agentId, messageId)
-        if (yield* isRunning(place)) return yield* new AppError({ code: "agent_working" })
+        if ((yield* isRunning(place)) || (yield* guestsLive(place)))
+          return yield* new AppError({ code: "agent_working" })
         const all = rows(place)
         const index = all.findIndex((r) => r.id === messageId)
         const target = all[index]
@@ -2302,6 +2534,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         asks.set(messageId, edited.edited_at ?? Date.now())
         emitMessage(edited)
         yield* kick(place)
+        yield* startMentions(place, messageId, text)
       })
 
       // --- Compact and the context meter (spec 003) ----------------------------------------------
@@ -2356,7 +2589,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         db.get<{ finished_at: number }>(
           `SELECT finished_at FROM message
            WHERE agent_id = ? AND thread_id IS ? AND author = 'agent' AND finished_at IS NOT NULL
-             AND parts NOT LIKE ?
+             AND speaker_id IS NULL AND parts NOT LIKE ?
            ORDER BY finished_at DESC LIMIT 1`,
           place.agentId,
           place.threadId,
@@ -2370,6 +2603,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const found = db.get<{ n: number }>(
           `SELECT COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) AS n FROM message
            WHERE agent_id = ? AND thread_id IS ? AND author = 'agent' AND finished_at > ?
+             AND speaker_id IS NULL
              AND COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) > 0 AND parts NOT LIKE ?
            ORDER BY finished_at DESC LIMIT 1`,
           place.agentId,
@@ -2474,7 +2708,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             ...(range.summary !== undefined
               ? [{ role: "user" as const, content: summaryTurn(range.summary) }]
               : []),
-            ...modelTurns(range.covered, false),
+            ...modelTurns(range.covered, false, place.agentId),
             { role: "user", content: COMPACT_ASK },
           ]
           const controller = new AbortController()
@@ -2618,6 +2852,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           const earlier = db.get(
             `SELECT 1 AS n FROM message
              WHERE agent_id = ? AND thread_id IS ? AND author = 'agent' AND id != ? AND finished_at > ?
+               AND speaker_id IS NULL
                AND COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) > 0 AND parts NOT LIKE ?
              LIMIT 1`,
             place.agentId,
@@ -2859,6 +3094,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         )
         if (
           target.status === "streaming" ||
+          (yield* guestsLive(place)) ||
           (index > lastEnded && (yield* isRunning(place))) ||
           (target.joined_to !== null && live.get(keyOf(place))?.replyId === target.joined_to)
         )
@@ -2879,8 +3115,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               `INSERT INTO message (id, agent_id, author, parts, status, error_code, error_detail,
                  error_resets_at, reply_to, model, created_at, edited_at, from_device, from_name,
                  context, joined_to, read_at, thread_id, input_tokens, output_tokens, finished_at,
-                 program_mark, outside_mark)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+                 program_mark, outside_mark, speaker_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`,
               ids.get(r.id) as string,
               r.agent_id,
               r.author,
@@ -2902,6 +3138,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               r.finished_at,
               r.program_mark ?? null,
               r.outside_mark ?? null,
+              r.speaker_id ?? null,
             )
           // The copied replies are no news.
           db.run("INSERT INTO thread_read (thread_id, at) VALUES (?, ?)", made.id, Date.now())
@@ -3124,6 +3361,14 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       tasks.onRetry("teams", retryOfChat)
       // A task of a handover is a message in a thread: it tries again the way a chat task does.
       tasks.onRetry("handover", retryOfChat)
+      // A mention tries again as that one speaker, in the chat where the user named them (spec 003).
+      tasks.onRetry("mention", (task) =>
+        Effect.suspend(() =>
+          retry(task.sourceId ?? task.agentId, task.messageId ?? "", { confirmed: true }).pipe(
+            Effect.asVoid,
+          ),
+        ),
+      )
 
       // A task that another agent asked for runs again as a new message to the same agent. It keeps
       // the depth of the old task. Its reply does not go back: the user asked for the retry.

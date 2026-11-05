@@ -27,10 +27,12 @@ export const Composer = (props: {
   /** A line that says why the box cannot send now (offline, removed), or null. */
   readonly blocked: string | null
   /**
-   * The members of a channel that can answer (not archived). With it, an `@` before the caret
-   * opens a list of them above the box (spec 004, "Mention"). Direct chats pass none.
+   * The agents an `@` can name (not archived). A channel passes its members. A direct chat
+   * passes the other agents (spec 003, 004).
    */
   readonly mentions?: readonly Agent[] | undefined
+  /** When false, the list has no `@all` (spec 003). A channel leaves this on. */
+  readonly everyone?: boolean
   readonly reply: { readonly name: string; readonly text: string } | null
   readonly onCancelReply: () => void
   readonly onSend: (
@@ -60,7 +62,7 @@ export const Composer = (props: {
   const openAt = members ? openMention(value, caret) : null
   const entries =
     members && openAt && !props.blocked
-      ? mentionEntries(members, openAt.query, members.length >= 2)
+      ? mentionEntries(members, openAt.query, (props.everyone ?? true) && members.length >= 2)
       : []
   const pickMention = (name: string) => {
     if (!openAt) return

@@ -3,8 +3,12 @@ import {
   ATTACH_BYTES,
   ATTACH_MAX,
   type ChatMessage,
+  insertMention,
+  type MentionEntry,
   type MessageKey,
+  mentionEntries,
   messageText,
+  openMention,
   type QueuedMessage,
   type QueueHold,
   type Skill,
@@ -32,9 +36,11 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { MentionList } from "../channels/MentionList.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, stageFile } from "../lib/rpc.ts"
 import skillStyles from "../skills/skills.module.css"
+import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -237,6 +243,44 @@ export const Composer = (props: ComposerProps) => {
   const compactOff = () => meter()?.off ?? null
   const [highlight, setHighlight] = createSignal(0)
   const [dismissed, setDismissed] = createSignal(false)
+  // The `@` list (spec 003, "Mention another agent"). It has no `@all`.
+  const agents = useAgents()
+  const [caret, setCaret] = createSignal(0)
+  const [mentionHighlight, setMentionHighlight] = createSignal(0)
+  const [mentionDismissed, setMentionDismissed] = createSignal(false)
+  const mention = createMemo(() => openMention(text(), caret()))
+  const mentionable = createMemo(() => {
+    const open = mention()
+    if (!open) return []
+    const others = agents.agents().filter((agent) => agent.id !== props.agent.id)
+    return mentionEntries(others, open.query, false)
+  })
+  const mentionOpen = () => mentionable().length > 0 && !mentionDismissed()
+  createEffect(
+    on(
+      () => {
+        const open = mention()
+        return open ? `${open.start}:${open.query}` : ""
+      },
+      () => {
+        setMentionHighlight(0)
+        setMentionDismissed(false)
+      },
+      { defer: true },
+    ),
+  )
+  const pickMention = (entry: MentionEntry<Agent>) => {
+    const open = mention()
+    if (!open || entry.kind !== "member") return
+    const next = insertMention(text(), open, caret(), entry.member.name)
+    setText(next.text)
+    setCaret(next.caret)
+    queueMicrotask(() => {
+      resize()
+      input?.focus()
+      input?.setSelectionRange(next.caret, next.caret)
+    })
+  }
   const matches = createMemo(() => slashItems(text(), skillList(), commands()))
   const pickerOpen = () => !dismissed() && matches().length > 0
   createEffect(() => {
@@ -497,6 +541,26 @@ export const Composer = (props: ComposerProps) => {
   const onKeyDown = (event: KeyboardEvent) => {
     // While an input method composes text (for example Korean), Enter ends the composition.
     if (event.isComposing || event.keyCode === 229) return
+    if (mentionOpen()) {
+      const list = mentionable()
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        const step = event.key === "ArrowDown" ? 1 : -1
+        setMentionHighlight((mentionHighlight() + step + list.length) % list.length)
+        return
+      }
+      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+        event.preventDefault()
+        const chosen = list[mentionHighlight()]
+        if (chosen) pickMention(chosen)
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        setMentionDismissed(true)
+        return
+      }
+    }
     if (pickerOpen()) {
       const list = matches()
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -767,6 +831,14 @@ export const Composer = (props: ComposerProps) => {
             </div>
           )}
         </Show>
+        <Show when={mentionOpen()}>
+          <MentionList
+            label={t("chat.mentions")}
+            entries={mentionable()}
+            highlight={mentionHighlight()}
+            onPick={pickMention}
+          />
+        </Show>
         <Show when={pickerOpen()}>
           <div
             class={skillStyles.picker}
@@ -839,8 +911,11 @@ export const Composer = (props: ComposerProps) => {
             aria-label={t("chat.placeholder", { name: props.agent.name })}
             onInput={(e) => {
               setText(e.currentTarget.value)
+              setCaret(e.currentTarget.selectionStart)
               resize()
             }}
+            onKeyUp={(e) => setCaret(e.currentTarget.selectionStart)}
+            onClick={(e) => setCaret(e.currentTarget.selectionStart)}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
             data-testid="composer-input"
