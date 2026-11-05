@@ -118,7 +118,9 @@ test("settings: the close button sits on the left", async () => {
   const close = await page.getByTestId("settings-close").boundingBox()
   expect(box).not.toBeNull()
   expect(close).not.toBeNull()
-  expect(close!.x + close!.width / 2).toBeLessThan(box!.x + box!.width / 2)
+  const pageBox = box ?? { x: 0, y: 0, width: 0, height: 0 }
+  const closeBox = close ?? { x: 0, y: 0, width: 0, height: 0 }
+  expect(closeBox.x + closeBox.width / 2).toBeLessThan(pageBox.x + pageBox.width / 2)
   await app.close()
 })
 
