@@ -102,6 +102,8 @@ Agents do repeat work on a schedule without the user starting it.
 
 ## Rules
 
+- A routine that the main agent or an outside program makes (037) starts paused, shows "Made by
+  <caller>", and counts in the limit of 50. Resume is a separate request that the user allows.
 - A starter (see 002) can make a routine for its new agent. The routine starts paused. It uses a
   schedule, posts in the chat of the agent, and counts in the limit of 50.
 - Each run is a task (see 005) with the routine as its source. While a run works, the working

@@ -44,6 +44,8 @@ import {
   KNOWLEDGE_SOURCES,
   KNOWLEDGE_TURN_CHANGES_MAX,
   type KnowledgeNote,
+  MANAGE_STEP,
+  type ManageStep,
   MEMORY_TEXT_MAX,
   type MemoryNote,
   makePlaces,
@@ -101,6 +103,7 @@ import { type SecretBody, sendWithSecret } from "../secrets/request.ts"
 import { checkedFetch } from "../web/fetch.ts"
 import { ActionLog } from "./ActionLog.ts"
 import { AgentSettings } from "./AgentSettings.ts"
+import { Agents } from "./Agents.ts"
 import { CurrentActor } from "./actor.ts"
 import type { ConnectionTurn } from "./Connections.ts"
 import { Database } from "./Database.ts"
@@ -249,8 +252,11 @@ export interface Messenger {
  * and a rule that cannot be read asks the user, also at "Full access".
  */
 export interface GuardedRequest<A> {
-  readonly step: GuardedStep
+  readonly step: GuardedStep | ManageStep
+  /** A short text for the action log (spec 014). It holds no instruction and no prompt. */
   readonly target: string
+  /** The whole change in words, for the card, when `target` is too short for it (spec 037). */
+  readonly card?: string
   readonly work: () => Promise<A>
   readonly usual?: () => Promise<ActionDecider>
   readonly rule?: RuleVerdict
@@ -281,6 +287,7 @@ export interface ToolsService {
     memory: boolean
     knowledge: boolean
     settings?: boolean
+    manage?: boolean
     skills?: boolean
   }): readonly ToolDef[]
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
@@ -700,6 +707,39 @@ const SETTINGS_DEF: ToolDef = {
   ),
 }
 
+/**
+ * The manage tools of the main agent (spec 037). "Make an agent" asks the user for every call. The
+ * fields are the ones of the form of a new agent that a caller may set; the user sets the rest.
+ */
+const MANAGE_DEFS: readonly ToolDef[] = [
+  {
+    name: "read_agent",
+    description:
+      "Read the role line, the model, the face and the whole instructions of one agent that is not archived. Use it before you make an agent that is like another one.",
+    schema: object({ name: str("The name of the agent.") }, ["name"]),
+  },
+  {
+    name: "make_agent",
+    description:
+      "Ask the user to make a new agent. The user reads the whole change and allows or denies it; nothing is made before that. Make an agent only when the user asked for one or agreed to it. You cannot set its permission level or its workspace: the user does that in its profile. When the user denies it, do not ask again for the same agent.",
+    schema: object(
+      {
+        name: str("The name, 1 to 40 characters. No other agent may have it."),
+        role: str("The role line, up to 120 characters: what this agent is for."),
+        instructions: str("The whole instructions of the new agent."),
+        face_shape: { type: "integer", description: "The shape of the face, 1 to 6." },
+        face_hue: { type: "integer", description: "The colour of the face, 1 to 10." },
+        account: str("The name of a connected model account."),
+        model: str(
+          'The model, in loose words if needed, for example "Sonnet". Read_agent shows the model of another agent.',
+        ),
+        effort: str("An effort level that the model takes. Default: the middle level."),
+      },
+      ["name", "model"],
+    ),
+  },
+]
+
 const KNOWLEDGE_TOOLS = new Set(["read_article", "write_article", "delete_article", "add_source"])
 
 /** What the model reads when a knowledge call fails. The card shows its own translated text. */
@@ -817,6 +857,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const skills = yield* Skills
       const actionLog = yield* ActionLog
       const agentSettings = yield* AgentSettings
+      const agents = yield* Agents
       const knowledge = yield* Knowledge
       const saved = yield* SavedSecrets
       const rules = yield* Rules
@@ -1163,7 +1204,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           try {
             reply = await wait(ctx, callId, {
               kind: "approval",
-              summary: request.target,
+              summary: request.card ?? request.target,
               once: true,
               ...(outside ? { outside } : {}),
               ...(unreadable ? { unreadable: true as const } : {}),
@@ -2074,6 +2115,71 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
         }
       }
 
+      /** True when the agent is the main agent of its server (spec 002). The manage tools are its. */
+      const isMainAgent = (agentId: string) => {
+        const row = db.get<{ server_id: string }>(
+          "SELECT server_id FROM agent WHERE id = ?",
+          agentId,
+        )
+        return row !== undefined && organization.mainAgent(row.server_id) === agentId
+      }
+
+      /**
+       * "Read an agent" (spec 037): a read, so it needs no card and no log entry, also at "Read only".
+       */
+      const readAgentTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        if (!isMainAgent(ctx.agentId)) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const described = await settle(agentSettings.describeOther(ctx.agentId, text(args, "name")))
+        return described === null
+          ? { output: "No agent has this name. Use list_agents.", failed: true }
+          : { output: described, failed: false }
+      }
+
+      /**
+       * "Make an agent" (spec 037). A call that fails a check of the form makes no card. Otherwise
+       * the user reads the whole change on a card and allows or denies it, at every level but "Read
+       * only", which refuses it. The agent shows "Made by <caller>".
+       */
+      const makeAgentTool = async (
+        ctx: ToolContext,
+        call: ToolCall,
+        args: Record<string, unknown>,
+      ): Promise<ToolOutcome> => {
+        if (!isMainAgent(ctx.agentId)) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const plan = await settle(agentSettings.planNew(ctx.agentId, args))
+        if (plan.kind === "refused") return { output: plan.reason, failed: true }
+        const caller = db.get<{ server_id: string; name: string }>(
+          "SELECT server_id, name FROM agent WHERE id = ?",
+          ctx.agentId,
+        )
+        if (!caller) return { output: `Unknown tool: ${call.name}`, failed: true }
+        const made = await guarded(ctx, call.id, {
+          step: MANAGE_STEP,
+          target: `Make agent: ${plan.create.name}`,
+          card: plan.detail,
+          // The name can be taken since the plan: the step then fails with the reason.
+          work: () =>
+            settle(
+              agents.create(
+                { serverId: caller.server_id, ...plan.create },
+                { madeBy: caller.name },
+              ),
+            ).catch((error) => {
+              if (error instanceof AppError && error.code === "agent_name_taken")
+                throw new Error("Nothing made. Another agent on this server has this name.")
+              throw error
+            }),
+        })
+        return {
+          output: `Made the agent "${made.name}". The user can set its permission level and workspace in its profile. Send it a message with send_message.`,
+          failed: false,
+        }
+      }
+
       /**
        * A read of a file or a page that gives the same result as the two reads before it, in the
        * same turn, is refused with a short text (spec 005, "Repeated reads").
@@ -2476,6 +2582,10 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             return await saveMemory(ctx, call, text(args, "text"), args.for_channel === true)
           case "settings":
             return await settingsTool(ctx, call, args)
+          case "read_agent":
+            return await readAgentTool(ctx, call, args)
+          case "make_agent":
+            return await makeAgentTool(ctx, call, args)
           case "read_article":
             return await readTool(ctx, call, args)
           case "write_article":
@@ -2555,17 +2665,22 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
               (options.skills || d.name !== READ_SKILL_TOOL_NAME),
           ),
           ...(options.settings ? [SETTINGS_DEF] : []),
+          ...(options.manage ? MANAGE_DEFS : []),
         ],
         execute,
         guarded,
         bridge: (ctx, show) => {
           let count = 0
           return {
-            tools: Object.values(DEFS).filter(
-              (d) =>
-                (BRIDGE_TOOL_NAMES as readonly string[]).includes(d.name) &&
-                (d.name !== SEARCH_TOOL_NAME || memoryOn(ctx.agentId)),
-            ),
+            tools: [
+              ...Object.values(DEFS).filter(
+                (d) =>
+                  (BRIDGE_TOOL_NAMES as readonly string[]).includes(d.name) &&
+                  (d.name !== SEARCH_TOOL_NAME || memoryOn(ctx.agentId)),
+              ),
+              // The main agent gets the manage tools on every runtime (spec 037).
+              ...(isMainAgent(ctx.agentId) ? MANAGE_DEFS : []),
+            ],
             call: async (name, args) => {
               const call: ToolCall = { id: `app-${++count}`, name, input: JSON.stringify(args) }
               show({ type: "tool", state: "running", call })

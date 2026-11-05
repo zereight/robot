@@ -9,6 +9,7 @@ import {
   holdProgram,
   hostOf,
   isOutsideSource,
+  MANAGE_STEP,
   newTurnMark,
   OUTSIDE_SOURCE_KINDS,
   type OutsideSource,
@@ -70,6 +71,34 @@ describe("guardDecision", () => {
         "usual",
       )
     }
+  })
+})
+
+describe("guardDecision for a manage step (spec 037)", () => {
+  const STARTERS: readonly TurnStarter[] = ["user", "routine", "workflow", "agent", "program"]
+
+  test("a manage step asks at every level except Read only, also at Full access", () => {
+    for (const level of ["ask_all", "ask_risky", "ask_unsure", "full"] as const)
+      for (const outside of [true, false])
+        for (const starter of STARTERS)
+          for (const program of [true, false])
+            expect(guardDecision({ step: MANAGE_STEP, level, outside, program, starter })).toBe(
+              "ask",
+            )
+  })
+
+  test("Read only refuses a manage step", () => {
+    for (const outside of [true, false])
+      expect(
+        guardDecision({ step: MANAGE_STEP, level: "read_only", outside, starter: "user" }),
+      ).toBe("refuse_read_only")
+  })
+
+  test("no rule covers a manage step", () => {
+    for (const level of LEVELS)
+      expect(
+        guardDecision({ step: MANAGE_STEP, level, outside: false, starter: "user", denied: true }),
+      ).toBe(level === "read_only" ? "refuse_read_only" : "ask")
   })
 })
 

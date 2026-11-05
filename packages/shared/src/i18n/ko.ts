@@ -254,6 +254,7 @@ export const ko: Record<MessageKey, string> = {
   "agents.workspace": "작업 폴더",
   "agents.workspace.on": "작업 폴더: {name}에 있어요",
   "agents.changedBy": "{name}이(가) {time}에 마지막으로 바꿨어요",
+  "agents.madeBy": "{name}이(가) 만들었어요",
   "agents.readonly.hint":
     "{name}이(가) 이 기기에서 에이전트를 바꾸는 것을 허용하지 않았어요. 그 컴퓨터의 설정 → 기기에서 켜 주세요.",
   "agents.close": "닫기",
@@ -842,6 +843,7 @@ export const ko: Record<MessageKey, string> = {
   "permissions.log.kind.settings": "자기 설정 변경",
   "permissions.log.kind.secret_request": "저장된 비밀을 쓴 요청",
   "permissions.log.kind.secret_new": "새 비밀 요청",
+  "permissions.log.kind.manage": "변경 요청",
   "permissions.log.kind.file": "파일",
   "permissions.log.kind.shell": "셸 명령",
   "permissions.log.kind.web": "웹 페이지",

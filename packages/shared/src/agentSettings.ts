@@ -296,7 +296,8 @@ export type SettingsPlan =
   | { readonly kind: "refused"; readonly reason: string }
   | { readonly kind: "changes"; readonly changes: readonly SettingChange[] }
 
-const listModels = (matches: readonly ModelMatch[]) =>
+/** The lines that name models, for a refusal that asks the caller to choose. */
+export const listModels = (matches: readonly ModelMatch[]) =>
   matches.map((m) => `- ${m.model.id} (${m.model.label}) on the account "${m.accountName}"`)
 
 const sameValue = (a: SettingValue, b: SettingValue) => JSON.stringify(a) === JSON.stringify(b)

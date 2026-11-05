@@ -1342,6 +1342,12 @@ export const migrations: readonly string[] = [
   -- still show a removed face. It syncs with the message (019). An export holds it (014).
   ALTER TABLE message ADD COLUMN speaker_id TEXT;
   `,
+  `
+  -- The mark "Made by" (spec 037): the name of the caller of a manage tool that made the agent, as
+  -- it was when the user allowed the request. NULL for an agent that the user made. It syncs with
+  -- the agent (spec 019) and stays after later edits.
+  ALTER TABLE agent ADD COLUMN made_by TEXT;
+  `,
 ]
 
 /**

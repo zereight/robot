@@ -49,10 +49,12 @@ Each agent works in its own folder with real tools, and the user stays in contro
 
 - **Read only**: the agent can read, list and search files, fetch web pages, ask the user a
   question, save memory, list agents and use the board tools (024). These steps are refused: writing or deleting a file, a
-  shell command, a tool of a connection, the browser, computer use, "send message", and running
-  a workflow. A refused step shows a card with "Refused: read only". The agent gets the refusal
+  shell command, a tool of a connection, the browser, computer use, "send message", the manage
+  tools (037), and running a workflow. A refused step shows a card with "Refused: read only". The agent gets the refusal
   as a failed step, and the turn goes on. The action log has the step with the result Refused and
   the permission level as the one who decided.
+- **Manage steps** (037) make a request that the user allows, at every level except "Read only", where
+  they are refused. "Full access" does not skip the request. No rule covers them.
 - "Read only" comes before the rules. An Allow rule does not open a step that "Read only"
   refuses.
 - **Full access** asks the user to confirm when the user picks it. The text says that the agent

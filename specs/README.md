@@ -44,6 +44,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
 | 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
 | 036 | [Organization prefix: the name of the deepest organization before the name of an agent, "[Docs] Ada", with a switch in Appearance](036-organization-prefix.md) | Draft |
+| 037 | [Manage tools: the main agent and an outside program make and change agents, channels and routines, each change a request that the user allows](037-manage-tools.md) | Draft |
 
 ## Milestones
 
@@ -85,6 +86,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M34 | 032, 033, 034, and the changes to 000, 001, 007, 013, 014 and 018 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S115 to S117: the built-in connection, its download and its panel, the cards and the classes of the device steps, and the limits of logs, measurements, app data and the analysis of a performance file |
 | M35 | The changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019, 029, 030 and 031 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S126 to S129: organizations replace the channel tree, the org chart of organizations, access with inherited values, and the hand-off rule and ask up the line by organizations |
 | M36 | 036, and the changes to 001, 003, 004, 011, 012, 013, 019, 029 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S130 and S131: one line of organizations for the members of an agent, and the organization prefix |
+| M37 | 037, and the changes to 002, 004, 007, 009 and 023 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S133 to S137: make an agent for the main agent, tools for agents, tools for channels, tools for routines, manage tools for outside programs |
 
 ## Surfaces check
 
