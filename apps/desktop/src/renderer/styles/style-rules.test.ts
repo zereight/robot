@@ -139,3 +139,16 @@ rule(
     "workflows/workflows.module.css | --note-tone: #e0558f",
   ],
 )
+
+// DESIGN.md, "Don't": a coloured stripe on the side of a block is decoration, not an edge. A
+// quote or a call-out shows its kind with a tinted surface or a leading mark instead. The stripe
+// may be written as left, right, or as the logical inline start, which changes side in Korean.
+rule(
+  "side stripe",
+  "Do not draw a coloured stripe on the side of a block. Use a tinted surface or a leading mark.",
+  (d) =>
+    /^border-(?:(?:left|right|inline-start|inline-end)(?:-width)?|inline-(?:start|end)-width)$/.test(
+      d.prop,
+    ) && /^[2-9][0-9]*px\b/.test(d.value),
+  [],
+)
