@@ -178,6 +178,9 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           name: clip(skillName(hide(k.name)), SKILL_NAME_MAX),
           description: clip(hide(k.description).trim(), SKILL_DESCRIPTION_MAX),
           instructions: clip(hide(k.instructions), SKILL_INSTRUCTIONS_MAX),
+          channels: k.channels
+            .map((name) => clip(hide(name).trim(), CHANNEL_NAME_MAX))
+            .filter((name) => name !== ""),
           secret: hidden(k.name, k.description, k.instructions),
         }))
         const cleanedHandbook = clip(hide(file.handbook), HANDBOOK_MAX)
@@ -230,6 +233,8 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
 
         // "Channels of these agents": each channel whose members are all among the picked agents.
         let channelParts: AgentFileChannelOut[] | undefined
+        /** The name the file gives a channel, so a skill can name it (spec 030). */
+        const exportedChannelName = new Map<string, string>()
         if (input.channels) {
           const found = channelsForFile(yield* channels.list(input.serverId), picked)
           if (found.length > AGENT_FILE_MAX_CHANNELS)
@@ -248,6 +253,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
           )
           // The name the file gives each channel, so a parent points at that name (spec 002, 030).
           const parentName = new Map(sorted.map((c, i) => [c.id, channelNames[i] ?? c.name]))
+          for (const [id, name] of parentName) exportedChannelName.set(id, name)
           channelParts = sorted.map((c, i) => {
             const parent = c.parentId ? parentName.get(c.parentId) : undefined
             return {
@@ -288,6 +294,10 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             agents: chosen
               .filter((a) => k.agentIds === null || k.agentIds.includes(a.id))
               .map((a) => fileName.get(a.id) ?? a.name),
+            channels: k.channelIds.flatMap((id) => {
+              const name = exportedChannelName.get(id)
+              return name ? [name] : []
+            }),
           }))
         }
 
@@ -604,6 +614,10 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
                 instructions: skill.instructions,
               },
               planned.agents.flatMap((a) => created.get(a) ?? []),
+              skill.channels.flatMap((name) => {
+                const id = madeChannel.get(channelNameKey(name))
+                return id ? [id] : []
+              }),
             ),
           )
           if (Exit.isFailure(exit)) return yield* failed("skill", skill.name, exit.cause)

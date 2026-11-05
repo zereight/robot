@@ -113,6 +113,7 @@ export interface SkillsService {
     serverId: string,
     input: SkillInput,
     agentIds: readonly string[],
+    channelIds?: readonly string[],
   ): Effect.Effect<Skill, AppError>
   /** How many more skills a server can hold (the limit is 100). */
   room(serverId: string): Effect.Effect<number>
@@ -362,7 +363,7 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
             if (!serverId) return yield* new AppError({ code: "agent_not_found" })
             return yield* insert(serverId, input, [agentId], options)
           }),
-        createImported: (serverId, input, agentIds) =>
+        createImported: (serverId, input, agentIds, channelIds = []) =>
           Effect.gen(function* () {
             if (!db.get("SELECT 1 FROM server WHERE id = ?", serverId))
               return yield* new AppError({ code: "server_not_found" })
@@ -374,9 +375,21 @@ export class Skills extends Context.Service<Skills, SkillsService>()("robot/main
                 serverId,
               ),
             )
-            if (unique.length === 0 || known.length !== unique.length)
+            const channels = [...new Set(channelIds)]
+            const knownChannels = channels.filter((id) =>
+              db.get("SELECT 1 FROM channel WHERE id = ? AND server_id = ?", id, serverId),
+            )
+            if (
+              unique.length === 0 ||
+              known.length !== unique.length ||
+              knownChannels.length !== channels.length
+            )
               return yield* new AppError({ code: "skill_agents_invalid", detail: "agents" })
-            return yield* insert(serverId, input, known, { numbered: true, enabled: false })
+            return yield* insert(serverId, input, known, {
+              numbered: true,
+              enabled: false,
+              channelIds: knownChannels,
+            })
           }),
         room: (serverId) =>
           Effect.sync(() => {
