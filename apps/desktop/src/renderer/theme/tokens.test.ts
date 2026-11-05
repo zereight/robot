@@ -26,6 +26,28 @@ describe("theme contrast", () => {
     test(`${theme}: text on accent is at least 4.5:1`, () => {
       expect(contrast(p.accentText, p.accent)).toBeGreaterThanOrEqual(4.5)
     })
+
+    // DESIGN.md, "The Lift Rule". A filled button that the pointer is over must be easier to read
+    // than the same button at rest, never harder, and the change must be visible.
+    test(`${theme}: the accent under the pointer lifts the text, and shows as a change`, () => {
+      expect(contrast(p.accentText, p.accentHover)).toBeGreaterThanOrEqual(
+        contrast(p.accentText, p.accent),
+      )
+      expect(contrast(p.accent, p.accentHover)).toBeGreaterThanOrEqual(1.1)
+    })
+    test(`${theme}: the danger colour under the pointer lifts the text, and shows as a change`, () => {
+      expect(contrast(p.dangerText, p.dangerHover)).toBeGreaterThanOrEqual(
+        contrast(p.dangerText, p.danger),
+      )
+      expect(contrast(p.danger, p.dangerHover)).toBeGreaterThanOrEqual(1.1)
+    })
+    test(`${theme}: text on danger is at least 4.5:1`, () => {
+      expect(contrast(p.dangerText, p.danger)).toBeGreaterThanOrEqual(4.5)
+    })
+    test(`${theme}: text on the colours under the pointer is at least 4.5:1`, () => {
+      expect(contrast(p.accentText, p.accentHover)).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(p.dangerText, p.dangerHover)).toBeGreaterThanOrEqual(4.5)
+    })
     // A danger button fills with the danger colour and writes on it (spec 000, "Danger buttons").
     test(`${theme}: text on danger is at least 4.5:1`, () => {
       expect(contrast(p.dangerText, p.danger)).toBeGreaterThanOrEqual(4.5)

@@ -137,8 +137,8 @@
 }
 
 .primary:hover {
-  background: var(--c-accent);
-  filter: brightness(1.08);
+  background: var(--c-accent-hover);
+  border-color: var(--c-accent-hover);
 }
 
 /* A button that deletes or removes something that exists (spec 000, "Danger buttons"). */
@@ -150,8 +150,8 @@
 }
 
 .danger:hover {
-  background: var(--c-danger);
-  filter: brightness(1.08);
+  background: var(--c-danger-hover);
+  border-color: var(--c-danger-hover);
 }
 
 .iconButton {
@@ -170,6 +170,32 @@
 .button:active:not(:disabled),
 .iconButton:active:not(:disabled) {
   transform: scale(var(--press-scale));
+}
+
+/* A button that cannot be pressed says so: it fades, the pointer shows it, and it does not react
+   to the pointer or to a press. The switch and the menu item already do this; the button did not,
+   though 134 places pass `disabled`. */
+.button:disabled,
+.iconButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button:disabled:hover,
+.iconButton:disabled:hover {
+  background: var(--c-elevated);
+  color: var(--c-text-muted);
+}
+
+.primary:disabled,
+.danger:disabled {
+  filter: none;
+}
+
+.primary:disabled:hover,
+.danger:disabled:hover {
+  background: inherit;
+  filter: none;
 }
 
 .iconButton {
