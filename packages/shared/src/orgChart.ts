@@ -15,6 +15,8 @@ export const ORG_HANDOFF_DAYS = 7
 export const ORG_HANDOFF_WINDOW_MS = ORG_HANDOFF_DAYS * 24 * 60 * 60 * 1000
 /** The label of a running task is cut at this many characters. */
 export const ORG_LABEL_MAX = 90
+/** The goal of an organization is cut at this many characters on its node (spec 029). */
+export const ORG_GOAL_LINE_MAX = 120
 /** A state of an agent, in the order that the counts of an organization node use. */
 export const ORG_STATES = [
   "working",
@@ -47,6 +49,8 @@ export interface OrgAgent {
 export interface OrgChartOrg {
   readonly id: string
   readonly name: string
+  /** Why the organization exists, in the words of the user (spec 030, "Goal"). Empty at the start. */
+  readonly goal?: string
   readonly createdAt: number
   /** The lead, or null. A lead that is archived or not a member counts as no lead. */
   readonly leadId: string | null
@@ -177,6 +181,10 @@ export interface ChartOrg {
   /** Null for the organization node "No organization": the window writes its name from the catalogue. */
   readonly orgId: string | null
   readonly name: string
+  /** The goal of the organization, cut with "…" for the node, or null when it has none (spec 030). */
+  readonly goal: string | null
+  /** The whole goal, for the note and the accessible name of the node. Null when there is none. */
+  readonly goalFull: string | null
   readonly memberCount: number
   readonly counts: StateCounts
   /** The agent nodes that are drawn: the lead first, then the others by name. At most 12. */
@@ -236,6 +244,12 @@ export const cutLabel = (text: string, max = ORG_LABEL_MAX): string => {
   const line = text.replace(/\s+/g, " ").trim()
   const chars = [...line]
   return chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : line
+}
+
+/** The goal of an organization as one line for its node, or null when it has none (spec 029). */
+export const goalLine = (goal: string): string | null => {
+  const line = cutLabel(goal, ORG_GOAL_LINE_MAX)
+  return line === "" ? null : line
 }
 
 const lower = (text: string) => text.toLowerCase()
@@ -349,6 +363,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
     readonly key: string
     readonly orgId: string | null
     readonly name: string
+    readonly goal: string
     readonly leadId: string | null
     readonly members: readonly OrgAgent[]
     readonly parentKey: string | null
@@ -363,6 +378,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
       key: `o:${o.id}`,
       orgId: o.id,
       name: o.name,
+      goal: o.goal ?? "",
       leadId: lead?.id ?? null,
       members: lead ? [lead, ...rest] : rest,
       parentKey: o.parentId ? `o:${o.parentId}` : null,
@@ -374,6 +390,7 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
       key: NO_ORG_KEY,
       orgId: null,
       name: "",
+      goal: "",
       leadId: null,
       members: loose,
       parentKey: null,
@@ -425,6 +442,9 @@ export const buildChart = (snapshot: OrgSnapshot): ChartModel => {
       key: g.key,
       orgId: g.orgId,
       name: g.name,
+      // The node shows one line, and the note and the accessible name hold the whole goal.
+      goal: goalLine(g.goal),
+      goalFull: g.goal.trim() === "" ? null : g.goal,
       memberCount: g.members.length,
       counts,
       nodes,

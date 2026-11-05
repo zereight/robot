@@ -3017,6 +3017,9 @@ export const en = {
   "orgs.create.title": "New organization",
   "orgs.edit.title": "Organization",
   "orgs.name": "Name",
+  "orgs.goal": "Goal",
+  "orgs.goal.hint":
+    "Why this organization exists. Its members read this before their own instructions. {left} characters left.",
   "orgs.members": "Members",
   "orgs.members.none": "Make an agent first.",
   "orgs.members.search": "Search agents",
@@ -3094,6 +3097,7 @@ export const en = {
   "tools.orgMark": "organization",
   "error.org_not_found": "That organization does not exist any more.",
   "error.org_name_taken": "Another organization on this server has this name.",
+  "error.org_goal_too_long": "The goal is longer than 400 characters.",
   "error.orgs_full": "A profile holds at most 100 organizations.",
   "error.org_parent_loop": "This is a sub-organization of this organization.",
   "error.org_parent_levels": "The tree would have more than 3 levels.",

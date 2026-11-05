@@ -59,6 +59,15 @@
 .memberSearch {
   margin-top: 6px;
 }
+
+/* The goal of an organization (spec 030, "Goal"): body text in a box that grows, and no resize by
+   hand, so the form keeps its height. */
+.goal {
+  min-height: 3.6em;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.55;
+}
 /* The box keeps one height for any search: a list, a short list and "no match" fill the same room. */
 .memberBox {
   position: relative;

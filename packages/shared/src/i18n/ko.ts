@@ -2997,6 +2997,9 @@ export const ko: Record<MessageKey, string> = {
   "orgs.create.title": "새 조직",
   "orgs.edit.title": "조직",
   "orgs.name": "이름",
+  "orgs.goal": "목표",
+  "orgs.goal.hint":
+    "이 조직이 존재하는 이유예요. 멤버는 자기 지침보다 먼저 이 글을 읽어요. {left}자 남았어요.",
   "orgs.members": "멤버",
   "orgs.members.none": "먼저 에이전트를 만드세요.",
   "orgs.members.search": "에이전트 검색",
@@ -3071,6 +3074,7 @@ export const ko: Record<MessageKey, string> = {
   "tools.orgMark": "조직",
   "error.org_not_found": "그 조직은 더 이상 없어요.",
   "error.org_name_taken": "이 서버에 같은 이름의 조직이 있어요.",
+  "error.org_goal_too_long": "목표가 400자를 넘었어요.",
   "error.orgs_full": "프로필에는 조직을 최대 100개까지 둘 수 있어요.",
   "error.org_parent_loop": "이 조직의 하위 조직이에요.",
   "error.org_parent_levels": "트리가 3단계를 넘게 돼요.",

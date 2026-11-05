@@ -388,6 +388,18 @@ button.node[data-kind="more"]:hover {
   color: var(--c-text-muted);
 }
 
+/* The goal of the organization (spec 030, "Goal"). Body text, at full contrast: it is a sentence
+   the user reads, not a label (DESIGN.md, "The Prose Rule"). One line, cut at its end. */
+.goal {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-s);
+  line-height: 1.35;
+  color: var(--c-text);
+}
+
 /* ---- The controls, the note of a hand-off line and the list behind "+<n> more". */
 
 .controls {

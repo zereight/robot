@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   type AgentOrgTool,
+  goalTooLong,
   lineRefusalCode,
   lineRefusalDetail,
   nameKey,
@@ -244,6 +245,12 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
           ? Effect.succeed(limit)
           : Effect.fail(new AppError({ code: "invalid_daily_limit" }))
 
+      /** The goal of an organization (spec 030, "Goal"): 0 to 400 characters. */
+      const checkGoal = (goal: string) =>
+        goalTooLong(goal)
+          ? Effect.fail(new AppError({ code: "org_goal_too_long" }))
+          : Effect.succeed(goal.trim())
+
       const writeMembers = (orgId: string, memberIds: readonly string[]) => {
         db.run("DELETE FROM org_member WHERE org_id = ?", orgId)
         for (const [position, agentId] of memberIds.entries())
@@ -278,12 +285,13 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
         yield* checkParent(input.serverId, id, parentId)
         yield* checkLine(input.serverId, [{ id, name, parentId, memberIds }])
         const limit = yield* checkLimit(input.dailyTokenLimit ?? null)
+        const goal = yield* checkGoal(input.goal ?? "")
         const now = Date.now()
         db.transaction(() => {
           db.run(
             `INSERT INTO org_unit (id, server_id, name, name_key, lead_agent_id, parent_id,
-              hand_off_range, daily_token_limit, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              hand_off_range, daily_token_limit, goal, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             id,
             input.serverId,
             name,
@@ -292,6 +300,7 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
             parentId,
             input.handOffRange ?? "inherit",
             limit,
+            goal,
             now,
             now,
           )
@@ -330,16 +339,18 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
           patch.dailyTokenLimit !== undefined && patch.dailyTokenLimit !== row.daily_token_limit
             ? yield* checkLimit(patch.dailyTokenLimit)
             : row.daily_token_limit
+        const goal = patch.goal !== undefined ? yield* checkGoal(patch.goal) : (row.goal ?? "")
         db.transaction(() => {
           db.run(
             `UPDATE org_unit SET name = ?, name_key = ?, lead_agent_id = ?, parent_id = ?,
-              hand_off_range = ?, daily_token_limit = ?, updated_at = ? WHERE id = ?`,
+              hand_off_range = ?, daily_token_limit = ?, goal = ?, updated_at = ? WHERE id = ?`,
             name,
             nameKey(name),
             leadId,
             parentId,
             patch.handOffRange ?? row.hand_off_range,
             limit,
+            goal,
             Date.now(),
             id,
           )

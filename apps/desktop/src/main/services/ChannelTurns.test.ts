@@ -8,6 +8,7 @@ import {
 } from "@robot/shared"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
+import { Organizations } from "./Organizations.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { Tasks } from "./Tasks.ts"
@@ -119,6 +120,12 @@ const setup = async (options: { size: number | null; instructions?: string }) =>
       }),
     ),
   )
+  const org = (name: string, goal: string, memberIds: string[]) =>
+    run(
+      Organizations.use((o) =>
+        o.create({ serverId: local.id, name, goal, memberIds, leadId: null }),
+      ),
+    )
   const post = (text: string) => run(Channels.use((c) => c.post(channel.id, text)))
   const posts = async (n: number, make: (i: number) => string) => {
     for (let i = 1; i <= n; i++) await post(make(i))
@@ -132,7 +139,7 @@ const setup = async (options: { size: number | null; instructions?: string }) =>
   const states = async () => (await run(Tasks.use((x) => x.list(local.id)))).map((x) => x.state)
   const failure = async () =>
     (await run(Tasks.use((x) => x.list(local.id)))).find((x) => x.state === "failed")?.error
-  return { ...t, post, posts, send, idle, states, failure }
+  return { ...t, org, bo, post, posts, send, idle, states, failure }
 }
 
 /**
@@ -165,6 +172,18 @@ describe("the text of a member", () => {
     // With 10 or fewer newest messages there is no reminder.
     expect(text).not.toContain("Reminder of your assignment")
     expect(text.endsWith("@Bo list the colours")).toBe(true)
+  })
+
+  test("a turn of a channel holds the goal of the organization of the member (spec 030, Goal)", async () => {
+    const s = await setup({ size: null })
+    await s.org("Docs", "Ship the Docs site.", [s.bo.id])
+    await s.send("@Bo hello")
+    await s.idle()
+    const system = (members.at(-1) as Request).system
+    expect(system).toContain("Ship the Docs site.")
+    // The order of the spec: the goal, then the instructions of the member, then the channel.
+    expect(system.indexOf("Ship the Docs site.")).toBeLessThan(system.indexOf("Bo writes"))
+    expect(system.indexOf("Bo writes")).toBeLessThan(system.indexOf("Write the answer as a list."))
   })
 
   test("a turn of a channel holds the instructions of the channel", async () => {

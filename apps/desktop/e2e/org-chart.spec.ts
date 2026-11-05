@@ -392,7 +392,12 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
     "Bo. Writes the first draft of every article. Idle. Handed work to 1 agent",
   )
   expect(await nameOf(nodeOf(page, "Cy"))).toBe("Cy. Checks facts. Idle. Got work from 1 agent")
-  expect(await nameOf(docs)).toBe("Docs. 3 members. 1 working, 2 idle")
+  // The line of the outcome of the members in the last 7 days (spec 029, "Organization node"): the
+  // tasks of Ada, Bo and Cy that ended as done. The task of Ada that still runs does not count.
+  const done = (
+    await rpc<{ state: string; agentId: string }[]>(page, "tasks.list", { serverId: server })
+  ).filter((t) => t.state === "done" && [ada, bo, cy].includes(t.agentId)).length
+  expect(await nameOf(docs)).toBe(`Docs. 3 members. 1 working, 2 idle. ${done} done`)
 
   // A click on an agent node opens the profile; a click on an organization node opens its form.
   await page.getByTestId("page-orgchart").click()

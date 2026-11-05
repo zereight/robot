@@ -50,10 +50,11 @@ export const orgTitle = (t: Translate, org: ChartOrg) =>
 
 export const moreWord = (t: Translate, count: number) => t("orgchart.more", { count })
 
-/** The accessible name of an organization node: the name, the number of members, the counts and the outcome. */
+/** The accessible name of an organization node: the name, the goal, the members, the counts and the outcome. */
 export const orgLabel = (t: Translate, org: ChartOrg) =>
   [
     orgTitle(t, org),
+    org.goalFull ?? "",
     membersWord(t, org.memberCount),
     countsLine(t, org.counts).replaceAll(" · ", ", "),
     outcomeLine(t, org.outcome).replaceAll(" · ", ", "),

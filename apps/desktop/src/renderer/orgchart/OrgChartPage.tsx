@@ -62,13 +62,20 @@ const sameKeys = (a: string[], b: string[]) =>
   a.length === b.length && a.every((k, i) => k === b[i])
 
 /**
- * What decides the positions: the nodes in order, the leads, the tiles, and the lines with the
- * number of digits of their counts. A change of state, of a label or of a count with the same
- * digits moves nothing, so it does not lay the chart out again.
+ * What decides the positions: the nodes in order, the leads, the tiles, whether each organization
+ * node has a goal (which takes one more line), and the lines with the number of digits of their
+ * counts. A change of state, of a label, of the words of a goal or of a count with the same digits
+ * moves nothing, so it does not lay the chart out again.
  */
 const structureKey = (model: ChartModel) =>
   JSON.stringify([
-    model.orgs.map((c) => [c.key, c.leadKey, c.more.length > 0, c.nodes.map((n) => n.key)]),
+    model.orgs.map((c) => [
+      c.key,
+      c.leadKey,
+      c.more.length > 0,
+      c.goal !== null,
+      c.nodes.map((n) => n.key),
+    ]),
     model.lines.map((l) => [l.id, l.from, l.to, String(l.count ?? "").length]),
   ])
 
@@ -706,6 +713,14 @@ export const OrgChartPage = () => {
                 {orgTitle(t, c())}
               </span>
             </span>
+            {/* Why the organization exists (spec 030, "Goal"). One line, the whole goal in a note. */}
+            <Show when={c().goal}>
+              {(line) => (
+                <span class={styles.goal} title={c().goalFull ?? ""} data-testid="org-unit-goal">
+                  {line()}
+                </span>
+              )}
+            </Show>
             <Show
               when={c().memberCount > 0}
               fallback={

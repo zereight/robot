@@ -74,6 +74,7 @@ const orgRow = (page: Page, name: string) =>
 const dialog = (page: Page) => page.getByTestId("org-dialog")
 /** The field "Name" of the form. The chart has agent names with a similar test id. */
 const orgName = (page: Page) => page.getByTestId("org-form").getByTestId("org-name")
+const orgGoal = (page: Page) => page.getByTestId("org-form").getByTestId("org-goal")
 const closeDialog = async (page: Page) => {
   await page.keyboard.press("Escape")
   await expect(dialog(page)).toHaveCount(0)
@@ -409,8 +410,11 @@ test("organizations: the form works with the keyboard at the narrowest window an
     await fits(page.getByTestId("org-submit"))
     await shot(page, "s126-07-narrow")
 
-    // Tab goes on from the name to the search, then the members; Enter in the name saves.
+    // Tab goes on from the name to the goal (spec 030, "Goal"), then the search, then the members;
+    // Enter in the name saves.
     await page.keyboard.type("Keys")
+    await page.keyboard.press("Tab")
+    await expect(orgGoal(page)).toBeFocused()
     await page.keyboard.press("Tab")
     await expect(page.getByTestId("org-member-search")).toBeFocused()
     // Ada is in "Product", so the form of a new top organization shows Ada muted and not tickable

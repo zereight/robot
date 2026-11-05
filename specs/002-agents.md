@@ -274,9 +274,10 @@ agent.
   (019) and an export holds it (014). It holds 0 to 20000 characters. It is empty at the
   start. An empty handbook gives nothing to any agent.
 - Before each turn, an agent with "Read the handbook" on gets the handbook before its own
-  instructions. In a channel, the instructions of the channel come after the instructions of the
-  agent (004). When two texts say different things, the later text wins. The app tells the agent
-  this order. The rules of the app (007, 014) always win over all three texts.
+  instructions. The goal of each organization of the agent comes after the handbook and before its
+  own instructions (030, "Goal"). In a channel, the instructions of the channel come after the
+  instructions of the agent (004). When two texts say different things, the later text wins. The app
+  tells the agent this order. The rules of the app (007, 014) always win over all of these texts.
 - The switch "Read the handbook" is in the profile of the agent, under the instructions. The user
   turns it off for an agent that must not get it.
 - A change of the handbook counts from the next turn. A turn that runs keeps the text that it had.

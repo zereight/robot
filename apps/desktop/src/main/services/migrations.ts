@@ -1381,6 +1381,11 @@ export const migrations: readonly string[] = [
   CREATE INDEX robot_event_at ON robot_event (server_id, at DESC);
   CREATE INDEX robot_event_call ON robot_event (server_id, call_id);
   CREATE INDEX robot_event_subject ON robot_event (server_id, source, subject);
+  -- The goal of an organization (spec 030, "Goal"): why it exists, in the words of the user. It goes
+  -- to the members of the organization before their own instructions. Empty at the start, so an
+  -- organization from before this step gives nothing new to any agent. It syncs with the
+  -- organization (019), and an export holds it (014).
+  ALTER TABLE org_unit ADD COLUMN goal TEXT NOT NULL DEFAULT '';
   `,
 ]
 

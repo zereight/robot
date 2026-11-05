@@ -300,6 +300,27 @@ const withEmptyOrgs = () =>
 const onlyOrgs = () =>
   snap({ orgs: [org("Product", []), org("Docs", [], { parentId: "Product" }), org("Ops", [])] })
 
+/** A tree where every organization has a goal, and one has a long one (spec 030, "Goal"). */
+const withGoals = () => {
+  const a = ids("a", 9)
+  const base = threeLevels()
+  return {
+    ...base,
+    agents: a.map((id) => agent(id)),
+    orgs: [
+      org("Product", [], { goal: "Ship a product that people can use." }),
+      org("Docs", ["a01", "a02", "a03"], {
+        leadId: "a01",
+        parentId: "Product",
+        goal: `Ship the Docs site. ${"x".repeat(300)}`,
+      }),
+      org("Site", ["a04", "a05"], { parentId: "Docs", goal: "Keep the site up." }),
+      org("Blog", ["a06"], { parentId: "Docs" }),
+      org("Ops", ["a07", "a08", "a01"], { leadId: "a07", goal: "" }),
+    ],
+  }
+}
+
 const cases: [string, () => OrgSnapshot][] = [
   ["1 agent", oneAgent],
   ["a tree of 3 levels", threeLevels],
@@ -310,6 +331,7 @@ const cases: [string, () => OrgSnapshot][] = [
   ["20 organization nodes", twentyOrgs],
   ["organizations with no member", withEmptyOrgs],
   ["only organizations, no agent", onlyOrgs],
+  ["organizations with a goal", withGoals],
 ]
 
 describe("the layout never overlaps", () => {

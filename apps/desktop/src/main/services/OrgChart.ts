@@ -129,15 +129,17 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
           .all<{
             id: string
             name: string
+            goal: string | null
             lead_agent_id: string | null
             created_at: number
             parent_id: string | null
           }>(
-            "SELECT id, name, lead_agent_id, created_at, parent_id FROM org_unit ORDER BY created_at, id",
+            "SELECT id, name, goal, lead_agent_id, created_at, parent_id FROM org_unit ORDER BY created_at, id",
           )
           .map((o) => ({
             id: o.id,
             name: o.name,
+            goal: o.goal ?? "",
             createdAt: o.created_at,
             leadId: o.lead_agent_id,
             memberIds: members.get(o.id) ?? [],

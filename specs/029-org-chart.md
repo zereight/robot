@@ -140,6 +140,9 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
 - The header of an organization node shows the name of the organization and the number of members.
   Beside it, a small count for each state that at least one member has, in this order: working,
   waiting for you, idle, offline. For example "2 working · 3 idle".
+- Under the name, the node shows the **goal** of the organization (030, "Goal") in body text, on one
+  line cut with "…". The whole goal shows in a note when the pointer rests on the line, and it is
+  part of the accessible name of the node. An organization with no goal shows no line.
 - Under that line, the node shows the **outcome** of its members in the last 7 days. It is a
   sentence of counts in muted text, with no colour, no bar and no percent:
   - `<n> done` and `<n> blocked`, each shown only when it is more than 0;

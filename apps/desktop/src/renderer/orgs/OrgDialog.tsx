@@ -4,6 +4,7 @@ import {
   filterAgents,
   type HandOffRange,
   memberLineConflict,
+  ORG_GOAL_MAX,
   ORG_NAME_MAX,
   type Org,
   type OrgCreate,
@@ -65,6 +66,7 @@ export const OrgDialog = (props: {
     org && org.leadId !== null && org.memberIds.includes(org.leadId) ? org.leadId : null
   const was = {
     name: org?.name ?? "",
+    goal: org?.goal ?? "",
     memberIds: org?.memberIds ?? [],
     leadId: storedLead,
     parentId: org ? untrack(() => orgs.parentOf(org.id)) : null,
@@ -74,6 +76,7 @@ export const OrgDialog = (props: {
   const wasLimit = org?.dailyTokenLimit ?? null
 
   const [name, setName] = createSignal(was.name)
+  const [goal, setGoal] = createSignal(was.goal)
   const [members, setMembers] = createSignal<string[]>([...was.memberIds])
   const [leadId, setLeadId] = createSignal<string | null>(was.leadId)
   const [parentId, setParentId] = createSignal<string | null>(was.parentId)
@@ -148,9 +151,11 @@ export const OrgDialog = (props: {
   const agentName = (id: string | undefined) => lineAgents().find((a) => a.id === id)?.name ?? ""
 
   const limitValid = () => limitFieldValid(limitOn(), limitText())
+  // The goal holds 0 to 400 characters (spec 030, "Goal"). The field counts what is left.
+  const goalLeft = () => ORG_GOAL_MAX - charLength(goal())
   const valid = () => {
     const length = charLength(name().trim())
-    return length >= 1 && length <= ORG_NAME_MAX && limitValid()
+    return length >= 1 && length <= ORG_NAME_MAX && goalLeft() >= 0 && limitValid()
   }
 
   const submit = async (event: SubmitEvent) => {
@@ -162,6 +167,7 @@ export const OrgDialog = (props: {
       if (org) {
         const patch = orgPatchOf(was, {
           name: name(),
+          goal: goal(),
           memberIds: members(),
           leadId: leadId(),
           parentId: parentId(),
@@ -178,6 +184,7 @@ export const OrgDialog = (props: {
         const input: OrgCreate = {
           serverId,
           name: name().trim(),
+          ...(goal().trim() !== "" ? { goal: goal().trim() } : {}),
           memberIds: members(),
           leadId: leadId() !== null && members().includes(leadId() as string) ? leadId() : null,
           ...(parentId() ? { parentId: parentId() } : {}),
@@ -253,6 +260,24 @@ export const OrgDialog = (props: {
             onInput={(e) => setName(e.currentTarget.value)}
             data-testid="org-name"
           />
+        </label>
+        {/* Why the organization exists (spec 030, "Goal"). Its members read it before their own
+            instructions. */}
+        <label class={styles.field}>
+          <span class={styles.label}>{t("orgs.goal")}</span>
+          <textarea
+            class={`${styles.input} ${styles.goal}`}
+            value={goal()}
+            rows={3}
+            readOnly={readOnly()}
+            aria-invalid={goalLeft() < 0}
+            aria-describedby="org-goal-hint"
+            onInput={(e) => setGoal(e.currentTarget.value)}
+            data-testid="org-goal"
+          />
+          <span class={styles.hint} id="org-goal-hint" data-testid="org-goal-hint">
+            {t("orgs.goal.hint", { left: goalLeft() })}
+          </span>
         </label>
         <fieldset class={styles.field}>
           <legend class={styles.label}>{t("orgs.members")}</legend>

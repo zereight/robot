@@ -23,7 +23,7 @@ const setup = async () => {
   const org = (
     name: string,
     memberIds: string[],
-    extra: { leadId?: string | null; parentId?: string | null } = {},
+    extra: { leadId?: string | null; parentId?: string | null; goal?: string } = {},
   ) =>
     run(
       Organizations.use((o) =>
@@ -62,6 +62,38 @@ describe("make and edit", () => {
       a.id,
       b.id,
     ])
+  })
+
+  test("the goal is stored, trimmed, and a save of the form sends only what changed", async () => {
+    const s = await setup()
+    const made = await s.org("Docs", [], { goal: "  Ship the Docs site.  " })
+    expect(made.goal).toBe("Ship the Docs site.")
+    // A new organization with no goal has the empty one.
+    expect((await s.org("Ops", [])).goal).toBe("")
+    const edited = await s.run(
+      Organizations.use((o) => o.update(made.id, { goal: "Ship it by Friday." })),
+    )
+    expect(edited.goal).toBe("Ship it by Friday.")
+    expect(edited.name).toBe("Docs")
+  })
+
+  test("a goal of 401 characters is refused, and one of 400 is kept", async () => {
+    const s = await setup()
+    expect(
+      await s.codeOf(
+        Organizations.use((o) =>
+          o.create({
+            serverId: s.local.id,
+            name: "Docs",
+            goal: "x".repeat(401),
+            memberIds: [],
+            leadId: null,
+          }),
+        ),
+      ),
+    ).toBe("org_goal_too_long")
+    const ok = await s.org("Docs", [], { goal: "x".repeat(400) })
+    expect(ok.goal).toHaveLength(400)
   })
 
   test("the name: 1 to 60 characters, unique when case is ignored", async () => {

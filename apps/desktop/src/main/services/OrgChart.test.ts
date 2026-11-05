@@ -181,7 +181,7 @@ const setup = async (options: { connected?: boolean } = {}) => {
   const org = (
     name: string,
     memberIds: string[],
-    extra: { leadId?: string | null; parentId?: string | null } = {},
+    extra: { leadId?: string | null; parentId?: string | null; goal?: string } = {},
   ) =>
     run(
       Organizations.use((o) =>
@@ -291,6 +291,7 @@ describe("agents, organizations and states", () => {
     const docs = await s.org("Docs", [cy.id, ada.id, bo.id], {
       leadId: ada.id,
       parentId: product.id,
+      goal: "Ship the Docs site.",
     })
     // The order of the rows is the order of the time of making; the model sorts by name.
     const orgs = [...(await s.snapshot()).orgs].sort((x, y) => x.name.localeCompare(y.name))
@@ -298,6 +299,8 @@ describe("agents, organizations and states", () => {
       {
         id: docs.id,
         name: "Docs",
+        // The goal travels with the organization (spec 030, "Goal").
+        goal: "Ship the Docs site.",
         createdAt: expect.any(Number),
         leadId: ada.id,
         memberIds: [cy.id, ada.id, bo.id],
@@ -306,6 +309,7 @@ describe("agents, organizations and states", () => {
       {
         id: product.id,
         name: "Product",
+        goal: "",
         createdAt: expect.any(Number),
         leadId: null,
         memberIds: [],
