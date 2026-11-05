@@ -2758,6 +2758,8 @@ export const ko: Record<MessageKey, string> = {
   "orgchart.undone": "되돌렸어요.",
   "orgchart.repaired.loop": "{name}의 상위 조직을 비웠어요. 조직 트리가 순환하게 돼요.",
   "orgchart.repaired.levels": "{name}의 상위 조직을 비웠어요. 조직 트리가 3단계를 넘게 돼요.",
+  "orgchart.repaired.line":
+    "{agent}을(를) {organization}에서 뺐어요. {other}에 속해 있는데, 그 두 조직이 한 줄에 있지 않아요.",
   "orgchart.refused.join": "{name}을(를) 만들었지만 조직에 넣지 못했어요. {reason}",
   "orgchart.refused.gone": "{name}을(를) 지워서 이 변경을 되돌릴 수 없어요.",
   "taskUsage.title": "사용량",

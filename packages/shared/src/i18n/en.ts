@@ -2778,6 +2778,8 @@ export const en = {
   "orgchart.repaired.loop": "The parent of {name} was cleared. The tree would have a loop.",
   "orgchart.repaired.levels":
     "The parent of {name} was cleared. The tree would have more than 3 levels.",
+  "orgchart.repaired.line":
+    "{agent} was removed from {organization}. It is in {other}, which is not on one line with it.",
   "orgchart.refused.join": "{name} is made, but cannot join the organization. {reason}",
   "orgchart.refused.gone": "{name} was deleted. This change cannot go back.",
   "taskUsage.title": "Usage",

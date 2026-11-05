@@ -123,16 +123,24 @@ export const createChartEdit = (deps: {
   }
   onCleanup(() => clearTimeout(timer))
 
-  // The app repaired the tree: the open chart says so for 10 seconds (spec 030, "Repair"). It is
+  // The app repaired the tree or a line: the open chart says so for 10 seconds (spec 030, "Repair"). It is
   // no change of the user, so it has no "Undo". The event comes from this computer only.
   onCleanup(
-    window.robot.on("organizations.repaired", ({ serverId, name, reason }) => {
-      if (serverId !== ui.server()?.id) return
+    window.robot.on("organizations.repaired", (repair) => {
+      if (repair.serverId !== ui.server()?.id) return
+      const { name } = repair
       show({
         kind: "refused",
-        text: t(reason === "loop" ? "orgchart.repaired.loop" : "orgchart.repaired.levels", {
-          name,
-        }),
+        text:
+          repair.reason === "line"
+            ? t("orgchart.repaired.line", {
+                agent: repair.agentName,
+                organization: name,
+                other: repair.otherName,
+              })
+            : t(repair.reason === "loop" ? "orgchart.repaired.loop" : "orgchart.repaired.levels", {
+                name,
+              }),
       })
     }),
   )
