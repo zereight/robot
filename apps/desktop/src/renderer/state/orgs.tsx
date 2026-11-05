@@ -61,6 +61,8 @@ export const createOrgs = (serverId: () => string | undefined) => {
     app.settings.showOrgPrefix ? (deepest().get(agentId)?.name ?? null) : null
   return {
     orgs,
+    /** The deepest organization of an agent, or undefined. It does not follow the prefix switch. */
+    deepestOf: (agentId: string) => deepest().get(agentId),
     byId: (id: string) => store.list.find((o) => o.id === id),
     /** The organizations that an agent is a member of, by name. */
     ofAgent: (agentId: string) => orgsOfAgent(store.list, agentId),

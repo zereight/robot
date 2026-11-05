@@ -38,14 +38,23 @@ export const WORKFLOW_CANVAS_MIN = 240
 /** The width of the drag handle between the canvas and the side column. */
 export const WORKFLOW_HANDLE_WIDTH = 6
 
+/**
+ * The view of Agents in the place list (spec 001, "Agents by organization"): the user sections, or
+ * one read-only section for each deepest organization.
+ */
+export const AgentView = Schema.Literals(["sections", "organization"])
+export type AgentView = typeof AgentView.Type
+
 /** Window layout state that the app keeps between runs. */
 export const UiState = Schema.Struct({
   serverId: Schema.NullOr(Schema.String),
   page: Page,
   /** The open place of each server, by server id. */
   places: Schema.Record(Schema.String, PlaceRef),
-  /** Ids of collapsed place list sections. */
+  /** Ids of collapsed place list sections, also the sections of the view "By organization". */
   collapsed: Schema.Array(Schema.String),
+  /** The view of Agents in the place list. */
+  agentView: AgentView,
   activityPanel: Schema.Boolean,
   placeListWidth: Schema.Number.check(
     Schema.isBetween({ minimum: PLACE_LIST_MIN, maximum: PLACE_LIST_MAX }),
@@ -65,6 +74,7 @@ export const defaultUiState: UiState = {
   page: "chats",
   places: {},
   collapsed: [],
+  agentView: "sections",
   activityPanel: true,
   placeListWidth: PLACE_LIST_DEFAULT,
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,

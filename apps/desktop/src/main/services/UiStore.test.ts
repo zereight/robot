@@ -34,6 +34,26 @@ describe("UiStore (spec 001)", () => {
     expect(state.placeListWidth).toBe(PLACE_LIST_DEFAULT)
   })
 
+  test("the view of Agents is kept and read back, and a saved state from before reads as My sections", () => {
+    const state = run((db, store) => {
+      db.run("INSERT INTO ui_state (key, value) VALUES ('page', '\"workflows\"')")
+      const before = Effect.runSync(store.get).agentView
+      Effect.runSync(store.update({ agentView: "organization" }))
+      return { before, after: Effect.runSync(store.get) }
+    })
+    expect(state.before).toBe("sections")
+    expect(state.after.agentView).toBe("organization")
+    expect(state.after.page).toBe("workflows")
+  })
+
+  test("an unknown view of Agents reads as My sections", () => {
+    const view = run((db, store) => {
+      db.run("INSERT INTO ui_state (key, value) VALUES ('agentView', '\"team\"')")
+      return Effect.runSync(store.get).agentView
+    })
+    expect(view).toBe("sections")
+  })
+
   test("a width outside the limits reads as the default", () => {
     const state = run((_, store) => {
       Effect.runSync(store.update({ workflowSideWidth: WORKFLOW_SIDE_MAX + 1 }))

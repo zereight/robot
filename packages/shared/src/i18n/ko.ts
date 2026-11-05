@@ -134,6 +134,10 @@ export const ko: Record<MessageKey, string> = {
   "sections.none": "섹션 없음",
   "sections.unassigned": "미지정",
   "sections.field": "섹션",
+  "sections.view.mine": "내 섹션",
+  "sections.view.organization": "조직별",
+  "sections.byOrganization.reason": "섹션을 바꾸려면 내 섹션으로 바꿔 주세요.",
+  "sections.byOrganization.none": "모든 에이전트가 조직에 있어요.",
 
   "panel.show": "활동 패널 보기",
   "panel.hide": "활동 패널 숨기기",

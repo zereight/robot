@@ -7,6 +7,8 @@ import {
   loosePlacesFirst,
   type MessageKey,
   markedParts,
+  NO_ORG_SECTION_ID,
+  organizationSections,
   PLACE_LIST_MAX,
   PLACE_LIST_MIN,
   type Place,
@@ -190,6 +192,16 @@ export const PlaceList = (props: PlaceListProps) => {
   )
   const searching = () => query().trim().length > 0
   const anyMatch = () => sections().some((s) => allPlaces(s).length > 0)
+
+  // The view "By organization" of Agents (spec 001): the matching agents, in the section of their
+  // deepest organization. It does not follow the switch of the prefix.
+  const orgView = () => ui.ui.agentView === "organization"
+  const byOrganization = createMemo(() => {
+    const agents = sections().find((section) => section.id === "agents")
+    return organizationSections(agents ? allPlaces(agents) : [], orgs.deepestOf)
+  })
+  /** The sections of this view come from the organizations, so an agent cannot move or drag. */
+  const locked = (place: Place) => readOnly() || (place.kind === "agent" && orgView())
 
   // Message search (spec 001) ------------------------------------------------------------------
 
@@ -383,9 +395,9 @@ export const PlaceList = (props: PlaceListProps) => {
   const labelOf = (place: Place) =>
     place.kind === "agent" ? orgs.shown(place.id, place.name).label : place.name
 
-  const accessibleName = (place: Place) =>
+  const accessibleName = (place: Place, withPrefix: boolean) =>
     [
-      labelOf(place),
+      withPrefix ? labelOf(place) : place.name,
       // The whole role line is part of the name of an agent row (spec 001).
       roleOf(place) ? t("places.role", { role: roleOf(place) ?? "" }) : "",
       place.working ? t("places.working") : "",
@@ -425,33 +437,40 @@ export const PlaceList = (props: PlaceListProps) => {
     const mine = userSectionsOf(builtInSection(kind))
     const pick = (sectionId: string | null) => () =>
       ui.movePlace({ kind: place.kind, id: place.id }, sectionId)
-    openMenu({
-      label: place.name,
-      returnTo: row,
-      ...menuAt(event, row),
-      items: [
-        {
-          label: t("sections.moveTo"),
-          heading: true,
-          onSelect: () => {},
-          testId: "move-to-section",
-        },
-        ...mine.map(
-          (s): MenuItem => ({
-            label: s.name,
-            checked: place.sectionId === s.id,
-            onSelect: pick(s.id),
-            testId: `move-to-${s.id}`,
-          }),
-        ),
-        {
-          label: t("sections.none"),
-          checked: place.sectionId === null,
-          onSelect: pick(null),
-          testId: "move-to-none",
-        },
-      ],
-    })
+    // The view "By organization" has no user sections to move to (spec 001).
+    const moveTo: MenuItem[] = locked(place)
+      ? [
+          {
+            label: t("sections.moveTo"),
+            disabled: true,
+            reason: t("sections.byOrganization.reason"),
+            onSelect: () => {},
+            testId: "move-to-section",
+          },
+        ]
+      : [
+          {
+            label: t("sections.moveTo"),
+            heading: true,
+            onSelect: () => {},
+            testId: "move-to-section",
+          },
+          ...mine.map(
+            (s): MenuItem => ({
+              label: s.name,
+              checked: place.sectionId === s.id,
+              onSelect: pick(s.id),
+              testId: `move-to-${s.id}`,
+            }),
+          ),
+          {
+            label: t("sections.none"),
+            checked: place.sectionId === null,
+            onSelect: pick(null),
+            testId: "move-to-none",
+          },
+        ]
+    openMenu({ label: place.name, returnTo: row, ...menuAt(event, row), items: moveTo })
   }
 
   const sectionMenu = (
@@ -559,27 +578,27 @@ export const PlaceList = (props: PlaceListProps) => {
 
   // Parts of the list ---------------------------------------------------------------------
 
-  const renderRow = (place: Place) => {
+  const renderPlace = (place: Place, withPrefix: boolean) => {
     const selected = () =>
       ui.ui.page === "chats" && ui.place()?.kind === place.kind && ui.place()?.id === place.id
     return (
       <button
         type="button"
         class={styles.row}
-        draggable={readOnly() ? "false" : "true"}
+        draggable={locked(place) ? "false" : "true"}
         data-place-row
         data-place-name={place.name}
         data-testid={`place-${place.kind}-${place.id}`}
         data-unread={place.unread > 0}
         data-dragging={dragging()?.id === place.id}
         aria-current={selected()}
-        aria-label={accessibleName(place)}
+        aria-label={accessibleName(place, withPrefix)}
         onClick={() => ui.selectPlace({ kind: place.kind, id: place.id })}
         onContextMenu={(event) => {
           if (!readOnly()) placeMenu(event, place)
         }}
         onDragStart={(event) => {
-          if (readOnly()) event.preventDefault()
+          if (locked(place)) event.preventDefault()
           else startDrag(event, place)
         }}
         onDragEnd={endDrag}
@@ -594,7 +613,11 @@ export const PlaceList = (props: PlaceListProps) => {
           </Show>
         </span>
         <span class={styles.rowName} data-with-badge={roleOf(place) ? "true" : undefined}>
-          {place.kind === "agent" ? <AgentName id={place.id} name={place.name} /> : place.name}
+          {place.kind === "agent" && withPrefix ? (
+            <AgentName id={place.id} name={place.name} />
+          ) : (
+            place.name
+          )}
         </span>
         {/* The badge is the role line of an agent. A channel never has one. The name comes first:
             the slot is what is left of the row, the badge is cut with an ellipsis inside it, and
@@ -614,6 +637,11 @@ export const PlaceList = (props: PlaceListProps) => {
       </button>
     )
   }
+
+  const renderRow = (place: Place) => renderPlace(place, true)
+
+  /** Under an organization section the header names the organization, so the row has no prefix. */
+  const renderRowUnderOrganization = (place: Place) => renderPlace(place, false)
 
   /** The chevron, the name, and on a collapsed header the working dot and the unread sum. */
   const headerContent = (name: JSX.Element, collapsed: boolean, summary: SectionSummary) => (
@@ -790,43 +818,64 @@ export const PlaceList = (props: PlaceListProps) => {
       </div>
     ) : null
 
-  /** Agents with no user section. The section is last, and it is not a section the user made. */
-  const renderUnassigned = (section: PlaceSection) => {
-    if (searching() && section.places.length === 0) return null
-    const collapsed = () => ui.ui.collapsed.includes(UNASSIGNED_SECTION_ID) && !searching()
-    const summary = () => summarize(section.places)
-    const name = t("sections.unassigned")
+  /**
+   * A section that the app keeps: "Unassigned", and the sections of the view "By organization". It
+   * has no menu. Only "Unassigned" takes a dropped row. `testId` starts the test ids of its parts.
+   */
+  const renderFixedSection = (
+    fixed: { key: string; testId: string; userData?: boolean; drop?: boolean },
+    view: () => { name: string; places: readonly Place[] },
+    emptyLine: string,
+    row: (place: Place) => JSX.Element,
+  ) => {
+    const collapsed = () => ui.ui.collapsed.includes(fixed.key) && !searching()
+    const summary = () => summarize(view().places)
     return (
-      <div class={styles.userSection} data-testid="unassigned-section">
+      <div
+        class={styles.userSection}
+        data-testid={`${fixed.testId}-section`}
+        data-section-id={fixed.key}
+      >
         <div
           class={styles.sectionTop}
-          data-drop={dropKey() === UNASSIGNED_SECTION_ID}
-          data-testid="unassigned-header"
-          {...(readOnly() ? {} : dropTarget(UNASSIGNED_SECTION_ID, "agent", null))}
+          data-drop={fixed.drop ? dropKey() === fixed.key : undefined}
+          data-testid={`${fixed.testId}-header`}
+          {...(fixed.drop && !readOnly() ? dropTarget(fixed.key, "agent", null) : {})}
         >
           <button
             type="button"
             class={styles.sectionHeader}
             aria-expanded={!collapsed()}
-            aria-label={collapsed() ? headerName(name, summary()) : undefined}
-            onClick={() => ui.toggleSection(UNASSIGNED_SECTION_ID)}
-            data-testid="unassigned-toggle"
+            aria-label={collapsed() ? headerName(view().name, summary()) : undefined}
+            onClick={() => ui.toggleSection(fixed.key)}
+            data-testid={`${fixed.testId}-toggle`}
           >
-            {headerContent(<span>{name}</span>, collapsed(), summary())}
+            {headerContent(
+              // The name of an organization is text of the user. A long one is cut, and the note
+              // holds the whole name.
+              <span
+                title={fixed.userData ? view().name : undefined}
+                data-user-data={fixed.userData ? "" : undefined}
+              >
+                {view().name}
+              </span>,
+              collapsed(),
+              summary(),
+            )}
           </button>
         </div>
         <Presence when={!collapsed()}>
           {() => (
             <SectionBody>
               <Show
-                when={section.places.length > 0}
+                when={view().places.length > 0}
                 fallback={
-                  <div class={styles.sectionEmpty} data-testid="unassigned-empty">
-                    {t(readOnly() ? "sections.emptyLinked" : "sections.empty")}
+                  <div class={styles.sectionEmpty} data-testid={`${fixed.testId}-empty`}>
+                    {emptyLine}
                   </div>
                 }
               >
-                <For each={section.places}>{renderRow}</For>
+                <For each={view().places}>{row}</For>
               </Show>
             </SectionBody>
           )}
@@ -834,6 +883,55 @@ export const PlaceList = (props: PlaceListProps) => {
       </div>
     )
   }
+
+  /** Agents with no user section. The section is last, and it is not a section the user made. */
+  const renderUnassigned = (section: PlaceSection) => {
+    if (searching() && section.places.length === 0) return null
+    return renderFixedSection(
+      { key: UNASSIGNED_SECTION_ID, testId: "unassigned", drop: true },
+      () => ({ name: t("sections.unassigned"), places: section.places }),
+      t(readOnly() ? "sections.emptyLinked" : "sections.empty"),
+      renderRow,
+    )
+  }
+
+  /** The sections of the view "By organization", and "No organization" last (spec 001). */
+  const renderByOrganization = () => {
+    const gone = { name: "", places: [] }
+    // The list holds the keys, so a change of a section keeps its rows and their focus.
+    const keys = () => byOrganization().sections.map((s) => s.id)
+    return (
+      <>
+        <For each={keys()}>
+          {(key) =>
+            renderFixedSection(
+              { key, testId: "org", userData: true },
+              () => byOrganization().sections.find((s) => s.id === key) ?? gone,
+              "",
+              renderRowUnderOrganization,
+            )
+          }
+        </For>
+        <Show when={!searching() || byOrganization().none.length > 0}>
+          {renderFixedSection(
+            { key: NO_ORG_SECTION_ID, testId: "no-org" },
+            () => ({ name: t("orgchart.noOrganization"), places: byOrganization().none }),
+            t("sections.byOrganization.none"),
+            renderRow,
+          )}
+        </Show>
+      </>
+    )
+  }
+
+  /**
+   * True when the section has something to list. The view "By organization" has no user sections, so
+   * an empty user section does not count there (spec 001).
+   */
+  const holdsPlaces = (section: PlaceSection) =>
+    section.id === "agents" && orgView()
+      ? allPlaces(section).length > 0
+      : section.places.length > 0 || section.sections.length > 0
 
   const renderSection = (section: PlaceSection) => {
     const kind = sectionKind(section.id)
@@ -872,7 +970,7 @@ export const PlaceList = (props: PlaceListProps) => {
             {() => (
               <SectionBody>
                 <Show
-                  when={section.places.length > 0 || section.sections.length > 0}
+                  when={holdsPlaces(section)}
                   fallback={
                     <>
                       <div class={styles.sectionEmpty}>
@@ -882,12 +980,23 @@ export const PlaceList = (props: PlaceListProps) => {
                     </>
                   }
                 >
-                  <Show when={loosePlacesFirst(section.id)}>
-                    <For each={section.places}>{renderRow}</For>
+                  <Show
+                    when={section.id === "agents" && orgView()}
+                    fallback={
+                      <>
+                        <Show when={loosePlacesFirst(section.id)}>
+                          <For each={section.places}>{renderRow}</For>
+                        </Show>
+                        <For each={section.sections}>
+                          {(user) => renderUserSection(section.id, user)}
+                        </For>
+                        {newSectionBox(kind)}
+                        <Show when={section.id === "agents"}>{renderUnassigned(section)}</Show>
+                      </>
+                    }
+                  >
+                    {renderByOrganization()}
                   </Show>
-                  <For each={section.sections}>{(user) => renderUserSection(section.id, user)}</For>
-                  {newSectionBox(kind)}
-                  <Show when={section.id === "agents"}>{renderUnassigned(section)}</Show>
                 </Show>
               </SectionBody>
             )}

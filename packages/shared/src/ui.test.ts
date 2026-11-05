@@ -51,6 +51,12 @@ describe("ui state", () => {
     expect(Schema.is(UiState)(defaultUiState)).toBe(true)
   })
 
+  test("Agents shows the user sections at first, and only the two views are valid", () => {
+    expect(defaultUiState.agentView).toBe("sections")
+    expect(Schema.is(UiState)({ ...defaultUiState, agentView: "organization" })).toBe(true)
+    expect(Schema.is(UiState)({ ...defaultUiState, agentView: "team" })).toBe(false)
+  })
+
   test("place list width stays between 200 and 400 px", () => {
     expect(clampPlaceListWidth(120)).toBe(200)
     expect(clampPlaceListWidth(512)).toBe(400)

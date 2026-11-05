@@ -121,43 +121,63 @@ export const App = () => {
           }
         }}
         sectionAction={(section) =>
-          // A client creates agents and channels on a server only when the server lets it (012).
-          // The menus (agent files, user sections) belong to this computer: a client has none.
-          !ui.canChange() ? null : section === "agents" ? (
+          // The choice of view is of this device, so every server has it, also a linked one.
+          section === "agents" ? (
             <>
-              <Show when={!ui.linked()}>
-                <Menu
-                  label={t("places.menu.agents")}
-                  icon={<Ellipsis size={16} />}
-                  testId="agents-menu"
-                  items={[
-                    {
-                      label: t("agentFile.menu.export"),
-                      onSelect: () => setExportAgents(true),
-                      testId: "agents-menu-export",
-                    },
-                    {
-                      label: t("agentFile.menu.importFile"),
-                      onSelect: () => void startImport(),
-                      testId: "agents-menu-import-file",
-                    },
-                    {
-                      label: t("sections.new"),
-                      onSelect: () => ui.startNewSection("agent"),
-                      testId: "agents-menu-new-section",
-                    },
-                  ]}
-                />
+              <Menu
+                label={t("places.menu.agents")}
+                icon={<Ellipsis size={16} />}
+                testId="agents-menu"
+                items={[
+                  {
+                    label: t("sections.view.mine"),
+                    checked: ui.ui.agentView === "sections",
+                    onSelect: () => ui.setAgentView("sections"),
+                    testId: "agents-menu-view-sections",
+                  },
+                  {
+                    label: t("sections.view.organization"),
+                    checked: ui.ui.agentView === "organization",
+                    onSelect: () => ui.setAgentView("organization"),
+                    testId: "agents-menu-view-organization",
+                  },
+                  // The menus of agent files and user sections belong to this computer: a client
+                  // has none (012).
+                  ...(ui.linked()
+                    ? []
+                    : [
+                        {
+                          label: t("agentFile.menu.export"),
+                          onSelect: () => setExportAgents(true),
+                          testId: "agents-menu-export",
+                        },
+                        {
+                          label: t("agentFile.menu.importFile"),
+                          onSelect: () => void startImport(),
+                          testId: "agents-menu-import-file",
+                        },
+                        {
+                          label: t("sections.new"),
+                          disabled: ui.ui.agentView === "organization",
+                          reason: t("sections.byOrganization.reason"),
+                          onSelect: () => ui.startNewSection("agent"),
+                          testId: "agents-menu-new-section",
+                        },
+                      ]),
+                ]}
+              />
+              {/* A client creates agents on a server only when the server lets it (012). */}
+              <Show when={ui.canChange()}>
+                <IconButton
+                  label={t("agents.new")}
+                  onClick={() => setNewAgent(true)}
+                  data-testid="new-agent"
+                >
+                  <Plus size={16} />
+                </IconButton>
               </Show>
-              <IconButton
-                label={t("agents.new")}
-                onClick={() => setNewAgent(true)}
-                data-testid="new-agent"
-              >
-                <Plus size={16} />
-              </IconButton>
             </>
-          ) : (
+          ) : !ui.canChange() ? null : (
             <>
               <Show when={!ui.linked()}>
                 <Menu
