@@ -2,8 +2,11 @@ import {
   EVENT_RESULTS,
   EVENTS_PAGE,
   type EventResult,
+  eventReasonText,
   eventResultKey,
   eventSourceKey,
+  eventText,
+  eventWhyText,
   type MessageKey,
   type RobotEvent,
 } from "@robot/shared"
@@ -26,6 +29,8 @@ export const EventsTab = (props: {
   const ui = useUi()
   const { locale } = useApp()
   const t = props.t
+  /** The catalogue through a key that the row holds: a row names its own key (spec 038). */
+  const byKey = (key: string, params?: Record<string, string>) => t(key as MessageKey, params)
   const [result, setResult] = createSignal<EventResult | "">("")
   const [query, setQuery] = createSignal("")
   const [openId, setOpenId] = createSignal<string | null>(null)
@@ -64,16 +69,18 @@ export const EventsTab = (props: {
     event.result === "waits" && event.subject
       ? t("events.waiting", { subject: event.subject })
       : event.result === "skipped" && event.reason
-        ? event.reason
-        : event.summary
+        ? (eventReasonText(event.reason, byKey) ?? eventText(event.summary, byKey))
+        : eventText(event.summary, byKey)
 
   const shown = () =>
     rows()?.filter((e) => {
       const text = query().trim().toLowerCase()
       if (!text) return true
+      const type = eventText(e.type, byKey).toLowerCase()
+      const summary = eventText(e.summary, byKey).toLowerCase()
       return (
-        e.summary.toLowerCase().includes(text) ||
-        e.type.toLowerCase().includes(text) ||
+        summary.includes(text) ||
+        type.includes(text) ||
         (e.subject ?? "").toLowerCase().includes(text)
       )
     }) ?? []
@@ -143,7 +150,7 @@ export const EventsTab = (props: {
                 {(event) => (
                   <tr data-testid="event-row" data-result={event.result}>
                     <td>{t(eventSourceKey(event.source) as MessageKey)}</td>
-                    <td>{event.type}</td>
+                    <td>{eventText(event.type, byKey)}</td>
                     <th scope="row">
                       <button
                         type="button"
@@ -198,7 +205,7 @@ export const EventsTab = (props: {
                 <dt>{t("events.col.source")}</dt>
                 <dd>{t(eventSourceKey(event().source) as MessageKey)}</dd>
                 <dt>{t("events.col.type")}</dt>
-                <dd>{event().type}</dd>
+                <dd>{eventText(event().type, byKey)}</dd>
                 <Show when={event().subject}>
                   {(subject) => (
                     <>
@@ -221,12 +228,12 @@ export const EventsTab = (props: {
                   {(reason) => (
                     <>
                       <dt>{t("tasks.error")}</dt>
-                      <dd>{reason()}</dd>
+                      <dd data-testid="event-reason">{eventReasonText(reason(), byKey)}</dd>
                     </>
                   )}
                 </Show>
                 <dt>{t("events.detail.why")}</dt>
-                <dd data-testid="event-why">{event().why}</dd>
+                <dd data-testid="event-why">{eventWhyText(event().why, byKey)}</dd>
                 <Show when={event().got}>
                   <dt>{t("events.detail.got")}</dt>
                   <dd data-testid="event-got">{event().got}</dd>

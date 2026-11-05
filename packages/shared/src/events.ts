@@ -57,17 +57,42 @@ export const validEventSubject = (value: string): boolean => {
   return true
 }
 
+/**
+ * A text of an event that the user reads (spec 038). The app writes its own words as a key and its
+ * parameters, so that the row shows the language of the interface (AGENTS.md: interface text comes
+ * from translation keys, never literals). Text that a source gives from outside is kept as it came.
+ */
+export type EventText =
+  | { readonly key: string; readonly params: Readonly<Record<string, string>> }
+  | { readonly text: string }
+
+/** True when the app wrote this text, so that it goes through the catalogue. */
+export const isKeyedText = (value: EventText): value is Extract<EventText, { key: string }> =>
+  "key" in value
+
+/** A text of an event as the user reads it. */
+export const eventText = (
+  value: EventText,
+  translate: (key: string, params?: Record<string, string>) => string,
+): string => ("key" in value ? translate(value.key, { ...value.params }) : value.text)
+
+/** How the app chose the place of an event (spec 038, "Why"). */
+export type EventWhy = EventText
+
+/** A short reason that the row shows under its text. */
+export type EventReason = EventText
+
 /** An event: one arrival, with its place and its result. */
 export interface RobotEvent {
   readonly id: string
   readonly serverId: string
   readonly source: EventSource
   /** A short name that the source gives, for example "issue opened". */
-  readonly type: string
+  readonly type: EventText
   readonly subject: string | null
   /** The name that the source gives to one call, for a call that comes again. */
   readonly callId: string | null
-  readonly summary: string
+  readonly summary: EventText
   readonly detail: string
   readonly link: string | null
   /** The agent of the place, when the place has one. */
@@ -78,14 +103,14 @@ export interface RobotEvent {
   readonly placeIsRoutine: boolean
   readonly placeName: string | null
   /** How the app chose the place, in one line (spec 038, "Why"). */
-  readonly why: string
+  readonly why: EventWhy
   /** What the turn got for the event, cut at what a turn keeps. */
   readonly got: string
   /** The task or the run that the event started. */
   readonly taskId: string | null
   readonly result: EventResult
   /** The reason of a result that does not speak for itself. */
-  readonly reason: string | null
+  readonly reason: EventReason | null
   /** True when the text came from outside this app (spec 007). */
   readonly outside: boolean
   readonly at: number
@@ -95,21 +120,21 @@ export interface RobotEvent {
 export interface EventInput {
   readonly serverId: string
   readonly source: EventSource
-  readonly type: string
+  readonly type: EventText
   readonly subject?: string | null
   readonly callId?: string | null
-  readonly summary: string
+  readonly summary: EventText
   readonly detail?: string
   readonly link?: string | null
   readonly agentId?: string | null
   readonly placeId?: string | null
   readonly placeIsRoutine?: boolean
   readonly placeName?: string | null
-  readonly why: string
+  readonly why: EventWhy
   readonly got?: string
   readonly taskId?: string | null
   readonly result: EventResult
-  readonly reason?: string | null
+  readonly reason?: EventReason | null
   readonly outside?: boolean
 }
 
@@ -120,6 +145,23 @@ export const cleanEventSummary = (raw: string): string => {
   return chars.length > EVENT_SUMMARY_MAX
     ? `${chars.slice(0, EVENT_SUMMARY_MAX - 1).join("")}…`
     : chars.join("")
+}
+
+/**
+ * Shortens the parameters of a keyed text, so that no stored field grows past its limit. The
+ * summary line of the catalogue is already short; a parameter that a place name fills is cut at
+ * the limit of a subject.
+ */
+export const cleanEventParams = (
+  params: Readonly<Record<string, string>>,
+): Record<string, string> => {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(params)) {
+    const chars = [...value.replace(/\s+/g, " ").trim()]
+    out[key] =
+      chars.length > EVENT_SUBJECT_MAX ? chars.slice(0, EVENT_SUBJECT_MAX).join("") : chars.join("")
+  }
+  return out
 }
 
 /** A detail, cut at the limit, with the mark of the cut. */
@@ -143,6 +185,18 @@ export const eventResultKey = (result: EventResult): string => `events.result.${
 
 /** The translation key of the words of each source. */
 export const eventSourceKey = (source: EventSource): string => `events.source.${source}`
+
+/** The line "Why" of an event as the user reads it (spec 038, "Why"). */
+export const eventWhyText = (
+  why: EventWhy,
+  translate: (key: string, params?: Record<string, string>) => string,
+): string => eventText(why, translate)
+
+/** The reason of an event as the user reads it, or null when the row has none. */
+export const eventReasonText = (
+  reason: EventReason | null,
+  translate: (key: string, params?: Record<string, string>) => string,
+): string | null => (reason ? eventText(reason, translate) : null)
 
 /** The label of a test event: it shows for 1 day, then leaves. */
 export const testEventGone = (event: RobotEvent, now: number): boolean =>

@@ -3,6 +3,9 @@ import {
   type AgentModel,
   changeText,
   dueRuns,
+  type EventReason,
+  type EventText,
+  type EventWhy,
   hasUsage,
   isActive,
   type Locale,
@@ -315,7 +318,10 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
         else if (task.state === "failed" || task.state === "blocked") {
           // The event that started this run shows "Failed" with the reason (spec 038).
           Effect.runFork(
-            events.failLatestOfPlace(task.sourceId, task.error?.detail || task.error?.code || ""),
+            events.failLatestOfPlace(task.sourceId, {
+              code: task.error?.code ?? "unknown",
+              detail: task.error?.detail ?? "",
+            }),
           )
           return addFailure(task.sourceId, task.error ?? { code: "unknown", detail: "" })
         }
@@ -330,14 +336,14 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
         r: Row,
         input: {
           readonly source: "schedule" | "watch"
-          readonly type: string
-          readonly summary: string
+          readonly type: EventText
+          readonly summary: EventText
           readonly detail?: string
           readonly result: "routed" | "skipped" | "failed"
-          readonly reason?: string | null
+          readonly reason?: EventReason | null
           readonly taskId?: string | null
           readonly got?: string
-          readonly why: string
+          readonly why: EventWhy
         },
       ) =>
         events
@@ -420,11 +426,11 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                 // The run of the same routine still goes (spec 009). The event is Skipped.
                 yield* recordEvent(r, {
                   source: "schedule",
-                  type: "planned run",
-                  summary: `Planned run of ${r.name}`,
+                  type: { key: "events.type.plannedRun", params: {} },
+                  summary: { key: "events.summary.plannedRun", params: { name: r.name } },
                   result: "skipped",
-                  reason: "A run of this routine still goes.",
-                  why: `The routine ${r.name} had a run that still goes.`,
+                  reason: { key: "events.skipped.run", params: {} },
+                  why: { key: "events.why.runStillGoes", params: { name: r.name } },
                 })
               } else {
                 // A run that starts more than 15 minutes late gets both times.
@@ -433,14 +439,16 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                 // The event says what happened: a run that could not start made no task.
                 yield* recordEvent(r, {
                   source: "schedule",
-                  type: "planned run",
-                  summary: `Planned run of ${r.name}`,
+                  type: { key: "events.type.plannedRun", params: {} },
+                  summary: { key: "events.summary.plannedRun", params: { name: r.name } },
                   got: text,
                   result: ran.ok ? "routed" : "failed",
-                  reason: ran.ok ? null : ran.reason.detail || ran.reason.code,
+                  reason: ran.ok
+                    ? null
+                    : { key: `error.${ran.reason.code}`, params: { detail: ran.reason.detail } },
                   why: ran.ok
-                    ? `The routine ${r.name} runs at its planned time.`
-                    : `The routine ${r.name} could not start its planned run.`,
+                    ? { key: "events.why.routineTime", params: { name: r.name } }
+                    : { key: "events.why.routineNoStart", params: { name: r.name } },
                 })
               }
             }
@@ -471,12 +479,15 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             addFailure(r.id, outcome.reason)
             yield* recordEvent(r, {
               source: "watch",
-              type: "check",
-              summary: `Check of ${r.name} failed`,
+              type: { key: "events.type.check", params: {} },
+              summary: { key: "events.summary.checkFailed", params: { name: r.name } },
               detail: outcome.reason.detail ?? "",
               result: "failed",
-              reason: outcome.reason.detail ?? "",
-              why: `The check of ${r.name} could not read its target.`,
+              reason: {
+                key: `error.${outcome.reason.code}`,
+                params: { detail: outcome.reason.detail },
+              },
+              why: { key: "events.why.watchFailed", params: { name: r.name } },
             })
             changed(r.server_id)
             return
@@ -509,15 +520,17 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             // The event says what happened: a run that could not start made no task.
             yield* recordEvent(current, {
               source: "watch",
-              type: "change",
-              summary: `Change in ${r.name}`,
+              type: { key: "events.type.change", params: {} },
+              summary: { key: "events.summary.change", params: { name: r.name } },
               detail: change,
               got: text,
               result: ran.ok ? "routed" : "failed",
-              reason: ran.ok ? null : ran.reason.detail || ran.reason.code,
+              reason: ran.ok
+                ? null
+                : { key: `error.${ran.reason.code}`, params: { detail: ran.reason.detail } },
               why: ran.ok
-                ? `The watch of ${r.name} saw a change.`
-                : `The watch of ${r.name} saw a change, and its run could not start.`,
+                ? { key: "events.why.watchChange", params: { name: r.name } }
+                : { key: "events.why.watchNoStart", params: { name: r.name } },
             })
             changed(r.server_id)
             return

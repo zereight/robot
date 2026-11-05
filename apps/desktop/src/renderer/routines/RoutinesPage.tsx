@@ -181,12 +181,15 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
       await call("events.test", {
         serverId,
         source: kind,
-        type: kind === "watch" ? "change" : "planned run",
+        type: {
+          key: kind === "watch" ? "events.type.change" : "events.type.plannedRun",
+          params: {},
+        },
         subject: name().trim() || null,
-        summary:
-          kind === "watch"
-            ? `Change in ${name().trim() || t("routines.field.name")}`
-            : `Planned run of ${name().trim() || t("routines.field.name")}`,
+        summary: {
+          key: kind === "watch" ? "events.summary.change" : "events.summary.plannedRun",
+          params: { name: name().trim() || t("routines.field.name") },
+        },
         detail:
           kind === "watch" && w
             ? w.target.kind === "path"
@@ -195,7 +198,7 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
                 ? w.target.command
                 : `${w.target.connection} · ${w.target.tool}`
             : "",
-        why: t("events.test.wouldGo", { place: placeText }),
+        why: { key: "events.test.wouldGo", params: { place: placeText } },
         got: prompt().trim(),
       })
       showToast("success", paused ? "events.test.routinePaused" : "events.test.wouldGo", {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { EVENTS_MAX, EVENTS_PAGE } from "@robot/shared"
+import { EVENTS_MAX, EVENTS_PAGE, eventText } from "@robot/shared"
 import { Events } from "./Events.ts"
 import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
@@ -16,9 +16,9 @@ const setup = async () => {
 
 const base = (serverId: string) => ({
   serverId,
-  type: "planned run",
-  summary: "Planned run of Morning brief",
-  why: "The routine runs at its planned time.",
+  type: { text: "planned run" },
+  summary: { text: "Planned run of Morning brief" },
+  why: { key: "events.why.routineTime", params: { name: "Check" } },
   result: "routed" as const,
 })
 
@@ -31,11 +31,11 @@ describe("When an event is recorded", () => {
           e.add({
             ...base(local.id),
             source: "schedule",
-            summary: "  Planned\n\nrun   of Morning brief  ",
+            summary: { text: "  Planned\n\nrun   of Morning brief  " },
           }),
         ),
       )
-      expect(event.summary).toBe("Planned run of Morning brief")
+      expect(eventText(event.summary, (k) => k)).toBe("Planned run of Morning brief")
     })
   })
 
@@ -97,11 +97,13 @@ describe("When a profile holds more events than the limit", () => {
       const { run, local } = await setup()
       for (let i = 0; i < EVENTS_MAX + 1; i++)
         await run(
-          Events.use((e) => e.add({ ...base(local.id), source: "schedule", summary: `run ${i}` })),
+          Events.use((e) =>
+            e.add({ ...base(local.id), source: "schedule", summary: { text: `run ${i}` } }),
+          ),
         )
       const rows = await run(Events.use((e) => e.list(local.id)))
       expect(rows).toHaveLength(EVENTS_PAGE)
-      expect(rows[0]?.summary).toBe(`run ${EVENTS_MAX}`)
+      expect(eventText(rows[0]?.summary ?? { text: "" }, (k) => k)).toBe(`run ${EVENTS_MAX}`)
     })
   })
 })
@@ -116,14 +118,14 @@ describe("When the page reads a filter", () => {
             ...base(local.id),
             source: "web_hook",
             result: "no_rule",
-            summary: "not a kind",
+            summary: { text: "not a kind" },
           }),
         ),
       )
       await run(Events.use((e) => e.add({ ...base(local.id), source: "schedule" })))
       const rows = await run(Events.use((e) => e.list(local.id, { result: "no_rule" })))
       expect(rows).toHaveLength(1)
-      expect(rows[0]?.summary).toBe("not a kind")
+      expect(eventText(rows[0]?.summary ?? { text: "" }, (k) => k)).toBe("not a kind")
     })
   })
 })
@@ -147,17 +149,22 @@ describe("When a task of a place ends as failed", () => {
       const event = await run(
         Events.use((e) => e.add({ ...base(local.id), source: "schedule", placeId: "routine-1" })),
       )
-      await run(Events.use((e) => e.failLatestOfPlace("routine-1", "The app stopped.")))
+      await run(
+        Events.use((e) => e.failLatestOfPlace("routine-1", { code: "app_stopped", detail: "" })),
+      )
       const after = await run(Events.use((e) => e.get(event.id)))
       expect(after?.result).toBe("failed")
-      expect(after?.reason).toBe("The app stopped.")
+      const reason = after?.reason
+      expect(reason && "key" in reason ? reason.key : null).toBe("error.app_stopped")
     })
   })
 
   describe("with a place that has no event", () => {
     test("should change nothing", async () => {
       const { run, local } = await setup()
-      await run(Events.use((e) => e.failLatestOfPlace("no-such-place", "reason")))
+      await run(
+        Events.use((e) => e.failLatestOfPlace("no-such-place", { code: "unknown", detail: "" })),
+      )
       expect(await run(Events.use((e) => e.list(local.id)))).toHaveLength(0)
     })
   })
@@ -175,7 +182,7 @@ describe("When messages of one subject wait", () => {
               source: "outside_program",
               subject: "owner/app#1",
               result: "waits",
-              summary: "waits",
+              summary: { text: "waits" },
             }),
           ),
         )
@@ -193,7 +200,7 @@ describe("When messages of one subject wait", () => {
             source: "outside_program",
             subject: "owner/app#1",
             result: "waits",
-            summary: "waits",
+            summary: { text: "waits" },
           }),
         ),
       )

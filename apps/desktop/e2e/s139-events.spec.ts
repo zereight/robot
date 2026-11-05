@@ -6,15 +6,17 @@ import { rpc } from "./sync-helpers.ts"
 // The tab "Events" of the Tasks page (spec 038). One row for each arrival at a place that the
 // user made: here a routine on a schedule. The page starts no work.
 
+type EventTextish = { key: string; params: Record<string, string> } | { text: string }
+
 interface EventInfo {
   id: string
   source: string
-  type: string
-  summary: string
+  type: EventTextish
+  summary: EventTextish
   result: string
   placeName: string | null
   got: string
-  why: string
+  why: EventTextish
 }
 
 const serverOf = async (page: Parameters<typeof rpc>[0]) =>
@@ -50,9 +52,9 @@ test("events: the tab shows an arrival, and a test event starts nothing", async 
   await rpc(page, "events.test", {
     serverId,
     source: "schedule",
-    type: "planned run",
-    summary: "Planned run of Morning brief",
-    why: "Would go to The agent's chat.",
+    type: { key: "events.type.plannedRun", params: {} },
+    summary: { key: "events.summary.plannedRun", params: { name: "Morning brief" } },
+    why: { key: "events.test.wouldGo", params: { place: "The agent's chat" } },
     got: "Summarize yesterday's notes.",
   })
   await expect.poll(async () => (await eventsOf(page)).length, { timeout: 15_000 }).toBe(before + 1)
@@ -99,6 +101,23 @@ test("events: the tab shows an arrival, and a test event starts nothing", async 
     })
     .toBe("events")
   await shot(page, "s139-06-tab-kept")
+
+  // The same page in Korean: the tabs, a row and the detail are translated (spec 013, 038).
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("setting-language").locator('label[data-value="ko"]').click()
+  await page.getByTestId("settings-close").click()
+  await expect(page.getByTestId("events-tab")).toHaveText("이벤트")
+  await expect(page.getByTestId("tasks-tab")).toHaveText("작업")
+  await expect(page.getByTestId("events-table")).toContainText("일정", { timeout: 15_000 })
+  await expect(page.getByTestId("event-result").first()).toHaveText("전달될 곳")
+  await shot(page, "s139-07-korean")
+  await page.getByTestId("event-open").first().click()
+  await expect(page.getByTestId("event-detail")).toBeVisible()
+  await expect(page.getByTestId("event-why")).toContainText("갈 거예요")
+  // No English word of this page stays in the detail.
+  await expect(page.getByTestId("event-detail")).not.toContainText("Would go")
+  await expect(page.getByTestId("event-detail")).not.toContainText("What the agent got")
+  await shot(page, "s139-08-korean-detail")
 
   await app.close()
   await mock.close()

@@ -1,4 +1,5 @@
 import {
+  cleanEventParams,
   cleanEventSummary,
   cutEventDetail,
   EVENT_ID_MAX,
@@ -9,6 +10,7 @@ import {
   type EventInput,
   type EventResult,
   type EventSource,
+  type EventText,
   type RobotEvent,
   SUBJECT_WAITING_MAX,
   subjectWaits,
@@ -52,9 +54,11 @@ export interface EventsService {
   /**
    * The newest event of one place that ended as Routed shows "Failed" with the reason (spec 038,
    * "Result"). A place with no such event is not changed. The routine calls it when a run ends
-   * as failed or blocked, and the workflow when a run does.
+   * as failed or blocked, and the workflow when a run does. The reason is the error of the task,
+   * which is the code and the detail that the task already keeps (spec 005), so the page shows it
+   * through the same key as the Tasks page.
    */
-  failLatestOfPlace(placeId: string, reason: string): Effect.Effect<void>
+  failLatestOfPlace(placeId: string, reason: { code: string; detail: string }): Effect.Effect<void>
 }
 
 interface Row {
@@ -84,24 +88,62 @@ const toEvent = (r: Row): RobotEvent => ({
   id: r.id,
   serverId: r.server_id,
   source: r.source as EventSource,
-  type: r.type,
+  type: decodeText(r.type),
   subject: r.subject,
   callId: r.call_id,
-  summary: r.summary,
+  summary: decodeText(r.summary),
   detail: r.detail,
   link: r.link,
   agentId: r.agent_id,
   placeId: r.place_id,
   placeIsRoutine: r.place_is_routine === 1,
   placeName: r.place_name,
-  why: r.why,
+  why: decodeText(r.why),
   got: r.got,
   taskId: r.task_id,
   result: r.result as EventResult,
-  reason: r.reason,
+  reason: r.reason ? decodeText(r.reason) : null,
   outside: r.outside === 1,
   at: r.at,
 })
+
+/**
+ * A text of a row that the app wrote as a key, or text that a source gave from outside. A row from
+ * before the keys are held as JSON keeps its plain text, and the page shows it as it is.
+ */
+const decodeText = (raw: string): EventText => {
+  if (raw.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(raw) as { key?: unknown; text?: unknown; params?: unknown }
+      if (typeof parsed.key === "string")
+        return { key: parsed.key, params: paramsOf(parsed.params) }
+      if (typeof parsed.text === "string") return { text: parsed.text }
+    } catch {
+      // Not JSON: a plain text.
+    }
+  }
+  return { text: raw }
+}
+
+const paramsOf = (value: unknown): Record<string, string> => {
+  if (value === null || typeof value !== "object") return {}
+  const out: Record<string, string> = {}
+  for (const [key, raw] of Object.entries(value)) out[key] = String(raw)
+  return out
+}
+
+/** A text of an event as one column holds it. */
+const encodeText = (value: EventText): string => JSON.stringify(value)
+
+/**
+ * One line of an event, cut at the limit: the text of a source as it came, or the parameters that
+ * the app fills. The catalogue sentence itself is short, so only the parameters and an outside text
+ * need the cut (spec 038, "Limits and retention").
+ */
+const cleanText = (value: EventText): EventText =>
+  "key" in value
+    ? { key: value.key, params: cleanEventParams(value.params) }
+    : { text: cleanEventSummary(value.text) }
 
 const SELECT = `
   SELECT id, server_id, source, type, subject, call_id, summary, detail, link, agent_id,
@@ -122,7 +164,7 @@ export class Events extends Context.Service<Events, EventsService>()("robot/main
         type: input.type,
         subject: input.subject ?? null,
         callId: input.callId ?? null,
-        summary: cleanEventSummary(input.summary),
+        summary: cleanText(input.summary),
         detail: cutEventDetail(input.detail ?? ""),
         link: input.link ?? null,
         agentId: input.agentId ?? null,
@@ -179,21 +221,21 @@ export class Events extends Context.Service<Events, EventsService>()("robot/main
               event.id,
               event.serverId,
               event.source,
-              event.type,
+              encodeText(event.type),
               event.subject,
               event.callId,
-              event.summary,
+              encodeText(event.summary),
               event.detail,
               event.link,
               event.agentId,
               event.placeId,
               event.placeIsRoutine ? 1 : 0,
               event.placeName,
-              event.why,
+              encodeText(event.why),
               event.got,
               event.taskId,
               event.result,
-              event.reason,
+              event.reason ? encodeText(event.reason) : null,
               event.outside ? 1 : 0,
               event.at,
             )
@@ -262,7 +304,7 @@ export class Events extends Context.Service<Events, EventsService>()("robot/main
             if (!row) return
             db.run(
               "UPDATE robot_event SET result = 'failed', reason = ? WHERE id = ?",
-              cutEventDetail(reason, 200),
+              encodeText({ key: `error.${reason.code}`, params: { detail: reason.detail } }),
               row.id,
             )
             bus.emit("events.changed", { serverId: row.server_id })

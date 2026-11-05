@@ -46,6 +46,16 @@ import {
 } from "@robot/shared"
 import { Cause, Effect, Exit, type ManagedRuntime, Schema } from "effect"
 import type { AppServices } from "./layers.ts"
+
+/** One text of an event: a key with its parameters, or text from outside (spec 038). */
+const EventTextSchema = Schema.Union([
+  Schema.Struct({
+    key: Schema.String,
+    params: Schema.Record(Schema.String, Schema.String),
+  }),
+  Schema.Struct({ text: Schema.String }),
+])
+
 import { Id, modelChoices, ownServer, strict } from "./link/changes.ts"
 import { linkHandlers, withUploads } from "./link/handlers.ts"
 import { ActionLog } from "./services/ActionLog.ts"
@@ -852,11 +862,11 @@ export const handlers: Handlers = {
       Schema.Struct({
         serverId: Schema.String,
         source: Schema.Literals(["schedule", "watch", "web_hook"]),
-        type: Schema.String,
+        type: EventTextSchema,
         subject: Schema.optionalKey(Schema.NullOr(Schema.String)),
-        summary: Schema.String,
+        summary: EventTextSchema,
         detail: Schema.optionalKey(Schema.String),
-        why: Schema.String,
+        why: EventTextSchema,
         got: Schema.optionalKey(Schema.String),
       }),
     )(input).pipe(

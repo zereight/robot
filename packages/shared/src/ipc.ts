@@ -12,7 +12,7 @@ import type {
 } from "./channels.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
-import type { EventResult, RobotEvent } from "./events.ts"
+import type { EventResult, EventText, EventWhy, RobotEvent } from "./events.ts"
 import type { FollowUp } from "./followUp.ts"
 import type { Handbook, HandbookVersion } from "./handbook.ts"
 import type { HandoverOpen, HandoverState } from "./handover.ts"
@@ -503,11 +503,14 @@ export interface RpcMethods {
     input: {
       serverId: string
       source: "schedule" | "watch" | "web_hook"
-      type: string
+      /** The kind of the event: a key and its parameters, or text from outside. */
+      type: EventText
       subject?: string | null
-      summary: string
+      /** The summary line: a key and its parameters, or text from outside. */
+      summary: EventText
       detail?: string
-      why: string
+      /** The "Why" line: a key and its parameters, never a sentence (AGENTS.md). */
+      why: EventWhy
       got?: string
     }
     output: RobotEvent
