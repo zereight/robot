@@ -835,6 +835,16 @@ export const handlers: Handlers = {
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
       Effect.flatMap(({ serverId }) => Organizations.use((o) => o.list(serverId))),
     ),
+  // The daily token limit of an organization (spec 030). A linked device reads it with the link only;
+  // its input is checked as strictly as any request of a client.
+  "organizations.limit": (input) =>
+    strict(Schema.Struct({ id: Id }))(input).pipe(
+      Effect.flatMap(({ id }) => Organizations.use((o) => o.limit(id))),
+    ),
+  "usage.organizations": (input) =>
+    decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ serverId }) => Organizations.use((o) => o.usage(serverId))),
+    ),
   "organizations.create": (input) =>
     decode(OrgCreate)(input).pipe(
       Effect.flatMap((data) => Organizations.use((o) => o.create(data))),

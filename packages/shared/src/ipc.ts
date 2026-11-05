@@ -45,6 +45,7 @@ import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications
 import type { HandOffRule, Organization } from "./organization.ts"
 import type { Org, OrgCreate, OrgPatch } from "./organizations.ts"
 import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
+import type { OrgLimitView, OrgUsageRow } from "./orgLimit.ts"
 import type { AgentOrgTool, OrgToolChoice, OrgToolEntry, OrgToolRow } from "./orgTools.ts"
 import type { ActionKind, ActionLogEntry, ActionResult } from "./outside.ts"
 import type { MarkPlace, PlaceMarks } from "./placeMarks.ts"
@@ -808,6 +809,10 @@ export interface RpcMethods {
    * (spec 012). The tools of an organization change on this computer only.
    */
   "organizations.list": { input: { serverId: string }; output: readonly Org[] }
+  /** The daily token limit of an organization with the tokens used today (spec 030). */
+  "organizations.limit": { input: { id: string }; output: OrgLimitView }
+  /** One row for each organization with a daily token limit (spec 006, 030). */
+  "usage.organizations": { input: { serverId: string }; output: readonly OrgUsageRow[] }
   "organizations.create": { input: OrgCreate; output: Org }
   "organizations.update": { input: { id: string; patch: OrgPatch }; output: Org }
   "organizations.delete": { input: { id: string }; output: undefined }

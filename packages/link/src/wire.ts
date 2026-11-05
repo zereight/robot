@@ -137,6 +137,8 @@ export const CLIENT_METHODS = [
   // <organization>" of a profile (spec 030, 012). A client reads them and changes none of them with
   // these; to make, edit or delete an organization it needs the switch (see `CHANGE_METHODS`).
   "organizations.list",
+  // The daily token limit of an organization with the tokens used today (spec 030, 012).
+  "organizations.limit",
   "orgTools.list",
   "orgTools.forAgent",
   "tasks.list",
