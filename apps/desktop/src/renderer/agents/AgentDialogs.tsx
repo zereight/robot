@@ -13,7 +13,6 @@ import { AgentForm, type AgentFormValues } from "./AgentForm.tsx"
 import { AgentOrgs } from "./AgentOrgs.tsx"
 import styles from "./agents.module.css"
 import { BrowserProfileField } from "./BrowserProfileField.tsx"
-import { ChannelToolsLines } from "./ChannelToolsLines.tsx"
 import { createAgent } from "./createAgent.ts"
 import { Face } from "./Face.tsx"
 import { OrgToolsLines } from "./OrgToolsLines.tsx"
@@ -310,8 +309,6 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
         </Show>
         {/* The last tasks of this agent. A device that cannot change the agent sees them too. */}
         <RecentWork agent={props.agent} onNavigate={props.onClose} />
-        {/* The skills and connections that this agent has from channels (spec 030). */}
-        <ChannelToolsLines agent={props.agent} />
         {/* The skills and connections that this agent has from organizations (spec 030). */}
         <OrgToolsLines agent={props.agent} />
       </div>

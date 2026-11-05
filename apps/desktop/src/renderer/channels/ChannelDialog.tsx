@@ -26,7 +26,6 @@ import { ChannelMark } from "../ui/ChannelMark.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { SectionSelect } from "../ui/SectionSelect.tsx"
-import { ChannelToolsPart } from "./ChannelTools.tsx"
 import styles from "./channels.module.css"
 import { limitFieldValid, limitPatch, limitText as textOfLimit } from "./limit.ts"
 
@@ -404,9 +403,6 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             </span>
           </Show>
         </div>
-        <Show when={props.channel}>
-          {(channel) => <ChannelToolsPart channelId={channel().id} />}
-        </Show>
         {/* The picture of a channel that exists. A client sets it with the switch (spec 012). */}
         <Show when={props.channel}>
           <div class={styles.field}>

@@ -490,25 +490,6 @@
   white-space: nowrap;
 }
 
-/* The part "Tools of this channel" (spec 030): groups of skills and connections with a switch. */
-.toolGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 4px;
-}
-.toolRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.toolName {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 /* The daily token limit: the switch, then the number. */
 .limitRow {
   display: flex;

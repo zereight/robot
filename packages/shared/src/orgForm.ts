@@ -1,5 +1,5 @@
 import { nameKey } from "./agents.ts"
-import type { AgentOrgTool, OrgToolChoice, OrgToolEntry } from "./orgTools.ts"
+import type { AgentOrgTool, OrgToolChoice, OrgToolEntry, OrgToolValue } from "./orgTools.ts"
 import { lowerOrgs, type OrgParentRefusal, orgParentRefusal, type TreeOrg } from "./orgTree.ts"
 
 // What the form of an organization needs (spec 030, "Flows" 1, 2 and 4). These are plain functions,
@@ -78,25 +78,31 @@ export const orgPatchOf = (was: OrgFormValues, now: OrgFormValues): OrgFormPatch
 
 /**
  * The organizations of the list of a skill or a connection after the form saves (spec 017, 018,
- * 030). A checked organization has the value "On". An organization that the form does not check
- * keeps the value "Off" that it had, and leaves the list otherwise ("Inherit"). An organization
- * that is gone is left out. The old entries keep their place.
+ * 030): `values` holds the organizations that the user set to "On" or "Off". An organization that
+ * is not in `values` has "Inherit" and leaves the list. An organization that is gone is left out.
+ * The old entries keep their place.
  */
 export const orgPickerEntries = (
   was: readonly OrgToolEntry[],
-  checked: ReadonlySet<string>,
+  values: ReadonlyMap<string, OrgToolValue>,
   exists: (id: string) => boolean,
 ): OrgToolEntry[] => {
   const out: OrgToolEntry[] = []
   for (const entry of was) {
-    if (!exists(entry.id)) continue
-    if (checked.has(entry.id)) out.push({ id: entry.id, value: "on" })
-    else if (entry.value === "off") out.push(entry)
+    const value = values.get(entry.id)
+    if (value !== undefined && exists(entry.id)) out.push({ id: entry.id, value })
   }
-  for (const id of checked)
-    if (exists(id) && !out.some((e) => e.id === id)) out.push({ id, value: "on" })
+  for (const [id, value] of values)
+    if (exists(id) && !out.some((e) => e.id === id)) out.push({ id, value })
   return out
 }
+
+/** The values of the organizations in a list that are still there: the start of a picker. */
+export const orgPickerValues = (
+  list: readonly OrgToolEntry[],
+  exists: (id: string) => boolean,
+): Map<string, OrgToolValue> =>
+  new Map(list.filter((e) => exists(e.id)).map((e) => [e.id, e.value] as const))
 
 /**
  * The value that a row of "Tools" shows, and whether the user can change it. A tool for "All

@@ -10,7 +10,7 @@ import styles from "./agents.module.css"
  * connection that the agent has from an organization, with the line "From <organization>". A tool
  * that comes from more than one organization names each of them. The block is read only. It shows
  * nothing when the agent has no such tool. It reads the list again when a skill, a connection or
- * an organization changes. The old block "Tools from channels" stays beside it until S120.
+ * an organization changes.
  */
 export const OrgToolsLines = (props: { agent: Agent }) => {
   const { t } = useApp()

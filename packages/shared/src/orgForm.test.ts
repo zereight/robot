@@ -5,6 +5,7 @@ import {
   orgParentOptions,
   orgPatchOf,
   orgPickerEntries,
+  orgPickerValues,
   orgToolSwitch,
 } from "./orgForm.ts"
 
@@ -98,27 +99,36 @@ describe("orgPatchOf", () => {
 
 describe("orgPickerEntries", () => {
   const exists = (id: string) => id !== "gone"
+  const values = (...pairs: [string, "on" | "off"][]) => new Map(pairs)
 
-  test("a checked organization is 'On', an unchecked one leaves the list", () => {
-    expect(orgPickerEntries([{ id: "a", value: "on" }], new Set(["b"]), exists)).toEqual([
+  // Spec 030, "Tools": the picker of a skill or a connection shows "Inherit", "On" or "Off" for
+  // each organization. "Inherit" is no entry in the list.
+  test("'On' and 'Off' are entries, and an organization with 'Inherit' leaves the list", () => {
+    expect(
+      orgPickerEntries([{ id: "a", value: "on" }], values(["b", "on"], ["c", "off"]), exists),
+    ).toEqual([
       { id: "b", value: "on" },
+      { id: "c", value: "off" },
     ])
   })
 
-  test("an organization with 'Off' stays 'Off' while the form does not check it", () => {
-    expect(orgPickerEntries([{ id: "a", value: "off" }], new Set(), exists)).toEqual([
-      { id: "a", value: "off" },
-    ])
-    // Checked, the user chose 'On'.
-    expect(orgPickerEntries([{ id: "a", value: "off" }], new Set(["a"]), exists)).toEqual([
+  test("a value changes in place: 'Off' to 'On', and 'On' to 'Off'", () => {
+    expect(orgPickerEntries([{ id: "a", value: "off" }], values(["a", "on"]), exists)).toEqual([
       { id: "a", value: "on" },
+    ])
+    expect(orgPickerEntries([{ id: "a", value: "on" }], values(["a", "off"]), exists)).toEqual([
+      { id: "a", value: "off" },
     ])
   })
 
   test("an organization that is gone is left out", () => {
     expect(
-      orgPickerEntries([{ id: "gone", value: "off" }], new Set(["gone", "a"]), exists),
-    ).toEqual([{ id: "a", value: "on" }])
+      orgPickerEntries(
+        [{ id: "gone", value: "off" }],
+        values(["gone", "on"], ["a", "off"]),
+        exists,
+      ),
+    ).toEqual([{ id: "a", value: "off" }])
   })
 
   test("keeps the order of the old list, then the new ones", () => {
@@ -128,13 +138,27 @@ describe("orgPickerEntries", () => {
           { id: "x", value: "on" },
           { id: "y", value: "off" },
         ],
-        new Set(["x", "z"]),
+        values(["x", "on"], ["y", "off"], ["z", "on"]),
         exists,
       ),
     ).toEqual([
       { id: "x", value: "on" },
       { id: "y", value: "off" },
       { id: "z", value: "on" },
+    ])
+  })
+})
+
+describe("orgPickerValues", () => {
+  test("is the start of the picker: the values of the organizations that are still there", () => {
+    const list = [
+      { id: "a", value: "on" as const },
+      { id: "gone", value: "off" as const },
+      { id: "b", value: "off" as const },
+    ]
+    expect([...orgPickerValues(list, (id) => id !== "gone")]).toEqual([
+      ["a", "on"],
+      ["b", "off"],
     ])
   })
 })
