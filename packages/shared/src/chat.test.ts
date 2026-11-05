@@ -178,12 +178,19 @@ describe("folded tool steps", () => {
   })
   const text = (text: string): MessagePart => ({ kind: "text", text })
 
-  test("only a finished plain card folds", () => {
+  test("a plain step joins a run while it runs, and a step with a mark stays out", () => {
     expect(isFoldableTool(tool("done"))).toBe(true)
-    expect(isFoldableTool(tool("running"))).toBe(false)
+    expect(isFoldableTool(tool("running"))).toBe(true)
     expect(isFoldableTool(tool("waiting"))).toBe(false)
     expect(isFoldableTool(tool("failed"))).toBe(false)
     expect(isFoldableTool(text("hi"))).toBe(false)
+  })
+
+  test("a step that is still running stays out of a run when it carries a mark", () => {
+    expect(isFoldableTool(tool("running", { ask: { kind: "approval", summary: "rm x" } }))).toBe(
+      false,
+    )
+    expect(isFoldableTool(tool("running", { reason: { code: "step_limit" } }))).toBe(false)
   })
 
   test("a card that waits, was refused, or carries a note stays open", () => {
@@ -241,6 +248,22 @@ describe("folded tool steps", () => {
     expect(groupParts(parts, false)).toEqual([
       { kind: "part", part: thinking("one\n\ntwo") },
       { kind: "part", part: text("hi") },
+    ])
+  })
+
+  test("a run takes the step that runs next, so its line keeps its place", () => {
+    const [a, b] = [tool("done"), tool("done")]
+    const running = tool("running")
+    expect(groupParts([a, b, running], true)).toEqual([{ kind: "tools", parts: [a, b, running] }])
+  })
+
+  test("a step that waits still splits the run", () => {
+    const [a, b] = [tool("done"), tool("done")]
+    const waiting = tool("waiting")
+    expect(groupParts([a, waiting, b], true)).toEqual([
+      { kind: "tools", parts: [a] },
+      { kind: "part", part: waiting },
+      { kind: "tools", parts: [b] },
     ])
   })
 

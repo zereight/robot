@@ -509,13 +509,17 @@ export const isNoteOnly = (parts: string | readonly MessagePart[]): boolean => {
 }
 
 /**
- * True for a tool step that may fold into a run: a finished plain card. A step that runs, waits,
- * failed, was refused, or carries a note (an approval, a decision, a memory, knowledge or
- * settings note) always stays open, so the user sees what needs them.
+ * True for a tool step that may join a run: a plain step, finished or still running. A step that
+ * waits, failed, was refused, or carries a note (an approval, a decision, a memory, knowledge or
+ * settings note) stays out of the run, so the user sees what needs them.
+ *
+ * A running step joins the run, so that the line of a run stands still while the run grows: a
+ * step that showed as its own card and then folded away moved the reply up and down on every
+ * step of a long turn.
  */
 export const isFoldableTool = (part: MessagePart): part is ToolPart =>
   part.kind === "tool" &&
-  part.state === "done" &&
+  (part.state === "done" || part.state === "running") &&
   part.ask === undefined &&
   part.refused === undefined &&
   part.reason === undefined &&
@@ -546,8 +550,8 @@ const oneThoughtLine = (parts: readonly MessagePart[]): readonly MessagePart[] =
 }
 
 /**
- * The rows of a message: its parts, and the runs of finished plain tool steps folded when `fold`
- * is true, so a chat shows one line per run. With `fold` false every part is its own row.
+ * The rows of a message: its parts, and the runs of plain tool steps folded when `fold` is true,
+ * so a chat shows one line per run. With `fold` false every part is its own row.
  */
 type MutableSegment = { kind: "part"; part: MessagePart } | { kind: "tools"; parts: ToolPart[] }
 

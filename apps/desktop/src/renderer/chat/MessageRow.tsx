@@ -17,6 +17,7 @@ import {
   messageSkill,
   messageText,
   type OutsideSource,
+  type PartSegment,
   passesOf,
   passLabelKey,
   type QuestionLead,
@@ -47,7 +48,7 @@ import {
   User,
   Wrench,
 } from "lucide-solid"
-import { createResource, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js"
+import { createResource, createSignal, For, Index, Match, onCleanup, Show, Switch } from "solid-js"
 import { Face } from "../agents/Face.tsx"
 import { ProfileButton } from "../agents/ProfileButton.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
@@ -1246,9 +1247,60 @@ const ToolStep = (props: {
   )
 }
 
+/** The steps of a folded run, or undefined for every other row (spec 003, "Folded tool steps"). */
+const toolsOf = (segment: PartSegment) => (segment.kind === "tools" ? segment.parts : undefined)
+
+/** The one part of a row, or undefined for a folded run. */
+const partOf = (segment: PartSegment) => (segment.kind === "part" ? segment.part : undefined)
+
 /**
- * A run of finished plain tool steps as one muted line, when the setting "Show tool steps" is
- * off. The user opens it to read the cards.
+ * One row of a reply: a part, or the one line of a run of tool steps.
+ *
+ * The row is keyed by its place in the reply, not by the value of its segment. A segment is a new
+ * object at each change of the reply, so a row keyed by it is made again on every change: an open
+ * line closed, and the reply jumped on every step of a long turn (spec 003). The places are safe
+ * because the main process only adds a part or changes one in place, and never removes or reorders
+ * one, so the row of a place keeps its meaning from the first change to the last.
+ */
+const SegmentRow = (props: {
+  agent: Agent
+  message: ChatMessage
+  segment: () => PartSegment
+  from: string | undefined
+  onCorrect?: (() => void) | undefined
+}) => (
+  <Show
+    when={toolsOf(props.segment())}
+    fallback={
+      <Show when={partOf(props.segment())}>
+        {(part) => (
+          <PartView
+            agent={props.agent}
+            message={props.message}
+            part={part()}
+            from={props.from}
+            onCorrect={props.onCorrect}
+          />
+        )}
+      </Show>
+    }
+  >
+    {(parts) => (
+      <ToolsFolded
+        agent={props.agent}
+        message={props.message}
+        parts={parts()}
+        from={props.from}
+        onCorrect={props.onCorrect}
+      />
+    )}
+  </Show>
+)
+
+/**
+ * A run of plain tool steps as one muted line, when the setting "Show tool steps" is off. The user
+ * opens it to read the cards. A step that runs joins the run, so the line keeps its place while
+ * the turn goes on (spec 003).
  */
 const ToolsFolded = (props: {
   agent: Agent
@@ -1704,27 +1756,17 @@ const FullMessageRow = (props: MessageRowProps) => {
               </>
             }
           >
-            <For each={groupParts(props.message.parts, !app.settings.showToolSteps)}>
-              {(segment) =>
-                segment.kind === "tools" ? (
-                  <ToolsFolded
-                    agent={props.agent}
-                    message={props.message}
-                    parts={segment.parts}
-                    from={fromOther()}
-                    onCorrect={props.onCorrect}
-                  />
-                ) : (
-                  <PartView
-                    agent={props.agent}
-                    message={props.message}
-                    part={segment.part}
-                    from={fromOther()}
-                    onCorrect={props.onCorrect}
-                  />
-                )
-              }
-            </For>
+            <Index each={groupParts(props.message.parts, !app.settings.showToolSteps)}>
+              {(segment) => (
+                <SegmentRow
+                  agent={props.agent}
+                  message={props.message}
+                  segment={segment}
+                  from={fromOther()}
+                  onCorrect={props.onCorrect}
+                />
+              )}
+            </Index>
           </Show>
           <Show when={props.message.editedAt}>
             <span class={styles.edited}> {t("chat.edited")}</span>

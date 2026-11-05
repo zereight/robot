@@ -33,16 +33,21 @@ The user gives an agent work in plain language and sees what the agent does whil
 A long run of tool steps fills the chat. The user can fold it away.
 
 - The switch "Show tool steps" in Appearance (013) is on at first. When it is off, each run of
-  finished plain tool steps in a message shows as one muted line with the count. For example:
+  plain tool steps in a message shows as one muted line with the count. For example:
   "2 tool steps", or "1 tool step" for one step. The user opens the line to read the cards, and
   closes it again.
 - A run is steps with no other part between them. Text, files, muted lines and cards that stay
   open split runs. The one line of the thoughts of a reply sits above its runs, so thinking
   between two steps does not split them.
-- A step folds only when it finished with no mark: not running, not waiting, not failed, not
-  refused, and with no approval, question, decision, memory, knowledge or settings note. A step
-  that runs, waits, failed, was refused, or carries such a note always shows as its own card or
-  line.
+- A step joins a run while it runs, and after it finishes, as long as it carries no mark. A step
+  that waits, failed, was refused, or carries an approval, question, decision, memory, knowledge
+  or settings note leaves the run and shows as its own card or line, so the user sees what needs
+  them.
+- The line of a run keeps its place while the run grows: a new step joins the run that is there,
+  and only the count of the line changes. A step never shows as a card first and then goes into
+  the line of a run.
+- A line that the user opened stays open when the run takes another step, and when the chat draws
+  it again, for example after a change of the theme.
 - The switch changes the chat at once, in direct chats, threads and channels.
 - Find in the chat (flow 10) does not look at the folded line, as it does not look at tool cards
   or thinking.
@@ -551,6 +556,10 @@ and its role line. Nothing moves.
   reads shows two folded lines with the count 1 each.
 - With the switch off, a step that waits for an approval and a failed step still show as cards.
   Turn the switch on: the cards show with no folded line.
+- Turn off "Show tool steps" and send a request that makes four steps, one after the other. While
+  the turn runs, the reply shows one thought line and one folded line, and the line stays in its
+  place: its count grows from 1 to 4, and no card shows and goes away again. Open the line while
+  the third step runs: it stays open, and it shows the third step as running.
 - A reply that thinks before each of its four steps shows one thought line, and, with the switch
   off, one folded line with the count 4. Open the thought line: it lists the four thoughts in
   order.
