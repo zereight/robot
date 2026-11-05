@@ -45,6 +45,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
 | 036 | [Organization prefix: the name of the deepest organization before the name of an agent, "[Docs] Ada", with a switch in Appearance](036-organization-prefix.md) | Draft |
 | 037 | [Manage tools: the main agent and an outside program make and change agents, channels and routines, each change a request that the user allows](037-manage-tools.md) | Draft |
+| 038 | [Events: what arrived from a schedule, a watch, a web hook, an outside program or Teams, which place took it, and the reason when nothing did](038-events.md) | Draft |
 
 ## Milestones
 
@@ -88,6 +89,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M36 | 036, and the changes to 001, 003, 004, 011, 012, 013, 019, 029 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S130 and S131: one line of organizations for the members of an agent, and the organization prefix |
 | M37 | 037, and the changes to 002, 004, 007, 009 and 023 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S133 to S137: make an agent for the main agent, tools for agents, tools for channels, tools for routines, manage tools for outside programs |
 | M38 | The changes to 001, 011 and 036 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S138: agents by organization |
+| M39 | 038, and the changes to 001, 005, 009, 010, 023 and 028 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S139: the tab "Events" and "Check where this goes" |
 
 ## Surfaces check
 

@@ -38,6 +38,8 @@ and workflows.
 ## Tasks page
 
 - A table of tasks, newest first: agent face and name, label, source, state, duration.
+- The page holds two tabs at the top of its header line: "Tasks" and "Events" (038). The tab
+  "Events" holds the list of the events of this computer. Nothing else on the page changes.
 - Filters: state, agent, source. Search by label.
 - A task that the user starts from a card (024) has the source "Board" and the title of the card as
   its label. Its view shows a link "Card #<number>" that opens the card, or the line "Card
