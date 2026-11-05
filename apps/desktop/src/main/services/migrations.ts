@@ -1193,4 +1193,21 @@ export const migrations: readonly string[] = [
   -- The look of an agent on the line is a task with the source "question" (spec 030, 005): the
   -- source column holds text, so no other change is needed.
   `,
+  `
+  -- A follow-up (spec 005, "Follow-up"): a turn that an agent asked for itself to look at one
+  -- thing again later. It waits in this table until its time comes, and the app makes one task
+  -- for it. It does not sync (spec 019), so a foreign key is safe here: the delete of an agent or
+  -- of a thread takes its follow-ups with it, and no orphan waits for a turn that cannot start.
+  CREATE TABLE follow_up (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agent (id) ON DELETE CASCADE,
+    thread_id TEXT REFERENCES thread (id) ON DELETE CASCADE,
+    task_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX follow_up_at ON follow_up (at);
+  CREATE INDEX follow_up_agent ON follow_up (agent_id);
+  `,
 ]

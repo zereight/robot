@@ -575,6 +575,27 @@ describe("Today", () => {
   })
 
   describe("Next 24 hours", () => {
+    test("a follow-up of an agent shows with its reason, and the row opens its task", async () => {
+      const s = await setup()
+      const ada = await s.agent("Ada")
+      const taskId = s.task(ada.id, { state: "done", code: null })
+      s.db.run(
+        `INSERT INTO follow_up (id, agent_id, thread_id, task_id, reason, at, created_at)
+         VALUES ('fu-1', ?, NULL, ?, 'CI of the deploy', ?, 0)`,
+        ada.id,
+        taskId,
+        MIDDAY + 2 * HOUR,
+      )
+      const [row] = await s.rows("next")
+      expect(row?.kind).toBe("followup_next")
+      expect(row?.text).toBe("CI of the deploy")
+      expect(row?.agentId).toBe(ada.id)
+      expect(row?.open).toEqual({ kind: "task", id: taskId })
+      // A follow-up further away than 24 hours is not on the page.
+      s.db.run("UPDATE follow_up SET at = ? WHERE id = 'fu-1'", MIDDAY + 26 * HOUR)
+      expect(await s.rows("next")).toEqual([])
+    })
+
     test("a routine due in 3 hours shows; pausing it removes the row", async () => {
       const s = await setup()
       const ada = await s.agent("Ada")

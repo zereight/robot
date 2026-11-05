@@ -51,6 +51,7 @@ const ICONS: Record<TodayKind, () => JSX.Element> = {
   workflow_done: () => <CircleCheck size={18} />,
   routine_next: () => <CalendarClock size={18} />,
   workflow_next: () => <CalendarClock size={18} />,
+  followup_next: () => <CalendarClock size={18} />,
 }
 
 const TodayRowView = (props: { row: TodayRow; group: TodayGroupId; onOpen: () => void }) => {

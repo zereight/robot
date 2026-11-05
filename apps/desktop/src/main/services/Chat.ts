@@ -28,6 +28,9 @@ import {
   createReadGuard,
   endOfTurn,
   type FilePart,
+  FOLLOW_UP_REPLIES,
+  followUpLabel,
+  followUpPrompt,
   type HandoverOffReason,
   handoverCardForModel,
   handoverOf,
@@ -98,6 +101,7 @@ import { Connections } from "./Connections.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { FollowUps } from "./FollowUps.ts"
 import { Handbook } from "./Handbook.ts"
 import { Knowledge } from "./Knowledge.ts"
 import { withKeepGoing } from "./keepGoingTurn.ts"
@@ -212,6 +216,8 @@ export interface TaskOrigin {
   readonly depth?: number
   /** The text of the task, when it differs from the text of the message (a message of another agent). */
   readonly prompt?: string
+  /** The label of the task in the Tasks page, when the prompt is not a good name (a follow-up). */
+  readonly label?: string
   /** The agent that asked. The reply of this task goes back to it as a new message (spec 007). */
   readonly requester?: string
   /**
@@ -573,6 +579,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
       const activity = yield* Activity
       const tasks = yield* Tasks
       const tools = yield* Tools
+      const followUps = yield* FollowUps
       const connections = yield* Connections
       const placeMarks = yield* PlaceMarks
       const holds = yield* ModelHolds
@@ -1121,6 +1128,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             prompt,
             source,
             sourceId: origin?.sourceId ?? agentId,
+            ...(origin?.label !== undefined ? { label: origin.label } : {}),
             messageId: reply.id,
             retryOf: retryLinks.get(key) ?? origin?.retryOf ?? null,
             // A routine or a workflow starts its task with no message of the user (spec 005).
@@ -1525,6 +1533,18 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               ...(connected ? { connections: connected } : {}),
               onConnection: (callId, connection) =>
                 changePart(callId, (p) => ({ ...p, connection })),
+              // A follow-up works in a direct chat and its threads (spec 005). A routine and a
+              // workflow step have no follow-up: their own way to run work again is the answer.
+              ...(source === "chat" || source === "follow_up"
+                ? {
+                    onFollowUp: (callId: string, reason: string, minutes: number) =>
+                      followUpOf(callId, reason, minutes, {
+                        agentId,
+                        threadId: place.threadId,
+                        taskId: task.id,
+                      }),
+                  }
+                : {}),
             }
             // A call that waited for the user through a restart may name a tool that the agent found.
             if (resumeNow?.call.name) connected?.reopen(resumeNow.call.name)
@@ -2009,8 +2029,10 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         const agent = yield* usableAgent(input.agentId, origin?.model)
         if (origin?.source === "teams") return yield* sendFromTeams(input, origin, agent)
         // Work from a routine, a workflow or another agent goes to the main thread (spec 003). A
-        // handover goes to the new thread that it made.
-        const threadId = origin && origin.source !== "handover" ? null : (input.threadId ?? null)
+        // handover goes to the new thread that it made, and a follow-up to the thread that asked
+        // for it (spec 005, "Follow-up").
+        const keepsThread = origin?.source === "handover" || origin?.source === "follow_up"
+        const threadId = origin && !keepsThread ? null : (input.threadId ?? null)
         const place: Place = { agentId: input.agentId, threadId }
         if (threadId !== null) {
           const thread = threadRow(input.agentId, threadId)
@@ -3048,6 +3070,51 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
           onlyIfMissing: true,
         })
       }
+
+      /**
+       * Records a "wait until" call (spec 005, "Follow-up"). It answers null when the follow-up is
+       * recorded, or the reason of the failure for the step. The callback of a tool is sync, as the
+       * other ones are, so the effect runs at once.
+       */
+      const followUpOf = (
+        _callId: string,
+        reason: string,
+        minutes: number,
+        where: { agentId: string; threadId: string | null; taskId: string },
+      ) => {
+        let failure: string | null = null
+        Effect.runSync(
+          followUps.add({ ...where, reason, minutes }).pipe(
+            Effect.catch((error: AppError) =>
+              Effect.sync(() => {
+                failure =
+                  error.code === "followups_full" ? FOLLOW_UP_REPLIES.full : FOLLOW_UP_REPLIES.place
+              }),
+            ),
+          ),
+        )
+        return failure
+      }
+
+      // The follow-up service starts the turn of a follow-up through this (spec 005). It works as
+      // the tools get their messenger: the chat is built after the follow-ups.
+      followUps.setRunner({
+        start: (followUp, now) =>
+          send(
+            {
+              agentId: followUp.agentId,
+              text: followUpPrompt(followUp.reason, followUp.at, now),
+              replyTo: null,
+              threadId: followUp.threadId,
+            },
+            {
+              source: "follow_up",
+              sourceId: followUp.agentId,
+              prompt: followUpPrompt(followUp.reason, followUp.at, now),
+              label: followUpLabel(followUp.reason),
+            },
+          ).pipe(Effect.asVoid),
+      })
 
       return Chat.of({
         handoverReason,

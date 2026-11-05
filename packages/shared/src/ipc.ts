@@ -939,6 +939,8 @@ export interface RpcEvents {
   "runtimes.changed": RuntimeStatus
   "tasks.changed": { serverId: string }
   "memory.changed": { agentId: string }
+  /** A follow-up of an agent was made, deleted, or started its task (spec 005, "Follow-up"). */
+  "followups.changed": { agentId: string }
   /** The handbook of a server was saved or restored, here or by sync or a linked device (spec 002). */
   "handbook.changed": { serverId: string }
   "actionLog.changed": Record<string, never>

@@ -17,6 +17,7 @@ import { Database } from "./services/Database.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { FollowUps } from "./services/FollowUps.ts"
 import { Handbook } from "./services/Handbook.ts"
 import { Handover } from "./services/Handover.ts"
 import { Host } from "./services/Host.ts"
@@ -147,8 +148,10 @@ export const appLayer = (options: AppLayerOptions) => {
   const knowledge = Knowledge.layer.pipe(Layer.provideMerge(agentSettings))
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
+  // The follow-up starts a turn through the chat service, which is built after it (spec 005).
+  const followUps = FollowUps.layer.pipe(Layer.provideMerge(tasks))
   const agents = Layer.mergeAll(Chat.layer, Usage.layer, ChannelTools.layer).pipe(
-    Layer.provideMerge(tasks),
+    Layer.provideMerge(followUps),
   )
   // The memory check counts the turns that end as done, and runs its own short turn (spec 008).
   const memoryCheck = MemoryCheck.layer.pipe(Layer.provideMerge(agents))

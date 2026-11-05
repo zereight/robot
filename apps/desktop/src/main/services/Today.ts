@@ -5,6 +5,7 @@ import {
   dayBounds,
   dayKey,
   doneRows,
+  type FollowUpFacts,
   isRuntimeKind,
   localZone,
   needsRows,
@@ -53,6 +54,8 @@ const SOURCES = new Set<RpcEvent>([
   "island.state",
   "tasks.changed",
   "routines.changed",
+  // A follow-up that waits, or one whose task started (spec 005, "Follow-up").
+  "followups.changed",
   "workflows.changed",
   "workflows.run",
   "providers.changed",
@@ -415,6 +418,20 @@ export class Today extends Context.Service<Today, TodayService>()("robot/main/To
             }
           })
 
+      /** The follow-ups that wait for their time (spec 005, "Follow-up"). */
+      const followUpFacts = (): FollowUpFacts[] =>
+        db
+          .all<{ id: string; agent_id: string; reason: string; task_id: string; at: number }>(
+            "SELECT id, agent_id, reason, task_id, at FROM follow_up ORDER BY at",
+          )
+          .map((f) => ({
+            id: f.id,
+            agentId: f.agent_id,
+            reason: f.reason,
+            taskId: f.task_id,
+            at: f.at,
+          }))
+
       // ------------------------------------------------------------------ The page
       /** Reads one group. A source that cannot be read gives `null`, not an empty list. */
       const read = (rows: () => readonly TodayRow[]): readonly TodayRow[] | null => {
@@ -441,7 +458,7 @@ export class Today extends Context.Service<Today, TodayService>()("robot/main/To
             ),
           ),
           done: read(() => doneRows(done(day))),
-          next: read(() => nextRows(routineRuns(now), workflows(now), now)),
+          next: read(() => nextRows(routineRuns(now), workflows(now), now, followUpFacts())),
         }
         const snapshot = todaySnapshot(day.start, groups)
         // The times when a row waits for the clock: the next midnight, the end of a plan limit,
