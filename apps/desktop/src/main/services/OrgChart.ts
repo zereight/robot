@@ -4,7 +4,7 @@ import {
   type ChartModel,
   ORG_HANDOFF_WINDOW_MS,
   type OrgAgent,
-  type OrgChannel,
+  type OrgChartOrg,
   type OrgHandoff,
   type OrgSnapshot,
   type OrgTask,
@@ -20,7 +20,7 @@ import { Providers } from "./Providers.ts"
 export interface OrgChartService {
   /**
    * What the org chart of this computer draws, at `now` (spec 029). It reads the agents, the
-   * channels and the tasks. It stores nothing, starts no turn and sends nothing off the computer.
+   * organizations (spec 030) and the tasks. It stores nothing, starts no turn and sends nothing off the computer.
    */
   snapshot(now?: number): Effect.Effect<OrgSnapshot>
   /**
@@ -39,7 +39,7 @@ export interface OrgChartService {
 /** The events that can change the chart. It is pushed within a short wait after one of them. */
 const SOURCES = new Set<RpcEvent>([
   "agents.changed",
-  "channels.changed",
+  "organizations.changed",
   "places.changed",
   "tasks.changed",
   "providers.changed",
@@ -119,28 +119,28 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
           })
 
         const members = new Map<string, string[]>()
-        for (const m of db.all<{ channel_id: string; agent_id: string }>(
-          "SELECT channel_id, agent_id FROM channel_member ORDER BY channel_id, position",
+        for (const m of db.all<{ org_id: string; agent_id: string }>(
+          "SELECT org_id, agent_id FROM org_member ORDER BY org_id, position",
         )) {
-          members.set(m.channel_id, [...(members.get(m.channel_id) ?? []), m.agent_id])
+          members.set(m.org_id, [...(members.get(m.org_id) ?? []), m.agent_id])
         }
-        const channels: OrgChannel[] = db
+        const orgs: OrgChartOrg[] = db
           .all<{
             id: string
             name: string
             lead_agent_id: string | null
             created_at: number
-            parent_channel_id: string | null
+            parent_id: string | null
           }>(
-            "SELECT id, name, lead_agent_id, created_at, parent_channel_id FROM channel ORDER BY created_at, id",
+            "SELECT id, name, lead_agent_id, created_at, parent_id FROM org_unit ORDER BY created_at, id",
           )
-          .map((c) => ({
-            id: c.id,
-            name: c.name,
-            createdAt: c.created_at,
-            leadId: c.lead_agent_id,
-            memberIds: members.get(c.id) ?? [],
-            parentId: c.parent_channel_id,
+          .map((o) => ({
+            id: o.id,
+            name: o.name,
+            createdAt: o.created_at,
+            leadId: o.lead_agent_id,
+            memberIds: members.get(o.id) ?? [],
+            parentId: o.parent_id,
           }))
 
         // Hand-offs: the tasks that made a "send" of the source "agent" in the last 7 days, of both
@@ -173,7 +173,7 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
           snapshot: {
             mainAgentId: readMainAgent(db),
             agents,
-            channels,
+            orgs,
             handoffs,
             handOffRule: readHandOffRule(db),
           },
