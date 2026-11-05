@@ -3,6 +3,7 @@ import {
   charLength,
   filterAgents,
   ORG_NAME_MAX,
+  type Org,
   type OrgCreate,
   orgDeleteLowerCount,
   orgParentOptions,
@@ -40,7 +41,12 @@ interface MemberChoice {
  * "Tools" is read only on every linked computer: skills and connections belong to the computer
  * that holds them.
  */
-export const OrgDialog = (props: { id: string; onClose: () => void }) => {
+export const OrgDialog = (props: {
+  id: string
+  onClose: () => void
+  /** The organization that a save made: the org chart puts the focus on its node (spec 029). */
+  onSaved?: (org: Org) => void
+}) => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
@@ -138,7 +144,8 @@ export const OrgDialog = (props: { id: string; onClose: () => void }) => {
           leadId: leadId() !== null && members().includes(leadId() as string) ? leadId() : null,
           ...(parentId() ? { parentId: parentId() } : {}),
         }
-        await call("organizations.create", input)
+        const made = await call("organizations.create", input)
+        props.onSaved?.(made)
       }
       props.onClose()
     } catch (e) {
