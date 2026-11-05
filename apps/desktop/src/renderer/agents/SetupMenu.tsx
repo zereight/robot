@@ -1,4 +1,4 @@
-import type { MessageKey, SetupFailCode, SetupList } from "@robot/shared"
+import type { SetupList } from "@robot/shared"
 import { ChevronDown, Play } from "lucide-solid"
 import { createEffect, createSignal, on, Show } from "solid-js"
 import { describeError } from "../lib/errors.ts"
@@ -9,23 +9,9 @@ import { Presence } from "../ui/Presence.tsx"
 import { showToast } from "../ui/toast.ts"
 import styles from "./agents.module.css"
 import { SetupEditorDialog } from "./SetupEditor.tsx"
+import { runSetupAction } from "./setupRun.ts"
 
 const MENU_WIDTH = 320
-
-const failKey = (code: SetupFailCode): MessageKey => {
-  switch (code) {
-    case "exit":
-      return "setup.failed"
-    case "timeout":
-      return "setup.timeout"
-    case "spawn":
-      return "setup.spawn"
-    default: {
-      const never: never = code
-      return never
-    }
-  }
-}
 
 const empty: SetupList = { actions: [], allowed: false, unreadable: false }
 
@@ -54,16 +40,7 @@ export const SetupMenu = (props: { agentId: string }) => {
   const run = (name: string) => {
     if (busy()) return
     setBusy(true)
-    void call("setup.run", { agentId: props.agentId, name })
-      .then((result) => {
-        if (result.status === "ran") showToast("success", "setup.ran", { name })
-        else if (result.status === "failed") showToast("error", failKey(result.code), { name })
-      })
-      .catch((error: unknown) => {
-        const described = describeError(error)
-        showToast("error", described.key, described.params)
-      })
-      .finally(() => setBusy(false))
+    void runSetupAction(props.agentId, name).finally(() => setBusy(false))
   }
 
   const allow = (on: boolean) => {

@@ -18,8 +18,10 @@ makes and changes the list in the app: in the chat menu and in Settings.
   text of the list. A change of that text needs a new allow. It does not sync and an export does
   not hold it.
 - **Setup editor**: the form that makes and changes the list of one workspace. It shows the path
-  of the file it writes, or that it will make the file in the workspace. Each row holds a name,
-  a command, and the two marks. The form has "Add action", "Save" and "Cancel".
+  of the file it writes, or that it will make the file in the workspace. It lists the actions:
+  each row runs its action, shows the name and the command, and opens the row for a change.
+  "Add action" opens a new row. A row holds the name, the command, and the two marks. The form
+  has "Save" and "Cancel".
 
 The command starts in the workspace of the turn. The environment variable `ROBOT_WORKSPACE` is
 that folder. `ROBOT_ORIGIN` is the main checkout when the workspace is a linked worktree, and is
@@ -45,10 +47,13 @@ absent otherwise.
    actions again, while the list is unchanged. A failure is the same line as in flow 3, and the
    next turn tries those actions again. A turn that goes on after a restart does not run them.
 5. Manage in the chat: the menu of flow 1 has "Manage setup actions". It opens the editor for
-   the file of this workspace. "Add action" adds a row, until 20. A row with no name or no
-   command, or past the limits of the Rules, blocks "Save" and says why. "Save" writes the
-   file and the menu reads the new list. "Cancel" leaves the file unchanged. A save changes the
-   text of the list, so the allow is gone and flow 2 starts again.
+   the file of this workspace. The editor lists the actions. Each row runs its action, shows the
+   name and the start of the command, and opens the row for a change. "Add action" opens a new
+   row, until 20 rows. The row holds the name, the command, and the two marks; a row that
+   exists also holds "Delete". A name or a command that breaks the limits blocks the save of
+   the row and says why. "Save" writes the file and the menu reads the new list. "Cancel"
+   leaves the file unchanged. A save changes the text of the list, so the allow is gone and
+   flow 2 starts again.
 6. Manage in Settings: the section "Setup actions" lists the agents of this computer. The user
    picks one. It shows the path of the file of its workspace, or that a save will make the
    file there, the same editor, and the allow with "Allow automatic setup" or "Stop automatic
@@ -131,15 +136,18 @@ absent otherwise.
 - "Stop automatic setup", then a turn: the marked actions do not run. The menu still runs one.
 - A file that is not JSON shows "Setup actions could not be read." No command runs.
 - An agent writes `robot.json`. The step asks, as a write of a control place.
-- The menu has "Manage setup actions". It opens the editor with the actions of the file. The
-  user changes a command and saves. The file holds the new command, and the menu reads the new
-  list. The allow is gone until the user allows the list again.
+- The menu has "Manage setup actions". It opens the editor, which lists the actions of the
+  file. The user opens a row, changes its command, saves the row, and saves. The file holds the
+  new command, and the menu reads the new list. The allow is gone until the user allows the
+  list again.
 - Settings lists the agents. The user picks an agent whose workspace has no file. The editor is
-  empty and names the workspace. The user adds one action and saves. The file is made, and the
-  chat of that agent shows "Run <name>".
+  empty and names the workspace. The user opens "Add action", fills the name and the command,
+  saves the row, and saves. The file is made, and the chat of that agent shows "Run <name>".
 - The editor shows the path of the file. Two agents in one repository share it, and a save from
   either chat changes the list of both.
-- A row with no name blocks "Save" and says why. "Cancel" leaves the file unchanged.
+- A row with no name blocks the save of the row and says why. "Cancel" leaves the file
+  unchanged.
+- A row of the editor runs its action. The toast says it ran.
 - The file is not JSON. The editor offers "Replace with a new list", asks first with the path,
   and on confirm a save writes the new list.
 - A workspace with no file shows "Manage setup actions" in the chat header. It opens the empty

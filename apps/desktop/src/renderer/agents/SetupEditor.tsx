@@ -1,33 +1,22 @@
-import type { MessageKey, SetupFileView, SetupList } from "@robot/shared"
-import { SETUP_ACTIONS_MAX, setupRowProblem } from "@robot/shared"
+import type { SetupFileView, SetupList } from "@robot/shared"
+import { SETUP_ACTIONS_MAX, setupCanon } from "@robot/shared"
+import { Play, Settings } from "lucide-solid"
 import { createEffect, createResource, createSignal, Index, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
-import { Button, Switch } from "../ui/controls.tsx"
+import { Button, IconButton } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
+import { Presence } from "../ui/Presence.tsx"
 import { showToast } from "../ui/toast.ts"
 import styles from "./agents.module.css"
-
-interface Row {
-  name: string
-  command: string
-  onOwnCopy: boolean
-  onTurnStart: boolean
-}
-
-const problemKey = (row: Row): MessageKey | undefined => {
-  const problem = setupRowProblem(row)
-  if (problem === "name") return "setup.invalid.name"
-  if (problem === "command") return "setup.invalid.command"
-  if (problem === "marks") return "setup.saveFailed"
-  return undefined
-}
+import { SetupActionDialog, type SetupRow } from "./SetupActionDialog.tsx"
+import { runSetupAction } from "./setupRun.ts"
 
 /**
  * The form that makes and changes the setup list of one workspace (spec 035). It names the file
- * it writes. "Cancel" throws the draft away. A save clears the allow, so the toast says to allow
- * the list again when a marked action is left.
+ * it writes and lists the actions. "Cancel" throws the draft away. A save clears the allow, so
+ * the toast says to allow the list again when a marked action is left.
  */
 export const SetupEditorForm = (props: {
   agentId: string
@@ -36,14 +25,16 @@ export const SetupEditorForm = (props: {
 }) => {
   const { t } = useApp()
   const [view, { refetch }] = createResource(() => call("setup.file", { agentId: props.agentId }))
-  const [rows, setRows] = createSignal<Row[]>()
+  const [rows, setRows] = createSignal<SetupRow[]>()
   const [loadedFor, setLoadedFor] = createSignal("")
   const [asking, setAsking] = createSignal(false)
   const [replacing, setReplacing] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
+  const [running, setRunning] = createSignal(false)
+  const [rowDialog, setRowDialog] = createSignal<{ at: number | "new" }>()
   const [error, setError] = createSignal<ErrorText>()
 
-  const draftOf = (file: SetupFileView): Row[] =>
+  const draftOf = (file: SetupFileView): SetupRow[] =>
     file.unreadable ? [] : file.actions.map((action) => ({ ...action }))
 
   createEffect(() => {
@@ -52,20 +43,32 @@ export const SetupEditorForm = (props: {
     setLoadedFor(props.agentId)
     setAsking(false)
     setReplacing(false)
+    setRowDialog(undefined)
     setRows(draftOf(file))
   })
 
-  const blocked = () =>
-    saving() || rows() === undefined || (rows() ?? []).some((row) => problemKey(row) !== undefined)
+  const blocked = () => saving() || rows() === undefined
 
-  const update = (index: number, patch: Partial<Row>) =>
-    setRows((now) => (now ?? []).map((row, at) => (at === index ? { ...row, ...patch } : row)))
+  /** A run reads the file, so rows run only while the draft matches it. */
+  const dirty = () => {
+    const file = view()
+    const current = rows()
+    if (!file || !current) return false
+    return setupCanon(current) !== setupCanon(file.actions)
+  }
+
+  const run = (name: string) => {
+    if (running()) return
+    setRunning(true)
+    void runSetupAction(props.agentId, name).finally(() => setRunning(false))
+  }
 
   const cancel = () => {
     const file = view()
     if (file) {
       setAsking(false)
       setReplacing(false)
+      setRowDialog(undefined)
       setRows(draftOf(file))
     }
     setError(undefined)
@@ -163,75 +166,30 @@ export const SetupEditorForm = (props: {
                   <Index each={rows() ?? []}>
                     {(row, index) => (
                       <li class={styles.setupRow} data-testid="setup-row">
-                        <div class={styles.setupField}>
-                          <label class={styles.setupLabel} for={`setup-name-${index}`}>
-                            {t("setup.name")}
-                          </label>
-                          <input
-                            id={`setup-name-${index}`}
-                            class={styles.setupInput}
-                            value={row().name}
-                            maxLength={80}
-                            autocomplete="off"
-                            spellcheck={false}
-                            aria-label={t("setup.name")}
-                            aria-invalid={problemKey(row()) === "setup.invalid.name"}
-                            onInput={(e) => update(index, { name: e.currentTarget.value })}
-                            data-testid="setup-name"
-                          />
-                        </div>
-                        <div class={styles.setupField}>
-                          <label class={styles.setupLabel} for={`setup-command-${index}`}>
-                            {t("setup.command")}
-                          </label>
-                          <input
-                            id={`setup-command-${index}`}
-                            class={`${styles.setupInput} ${styles.setupCommand}`}
-                            value={row().command}
-                            maxLength={4000}
-                            autocomplete="off"
-                            spellcheck={false}
-                            aria-label={t("setup.command")}
-                            aria-invalid={problemKey(row()) === "setup.invalid.command"}
-                            onInput={(e) => update(index, { command: e.currentTarget.value })}
-                            data-testid="setup-command"
-                          />
-                        </div>
-                        <div class={styles.setupMarks}>
-                          <span class={styles.setupMark}>
-                            <Switch
-                              label={t("setup.mark.ownCopy")}
-                              testId="setup-mark-own-copy"
-                              checked={row().onOwnCopy}
-                              onChange={(onOwnCopy) => update(index, { onOwnCopy })}
-                            />
-                            <span>{t("setup.mark.ownCopy")}</span>
+                        <IconButton
+                          label={t("setup.run", { name: row().name })}
+                          title={
+                            dirty() ? t("setup.unsaved") : t("setup.run", { name: row().name })
+                          }
+                          onClick={() => run(row().name)}
+                          disabled={running() || dirty()}
+                          data-testid="setup-row-run"
+                        >
+                          <Play size={16} />
+                        </IconButton>
+                        <div class={styles.setupRowText}>
+                          <span class={styles.setupRowName}>{row().name}</span>
+                          <span class={styles.setupRowCommand} title={row().command}>
+                            {row().command}
                           </span>
-                          <span class={styles.setupMark}>
-                            <Switch
-                              label={t("setup.mark.turn")}
-                              testId="setup-mark-turn"
-                              checked={row().onTurnStart}
-                              onChange={(onTurnStart) => update(index, { onTurnStart })}
-                            />
-                            <span>{t("setup.mark.turn")}</span>
-                          </span>
-                          <Button
-                            onClick={() =>
-                              setRows((now) => (now ?? []).filter((_, at) => at !== index))
-                            }
-                            data-testid="setup-delete"
-                          >
-                            {t("setup.delete")}
-                          </Button>
                         </div>
-                        <Show when={problemKey(row())}>
-                          {(key) => (
-                            <div class={styles.setupError} role="alert" data-testid="setup-invalid">
-                              {t(key())}
-                            </div>
-                          )}
-                        </Show>
+                        <IconButton
+                          label={t("setup.edit")}
+                          onClick={() => setRowDialog({ at: index })}
+                          data-testid="setup-row-edit"
+                        >
+                          <Settings size={16} />
+                        </IconButton>
                       </li>
                     )}
                   </Index>
@@ -239,12 +197,7 @@ export const SetupEditorForm = (props: {
               </Show>
               <div class={styles.setupFooter}>
                 <Button
-                  onClick={() =>
-                    setRows((now) => [
-                      ...(now ?? []),
-                      { name: "", command: "", onOwnCopy: false, onTurnStart: false },
-                    ])
-                  }
+                  onClick={() => setRowDialog({ at: "new" })}
                   disabled={(rows() ?? []).length >= SETUP_ACTIONS_MAX}
                   title={
                     (rows() ?? []).length >= SETUP_ACTIONS_MAX ? t("setup.invalid.many") : undefined
@@ -263,6 +216,40 @@ export const SetupEditorForm = (props: {
                 </Button>
                 <Button onClick={cancel}>{t("setup.cancel")}</Button>
               </div>
+              <Presence when={rowDialog()}>
+                {(target) => {
+                  const at = target.at
+                  const initial: SetupRow =
+                    at === "new"
+                      ? { name: "", command: "", onOwnCopy: false, onTurnStart: false }
+                      : ((rows() ?? [])[at] ?? {
+                          name: "",
+                          command: "",
+                          onOwnCopy: false,
+                          onTurnStart: false,
+                        })
+                  return (
+                    <SetupActionDialog
+                      initial={initial}
+                      isNew={at === "new"}
+                      onSave={(row) => {
+                        if (at === "new") setRows((now) => [...(now ?? []), row])
+                        else setRows((now) => (now ?? []).map((old, i) => (i === at ? row : old)))
+                        setRowDialog(undefined)
+                      }}
+                      onDelete={
+                        at === "new"
+                          ? undefined
+                          : () => {
+                              setRows((now) => (now ?? []).filter((_, i) => i !== at))
+                              setRowDialog(undefined)
+                            }
+                      }
+                      onClose={() => setRowDialog(undefined)}
+                    />
+                  )
+                }}
+              </Presence>
             </Show>
             <Show when={error()}>
               {(err) => (
