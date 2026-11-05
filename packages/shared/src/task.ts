@@ -1,5 +1,6 @@
 import type { Verdict } from "./check.ts"
 import type { TaskQuestion } from "./leadAnswers.ts"
+import { ORG_LIMIT_CODE } from "./orgLimit.ts"
 import type { TaskUsage, TreeUsage } from "./taskUsage.ts"
 import type { RecentPlace } from "./work.ts"
 
@@ -166,7 +167,7 @@ export const blockedErrorOf = (end: Extract<TurnEnd, { readonly state: "blocked"
 export const blockedReasonForAgent = (
   error: { readonly code: string; readonly detail: string } | null | undefined,
 ): string =>
-  error?.code === "channel_limit"
+  error?.code === ORG_LIMIT_CODE
     ? `The daily token limit of ${error.detail} is used.`
     : (error?.detail ?? "")
 

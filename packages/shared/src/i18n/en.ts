@@ -2827,7 +2827,7 @@ export const en = {
   "usage.col.limit": "Limit",
   "error.invalid_daily_limit":
     "Use a whole number from 10,000 to 100,000,000 for the daily token limit.",
-  "error.channel_limit": "The daily token limit of {detail} is used.",
+  "error.org_limit": "The daily token limit of {detail} is used.",
   "settings.section.organization": "Organization",
   "organization.hint":
     "How the agents of this server work together. The hand-off rule says who an agent may send a message to.",

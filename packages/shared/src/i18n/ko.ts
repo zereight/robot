@@ -2806,7 +2806,7 @@ export const ko: Record<MessageKey, string> = {
   "usage.col.usedToday": "오늘 사용량",
   "usage.col.limit": "한도",
   "error.invalid_daily_limit": "하루 토큰 한도는 10,000에서 100,000,000 사이의 정수로 입력하세요.",
-  "error.channel_limit": "{detail}의 하루 토큰 한도를 모두 사용했어요.",
+  "error.org_limit": "{detail}의 하루 토큰 한도를 모두 사용했어요.",
   "settings.section.organization": "조직",
   "organization.hint":
     "이 서버의 에이전트가 함께 일하는 방식이에요. 전달 규칙은 에이전트가 메시지를 보낼 수 있는 상대를 정해요.",
