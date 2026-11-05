@@ -2890,6 +2890,7 @@ export const en = {
   "orgs.parent.levels": "The tree would have more than 3 levels.",
   "orgs.parent.option": "{name} — {reason}",
   "orgs.access": "Access",
+  "orgs.access.new": "Save the organization first. Then you can set its tools here.",
   "orgs.tools": "Tools",
   "orgs.tools.hint":
     "A skill or a connection that is on here goes to each member of this organization and of its lower organizations. A change counts from the next turn.",
@@ -2902,8 +2903,9 @@ export const en = {
   "orgs.tools.on": "On",
   "orgs.tools.inherit": "Inherit",
   "orgs.delete": "Delete organization",
+  "orgs.delete.title": "Delete {name}?",
   "orgs.delete.confirm":
-    "Delete {name}? The access that this organization gives is gone. The members stay agents.",
+    "The access that this organization gives is gone. The members stay agents.",
   "orgs.delete.lower.one": "1 lower organization becomes a top organization.",
   "orgs.delete.lower.other": "{count} lower organizations become top organizations.",
   "orgs.delete.back": "Back",

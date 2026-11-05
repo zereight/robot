@@ -2,6 +2,7 @@ import { HAND_OFF_RULES, type HandOffRule, type MessageKey } from "@robot/shared
 import { createResource, createSignal, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { OrgList } from "../orgs/OrgList.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Segmented, Switch } from "../ui/controls.tsx"
@@ -115,6 +116,8 @@ export const OrganizationSection = () => {
         <p class={settings.note} data-testid="organization-syncs">
           {t("organization.syncs")}
         </p>
+        {/* A plain list of the organizations, until the org chart opens the form (S119). */}
+        <OrgList />
         <Show when={error()}>
           {(err) => (
             <p class={settings.error} role="alert" data-testid="organization-error">

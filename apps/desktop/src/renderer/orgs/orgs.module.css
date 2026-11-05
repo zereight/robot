@@ -1,0 +1,227 @@
+/* The form of an organization (spec 030) and the list that opens it. Tokens of global.css only. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* A fixed width that gives way in a narrow window: what the lists hold must not move the box. */
+  width: min(520px, 80vw);
+  min-width: 0;
+}
+.title {
+  font-size: var(--text-l);
+  font-weight: 600;
+  margin: 0;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  /* A fieldset is never narrower than its content unless this is set. */
+  min-width: 0;
+}
+/* A fieldset that draws no box of its own. */
+.bare {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.hint {
+  font-size: var(--text-xs);
+  color: var(--c-text-muted);
+  margin: 0;
+}
+.input {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 6px 8px;
+  min-width: 0;
+}
+.input:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+.input:disabled,
+.input[readonly] {
+  color: var(--c-text-muted);
+}
+.memberSearch {
+  margin-top: 6px;
+}
+/* The box keeps one height for any search: a list, a short list and "no match" fill the same room. */
+.memberBox {
+  position: relative;
+  max-height: 180px;
+  overflow: hidden;
+}
+.memberSizer,
+.memberList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.memberSizer {
+  visibility: hidden;
+  pointer-events: none;
+}
+.memberList {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+}
+.member {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  min-width: 0;
+}
+.memberName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.memberRole {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+/* The line of the count keeps its room, so the first chosen member does not push the form down. */
+.memberCount {
+  min-height: 1lh;
+}
+.toolGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.toolRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.toolName {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.error {
+  color: var(--c-danger);
+  font-size: var(--text-xs);
+}
+/* The confirm of a delete (spec 030, flow 4): it takes the place of the button. */
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.confirmTitle {
+  font-weight: 600;
+}
+.confirm p {
+  margin: 0;
+  max-width: none;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.spacer {
+  flex: 1;
+}
+
+/* The list of organizations in the settings, until the org chart opens the form (spec 029). */
+.listHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.listRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  width: 100%;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 6px 10px;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.listRow:hover {
+  background: var(--c-hover);
+}
+.listRow:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+.listName {
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The row "Organizations" in the profile of an agent. */
+.profileRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.chip {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 2px 8px;
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.chip:hover {
+  background: var(--c-hover);
+}
+.chip:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}

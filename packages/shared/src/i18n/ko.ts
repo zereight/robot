@@ -2871,6 +2871,7 @@ export const ko: Record<MessageKey, string> = {
   "orgs.parent.levels": "트리가 3단계를 넘게 돼요.",
   "orgs.parent.option": "{name} — {reason}",
   "orgs.access": "권한",
+  "orgs.access.new": "먼저 조직을 저장하세요. 그러면 여기서 도구를 정할 수 있어요.",
   "orgs.tools": "도구",
   "orgs.tools.hint":
     "여기서 켠 스킬이나 연결은 이 조직과 하위 조직의 모든 멤버에게 가요. 바꾼 내용은 다음 턴부터 적용돼요.",
@@ -2882,8 +2883,8 @@ export const ko: Record<MessageKey, string> = {
   "orgs.tools.on": "켬",
   "orgs.tools.inherit": "상속",
   "orgs.delete": "조직 삭제",
-  "orgs.delete.confirm":
-    "{name}을(를) 삭제할까요? 이 조직이 주던 권한은 사라져요. 멤버는 에이전트로 남아요.",
+  "orgs.delete.title": "{name}을(를) 삭제할까요?",
+  "orgs.delete.confirm": "이 조직이 주던 권한은 사라져요. 멤버는 에이전트로 남아요.",
   "orgs.delete.lower.one": "하위 조직 1개가 최상위 조직이 돼요.",
   "orgs.delete.lower.other": "하위 조직 {count}개가 최상위 조직이 돼요.",
   "orgs.delete.back": "돌아가기",
