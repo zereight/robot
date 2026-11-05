@@ -76,6 +76,24 @@ test("the window follows DESIGN.md", async () => {
       return size
     })
     expect(smallLabel).toBeGreaterThanOrEqual(11)
+
+    // DESIGN.md, "Don't". A disabled filled button fades and refuses the pointer, and it does not
+    // keep the hover treatment that says "press me". The app passes `disabled` in 134 places, so a
+    // button that looks the same when it cannot be pressed is a defect, not a preference.
+    //
+    // The connect dialog opens with an empty address and code, so its Next button is disabled.
+    await page.getByTestId("server-add").click()
+    const next = page.getByTestId("connect-next")
+    await expect(next).toBeDisabled()
+    const look = await next.evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        opacity: Number.parseFloat(style.opacity),
+        cursor: style.cursor,
+      }
+    })
+    expect(look.opacity).toBeLessThan(1)
+    expect(look.cursor).toBe("not-allowed")
   } finally {
     await app.close()
   }
