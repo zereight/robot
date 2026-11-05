@@ -176,6 +176,44 @@ rule(
   ],
 )
 
+// DESIGN.md, "Don't": a focus ring is never removed without a replacement. `:focus-visible` in
+// global.css draws the ring that the keyboard uses, so a rule that drops the outline leaves the
+// user with no way to see where the keyboard is. A part that wants its own ring sets one in the
+// same sheet; this rule catches the sheet that only removes it.
+rule(
+  "focus ring",
+  "Do not set outline: none. Replace the ring in the same sheet, or leave the global one.",
+  (d) => d.prop === "outline" && /^none$/.test(d.value),
+  [
+    "agents/agents.module.css | outline: none",
+    "agents/agents.module.css | outline: none",
+    "agents/role.module.css | outline: none",
+    "agents/role.module.css | outline: none",
+    "chat/chat.module.css | outline: none",
+    "chat/handover.module.css | outline: none",
+    "knowledge/knowledge.module.css | outline: none",
+    "providers/providers.module.css | outline: none",
+    "settings/connections.module.css | outline: none",
+    "settings/handbook.module.css | outline: none",
+    "settings/settings.module.css | outline: none",
+    "shell/shell.module.css | outline: none",
+    "shell/shell.module.css | outline: none",
+    "shell/shell.module.css | outline: none",
+    "ui/controls.module.css | outline: none",
+    "workflows/workflows.module.css | outline: none",
+  ],
+)
+
+// DESIGN.md, "The Lift Rule": a colour under the pointer comes from a token, so both themes hold
+// their contrast. `filter: brightness()` is not a colour: it cannot be checked against the text on
+// the button, and it moves a light theme and a dark theme in the same direction.
+rule(
+  "colour filter",
+  "Do not change a colour with filter or opacity. Add a token for the colour under the pointer.",
+  (d) => d.prop === "filter" && /brightness|saturate|contrast|hue-rotate/.test(d.value),
+  [],
+)
+
 // DESIGN.md, "Don't": a coloured stripe on the side of a block is decoration, not an edge. A
 // quote or a call-out shows its kind with a tinted surface or a leading mark instead. The stripe
 // may be written as left, right, or as the logical inline start, which changes side in Korean.

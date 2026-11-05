@@ -76,6 +76,37 @@ test("the window follows DESIGN.md", async () => {
       return size
     })
     expect(smallLabel).toBeGreaterThanOrEqual(11)
+
+    // DESIGN.md, "Don't". A disabled filled button fades and refuses the pointer, and it does not
+    // keep the hover treatment that says "press me". The app passes `disabled` in 134 places, so a
+    // button that looks the same when it cannot be pressed is a defect, not a preference.
+    //
+    // The connect dialog opens with an empty address and code, so its Next button is disabled.
+    await page.getByTestId("server-add").click()
+    const next = page.getByTestId("connect-next")
+    await expect(next).toBeDisabled()
+    const look = await next.evaluate((el) => {
+      const style = getComputedStyle(el)
+      return {
+        opacity: Number.parseFloat(style.opacity),
+        cursor: style.cursor,
+      }
+    })
+    expect(look.opacity).toBeLessThan(1)
+    expect(look.cursor).toBe("not-allowed")
+
+    // A disabled filled button keeps its own colour and only fades. It must not take the colour of
+    // the box behind it, which is what `background: inherit` did: the button disappeared into the
+    // dialog surface.
+    const filled = await next.evaluate((el) => {
+      const dialog = el.closest("[class*=dialog]")
+      return {
+        button: getComputedStyle(el).backgroundColor,
+        dialog: dialog ? getComputedStyle(dialog).backgroundColor : "",
+      }
+    })
+    expect(filled.dialog).not.toBe("")
+    expect(filled.button).not.toBe(filled.dialog)
   } finally {
     await app.close()
   }

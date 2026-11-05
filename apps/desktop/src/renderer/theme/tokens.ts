@@ -11,10 +11,17 @@ export interface Palette {
   textMuted: string
   accent: string
   accentText: string
+  /**
+   * The accent under the pointer. It moves away from the text on the button, so the label gets
+   * easier to read while the pointer is over it, never harder (DESIGN.md, "The Lift Rule").
+   */
+  accentHover: string
   /** The accent as text and links. It is lighter in the dark theme, so it reads on dark surfaces. */
   accentInk: string
   success: string
   danger: string
+  /** The danger colour under the pointer, on the same rule as `accentHover`. */
+  dangerHover: string
   /**
    * The text of a danger button that is filled with the danger colour (spec 000, "Danger
    * buttons"). It reads on the danger colour in both themes.
@@ -52,9 +59,11 @@ export const palettes: Record<"dark" | "light", Palette> = {
     textMuted: "#b4b5bf",
     accent: "#6a56d8",
     accentText: "#fdfdfd",
+    accentHover: "#5a44c4",
     accentInk: "#b3afff",
     success: "#48deb3",
     danger: "#ff9492",
+    dangerHover: "#ffaba7",
     dangerText: "#0d0c13",
     focus: "#b3afff",
     markTile: "#0a0817",
@@ -78,9 +87,11 @@ export const palettes: Record<"dark" | "light", Palette> = {
     textMuted: "#565661",
     accent: "#523bb7",
     accentText: "#fdfdfd",
+    accentHover: "#4427a4",
     accentInk: "#4e38ac",
     success: "#006a4c",
     danger: "#ab1a23",
+    dangerHover: "#970010",
     dangerText: "#fdfdfd",
     focus: "#523bb7",
     markTile: "#0a0817",

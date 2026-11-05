@@ -66,7 +66,13 @@
   background-size: 20px 20px;
   touch-action: none;
   cursor: grab;
-  outline: none;
+}
+
+/* The viewport takes the arrow keys to move around the chart, so the keyboard must show where
+   it is. The ring sits inside the box, so a chart that fills the window keeps its edge. */
+.viewport:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: -2px;
 }
 
 .viewport[data-dragging="true"] {

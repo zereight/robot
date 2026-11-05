@@ -14,8 +14,10 @@ colors:
   accent: "#6a56d8"
   accent-ink: "#b3afff"
   accent-text: "#fdfdfd"
+  accent-hover: "#5a44c4"
   success: "#48deb3"
   danger: "#ff9492"
+  danger-hover: "#ffaba7"
   danger-text: "#0d0c13"
   focus: "#b3afff"
 typography:
@@ -69,8 +71,13 @@ components:
     padding: "6px 12px"
     typography: "label"
   button-primary-hover:
-    backgroundColor: "{colors.accent-ink}"
-    textColor: "{colors.danger-text}"
+    backgroundColor: "{colors.accent-hover}"
+    textColor: "{colors.accent-text}"
+    rounded: "{rounded.md}"
+    padding: "6px 12px"
+  button-primary-disabled:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.accent-text}"
     rounded: "{rounded.md}"
     padding: "6px 12px"
   button-ghost:
@@ -201,6 +208,11 @@ product; above 0.025 the room becomes a purple app.
 actually meet. It is never used to outline a card, a row on hover, or a chip that already has a
 background step.
 
+**The Lift Rule.** A colour under the pointer comes from a token, and it moves away from the text
+on that control, so the label is easier to read while the pointer is over it, never harder. Never
+`filter: brightness()`: it cannot be checked against the text, and it moves a light theme and a
+dark theme the same way when one of them needs to go the other way.
+
 ## 3. Typography
 
 **Display Font:** system UI stack (system-ui, with Apple SD Gothic Neo and Malgun Gothic before
@@ -268,13 +280,18 @@ shadow. A shadow in this app means the system has failed to find the right step.
   4 px, so the curve stays parallel to its parent.
 - **Primary:** Fill `{colors.accent}`, text `{colors.accent-text}`, padding `6px 12px`, weight
   500. One per region, and only for the action the user came to do.
-- **Hover / Focus:** Fill lifts to `{colors.accent-ink}` with dark text, or the surface takes
-  `{colors.hover}` for a ghost button. Focus is a 2 px `{colors.focus}` outline at 2 px offset,
-  never a glow.
+- **Hover / Focus:** Fill moves to `{colors.accent-hover}`, a token that steps away from the
+  button's own text so the label reads easier under the pointer, never harder. A ghost button
+  takes `{colors.hover}`. Focus is a 2 px `{colors.focus}` outline at 2 px offset, never a glow,
+  and a rule that sets `outline: none` must draw its own ring in the same sheet.
+- **Disabled:** Fades to 0.5 opacity, takes `not-allowed` as the cursor, and drops the hover
+  treatment. A button that cannot be pressed must not look like one that can. 134 places pass
+  `disabled`; this is not a rare state.
 - **Ghost:** No fill at rest, `{colors.text-muted}` text, `{colors.hover}` on hover, text to
   `{colors.text}`. This is the default button for everything that is not the main action.
 - **Danger:** Fill `{colors.danger}`, text `{colors.danger-text}`. It deletes or removes a thing
-  that exists. It reads at 7.11:1 on the light theme and 9.18:1 on the dark one.
+  that exists. It reads at 7.11:1 on the light theme and 9.18:1 on the dark one. Under the
+  pointer it moves to `{colors.danger-hover}`, on the same rule as the accent.
 
 ### Chips
 
@@ -358,3 +375,9 @@ dot. It means "working", never "done" and never "good".
   and the glow, not in the paper.
 - **Don't** carry a state in colour alone. A working agent has a moving dot and a word. A failed
   step has an icon and a word.
+- **Don't** ship a disabled button that looks like a live one. It fades, it refuses the pointer,
+  and it drops its hover treatment. The app passes `disabled` in 134 places.
+- **Don't** set `outline: none` without drawing a ring in the same sheet. The global
+  `:focus-visible` rule is the only thing that shows a keyboard user where they are.
+- **Don't** change a colour with `filter` or `opacity`. Add a token for the colour under the
+  pointer instead, so both themes can be checked.
