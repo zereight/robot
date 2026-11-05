@@ -302,3 +302,68 @@ test("the retrospective of an organization asks the model and saves nothing by i
     await app.close()
   }
 })
+
+test("a routine can belong to an organization, and the field refuses an agent that is not a member", async () => {
+  test.setTimeout(240_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  try {
+    await resizeWindow(app, 1300, 900)
+    await connectMock(page, mock.openaiUrl, GOOD_KEY)
+    await createAgent(page, "Ada")
+    await createAgent(page, "Bo")
+    await openOrgChart(page)
+    // "Docs" holds Ada only, so Bo is not a member.
+    const serverId = await serverIdOf(page)
+    const docs = await rpc<OrgInfo>(page, "organizations.create", {
+      serverId,
+      name: "Docs",
+      memberIds: [await agentIdOf(page, "Ada")],
+      leadId: null,
+    })
+
+    // --- The routine form names the organization, and keeps the rule -------------------------
+    await page.getByTestId("page-routines").click()
+    await page.getByTestId("routine-new").click()
+    const dialog = page.getByTestId("routine-dialog")
+    await expect(dialog).toBeVisible()
+    await page.getByTestId("routine-name").fill("Check the links")
+    await page.getByTestId("routine-prompt").fill("Check every link.")
+    await page.getByTestId("routine-org").selectOption({ label: "Docs" })
+    await shot(page, "s139-09-routine-org")
+    await page.getByTestId("routine-save").click()
+    await expect(dialog).toHaveCount(0)
+    // The card shows the organization as a chip.
+    const card = page.getByTestId("routine-card").filter({ hasText: "Check the links" })
+    await expect(card.getByTestId("routine-org-chip")).toHaveText("Docs")
+    await shot(page, "s139-10-routine-card")
+
+    // --- The same form with an agent that is not a member: the form does not save ------------
+    await page.getByTestId("routine-new").click()
+    await expect(dialog).toBeVisible()
+    await page.getByTestId("routine-name").fill("Check the facts")
+    await page.getByTestId("routine-prompt").fill("Check a fact.")
+    // The agent list shows the organization prefix, so the option reads "[Docs] Bo" (spec 036).
+    // Bo is the second agent by name, and the list is in the order of the agents.
+    await page.getByTestId("routine-agent").selectOption({ index: 1 })
+    await page.getByTestId("routine-org").selectOption({ label: "Docs" })
+    await expect(page.getByTestId("routine-org-rule")).toBeVisible()
+    await expect(page.getByTestId("routine-save")).toBeDisabled()
+    await shot(page, "s139-11-routine-rule")
+    await page.getByTestId("routine-agent").selectOption({ index: 0 })
+    await expect(page.getByTestId("routine-org-rule")).toHaveCount(0)
+    await expect(page.getByTestId("routine-save")).toBeEnabled()
+    await page.keyboard.press("Escape")
+    await expect(dialog).toHaveCount(0)
+
+    // The routine holds the organization over a restart of the list.
+    const listed = await rpc<{ name: string; orgId: string | null }[]>(page, "routines.list", {
+      serverId,
+    })
+    expect(listed.find((r) => r.name === "Check the links")?.orgId).toBe(docs.id)
+    expect(listed.some((r) => r.name === "Check the facts")).toBe(false)
+  } finally {
+    await mock.close()
+    await app.close()
+  }
+})

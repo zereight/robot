@@ -11,6 +11,7 @@ import {
   type OrgLimitView,
   type OrgLineChange,
   type OrgPatch,
+  type OrgRepairLine,
   type OrgToolChoice,
   type OrgToolRow,
   type OrgUsageRow,
@@ -19,6 +20,8 @@ import {
   orgNameProblem,
   orgParentRefusal,
   orgToolNow,
+  REPAIR_LINE_DAYS,
+  REPAIR_LINE_TAIL,
   validDailyLimit,
   withOrgSwitch,
 } from "@robot/shared"
@@ -26,6 +29,7 @@ import { Context, Effect, Layer } from "effect"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
+import { readLogTail } from "./logs.ts"
 import {
   type OrgRow,
   orgEntriesOf,
@@ -94,6 +98,12 @@ export interface OrganizationsService {
   limit(id: string): Effect.Effect<OrgLimitView, AppError>
   /** One row for each organization of a server that has a daily token limit (spec 006, 030). */
   usage(serverId: string): Effect.Effect<readonly OrgUsageRow[]>
+  /**
+   * The newest repair of an organization in the organization log of the last 30 days (spec 030,
+   * "The repair in the form"), or null. A repair makes no notification, so the form is where the
+   * user finds it after the fact.
+   */
+  lastRepair(orgId: string): Effect.Effect<OrgRepairLine | null>
 }
 
 interface ToolRow {
@@ -244,6 +254,41 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
         limit === null || validDailyLimit(limit)
           ? Effect.succeed(limit)
           : Effect.fail(new AppError({ code: "invalid_daily_limit" }))
+
+      /** The newest repair of this organization in the log, or null (spec 030, "The repair in the form"). */
+      const lastRepair = (orgId: string): OrgRepairLine | null => {
+        const since = Date.now() - REPAIR_LINE_DAYS * 24 * 60 * 60 * 1000
+        // The log holds one JSON object for each line, oldest first (spec 014).
+        for (const raw of readLogTail(
+          platform.dataDir,
+          "organizations",
+          REPAIR_LINE_TAIL,
+        ).reverse()) {
+          let line: {
+            time?: unknown
+            event?: unknown
+            organizationId?: unknown
+            agent?: unknown
+            kind?: unknown
+          }
+          try {
+            line = JSON.parse(raw) as typeof line
+          } catch {
+            continue
+          }
+          if (line.event !== "tree_repaired" && line.event !== "line_repaired") continue
+          if (line.organizationId !== orgId) continue
+          const at = Date.parse(String(line.time))
+          if (Number.isNaN(at) || at < since) continue
+          return {
+            at,
+            kind: line.event === "tree_repaired" ? "tree" : "line",
+            reason: typeof line.kind === "string" ? line.kind : "",
+            agent: typeof line.agent === "string" ? line.agent : "",
+          }
+        }
+        return null
+      }
 
       /** The goal of an organization (spec 030, "Goal"): 0 to 400 characters. */
       const checkGoal = (goal: string) =>
@@ -397,6 +442,9 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
               sub,
             )
           const left = leaveToolLists(id)
+          // A routine that named this organization keeps running for its agent, with no
+          // organization (spec 030, "A routine of an organization").
+          db.run("UPDATE routine SET org_id = NULL WHERE org_id = ?", id)
           db.run("DELETE FROM org_unit WHERE id = ?", id)
           return left
         })
@@ -523,6 +571,7 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
             return view === null ? Effect.fail(failNotFound()) : Effect.succeed(view)
           }),
         usage: (serverId) => Effect.sync(() => orgUsageOf(db, serverId)),
+        lastRepair: (orgId) => Effect.sync(() => lastRepair(orgId)),
       })
     }),
   )

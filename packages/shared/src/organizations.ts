@@ -186,6 +186,24 @@ export const orgGoalsOfAgent = (
     .flatMap(({ org }) => (org.goal.trim() === "" ? [] : [{ name: org.name, text: org.goal }]))
 }
 
+/** How far back the form looks for a repair (spec 030, "The repair in the form"). */
+export const REPAIR_LINE_DAYS = 30
+/** The lines of the organization log that the form reads. The log holds 90 days (spec 014). */
+export const REPAIR_LINE_TAIL = 500
+
+/**
+ * The newest repair of an organization (spec 030, "The repair in the form"): the parent field of an
+ * organization was cleared, or an agent left because its organizations were not on one line.
+ */
+export interface OrgRepairLine {
+  readonly at: number
+  readonly kind: "tree" | "line"
+  /** For the tree: "loop" or "levels". Empty for a removal. */
+  readonly reason: string
+  /** For a removal: the name of the agent that left. Empty for a repair of the tree. */
+  readonly agent: string
+}
+
 /** True when a goal is longer than an organization may hold (spec 030, "Goal"). */
 export const goalTooLong = (text: string) => charLength(text) > ORG_GOAL_MAX
 

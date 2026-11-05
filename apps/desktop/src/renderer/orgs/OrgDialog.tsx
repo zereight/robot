@@ -8,6 +8,7 @@ import {
   ORG_NAME_MAX,
   type Org,
   type OrgCreate,
+  type OrgRepairLine,
   orgDeleteSubCount,
   orgParentOptions,
   orgPatchOf,
@@ -54,7 +55,8 @@ export const OrgDialog = (props: {
   /** The organization that a save made: the org chart puts the focus on its node (spec 029). */
   onSaved?: (org: Org) => void
 }) => {
-  const { t } = useApp()
+  const app = useApp()
+  const { t } = app
   const ui = useUi()
   const agents = useAgents()
   const orgs = useOrgs()
@@ -89,6 +91,20 @@ export const OrgDialog = (props: {
   const [confirmDelete, setConfirmDelete] = createSignal(false)
 
   const readOnly = () => !ui.canChange()
+
+  // The newest repair of this organization in the log, for the muted line of the form (spec 030).
+  const [repair, setRepair] = createSignal<OrgRepairLine | null>(null)
+  void (async () => {
+    if (!org) return
+    try {
+      setRepair(await call("organizations.lastRepair", { id: org.id }))
+    } catch {
+      // The line is a help, not a part of the form: a read that fails shows nothing.
+    }
+  })()
+  /** The date of a repair in the language of the interface, as a day and a time. */
+  const dateText = (at: number) =>
+    new Intl.DateTimeFormat(app.locale(), { dateStyle: "medium", timeStyle: "short" }).format(at)
 
   // An archived agent stays a member (spec 030). The form lists it, marked, so the user can remove
   // it. Only the archived agents that are members are offered.
@@ -467,6 +483,23 @@ export const OrgDialog = (props: {
             onText={setLimitText}
           />
         </fieldset>
+        {/* A repair of this organization makes no notification (spec 030, "Repair"), so the form
+            is where the user finds it after the fact. */}
+        <Show when={repair()}>
+          {(line) => (
+            <p class={styles.hint} data-testid="org-last-repair">
+              {line().kind === "tree"
+                ? t("orgs.lastRepair.tree", {
+                    date: dateText(line().at),
+                    reason:
+                      line().reason === "levels"
+                        ? t("orgs.lastRepair.levels")
+                        : t("orgs.lastRepair.loop"),
+                  })
+                : t("orgs.lastRepair.line", { date: dateText(line().at), agent: line().agent })}
+            </p>
+          )}
+        </Show>
         <Show when={error()}>
           {(err) => (
             <div class={styles.error} role="alert" data-testid="org-error">

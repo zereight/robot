@@ -2171,6 +2171,7 @@ interface RoutineRow {
   model_name: string | null
   model_effort: string | null
   token_limit: number | null
+  org_id: string | null
   unsaved_import: number
 }
 
@@ -2208,6 +2209,8 @@ const routine: KindDef = {
     model: { check: nullable(modelCheck) },
     // The most tokens that one run may use (spec 009). A computer of an older step has none.
     tokenLimit: { check: nullable(validTokenLimit) },
+    // The organization of a routine (spec 030). A computer of an older step has none.
+    orgId: { check: nullable(str(100, 1)) },
     channelId: { check: nullable(str(100, 1)) },
     enabled: { check: bool },
     runsOn: { check: str(64, 1) },
@@ -2246,6 +2249,7 @@ const routine: KindDef = {
             ? { accountId: r.model_account_id, model: r.model_name, effort: r.model_effort }
             : null,
         tokenLimit: r.token_limit,
+        orgId: r.org_id,
         channelId: r.channel_id,
         enabled: r.enabled === 1,
         runsOn: r.runs_on ?? ctx.self,
@@ -2271,6 +2275,7 @@ const routine: KindDef = {
       watch: f.watch === null ? null : JSON.stringify(f.watch),
       ...routineModelOf(ctx, f.model),
       token_limit: f.tokenLimit ?? null,
+      org_id: f.orgId ?? null,
       channel_id: f.channelId,
       enabled: f.enabled ? 1 : 0,
       // The missed-run rule counts from the time the routine came to this computer.
@@ -2291,6 +2296,7 @@ const routine: KindDef = {
     if (f.watch !== undefined) columns.watch = f.watch === null ? null : JSON.stringify(f.watch)
     if (f.model !== undefined) Object.assign(columns, routineModelOf(ctx, f.model))
     if (f.tokenLimit !== undefined) columns.token_limit = f.tokenLimit
+    if (f.orgId !== undefined) columns.org_id = f.orgId
     if (f.channelId !== undefined) columns.channel_id = f.channelId
     if (f.enabled !== undefined) columns.enabled = f.enabled ? 1 : 0
     // A change that makes it run on this computer is ignored: the user here decides that.

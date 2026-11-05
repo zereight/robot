@@ -946,6 +946,10 @@ export const handlers: Handlers = {
       Effect.flatMap(({ requestId }) => Retro.use((r) => r.cancel(requestId))),
       done,
     ),
+  "organizations.lastRepair": (input) =>
+    decode(ById)(input).pipe(
+      Effect.flatMap(({ id }) => Organizations.use((o) => o.lastRepair(id))),
+    ),
   "orgTools.list": (input) =>
     decode(Schema.Struct({ orgId: Schema.String }))(input).pipe(
       Effect.flatMap(({ orgId }) => Organizations.use((o) => o.tools(orgId))),

@@ -56,6 +56,8 @@ export const RoutineInput = Schema.Struct({
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
   /** The most tokens that one run may use. Absent or null: no limit (spec 009). */
   tokenLimit: Schema.optionalKey(TokenLimit),
+  /** The organization that the routine belongs to (spec 030, "A routine of an organization"). */
+  orgId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type RoutineInput = typeof RoutineInput.Type
 
@@ -74,6 +76,8 @@ export const RoutinePatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
   tokenLimit: Schema.optionalKey(TokenLimit),
+  /** The organization that the routine belongs to, or null for none (spec 030). */
+  orgId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 })
 export type RoutinePatch = typeof RoutinePatch.Type
 
@@ -92,6 +96,8 @@ export interface Routine {
   readonly model: AgentModel | null
   /** The most tokens that one run may use, or null for no limit (spec 009). */
   readonly tokenLimit: number | null
+  /** The organization that the routine belongs to, or null (spec 030). */
+  readonly orgId: string | null
   readonly place: RoutinePlace
   readonly enabled: boolean
   readonly createdAt: number

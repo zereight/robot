@@ -3,12 +3,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { messageText, ROUTINES_MAX, type Watch } from "@robot/shared"
-import { Effect } from "effect"
+import { Effect, Exit } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Events } from "./Events.ts"
 import { Notifier } from "./Notifier.ts"
+import { Organizations } from "./Organizations.ts"
 import { Providers } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
 import { Servers } from "./Servers.ts"
@@ -112,6 +113,8 @@ const setup = async () => {
         }),
       ),
     )
+  const org = (name: string, memberIds: string[]) =>
+    run(Organizations.use((o) => o.create({ serverId: local.id, name, memberIds, leadId: null })))
   const tick = (now: number) => run(Routines.use((r) => r.tick(now)))
   const tasks = () => run(Tasks.use((x) => x.list(local.id)))
   const idle = () =>
@@ -146,12 +149,23 @@ const setup = async () => {
     )
   const routine = async (id: string) =>
     (await run(Routines.use((r) => r.list(local.id)))).find((r) => r.id === id)
+  /** The code of a failure, as the code of the error of an effect. */
+  const fails = async <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+    const exit = await t.runtime.runPromiseExit(effect as never)
+    if (Exit.isSuccess(exit)) throw new Error("expected a failure")
+    const reason = exit.cause.reasons.find((r) => r._tag === "Fail") as
+      | { error: { code: string } }
+      | undefined
+    return reason?.error.code
+  }
   return {
     t,
     run,
     local,
     agent,
     account,
+    org,
+    fails,
     create,
     watch,
     routine,
@@ -906,5 +920,52 @@ describe("the events of a watch (spec 038)", () => {
     await s.tick(t0)
     await s.tick(t0 + 5 * MIN)
     expect(await s.run(Events.use((e) => e.list(s.local.id)))).toHaveLength(0)
+describe("a routine of an organization (spec 030)", () => {
+  test("the agent of the routine must be a member of the organization", async () => {
+    const s = await setup()
+    const docs = await s.org("Docs", [])
+    const code = await s.fails(
+      Routines.use((r) =>
+        r.create({
+          serverId: s.local.id,
+          agentId: s.agent.id,
+          name: "Check",
+          prompt: "Check.",
+          schedule: { kind: "every", minutes: 5, from: Date.now() },
+          place: { kind: "agent" },
+          orgId: docs.id,
+        }),
+      ),
+    )
+    expect(code).toBe("routine_not_member")
+  })
+
+  test("a member may name it, the field comes back, and a delete of the organization clears it", async () => {
+    const s = await setup()
+    const docs = await s.org("Docs", [s.agent.id])
+    const made = await s.create("Check.", 5, { orgId: docs.id })
+    expect(made.orgId).toBe(docs.id)
+    await s.run(Organizations.use((o) => o.remove(docs.id)))
+    const after = await s.routine(made.id)
+    // The routine keeps running for its agent, with no organization.
+    expect(after).toMatchObject({ orgId: null, agentId: s.agent.id })
+  })
+
+  test("an organization that is gone is refused", async () => {
+    const s = await setup()
+    const code = await s.fails(
+      Routines.use((r) =>
+        r.create({
+          serverId: s.local.id,
+          agentId: s.agent.id,
+          name: "Check",
+          prompt: "Check.",
+          schedule: { kind: "every", minutes: 5, from: Date.now() },
+          place: { kind: "agent" },
+          orgId: "gone",
+        }),
+      ),
+    )
+    expect(code).toBe("org_not_found")
   })
 })

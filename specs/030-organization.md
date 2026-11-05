@@ -126,6 +126,37 @@ it.
   changed its own instructions would escape the rule of 000 that an agent gets better only through
   things that the user can see and edit.
 
+- **The repair in the form**: the form of an organization shows one muted line above the button
+  "Delete organization" when the organization log holds a repair of this organization in the last
+  30 days: "Last repair: <date> — the tree would have a loop." or, for a removal of a member, "Last
+  repair: <date> — <agent> left, off one line." A repair makes no notification (see "Repair"), so
+  this line is where the user finds it after the fact. The log keeps the last 90 days (014), and the
+  line reads the same log.
+
+## A routine of an organization
+
+The work that repeats belongs to a team, not only to one agent. A routine can name an organization.
+
+- **The field**: "Organization" in the form of a routine, a choice of the organizations of this
+  computer and "None". "None" is the default, so every routine of today is unchanged.
+- **Who runs it**: the agent of the routine, as before. It must be a member of the organization that
+  the routine names, or the save is refused with the reason "Add <agent> to <organization> first."
+  The app does **not** make the lead the runner, and a change of the lead does not move a routine:
+  a job that silently changes hands is worse than a job the user files again.
+- **What the organization gives**: the daily token limit of the organization counts the runs of the
+  routine, because it counts the tasks of its members from every source (see "Daily token limit").
+  A routine whose agent leaves the organization keeps its runs and loses the limit, and the form
+  says so until the user picks another organization.
+- **Where it shows**: the routine form has the field. The list of routines shows the organization
+  as a chip beside the name, as a place shows its role badge (001). The form of an organization
+  shows the number of routines of this organization, as a muted line, with a click that opens the
+  list of routines.
+- **Limits**: a deleted organization leaves every routine with "None", and no routine changes its
+  agent. The limit of 50 routines of a server (009) counts every routine, with an organization or
+  not.
+- **Sync (019)**: the field syncs with the routine, as its other fields do. The routines that an
+  agent file holds (002) carry no organization.
+
 ## Organization tree
 
 - In the form, the field "Parent organization" lists "None" and the organizations that the rules of

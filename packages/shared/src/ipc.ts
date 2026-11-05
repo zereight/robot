@@ -45,7 +45,7 @@ import type {
 import type { MemoryCheckInfo } from "./memoryCheck.ts"
 import type { IslandState, Mute, MuteChoice, PlaceTarget } from "./notifications.ts"
 import type { HandOffRule, Organization } from "./organization.ts"
-import type { Org, OrgCreate, OrgPatch } from "./organizations.ts"
+import type { Org, OrgCreate, OrgPatch, OrgRepairLine } from "./organizations.ts"
 import type { ChartModel, OrgSnapshot } from "./orgChart.ts"
 import type { OrgLimitView, OrgUsageRow } from "./orgLimit.ts"
 import type { AgentOrgTool, OrgToolChoice, OrgToolEntry, OrgToolRow } from "./orgTools.ts"
@@ -878,6 +878,8 @@ export interface RpcMethods {
   }
   /** Drops a look back: the model call stops and its answer is not used. */
   "retro.cancel": { input: { requestId: string }; output: undefined }
+  /** The newest repair of an organization in the log of the last 30 days (spec 030). */
+  "organizations.lastRepair": { input: { id: string }; output: OrgRepairLine | null }
   "orgTools.list": { input: { orgId: string }; output: readonly OrgToolRow[] }
   /** Sets the value of an organization for a skill or a connection: "Inherit", "On" or "Off". */
   "orgTools.set": {

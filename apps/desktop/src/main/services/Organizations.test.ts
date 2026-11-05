@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
@@ -581,5 +581,71 @@ describe("the start of the app repairs a line (spec 030, 'One line', 'Repair')",
     const third = testRuntime({ databaseFile: file })
     await third.runtime.runPromise(Organizations.use((o) => o.list(local.id)))
     expect(() => readFileSync(join(third.dataDir, "logs", "organizations.log"), "utf8")).toThrow()
+  })
+})
+
+describe("the last repair of an organization in the form (spec 030)", () => {
+  test("it reads the newest line of the log for that organization, and null for another", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "robot-org-repair-")), "robot.db")
+    const first = testRuntime({ databaseFile: file })
+    const run1 = first.runtime.runPromise
+    const local = await run1(Servers.use((s) => s.local))
+    const ada = await run1(
+      Agents.use((a) => a.create({ serverId: local.id, name: "Ada", role: "", instructions: "" })),
+    )
+    const make = (name: string) =>
+      run1(
+        Organizations.use((o) =>
+          o.create({ serverId: local.id, name, memberIds: [], leadId: null }),
+        ),
+      )
+    const docs = await make("Docs")
+    const other = await make("Other")
+    const db = await run1(Database.use((d) => Effect.succeed(d)))
+    // The app refuses this, but data from outside can hold it: the rows are written by hand.
+    db.run("UPDATE org_unit SET created_at = 1000 WHERE id = ?", docs.id)
+    db.run("UPDATE org_unit SET created_at = 2000 WHERE id = ?", other.id)
+    for (const id of [docs.id, other.id])
+      db.run("INSERT INTO org_member (org_id, agent_id, position) VALUES (?, ?, 0)", id, ada.id)
+    await first.runtime.dispose()
+
+    // The start repairs the line and writes its line to the log.
+    const second = testRuntime({ databaseFile: file })
+    const read = await second.runtime.runPromise(Organizations.use((o) => o.lastRepair(other.id)))
+    expect(read).toMatchObject({ kind: "line", agent: "Ada" })
+    expect(read?.at).toBeGreaterThan(0)
+    // An organization that the log does not name gives null.
+    const none = await second.runtime.runPromise(Organizations.use((o) => o.lastRepair(docs.id)))
+    expect(none).toBeNull()
+    await second.runtime.dispose()
+  })
+
+  test("a line older than 30 days is not shown, and a newer one is", async () => {
+    const t = testRuntime()
+    const run = t.runtime.runPromise
+    const local = await run(Servers.use((s) => s.local))
+    const docs = await run(
+      Organizations.use((o) =>
+        o.create({ serverId: local.id, name: "Docs", memberIds: [], leadId: null }),
+      ),
+    )
+    const logs = join(t.dataDir, "logs")
+    mkdirSync(logs, { recursive: true })
+    const line = (days: number) =>
+      `${JSON.stringify({
+        time: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
+        event: "tree_repaired",
+        organizationId: docs.id,
+        organization: "Docs",
+        kind: "loop",
+      })}\n`
+    writeFileSync(join(logs, "organizations.log"), line(40))
+    expect(await run(Organizations.use((o) => o.lastRepair(docs.id)))).toBeNull()
+    // The newest line of the window wins.
+    writeFileSync(join(logs, "organizations.log"), line(40) + line(20) + line(2))
+    expect(await run(Organizations.use((o) => o.lastRepair(docs.id)))).toMatchObject({
+      kind: "tree",
+      reason: "loop",
+    })
   })
 })
