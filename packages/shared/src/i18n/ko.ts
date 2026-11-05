@@ -631,6 +631,8 @@ export const ko: Record<MessageKey, string> = {
   "chat.attach": "파일 첨부",
   "chat.attach.remove": "{name} 빼기",
   "chat.attach.list": "첨부한 파일",
+  "chat.attach.progress": "{percent}%",
+  "chat.attach.retry": "다시 시도",
   "chat.queue.files": "파일 {count}개",
   "settings.data.export": "데이터 내보내기",
   "settings.data.export.hint":

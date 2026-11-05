@@ -882,7 +882,14 @@ export interface RpcMethods {
    * linked computer and the phone get the main thread only (011, 012).
    */
   "chat.history": { input: ThreadRef; output: ChatHistory }
-  "chat.send": { input: ChatSend; output: { queued: boolean } }
+  "chat.send": {
+    input: ChatSend
+    /**
+     * `failedFiles` names the local paths that did not reach a linked server. The other files of
+     * the message still go (spec 003, flow 4). Absent when every file went, and on this computer.
+     */
+    output: { queued: boolean; failedFiles?: readonly string[] }
+  }
   "chat.stop": { input: ThreadRef; output: undefined }
   /** As `tasks.retry`, for the failed reply of a chat. */
   "chat.retry": {
@@ -1029,6 +1036,16 @@ export interface RpcEvents {
   "channels.changed": { channelId: string }
   "channel.message": ChannelMessage
   "channel.removed": { channelId: string; messageId: string }
+  /**
+   * A file of a message is going to a linked server (spec 003, flow 4). The window that sends it
+   * shows the progress on the chip. It does not go to other devices.
+   */
+  "attachments.transfer": {
+    path: string
+    sent: number
+    total: number
+    state: "sending" | "failed" | "done"
+  }
   /** A new or changed message. While a reply streams, this comes many times. */
   "chat.message": ChatMessage
   "chat.removed": { agentId: string; messageId: string }

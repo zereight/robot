@@ -634,6 +634,8 @@ export const en = {
   "chat.attach": "Attach files",
   "chat.attach.remove": "Remove {name}",
   "chat.attach.list": "Attached files",
+  "chat.attach.progress": "{percent}%",
+  "chat.attach.retry": "Retry",
   "chat.queue.files": "{count} files",
   "settings.data.export": "Export data",
   "settings.data.export.hint":

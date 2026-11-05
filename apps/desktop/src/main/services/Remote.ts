@@ -48,6 +48,37 @@ import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
 import { Servers } from "./Servers.ts"
 
+/** Files named here failed their first upload. A test sets `ROBOT_TEST_FAIL_UPLOAD` to one name. */
+const failedUploadOnce = new Set<string>()
+
+function failUploadOnce(name: string) {
+  const wanted = process.env.ROBOT_TEST_FAIL_UPLOAD
+  if (!wanted || wanted !== name || failedUploadOnce.has(name)) return false
+  failedUploadOnce.add(name)
+  return true
+}
+
+function pathsOf(input: unknown): readonly string[] {
+  if (typeof input !== "object" || input === null || !("files" in input)) return []
+  const files = input.files
+  if (!Array.isArray(files)) return []
+  return files.filter((item): item is string => typeof item === "string")
+}
+
+/** The message, with the tokens of the files that arrived. A file that failed is left out. */
+function messageWithTokens(input: unknown, tokens: readonly string[]) {
+  if (typeof input !== "object" || input === null) return input
+  const rest: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (key !== "files") rest[key] = value
+  }
+  return tokens.length > 0 ? { ...rest, files: tokens } : rest
+}
+
+function isQueued(value: unknown) {
+  return typeof value === "object" && value !== null && "queued" in value && value.queued === true
+}
+
 export interface RemoteService {
   /** Step one of "Connect to a computer": proves the code and shows who answers. */
   probe(input: {
@@ -306,50 +337,82 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
         error: { code, message },
       })
 
-      /** Sends the files of a message to the server in pieces, and gives the tokens back. */
+      /**
+       * Sends the files of a message to the server in pieces, and gives the tokens back. One file
+       * that fails does not stop the others (spec 003, flow 4). The window hears the progress.
+       */
       const uploadFiles = async (connection: Connection, input: unknown) => {
-        const paths = (input as { files?: readonly string[] }).files ?? []
-        if (paths.length === 0) return input
+        const paths = pathsOf(input)
+        const none: readonly string[] = []
+        if (paths.length === 0) return { body: input, failed: none }
         if (paths.length > ATTACH_MAX) throw new LinkError("too_many_files")
         const tokens: string[] = []
+        const failed: string[] = []
         for (const path of paths) {
-          let size = 0
           try {
-            const info = statSync(path)
-            if (!info.isFile()) throw new Error("not a file")
-            size = info.size
-          } catch {
-            throw new LinkError("file_unreadable", basename(path))
-          }
-          if (size > ATTACH_BYTES) throw new LinkError("file_too_large", basename(path))
-          const uploadId = randomUUID()
-          const fd = openSync(path, "r")
-          try {
-            let offset = 0
-            let token: string | null = null
-            for (;;) {
-              const length = Math.min(FILE_CHUNK, size - offset)
-              const buffer = Buffer.alloc(length)
-              if (length > 0) readSync(fd, buffer, 0, length, offset)
-              const done = offset + length >= size
-              const ack = (await connection.request("attachment.upload", {
-                uploadId,
-                name: basename(path),
-                offset,
-                data: buffer.toString("base64"),
-                done,
-              })) as UploadAck
-              offset += length
-              token = ack.token
-              if (done) break
-            }
-            if (!token?.startsWith(UPLOAD_PREFIX)) throw new LinkError("internal")
-            tokens.push(token)
-          } finally {
-            closeSync(fd)
+            tokens.push(await uploadOne(connection, path))
+          } catch (error) {
+            if (error instanceof LinkError && error.code === "too_many_files") throw error
+            failed.push(path)
           }
         }
-        return { ...(input as object), files: tokens }
+        return { body: messageWithTokens(input, tokens), failed }
+      }
+
+      const report = (
+        path: string,
+        sent: number,
+        total: number,
+        state: "sending" | "failed" | "done",
+      ) => {
+        bus.window("attachments.transfer", { path, sent, total, state })
+      }
+
+      /** One file, in pieces. The chip of the window hears each piece. */
+      const uploadOne = async (connection: Connection, path: string) => {
+        const name = basename(path)
+        let size = 0
+        try {
+          const info = statSync(path)
+          if (!info.isFile()) throw new Error("not a file")
+          size = info.size
+        } catch {
+          throw new LinkError("file_unreadable", name)
+        }
+        if (size > ATTACH_BYTES) throw new LinkError("file_too_large", name)
+        // A test can fail the first try of one named file. The next try goes.
+        if (failUploadOnce(name)) {
+          report(path, 0, size, "failed")
+          throw new LinkError("file_unreadable", name)
+        }
+        const uploadId = randomUUID()
+        const fd = openSync(path, "r")
+        try {
+          let offset = 0
+          let token: string | null = null
+          for (;;) {
+            const length = Math.min(FILE_CHUNK, size - offset)
+            const buffer = Buffer.alloc(length)
+            if (length > 0) readSync(fd, buffer, 0, length, offset)
+            const done = offset + length >= size
+            report(path, offset, size, "sending")
+            const ack = (await connection.request("attachment.upload", {
+              uploadId,
+              name,
+              offset,
+              data: buffer.toString("base64"),
+              done,
+            })) as UploadAck
+            offset += length
+            token = ack.token
+            report(path, offset, size, done ? "done" : "sending")
+            if (done) break
+          }
+          if (!token?.startsWith(UPLOAD_PREFIX)) throw new LinkError("internal")
+          return token
+        } finally {
+          closeSync(fd)
+        }
       }
 
       /** Pulls a file of the server piece by piece. `cap` stops a file that is longer than it. */
@@ -420,8 +483,16 @@ export class Remote extends Context.Service<Remote, RemoteService>()("robot/main
           try {
             if (method === "attachments.save") return await saveFile(link.id, input)
             if (method === "attachments.picture") return await pictureFile(link.id, input)
-            const payload = method === "chat.send" ? await uploadFiles(connection, input) : input
-            const value = await connection.request(method, payload)
+            if (method === "chat.send") {
+              const uploaded = await uploadFiles(connection, input)
+              const value = await connection.request(method, uploaded.body)
+              const queued = isQueued(value)
+              return ok({
+                queued,
+                ...(uploaded.failed.length > 0 ? { failedFiles: uploaded.failed } : {}),
+              })
+            }
+            const value = await connection.request(method, input)
             if (key) cache.set(link.id, key, value)
             if (method === "tools.respond") {
               // Answered here: a notice for it must not show again (spec 015).
