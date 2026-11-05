@@ -1256,6 +1256,15 @@ export const migrations: readonly string[] = [
   ALTER TABLE skill DROP COLUMN channels;
   ALTER TABLE tool_connection DROP COLUMN channels;
   `,
+  `
+  -- The daily token limit of a channel is cleared (spec 030, "Migration"). The step that made the
+  -- organizations has copied each limit to its organization, and the limit counts the tasks of
+  -- the members from every source now. The column stays in the table, because a table is not
+  -- rebuilt for one column; nothing reads it or syncs it. A task that the old limit blocked keeps
+  -- its reason under the code of organizations.
+  UPDATE channel SET daily_token_limit = NULL WHERE daily_token_limit IS NOT NULL;
+  UPDATE task SET error_code = 'org_limit' WHERE error_code = 'channel_limit';
+  `,
 ]
 
 /**

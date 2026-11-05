@@ -184,14 +184,15 @@ describe("the migration of channels (spec 030, Migration)", () => {
     expect(db.prepare("SELECT organizations FROM skill WHERE id = 'sk2'").get()).toEqual({
       organizations: "[]",
     })
-    // The channels keep their fields and their members; the later steps move each rule.
+    // The channels keep their members and, until S121, their parent. The daily token limit is
+    // cleared: it is in the organization (spec 030, "Migration", "What the channel loses").
     expect(
       db
         .prepare(
           "SELECT parent_channel_id AS p, daily_token_limit AS l FROM channel WHERE id = 'Docs'",
         )
         .get(),
-    ).toEqual({ p: "Product", l: 50_000 })
+    ).toEqual({ p: "Product", l: null })
     expect(
       db.prepare("SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = 'Docs'").get(),
     ).toEqual({ n: 2 })
@@ -332,5 +333,75 @@ describe("the step that removes the channels from the agent lists (spec 030, 'To
     expect(JSON.parse(list("tool_connection", "cn").organizations)).toHaveLength(1)
     expect(db.prepare("SELECT COUNT(*) AS n FROM skill").get()).toEqual({ n: 2 })
     expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })
+  })
+})
+
+describe("the step that clears the daily token limit of channels (spec 030, 'Migration')", () => {
+  const CLEAR = migrations.findIndex((sql) => sql.includes("SET daily_token_limit = NULL"))
+
+  test("it comes after the step that makes the organizations, and drops or deletes nothing", () => {
+    expect(CLEAR).toBeGreaterThan(STEP)
+    expect(migrations.filter((sql) => sql.includes("SET daily_token_limit = NULL"))).toHaveLength(1)
+    expect(migrations[CLEAR]).not.toMatch(/DROP |DELETE FROM/i)
+  })
+
+  test("an old database: the organization holds the limit first, then the channel keeps none", () => {
+    const db = before((d) => {
+      for (const a of ["P", "D"]) agent(d, a)
+      channel(d, "Product", { members: ["P"], lead: "P", limit: 100_000, created: 1 })
+      channel(d, "Docs", { parent: "Product", members: ["D"], limit: 50_000, created: 2 })
+      channel(d, "Ops", { members: ["P"], created: 3 })
+      // A task that the old limit blocked, and a task of another kind.
+      d.exec(`
+        INSERT INTO task (id, agent_id, prompt, label, source, source_id, state, error_code,
+          error_detail, created_at)
+          VALUES ('t1', 'D', 'p', 'l', 'channel', 'Docs', 'blocked', 'channel_limit', 'Docs', 5),
+                 ('t2', 'D', 'p', 'l', 'channel', 'Docs', 'failed', 'token_limit', '5000', 6);
+      `)
+    })
+    migrateThrough(db, STEP)
+    const limits = () =>
+      db.prepare("SELECT name, daily_token_limit AS n FROM channel ORDER BY name").all()
+    // The organizations copy the limits, and the channels still hold them.
+    expect(orgs(db).map((o) => [o.name, o.limit_])).toEqual([
+      ["Docs", 50_000],
+      ["Product", 100_000],
+    ])
+    expect(limits()).toEqual([
+      { name: "Docs", n: 50_000 },
+      { name: "Ops", n: null },
+      { name: "Product", n: 100_000 },
+    ])
+
+    migrate(db)
+
+    // The channel keeps no limit. The column stays (no table is rebuilt), nothing reads it.
+    expect(limits()).toEqual([
+      { name: "Docs", n: null },
+      { name: "Ops", n: null },
+      { name: "Product", n: null },
+    ])
+    expect(columns(db, "channel")).toContain("daily_token_limit")
+    // The organizations keep their limits.
+    expect(orgs(db).map((o) => [o.name, o.limit_])).toEqual([
+      ["Docs", 50_000],
+      ["Product", 100_000],
+    ])
+    // The blocked task keeps its reason under the code of organizations. Other errors stay.
+    expect(db.prepare("SELECT id, error_code, error_detail FROM task ORDER BY id").all()).toEqual([
+      { id: "t1", error_code: "org_limit", error_detail: "Docs" },
+      { id: "t2", error_code: "token_limit", error_detail: "5000" },
+    ])
+    expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })
+  })
+
+  test("it gives the same result when it runs again on a database that has it", () => {
+    const db = before((d) => {
+      agent(d, "P")
+      channel(d, "Docs", { members: ["P"], limit: 50_000, created: 1 })
+    })
+    migrate(db)
+    migrate(db)
+    expect(db.prepare("SELECT daily_token_limit AS n FROM channel").get()).toEqual({ n: null })
   })
 })
