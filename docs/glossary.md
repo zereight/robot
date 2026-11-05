@@ -124,6 +124,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Deepest organization | The lowest of the organizations of an agent. They are on one line, so there is one (030, 035). | 가장 낮은 조직 (proposed) | main organization, primary team |
 | Organization prefix | The text "[Docs]" in front of the name of an agent that is in the organization "Docs" (035). | 조직 말머리 (proposed) | tag, label, BOT tag (that is the small mark on a message, 003) |
 | Shown name | The prefix and the name of an agent, for example "[Docs] Ada" (035). | 보이는 이름 (proposed) | display name, nickname |
+| Show the organization before an agent name | The switch in Settings → Appearance and in the settings of the phone that turns the organization prefix on or off (035, 013, 011). | 에이전트 이름 앞에 조직 표시 | show team tag, name prefix |
 | Access | What an organization gives to its members and to its lower organizations: tools, a daily token limit and a hand-off range (030). | 권한 | permission, permission level (that is 007) |
 | Inherit | The value of a tool or of the hand-off range that takes the value of the parent organization. The other values are "On" and "Off", and for the range "Own organization", "Own and lower organizations" and "All agents" (030). | 상속, 켬 (끔 is proposed: "Off" comes with S120) | default, copy |
 | Hand-off rules | The settings part with the hand-off rule and "Ask up the line" (030, 013). | 전달 규칙 (proposed) | organization, Teams (that is the link of 028) |
