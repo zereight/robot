@@ -389,34 +389,34 @@ export const ChatView = (props: ChatViewProps) => {
           </Show>
           {props.end}
         </div>
+        <Show when={!atBottom() || backTo() !== undefined || origin() !== undefined}>
+          <div class={styles.floating}>
+            <Show when={backTo() !== undefined || origin() !== undefined}>
+              <button
+                type="button"
+                class={styles.floatButton}
+                onClick={goBack}
+                data-testid="jump-back"
+              >
+                {t("chat.back")}
+              </button>
+            </Show>
+            <Show when={!atBottom()}>
+              <button
+                type="button"
+                class={styles.floatButton}
+                onClick={() => {
+                  setBackTo(undefined)
+                  scrollToBottom()
+                }}
+                data-testid="jump-latest"
+              >
+                {t("chat.jumpLatest")}
+              </button>
+            </Show>
+          </div>
+        </Show>
       </div>
-      <Show when={!atBottom() || backTo() !== undefined || origin() !== undefined}>
-        <div class={styles.floating} style={{ bottom: "auto", top: "12px" }}>
-          <Show when={backTo() !== undefined || origin() !== undefined}>
-            <button
-              type="button"
-              class={styles.floatButton}
-              onClick={goBack}
-              data-testid="jump-back"
-            >
-              {t("chat.back")}
-            </button>
-          </Show>
-          <Show when={!atBottom()}>
-            <button
-              type="button"
-              class={styles.floatButton}
-              onClick={() => {
-                setBackTo(undefined)
-                scrollToBottom()
-              }}
-              data-testid="jump-latest"
-            >
-              {t("chat.jumpLatest")}
-            </button>
-          </Show>
-        </div>
-      </Show>
       <Show when={cutNotice()}>
         {(cut) => <RestartNotice agentId={props.agent.id} threadId={props.threadId} cut={cut()} />}
       </Show>

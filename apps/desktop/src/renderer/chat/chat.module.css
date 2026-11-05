@@ -382,12 +382,12 @@
 }
 
 .floating {
-  position: absolute;
+  position: sticky;
   bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  align-self: center;
   display: flex;
   gap: 8px;
+  margin-top: 8px;
   z-index: 2;
 }
 
@@ -399,9 +399,9 @@
   border: 1px solid var(--c-border);
   background: var(--c-elevated);
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: 8px 16px;
   font-weight: 500;
-  font-size: var(--text-xs);
+  font-size: var(--text-s);
 }
 
 .floatButton:active,
