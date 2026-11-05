@@ -11,6 +11,7 @@ import {
   checkConnectionName,
   commandLine,
   type MessageKey,
+  orgPickerEntries,
   type ToolConnection,
   type ToolConnectionInput,
   type ToolConnectionKind,
@@ -22,6 +23,7 @@ import { call, RpcFailure } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { Button, IconButton, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import styles from "./connections.module.css"
@@ -81,6 +83,7 @@ export const ConnectionFormDialog = (props: {
   const { t } = useApp()
   const agents = useAgents()
   const channels = useChannels()
+  const orgs = useOrgs()
   const was = props.connection
   const fromView = (list: ToolConnection["env"]): Entry[] =>
     list.map((e) => ({
@@ -107,6 +110,20 @@ export const ConnectionFormDialog = (props: {
   const [chosenChannels, setChosenChannels] = createSignal<readonly string[]>(
     (was?.channels ?? []).filter((id) => channels.byId(id) !== undefined),
   )
+  // The organizations with the value "On" (spec 018, 030). One that is gone is left out. A value
+  // "Off" is kept as it is and is not shown here: a later step sets it.
+  const [checkedOrgs, setCheckedOrgs] = createSignal<ReadonlySet<string>>(
+    new Set(
+      (was?.organizations ?? [])
+        .filter((e) => e.value === "on" && orgs.byId(e.id) !== undefined)
+        .map((e) => e.id),
+    ),
+  )
+  const toggleOrg = (id: string) => {
+    const next = new Set(checkedOrgs())
+    if (!next.delete(id)) next.add(id)
+    setCheckedOrgs(next)
+  }
   const [confirmed, setConfirmed] = createSignal(false)
   const [touched, setTouched] = createSignal<ReadonlySet<Field>>(new Set())
   const [problem, setProblem] = createSignal<{ field: Field | null; text: ErrorText }>()
@@ -142,6 +159,13 @@ export const ConnectionFormDialog = (props: {
     headers: kind() === "web" ? entriesOf(headers()) : [],
     agents: all() ? "all" : chosen(),
     channels: all() ? [] : chosenChannels(),
+    organizations: all()
+      ? []
+      : orgPickerEntries(
+          was?.organizations ?? [],
+          checkedOrgs(),
+          (id) => orgs.byId(id) !== undefined,
+        ),
   })
 
   // A Test shows the form as it was. A change makes it old, so it goes.
@@ -488,6 +512,30 @@ export const ConnectionFormDialog = (props: {
                         data-agent={agent.name}
                       />
                       <span>{agent.name}</span>
+                    </label>
+                  </li>
+                )}
+              </For>
+              <For each={orgs.orgs()}>
+                {(org) => (
+                  <li>
+                    <label class={styles.agentRow}>
+                      <input
+                        type="checkbox"
+                        checked={checkedOrgs().has(org.id)}
+                        onChange={() => toggleOrg(org.id)}
+                        data-testid="connection-org"
+                        data-org={org.name}
+                      />
+                      <span>{org.name}</span>
+                      <span class={styles.channelMark} data-testid="connection-org-mark">
+                        {t("tools.orgMark")}
+                      </span>
+                      <Show when={checkedOrgs().has(org.id)}>
+                        <span class={styles.orgValue} data-testid="connection-org-value">
+                          {t("skills.orgs.on")}
+                        </span>
+                      </Show>
                     </label>
                   </li>
                 )}

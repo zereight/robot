@@ -1,4 +1,5 @@
 import {
+  orgPickerEntries,
   SKILL_DESCRIPTION_MAX,
   SKILL_INSTRUCTIONS_MAX,
   SKILL_NAME_MAX,
@@ -12,6 +13,7 @@ import { call, RpcFailure } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Segmented } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -54,6 +56,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   const ui = useUi()
   const agents = useAgents()
   const channels = useChannels()
+  const orgs = useOrgs()
   const work = props.open.kind === "work" ? props.open.source : undefined
   const edited = props.open.kind === "edit" ? props.open.skill : undefined
   const [name, setName] = createSignal(edited?.name ?? "")
@@ -64,6 +67,15 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
   // The channels in the list (spec 017, 030). A channel that is gone is left out.
   const [chosenChannels, setChosenChannels] = createSignal<readonly string[]>(
     (edited?.channelIds ?? []).filter((id) => channels.byId(id) !== undefined),
+  )
+  // The organizations with the value "On" (spec 017, 030). An organization that is gone is left out.
+  // A value "Off" is kept as it is and is not shown here: a later step sets it.
+  const [checkedOrgs, setCheckedOrgs] = createSignal<ReadonlySet<string>>(
+    new Set(
+      (edited?.organizations ?? [])
+        .filter((e) => e.value === "on" && orgs.byId(e.id) !== undefined)
+        .map((e) => e.id),
+    ),
   )
   const [phase, setPhase] = createSignal<"writing" | "ready" | "failed">(work ? "writing" : "ready")
   const [failure, setFailure] = createSignal<ErrorText>()
@@ -89,6 +101,7 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
       setAll(false)
       setChosen([result.agentId])
       setChosenChannels([])
+      setCheckedOrgs(new Set<string>())
       setOutside(result.outside)
       setPhase("ready")
     } catch (e) {
@@ -116,6 +129,12 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
         : [...chosenChannels(), id],
     )
 
+  const toggleOrg = (id: string) => {
+    const next = new Set(checkedOrgs())
+    if (!next.delete(id)) next.add(id)
+    setCheckedOrgs(next)
+  }
+
   const save = async (event?: SubmitEvent) => {
     event?.preventDefault()
     const serverId = ui.server()?.id
@@ -129,6 +148,13 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
         instructions: instructions(),
         agentIds: all() ? null : chosen(),
         channelIds: all() ? [] : chosenChannels(),
+        organizations: all()
+          ? []
+          : orgPickerEntries(
+              edited?.organizations ?? [],
+              checkedOrgs(),
+              (id) => orgs.byId(id) !== undefined,
+            ),
       }
       if (edited) await call("skills.update", { id: edited.id, ...fields })
       else await call("skills.create", { serverId, ...fields })
@@ -269,6 +295,30 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
                           data-agent={agent.name}
                         />
                         <span>{agent.name}</span>
+                      </label>
+                    </li>
+                  )}
+                </For>
+                <For each={orgs.orgs()}>
+                  {(org) => (
+                    <li>
+                      <label class={skillStyles.agentRow}>
+                        <input
+                          type="checkbox"
+                          checked={checkedOrgs().has(org.id)}
+                          onChange={() => toggleOrg(org.id)}
+                          data-testid="skill-org"
+                          data-org={org.name}
+                        />
+                        <span>{org.name}</span>
+                        <span class={skillStyles.channelMark} data-testid="skill-org-mark">
+                          {t("tools.orgMark")}
+                        </span>
+                        <Show when={checkedOrgs().has(org.id)}>
+                          <span class={skillStyles.orgValue} data-testid="skill-org-value">
+                            {t("skills.orgs.on")}
+                          </span>
+                        </Show>
                       </label>
                     </li>
                   )}

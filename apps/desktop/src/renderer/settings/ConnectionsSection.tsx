@@ -12,6 +12,7 @@ import { call } from "../lib/rpc.ts"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
 import { Presence } from "../ui/Presence.tsx"
@@ -30,6 +31,7 @@ export const ConnectionsSection = () => {
   const ui = useUi()
   const agents = useAgents()
   const channels = useChannels()
+  const orgs = useOrgs()
   const [fetched, { refetch }] = createResource(
     () => (ui.linked() ? undefined : true),
     () => call("connections.list"),
@@ -83,14 +85,15 @@ export const ConnectionsSection = () => {
         : t(`connections.state.${c.state}` as MessageKey)
 
   /**
-   * Who may use the connection: "All agents", or the names of the agents and channels that are
-   * still there (spec 018, 030).
+   * Who may use the connection: "All agents", or the names of the agents, organizations (value
+   * "On") and channels that are still there (spec 018, 030).
    */
   const forWhom = (c: ToolConnection) =>
     c.agents === "all"
       ? t("connections.agents.all")
       : [
           ...c.agents.map((id) => agents.byId(id)?.name),
+          ...c.organizations.filter((e) => e.value === "on").map((e) => orgs.byId(e.id)?.name),
           ...c.channels.map((id) => channels.byId(id)?.name),
         ]
           .filter((name): name is string => name !== undefined)

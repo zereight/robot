@@ -35,6 +35,12 @@
 }
 
 /* The mark "channel" beside a channel in the list of who may use a skill (spec 030). */
+/* The value of an organization in the list of who may use it (spec 030). */
+.orgValue {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+}
+
 .channelMark {
   padding: 0 6px;
   border: 1px solid var(--c-border);
