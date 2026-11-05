@@ -21,6 +21,8 @@ const KEY = "sk-chat-test"
 let failNext = true
 /** The last message of each request that reached the model. */
 const asked: string[] = []
+/** The system text of each request that reached the model. */
+const systems: string[] = []
 /** What the server saw of the requests that it holds with no answer. */
 const held = { opened: 0, closed: 0 }
 
@@ -54,6 +56,7 @@ const server = Bun.serve({
     const body = (await req.json()) as { messages: { role: string; content: string }[] }
     const last = body.messages.at(-1)?.content ?? ""
     asked.push(last)
+    systems.push(body.messages.find((m) => m.role === "system")?.content ?? "")
     if (last.endsWith("fail") && failNext) {
       failNext = false
       return Response.json({ error: { message: "boom" } }, { status: 500 })
@@ -200,6 +203,19 @@ describe("Chat", () => {
     expect(row?.unread).toBe(1)
     await t.run(Chat.use((c) => c.markRead(t.agent.id)))
     expect((await t.run(Places.use((p) => p.list(t.local.id))))[1]?.places[0]?.unread).toBe(0)
+  })
+
+  test("the role line of the agent does not reach the model (spec 002)", async () => {
+    // A role line is a label for placement. A direct chat gives the model the handbook and the
+    // instructions, and no role line.
+    const t = await setup()
+    await t.run(Agents.use((a) => a.update(t.agent.id, { role: "Researcher" })))
+    await t.send("hello")
+    await t.settled()
+    const system = systems.at(-1) ?? ""
+    // The text that the model gets is the text of the turn: it holds the instructions.
+    expect(system).toContain("Be brief.")
+    expect(system).not.toContain("Researcher")
   })
 
   test("stop keeps the partial reply marked stopped; the next send works", async () => {
