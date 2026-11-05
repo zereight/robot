@@ -354,6 +354,7 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
     await closeDialog(page)
     await page.getByTestId("page-usage").click()
     await expect(page.getByTestId("usage-org-row")).toHaveCount(1)
+    await page.getByTestId("usage-orgs").scrollIntoViewIfNeeded()
     await shot(page, "s120-limit-10-narrow-usage-ko")
   } finally {
     await app.close().catch(() => {})

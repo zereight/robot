@@ -130,6 +130,10 @@
   font-size: var(--text-xs);
   overflow-wrap: anywhere;
 }
+/* The daily token limit has room above it, so it does not touch the part "Tools". */
+.limitField {
+  margin-top: 8px;
+}
 /* The daily token limit: the switch, then the number. */
 .limitRow {
   display: flex;

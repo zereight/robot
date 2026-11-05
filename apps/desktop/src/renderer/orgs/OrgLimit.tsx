@@ -58,7 +58,7 @@ export const OrgLimitField = (props: {
   }
 
   return (
-    <div class={styles.field} data-testid="org-daily-limit">
+    <div class={`${styles.field} ${styles.limitField}`} data-testid="org-daily-limit">
       <span class={styles.label}>{t("orgs.dailyLimit")}</span>
       <div class={styles.limitRow}>
         <Switch
