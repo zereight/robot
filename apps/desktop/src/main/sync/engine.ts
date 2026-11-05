@@ -622,6 +622,60 @@ export class SyncEngine {
     ])
   }
 
+  // ------------------------------------------------------------------------------ main agent
+
+  /**
+   * Keeps one main agent on a server after changes of the other computer (spec 002, 019). Two
+   * computers can each turn the switch on for another agent while they are apart. Each change is
+   * right alone, and together they leave two agents with the flag. The agent whose change of the
+   * flag is the later one keeps it, and the flag of the others is cleared. Both computers hold the
+   * same stamps, so both choose the same agent. The cleared flag is a change like any other: it
+   * waits to go out, and the other computer finds nothing to repair. Returns what the window
+   * needs to know.
+   *
+   * Like `repairTree`, `apply` does not call it. The caller runs it after the sync has applied all
+   * the changes that it has, and after a first copy is whole.
+   */
+  repairMain(): Touch[] {
+    return this.#db.transaction(() => this.#repairMain())
+  }
+
+  #repairMain(): Touch[] {
+    const touches: Touch[] = []
+    const servers = this.#db.all<{ server_id: string }>(
+      "SELECT server_id FROM agent WHERE is_main = 1 GROUP BY server_id HAVING COUNT(*) > 1",
+    )
+    if (servers.length === 0) return touches
+    // A change made here that waits for its stamp gets it first, so both computers compare
+    // the same stamps.
+    for (const row of this.#db.all<{ id: string }>(
+      "SELECT id FROM sync_dirty WHERE kind = 'agent'",
+    ))
+      this.#settle("agent", row.id)
+    const stamps = new Map(
+      this.#db
+        .all<{ id: string; l: number; c: number; n: string }>(
+          "SELECT id, l, c, n FROM sync_field WHERE kind = 'agent' AND field = 'isMain'",
+        )
+        .map((r) => [r.id, { l: r.l, c: r.c, n: r.n }]),
+    )
+    for (const { server_id } of servers) {
+      const flagged = this.#db
+        .all<{ id: string }>("SELECT id FROM agent WHERE server_id = ? AND is_main = 1", server_id)
+        .map((r) => r.id)
+      // The later change wins. Equal stamps cannot come from two computers, but the order of the
+      // ids keeps the choice the same on both.
+      const order = (a: string, b: string) =>
+        compareStamps(stamps.get(b) ?? NO_STAMP, stamps.get(a) ?? NO_STAMP) ||
+        (a < b ? -1 : a > b ? 1 : 0)
+      for (const id of [...flagged].sort(order).slice(1)) {
+        this.#db.run("UPDATE agent SET is_main = 0, updated_at = ? WHERE id = ?", this.#now(), id)
+        touches.push({ kind: "agent", id, action: "changed", parent: null })
+      }
+    }
+    return touches
+  }
+
   #applyOne(op: ParsedOp, options: ApplyOptions, result: ApplyResult): boolean {
     const kind = op.kind
     const def = KINDS[kind]

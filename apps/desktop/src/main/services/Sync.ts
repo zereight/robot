@@ -1078,8 +1078,8 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
       }
 
       // ------------------------------------------------------------------ the channel tree
-      // The tree is checked after the sync has applied all the changes that it has, not between the
-      // batches of one sync (spec 030, "Repair"). A set of changes that makes a valid tree can cross
+      // The tree, and the one main agent (spec 002), are checked after the sync has applied all the
+      // changes that it has, not between the batches of one sync (spec 030, "Repair"). A set of changes that makes a valid tree can cross
       // in two batches, and the first one alone can show a loop that the second one removes. A batch
       // does not say if more follow, so the check waits until no batch has come for a short time.
       // The tree on the screen is safe in that time: the reading of the tree sets a broken line
@@ -1093,7 +1093,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         // A first copy is checked when it is whole (`finishCopy`): it holds the channels in parts.
         if (pairRow()?.phase === "copying") return
         repairDue = false
-        touched(engine.repairTree())
+        touched([...engine.repairTree(), ...engine.repairMain()])
       }
       /** The check is due. Each batch that comes in the meantime moves it back. */
       const repairSoon = () => {
@@ -1118,7 +1118,7 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         if (repairTimer) clearTimeout(repairTimer)
         repairTimer = undefined
         repairDue = false
-        const repaired = engine.repairTree()
+        const repaired = [...engine.repairTree(), ...engine.repairMain()]
         updatePair({ phase: "live", synced_at: Date.now() })
         attendAll()
         touched(repaired)
@@ -1297,7 +1297,12 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         // A first copy is checked when it is whole. Changes made since: the check waits for the
         // end of the flow of batches.
         if (parsed.snap === undefined) {
-          if (result.touches.some((t) => t.kind === "channel" && t.action !== "deleted"))
+          // The channel tree (spec 030) and the main agent (spec 002) are checked after the last batch.
+          if (
+            result.touches.some(
+              (t) => (t.kind === "channel" || t.kind === "agent") && t.action !== "deleted",
+            )
+          )
             repairDue = true
           if (repairDue) repairSoon()
         }

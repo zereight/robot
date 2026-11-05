@@ -1643,6 +1643,66 @@ describe("the handbook crosses as versions, and the newest one is the handbook (
   })
 })
 
+describe('the switch "Main agent" syncs with the agent (spec 002, 019)', () => {
+  test("it is a field, a computer of an older step has none, and a wrong type is refused", async () => {
+    expect(Object.keys(KINDS.agent.fields)).toContain("isMain")
+    expect(KINDS.agent.required).not.toContain("isMain")
+    const agentOp = (extra: Record<string, unknown>) => ({
+      k: "agent",
+      i: "a-1",
+      o: "dev-b",
+      f: Object.fromEntries(
+        Object.entries({
+          name: "Ada",
+          role: "",
+          instructions: "",
+          face: { shape: 0, hue: 0 },
+          model: null,
+          archived: false,
+          createdAt: NOW,
+          ...extra,
+        }).map(([k, v]) => [k, { v, s: stamp }]),
+      ),
+    })
+    expect(parseOp(agentOp({ isMain: true }), NOW)).toBeDefined()
+    expect(parseOp(agentOp({}), NOW)).toBeDefined()
+    expect(parseOp(agentOp({ isMain: "yes" }), NOW)).toBeUndefined()
+    expect(parseOp(agentOp({ isMain: 1 }), NOW)).toBeUndefined()
+  })
+
+  test("it is read and written as a field; an agent from an older computer is not the main agent", async () => {
+    const rt = testRuntime({ name: "Switch" })
+    runtimes.push(rt)
+    const run = rt.runtime.runPromise
+    const db = await run(Database.use((d) => Effect.succeed(d)))
+    const serverId = (await run(Servers.use((s) => s.local))).id
+    const ada = await run(
+      Agents.use((a) => a.create({ serverId, name: "Ada", role: "", instructions: "" })),
+    )
+    const ctx = target(db, join(rt.dataDir, "switch"))
+    expect(KINDS.agent.read(ctx, ada.id)?.fields.isMain).toBe(false)
+    await run(Agents.use((a) => a.update(ada.id, { isMain: true })))
+    expect(KINDS.agent.read(ctx, ada.id)?.fields.isMain).toBe(true)
+    KINDS.agent.write(ctx, ada.id, { isMain: false })
+    expect(KINDS.agent.read(ctx, ada.id)?.fields.isMain).toBe(false)
+    // A first copy that holds the flag makes the agent the main agent here. A copy without the field
+    // (a computer of an older step) makes a plain agent.
+    const base = {
+      name: "Old",
+      role: "",
+      instructions: "",
+      face: { shape: 0, hue: 0 },
+      model: null,
+      archived: false,
+      createdAt: NOW,
+    }
+    expect(KINDS.agent.create(ctx, "a-old", base)).toBe(true)
+    expect(KINDS.agent.read(ctx, "a-old")?.fields.isMain).toBe(false)
+    expect(KINDS.agent.create(ctx, "a-new", { ...base, name: "New", isMain: true })).toBe(true)
+    expect(KINDS.agent.read(ctx, "a-new")?.fields.isMain).toBe(true)
+  })
+})
+
 describe("the accounts that sync carries (spec 006, 019)", () => {
   const field = (v: unknown) => ({ v, s: stamp })
   const accountOp = (vendor: unknown, extra: Record<string, unknown> = {}) => ({

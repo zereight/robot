@@ -750,6 +750,7 @@ interface AgentRow {
   sensitive_mark: string | null
   outside_mark: string | null
   read_handbook: number
+  is_main: number
 }
 
 const readFace = (ctx: Ctx, file: string | null) => {
@@ -847,6 +848,11 @@ const agent: KindDef = {
     // The switch "Read the handbook" (spec 002, 019). A computer of an older step has none, and the
     // switch counts as on.
     readHandbook: { check: bool },
+    // The switch "Main agent" (spec 002, flow 7, 019). At most one agent on a server has it: when
+    // two computers turn it on for two agents while apart, the check at the end of the sync clears
+    // the older change (`SyncEngine.repairMain`). A computer of an older step has none, and the
+    // switch counts as off.
+    isMain: { check: bool },
     archived: { check: bool },
     // The mark of a sensitive read of the chat (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
@@ -879,6 +885,7 @@ const agent: KindDef = {
             ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
             : null,
         readHandbook: r.read_handbook === 1,
+        isMain: r.is_main === 1,
         archived: r.archived_at !== null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
@@ -912,6 +919,7 @@ const agent: KindDef = {
       permission: "ask_all",
       memory_enabled: 1,
       read_handbook: f.readHandbook === false ? 0 : 1,
+      is_main: f.isMain === true ? 1 : 0,
       archived_at: f.archived === true ? now : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
@@ -933,6 +941,7 @@ const agent: KindDef = {
     if (f.role !== undefined) columns.role = (f.role as string).trim()
     if (f.instructions !== undefined) columns.instructions = f.instructions
     if (typeof f.readHandbook === "boolean") columns.read_handbook = f.readHandbook ? 1 : 0
+    if (typeof f.isMain === "boolean") columns.is_main = f.isMain ? 1 : 0
     if (f.face !== undefined) {
       const face = f.face as { shape: number; hue: number }
       columns.face_shape = face.shape

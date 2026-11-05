@@ -494,6 +494,97 @@ describe("two computers that were apart", () => {
     expect(rowsA[0]).toContain("|Writer|From B, later.")
   })
 
+  test("the switch 'Main agent' crosses to the other computer, and the old main agent loses it there in the same sync (spec 002, 019)", async () => {
+    const { a, b, agents } = await pair(["Ada", "Bo"])
+    const [ada, bo] = [agents[0]?.id ?? "", agents[1]?.id ?? ""]
+    const mainOf = async (rt: Rt) => {
+      const id = await localId(rt)
+      return run(
+        rt,
+        Organization.use((o) => Effect.sync(() => o.mainAgent(id))),
+      )
+    }
+    await run(
+      a,
+      Agents.use((x) => x.update(ada, { isMain: true })),
+    )
+    expect(
+      await waitFor(
+        () => mainOf(b),
+        (x) => x === ada,
+      ),
+    ).toBe(ada)
+    await run(
+      a,
+      Agents.use((x) => x.update(bo, { isMain: true })),
+    )
+    expect(
+      await waitFor(
+        () => mainOf(b),
+        (x) => x === bo,
+      ),
+    ).toBe(bo)
+    expect(
+      (
+        await run(
+          b,
+          Agents.use((x) => x.get(ada)),
+        )
+      ).isMain,
+    ).toBe(false)
+    // Turn it off on the second computer: the first one has none.
+    await run(
+      b,
+      Agents.use((x) => x.update(bo, { isMain: false })),
+    )
+    expect(
+      await waitFor(
+        () => mainOf(a),
+        (x) => x === null,
+      ),
+    ).toBeNull()
+  })
+
+  test("two computers turn the switch 'Main agent' on for two agents while apart: both end with one main agent, the later change (spec 002, 019)", async () => {
+    const { a, b, agents } = await pair(["Ada", "Bo"])
+    const [ada, bo] = [agents[0]?.id ?? "", agents[1]?.id ?? ""]
+    const flags = async (rt: Rt) => {
+      const id = await localId(rt)
+      return (
+        await run(
+          rt,
+          Agents.use((x) => x.list(id, false)),
+        )
+      )
+        .map((x) => `${x.name}:${x.isMain}`)
+        .sort()
+    }
+    await apart(a, b)
+    await run(
+      a,
+      Agents.use((x) => x.update(ada, { isMain: true })),
+    )
+    await settle()
+    await run(
+      b,
+      Agents.use((x) => x.update(bo, { isMain: true })),
+    )
+    await together(a, b)
+    const want = ["Ada:false", "Bo:true"]
+    expect(
+      await waitFor(
+        () => flags(a),
+        (x) => x.join() === want.join(),
+      ),
+    ).toEqual(want)
+    expect(
+      await waitFor(
+        () => flags(b),
+        (x) => x.join() === want.join(),
+      ),
+    ).toEqual(want)
+  })
+
   test("two computers put a channel under each other while apart: both end with the same tree, and the channel with the later change shows one muted line and no notice (spec 030, Repair)", async () => {
     const { a, b } = await pair([])
     const serverA = await localId(a)
