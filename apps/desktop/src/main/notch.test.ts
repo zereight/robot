@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { type Notch, notchReader } from "./notch.ts"
+import { islandBounds, type Notch, notchReader } from "./notch.ts"
 
 const notch: Notch = { x: 663, width: 185, height: 32 }
 
@@ -53,5 +53,31 @@ describe("When the island asks for the notch of the screen", () => {
       expect(await read()).toBeNull()
       expect(reads).toBe(1)
     })
+  })
+})
+
+describe("When the island window is placed", () => {
+  // The built-in screen of a Mac with a notch: the menu bar is 34 px tall.
+  const screen = {
+    bounds: { x: 0, y: 0, width: 1512, height: 982 },
+    workArea: { x: 0, y: 34, width: 1462, height: 948 },
+  }
+  const bar = { width: 409, height: 34 }
+
+  test("with a notch, the window starts at the top edge, centred", () => {
+    expect(islandBounds(screen, notch, bar)).toEqual({ x: 552, y: 0, width: 409, height: 34 })
+  })
+
+  test("the window is at least as tall as the notch", () => {
+    expect(islandBounds(screen, notch, { width: 409, height: 20 }).height).toBe(32)
+  })
+
+  test("with no notch, or one that is not known yet, the window sits under the menu bar", () => {
+    expect(islandBounds(screen, null, bar).y).toBe(34)
+  })
+
+  test("a menu bar that is too short for a notch keeps the window under the menu bar", () => {
+    const flat = { ...screen, workArea: { ...screen.workArea, y: 24 } }
+    expect(islandBounds(flat, notch, bar).y).toBe(24)
   })
 })

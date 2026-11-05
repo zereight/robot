@@ -82,3 +82,36 @@ export const notchReader = (
     return once
   }
 }
+
+/** A menu bar this tall or taller means that the screen may have a camera notch. */
+export const NOTCH_MENU_BAR_MIN = 30
+
+interface Rect {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+}
+
+/**
+ * Where the island window goes (spec 015). It is centred at the top of the screen. With a camera
+ * notch, the window starts at the top edge, so the bar sits around the notch and is at least as
+ * tall as it. A screen without a notch, or with a notch that is not known yet, keeps the window
+ * under the menu bar.
+ */
+export const islandBounds = (
+  screen: { bounds: Rect; workArea: Rect },
+  notch: Notch | null,
+  size: { width: number; height: number },
+): Rect => {
+  const { bounds, workArea } = screen
+  const menuBar = workArea.y - bounds.y
+  const notchHeight = notch?.height ?? 0
+  const joinsNotch = notchHeight > 0 && menuBar >= NOTCH_MENU_BAR_MIN
+  return {
+    x: Math.round(bounds.x + (bounds.width - size.width) / 2),
+    y: joinsNotch ? bounds.y : bounds.y + menuBar,
+    width: size.width,
+    height: Math.max(size.height, joinsNotch ? notchHeight : 0),
+  }
+}
