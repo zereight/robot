@@ -43,7 +43,6 @@ import {
   fitSummary,
   hasUsage,
   hasVisibleReply,
-  higherChannels,
   holdOutside,
   holdProgram,
   isFinal,
@@ -63,6 +62,7 @@ import {
   leadLookLog,
   leadLookText,
   levelOnRuntime,
+  lineLeadIds,
   lineLookInstruction,
   lineLookMs,
   lineTokens,
@@ -152,6 +152,7 @@ import { ModelHolds } from "./ModelHolds.ts"
 import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Organization } from "./Organization.ts"
+import { readOrgs } from "./orgData.ts"
 import { orgLimitStop } from "./orgLimitData.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Platform } from "./Platform.ts"
@@ -1942,25 +1943,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
       }
 
       /**
-       * The agents that may be on the line above a channel (spec 030, "Ask up the line"): the lead
-       * of each higher channel, from the nearest to the top channel, then the main agent. Whether
-       * one of them looks is decided in `readerAfterPass`, with the facts of that moment.
+       * The agents that may be on the line above a member that asks (spec 030, "Ask up the line"):
+       * the leads on the way up from its deepest organization, then the main agent. A member in no
+       * organization has the main agent only. Whether one of them looks is decided in
+       * `readerAfterPass`, with the facts of that moment.
        */
-      const lineCandidates = (channel: ChannelRow): LineAgent[] => {
-        const channels = db.all<{
-          id: string
-          parent_channel_id: string | null
-          lead_agent_id: string | null
-        }>(
-          "SELECT id, parent_channel_id, lead_agent_id FROM channel WHERE server_id = ?",
-          channel.server_id,
-        )
-        const leads = new Map(channels.map((c) => [c.id, c.lead_agent_id]))
+      const lineCandidates = (channel: ChannelRow, askerId: string): LineAgent[] => {
         const ids = [
-          ...higherChannels(
-            channels.map((c) => ({ id: c.id, parentId: c.parent_channel_id })),
-            channel.id,
-          ).map((id) => leads.get(id) ?? null),
+          ...lineLeadIds(readOrgs(db, channel.server_id), askerId),
           organization.mainAgent(channel.server_id),
         ]
         return ids.flatMap((id) => {
@@ -2186,7 +2176,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 setting: organization.askUpTheLine(),
                 card: l.ask.kind,
                 asker: l.member.id,
-                candidates: lineCandidates(l.channel),
+                candidates: lineCandidates(l.channel, l.member.id),
                 passes,
                 sinceLeadPass: Date.now() - leadPassedAt,
                 lineMs: lineLimitMs(),
