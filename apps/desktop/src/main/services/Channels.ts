@@ -81,6 +81,7 @@ import {
   newestWindow,
   newTurnMark,
   nudgeRefusal,
+  ORG_LIMIT_CODE,
   type OutsideSource,
   outsideOfCall,
   type ParsedPlan,
@@ -113,6 +114,7 @@ import {
   summaryWords,
   type Task,
   type TaskProgress,
+  type TaskSource,
   type TaskState,
   type TeamsJobKind,
   type ToolAsk,
@@ -643,7 +645,16 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
        * The daily token limit (spec 030): the error of a look or a summary of the lead that would
        * start now, with the name of the organization whose limit is used. Else null.
        */
-      const limitStop = (agentId: string) => orgLimitStop(db, agentId, "channel")
+      const limitStop = (agentId: string, source: TaskSource = "channel") =>
+        orgLimitStop(db, agentId, source)
+
+      /** The pass line of an agent that cannot look because the limit of `organization` is used. */
+      const limitPass = (agent: AgentRow, organization: string): QuestionPass => ({
+        agentId: agent.id,
+        name: agent.name,
+        kind: "not_sure",
+        reason: blockedReasonForAgent({ code: ORG_LIMIT_CODE, detail: organization }),
+      })
 
       /**
        * True when an agent cannot look at a question now: a usage limit of its provider holds, or
@@ -651,7 +662,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
        * goes on to the next reader, and at the end to the user.
        */
       const cannotLook = (agent: AgentRow) =>
-        blockedByUsageLimit(agent) || orgLimitStop(db, agent.id, "question") !== null
+        blockedByUsageLimit(agent) || limitStop(agent.id, "question") !== null
 
       /** Streams one reply of an agent into the channel as a new message. Returns its id and text. */
       const streamReply = Effect.fn("Channels.streamReply")(function* (o: {
@@ -955,7 +966,9 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                         answered: parts.filter((p) => p.kind === "tool" && p.answeredByLead).length,
                       })
                     : null
-                if (ask && !reader) attend(callId, ask)
+                const limited = reader?.kind === "limit" ? reader.pass : null
+                const lookReader = reader?.kind === "lead" ? reader : null
+                if (ask && !lookReader) attend(callId, ask)
                 else if (!ask) {
                   openLooks.get(`${o.agent.id}:${callId}`)?.stop()
                   notifier.clearAttention(o.agent.id, callId)
@@ -967,18 +980,23 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                     ...rest,
                     state: "waiting",
                     ask:
-                      reader && ask.kind === "question"
-                        ? { ...ask, lead: { agentId: reader.lead.id, name: reader.lead.name } }
-                        : ask,
+                      lookReader && ask.kind === "question"
+                        ? {
+                            ...ask,
+                            lead: { agentId: lookReader.lead.id, name: lookReader.lead.name },
+                          }
+                        : limited && ask.kind === "question"
+                          ? { ...ask, passed: limited, passes: [limited] }
+                          : ask,
                   }
                 })
-                if (reader && ask?.kind === "question")
+                if (lookReader && ask?.kind === "question")
                   lookAtQuestion({
                     channel: o.channel,
                     member: o.agent,
                     taskId: o.taskId,
-                    lead: reader.lead,
-                    found: reader.found,
+                    lead: lookReader.lead,
+                    found: lookReader.found,
                     callId,
                     ask,
                     turnEnded: () => controller.signal.aborted,
@@ -1871,8 +1889,14 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
           outside: q.outside,
           answered: q.answered,
         })
+        // A lead that cannot look because the daily token limit of its organization is used passes the
+        // question to the user with that reason (spec 030, "At the limit").
+        if (reader.kind === "user" && reader.why === "lead_blocked" && lead) {
+          const stop = limitStop(lead.id, "question")
+          if (stop) return { kind: "limit" as const, pass: limitPass(lead, stop.detail) }
+        }
         if (reader.kind !== "lead" || !lead || !found || found.job.agent_id !== lead.id) return null
-        return { lead, found }
+        return { kind: "lead" as const, lead, found }
       }
 
       /**
