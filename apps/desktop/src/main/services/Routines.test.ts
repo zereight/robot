@@ -864,3 +864,47 @@ describe("the events of a routine (spec 038)", () => {
     expect(events[0]?.result).toBe("failed")
   })
 })
+
+describe("the events of a watch (spec 038)", () => {
+  test("a change records Routed with the change text", async () => {
+    const s = await setup()
+    const dir = mkdtempSync(join(folders, "event-change-"))
+    writeFileSync(join(dir, "old.txt"), "old")
+    await s.watch({ kind: "path", path: dir })
+    const t0 = Date.now()
+    // The first check keeps the result and runs nothing (spec 009).
+    await s.tick(t0)
+    expect(await s.run(Events.use((e) => e.list(s.local.id)))).toHaveLength(0)
+    writeFileSync(join(dir, "new-report.txt"), "new")
+    await s.tick(t0 + 5 * MIN)
+    await s.idle()
+    const events = await s.run(Events.use((e) => e.list(s.local.id)))
+    expect(events).toHaveLength(1)
+    expect(events[0]?.source).toBe("watch")
+    expect(events[0]?.result).toBe("routed")
+    expect(events[0]?.detail).toContain("new-report.txt")
+    expect(events[0]?.got).toContain("new-report.txt")
+  })
+
+  test("a check that cannot read its target records Failed", async () => {
+    const s = await setup()
+    const r = await s.watch({ kind: "path", path: join(folders, "not-there-at-all") })
+    await s.tick(r.createdAt)
+    const events = await s.run(Events.use((e) => e.list(s.local.id)))
+    expect(events).toHaveLength(1)
+    expect(events[0]?.source).toBe("watch")
+    expect(events[0]?.result).toBe("failed")
+    expect(events[0]?.reason).not.toBeNull()
+  })
+
+  test("a check with no change records nothing", async () => {
+    const s = await setup()
+    const dir = mkdtempSync(join(folders, "event-quiet-"))
+    writeFileSync(join(dir, "old.txt"), "old")
+    await s.watch({ kind: "path", path: dir })
+    const t0 = Date.now()
+    await s.tick(t0)
+    await s.tick(t0 + 5 * MIN)
+    expect(await s.run(Events.use((e) => e.list(s.local.id)))).toHaveLength(0)
+  })
+})
