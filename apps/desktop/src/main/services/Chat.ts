@@ -40,6 +40,7 @@ import {
   hasVisibleReply,
   holdOutside,
   holdProgram,
+  hourCacheEnded,
   isNoteOnly,
   isTaskProgress,
   joinWords,
@@ -367,6 +368,14 @@ interface ProgramItem {
 const EMIT_EVERY_MS = 50
 const SAVE_EVERY_MS = 500
 const QUOTE_MAX = 500
+/**
+ * A turn a person starts. Anthropic keeps the cache of that turn for 1 hour. A routine, a
+ * workflow and a message of another agent keep the short cache (spec 003).
+ */
+function keepsHourCache(source: TaskSource): boolean {
+  return source === "chat" || source === "handover" || source === "teams"
+}
+
 /** The words around the summary of a compact, as the model reads it (spec 003). */
 const summaryTurn = (summary: string) =>
   `Summary of the earlier conversation, written when it was compacted:\n\n${summary}`
@@ -1428,10 +1437,22 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 publish()
               }
             }
-            // At 85 percent or more of the context, the app compacts first (spec 003). A turn that
+            // At 85 percent or more of the context, the app compacts first (spec 003). A turn
+            // that keeps the 1 hour cache also compacts when that cache has ended. A turn that
             // goes on after a restart does not: its request is made already.
-            if (!resumed && !isRuntime && attempt === "first")
-              yield* autoCompact(place, agent, reply.id, task.id, (code) => {
+            const claude =
+              !!agent.model_account_id &&
+              providers.runtimeKind(agent.model_account_id) === "claude_code"
+            const personTurn = keepsHourCache(source)
+            const anthropic =
+              !isRuntime && personTurn
+                ? (yield* providers.accounts).some(
+                    (account) =>
+                      account.id === agent.model_account_id && account.kind === "anthropic",
+                  )
+                : false
+            if (!resumed && attempt === "first" && (!isRuntime || claude))
+              yield* autoCompact(place, agent, reply.id, task.id, claude || anthropic, (code) => {
                 parts.push({ kind: "note", note: "compact_failed", code })
                 save("streaming")
                 publish()
@@ -1617,10 +1638,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 // A person pauses for more than 5 minutes in a chat, so a turn that a person starts
                 // there keeps the cache for 1 hour. Every other source (a routine, a workflow, a
                 // message of another agent) keeps the short one.
-                cache:
-                  task.source === "chat" || task.source === "handover" || task.source === "teams"
-                    ? "long"
-                    : "short",
+                cache: keepsHourCache(task.source) ? "long" : "short",
                 signal: controller.signal,
                 workspace: agent.workspace,
                 permission: levelOnRuntime(agent.permission, isRuntime),
@@ -2316,6 +2334,20 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
         return found ? (compactedOf(found)?.at ?? 0) : 0
       }
       /**
+       * When the last reply of the conversation ended (spec 003). A compact is not a reply: its
+       * request is not the cache of the chat. Null when no reply has ended.
+       */
+      const lastReplyAt = (place: Place): number | null =>
+        db.get<{ finished_at: number }>(
+          `SELECT finished_at FROM message
+           WHERE agent_id = ? AND thread_id IS ? AND author = 'agent' AND finished_at IS NOT NULL
+             AND parts NOT LIKE ?
+           ORDER BY finished_at DESC LIMIT 1`,
+          place.agentId,
+          place.threadId,
+          COMPACTED_LIKE,
+        )?.finished_at ?? null
+      /**
        * The use of the context that the last reply reported (spec 003). Null after a compact until
        * the next reply, and when no reply reported it.
        */
@@ -2504,27 +2536,43 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
 
       /**
        * Before a turn: at 85 percent or more of the context, compacts first (spec 003, "Automatic
-       * compact"). A failure does not stop the turn: `failed` adds the muted line to the reply.
+       * compact"). A turn that keeps the 1 hour cache also compacts when that cache has ended. A
+       * failure does not stop the turn: `failed` adds the muted line to the reply.
        */
       const autoCompact = (
         place: Place,
         agent: AgentModelRow,
         replyId: string,
         taskId: string,
+        hourCache: boolean,
         failed: (code: string) => void,
       ) =>
         Effect.gen(function* () {
           const setting = (yield* settings.get).autoCompact
           if (!setting) return
-          const size = yield* contextSize(agent)
-          const go = shouldAutoCompact({
-            setting,
-            selfCompacts: false,
-            used: contextUse(place),
-            size,
-            pause: pauseOf(place),
-          })
-          if (!go) return
+          const pause = pauseOf(place)
+          const kind = agent.model_account_id ? providers.runtimeKind(agent.model_account_id) : null
+          const cold =
+            hourCache &&
+            hourCacheEnded({
+              setting,
+              pause,
+              lastReplyAt: lastReplyAt(place),
+              now: Date.now(),
+            })
+          // A vendor program compacts its own context. Only an API account uses the 85 percent
+          // rule here. The `&&` keeps that rule from asking a program for its context size.
+          const due =
+            kind === null &&
+            shouldAutoCompact({
+              setting,
+              selfCompacts: false,
+              used: contextUse(place),
+              size: yield* contextSize(agent),
+              pause,
+            })
+          // A conversation of 2 turns or fewer has nothing to compact. Do not show "Compacting…".
+          if ((!cold && !due) || compactRange(place) === null) return
           setCompacting(place, true)
           yield* runCompact(place, agent, true, taskId).pipe(
             Effect.catch((error: AppError) =>
