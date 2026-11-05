@@ -44,10 +44,11 @@ The user follows and directs agents from an iPhone or Android phone while away f
    the switch "Can create and change agents" of that computer (012).
 7. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
    switch "Show tool steps", on at first.
-8. **Org chart**: a read-only list of the main agent, the channels with their members and leads
-   (a sub-channel indented under its parent channel, 030), the state of each agent, and the work that agents handed to each other in the last 7 days. It
-   is a list, not a canvas (see 029, "Phone"). A tap on an agent opens its chat, and a tap on a
-   channel header opens the channel. It needs only the link.
+8. **Org chart**: a read-only list of the main agent, the organizations with their members and
+   leads (a sub-organization indented under its parent, 030), the state of each agent, and the work
+   that agents handed to each other in the last 7 days. It is a list, not a canvas (see 029,
+   "Phone"). A tap on an agent opens its chat. A tap on an organization header does nothing, because
+   the phone has no form of an organization. It needs only the link.
 
 ## First start
 
@@ -177,8 +178,8 @@ start a handover (003) and does not make a skill from work (017). It shows the m
 - Open the thinking row of a reply: the sheet lists every thought of the turn.
 - Change the theme of the phone from dark to light: every avatar changes at once, with no motion.
   A face has a light disc, dark features and no glow. A picture does not change.
-- Open the screen "Org chart": it lists the main agent, each channel with its members and lead, and
-  the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer off, the
-  screen says so and shows no list (029).
+- Open the screen "Org chart": it lists the main agent, each organization with its members and
+  lead, and the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer
+  off, the screen says so and shows no list (029).
 - Turn off "Show tool steps" in Settings: a reply with finished steps shows one folded line per
   run, and a tap opens the cards. A step that waits still shows as its own card.

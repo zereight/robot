@@ -41,8 +41,8 @@ The user sets the app up the way they like in one place.
 - **Connections**: the outside tools that agents can use. See 018. A built-in connection has no row
   here; its feature holds its page and its switch.
 - **Outside programs**: programs on this computer that may read and send work in ROBot. See 023.
-- **Organization**: the hand-off rule ("Any agent" or "Along the channels") and the switch "Ask
-  up the line", off at first. See 030. These two sync like the handbook (019).
+- **Hand-off rules**: the hand-off rule ("Any agent" or "Along the organizations") and the switch
+  "Ask up the line", off at first. See 030. These two sync like the handbook (019).
 - **Teams**: the link to one Microsoft Teams chat, off at first. See 028.
 - **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
   that can open this computer, with the switch "Can create and change agents" for each, and the

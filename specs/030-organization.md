@@ -2,137 +2,238 @@
 
 ## Purpose
 
-The user runs the agents as an organization. Channels can sit inside other channels. A rule can
-make agents hand work only along the channels. A question that the lead cannot answer can go to a
-higher agent before it goes to the user. A channel can give skills and connections to its members,
-and it can have a daily token limit. The org chart (029) shows all of this, and the user can change
-the teams on the chart.
+The user runs the agents as an organization. An organization is a group of agents. It is not a
+channel. A channel is the place where a job is done (004). An organization says who may do what.
+Organizations can sit inside other organizations. Each organization has access: tools, a daily token
+limit and a hand-off range. Access goes down to the lower organizations, and a lower organization
+can set its own. A rule can make agents hand work only along the organizations. A question that the
+lead of a channel cannot answer can go to higher agents before it goes to the user. The org chart
+(029) draws the organizations, and the user can change them on the chart.
 
 ## Concepts
 
-- **Parent channel**: a field of a channel (004). It is empty by default. A channel with a parent
-  channel is a **sub-channel** of that channel. A channel with no parent channel is a **top
-  channel**.
-- **Channel tree**: the channels with their parent channels. A tree has at most 3 levels: a top
-  channel, its sub-channels, and their sub-channels. A channel cannot be its own parent, and it
-  cannot be under one of its own sub-channels.
-- **Higher channels**: the parent channel of a channel, the parent of that one, and so on, up to
-  the top channel.
-- **Lower channels**: the sub-channels of a channel, their sub-channels, and so on.
-- An archived parent channel counts as no parent channel while it is archived. Its sub-channels are
-  then top channels. A restore makes them sub-channels again. A deleted parent channel clears the
-  field.
+- **Organization**: a name (1 to 60 characters, unique, the check ignores case), members (agents),
+  one optional lead, a parent organization (empty by default), and access (see "Access"). It has no
+  messages, no tasks and no workspace. A profile (022) holds at most 100 organizations.
+  - **Member**: an agent can be a member of any number of organizations. Membership does not go up
+    or down the tree. An agent that is archived stays a member, and every rule below skips it while
+    it is archived.
+  - **Lead**: one member, or none. An archived lead counts as no lead. A member that is removed
+    from the organization is no longer its lead. The lead of an organization is not the lead of a
+    channel (004). One agent can be both.
+  - A channel and an organization are independent. The members of a channel are not an
+    organization, and the app never makes one from the other, except in "Migration".
+- **Parent organization**: a field of an organization. An organization with a parent organization
+  is a **sub-organization** of it. An organization with no parent is a **top organization**.
+- **Organization tree**: the organizations with their parents. A tree has at most 3 levels: a top
+  organization, its sub-organizations, and their sub-organizations. An organization cannot be its
+  own parent, and it cannot be under one of its own sub-organizations.
+- **Higher organizations**: the parent of an organization, the parent of that one, and so on, up to
+  the top organization. **Lower organizations**: its sub-organizations, their sub-organizations, and
+  so on.
+- **Access**: what an organization gives to its members: tools, a daily token limit and a hand-off
+  range. See "Access".
+- **Hand-off rule**: a setting of the profile (022) in the settings part "Hand-off rules" (013). It
+  has two values:
+  - **Any agent** (the default): every agent can send a message to every other agent (007).
+  - **Along the organizations**: an agent can send a message only to the agents that "Who can send
+    to whom" allows.
+- **Ask up the line**: a setting of the profile in the part "Hand-off rules", off by default. When it
+  is on, a question that the lead of a channel passes can go to higher agents before it goes to the
+  user. See "Ask up the line".
+- The words of 029 stay. The app does not use "boss", "manager", "employee", "hire", "report to" or
+  "department". An organization is not called a "team" in the interface, because the settings part
+  "Teams" is the link to Microsoft Teams (028).
+
+## Flows
+
+1. Create: on the org chart (029) the user presses "New organization". The form opens with the
+   fields Name, Members, Lead and Parent organization, and the part "Access". The user saves. The
+   new organization shows on the chart within 1 second, also when it has no member.
+2. Edit: the user opens the form with a click on an organization node, or with "Edit organization…"
+   on its menu (029). The form holds the same fields, and a button "Delete organization".
+3. Change the teams on the chart: members, the lead and the parent organization also change with the
+   menus and the drag of the chart (029, "Edit on the chart"). These are the same changes as in the
+   form, with the same rules.
+4. Delete: the user presses "Delete organization" in the form. A confirm says: "Delete <name>? <n>
+   lower organizations become top organizations. The access that this organization gives is gone."
+   The line with <n> shows only when <n> is more than 0. The buttons are "Back" and "Delete". The
+   members stay as agents. A deleted organization leaves every skill and connection list. The
+   delete has no Undo.
+5. See the organizations of an agent: the profile of an agent (002) has a row "Organizations". A
+   click on a name opens the form. The profile also lists each skill and connection that the agent
+   has from an organization, with the line "From <organization>".
+
+## Organization tree
+
+- In the form, the field "Parent organization" lists "None" and the organizations that the rules of
+  the tree allow. An organization that is not allowed shows muted, with the reason: "This is a
+  sub-organization of this organization." or "The tree would have more than 3 levels."
+- The list "Put under…" on the org chart holds the same organizations as the field, without "None"
+  and without the parent now, because that pick changes nothing. "Move to the top" does the work of
+  "None".
+- A deleted parent organization clears the field of its sub-organizations. They are top
+  organizations.
 - **Repair**: a state that breaks the rules of the tree is repaired at once, by a change of the
-  parent field that syncs like any other change (019). The tree never stays broken, and no channel
-  counts as a top channel only because its field is wrong. A break has one of two shapes, and it
-  can come from a sync, from a restore (013), or from an import (014).
-  1. **A fourth level.** The app clears the parent field of the channel that would be on the fourth
-     level. After a restore or an import, it checks from the top down. A channel that is cleared
-     becomes a top channel, and the channels under it count from their new level. After a sync, it
-     clears the field of the channel with the latest parent change on that line of four channels.
-  2. **A loop.** The app clears the parent field of the channel with the latest parent change among
-     the channels of the loop. A restore uses the times that the parent fields carry. An import
-     carries no time of change, because an export holds no sync records (014), so it uses the tie
-     order below alone.
+  parent field that syncs like any other change (019). The tree never stays broken, and no
+  organization counts as a top organization only because its field is wrong. A break has one of two
+  shapes, and it can come from a sync, from an import (014), or from the first copy of a sync.
+  1. **A fourth level.** The app clears the parent field of the organization that would be on the
+     fourth level. After an import, it checks from the top down. An organization that is cleared
+     becomes a top organization, and the organizations under it count from their new level. After a
+     sync, it clears the field of the organization with the latest parent change on that line of
+     four organizations.
+  2. **A loop.** The app clears the parent field of the organization with the latest parent change
+     among the organizations of the loop. An import carries no time of change, because an export
+     holds no sync records (014), so it uses the tie order below alone.
   - **Which change is later**: the time that sync (019) gives to the change, whichever computer
-    made it. When the times are equal, the channel that was made later. When that is equal too, the
-    channel with the later id. Both computers choose the same channel, so they end with the same
-    tree.
+    made it. When the times are equal, the organization that was made later. When that is equal
+    too, the organization with the later id. Both computers choose the same organization, so they
+    end with the same tree.
   - **More than one break**: the app clears one field for each break, nearest the top first, and
     checks again, until the tree holds the rules.
   - **When it runs**: on the computer that finds the break first. After a sync, it waits until no
     change has come from the other computer for about 1 second, and each new change moves the wait
     back. The sync sends no sign of its end, and a computer of an older step must still work with
     this one (019). A set of changes that comes together is not cut in the middle. The repair also
-    runs at the end of a first copy (019), after a restore, after an import, and at the start of the
-    app. The repaired field syncs, and the other computer finds nothing to repair.
-  - **The line**: each repair posts one muted line in the channel whose field was cleared: "The
-    parent channel was cleared. The tree would have a loop." or "The parent channel was cleared.
-    The tree would have more than 3 levels." It makes no notification and has no Undo, because a
-    repair is not a change of the user. The line is not a message of an agent: it adds no unread
-    count and does not replace the preview of the place. It has the same identity on both
-    computers, so a sync keeps one line.
-- **Hand-off rule**: a setting of the profile (022) in the settings part "Organization" (013). It
-  has two values:
-  - **Any agent** (the default): every agent can send a message to every other agent (007), as
-    before this spec.
-  - **Along the channels**: an agent can send a message only to the agents that "Who can send to
-    whom" allows.
-- **Ask up the line**: a setting of the profile in the part "Organization", off by default. When it
-  is on, a question that the lead passes can go to higher agents before it goes to the user. See
-  "Ask up the line".
-- **Channel tools**: the skills (017) and the connections (018) that a channel gives to its
-  members. See "Channel tools".
-- **Daily token limit**: a field of a channel, off by default. See "Daily token limit".
-- The words of 029 stay. The app does not use "boss", "manager", "employee", "hire", "report to" or
-  "department". A channel is not called a "team" in the interface, because the settings part
-  "Teams" is the link to Microsoft Teams (028).
+    runs at the end of a first copy (019), after an import, and at the start of the app. The
+    repaired field syncs, and the other computer finds nothing to repair.
+  - **The notice**: each repair writes one line to the organization log (014), and the open org
+    chart shows the line "The parent of <name> was cleared. The tree would have a loop." or "The
+    parent of <name> was cleared. The tree would have more than 3 levels." at the bottom of the
+    canvas for 10 seconds. A repair is not a change of the user, so it makes no notification and
+    has no Undo.
 
-## Channel tree
+## Access
 
-- The list "Put under…" on the org chart (029) holds the same channels as the field "Parent
-  channel", without "None" and without the channel that is the parent now, because that pick
-  changes nothing. "Move to the top" does the work of "None".
-- In the channel settings, the field "Parent channel" lists "None" and the channels that are not
-  archived and that the rules of the tree allow. A channel that is not allowed shows muted, with the
-  reason: "This is a sub-channel of this channel." or "The tree would have more than 3 levels."
-- A sub-channel shows in the place list as before. Its section (001) does not change. A section is
-  a filing choice of one computer. The tree is data of the agents.
-- The header of a sub-channel shows a small line under the name: "In <parent channel>". A click on
-  it opens the parent channel.
-- Membership does not go down or up the tree. An agent is a member of a channel only when the user
-  made it a member of that channel.
-- A lead of a parent channel does not give parts to the members of a sub-channel. It gives parts to
-  the members of its own channel only (004). It can hand work to the lead of a sub-channel with
-  "send message" (007), and that lead can split it in its channel.
-- The instructions of a channel (004) do not go down the tree. A member gets the instructions of
-  the channel of the turn only.
-- Archive a channel that has sub-channels: the confirm says "<n> sub-channels become top channels
-  while this channel is archived."
+Each organization holds three items of access. Access goes down the tree: a member gets the access
+of each organization that it is a member of, and of the higher organizations of those.
+
+- **Tools** and **Hand-off range** have the value "Inherit" by default. "Inherit" means: take the
+  value of the parent organization. A lower organization can set its own value, and that value then
+  goes down to its own lower organizations.
+  - **The value of an organization** is its own value when it is not "Inherit". Otherwise it is the
+    value of its parent, and so on up to the top organization. A top organization with "Inherit"
+    has no tool, and the hand-off range "Own organization".
+  - The form shows a value "Inherit" with a muted line "Now: <value> from <organization>", or "Now:
+    none" for a tool that nobody gives.
+- **Daily token limit** has no "Inherit". The limit of an organization and the limits of its higher
+  organizations all hold at the same time.
+- An agent that is a member of more than one organization gets the access of each one. Tools that
+  these organizations give add up. For the hand-off range, the widest range holds. For the daily
+  token limit, every limit holds.
+- A change counts from the next turn, the next send, or the next task. A turn that runs keeps what
+  it started with.
+- Permission levels and permission rules (007) do not change. A tool that an organization gives
+  asks the same approvals as before. The review of the tools of a connection (018) does not change.
+
+### Tools
+
+- In the form, the part "Tools" lists the skills (017) and the connections (018) of this computer.
+  Each row has the value "Inherit", "On" or "Off".
+- The value is the same fact as the list "the agents that may use it" in the skill (017) or the
+  connection (018). That list can hold agents and organizations. An organization in the list has
+  the value "On" or "Off". An organization that is not in the list has the value "Inherit". A form
+  of a skill or a connection shows the organizations in its picker, with the mark "organization",
+  and the value of each. "All agents" stays as it is.
+- An agent may use a skill or a connection when "All agents" is on, or the list holds the agent, or
+  the value of at least one organization that the agent is a member of is "On". "Off" in an
+  organization takes away only what that organization would get from its higher organizations. It
+  does not take away a tool that the agent gets from another organization, from its own entry in the
+  list, or from "All agents".
+- The agent may use it wherever that skill or connection works (017, 018), also in its direct chat.
+- An agent that leaves an organization loses the tools of that organization from its next turn.
+- Skills and connections do not sync (019). So the tools of an organization are a fact of each
+  computer. The other computer of a sync pair shows the part with its own skills and connections.
+
+### Daily token limit
+
+- In the form, the field "Daily token limit" is off by default. On, it takes a number from 10,000
+  to 100,000,000 tokens.
+- **What counts**: the tokens (005, "Usage of a task") of each task of an agent that is a member of
+  this organization or of one of its lower organizations, on the day. Every source counts: a chat, a
+  channel, another agent, a routine, a workflow, a card of the board, an outside program, Teams,
+  the summary of older messages, and the looks of the line for its questions. A task of an agent
+  that is a member of two organizations counts in both.
+- **The day**: from midnight to midnight in the time of the computer that runs the task. Tasks of
+  both computers of a sync pair count when they have synced.
+- At 80% of the limit, the form shows the muted line "80% of the daily token limit is used." It
+  makes no notification.
+- **At the limit**: no new task of those agents starts. A part, a nudge, a check, a reply to a
+  mention, or a task of another source that would start ends at once as Blocked (005) with the
+  reason "The daily token limit of <organization> is used." A look of the lead or of the line passes
+  the question to the user with that reason. A turn that runs goes on to its end. Its tokens still
+  count.
+- **A task from a direct chat** is never stopped by the limit. It counts in the limit.
+- **More than one limit**: the limit of a higher organization stops the members of its lower
+  organizations too. When more than one limit is used, the reason names the organization that comes
+  first in the order of names, ignoring case.
+- An agent in no organization has no limit.
+- The blocked tasks show on Today (021) as other blocked work does. Retry works after the next
+  midnight, or after the user raises or turns off the limit.
+- The usage page (006) shows, for each organization with a limit, the tokens used today and the
+  limit.
+
+### Hand-off range
+
+- In the form, the field "Hand-off range" has four values: "Inherit" (the default), "Own
+  organization", "Own and lower organizations", and "All agents". It says to whom a member may send
+  work when the hand-off rule is "Along the organizations".
+- With the hand-off rule "Any agent", the range has no effect. The form then shows the muted line
+  "The hand-off rule is 'Any agent'. The range has no effect."
+- See "Who can send to whom".
 
 ## Who can send to whom
 
-With the hand-off rule "Along the channels", the app checks each "send message" (007) at the time
-of the send. The sender S may send to a receiver R when R is not archived and one of these holds:
+With the hand-off rule "Along the organizations", the app checks each "send message" (007) at the
+time of the send. The sender S may send to a receiver R when R is not archived and one of these
+holds:
 
-1. S and R are members of one channel that is not archived.
+1. S and R are members of one organization.
 2. R is the main agent (002).
 3. S is the main agent.
-4. S is the lead of a channel C, and R is the lead of the parent channel of C, or the lead of a
-   sub-channel of C.
+4. S is the lead of an organization C, and R is the lead of the parent organization of C, or the
+   lead of a sub-organization of C.
+5. S is a member of an organization whose range is "Own and lower organizations", and R is a member
+   of that organization or of one of its lower organizations.
+6. S is a member of an organization whose range is "All agents".
+
+The range of an organization is its value of "Hand-off range" (see "Access"). "Own organization" is
+the range that rule 1 gives, so it adds no right.
 
 More rules:
 
-- An archived lead counts as no lead (004). An archived channel gives no right.
-- An agent in no channel can send only to the main agent. With no main agent, it can send to no
+- An archived lead counts as no lead (see "Concepts").
+- An agent in no organization can send only to the main agent. With no main agent, it can send to no
   agent.
 - A send that the rule does not allow fails. No task starts. The step shows the reason "<R> is not
   on your path. Send it to <A>." The sender gets the reason as a failed step, and its turn goes on.
   - **A chain**: a row of agents from S to R in which each agent may send to the next one by the
     rules above. The rule applies to the first send only. A chain of 2 agents is a send that the
     rule allows. <A> is the second agent of the shortest chain from S to R.
-  - **Equal chains**: when more than one first agent gives a chain of the same length, the lead of a
-    channel of S comes first, then the main agent, then the other agents in the order of their
-    names, ignoring case. "A channel of S" is a channel that S is a member of; the lead of a
-    channel is a member of it. A lead that S reaches only by rule 4 (the lead of a parent channel or
-    of a sub-channel) is in the last group, unless it also leads a channel that S is a member of.
-    Leads in the same group go by name too. Names are unique, ignoring case (002), so the order
-    of names is complete.
+  - **Equal chains**: when more than one first agent gives a chain of the same length, the lead of
+    an organization of S comes first, then the main agent, then the other agents in the order of
+    their names, ignoring case. "An organization of S" is an organization that S is a member of; the
+    lead of an organization is a member of it. A lead that S reaches only by rule 4 (the lead of a
+    parent organization or of a sub-organization) is in the last group, unless it also leads an
+    organization that S is a member of. Agents in the same group go by name too. Names are unique,
+    ignoring case (002), so the order of names is complete.
   - **No chain**: when S has no chain to R, the reason is "<R> is not on your path, and no agent
     can pass it on. Tell the user."
 - A refused send is not a hand-off of the org chart (029). It counts for no limit of 005.
 - The reply of a receiver always comes back to the sender (007). A reply is not a send.
 - The rule does not touch the work that the user gives: a direct chat, a channel job, a mention,
   `@all`, the fast pick, a routine, a workflow, a card of the board, and the parts that a lead
-  gives in its own channel.
-- **List agents**: with "Along the channels", the tool "list agents" (007) gives only the agents
-  that the sender may send to. Each row also gives the channel that links them, or the words "main
-  agent". The tool tells the agent that the rule is on, and that work for other agents goes through
-  the agents on the list.
+  gives in its own channel. Channels give no right to send.
+- **List agents**: with "Along the organizations", the tool "list agents" (007) gives only the
+  agents that the sender may send to. Each row also gives the organization that gives the right
+  (the shared one, the one of the lead, or the one of the range), or the words "main agent". The
+  tool tells the agent that the rule is on, and that work for other agents goes through the agents
+  on the list.
 - **Main agent**: it is told that every agent can bring work to it, and that it passes work on along
-  the channels: to the lead of a channel when the channel has one.
-- A change of the rule counts from the next send. A send that started before the change ends as it
-  started.
+  the organizations: to the lead of an organization when the organization has one.
+- A change of the rule, of a range, or of a member counts from the next send. A send that started
+  before the change ends as it started.
 - The rule holds in the same way for agents that use the tools of the app and for agents on each
   vendor runtime (006), because the app checks the send.
 
@@ -141,21 +242,25 @@ More rules:
 This section adds a step to "Questions of members" (004). It applies only when "Ask up the line" is
 on.
 
-- **Kind of a pass**: when the lead passes a question, it names one of two kinds: "Only the user can
-  choose" (a choice of taste, money, a payment, a message or a file that leaves the computer, a
-  deletion, an account, a key or a secret) or "Not sure". A pass for the time limit is the kind
-  "late". A failure of the lead is the kind "failure".
+- **Kind of a pass**: when the lead of the channel passes a question, it names one of two kinds:
+  "Only the user can choose" (a choice of taste, money, a payment, a message or a file that leaves
+  the computer, a deletion, an account, a key or a secret) or "Not sure". A pass for the time limit
+  is the kind "late". A failure of the lead is the kind "failure".
 - A pass of the kind "Only the user can choose" goes to the user at once, as in 004. Nobody else
   looks at it.
-- A pass of another kind goes to the next agent on the line. The line is, in this order:
-  1. the lead of each higher channel, from the nearest to the top channel;
-  2. the main agent.
+- A pass of another kind goes to the next agent on the line. The line is for the member that asks,
+  in this order:
+  1. The leads of its organizations: the organizations that the member is a member of, in the order
+     of their names (ignoring case; a tie goes to the older). For each one, its lead comes first,
+     then the lead of its parent, and so on up to the top organization.
+  2. The main agent.
 - An agent of the line is skipped when it is archived, blocked by a usage limit, the member that
-  asks, or an agent that already looked at this question. The line has at most 3 agents after the
-  lead. Agents after the third are skipped.
-- Each agent of the line reads what the lead reads (004, "What the lead reads"), and also the reason
-  of each pass before it. It does exactly one of two things, as the lead does: answer, or pass with
-  a kind and a reason.
+  asks, or an agent that already looked at this question (the lead of the channel too). The line
+  has at most 3 agents after the lead of the channel. Agents after the third are skipped. A member
+  in no organization has the main agent only.
+- Each agent of the line reads what the lead of the channel reads (004, "What the lead reads"), and
+  also the reason of each pass before it. It does exactly one of two things, as the lead does:
+  answer, or pass with a kind and a reason.
 - Each agent of the line has 2 minutes, as the lead has. The whole line, after the pass of the
   lead, has at most 5 minutes. Then the question passes to the user with the line "No agent on the
   line answered in time."
@@ -170,155 +275,149 @@ on.
   with the source "Question from <channel>". It has the depth of the part that asks. It uses one
   slot (005) while it runs, and it waits in the queue as a task of a normal source. The time of 2
   minutes includes the wait. Its tokens count in the usage of that task and in the daily token
-  limit of the channel of the question. It is not a hand-off of the org chart (029).
+  limit of the organizations of the agent that looks. It is not a hand-off of the org chart (029).
 - An approval card never goes up the line. Only the user answers an approval.
 - The answer of an agent of the line is not words of the user (007).
 - Each look writes one line to the channel log (014), as a look of the lead does, with the place of
   the agent on the line.
 
-## Channel tools
+## Migration
 
-- In the channel settings, the part "Tools of this channel" lists the skills and the connections of
-  this computer. Each row has a switch. A switch on gives that skill or connection to each member
-  of the channel and to each member of its lower channels.
-- The switch is the same fact as the list "the agents that may use it" in the skill (017) or the
-  connection (018). That list can hold agents and channels. A form of a skill or a connection shows
-  the channels in its picker, with the mark "channel". "All agents" stays as it is.
-- An agent may use a skill or a connection when "All agents" is on, or when the list holds the
-  agent, or a channel that it is a member of, or a higher channel of such a channel. An archived
-  channel gives nothing.
-- The agent may use it in every turn, also in its direct chat. A member of a channel uses its tools
-  as its own.
-- A change counts from the next turn. A turn that runs keeps the tools that it started with.
-- An agent that leaves a channel loses the tools of that channel from its next turn. The profile of
-  the agent (002) lists each skill and connection that it has from a channel with the line "From
-  <channel>".
-- Permission levels and permission rules (007) do not change. A connection that a channel gives
-  asks the same approvals as before. The review of the tools of a connection (018) does not change.
-- Skills and connections do not sync (019). So the tools of a channel are a fact of each computer.
-  The other computer of a sync pair shows the part with its own skills and connections.
+The first start of this version changes the data of each profile once.
 
-## Daily token limit
-
-- In the channel settings, the field "Daily token limit" is off by default. On, it takes a number
-  from 10,000 to 100,000,000 tokens.
-- **What counts**: the tokens (005, "Usage of a task") of each task of this channel on the day: the
-  parts, the turns of the lead (plan, check, summary, answers to questions), the replies to a
-  mention or to `@all`, the summary of older messages, and the looks of the line for its
-  questions. The tasks of its lower channels count too. A hand-off from a member to another agent
-  does not count: it is work of that agent.
-- **The day**: from midnight to midnight in the time of the computer that runs the task. Tasks of
-  both computers of a sync pair count when they have synced.
-- At 80% of the limit, the channel shows the muted line "80% of the daily token limit is used." It
-  makes no notification.
-- **At the limit**: no new task of the channel starts. A part, a nudge, a check, or a mention reply
-  that would start ends at once as Blocked (005) with the reason "The daily token limit of <channel>
-  is used." A look of the lead or of the line passes the question to the user with that reason. A
-  turn that runs goes on to its end. Its tokens still count.
-- A limit of a parent channel stops its lower channels too. The reason names the channel whose
-  limit is used.
-- The blocked parts show in the channel and on Today (021) as other blocked work does. Retry works
-  after the next midnight, or after the user raises or turns off the limit.
-- The usage page (006) shows, for each channel with a limit, the tokens used today and the limit.
-
-## Edit on the org chart
-
-See 029, "Edit on the chart". The chart changes only data that this spec and 004 define: members,
-the lead, and the parent channel.
+- **Which channels make an organization**: a channel that has a parent channel, a sub-channel, a
+  tool, or a daily token limit makes one. When the hand-off rule is "Along the channels", every
+  channel with two or more members makes one too, so that no path of work is lost. Archived channels
+  count, so that nothing is lost. A channel with none of these makes no organization.
+- **What the organization gets**: the name of the channel (a taken name gets a number, ignoring
+  case, inside the length limit), its members, its lead, its daily token limit, its tools (a channel
+  in the list of a skill or a connection becomes the organization with the value "On"), and as
+  parent the organization of the parent channel. The hand-off range of each organization is
+  "Inherit".
+- **What the channel loses**: its parent channel, its tools and its daily token limit. The channel
+  keeps its name, topic, instructions, members, lead, settings, picture and messages.
+- **The hand-off rule**: the value "Along the channels" becomes "Along the organizations". "Any
+  agent" does not change. "Ask up the line" does not change.
+- **The limit counts more**: after the migration, a daily token limit counts the tasks of the
+  members from every source (see "Daily token limit"), not only the tasks of one channel.
+- **Two computers**: two computers of a sync pair that migrate before they sync end with the same
+  organizations, not with doubles. Both must hold this version to sync (019).
+- **Older agent files**: a file made before this version may hold a parent channel or a daily token
+  limit for a channel. The import ignores them.
 
 ## Surfaces
 
-- **Ways in**: the channel settings (parent channel, tools of the channel, daily token limit). The
-  settings part "Organization" (hand-off rule, ask up the line). The forms of skills and connections
-  (channels in the picker). The org chart (029, edit on the chart). No key, no command of the
-  message box, and no entry in the search of the place list.
+- **Ways in**: the org chart (029): "New organization", a click on a node, and the menus and drags
+  of "Edit on the chart". The row "Organizations" of the agent profile (002). The settings part "Hand-off
+  rules" (hand-off rule, ask up the line). The forms of skills and connections (organizations in the
+  picker). No key, no command of the message box, and no entry in the search of the place list.
 - **Devices**:
   - The computer can do all of this.
-  - A linked computer (012) with the switch "Can create and change agents" can change the parent
-    channel and the daily token limit, and edit on the chart. It cannot change the part
-    "Organization", the tools of a channel, skills or connections (012). It sees them read-only.
-  - The phone (011) shows the tree in the list of the org chart, the line "In <parent channel>" in
-    a channel header, and the blocked parts with their reasons. A refused send shows as a failed
-    step on a tool card, with the text of the step. The phone does not translate that text. The
-    phone changes nothing of this spec.
-  - Each profile (022) has its own channels, its own part "Organization" and its own tools.
+  - A linked computer (012) with the switch "Can create and change agents" can make, edit and
+    delete organizations, set the hand-off range and the daily token limit, and edit on the chart.
+    It cannot change the part "Hand-off rules", the tools of an organization, skills or connections
+    (012). It sees them read-only. Without the switch it sees the form read-only, and it changes
+    nothing.
+  - The phone (011) shows the organizations in the list of the org chart, the blocked parts with
+    their reasons, and a refused send as a failed step on a tool card, with the text of the step.
+    The phone does not translate that text. The phone changes nothing of this spec.
+  - Each profile (022) has its own organizations, its own part "Hand-off rules" and its own tools.
 - **Runtimes**: the hand-off rule, the line and the token limit are checked by the app. They are
   the same for agents that use the tools of the app and for agents on each vendor runtime (006). A
-  vendor runtime gets the skills and connections of its channels in the way 017 and 018 give their
-  own skills and connections to it.
-- **Ways out**: "Parent channel" back to "None". The hand-off rule back to "Any agent". "Ask up the
-  line" off. A switch of a tool off. The daily token limit off. Each change on the chart has Undo
-  (029). Nothing here needs a confirm, except the archive of a channel with sub-channels.
-- **Seeing the state**: the line "In <parent channel>" in the header; the tree on the org chart; the
-  line of the rule in the legend of the chart (029); the reason of a refused send in the step; the
-  pass lines on a question card; "From <channel>" in the agent profile; the line of 80% and the
-  blocked parts; the usage page. All hold after a restart.
-- **Words**: Parent channel, Sub-channel, Top channel, Organization, Hand-off rule, Any agent, Along
-  the channels, Ask up the line, Tools of this channel, Daily token limit (see the glossary).
+  vendor runtime gets the skills and connections of its organizations in the way 017 and 018 give
+  their own skills and connections to it.
+- **Ways out**: "Parent organization" back to "None". A value of access back to "Inherit". The
+  hand-off rule back to "Any agent". "Ask up the line" off. The daily token limit off. A member,
+  the lead or the parent changed on the chart has Undo (029). A delete asks first (flow 4) and has
+  no Undo, because an organization holds no work, only these settings.
+- **Seeing the state**: the tree, the lead mark and the counts on the org chart; the line of the
+  rule in the legend of the chart (029); the reason of a refused send in the step; the pass lines
+  on a question card; "From <organization>" and "Organizations" in the agent profile; the line of
+  80% in the form; the blocked parts; the usage page. All hold after a restart.
+- **Words**: Organization, Parent organization, Sub-organization, Top organization, Access, Inherit,
+  Hand-off range, Hand-off rules, Hand-off rule, Any agent, Along the organizations, Ask up the
+  line, Tools, Daily token limit (see the glossary).
 
 ## Data
 
-- **Sync (019)**: the parent channel and the daily token limit sync with the channel. The hand-off
-  rule and "Ask up the line" sync as data of the agents, like the handbook (002): a change on one
-  computer counts on the other after it syncs, and the later change wins. The channels in the
-  agent lists of skills and connections do not sync, because skills and connections do not sync.
-  The usage of today of a channel is computed from the tasks that synced.
-- **Export (014)**: the archive holds the parent channel, the daily token limit, the hand-off rule,
-  "Ask up the line", and the channels in the agent lists of skills and connections.
-- **Agent file (002)**: with "Channels of these agents", a channel in the file keeps its parent
-  channel when the parent is in the file too. Else it is a top channel after the import. The file
-  holds the daily token limit. With "Skills of these agents", a skill keeps the channels of its list
-  that are in the file. The file holds no hand-off rule and no "Ask up the line": those belong to
-  the profile.
+- **Sync (019)**: an organization syncs with its name, members, lead, parent organization,
+  hand-off range and daily token limit. The hand-off rule and "Ask up the line" sync as data of the
+  agents, like the handbook (002): a change on one computer counts on the other after it syncs, and
+  the later change wins. The organizations in the agent lists of skills and connections do not sync,
+  because skills and connections do not sync. The usage of today of an organization is computed
+  from the tasks that synced.
+- **Export (014)**: the archive holds the organizations with all their fields, the hand-off rule,
+  "Ask up the line", and the organizations in the agent lists of skills and connections.
+- **Agent file (002)**: holds no organization, no hand-off rule and no "Ask up the line". Those
+  belong to the profile. An organization in a file is not in this version.
 - **Workflow file (010)**: holds nothing of this spec.
 - **Phone cache (011)**: no change.
-- **Channel log (014)**: one line for each look of the line (see "Ask up the line"), and one line
-  for each send that the hand-off rule refused, with the sender, the receiver and the time, and no
-  text of the message.
+- **Organization log (014)**: one line for each repair of the tree (the organization, the kind and
+  the time), and one line for each send that the hand-off rule refused, with the sender, the
+  receiver and the time, and no text of the message.
+- **Channel log (014)**: one line for each look of the line (see "Ask up the line").
 
 ## Out of scope
 
 - Membership that goes down or up the tree, and instructions of a channel that go down the tree.
-- A part that a lead gives to a whole sub-channel. The lead hands work to the lead of the
-  sub-channel instead.
-- A rule of its own for each channel or each agent. The hand-off rule is one rule for the profile.
+- A link between a channel and an organization, a channel that gives access, and a part that a lead
+  gives to a whole organization.
+- Archive and restore of an organization. An organization holds no work, so a delete with a confirm
+  is enough.
+- A picture, a topic or a section for an organization.
+- A rule of its own for each agent. The hand-off rule is one rule for the profile.
 - A token limit for an agent, a week or a month, or a cost in money.
+- A model, an effort, a permission level or a workspace that an organization gives to its members.
 - A reporting line on an agent, or a field "reports to" (029).
 - Approvals that go up the line. Only the user answers an approval.
 - Reviews of the work of an agent, scores, and counts of verdicts on the chart.
-- A model or an effort that a channel gives to its members.
+- Organizations in an agent file.
 
 ## Acceptance
 
-- Make channels "Product", "Docs" and "Site". Set the parent channel of "Docs" to "Product" and of
-  "Site" to "Docs". The parent field of "Product" shows "Docs" and "Site" muted with "This is a
-  sub-channel of this channel." A fourth channel under "Site" is refused with "The tree would have
-  more than 3 levels."
-- The header of "Docs" shows "In Product". A click opens "Product".
-- Archive "Product": the confirm names 1 sub-channel. "Docs" is a top channel. Restore "Product":
-  "Docs" is under it again.
-- "Docs" is under "Product", and "Site" is under "Docs". Archive "Product": "Docs" is a top channel.
-  Put "Wiki" under "Site": "Wiki" is on the third level. Restore "Product": the restore works,
-  "Wiki" would be on the fourth level, so its parent field is cleared. "Wiki" is a top channel and
-  shows the muted line "The parent channel was cleared. The tree would have more than 3 levels."
-  No notification shows, and the place shows no unread count for the line.
-- A restore that closes a loop: "Docs" is under "Wiki", and "Site" is under "Docs". Archive "Docs":
-  "Site" is a top channel. Put "Wiki" under "Site": it is allowed, because "Docs" counts as no
-  channel now. Restore "Docs": the restore works. "Docs", "Wiki" and "Site" would be a loop, so the
-  parent field of "Wiki" is cleared, because its change is the latest. "Wiki" is a top channel with
-  "Docs" under it and "Site" under "Docs". "Wiki" shows the muted line "The parent channel was
-  cleared. The tree would have a loop."
-- An import holds a fourth level and a loop: after the import, the same repairs have run, and each
-  cleared channel shows its line.
+- Make organizations "Product", "Docs" and "Site" with the form. Set the parent of "Docs" to
+  "Product" and of "Site" to "Docs". The parent field of "Product" shows "Docs" and "Site" muted
+  with "This is a sub-organization of this organization." A fourth organization under "Site" is
+  refused with "The tree would have more than 3 levels."
+- A new organization with no member shows as a node with the muted line "No members."
+- Make an organization named "product": it is refused, because the name is taken (the check
+  ignores case).
+- Delete "Product" that has the sub-organization "Docs": the confirm names 1 lower organization.
+  After "Delete", "Docs" is a top organization, and its members are still agents. "Product" is gone
+  from every skill list.
+- An import holds a fourth level and a loop: after the import, the same repairs have run. Each
+  repair has a line in the organization log.
 - Two computers sync. Before they sync, computer 1 puts "Docs" under "Site", and computer 2 puts
   "Site" under "Docs". After the sync both computers hold the same tree: the parent field of the
-  channel with the later change is cleared, and that channel shows the muted line "The parent
-  channel
-  was cleared. The tree would have a loop." The tree has no loop.
-- The channel "Docs" is under "Product". Its menu on the chart shows "Put under…" with the channels
-  that the tree allows, but not "Product". "Move to the top" is on the menu.
-- Hand-off rule "Any agent": agent A of "Docs" sends to agent X in no channel. A task starts.
-- Hand-off rule "Along the channels", with main agent M, "Product" with lead P, and "Docs" under
+  organization with the later change is cleared, and the line "The parent of <name> was cleared. The
+  tree would have a loop." shows on the open chart. The tree has no loop.
+- The organization "Docs" is under "Product". Its menu on the chart shows "Put under…" with the
+  organizations that the tree allows, but not "Product". "Move to the top" is on the menu.
+- Tools: turn "On" the skill "Release notes" in "Product". A member of "Site", which is under "Docs",
+  which is under "Product", has the value "Inherit" in both lower organizations. It gets the skill
+  in its next turn, also in its direct chat. Its profile shows "From Product". The form of "Site"
+  shows "Now: On from Product". The skill form shows "Product" in its list with the mark
+  "organization".
+- Set the skill to "Off" in "Docs": the members of "Docs" and of "Site" lose it from the next turn.
+  The members of "Product" keep it. Set it to "On" in "Site": the members of "Site" have it again.
+  A member of "Docs" that is also a member of "Product" keeps the skill.
+- "All agents" is on for a skill: "Off" in "Docs" takes nothing away.
+- Remove a member from "Site": its next turn has no such skill.
+- A connection given by an organization asks the same approval as before for a risky tool.
+- Daily token limit of 50,000 on "Docs". Two members of "Site" (under "Docs") ran tasks that the
+  stand-in provider reports as 41,000 tokens in all, from a chat, a part and a routine: the form of
+  "Docs" shows "80% of the daily token limit is used." A part reaches 51,000: the turn goes to its
+  end. The next part ends as Blocked with "The daily token limit of Docs is used." Today shows it.
+  Raise the limit to 100,000 and press Retry: the part runs.
+- The limit is used: a new message of the user in the direct chat of a member still starts a task,
+  and its tokens count.
+- The limit of "Product" is used: a new part of a member of "Site" ends as Blocked with the reason
+  that names "Product".
+- An agent that is a member of "Docs" and of "Ops" runs 10,000 tokens: both organizations count
+  10,000.
+- Hand-off rule "Any agent": agent A of "Docs" sends to agent X in no organization. A task starts.
+  The form of "Docs" shows the muted line about the range.
+- Hand-off rule "Along the organizations", with main agent M, "Product" with lead P, and "Docs" under
   "Product" with lead D and member A:
   - A sends to D: a task starts.
   - A sends to M: a task starts.
@@ -326,44 +425,49 @@ the lead, and the parent channel.
     chart draws no hand-off line.
   - D sends to P: a task starts. P sends to D: a task starts.
   - M sends to A: a task starts.
-  - X, in no channel, sends to A: the step fails with "A is not on your path. Send it to M."
+  - X, in no organization, sends to A: the step fails with "A is not on your path. Send it to M."
   - Turn off "Main agent" for M. X sends to A: the step fails with "A is not on your path, and no
     agent can pass it on. Tell the user."
   - A calls "list agents": the list holds D and M only, with "Docs" and "main agent".
   - M sends to A, and A replies: the reply comes back to M.
+  - A channel has A and X as members: A still cannot send to X.
+- Set the hand-off range of "Product" to "Own and lower organizations". The range of "Docs" is
+  "Inherit". P sends to A: a task starts (rule 5). A sends to a member of "Site" under "Docs": a task
+  starts. A sends to P: the step fails, because "Own and lower organizations" has no way up.
+- Set the range of "Site" to "All agents". A member of "Site" sends to X in no organization: a task
+  starts. A member of "Docs" still cannot.
 - The same refused send by an agent on a stand-in vendor runtime fails in the same way.
-- "Ask up the line" on. In "Docs" with lead D and parent "Product" with lead P, and main agent M,
-  member A asks a question that D passes as "Not sure". The card shows "D: <reason>" and "P looks
-  at it". P answers: the card shows "Answered by P". "Needs you" stays empty.
-- The same, but P passes as "Not sure": M looks at it. M passes: the question is in "Needs you"
-  with three pass lines, and one notification shows.
-- D passes as "Only the user can choose": the question goes to the user at once. P does not look.
+- "Ask up the line" on. Member A of "Docs" (lead D, parent "Product" with lead P) asks a question in
+  a channel whose lead L passes it as "Not sure". D looks first: the card shows "L: <reason>" and "D
+  looks at it". D passes as "Not sure": P looks. P answers: the card shows "Answered by P". "Needs
+  you" stays empty.
+- The same, but P passes: M, the main agent, looks. M passes: the question is in "Needs you" with
+  all pass lines, and one notification shows.
+- L passes as "Only the user can choose": the question goes to the user at once. Nobody on the line
+  looks.
 - P does not answer in 2 minutes: M looks. M does not answer: the question passes to the user with
-  "No agent on the line answered in time." The whole line after D took at most 5 minutes.
+  "No agent on the line answered in time." The whole line after L took at most 5 minutes.
 - The user answers while P looks: the answer of the user wins, and the look of P stops.
-- "Ask up the line" off: a pass of D goes to the user, as in 004.
-- An approval card in a part of "Docs" goes to the user only.
-- Turn on the skill "Release notes" in "Tools of this channel" of "Product". A member of "Site" gets
-  the skill in its next turn, also in its direct chat. Its profile shows "From Product". The skill
-  form shows "Product" in its list with the mark "channel". Remove the member from "Site": the next
-  turn has no such skill.
-- A connection given by a channel asks the same approval as before for a risky tool.
-- Daily token limit of 50,000 on "Docs". The stand-in provider reports 41,000 tokens of parts:
-  "80% of the daily token limit is used." shows. A part reaches 51,000: the turn goes to its end.
-  The
-  next part ends as Blocked with "The daily token limit of Docs is used." Today shows it. Raise the
-  limit to 100,000 and press Retry: the part runs.
-- The limit of "Product" is used: a new part of "Site" ends as Blocked with the reason that names
-  "Product".
-- A hand-off from a member of "Docs" to M does not count in the limit of "Docs".
-- Two computers sync. Change the hand-off rule on one: the other uses it after it syncs. The parent
-  channel and the token limit show on both. The tools of a channel show on each computer with its
-  own skills.
-- Export a profile and import it into an empty profile: the tree, the limits, the rule, "Ask up the
-  line" and the channels of skill lists are the same.
-- An agent file with "Docs" and "Site" but not "Product": after the import, "Docs" is a top channel
-  and "Site" is under "Docs".
-- A linked computer with "Can create and change agents" sets a parent channel. It sees the part
-  "Organization" read-only. Without the switch, it changes nothing.
+- A member in no organization asks: after L passes as "Not sure", M looks.
+- "Ask up the line" off: a pass of L goes to the user, as in 004.
+- An approval card in a part goes to the user only.
+- Migration: before the update, "Docs" has the parent channel "Product", a tool and a daily token
+  limit of 50,000, and the channel "Chat" has none of these. After the first start, the
+  organizations "Product" and "Docs" exist, with the same members and leads, "Docs" under "Product",
+  the tool "On" and the limit of 50,000 on "Docs". The channels "Docs" and "Product" have no parent
+  field, no tool and no limit, and keep their messages. "Chat" has no organization.
+- Migration with the hand-off rule "Along the channels": the rule is now "Along the organizations",
+  and the channel "Chat" with 2 members made an organization, so the two members can still send to
+  each other.
+- Two computers hold the same old data and migrate before they sync: after the sync each holds one
+  organization "Docs", not two.
+- Two computers sync. Change the hand-off rule on one: the other uses it after it syncs. The
+  organizations, the hand-off ranges and the token limits show on both. The tools of an organization
+  show on each computer with its own skills.
+- Export a profile and import it into an empty profile: the tree, the limits, the ranges, the rule,
+  "Ask up the line" and the organizations of skill lists are the same.
+- A linked computer with "Can create and change agents" makes an organization and sets a parent. It
+  sees the part "Hand-off rules" and the tools read-only. Without the switch, it sees the form
+  read-only and changes nothing.
 - Switch to the Korean interface: the fields, the reasons of a refused send, the pass lines, the
-  token lines and the part "Organization" are Korean.
+  token lines and the part "Hand-off rules" are Korean.

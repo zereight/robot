@@ -79,6 +79,9 @@ An agent has:
     picks such a file. The app shows the review screen (see 014, "Review before an import"), asks for one model for all of them (see
     006), and asks to confirm.
 11. Recent work: the profile lists the latest tasks of the agent (see "Recent work").
+12. Organizations: the profile has a row "Organizations" with the organizations of the agent, and
+    each skill and connection that the agent has from an organization shows the line "From
+    <organization>" (see 030). A deleted agent leaves every organization.
 
 ## Role label
 
@@ -183,9 +186,8 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - If an import fails, the agents made so far stay. The error says why it stopped.
 - **Channels in the file**: with "Channels of these agents", the file holds each channel whose
   members are all among the picked agents and that is not archived: name, topic, instructions, the
-  setting "Review parts", the members and the lead, by the names of the agents in the file, the
-  daily token limit, and the parent channel when that channel is in the file too (030). It holds
-  no message, no section and no memory note. Import makes new channels only. A name that is taken
+  setting "Review parts", the members and the lead, by the names of the agents in the file. It holds
+  no message, no section and no memory note, and no organization, parent, tool or token limit (030). Import makes new channels only. A name that is taken
   gets a number. A channel whose member the user did not tick on the review screen is made without
   that member. A lead that is not made leaves the channel with no lead. A channel with no member
   left is not made, and the review screen lists it under "Not imported" with the reason.
