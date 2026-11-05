@@ -17,14 +17,13 @@ import { useOrgChart } from "../../../src/orgchart/useOrgChart.ts"
 import { useApp, useServer } from "../../../src/state/context.tsx"
 import { type Palette, radius, space, text } from "../../../src/theme/palette.ts"
 import { AvatarMark } from "../../../src/ui/AvatarMark.tsx"
-import { ChannelMark } from "../../../src/ui/ChannelMark.tsx"
 import { Face } from "../../../src/ui/Face.tsx"
 import { Body, Button, ErrorLine, Notice, Screen } from "../../../src/ui/kit.tsx"
 import { Sheet } from "../../../src/ui/Sheet.tsx"
 
 /**
- * Org chart (spec 029, "Phone"; spec 011, screen 8): the main agent, the channels with their
- * members and leads, the state of each agent, and the work that agents handed to each other in
+ * Org chart (spec 029, "Phone"; spec 011, screen 8): the main agent, the organizations with
+ * their members and leads, the state of each agent, and the work that agents handed to each other in
  * the last 7 days, as a read-only list. It needs only the link. The list is not cached: it lives
  * in memory while the screen is open, and it is not drawn when the server is not online.
  */
@@ -77,12 +76,6 @@ const openChat = (link: string, agentId: string) =>
     params: { link, kind: "agent", id: agentId },
   })
 
-const openChannel = (link: string, channelId: string) =>
-  router.push({
-    pathname: "/server/[link]/[kind]/[id]",
-    params: { link, kind: "channel", id: channelId },
-  })
-
 /** The colour of the dot and the word of a state. The word carries the meaning; the colour helps. */
 const stateColor = (palette: Palette, state: AgentState) =>
   state === "working"
@@ -125,8 +118,16 @@ const List = (props: { readonly link: string; readonly list: ReturnType<typeof b
           style={[styles.block, { marginLeft: space.l * (block.level - 1) }]}
           testID={`org.blockBox.${block.name || "none"}`}
         >
-          <BlockHeader link={link} block={block} />
+          <BlockHeader block={block} />
           <View style={[styles.card, cardColors(palette)]}>
+            {block.rows.length === 0 ? (
+              <Text
+                testID={`org.noMembers.${block.name || "none"}`}
+                style={[styles.noMembers, { color: palette.textMuted }]}
+              >
+                {t("org.noMembers")}
+              </Text>
+            ) : null}
             {block.rows.map((row, index) => (
               <AgentRow
                 key={row.key}
@@ -193,7 +194,7 @@ const List = (props: { readonly link: string; readonly list: ReturnType<typeof b
       <Sheet
         visible={open !== undefined}
         onClose={() => setMore(null)}
-        {...(open ? { title: t("org.more.title", { channel: blockName(t, open) }) } : {})}
+        {...(open ? { title: t("org.more.title", { organization: blockName(t, open) }) } : {})}
       >
         {(open?.more ?? []).map((m) => (
           <Pressable
@@ -225,46 +226,24 @@ const List = (props: { readonly link: string; readonly list: ReturnType<typeof b
   )
 }
 
-const BlockHeader = (props: { readonly link: string; readonly block: OrgBlock }) => {
+// The header of a block is no button: the phone has no form of an organization, so a tap on it
+// does nothing (spec 029, "Phone").
+const BlockHeader = (props: { readonly block: OrgBlock }) => {
   const { t, palette } = useApp()
-  const { block, link } = props
-  const channelId = block.channelId
-  // The picture of the channel, from the channels that the phone holds (spec 004, 011).
-  const picture = useServer(link)?.data.channels?.find((c) => c.id === channelId)?.picture
-  const content = (
-    <>
-      {channelId !== null ? <ChannelMark picture={picture} size={32} /> : null}
-      <View style={styles.rowText}>
-        <Text style={[styles.blockTitle, { color: palette.text }]}>{blockName(t, block)}</Text>
-        <Text style={[styles.blockLine, { color: palette.textMuted }]}>{blockLine(t, block)}</Text>
-      </View>
-      {channelId !== null ? (
-        <Text style={[styles.chevron, { color: palette.textMuted }]}>›</Text>
-      ) : null}
-    </>
-  )
-  // A tap on the header of a channel opens the channel. "No channel" is no channel: it opens nothing.
-  return channelId === null ? (
+  const { block } = props
+  return (
     <View
-      testID="org.block.none"
+      testID={block.orgId === null ? "org.block.none" : `org.block.${block.name}`}
       accessible
       accessibilityRole="header"
       accessibilityLabel={blockLabel(t, block)}
       style={styles.blockHeader}
     >
-      {content}
+      <View style={styles.rowText}>
+        <Text style={[styles.blockTitle, { color: palette.text }]}>{blockName(t, block)}</Text>
+        <Text style={[styles.blockLine, { color: palette.textMuted }]}>{blockLine(t, block)}</Text>
+      </View>
     </View>
-  ) : (
-    <Pressable
-      testID={`org.block.${block.name}`}
-      accessibilityRole="button"
-      accessibilityLabel={blockLabel(t, block)}
-      accessibilityHint={t("org.channel.hint")}
-      onPress={() => openChannel(link, channelId)}
-      style={({ pressed }) => [styles.blockHeader, { opacity: pressed ? 0.6 : 1 }]}
-    >
-      {content}
-    </Pressable>
   )
 }
 
@@ -352,7 +331,7 @@ const styles = StyleSheet.create({
   blockHeader: { flexDirection: "row", alignItems: "center", gap: space.m, minHeight: 44 },
   blockTitle: { fontSize: text.l, fontWeight: "700" },
   blockLine: { fontSize: text.s, lineHeight: 19 },
-  chevron: { fontSize: text.xl },
+  noMembers: { fontSize: text.s, lineHeight: 19, padding: space.m },
   card: { borderWidth: 1, borderRadius: radius.l, overflow: "hidden" },
   row: {
     flexDirection: "row",

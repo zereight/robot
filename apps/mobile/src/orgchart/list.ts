@@ -1,22 +1,22 @@
 import {
   type AgentState,
   type ChartAgent,
-  type ChartChannel,
   type ChartModel,
+  type ChartOrg,
   type Face,
-  ORG_CHANNEL_NODES_MAX,
   ORG_HANDOFF_LINES_MAX,
+  ORG_NODES_MAX,
   ORG_STATES,
 } from "@robot/shared"
 
 // The list of the screen "Org chart" (spec 029, "Phone"; spec 011). The server sends a ready model
-// of the chart. This file turns it into the rows of a list: the root, one block for each channel
+// of the chart. This file turns it into the rows of a list: the root, one block for each organization
 // node, and the block of hand-offs. It holds no text of the interface and draws nothing. The
 // screen translates the marks and draws the rows.
 
 /** One agent row: a node that the page would draw. */
 export interface OrgAgentRow {
-  /** Unique in the list. A copy of an agent in a second channel has its own key. */
+  /** Unique in the list. A copy of an agent in a second organization has its own key. */
   readonly key: string
   readonly agentId: string
   readonly name: string
@@ -44,11 +44,11 @@ export interface OrgCount {
 }
 
 export interface OrgBlock {
-  /** `c:<channel id>`, or `c:none` for the block "No channel". */
+  /** `o:<organization id>`, or `o:none` for the block "No organization". */
   readonly key: string
-  /** The channel that a tap on the header opens. Null for "No channel": the header opens nothing. */
-  readonly channelId: string | null
-  /** The name of the channel. Empty for "No channel": the screen writes it from the catalogue. */
+  /** The organization of the block. Null for "No organization". A tap on the header opens nothing (spec 029, "Phone"). */
+  readonly orgId: string | null
+  /** The name of the organization. Empty for "No organization": the screen writes it from the catalogue. */
   readonly name: string
   readonly memberCount: number
   /** The states that at least one member has, in the order working, waiting, idle, offline. */
@@ -58,7 +58,7 @@ export interface OrgBlock {
   /** The members behind the row "+<n> more". Empty when every member has a row. */
   readonly more: readonly OrgMoreRow[]
   /**
-   * 1 for a top channel and for "No channel". A sub-channel (030) is one more than its parent:
+   * 1 for a top organization and for "No organization". A sub-organization (030) is one more than its parent:
    * the screen indents its block one step for each level under the top.
    */
   readonly level: number
@@ -111,26 +111,26 @@ const moreRow = (key: string, node: ChartAgent): OrgMoreRow => ({
   state: node.state,
 })
 
-const block = (channel: ChartChannel): OrgBlock => {
+const block = (org: ChartOrg): OrgBlock => {
   // The server sends the lead first. A stable sort keeps the order of the others as sent.
-  const nodes = [...channel.nodes].sort((a, b) => Number(b.isLead) - Number(a.isLead))
+  const nodes = [...org.nodes].sort((a, b) => Number(b.isLead) - Number(a.isLead))
   // A server sends at most 12 nodes; a longer list is cut here too, and the rest goes behind the
   // row "+<n> more" before the members that the server did not send as nodes.
-  const shown = nodes.slice(0, ORG_CHANNEL_NODES_MAX)
-  const cut = nodes.slice(ORG_CHANNEL_NODES_MAX)
+  const shown = nodes.slice(0, ORG_NODES_MAX)
+  const cut = nodes.slice(ORG_NODES_MAX)
   return {
-    key: channel.key,
-    channelId: channel.channelId,
-    name: channel.name,
-    memberCount: channel.memberCount,
+    key: org.key,
+    orgId: org.orgId,
+    name: org.name,
+    memberCount: org.memberCount,
     counts: ORG_STATES.flatMap((state) =>
-      channel.counts[state] > 0 ? [{ state, count: channel.counts[state] }] : [],
+      org.counts[state] > 0 ? [{ state, count: org.counts[state] }] : [],
     ),
     rows: shown.map(agentRow),
     more: [
-      ...cut.map((node) => moreRow(`${channel.key}/more/${node.agentId}`, node)),
-      ...channel.more.map((m) => ({
-        key: `${channel.key}/more/${m.agentId}`,
+      ...cut.map((node) => moreRow(`${org.key}/more/${node.agentId}`, node)),
+      ...org.more.map((m) => ({
+        key: `${org.key}/more/${m.agentId}`,
         agentId: m.agentId,
         name: m.name,
         face: m.face,
@@ -138,7 +138,7 @@ const block = (channel: ChartChannel): OrgBlock => {
       })),
     ],
     // A server of an older build sends no level: every block is a top block.
-    level: Math.max(1, Math.min(3, Math.floor(channel.level ?? 1))),
+    level: Math.max(1, Math.min(3, Math.floor(org.level ?? 1))),
   }
 }
 
@@ -153,7 +153,7 @@ export const buildOrgList = (model: ChartModel): OrgList => {
   return {
     empty: model.empty,
     root: model.root ? { kind: "main", agent: agentRow(model.root) } : { kind: "you" },
-    blocks: model.empty ? [] : model.channels.map(block),
+    blocks: model.empty ? [] : model.orgs.map(block),
     handoffs: model.empty
       ? []
       : busiest.slice(0, ORG_HANDOFF_LINES_MAX).map(({ line }) => ({
