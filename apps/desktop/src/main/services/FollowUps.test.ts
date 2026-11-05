@@ -289,3 +289,42 @@ describe("follow-up의 정리", () => {
     })
   })
 })
+
+describe("follow-up의 권한", () => {
+  describe("Read only 레벨이면", () => {
+    test("거부되고 저장되지 않아야 한다", async () => {
+      const t = testRuntime()
+      let called = false
+      const ctx = {
+        agentId: "a",
+        workspace: "/tmp",
+        permission: "read_only" as const,
+        signal: new AbortController().signal,
+        onWaiting: () => {},
+        onMemory: () => {},
+        onKnowledge: () => {},
+        knowledgeChanges: { count: 0 },
+        turn: newTurnMark("user"),
+        taskId: "t",
+        onFollowUp: () => {
+          called = true
+          return null
+        },
+      }
+      const outcome = await t.runtime.runPromise(
+        Tools.use((x) =>
+          Effect.promise(() =>
+            x.execute(ctx, {
+              id: "w",
+              name: "wait_until",
+              input: JSON.stringify({ reason: "later", minutes: 5 }),
+            }),
+          ),
+        ),
+      )
+      expect(outcome.failed).toBe(true)
+      expect(outcome.refused).toBe("read_only")
+      expect(called).toBe(false)
+    })
+  })
+})

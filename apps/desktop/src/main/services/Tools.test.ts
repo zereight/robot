@@ -886,6 +886,8 @@ describe("browser for an agent runtime", () => {
   test("offers no search of past chats while memory is off (spec 007)", async () => {
     const { bridge } = await open("full", { memory: false })
     expect(bridge.tools.map((t) => t.name)).toEqual([
+      // A follow-up is a change inside the app, so every runtime gets it (spec 007).
+      "wait_until",
       "browser_open",
       "browser_read",
       "browser_click",

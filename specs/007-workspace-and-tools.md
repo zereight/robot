@@ -185,8 +185,11 @@ run, without holding a process open and without the user setting a routine (see 
 - The call takes the reason, one line of up to 200 characters, and the delay in minutes.
 - The call records a follow-up and ends at once. It shows a tool card with the reason and the time.
   It starts no wait, no card and no turn.
-- The tool is offered to every agent, at every permission level, because it changes nothing
-  outside the app.
+- Every agent gets the tool, on an API account and on a vendor runtime, because a follow-up is a
+  change inside the app and nothing outside it.
+- It is not a step of "Read only": that level lists the tools that it lets run, and this tool is not
+  one of them. A "Read only" agent gets "Refused: read only", as for any step the level refuses
+  (see "Permission levels"). The other levels offer it with no question.
 - The agent is told that the tool is for work that finishes by itself, and that a question for the
   user is a question card, not a follow-up.
 
