@@ -522,3 +522,43 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   await expect(adaNode).toHaveAttribute("data-state", "idle", { timeout: 30_000 })
   await app.close()
 })
+
+test("org chart: an organization with no member says so, and a channel does not change the chart", async () => {
+  test.setTimeout(120_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  try {
+    await resizeWindow(app, 1300, 900)
+    await connectMock(page, mock.openaiUrl, GOOD_KEY)
+    await createAgent(page, "Ada")
+    await createAgent(page, "Bo")
+    const serverId = await serverOf(page)
+    await page.getByTestId("page-orgchart").click()
+    await expect(page.getByTestId("org-page")).toBeVisible()
+    const before = await page.getByTestId("org-unit").count()
+
+    // A channel with members makes no node and moves no node (spec 029, "Acceptance").
+    await rpc(page, "channels.create", {
+      serverId,
+      name: "Docs",
+      topic: "",
+      memberIds: [await idOf(page, "Ada"), await idOf(page, "Bo")],
+      leadId: null,
+    })
+    await expect(page.getByTestId("org-unit")).toHaveCount(before)
+    await expect(orgOf(page, "Docs")).toHaveCount(0)
+
+    // An organization with no member has a node with the line "No members.".
+    await rpc(page, "organizations.create", { serverId, name: "Ops", memberIds: [], leadId: null })
+    await expect(orgOf(page, "Ops")).toHaveCount(1)
+    await expect(orgOf(page, "Ops").getByTestId("org-unit-empty")).toHaveText("No members.")
+    await shot(page, "s119-org-chart-empty-organization")
+
+    // In Korean the line is Korean.
+    await rpc(page, "settings.update", { language: "ko" })
+    await expect(orgOf(page, "Ops").getByTestId("org-unit-empty")).toHaveText("멤버가 없어요.")
+  } finally {
+    await app.close().catch(() => {})
+    await mock.close()
+  }
+})
