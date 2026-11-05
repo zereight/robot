@@ -9,10 +9,10 @@ and workflows.
 
 - **Task**: who does it (agent), what (prompt), where it came from (chat, channel, routine,
   workflow, another agent, a memory check (008), a card of the board (024), an outside program
-  (023), a message from Teams (028), or a handover (003)), its parent task if
-  any, its state, start and end time, and its result or error.
+  (023), a message from Teams (028), a handover (003), or a follow-up (see "Follow-up")), its
+  parent task if any, its state, start and end time, and its result or error.
 - **Depth**: a number. A task that the user, a routine, a workflow, a memory check, a handover,
-  an outside program or a message from Teams starts has depth 0. See
+  an outside program, a message from Teams or a follow-up starts has depth 0. See
   "Limits of a task".
 - **States**: queued → running → (waiting for user ↔ running) → done | failed | blocked |
   cancelled. A part of a channel that asks for review has one more state, in review, before done
@@ -184,6 +184,48 @@ so the user does not need to sit by it.
 - The muted line is stored with the chat and syncs with the messages (019). A linked device and
   the phone show it. The setting is local to the computer (013).
 
+## Follow-up
+
+An agent finishes its turn and asks to look at one thing again later. The app starts a new turn
+at that time, so that the agent can check the result of work that takes time, for example a
+deploy or a CI run, without holding a process open and without the user setting a routine.
+
+- **Tool**: "wait until" (007). The agent gives the reason, one line of up to 200 characters, and
+  a delay. The delay is a whole number of minutes, from 1 to 1440.
+- The call starts no wait. It records the follow-up and ends the call at once. The agent then
+  ends its turn as it does without the call.
+- **A follow-up is a row of its own**: the agent, the conversation (a direct chat or one of its
+  threads), the reason, the time, and the id of the task that made it. It shows in the details of
+  that task and in "Next 24 hours" of the Today page (021).
+- A follow-up works in a direct chat and its threads only. A call in a channel, in a workflow step
+  or in a routine fails with the reason "A follow-up works in a direct chat." and the turn goes
+  on. A channel already has routines (009), and a part of a channel job belongs to a job (004).
+- When the time comes, the app makes a task with the source "follow-up". Its agent is the agent of
+  the follow-up and its place is the same conversation. Its prompt holds the reason and the time
+  of the follow-up, and says that the agent asked for it itself in an earlier turn.
+- The task shows in the conversation as a turn, as a run of a routine does (009): the prompt of the
+  task is a row of the user, and the reply of the agent follows it. Its label in the Tasks page is
+  "Look again: <reason>" (005).
+- The follow-up is deleted when its task is made. A follow-up makes at most one task.
+- **The limits of the request hold**: a follow-up is a new task of its source, so the queue of the
+  agent applies (see "Queue"), the step limit applies, and the chain limit applies. It starts no
+  task while the agent runs another task.
+- **A blocked follow-up**: when the queue of the agent is full, the task is made as Failed with the
+  reason of the queue, as a routine run is (009). The follow-up is gone, and the user sees the
+  failed task. The app makes no second try.
+- **While the app does not run**: no task starts. On the next start, the app makes the task of
+  every follow-up whose time has passed, oldest first. A follow-up that is more than 12 hours late
+  is dropped with no task. A follow-up that is 12 hours late or less starts, and its prompt says
+  how late it is.
+- **Stop and delete**: Stop on the task that made the follow-up does not delete it: the call
+  already ended. The user can delete a follow-up in the details of that task, and the app makes no
+  task for it. The delete asks first.
+- **One agent holds at most 20 follow-ups.** The 21st call fails with the reason "This agent has
+  20 follow-ups that wait. Try again later." The turn goes on.
+- A follow-up makes no notification of its own. The task that it starts follows the rules of its
+  source for notifications (015).
+- A follow-up does not sync (019): it is work of the computer that runs it.
+
 ## Retry note
 
 A step that may change things is a file write, a shell command, or a tool of a connection (007)
@@ -314,7 +356,8 @@ stops the turn.
   1. The tasks that the user picked with "Run next", the latest pick first.
   2. The tasks of normal sources, the oldest first. These are a chat, a channel, another agent, an
      outside program, Teams, and a question from a channel (030, "Ask up the line").
-  3. The tasks of background sources, the oldest first. These are a routine and a workflow.
+  3. The tasks of background sources, the oldest first. These are a routine, a workflow and a
+     follow-up.
   4. A memory check. It starts only when its agent has no other task that runs or waits (008).
 - A new task never stops a task that runs. It only takes its place in the order. A task of a
   background source has no time limit in the queue. A run of a routine that is still queued when
@@ -472,3 +515,15 @@ stops the turn.
   sent.
 - A stand-in runtime ends with open steps and a last line "Blocked: no access": the task ends as
   Blocked and nothing is sent.
+- A stand-in provider calls "wait until" with 1 minute and the reason "CI of the deploy". The call
+  ends at once and the turn ends. After 1 minute a new task with the source "follow-up" starts in
+  the same chat, with the label "Look again: CI of the deploy", and the follow-up is gone from the
+  list and from the details of the earlier task.
+- A "wait until" call with 0 minutes and with 1441 minutes fails, and the turn goes on. The 21st
+  follow-up of one agent fails with the reason of the limit.
+- The app stops with a follow-up due in 5 minutes. It starts 2 minutes late: the task starts, and
+  its prompt says that it is 2 minutes late. It starts 13 hours late: no task starts, and the
+  follow-up leaves the list.
+- The user deletes a follow-up before its time: no task starts.
+- A follow-up due in 3 hours shows in "Next 24 hours" of the Today page with its reason, and a
+  click opens the task that made it. When its task starts, the row leaves.

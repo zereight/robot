@@ -23,7 +23,9 @@ export type TaskState = (typeof TASK_STATES)[number]
  * did not save (spec 008): its depth is 0, it posts no message, and it is last in the queue.
  * "question" is the look of an agent on the line at a question of a member (spec 030, "Ask up the
  * line"): its source id is the channel of the question, its depth is the depth of the part that
- * asks, and it is a normal source in the queue.
+ * asks, and it is a normal source in the queue. "follow_up" is the turn that an agent asked for
+ * itself to look at one thing again later (spec 005, "Follow-up"): its depth is 0, and it is a
+ * background source.
  */
 export const TASK_SOURCES = [
   "chat",
@@ -35,6 +37,7 @@ export const TASK_SOURCES = [
   "teams",
   "memory_check",
   "question",
+  "follow_up",
 ] as const
 export type TaskSource = (typeof TASK_SOURCES)[number]
 
@@ -58,7 +61,13 @@ export const TASKS_QUEUED_MAX = 20
  * 3 a background source and 4 a memory check.
  */
 export const queueRank = (source: TaskSource, picked: boolean): 1 | 2 | 3 | 4 =>
-  picked ? 1 : source === "memory_check" ? 4 : source === "routine" || source === "workflow" ? 3 : 2
+  picked
+    ? 1
+    : source === "memory_check"
+      ? 4
+      : source === "routine" || source === "workflow" || source === "follow_up"
+        ? 3
+        : 2
 
 /** States in which a task can still be stopped. A task in review is not one of them (spec 005). */
 export const ACTIVE_STATES: readonly TaskState[] = ["queued", "running", "waiting"]

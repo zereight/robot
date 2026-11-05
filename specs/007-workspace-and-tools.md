@@ -13,8 +13,9 @@ Each agent works in its own folder with real tools, and the user stays in contro
   window, ask the user a question, message other agents, read and run workflows (see 010), search
   and read past chats (see "Searching past chats"), use the computer (see "Computer use"), use
   the tools of the connections that the user added (see 018), read and change its own settings
-  (see 002, "Changes from the chat"), ask for and use saved secrets (see 020), and use the tools of
-  the built-in connection "Test devices" (see 032 to 034).
+  (see 002, "Changes from the chat"), ask for and use saved secrets (see 020), ask to look at one
+  thing again later (see 005, "Follow-up"), and use the tools of the built-in connection "Test
+  devices" (see 032 to 034).
 - **Permission level** per agent: "Read only", "Ask for everything", "Ask for risky steps"
   (default), "Ask when unsure", or "Full access". The list goes from the strictest to the loosest
   level. A linked
@@ -33,6 +34,8 @@ Each agent works in its own folder with real tools, and the user stays in contro
    agent" saves an allow rule (see "Permission rules").
 3. The agent asks a question: a question card shows with the choices or a text field. The task
    waits.
+4. The agent asks to look at one thing again later: the call records a follow-up and ends at once
+   (see 005, "Follow-up"). No card shows and nothing waits.
 4. Browser: the agent can open a browser window that the user can watch. The user can take
    control, then give it back. Stop ends the browser work at once.
 5. Other agents: see "Working with other agents".
@@ -173,6 +176,22 @@ the user gets a card only when the check is sure that the user asked for the ste
   them into one answer. The answer starts with the result, names the teammate for each part, and
   marks a part that failed, was blocked (with its reason), or got no reply. Do not do a part yourself when the role line of a
   teammate covers it. Do not send a part twice.
+
+## Look again later
+
+The tool "wait until" lets an agent come back to work that takes time, such as a deploy or a CI
+run, without holding a process open and without the user setting a routine (see 005, "Follow-up").
+
+- The call takes the reason, one line of up to 200 characters, and the delay in minutes.
+- The call records a follow-up and ends at once. It shows a tool card with the reason and the time.
+  It starts no wait, no card and no turn.
+- Every agent gets the tool, on an API account and on a vendor runtime, because a follow-up is a
+  change inside the app and nothing outside it.
+- It is not a step of "Read only": that level lists the tools that it lets run, and this tool is not
+  one of them. A "Read only" agent gets "Refused: read only", as for any step the level refuses
+  (see "Permission levels"). The other levels offer it with no question.
+- The agent is told that the tool is for work that finishes by itself, and that a question for the
+  user is a question card, not a follow-up.
 
 ## Searching past chats
 

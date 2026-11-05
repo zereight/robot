@@ -350,8 +350,9 @@ and its role line. Nothing moves.
   "Working…", or, in about half of the turns, a short playful phrase that the app picks at
   random for the turn and keeps until the turn ends. At least 20 phrases exist in each language.
   The Korean phrases read as spoken Korean, not as a translation. For a turn started by a routine,
-  the line names the routine. The stop button shows whenever this line shows, in every place
-  where the agent works (chat, channel, routine, workflow).
+  the line names the routine, and for a turn of a follow-up it says that the agent looks again
+  (005). The stop button shows whenever this line shows, in every place where the agent works
+  (chat, channel, routine, workflow).
 - Quiet: when the turn shows no sign of life for the quiet time, the working line reads "No
   answer from <name> for <time>" (see 005, "Quiet line"). The stop button stays. The quiet line
   does not animate, and the light of its badge is still. The elapsed time of the turn stays where
