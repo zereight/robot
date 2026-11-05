@@ -46,7 +46,7 @@ export const ContextMenu = (props: {
         aria-label={props.label}
         style={{
           left: `${Math.min(props.x, window.innerWidth - 180)}px`,
-          top: `${Math.min(props.y, window.innerHeight - 20 - props.items.length * 34)}px`,
+          top: `${Math.min(props.y, window.innerHeight - 20 - props.items.length * 40)}px`,
         }}
         data-testid="context-menu"
       >

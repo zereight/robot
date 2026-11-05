@@ -85,9 +85,10 @@ tag, so the user reads their work as they read messages from colleagues.
   line with this fact (see 008 and 016).
 - The visual style is calm: flat surfaces, no decorative gradients, sentence case, medium and
   semibold weights only, one line icon set, motion under 300 ms that respects reduced motion
-  settings. The look follows `DESIGN.md`: two lights carry meaning and nothing else does. The
+  settings. The look follows `DESIGN.md`: three lights carry meaning and nothing else does. The
   accent violet shows where the user is and what can be pressed. The mint glow shows an agent, a
-  channel or a task that works now. The surfaces of the window are told apart by their lightness,
+  channel or a task that works now. The rose neon shows that the app answers the user (see the
+  light rule below). The surfaces of the window are told apart by their lightness,
   so a panel shows as its own plane and not as a box with a line around it. A sentence that the
   user reads is set at the body text size, never at the size of a label. A code block, an error
   line and a reason that explains a state are sentences for this rule. At the small text size
@@ -108,7 +109,16 @@ tag, so the user reads their work as they read messages from colleagues.
 - Light is the one exception to the flat style. It shows who or what is here, and nothing else:
   the app mark glows, an avatar glows in the dark theme (see 002, "Avatars"), and so does the
   badge of the app mark on a working agent (see 003, "States"). Light is not used to decorate a
-  surface, a button or a text. Light that does not belong to the app mark or to an avatar needs a change of this spec.
+  surface, a button or a text. Light that does not belong to the app mark, to an avatar or to the rose neon needs a change of
+  this spec.
+- The **rose neon** is the light that answers the user. In the desktop app, it shows as a soft
+  halo on a control that has the pointer or the keyboard focus, on a control that is pressed, and
+  once on the result of an action that the user just did (for example a sent message or a
+  copied pairing link). It fades in and out in less than 300 ms. At rest, a screen has no rose
+  neon, and the rose neon never marks a state that the app keeps (selected, working, unread).
+  The halo is a glow around a control. It is not a border, a gradient fill or a glass surface.
+  The rose neon reads in both themes. With reduce motion, the halo of the pointer and of the
+  keyboard focus appears with no fade, and the echo after an action does not show.
 - A motion that ends takes less than 300 ms. A motion that does not end shows one thing only:
   that work goes on. It has one of two shapes. A **breath** is a mark that glows, grows a little
   and fades, in 1.4 s: the light of the badge of a working agent (003, "States") and the working

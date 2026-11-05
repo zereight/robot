@@ -32,6 +32,17 @@
   --text-l: 1.25rem;
   --text-xl: 1.5rem;
   --text-2xl: 1.875rem;
+  /* The rose neon as a halo around a control (DESIGN.md, "Answer Rose"). A glow, not a border. */
+  --halo:
+    0 0 0 1px color-mix(in srgb, var(--c-neon) 75%, transparent),
+    0 0 12px color-mix(in srgb, var(--c-neon) 50%, transparent),
+    0 0 30px color-mix(in srgb, var(--c-neon) 22%, transparent);
+  /* A quieter halo for a row or a menu item, where many sit side by side. */
+  --halo-soft: 0 0 12px color-mix(in srgb, var(--c-neon) 26%, transparent);
+  /* The same light for keyboard focus, with no ring: the focus outline already draws the edge. */
+  --halo-focus:
+    0 0 14px color-mix(in srgb, var(--c-neon) 45%, transparent),
+    0 0 32px color-mix(in srgb, var(--c-neon) 20%, transparent);
   /* Lets height move to and from "auto" (section lists). */
   interpolate-size: allow-keywords;
 }
@@ -74,6 +85,17 @@ button {
   cursor: pointer;
 }
 
+/* Every button answers a press with the same small scale. The selector has no weight, so a part
+   that sets its own transform or transition (a row, a thumb, a menu item) keeps it. Rows of the
+   place list stay still: a wide row that shrinks reads as a glitch. */
+:where(button:not(:disabled, [data-place-row]):active) {
+  transform: scale(var(--press-scale));
+}
+
+:where(button:not([data-place-row])) {
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
 /* Thin scrollbars that take the text colour, so a long list does not carry a heavy grey bar. */
 * {
   scrollbar-width: thin;
@@ -83,6 +105,27 @@ button {
 :focus-visible {
   outline: 2px solid var(--c-focus);
   outline-offset: 2px;
+}
+
+/* The halo has no weight, so a part that draws its own shadow (a selected tab, a ring of the org
+   chart) keeps it, and the halo shows only where there is none. */
+:where(:focus-visible) {
+  box-shadow: var(--halo-focus);
+}
+
+/* The answer to an action the user just did: the halo shows once and fades (ui/echo.ts). */
+@keyframes echo {
+  from {
+    box-shadow: var(--halo);
+  }
+
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+[data-echo="true"] {
+  animation: echo var(--motion-slow) var(--ease-out);
 }
 
 h1,

@@ -47,6 +47,7 @@ import { useOrgs } from "../state/orgs.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
+import { echo } from "../ui/echo.ts"
 import { compactOffKey } from "./ContextMeter.tsx"
 import styles from "./chat.module.css"
 import { pendingFill, takeFill } from "./fill.ts"
@@ -320,6 +321,7 @@ export const Composer = (props: ComposerProps) => {
   const pickItem = (item: ReturnType<typeof matches>[number]) =>
     item.kind === "command" ? void runCommand(item.command) : pickSkill(item.skill)
   let input: HTMLTextAreaElement | undefined
+  let sendButton: HTMLButtonElement | undefined
   // "Try it" on a draft skill card puts the chip and the result text in the box.
   createEffect(() => {
     const fill = pendingFill()
@@ -440,6 +442,8 @@ export const Composer = (props: ComposerProps) => {
     const chip = skill()
     const attached = files()
     if (!value && attached.length === 0 && !chip) return
+    // The send button answers once, before the box empties and the button swaps to Stop.
+    echo(sendButton)
     // The chat marks the echo, so it slides up from the box.
     props.onPreview({
       text: value,
@@ -938,6 +942,7 @@ export const Composer = (props: ComposerProps) => {
             fallback={
               <button
                 type="button"
+                ref={sendButton}
                 class={styles.sendButton}
                 aria-label={t("chat.send")}
                 title={t("chat.send")}

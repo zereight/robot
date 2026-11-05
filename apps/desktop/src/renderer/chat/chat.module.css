@@ -50,7 +50,7 @@
   grid-template-columns: 40px minmax(0, 1fr);
   column-gap: 14px;
   margin: 0 8px;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border-radius: var(--radius-m);
 }
 
@@ -416,7 +416,7 @@
 
 /* Composer */
 .composer {
-  padding: 0 16px 16px;
+  padding: 0 var(--spacing-xl) var(--spacing-xl);
 }
 
 .queue {
@@ -532,6 +532,7 @@
 
 .box:focus-within {
   border-color: var(--c-focus);
+  box-shadow: var(--halo-focus);
 }
 
 .input {
@@ -558,6 +559,7 @@
   transition:
     background var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
   width: var(--box-row);
   height: var(--box-row);
@@ -568,6 +570,10 @@
   background: var(--c-accent);
   color: var(--c-accent-text);
   flex-shrink: 0;
+}
+
+.sendButton:hover:not(:disabled) {
+  box-shadow: var(--halo);
 }
 
 /* Send and stop swap places; the new icon turns in. */
@@ -758,7 +764,7 @@
 @keyframes avatar-in {
   from {
     opacity: 0;
-    transform: scale(0.8);
+    transform: scale(0.95);
   }
 }
 
@@ -779,7 +785,7 @@
 @keyframes icon-in {
   from {
     opacity: 0;
-    transform: scale(0.6) rotate(-45deg);
+    transform: scale(0.85) rotate(-45deg);
   }
 }
 

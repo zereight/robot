@@ -19,6 +19,11 @@ export interface Palette {
   /** The accent as text and links. It is lighter in the dark theme, so it reads on dark surfaces. */
   accentInk: string
   success: string
+  /**
+   * The rose neon (DESIGN.md, "Answer Rose"). It lights the control under the pointer, the
+   * keyboard focus and the press, and echoes once after an action. It is never a fill or a border.
+   */
+  neon: string
   danger: string
   /** The danger colour under the pointer, on the same rule as `accentHover`. */
   dangerHover: string
@@ -62,6 +67,7 @@ export const palettes: Record<"dark" | "light", Palette> = {
     accentHover: "#5a44c4",
     accentInk: "#b3afff",
     success: "#48deb3",
+    neon: "#ff87d0",
     danger: "#ff9492",
     dangerHover: "#ffaba7",
     dangerText: "#0d0c13",
@@ -90,6 +96,7 @@ export const palettes: Record<"dark" | "light", Palette> = {
     accentHover: "#4427a4",
     accentInk: "#4e38ac",
     success: "#006a4c",
+    neon: "#aa167d",
     danger: "#ab1a23",
     dangerHover: "#970010",
     dangerText: "#fdfdfd",
