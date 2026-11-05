@@ -1,5 +1,5 @@
 import { Show } from "solid-js"
-import { useOrgs } from "../state/orgs.tsx"
+import { type OrgsState, useOrgs } from "../state/orgs.tsx"
 import styles from "./prefix.module.css"
 
 /**
@@ -10,8 +10,13 @@ import styles from "./prefix.module.css"
  * organization, and the switch off, show the name alone. The label draws from the agent as it is
  * now, so it changes at once.
  */
-export const AgentName = (props: { id: string; name: string }) => {
-  const orgs = useOrgs()
+export const AgentName = (props: {
+  id: string
+  name: string
+  /** The organizations to read when the agent is not of the server on screen. */
+  orgs?: Pick<OrgsState, "shown">
+}) => {
+  const orgs = props.orgs ?? useOrgs()
   const shown = () => orgs.shown(props.id, props.name)
   return (
     <Show when={shown().prefix} fallback={props.name}>

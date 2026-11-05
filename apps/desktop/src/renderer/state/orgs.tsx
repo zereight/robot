@@ -21,31 +21,31 @@ import { useApp } from "./app.tsx"
 import { useUi } from "./ui.tsx"
 
 /**
- * The organizations of the server on screen (spec 030). On a linked server they come over the link
- * (spec 012): a read needs the link only. The list is by name, ignoring case.
+ * The organizations of one server (spec 030). On a linked server they come over the link (spec
+ * 012): a read needs the link only. The list is by name, ignoring case. The provider below reads
+ * the server on screen; a list that names agents of another server (the archive list, which is
+ * always the local server) makes its own with that server.
  */
-const createOrgsState = () => {
+export const createOrgs = (serverId: () => string | undefined) => {
   const app = useApp()
-  const ui = useUi()
   const [store, setStore] = createStore<{ list: Org[] }>({ list: [] })
   // An offline linked server answers nothing: the last list stays on screen, and the form says
   // that the server is offline.
-  const [fetched, { refetch }] = createResource(
-    () => ui.server()?.id,
-    (serverId) => call("organizations.list", { serverId }).catch(() => undefined),
+  const [fetched, { refetch }] = createResource(serverId, (id) =>
+    call("organizations.list", { serverId: id }).catch(() => undefined),
   )
   createEffect(() => {
     const next = fetched()
     if (next) setStore("list", reconcile([...next], { key: "id" }))
   })
-  // A change of the server on screen drops the old list at once.
+  // A change of the server drops the old list at once.
   createEffect(() => {
-    void ui.server()?.id
+    void serverId()
     setStore("list", reconcile([], { key: "id" }))
   })
   onCleanup(
-    window.robot.on("organizations.changed", ({ serverId }) => {
-      if (serverId === ui.server()?.id) void refetch()
+    window.robot.on("organizations.changed", ({ serverId: changed }) => {
+      if (changed === serverId()) void refetch()
     }),
   )
   const orgs = () => store.list
@@ -73,13 +73,18 @@ const createOrgsState = () => {
   }
 }
 
-export type OrgsState = ReturnType<typeof createOrgsState>
+export type OrgsState = ReturnType<typeof createOrgs>
 
 const OrgsContext = createContext<OrgsState>()
 
-export const OrgsProvider = (props: ParentProps) => (
-  <OrgsContext.Provider value={createOrgsState()}>{props.children}</OrgsContext.Provider>
-)
+export const OrgsProvider = (props: ParentProps) => {
+  const ui = useUi()
+  return (
+    <OrgsContext.Provider value={createOrgs(() => ui.server()?.id)}>
+      {props.children}
+    </OrgsContext.Provider>
+  )
+}
 
 export const useOrgs = () => {
   const state = useContext(OrgsContext)

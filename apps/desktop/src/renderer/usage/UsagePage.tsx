@@ -10,6 +10,7 @@ import {
 import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { call } from "../lib/rpc.ts"
 import { formatSeconds } from "../lib/seconds.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
 import shell from "../shell/shell.module.css"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -116,7 +117,9 @@ export const UsagePage = () => {
             <For each={usageByAgent(rows())}>
               {(a) => (
                 <tr data-testid="usage-agent-row">
-                  <th scope="row">{a.agentName}</th>
+                  <th scope="row">
+                    <AgentName id={a.agentId} name={a.agentName} />
+                  </th>
                   <td class={styles.num}>{number().format(a.replies)}</td>
                   <td class={styles.num}>{number().format(a.inputTokens)}</td>
                   <td class={styles.num}>{number().format(a.outputTokens)}</td>
@@ -138,7 +141,9 @@ export const UsagePage = () => {
                 <For each={day.agents}>
                   {(a) => (
                     <tr data-testid="usage-day-row">
-                      <th scope="row">{a.agentName}</th>
+                      <th scope="row">
+                        <AgentName id={a.agentId} name={a.agentName} />
+                      </th>
                       <td class={styles.num}>{number().format(a.replies)}</td>
                       <td class={styles.num}>{number().format(a.inputTokens)}</td>
                       <td class={styles.num}>{number().format(a.outputTokens)}</td>

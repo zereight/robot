@@ -2,8 +2,10 @@ import type { Agent } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
+import { createOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
@@ -16,6 +18,9 @@ export const ArchiveSection = () => {
   const { t } = useApp()
   const ui = useUi()
   const devices = useDevices()
+  // The archive is the list of this computer, so its prefixes come from the organizations of the
+  // local server, also while a linked server is on screen (spec 035).
+  const orgs = createOrgs(() => ui.localServer()?.id)
   const [archived, { refetch }] = createResource(
     () => ui.localServer()?.id,
     (serverId) => call("agents.list", { serverId, archived: true }),
@@ -76,7 +81,9 @@ export const ArchiveSection = () => {
             {(agent) => (
               <li class={styles.archiveItem} data-testid={`archived-${agent.id}`}>
                 <Face face={agent.face} image={agent.faceImage} size={32} />
-                <span class={styles.archiveName}>{agent.name}</span>
+                <span class={styles.archiveName}>
+                  <AgentName id={agent.id} name={agent.name} orgs={orgs} />
+                </span>
                 <Button
                   onClick={() => call("agents.restore", { id: agent.id })}
                   data-testid="archive-restore"
