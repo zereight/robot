@@ -3,7 +3,7 @@ import { connectMock, createAgent, freshUserData, launch, resizeWindow, shot } f
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { rpc } from "./sync-helpers.ts"
 
-// The org chart (spec 029): four agents, one channel "Docs" with a lead, one hand-off from Bo to
+// The org chart (spec 029): four agents, one organization "Docs" with a lead, one hand-off from Bo to
 // Cy, and one task that runs. The test reads the page, checks that nothing overlaps or is cut off
 // with "reduce motion" on and off, uses the keys and the pointer, and follows live changes.
 
@@ -36,8 +36,7 @@ const nodeOf = (page: Page, name: string) =>
   page
     .getByTestId("org-node")
     .filter({ has: page.getByTestId("org-name").getByText(name, { exact: true }) })
-const channelOf = (page: Page, name: string) =>
-  page.getByTestId("org-channel").filter({ hasText: name })
+const orgOf = (page: Page, name: string) => page.getByTestId("org-unit").filter({ hasText: name })
 
 /** The faults of the drawing in words: nodes that overlap, a number on a node, text that is cut. */
 const faultsOf = (page: Page) =>
@@ -45,7 +44,7 @@ const faultsOf = (page: Page) =>
     const found: string[] = []
     const q = (selector: string) => [...document.querySelectorAll<HTMLElement>(selector)]
     const nodes = q(
-      '[data-testid="org-node"],[data-testid="org-root"],[data-testid="org-channel"],[data-testid="org-more"]',
+      '[data-testid="org-node"],[data-testid="org-root"],[data-testid="org-unit"],[data-testid="org-more"]',
     )
     const pills = q('[data-testid="org-line-count"]')
     const name = (el: HTMLElement) => el.getAttribute("aria-label") ?? el.dataset.key ?? "?"
@@ -75,7 +74,7 @@ const faultsOf = (page: Page) =>
       }
       // A line that must show whole (the state, the members, the counts) is not cut with "…".
       for (const part of node.querySelectorAll<HTMLElement>(
-        '[data-testid="org-state"] span,[data-testid="org-channel-members"],[data-testid="org-channel-states"]',
+        '[data-testid="org-state"] span,[data-testid="org-unit-members"],[data-testid="org-unit-states"]',
       )) {
         if (part.scrollWidth > part.clientWidth + 1 && part.clientWidth > 0)
           found.push(`cut at the side: ${part.textContent} of ${name(node)}`)
@@ -203,10 +202,9 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
     })
   }
   const [ada, bo, cy] = await Promise.all(["Ada", "Bo", "Cy"].map((n) => idOf(page, n)))
-  await rpc(page, "channels.create", {
+  await rpc(page, "organizations.create", {
     serverId: server,
     name: "Docs",
-    topic: "",
     memberIds: [ada, bo, cy],
     leadId: ada,
   })
@@ -242,15 +240,15 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   const adaNode = nodeOf(page, "Ada")
   await keepWorking(page, ada as string)
 
-  // The root is "You": no main agent exists. The channel node "Docs" holds three members, and the
-  // node "No channel" holds the fourth agent.
+  // The root is "You": no main agent exists. The organization node "Docs" holds three members, and the
+  // node "No organization" holds the fourth agent.
   await expect(page.getByTestId("org-root")).toHaveAttribute("aria-label", "You")
-  await expect(page.getByTestId("org-channel")).toHaveCount(2)
-  const docs = channelOf(page, "Docs")
-  await expect(docs.getByTestId("org-channel-members")).toHaveText("3 members")
-  await expect(docs.getByTestId("org-channel-states")).toHaveText("1 working · 2 idle")
-  const none = channelOf(page, "No channel")
-  await expect(none.getByTestId("org-channel-members")).toHaveText("1 member")
+  await expect(page.getByTestId("org-unit")).toHaveCount(2)
+  const docs = orgOf(page, "Docs")
+  await expect(docs.getByTestId("org-unit-members")).toHaveText("3 members")
+  await expect(docs.getByTestId("org-unit-states")).toHaveText("1 working · 2 idle")
+  const none = orgOf(page, "No organization")
+  await expect(none.getByTestId("org-unit-members")).toHaveText("1 member")
   await expect(page.getByTestId("org-node")).toHaveCount(4)
 
   // The lead has the mark "Lead" and its task label. The others have none of both.
@@ -267,14 +265,14 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   await expect(nodeOf(page, "Bo").getByTestId("org-task-label")).toHaveCount(0)
 
   // The lines: two lead lines (Ada to Bo and Cy), one hand-off line with the number 1, and four
-  // lines of "belongs to": the root to both channel nodes, "Docs" to its lead, and "No channel"
+  // lines of "belongs to": the root to both organization nodes, "Docs" to its lead, and "No organization"
   // to Dee (it has no lead).
   const lines = (kind: string) => page.locator(`[data-testid=org-line][data-kind=${kind}]`)
   await expect(lines("lead")).toHaveCount(2)
   await expect(lines("handoff")).toHaveCount(1)
   await expect(lines("structure")).toHaveCount(4)
   await expect(page.getByTestId("org-line-count")).toHaveText("1")
-  await expect(page.getByTestId("org-legend")).toContainText("Gives parts")
+  await expect(page.getByTestId("org-legend")).toContainText("Leads")
   await expect(page.getByTestId("org-legend")).toContainText("Handed work in the last 7 days")
   await expect(page.getByTestId("org-legend")).toContainText("Belongs to")
   await expect(page.getByTestId("org-capped")).toHaveCount(0)
@@ -303,8 +301,8 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   await expect(page.getByTestId("org-line-tip")).toHaveCount(0)
 
   // Pointing at Bo lights its own lines and the nodes at their ends: the lead (lead line) and Cy
-  // (hand-off line). The channel node "Docs" has a line to its lead only, so it dims with the
-  // root, "No channel" and Dee. Moving away clears the dim.
+  // (hand-off line). The organization node "Docs" has a line to its lead only, so it dims with the
+  // root, "No organization" and Dee. Moving away clears the dim.
   await nodeOf(page, "Bo").hover()
   await expect(nodeOf(page, "Dee")).toHaveAttribute("data-dim", "true")
   await expect(none).toHaveAttribute("data-dim", "true")
@@ -365,7 +363,7 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   await page.getByTestId("org-fit").click()
   await expect.poll(async () => (await view(page)).zoom).toBeCloseTo(fitted.zoom, 2)
 
-  // Tab goes through the nodes in the order of the page: the root, then each channel node and
+  // Tab goes through the nodes in the order of the page: the root, then each organization node and
   // its agents. Escape clears the dim that the focus makes. Enter opens the profile.
   await page.getByTestId("org-canvas").click({ position: { x: 4, y: 4 } })
   const order: string[] = []
@@ -377,7 +375,7 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
       ),
     )
   }
-  expect(order).toEqual(["You", "Docs", "Ada", "Bo", "Cy", "No channel", "Dee"])
+  expect(order).toEqual(["You", "Docs", "Ada", "Bo", "Cy", "No organization", "Dee"])
   await expect(page.locator("[data-node][data-dim=true]")).not.toHaveCount(0)
   await page.keyboard.press("Escape")
   await expect(page.locator("[data-node][data-dim=true]")).toHaveCount(0)
@@ -396,7 +394,7 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   expect(await nameOf(nodeOf(page, "Cy"))).toBe("Cy. Checks facts. Idle. Got work from 1 agent")
   expect(await nameOf(docs)).toBe("Docs. 3 members. 1 working, 2 idle")
 
-  // A click on an agent node opens the profile; a click on a channel node opens the channel.
+  // A click on an agent node opens the profile; a click on an organization node opens its form.
   await page.getByTestId("page-orgchart").click()
   await nodeOf(page, "Bo").press("Enter")
   await expect(page.getByTestId("agent-profile")).toBeVisible()
@@ -404,9 +402,14 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   await page.keyboard.press("Escape")
   await expect(page.getByTestId("agent-profile")).toHaveCount(0)
   await page.getByTestId("page-orgchart").click()
-  await channelOf(page, "Docs").click()
-  await expect(page.getByTestId("channel-header-name")).toHaveText("Docs")
-  await page.getByTestId("page-orgchart").click()
+  await orgOf(page, "Docs").click()
+  await expect(page.getByTestId("org-dialog")).toBeVisible()
+  await expect(page.getByTestId("org-form").getByTestId("org-name")).toHaveValue("Docs")
+  await page.keyboard.press("Escape")
+  await expect(page.getByTestId("org-dialog")).toHaveCount(0)
+  // The node "No organization" does nothing.
+  await orgOf(page, "No organization").click()
+  await expect(page.getByTestId("org-dialog")).toHaveCount(0)
   await expect(page.getByTestId("org-canvas")).toBeVisible()
 
   // The page makes no task and starts no turn: the list of tasks has not grown.
@@ -443,10 +446,10 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   await rpc(page, "agents.archive", { id: cy })
   await expect(page.getByTestId("org-node")).toHaveCount(3, { timeout: 1000 })
   await expect(lines("handoff")).toHaveCount(0)
-  await expect(docs.getByTestId("org-channel-members")).toHaveText("2 members")
+  await expect(docs.getByTestId("org-unit-members")).toHaveText("2 members")
   await shot(page, "org-06-cy-archived")
 
-  // A channel node of 15 members draws 12 nodes and the tile "+3 more". A click on the tile lists the
+  // An organization node of 15 members draws 12 nodes and the tile "+3 more". A click on the tile lists the
   // other three. A click on a row opens the profile. The crowded chart has no overlap and no cut
   // text with "reduce motion" on and off.
   const names = Array.from({ length: 15 }, (_, i) => `M${String(i + 1).padStart(2, "0")}`)
@@ -461,15 +464,14 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
     })
     crowd.push(made.id)
   }
-  await rpc(page, "channels.create", {
+  await rpc(page, "organizations.create", {
     serverId: server,
     name: "Big",
-    topic: "",
     memberIds: crowd,
     leadId: null,
   })
-  const big = channelOf(page, "Big")
-  await expect(big.getByTestId("org-channel-members")).toHaveText("15 members", { timeout: 1500 })
+  const big = orgOf(page, "Big")
+  await expect(big.getByTestId("org-unit-members")).toHaveText("15 members", { timeout: 1500 })
   await expect(page.getByTestId("org-node")).toHaveCount(2 + 12 + 1)
   await expect(page.getByTestId("org-more")).toHaveText("+3 more")
   await page.getByTestId("org-fit").click()
@@ -503,14 +505,14 @@ test("org chart: nodes, lines, counts, hover, keys, live changes, no overlap wit
   // Korean: the title, the legend, the counts and the marks are Korean; names and labels are not.
   await keepWorking(page, ada as string)
   await rpc(page, "settings.update", { language: "ko" })
-  await expect(page.getByTestId("org-legend")).toContainText("부분을 나눠 줘요")
+  await expect(page.getByTestId("org-legend")).toContainText("이끌어요")
   await expect(page.getByTestId("org-legend")).toContainText("최근 7일간 넘긴 작업")
   await expect(page.getByTestId("org-legend")).toContainText("소속")
   await expect(adaNode.getByTestId("org-lead-mark")).toHaveText("리드")
   await expect(adaNode.getByTestId("org-state")).toContainText("작업 중")
   await expect(adaNode.getByTestId("org-task-label")).toContainText("Draft the release notes")
   await expect(page.getByTestId("org-root")).toHaveAttribute("aria-label", "나")
-  await expect(channelOf(page, "Docs").getByTestId("org-channel-members")).toHaveText("멤버 2명")
+  await expect(orgOf(page, "Docs").getByTestId("org-unit-members")).toHaveText("멤버 2명")
   await expect(page.getByTestId("org-line-count")).toHaveCount(0)
   expect(await faultsOf(page)).toEqual([])
   await shot(page, "org-07-korean")
