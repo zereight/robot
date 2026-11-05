@@ -10,6 +10,7 @@ These are in the code today and the specs now say something else.
 
 | Spec | Before | Now |
 | --- | --- | --- |
+| 003 | An agent on Claude Code has no automatic compact. An Anthropic chat compacts only at 85 percent or at 400000 tokens. | When the last reply ended 1 hour or more ago, the 1 hour cache is gone. The app compacts before the next turn of Claude Code, and before the next turn that a person starts on an Anthropic account. The setting "Compact long chats automatically" turns this on and off. |
 | 002 | A duplicate is named "Name copy". | A duplicate gets a random name and keeps the browser session. |
 | 003 | The working line reads "Working…". | It reads "Working…" or a playful phrase, and names a routine for a routine run. |
 | 004 | Without a mention, the lead gets the job. | The order is `@all`, mentions, fast pick, lead, user pick. |

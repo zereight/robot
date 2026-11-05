@@ -133,6 +133,28 @@ export const compactDue = (used: number | null, size: number | null): boolean =>
 }
 
 /**
+ * How long Anthropic keeps the start of a request in the cache of the model (spec 003). Claude
+ * Code uses this on every turn. An Anthropic account uses it on a turn that a person starts.
+ * After this time the cache is gone, and the next turn writes the history again.
+ */
+export const HOUR_CACHE_MS = 60 * 60 * 1000
+
+/**
+ * True when a turn that keeps the 1 hour cache compacts first because that cache is gone (spec
+ * 003). The setting is on, no pause of 5 turns holds, a reply has ended, and that end was at
+ * least 1 hour ago.
+ */
+export const hourCacheEnded = (input: {
+  readonly setting: boolean
+  readonly pause: number
+  readonly lastReplyAt: number | null
+  readonly now: number
+}): boolean => {
+  if (!input.setting || input.pause > 0 || input.lastReplyAt === null) return false
+  return input.now - input.lastReplyAt >= HOUR_CACHE_MS
+}
+
+/**
  * True when the app compacts before a turn (spec 003, "Automatic compact"): the setting is on, the
  * provider does not compact by itself, the use is due for a compact (see `compactDue`), and no
  * pause of 5 turns holds.

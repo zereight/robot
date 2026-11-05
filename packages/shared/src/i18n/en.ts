@@ -537,7 +537,7 @@ export const en = {
     "When an agent ends a turn and its list of steps has steps that are not done, ROBot asks it to go on, up to 8 times for one request. This works for agents whose program reports a list of steps.",
   "settings.autoCompact": "Compact long chats automatically",
   "settings.autoCompact.hint":
-    "Before a turn, a chat that uses 85 percent of the context of the model, or 400000 tokens, gets a summary of its older part.",
+    "Before a turn, a chat that uses 85 percent of the context of the model, or 400000 tokens, gets a summary of its older part. A Claude Code chat, and a chat that a person starts on an Anthropic account, also gets that summary when its last reply ended an hour ago, because the cache of the model is gone.",
   "error.thread_limit": "An agent has at most 50 threads. Delete one to start another.",
   "error.thread_not_found": "This thread no longer exists.",
   "error.thread_busy": "This thread has work that runs or waits. Wait for it to end.",

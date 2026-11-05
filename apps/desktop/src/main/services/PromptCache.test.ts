@@ -1,7 +1,9 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { messageText } from "@robot/shared"
+import { type ChatMessage, HOUR_CACHE_MS, messageText } from "@robot/shared"
+import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Chat, type TaskOrigin } from "./Chat.ts"
+import { Database } from "./Database.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
@@ -114,6 +116,33 @@ const setup = async (
   return { ...t, run, account, local, agent, send }
 }
 
+/** Moves the end time of every reply, so a test can pass the cache hour. */
+async function ageReplies(t: Awaited<ReturnType<typeof setup>>, msAgo: number) {
+  const at = Date.now() - msAgo
+  await t.run(
+    Database.use((db) =>
+      Effect.sync(() => {
+        db.run(
+          "UPDATE message SET finished_at = ? WHERE agent_id = ? AND author = 'agent'",
+          at,
+          t.agent.id,
+        )
+      }),
+    ),
+  )
+}
+
+function compactedParts(messages: readonly ChatMessage[]) {
+  return messages.flatMap((message) =>
+    message.parts.flatMap((part) => (part.kind === "compacted" ? [part] : [])),
+  )
+}
+
+async function compactedOf(t: Awaited<ReturnType<typeof setup>>) {
+  const { messages } = await t.run(Chat.use((c) => c.history(t.agent.id)))
+  return compactedParts(messages)
+}
+
 describe("prompt cache for an Anthropic account", () => {
   test("a turn that a person starts in the chat asks for 1 hour", async () => {
     const t = await setup({ cacheHosts: ["127.0.0.1"] })
@@ -189,5 +218,73 @@ describe("prompt cache for an Anthropic account", () => {
     await t.send("hello")
     const [row] = await t.run(Usage.use((u) => u.summary(t.local.id, 7)))
     expect(row).toMatchObject({ replies: 1, inputTokens: 20, outputTokens: 3 })
+  })
+})
+
+describe("When a person chats on an Anthropic account", () => {
+  describe("with the last reply an hour old and the context still small", () => {
+    test("should compact before the next message", async () => {
+      const t = await setup({ cacheHosts: ["127.0.0.1"] })
+      await t.send("one")
+      await t.send("two")
+      await ageReplies(t, HOUR_CACHE_MS + 60_000)
+      await t.send("three")
+      expect(await compactedOf(t)).toEqual([
+        expect.objectContaining({ kind: "compacted", auto: true }),
+      ])
+    })
+  })
+
+  describe("with the last reply under an hour old", () => {
+    test("should start the next message with no compact", async () => {
+      const t = await setup({ cacheHosts: ["127.0.0.1"] })
+      await t.send("one")
+      await t.send("two")
+      await ageReplies(t, HOUR_CACHE_MS - 30 * 60_000)
+      await t.send("three")
+      expect(await compactedOf(t)).toEqual([])
+    })
+  })
+})
+
+describe("When a handover runs on an Anthropic account", () => {
+  describe("with the last reply an hour old", () => {
+    test("should compact before that turn", async () => {
+      const t = await setup({ cacheHosts: ["127.0.0.1"] })
+      await t.send("one")
+      await t.send("two")
+      await ageReplies(t, HOUR_CACHE_MS + 60_000)
+      await t.send("hand it over", { source: "handover", sourceId: "h1" })
+      expect(await compactedOf(t)).toEqual([
+        expect.objectContaining({ kind: "compacted", auto: true }),
+      ])
+    })
+  })
+})
+
+describe("When a routine runs on an Anthropic account", () => {
+  describe("with the last reply an hour old", () => {
+    test("should not compact for the cache", async () => {
+      const t = await setup({ cacheHosts: ["127.0.0.1"] })
+      await t.send("one")
+      await t.send("two")
+      await t.send("three")
+      await ageReplies(t, HOUR_CACHE_MS + 60_000)
+      await t.send("routine job", { source: "routine", sourceId: "r1" })
+      expect(await compactedOf(t)).toEqual([])
+    })
+  })
+})
+
+describe("When a person chats on an OpenAI-compatible account", () => {
+  describe("with the last reply an hour old and the context still small", () => {
+    test("should not compact", async () => {
+      const t = await setup({ kind: "custom" })
+      await t.send("one")
+      await t.send("two")
+      await ageReplies(t, HOUR_CACHE_MS + 60_000)
+      await t.send("three")
+      expect(await compactedOf(t)).toEqual([])
+    })
   })
 })

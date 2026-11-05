@@ -5,6 +5,8 @@ import {
   canAddThread,
   compactCut,
   compactDue,
+  HOUR_CACHE_MS,
+  hourCacheEnded,
   meterShare,
   nextPause,
   shouldAutoCompact,
@@ -73,5 +75,19 @@ describe("automatic compact", () => {
     expect(nextPause(2, "full_after_compact")).toBe(COMPACT_PAUSE_TURNS)
     expect(nextPause(1, "turn")).toBe(0)
     expect(nextPause(0, "turn")).toBe(0)
+  })
+})
+
+describe("1 hour cache", () => {
+  const hour = { setting: true, pause: 0, lastReplyAt: 1_000, now: 1_000 + HOUR_CACHE_MS }
+  test("ends 1 hour after the last reply, and the app compacts then", () => {
+    expect(HOUR_CACHE_MS).toBe(60 * 60 * 1000)
+    expect(hourCacheEnded(hour)).toBe(true)
+    expect(hourCacheEnded({ ...hour, now: hour.lastReplyAt + HOUR_CACHE_MS - 1 })).toBe(false)
+  })
+  test("does not end when the setting is off, a pause holds, or no reply has ended", () => {
+    expect(hourCacheEnded({ ...hour, setting: false })).toBe(false)
+    expect(hourCacheEnded({ ...hour, pause: 1 })).toBe(false)
+    expect(hourCacheEnded({ ...hour, lastReplyAt: null })).toBe(false)
   })
 })

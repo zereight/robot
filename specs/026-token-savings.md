@@ -181,7 +181,9 @@ says this, and the settings page says it to the user.
   (`docs/token-savings-research.md` lists what is known).
 - A compact between turns for a vendor program that has a compact command: the app sends the
   command after a turn ends, when the context is large. A test with Claude Code shows that this
-  works, and that it saves nothing at a short context. Open for a later change.
+  works, and that it saves nothing at a short context. Open for a later change. The compact of
+  003, when the cache of Claude Code has ended, is a different rule and is in scope (003). The
+  same rule covers an Anthropic account when a turn that a person starts finds that cache gone.
 - A per-agent or per-task switch, and a choice that turns savings on by itself.
 - A number of saved tokens or saved money.
 
