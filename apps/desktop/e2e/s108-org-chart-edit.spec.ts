@@ -12,16 +12,17 @@ import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, openDevices, rpc, setName } from "./sync-helpers.ts"
 
-// Spec 029, "Edit on the chart" (S108): the menus of the nodes, drag and drop with Option to add,
-// the rings, the refusal of a member that works, the line with "Undo" and Cmd+Z, the keys for each
-// edit, and a linked computer with the switch "Can create and change agents" (012).
+// Spec 029, "Edit on the chart": the menus of the nodes, drag and drop with Option to add, the
+// rings, an agent that works that still moves (membership holds no running work), the line with
+// "Undo" and Cmd+Z, the keys for each edit, and a linked computer with the switch "Can create and
+// change agents" (012). The chart edits organizations (030).
 
 interface AgentInfo {
   id: string
   name: string
   model: { accountId: string; model: string; effort: string | null } | null
 }
-interface ChannelInfo {
+interface OrgInfo {
   id: string
   name: string
   leadId: string | null
@@ -33,12 +34,12 @@ const localServerId = async (page: Page) =>
     ?.id as string
 const agentsOf = async (page: Page) =>
   rpc<AgentInfo[]>(page, "agents.list", { serverId: await localServerId(page), archived: false })
-const channelsOf = async (page: Page) =>
-  rpc<ChannelInfo[]>(page, "channels.list", { serverId: await localServerId(page) })
-/** The members of each channel by name, and its lead: "Docs: Ada*, Cy" (the lead has a star). */
+const orgsOf = async (page: Page) =>
+  rpc<OrgInfo[]>(page, "organizations.list", { serverId: await localServerId(page) })
+/** The members of each organization by name, and its lead: "Docs: Ada*, Cy" (the lead has a star). */
 const teams = async (page: Page) => {
   const names = new Map((await agentsOf(page)).map((a) => [a.id, a.name]))
-  return (await channelsOf(page))
+  return (await orgsOf(page))
     .map(
       (c) =>
         `${c.name}: ${c.memberIds
@@ -49,13 +50,13 @@ const teams = async (page: Page) => {
     .sort()
 }
 
-/** The node of an agent in one channel node. */
-const copyOf = (page: Page, agentId: string, channelId: string | null) =>
+/** The node of an agent in one organization node. */
+const copyOf = (page: Page, agentId: string, orgId: string | null) =>
   page.locator(
-    `[data-testid=org-node][data-agent-id="${agentId}"][data-key^="c:${channelId ?? "none"}"]`,
+    `[data-testid=org-node][data-agent-id="${agentId}"][data-key^="o:${orgId ?? "none"}"]`,
   )
-const channelNode = (page: Page, channelId: string | null) =>
-  page.locator(`[data-testid=org-channel][data-key="c:${channelId ?? "none"}"]`)
+const orgNode = (page: Page, orgId: string | null) =>
+  page.locator(`[data-testid=org-unit][data-key="o:${orgId ?? "none"}"]`)
 
 const center = async (target: Locator) => {
   const box = await target.boundingBox()
@@ -111,7 +112,7 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await createAgent(page, "Ada")
     const server = await localServerId(page)
     const template = (await agentsOf(page))[0] as AgentInfo
-    // Eve is in no channel, so the channel node "No channel" shows.
+    // Eve is in no organization, so the organization node "No organization" shows.
     for (const name of ["Bo", "Cy", "Dee", "Eve"]) {
       await rpc(page, "agents.create", {
         serverId: server,
@@ -125,17 +126,15 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
       string,
       string
     >
-    const docs = await rpc<ChannelInfo>(page, "channels.create", {
+    const docs = await rpc<OrgInfo>(page, "organizations.create", {
       serverId: server,
       name: "Docs",
-      topic: "",
       memberIds: [ids.Ada, ids.Bo, ids.Cy],
       leadId: ids.Ada,
     })
-    const ops = await rpc<ChannelInfo>(page, "channels.create", {
+    const ops = await rpc<OrgInfo>(page, "organizations.create", {
       serverId: server,
       name: "Ops",
-      topic: "",
       memberIds: [ids.Dee],
       leadId: null,
     })
@@ -146,22 +145,17 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await expect(page.getByTestId("org-canvas")).toBeVisible()
     await expect(copyOf(page, bo, docs.id)).toBeVisible()
 
-    // Drag Bo from "Docs" onto "Ops": during the drag "Ops", the drawn node "No channel" and the
-    // drop area "No channel" show a ring, and "Docs" (where Bo is) shows none. The drop moves Bo,
+    // Drag Bo from "Docs" onto "Ops": during the drag "Ops", the drawn node "No organization" and the
+    // drop area "No organization" show a ring, and "Docs" (where Bo is) shows none. The drop moves Bo,
     // and the line "Moved Bo to Ops." shows.
     await expect(dropArea(page)).toHaveCount(0)
-    await drag(
-      page,
-      copyOf(page, bo, docs.id),
-      await center(channelNode(page, ops.id)),
-      async () => {
-        await expect(channelNode(page, ops.id)).toHaveAttribute("data-ring", "true")
-        await expect(channelNode(page, null)).toHaveAttribute("data-ring", "true")
-        await expect(channelNode(page, docs.id)).toHaveAttribute("data-ring", "false")
-        await expect(dropArea(page)).toHaveAttribute("data-ring", "true")
-        await shot(page, "s108-01-drag-ring")
-      },
-    )
+    await drag(page, copyOf(page, bo, docs.id), await center(orgNode(page, ops.id)), async () => {
+      await expect(orgNode(page, ops.id)).toHaveAttribute("data-ring", "true")
+      await expect(orgNode(page, null)).toHaveAttribute("data-ring", "true")
+      await expect(orgNode(page, docs.id)).toHaveAttribute("data-ring", "false")
+      await expect(dropArea(page)).toHaveAttribute("data-ring", "true")
+      await shot(page, "s108-01-drag-ring")
+    })
     await expect(dropArea(page)).toHaveCount(0)
     await expect(page.getByTestId("org-notice-text")).toHaveText("Moved Bo to Ops.")
     await expect(page.getByTestId("org-undo")).toBeVisible()
@@ -178,17 +172,12 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
 
     // Drag with Option: Bo is added to "Ops" and stays in "Docs".
     await page.keyboard.down("Alt")
-    await drag(
-      page,
-      copyOf(page, bo, docs.id),
-      await center(channelNode(page, ops.id)),
-      async () => {
-        // With Option there is nothing to add to "No channel": it shows no ring.
-        await expect(channelNode(page, null)).toHaveAttribute("data-ring", "false")
-        await expect(dropArea(page)).toHaveAttribute("data-ring", "false")
-        await expect(channelNode(page, ops.id)).toHaveAttribute("data-ring", "true")
-      },
-    )
+    await drag(page, copyOf(page, bo, docs.id), await center(orgNode(page, ops.id)), async () => {
+      // With Option there is nothing to add to "No organization": it shows no ring.
+      await expect(orgNode(page, null)).toHaveAttribute("data-ring", "false")
+      await expect(dropArea(page)).toHaveAttribute("data-ring", "false")
+      await expect(orgNode(page, ops.id)).toHaveAttribute("data-ring", "true")
+    })
     await page.keyboard.up("Alt")
     await expect(page.getByTestId("org-notice-text")).toHaveText("Added Bo to Ops.")
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo, Cy", "Ops: Bo, Dee"])
@@ -201,13 +190,13 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
 
     // Escape ends a drag with no change. A drop on the empty canvas or on a node with no ring
     // changes nothing either.
-    await drag(page, copyOf(page, cy, docs.id), await center(channelNode(page, ops.id)), () =>
+    await drag(page, copyOf(page, cy, docs.id), await center(orgNode(page, ops.id)), () =>
       page.keyboard.press("Escape"),
     )
     const canvas = await page.getByTestId("org-canvas").boundingBox()
     if (!canvas) throw new Error("no canvas")
     await drag(page, copyOf(page, cy, docs.id), { x: canvas.x + 20, y: canvas.y + 20 })
-    await drag(page, copyOf(page, cy, docs.id), await center(channelNode(page, docs.id)))
+    await drag(page, copyOf(page, cy, docs.id), await center(orgNode(page, docs.id)))
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo, Cy", "Ops: Dee"])
     // The drag opened nothing: the page is still the chart.
     await expect(page.getByTestId("org-canvas")).toBeVisible()
@@ -221,8 +210,8 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await expect(menu.getByRole("menuitem")).toHaveText([
       "Open profile",
       "Make lead of Docs",
-      "Add to channel…",
-      "Move to channel…",
+      "Add to organization…",
+      "Move to organization…",
       "Remove from Docs",
     ])
     await shot(page, "s108-03-menu")
@@ -240,27 +229,26 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await expect(menu).toHaveCount(0)
     await expect(copyOf(page, bo, docs.id)).toBeFocused()
 
-    // "Move to channel…" with the keyboard: the list holds the channels where Bo is no member.
+    // "Move to organization…" with the keyboard: the list holds the organizations where Bo is no member.
     await page.keyboard.press("Shift+F10")
     await menu.getByTestId("org-menu-move").focus()
     await page.keyboard.press("Enter")
     await expect(menu.getByRole("menuitem")).toHaveText(["Ops"])
     await page.keyboard.press("Enter")
-    // A move of the lead leaves its channel with no lead.
+    // A move of the lead leaves its organization with no lead.
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada, Cy", "Ops: Bo, Dee"])
     await expect(page.getByTestId("org-notice-text")).toHaveText("Moved Bo to Ops.")
     await page.getByTestId("org-undo").click()
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada, Bo*, Cy", "Ops: Dee"])
 
-    // The menu of a channel node: "Add member…" lists the agents that are not members. "Put
-    // under…" is there too (030, S109); a top channel has no "Move to the top".
-    await channelNode(page, ops.id).click({ button: "right" })
+    // The menu of an organization node: "Add member…" lists the agents that are not members. "Put
+    // under…" is there too (030); a top organization has no "Move to the top".
+    await orgNode(page, ops.id).click({ button: "right" })
     await expect(menu.getByRole("menuitem")).toHaveText([
-      "Open channel",
+      "Edit organization…",
       "Add member…",
-      "New agent in this channel",
+      "New agent in this organization",
       "Put under…",
-      "Channel settings",
     ])
     await menu.getByTestId("org-menu-add-member").click()
     await expect(menu.getByRole("menuitem")).toHaveText(["Ada", "Bo", "Cy", "Eve"])
@@ -278,55 +266,59 @@ test("edit on the org chart: menus, drag, Option, rings, refusal, Undo and Cmd+Z
     await expect(page.getByTestId("org-notice-text")).toHaveText("Removed Cy from Ops.")
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada, Bo*, Cy", "Ops: Dee"])
 
-    // The root "You" has no menu, and the node "No channel" has "New agent" only.
+    // The root "You" has no menu, and the node "No organization" has "New agent" only.
     await page.getByTestId("org-root").click({ button: "right" })
     await expect(menu).toHaveCount(0)
-    await channelNode(page, null).click({ button: "right" })
+    await orgNode(page, null).click({ button: "right" })
     await expect(menu.getByRole("menuitem")).toHaveText(["New agent"])
     await page.keyboard.press("Escape")
 
-    // A drop on the drawn node "No channel" removes the agent from the channel it came from.
-    await drag(page, copyOf(page, cy, docs.id), await center(channelNode(page, null)))
+    // A drop on the drawn node "No organization" removes the agent from the organization it came from.
+    await drag(page, copyOf(page, cy, docs.id), await center(orgNode(page, null)))
     await expect(page.getByTestId("org-notice-text")).toHaveText("Removed Cy from Docs.")
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada, Bo*", "Ops: Dee"])
     await expect(copyOf(page, cy, null)).toBeVisible()
-    // From "No channel", a drop on a channel node adds the agent. The drop area does not show:
-    // the agent is in no channel.
-    await drag(page, copyOf(page, cy, null), await center(channelNode(page, docs.id)), () =>
+    // From "No organization", a drop on an organization node adds the agent. The drop area does not show:
+    // the agent is in no organization.
+    await drag(page, copyOf(page, cy, null), await center(orgNode(page, docs.id)), () =>
       expect(dropArea(page)).toHaveCount(0),
     )
     await expect(page.getByTestId("org-notice-text")).toHaveText("Added Cy to Docs.")
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada, Bo*, Cy", "Ops: Dee"])
 
-    // A member that works cannot leave its channel. Bo is the lead now; Ada leads again, and
-    // gives Bo a part that runs long. A drag of Bo to "Ops" is refused and nothing changes.
-    await rpc(page, "channels.update", { id: docs.id, patch: { leadId: ids.Ada } })
-    await rpc(page, "channels.send", { channelId: docs.id, text: "split hold" })
+    // An agent that works can still change its organizations: an organization holds no running
+    // work (spec 029). Bo is the lead now; Ada leads again. A channel gives Bo a part that runs
+    // long, and a drag of Bo to "Ops" moves Bo.
+    await rpc(page, "organizations.update", { id: docs.id, patch: { leadId: ids.Ada } })
+    const work = await rpc<{ id: string }>(page, "channels.create", {
+      serverId: server,
+      name: "Work",
+      topic: "",
+      memberIds: [ids.Ada, ids.Bo],
+      leadId: ids.Ada,
+    })
+    await rpc(page, "channels.send", { channelId: work.id, text: "split hold" })
     await expect(copyOf(page, bo, docs.id)).toHaveAttribute("data-state", "working", {
       timeout: 20_000,
     })
-    await drag(page, copyOf(page, bo, docs.id), await center(channelNode(page, ops.id)))
-    await expect(page.getByTestId("org-notice-text")).toHaveText(
-      "Bo works in Docs. Wait for its part to end, or stop it.",
-    )
-    const refusedAt = Date.now()
-    await expect(page.getByTestId("org-notice")).toHaveAttribute("data-kind", "refused")
-    await expect(page.getByTestId("org-undo")).toHaveCount(0)
-    // One line shows at a time: the refusal took the place of the line before it.
+    await drag(page, copyOf(page, bo, docs.id), await center(orgNode(page, ops.id)))
+    await expect(page.getByTestId("org-notice-text")).toHaveText("Moved Bo to Ops.")
+    await expect(page.getByTestId("org-notice")).toHaveAttribute("data-kind", "done")
+    await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Cy", "Ops: Bo, Dee"])
+    await shot(page, "s108-04-working-agent-moves")
+    // A line of a change shows for 10 seconds, and one line shows at a time.
     await expect(page.getByTestId("org-notice")).toHaveCount(1)
-    await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo, Cy", "Ops: Dee"])
-    await shot(page, "s108-04-refused")
-    // A refusal line shows for 10 seconds.
-    await page.waitForTimeout(Math.max(0, refusedAt + 8_000 - Date.now()))
-    await expect(page.getByTestId("org-notice")).toBeVisible()
-    await expect(page.getByTestId("org-notice")).toHaveCount(0, { timeout: 4_000 })
     // The same in Korean. Names do not change.
+    await page.getByTestId("org-undo").click()
+    await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo, Cy", "Ops: Dee"])
     await rpc(page, "settings.update", { language: "ko" })
-    await drag(page, copyOf(page, bo, docs.id), await center(channelNode(page, ops.id)))
-    await expect(page.getByTestId("org-notice-text")).toContainText("Bo가 Docs에서 작업 중이에요")
-    await shot(page, "s108-05-refused-korean")
+    await drag(page, copyOf(page, bo, docs.id), await center(orgNode(page, ops.id)))
+    await expect(page.getByTestId("org-notice-text")).toContainText("Bo")
+    await expect(page.getByTestId("org-notice-text")).toContainText("Ops")
+    await expect(page.getByTestId("org-notice-text")).toContainText("옮겼어요")
+    await shot(page, "s108-05-moved-korean")
     await rpc(page, "settings.update", { language: "en" })
-    await rpc(page, "channels.stop", { channelId: docs.id })
+    await rpc(page, "channels.stop", { channelId: work.id })
   } finally {
     await app.close().catch(() => {})
     await mock.close()
@@ -355,17 +347,15 @@ test("edit on the org chart of a linked computer with the switch Can create and 
       string,
       string
     >
-    const docs = await rpc<ChannelInfo>(two.page, "channels.create", {
+    const docs = await rpc<OrgInfo>(two.page, "organizations.create", {
       serverId: serverTwo,
       name: "Docs",
-      topic: "",
       memberIds: [ids.Ada, ids.Bo],
       leadId: ids.Ada,
     })
-    const ops = await rpc<ChannelInfo>(two.page, "channels.create", {
+    const ops = await rpc<OrgInfo>(two.page, "organizations.create", {
       serverId: serverTwo,
       name: "Ops",
-      topic: "",
       memberIds: [ids.Ada],
       leadId: null,
     })
@@ -404,11 +394,11 @@ test("edit on the org chart of a linked computer with the switch Can create and 
     await expect(bo).toBeVisible()
 
     // A move on the chart works: Bo leaves "Docs" and joins "Ops" on MacBook 2. Every agent is
-    // in a channel: the drag shows the drop area "No channel", and the view does not move.
+    // in an organization: the drag shows the drop area "No organization", and the view does not move.
     const before = await settledView(one.page)
-    await drag(one.page, bo, await center(channelNode(one.page, ops.id)), async () => {
+    await drag(one.page, bo, await center(orgNode(one.page, ops.id)), async () => {
       await expect(dropArea(one.page)).toBeVisible()
-      await expect(channelNode(one.page, null)).toHaveCount(0)
+      await expect(orgNode(one.page, null)).toHaveCount(0)
       expect(await viewOf(one.page)).toEqual(before)
     })
     await expect(one.page.getByTestId("org-notice-text")).toHaveText("Moved Bo to Ops.")
@@ -425,7 +415,7 @@ test("edit on the org chart of a linked computer with the switch Can create and 
   }
 })
 
-test("edit on the org chart: the drop area No channel, a still view, edge scroll, Undone., and a new agent", async () => {
+test("edit on the org chart: the drop area No organization, a still view, edge scroll, Undone., and a new agent", async () => {
   test.setTimeout(240_000)
   const mock = await startMockProvider()
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
@@ -448,18 +438,16 @@ test("edit on the org chart: the drop area No channel, a still view, edge scroll
       string,
       string
     >
-    // Every agent is in a channel: the chart has no node "No channel".
-    const docs = await rpc<ChannelInfo>(page, "channels.create", {
+    // Every agent is in an organization: the chart has no node "No organization".
+    const docs = await rpc<OrgInfo>(page, "organizations.create", {
       serverId: server,
       name: "Docs",
-      topic: "",
       memberIds: [ids.Ada, ids.Bo],
       leadId: ids.Ada,
     })
-    const ops = await rpc<ChannelInfo>(page, "channels.create", {
+    const ops = await rpc<OrgInfo>(page, "organizations.create", {
       serverId: server,
       name: "Ops",
-      topic: "",
       memberIds: [ids.Dee],
       leadId: null,
     })
@@ -467,23 +455,23 @@ test("edit on the org chart: the drop area No channel, a still view, edge scroll
 
     await page.getByTestId("page-orgchart").click()
     await expect(copyOf(page, bo, docs.id)).toBeVisible()
-    await expect(channelNode(page, null)).toHaveCount(0)
+    await expect(orgNode(page, null)).toHaveCount(0)
 
-    // During the drag of Bo, the drop area "No channel" shows at the bottom left of the canvas,
-    // with a ring. The layout does not change: no node "No channel", the nodes stay in place, and
+    // During the drag of Bo, the drop area "No organization" shows at the bottom left of the canvas,
+    // with a ring. The layout does not change: no node "No organization", the nodes stay in place, and
     // the view is the same. Escape ends the drag and the drop area goes.
     const before = await settledView(page)
-    const opsAt = await center(channelNode(page, ops.id))
+    const opsAt = await center(orgNode(page, ops.id))
     const canvasBox = await page.getByTestId("org-canvas").boundingBox()
     if (!canvasBox) throw new Error("no canvas")
     await drag(page, copyOf(page, bo, docs.id), opsAt, async () => {
       await expect(dropArea(page)).toHaveAttribute("data-ring", "true")
-      await expect(channelNode(page, null)).toHaveCount(0)
+      await expect(orgNode(page, null)).toHaveCount(0)
       const area = await dropArea(page).boundingBox()
       if (!area) throw new Error("no drop area")
       expect(area.x - canvasBox.x).toBeLessThan(40)
       expect(canvasBox.y + canvasBox.height - (area.y + area.height)).toBeLessThan(40)
-      expect(await center(channelNode(page, ops.id))).toEqual(opsAt)
+      expect(await center(orgNode(page, ops.id))).toEqual(opsAt)
       expect(await viewOf(page)).toEqual(before)
       await shot(page, "s108-07-drag-drop-area")
       await page.keyboard.press("Escape")
@@ -531,7 +519,7 @@ test("edit on the org chart: the drop area No channel, a still view, edge scroll
     })
     expect(await viewOf(page)).toEqual(fitted)
 
-    // A drop on the drop area removes Bo from "Docs". After the drag, "No channel" shows by the
+    // A drop on the drop area removes Bo from "Docs". After the drag, "No organization" shows by the
     // normal rule: it holds Bo now.
     await drag(page, copyOf(page, bo, docs.id), opsAt, async () => {
       const to = await center(dropArea(page))
@@ -549,14 +537,14 @@ test("edit on the org chart: the drop area No channel, a still view, edge scroll
     await expect(page.getByTestId("org-notice")).toHaveCount(1)
     await expect(page.getByTestId("org-undo")).toHaveCount(0)
     await expect.poll(() => teams(page)).toEqual(["Docs: Ada*, Bo", "Ops: Dee"])
-    await expect(channelNode(page, null)).toHaveCount(0)
+    await expect(orgNode(page, null)).toHaveCount(0)
     await page.waitForTimeout(Math.max(0, undoneAt + 1_500 - Date.now()))
     await expect(page.getByTestId("org-notice")).toBeVisible()
     await expect(page.getByTestId("org-notice")).toHaveCount(0, { timeout: 3_000 })
 
-    // "New agent in this channel": after the save the chart stays open, the profile does not
+    // "New agent in this organization": after the save the chart stays open, the profile does not
     // open, and the focus is on the node of the new agent in "Ops".
-    await channelNode(page, ops.id).click({ button: "right" })
+    await orgNode(page, ops.id).click({ button: "right" })
     await page.getByTestId("org-menu").getByTestId("org-menu-new-agent").click()
     await page.getByTestId("agent-name").fill("Fay")
     await page.getByTestId("model-model").waitFor()
@@ -569,10 +557,10 @@ test("edit on the org chart: the drop area No channel, a still view, edge scroll
     await expect(page.getByTestId("chat-start")).toHaveCount(0)
     await shot(page, "s108-08-new-agent-focused")
 
-    // "New agent" on "No channel": take Fay out of "Ops" first, so that "No channel" shows.
-    await rpc(page, "channels.update", { id: ops.id, patch: { memberIds: [ids.Dee] } })
+    // "New agent" on "No organization": take Fay out of "Ops" first, so that "No organization" shows.
+    await rpc(page, "organizations.update", { id: ops.id, patch: { memberIds: [ids.Dee] } })
     await expect(copyOf(page, fay, null)).toBeVisible()
-    await channelNode(page, null).click({ button: "right" })
+    await orgNode(page, null).click({ button: "right" })
     await page.getByTestId("org-menu").getByTestId("org-menu-new-agent").click()
     await page.getByTestId("agent-name").fill("Gus")
     await page.getByTestId("model-model").waitFor()
@@ -584,24 +572,23 @@ test("edit on the org chart: the drop area No channel, a still view, edge scroll
     await expect(page.getByTestId("org-canvas")).toBeVisible()
     await expect(page.getByTestId("chat-start")).toHaveCount(0)
 
-    // A new agent that is made but cannot join its channel: the channel is deleted while the form
-    // is open. The refusal line gives the reason, and the focus goes to its node in "No channel".
-    const tmp = await rpc<ChannelInfo>(page, "channels.create", {
+    // A new agent that is made but cannot join its organization: the organization is deleted while the form
+    // is open. The refusal line gives the reason, and the focus goes to its node in "No organization".
+    const tmp = await rpc<OrgInfo>(page, "organizations.create", {
       serverId: server,
       name: "Tmp",
-      topic: "",
       memberIds: [ids.Dee],
       leadId: null,
     })
-    await channelNode(page, tmp.id).click({ button: "right" })
+    await orgNode(page, tmp.id).click({ button: "right" })
     await page.getByTestId("org-menu").getByTestId("org-menu-new-agent").click()
     await page.getByTestId("agent-name").fill("Ivy")
     await page.getByTestId("model-model").waitFor()
-    await rpc(page, "channels.delete", { id: tmp.id })
+    await rpc(page, "organizations.delete", { id: tmp.id })
     await page.getByTestId("agent-submit").click()
     await page.getByTestId("new-agent-dialog").waitFor({ state: "detached" })
     await expect(page.getByTestId("org-notice-text")).toHaveText(
-      "Ivy is made, but cannot join the channel. This channel does not exist any more.",
+      "Ivy is made, but cannot join the organization. That organization does not exist any more.",
     )
     await expect(page.getByTestId("org-notice")).toHaveAttribute("data-kind", "refused")
     const ivy = (await agentsOf(page)).find((a) => a.name === "Ivy")?.id as string
