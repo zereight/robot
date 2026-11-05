@@ -123,6 +123,13 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* The muted line under "Inherit": "Now: On from Product". It takes the whole row. */
+.toolNow {
+  flex: 1 0 100%;
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
 .error {
   color: var(--c-danger);
   font-size: var(--text-xs);
@@ -181,4 +188,24 @@
 .chip:focus-visible {
   outline: 2px solid var(--c-focus);
   outline-offset: 1px;
+}
+
+/* An organization in the picker of a skill or a connection: name, mark, then the three values. */
+.pickRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 3px 0;
+}
+.pickName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pickMark {
+  padding: 0 6px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
 }

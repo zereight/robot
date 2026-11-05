@@ -1,4 +1,4 @@
-import { type OrgToolRow, orgToolSwitch } from "@robot/shared"
+import { type OrgToolChoice, type OrgToolRow, orgToolSwitch } from "@robot/shared"
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
@@ -9,9 +9,10 @@ import styles from "./orgs.module.css"
 
 /**
  * The part "Tools" of the form of an organization (spec 030, "Access"): the skills and the
- * connections of this computer, each with the value "Inherit" or "On". The value is the list "the
- * agents that may use it" of the skill or the connection, so a change counts from the next turn.
- * A linked computer reads the rows and has no control (spec 012). "Off" comes with a later step.
+ * connections of this computer, each with the value "Inherit", "On" or "Off". The value is the list
+ * "the agents that may use it" of the skill or the connection, so a change counts from the next
+ * turn. Under "Inherit" a muted line says "Now: <value> from <organization>", or "Now: none". A
+ * linked computer reads the rows and has no control (spec 012).
  */
 export const OrgToolsPart = (props: { orgId: string }) => {
   const { t } = useApp()
@@ -24,7 +25,7 @@ export const OrgToolsPart = (props: { orgId: string }) => {
   onCleanup(window.robot.on("skills.changed", () => void refetch()))
   onCleanup(window.robot.on("connections.changed", () => void refetch()))
 
-  const set = async (row: OrgToolRow, choice: "on" | "inherit") => {
+  const set = async (row: OrgToolRow, choice: OrgToolChoice) => {
     setError(undefined)
     try {
       mutate(await call("orgTools.set", { orgId: props.orgId, kind: row.kind, id: row.id, choice }))
@@ -54,9 +55,7 @@ export const OrgToolsPart = (props: { orgId: string }) => {
                   label={row.name}
                   testId="org-tool-value"
                   value={state().value}
-                  onChange={(value) => {
-                    if (value === "on" || value === "inherit") void set(row, value)
-                  }}
+                  onChange={(value) => void set(row, value)}
                   options={[
                     {
                       value: "inherit",
@@ -64,8 +63,19 @@ export const OrgToolsPart = (props: { orgId: string }) => {
                       disabled: state().disabled,
                     },
                     { value: "on", label: t("orgs.tools.on"), disabled: state().disabled },
+                    { value: "off", label: t("orgs.tools.off"), disabled: state().disabled },
                   ]}
                 />
+                <Show when={!row.all && row.choice === "inherit"}>
+                  <span class={styles.toolNow} data-testid="org-tool-now">
+                    {row.now
+                      ? t("orgs.tools.now", {
+                          value: t(row.now.value === "on" ? "orgs.tools.on" : "orgs.tools.off"),
+                          organization: row.now.organization.name,
+                        })
+                      : t("orgs.tools.now.none")}
+                  </span>
+                </Show>
               </div>
             )
           }}

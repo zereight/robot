@@ -5,7 +5,6 @@ import { call } from "../lib/rpc.ts"
 import settings from "../settings/settings.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
-import { useChannels } from "../state/channels.tsx"
 import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, Switch } from "../ui/controls.tsx"
@@ -22,7 +21,6 @@ export const SkillsSection = () => {
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
-  const channels = useChannels()
   const orgs = useOrgs()
   const [skills, { refetch }] = createResource(
     () => (ui.linked() ? undefined : ui.server()?.id),
@@ -43,8 +41,8 @@ export const SkillsSection = () => {
   }
 
   /**
-   * Who may use the skill: "All agents", or the names of the agents, organizations (value "On")
-   * and channels that are still there (spec 017, 030).
+   * Who may use the skill: "All agents", or the names of the agents and of the organizations with
+   * the value "On" that are still there (spec 017, 030).
    */
   const forWhom = (skill: Skill) =>
     skill.agentIds === null
@@ -52,7 +50,6 @@ export const SkillsSection = () => {
       : [
           ...skill.agentIds.map((id) => agents.byId(id)?.name),
           ...skill.organizations.filter((e) => e.value === "on").map((e) => orgs.byId(e.id)?.name),
-          ...skill.channelIds.map((id) => channels.byId(id)?.name),
         ]
           .filter((name): name is string => name !== undefined)
           .join(", ")

@@ -2815,24 +2815,12 @@ export const en = {
   "routines.runTokens": "Tokens: {line}",
   "error.token_limit": "Token limit reached ({detail}).",
   "error.invalid_token_limit": "Use a whole number from 1,000 to 10,000,000 for the token limit.",
-  "tools.channelMark": "channel",
   "channels.dailyLimit": "Daily token limit",
   "channels.dailyLimit.placeholder": "Tokens a day",
   "channels.dailyLimit.hint":
     "From 10,000 to 100,000,000 tokens a day. The tasks of this channel and of its lower channels count, from midnight to midnight. At the limit, new work of the channel is blocked.",
   "channels.limit.near": "80% of the daily token limit is used.",
   "channels.limit.over": "The daily token limit of {channel} is used.",
-  "channels.tools": "Tools of this channel",
-  "channels.tools.hint":
-    "A skill or a connection that is on here goes to each member of this channel and of its lower channels. A change counts from the next turn.",
-  "channels.tools.linked":
-    "These tools are kept on {name}. You can read them here and change them there.",
-  "channels.tools.empty": "No skills and no connections yet.",
-  "channels.tools.skills": "Skills",
-  "channels.tools.connections": "Connections",
-  "channels.tools.all": "All agents",
-  "agents.channelTools": "Tools from channels",
-  "agents.channelTools.from": "From {channel}",
   "usage.channels": "Daily token limit of channels",
   "usage.col.channel": "Channel",
   "usage.col.usedToday": "Used today",
@@ -2891,7 +2879,7 @@ export const en = {
   "orgs.access.new": "Save the organization first. Then you can set its tools here.",
   "orgs.tools": "Tools",
   "orgs.tools.hint":
-    "A skill or a connection that is on here goes to each member of this organization and of its lower organizations. A change counts from the next turn.",
+    "A skill or a connection that is on here goes to each member of this organization and of its lower organizations. Off takes away only what this organization would get from above. A change counts from the next turn.",
   "orgs.tools.linked":
     "These tools are kept on {name}. You can read them here and change them there.",
   "orgs.tools.empty": "No skills and no connections yet.",
@@ -2900,6 +2888,9 @@ export const en = {
   "orgs.tools.all": "All agents",
   "orgs.tools.on": "On",
   "orgs.tools.inherit": "Inherit",
+  "orgs.tools.off": "Off",
+  "orgs.tools.now": "Now: {value} from {organization}",
+  "orgs.tools.now.none": "Now: none",
   "orgs.delete": "Delete organization",
   "orgs.delete.title": "Delete {name}?",
   "orgs.delete.confirm":
@@ -2922,7 +2913,6 @@ export const en = {
   "agents.orgTools": "Tools from organizations",
   "agents.orgTools.from": "From {organization}",
   "tools.orgMark": "organization",
-  "skills.orgs.on": "On",
   "error.org_not_found": "That organization does not exist any more.",
   "error.org_name_taken": "Another organization on this server has this name.",
   "error.orgs_full": "A profile holds at most 100 organizations.",
