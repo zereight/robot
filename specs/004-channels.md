@@ -228,6 +228,9 @@ plan and the channel. Then the user does not need to stop for it.
 
 - Agents in a channel see the channel messages; each agent keeps its own memory and workspace.
   Two members can still have one folder as workspace. Then the rules of 025 apply.
+- A channel that the main agent or an outside program makes or changes (036) follows a request
+  that the user allows. The request cannot set the instructions, the tools, the hand-off rule, the
+  parent or the token limit of the channel.
 - **Channel instructions**: each member gets the instructions of the channel in every turn of
   that channel, after its own instructions (002, "Handbook"). The lead gets them too. The fast pick
   does not get them. The user edits them in channel settings. A change counts from the next turn. No

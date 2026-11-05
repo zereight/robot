@@ -43,6 +43,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
 | 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
+| 036 | [Manage tools: the main agent and an outside program make and change agents, channels and routines, each change a request that the user allows](036-manage-tools.md) | Draft |
 
 ## Milestones
 
@@ -82,6 +83,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M32 | 030, and the changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S108 to S112: edit on the org chart, sub-channels, the hand-off rule, ask up the line, tools and daily token limit of a channel |
 | M33 | The changes to 003, 011 and 013 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S113: folded tool steps |
 | M34 | 032, 033, 034, and the changes to 000, 001, 007, 013, 014 and 018 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S115 to S117: the built-in connection, its download and its panel, the cards and the classes of the device steps, and the limits of logs, measurements, app data and the analysis of a performance file |
+| M35 | 036, and the changes to 002, 004, 007, 009 and 023 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S126 to S130: make an agent for the main agent, tools for agents, tools for channels, tools for routines, manage tools for outside programs |
 
 ## Surfaces check
 

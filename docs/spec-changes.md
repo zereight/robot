@@ -107,6 +107,9 @@ These are in the code today and the specs now say something else.
 | 035, 013 | The user edits `robot.json` by hand. | The user makes and changes the list in the app: "Manage setup actions" in the chat menu, and the section "Setup actions" in Settings with the agents of this computer. The editor names the file it writes. A save clears the allow, so the user allows the list again. |
 | 035 | The chat header shows nothing when the workspace has no list. | The header always shows the setup entry. With no list it shows "Manage setup actions", which opens the empty editor. |
 | 035 | The editor edits every row in one form. | The editor lists the actions: each row runs its action, shows the name and the start of the command, and opens the row for a change. "Add action" and a change open a row with the name, the command, and the two marks. |
+| 023 | An outside program has two accesses, "Read" and "Read and send work". It changes no agent, channel or routine. | A third access, "Read, send work and manage". It makes and changes agents, channels and routines, only through requests that the user allows (036). Workflows stay out. |
+| 007 | Only a few steps ask at "Full access". | A manage step (036) always makes a request, also at "Full access". At "Read only" it is refused. No rule covers it. |
+| 002, 004, 009 | The main agent changes only itself. A routine from a starter starts paused. | The main agent can make and change other agents, channels and routines with the manage tools (036), and the user allows each change. A routine from a tool starts paused, and Resume is a separate request. |
 
 ## Slices
 
@@ -218,6 +221,11 @@ These are in the code today and the specs now say something else.
 | S123 | Setup editor: "Manage setup actions" in the chat menu, the section "Setup actions" in Settings with the agents of this computer, the editor with the path of the file, add and delete, the limits that block a save, "Cancel", the replace of an unreadable file that asks first, and the cleared allow after a save. The editor is on the computer that holds the workspace. | 035, 013 |
 | S124 | Setup entry always in the chat header: with no list it shows "Manage setup actions" and opens the empty editor. | 035 |
 | S125 | Setup editor as a list: each row with a run, the name, the start of the command, and a change; a row dialog with the name, the command, the two marks, and "Delete"; "Add action" until 20 rows. | 035 |
+| S126 | Make an agent for the main agent: the manage step (always asks, "Read only" refuses, no rule covers it), the card with the whole change, the tools "Make an agent" and "Read an agent" on an API provider and on a vendor runtime, the mark "Made by" (stored, synced, shown in the profile), the entry of the action log. The tools show only for the main agent; the app has no switch for it yet (S21). | 036, 002, 007, 019 |
+| S127 | Tools for agents: "Change an agent" and "Archive an agent", Undo, the refusal of the caller as target. | 036, 002 |
+| S128 | Tools for channels: make, change and archive a channel, with members and lead only. | 036, 004 |
+| S129 | Tools for routines: "List routines", "Read a routine", make (paused), change, "Pause" with no request, "Resume" and "Run now" as requests. | 036, 009 |
+| S130 | Manage tools for outside programs: the third access on the row of an entry, the request that waits for the user without a turn, the card in the list "Waits for you", expiry after 24 hours, the limit of 5 waiting requests, "Wait for a request", the logs. Needs S68 and S126. | 036, 023, 021, 015 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -246,6 +254,7 @@ S115 to S117 follow each other, and S115 needs S32 for the connection. S115 is t
 
 S119 and S120 do not depend on each other. Do S119 first: it reads real files and shows a fault in the table of `docs/cc-wf-studio-format.md` early. S120 reuses the secret rule and the file names of S119 and needs no change to sync, files or the data of the app. Both read and write by their own code. No package of that project is added, because its extension is under AGPL-3.0 (see AGENTS.md).
 S121 does not depend on S119 or S120. It only reads the open graph.
+S126 needs the permission rules and approval cards of S30. It reaches a user only when a main agent exists, so it waits for the switch of S21 (the tests give a main agent, as for the hand-off rule). S127 to S129 follow S126 and do not depend on each other. S130 needs S68, which is not built yet: the helper, the entries and the keys of 023 do not exist, so the half of 036 for outside programs waits for it.
 
 ## Test devices (M34): behaviour that changes
 

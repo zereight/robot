@@ -10,7 +10,8 @@ anything, and an agent asks the user before it changes a setting for it.
 ## Concepts
 
 - **Outside program**: an entry that the user adds. It has a name (1 to 40 characters, unique,
-  case ignored), an access ("Read" or "Read and send work"), an access key, the date it was made,
+  case ignored), an access ("Read", "Read and send work", or "Read, send work and manage"), an access
+  key, the date it was made,
   and the time it was last used.
 - **Helper**: a small program that comes with ROBot. The outside program starts it as an MCP server
   of the kind "program on this computer". The helper talks only to ROBot on this computer.
@@ -27,7 +28,7 @@ anything, and an agent asks the user before it changes a setting for it.
 3. Use: the outside program calls the tools of the helper (see "Tools"). The row of the entry shows
    the time it was last used.
 4. New key: "Make a new key" shows a new setup text. The old key stops at once.
-5. Change access: the user changes "Read" and "Read and send work" on the row. It counts from the
+5. Change access: the user picks one of the three accesses on the row. It counts from the
    next call.
 6. Remove: after a confirm. The key stops at once. Tasks that the program started go on, as tasks
    of their agents. The user can stop them.
@@ -63,6 +64,10 @@ With the access "Read and send work", also:
   and, when the task ended, the reply text.
 - **Stop a task**: stops a task that this program started, as Stop does (005).
 
+With the access "Read, send work and manage", also the manage tools (036): read an agent, list and
+read routines, make and change agents, channels and routines, and wait for a request. Each change
+is a request that the user allows. The program cannot allow it.
+
 ## States
 
 - Off: the page shows the switch and one muted line. The helper answers each call with "Outside
@@ -74,8 +79,10 @@ With the access "Read and send work", also:
 
 ## Rules
 
-- No tool can answer an approval or a question, change a permission level or a rule, change an
-  agent, a channel, a routine, a workflow or a setting, delete anything, or read a key, a saved
+- A tool can change an agent, a channel or a routine only through a request that the user allows
+  (036), and only with the access "Read, send work and manage".
+- No tool can answer an approval or a question, change a permission level or a rule, change a
+  workflow or a setting, delete anything, or read a key, a saved
   secret (020), memory (008), knowledge (016), the handbook (002), or the action log (007).
 - A turn that a message of an outside program starts holds outside content from its start (007,
   "Outside content"). The source is the name of the program. So guarded steps ask, and at "Ask
@@ -119,7 +126,7 @@ With the access "Read and send work", also:
 ## Out of scope
 
 - An address on the network for the helper.
-- Creating or changing agents, channels, routines or workflows from an outside program.
+- Creating or changing workflows from an outside program. Agents, channels and routines: see 036.
 - Answers to approvals and questions from an outside program.
 - MCP resources and prompts. The helper offers tools only.
 
@@ -151,3 +158,5 @@ With the access "Read and send work", also:
 - Export the data: the archive holds no entry and no key.
 - A second profile does not see the entries of the first, and a key of the first does not reach the
   second.
+- Set the access to "Read, send work and manage". "Make an agent" returns "Waits for the user". No
+  tool of the helper can allow the request (036).

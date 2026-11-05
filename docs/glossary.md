@@ -44,7 +44,9 @@ A new word goes here in the same pull request as the spec that brings it.
 | Outside program | A program on this computer that reads and sends work in ROBot through MCP (023). | 외부 프로그램 (proposed) | integration, API client |
 | Helper | The small program of ROBot that an outside program starts (023). | 도우미 프로그램 (proposed) | bridge, server, agent |
 | Access key | The secret that tells ROBot which outside program calls (023). | 접근 키 (proposed) | token, password |
-| Read, Read and send work | The two accesses of an outside program (023). | 읽기, 읽기와 작업 보내기 (proposed) | read-only, full access |
+| Read, Read and send work, Read, send work and manage | The three accesses of an outside program (023, 036). | 읽기, 읽기와 작업 보내기, 읽기·작업 보내기·관리 (proposed) | read-only, full access, admin |
+| Manage tools | The tools that make and change agents, channels and routines (036). | 관리 도구 (proposed) | admin tools, API |
+| Change request | One call of a manage tool that waits for the user to allow it (036). | 변경 요청 (proposed) | proposal, ticket |
 | Trust read-only marks | The switch of a connection that lets marked tools run with no card (018). | 읽기 전용 표시 믿기 (proposed) | safe mode |
 | Read the handbook | The switch of an agent that gives it the handbook (002). | 핸드북 읽기 (proposed) | — |
 | Cached share | Cached input divided by all input, in percent (005). | 캐시 비율 (proposed) | cache hit rate |
