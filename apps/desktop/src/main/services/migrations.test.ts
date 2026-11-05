@@ -1304,7 +1304,7 @@ describe("When a database gains the follow-up action", () => {
   describe("with a follow-up from before that step", () => {
     test("should start a new turn for it", () => {
       const step = migrations.findIndex((sql) => sql.includes("follow_up ADD COLUMN action"))
-      expect(step).toBe(migrations.length - 1)
+      if (step < 0) throw new Error("the follow-up action migration is missing")
       const db = upTo(step)
       db.exec(`
         INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);
