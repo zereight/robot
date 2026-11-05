@@ -59,6 +59,10 @@ With the access "Read and send work", also:
   waiting message is not in the queue of the user (003). It has no "Send now" and no edit, and it
   never merges with messages of the user. It
   shows in the place with the mark "Sent by <program name>". It returns the task that it started.
+  A message can carry an id of at most 200 characters and a subject of 1 to 100 characters. A
+  message with an id that the program used before starts no second task (038, "Duplicates"). A
+  message with a subject waits behind the task of the same subject (038, "One at a time for one
+  subject"). A message with no id and no subject works as before.
 - **Wait for a task**: waits until the task ends, waits for the user, or 10 minutes pass. It
   returns the state ("Still running" after 10 minutes, "Waits for the user", or the final state)
   and, when the task ended, the reply text.
@@ -97,6 +101,8 @@ is a request that the user allows. The program cannot allow it.
 - A task of an outside program has depth 0 (005).
 - A job that an outside program sends to a channel holds outside content and the program mark in
   every part (007).
+- Each message of an outside program makes one event on the tab "Events" (038). A message with an
+  id that the program used before starts no second task (038, "Duplicates").
 - The helper reaches ROBot on this computer only. ROBot offers no network address for it. The way
   between the helper and ROBot is open only to the user of the system who runs ROBot.
 - The helper answers in English, because its reader is a program. The settings page is in the

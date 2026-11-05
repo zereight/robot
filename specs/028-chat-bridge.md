@@ -92,6 +92,14 @@ The dialog of "Turn on" repeats the second, third and sixth facts.
 
 ## Rules and limits
 
+### Events of a link
+
+- Each message of Teams that the app answers makes one event on the tab "Events" (038), with the
+  source "Teams", the name of the chat in its summary line, and the result. The text of the message
+  is outside content (007), as it is for the task that the message starts.
+- The tab shows the events of this computer only, so a message that another computer answered
+  shows there.
+
 ### Who may call
 
 The app answers a message only when all of these are true, in this order:

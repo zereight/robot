@@ -15,8 +15,9 @@ new user knows where to look.
 - **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
   (see 021), workflows (see 010), routines (see 009), tasks, the board (see 024), the org chart
   (see 029), test devices (see 032), usage. The workflows button opens the workflow list. The
-  routines button opens the routines list. Each page shows only its own list. At the bottom: help
-  and settings, then the profile button
+  routines button opens the routines list. Each page shows only its own list. The Tasks page holds
+  the tabs "Tasks" and "Events" (005, 038); the Tasks button opens the first tab. At the bottom:
+  help and settings, then the profile button
   when the computer has two or more profiles (see 022). The Today button shows a badge with the
   number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
   above 99. It hides when a linked server is on the screen.

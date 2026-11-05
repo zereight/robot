@@ -264,6 +264,13 @@ a new issue. ROBot runs no service on the internet for this (000).
   - The secret itself, as a bearer token.
   A call without valid proof gets the answer 401 and starts nothing. The app compares the proof
   in constant time.
+- **Id of a call**: a call can carry an id, so that the app finds a call that comes again. For the
+  preset "GitHub" the id is the header "X-GitHub-Delivery". For "Any service" it is the header
+  "X-Request-Id". A call with no such header has no id, and the app never counts it as a
+  duplicate. See 038, "Duplicates".
+- **Subject**: the repository and the number of the issue or the pull request for "GitHub", and the
+  header "X-Subject" for "Any service". The subject shows in the event, and a subject that does not
+  fit the form of 038 refuses the call with 400. It starts nothing.
 - **Presets**: the user picks one.
   - "GitHub": the user ticks the events: issue opened, issue closed, issue labeled, pull request
     opened, pull request updated, review requested, review submitted, checks failed, pull request
@@ -280,8 +287,8 @@ a new issue. ROBot runs no service on the internet for this (000).
   More calls get 429 and start nothing. A call with valid proof counts toward the 30, also when
   the busy rule skips it.
 - **Order of checks**: a call to an address that the app does not know, or to a workflow that is
-  off, gets 404 first. Then the app checks the size (413), then the proof (401), then the rate
-  (429).
+  off, gets 404 first. Then the app checks the size (413), then the proof (401), then the subject
+  (400), then the rate (429).
   A call that passes these and fails the filter of the preset gets 202 and starts nothing. Then
   the busy rule applies.
 - **Busy**: a call that comes while a run of the same workflow goes is skipped, as a schedule
@@ -300,6 +307,10 @@ a new issue. ROBot runs no service on the internet for this (000).
 - **App closed**: when the app does not run, the sender gets no answer. ROBot keeps no call, and
   the sender may try again.
 - **Run history**: a run that a call started shows "Started by web hook" in its list.
+- **Events**: each call that passes the proof makes one event on the tab "Events" (038), with the
+  result of the call. An id from the sender makes the call a duplicate when the sender used it
+  before (038, "Duplicates"). "Check where this goes" on the form of this trigger makes a test
+  event that starts no run (038).
 - **Not synced**: the secret is in the keychain (014) and does not sync (019). A synced workflow
   arrives with the trigger "Web hook, not set up on this computer". It starts from no call until
   the user makes a secret on this computer. The workflow runs on one computer (see "Rules"), and

@@ -32,6 +32,9 @@ Agents do repeat work on a schedule without the user starting it.
 4. Pause and resume: a paused routine keeps its settings and does not run.
 5. Delete: the routine goes with its runs. The button is a danger button and asks first (000,
    "Danger buttons").
+6. Check where this goes: the form of a trigger has the button "Check where this goes". It makes
+   one test event that starts nothing, and the tab "Events" (038) shows its result. See 038,
+   "Check where this goes".
 
 ## Watch
 
