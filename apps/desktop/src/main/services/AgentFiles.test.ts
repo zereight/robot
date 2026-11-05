@@ -1200,7 +1200,6 @@ describe("team file: channels, skills and the handbook", () => {
     expect(bobFile.skills ?? []).toEqual([])
   })
 
-
   test("a parent that is not in the file is left out", async () => {
     const source = await setup()
     const { ada, bob } = await team(source)
