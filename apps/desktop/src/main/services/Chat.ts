@@ -75,6 +75,8 @@ import {
   type StepEffort,
   shouldAutoCompact,
   skillLead,
+  skillListLead,
+  skillPickSource,
   starterOf,
   stepTurnEffort,
   TASKS_QUEUED_MAX,
@@ -577,7 +579,17 @@ export const toolLabel = (name: string, input: string) => {
       .join(" ")
     return words ? `${name}: ${words.replace(/\s+/g, " ").slice(0, 160)}` : name
   }
-  const first = ["path", "file_path", "command", "url", "query", "pattern", "question", "text"]
+  const first = [
+    "path",
+    "file_path",
+    "command",
+    "url",
+    "query",
+    "pattern",
+    "question",
+    "text",
+    "skill",
+  ]
     .map((k) => args[k])
     .find((v): v is string => typeof v === "string")
   return first ? `${name}: ${first.replace(/\s+/g, " ").slice(0, 80)}` : name
@@ -1478,6 +1490,11 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
             // The handbook comes before the instructions of the agent when the agent reads it. The
             // text is read now, so a change counts from this turn on and a turn keeps its text
             // (spec 002, "Handbook").
+            // The agent reads the names and notes of its skills, and loads one when the task
+            // needs it (spec 017, flow 8). Only a direct chat or a thread reads the list.
+            const skillList = skillPickSource(source)
+              ? skillListLead(yield* skills.forAgent(agentId))
+              : ""
             const system = [
               composeInstructions({
                 handbook: agent.read_handbook === 1 ? handbook.text(agent.server_id) : "",
@@ -1494,6 +1511,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
               tasks.retryNoteForModel(task),
               withNotes ? "" : notes,
               known ?? "",
+              skillList,
             ]
               .filter(Boolean)
               .join("\n\n")
@@ -1633,6 +1651,8 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                   knowledge: knowledge.enabled(agentId),
                   // Changes from the chat are for agents of an API provider (spec 002).
                   settings: !isRuntime,
+                  // The tool to read a skill goes with its list (spec 017, flow 8).
+                  skills: skillList !== "",
                 }),
                 // The tools of the connections of the agent, and the ones it found by search.
                 ...(connected ? { moreTools: () => connected.defs() } : {}),

@@ -79,6 +79,9 @@ import {
   type SettingsNote,
   sendDecision,
   sendsData,
+  skillNameKey,
+  skillPickSource,
+  type TaskSource,
   type ToolAsk,
   type TurnMark,
   UNKNOWN_TOOL_TEXT,
@@ -87,7 +90,12 @@ import {
 import { Cause, Context, Effect, Exit, Layer } from "effect"
 import type { ToolEvent, ToolOutcome } from "../providers/agent.ts"
 import type { ToolCall, ToolDef } from "../providers/chat.ts"
-import { BRIDGE_TOOL_NAMES, type BridgeHandler, SEARCH_TOOL_NAME } from "../runtimes/bridge.ts"
+import {
+  BRIDGE_TOOL_NAMES,
+  type BridgeHandler,
+  READ_SKILL_TOOL_NAME,
+  SEARCH_TOOL_NAME,
+} from "../runtimes/bridge.ts"
 import type { ApprovalRequest } from "../runtimes/types.ts"
 import { type SecretBody, sendWithSecret } from "../secrets/request.ts"
 import { checkedFetch } from "../web/fetch.ts"
@@ -109,6 +117,7 @@ import { realOf } from "./realPath.ts"
 import { SavedSecrets } from "./SavedSecrets.ts"
 import { Search } from "./Search.ts"
 import { SettingsStore } from "./Settings.ts"
+import { Skills } from "./Skills.ts"
 
 export interface ToolContext {
   readonly agentId: string
@@ -265,9 +274,15 @@ export interface ToolsService {
   ): { decidedBy: ActionDecider; rule: RuleRef | null; check: ActionCheck | null }
   /**
    * The tools that an agent may call. Memory and knowledge tools are left out when they are off.
-   * The settings tool is only for an agent of an API provider in its direct chat (spec 002).
+   * The settings tool is only for an agent of an API provider in its direct chat (spec 002). The
+   * read-skill tool is only for a turn that picks skills (spec 017, flow 8).
    */
-  defs(options: { memory: boolean; knowledge: boolean; settings?: boolean }): readonly ToolDef[]
+  defs(options: {
+    memory: boolean
+    knowledge: boolean
+    settings?: boolean
+    skills?: boolean
+  }): readonly ToolDef[]
   execute(context: ToolContext, call: ToolCall): Promise<ToolOutcome>
   /**
    * Asks about a step that a vendor program wants to take, by the permission level and the risk.
@@ -504,6 +519,12 @@ const DEFS: Record<string, ToolDef> = {
     schema: object({ query: str("The words to look for, for example a name or a topic.") }, [
       "query",
     ]),
+  },
+  read_skill: {
+    name: READ_SKILL_TOOL_NAME,
+    description:
+      "Read the instructions of one of your skills. Give its name as the skill list shows it.",
+    schema: object({ skill: str("The name of the skill, as the skill list shows it.") }, ["skill"]),
   },
   list_agents: {
     name: "list_agents",
@@ -793,6 +814,7 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
       const db = yield* Database
       const memory = yield* Memory
       const search = yield* Search
+      const skills = yield* Skills
       const actionLog = yield* ActionLog
       const agentSettings = yield* AgentSettings
       const knowledge = yield* Knowledge
@@ -2413,6 +2435,26 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           case "browser_close":
           case "browser_ask_look":
             return await browserTool(ctx, call)
+          case "read_skill": {
+            // The skill list and its tool work in a direct chat or a thread only (spec 017, flow
+            // 8). A vendor runtime gets the tool through the bridge in every place, so the turn
+            // checks here too.
+            if (ctx.origin?.kind === "channel")
+              return { output: "Skills are not available here.", failed: true }
+            const source = ctx.taskId
+              ? db.get<{ source: string }>("SELECT source FROM task WHERE id = ?", ctx.taskId)
+                  ?.source
+              : undefined
+            if (!source || !skillPickSource(source as TaskSource))
+              return { output: "Skills are not available here.", failed: true }
+            // The name ignores case and a slash at the start, as the slash does (spec 017).
+            const wanted = skillNameKey(text(args, "skill"))
+            const found = (await Effect.runPromise(skills.forAgent(ctx.agentId))).find(
+              (s) => skillNameKey(s.name) === wanted,
+            )
+            if (!found) return { output: "This skill is not available.", failed: true }
+            return { output: found.instructions, failed: false }
+          }
           case "search_chats": {
             // A call that arrives with memory off is refused, also from a program that kept a
             // list of tools from before the user turned memory off.
@@ -2508,7 +2550,8 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
           ...Object.values(DEFS).filter(
             (d) =>
               (options.memory || (d.name !== "save_memory" && d.name !== SEARCH_TOOL_NAME)) &&
-              (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)),
+              (options.knowledge || !KNOWLEDGE_TOOLS.has(d.name)) &&
+              (options.skills || d.name !== READ_SKILL_TOOL_NAME),
           ),
           ...(options.settings ? [SETTINGS_DEF] : []),
         ],

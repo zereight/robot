@@ -4,10 +4,14 @@ import {
   copySkillName,
   numberedSkillName,
   SKILL_NAME_MAX,
+  type Skill,
   skillAfterAgentDelete,
+  skillListLead,
   skillName,
   skillNameKey,
+  skillPickSource,
 } from "./skills.ts"
+import { TASK_SOURCES, type TaskSource } from "./task.ts"
 
 describe("skill names", () => {
   test("a slash at the start and spaces at both ends are removed", () => {
@@ -92,5 +96,43 @@ describe("a skill when an agent is deleted (spec 017)", () => {
       kind: "shorter",
       agentIds: ["gone", "c"],
     })
+  })
+})
+
+describe("the skill list of a turn (spec 017, flow 8)", () => {
+  const skill = (name: string, description: string, instructions = "STEPS"): Skill => ({
+    id: name,
+    name,
+    description,
+    instructions,
+    agentIds: null,
+    channelIds: [],
+    enabled: true,
+    createdAt: 0,
+  })
+
+  test("the list holds names and notes, never the instructions", () => {
+    const lead = skillListLead([
+      skill("Weekly summary", "Ask for a briefing now."),
+      skill("Check a claim", "Check one claim.", "OTHER STEPS"),
+    ])
+    expect(lead).toContain('"Weekly summary": Ask for a briefing now.')
+    expect(lead).toContain('"Check a claim": Check one claim.')
+    expect(lead).toContain("read_skill")
+    expect(lead).not.toContain("STEPS")
+    expect(lead).not.toContain("OTHER")
+  })
+
+  test("a skill with an empty note stays out, for slash use only", () => {
+    expect(skillListLead([skill("Hidden", "   ")])).toBe("")
+    expect(skillListLead([])).toBe("")
+    const lead = skillListLead([skill("Hidden", ""), skill("Shown", "Use me.")])
+    expect(lead).not.toContain("Hidden")
+    expect(lead).toContain('"Shown": Use me.')
+  })
+
+  test("only direct chats and threads read the list", () => {
+    const yes: TaskSource[] = ["chat", "handover", "teams", "follow_up"]
+    for (const source of TASK_SOURCES) expect(skillPickSource(source)).toBe(yes.includes(source))
   })
 })

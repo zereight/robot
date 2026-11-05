@@ -1,5 +1,7 @@
 /** Skills (spec 017): saved instructions that the user calls in a chat. */
 
+import type { TaskSource } from "./task.ts"
+
 export const SKILL_NAME_MAX = 40
 export const SKILL_DESCRIPTION_MAX = 140
 export const SKILL_INSTRUCTIONS_MAX = 20_000
@@ -119,3 +121,23 @@ export const skillAfterAgentDelete = (
 /** What the agent reads before the text of a message with a skill chip. */
 export const skillLead = (name: string, instructions: string) =>
   `Use the skill "${name}". Its instructions:\n${instructions}`
+
+/**
+ * The turns that read the skill list and the read-skill tool (spec 017, flow 8): a direct chat or
+ * a thread that a person started, or that follows one. A channel, a routine, a workflow, a turn of
+ * another agent and a check read neither.
+ */
+export const skillPickSource = (source: TaskSource): boolean =>
+  source === "chat" || source === "handover" || source === "teams" || source === "follow_up"
+
+/**
+ * What the agent reads about its skills at the start of a turn (spec 017, flow 8): the names and
+ * the notes, never the instructions. A skill with an empty note stays out: it is for slash use
+ * only. Empty when no skill has a note, so the turn runs as before.
+ */
+export const skillListLead = (skills: readonly Skill[]): string => {
+  const noted = skills.filter((s) => s.description.trim() !== "")
+  if (noted.length === 0) return ""
+  const lines = noted.map((s) => `- "${s.name}": ${s.description.trim()}`)
+  return `Skills you may use in this chat. Read the instructions of one with the tool "read_skill" when its note fits the task. Read only the skills that the task needs, one at a time:\n${lines.join("\n")}`
+}

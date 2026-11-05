@@ -114,8 +114,9 @@ export const levelNeedsConfirm = (level: PermissionLevel) => level === "full"
 
 /**
  * The tools of the app that "Read only" lets run: read, list and search files, fetch a web page,
- * ask the user a question, save memory, read an article of knowledge, and list agents. Every other
- * tool is refused, also a tool that the app gets later (spec 007).
+ * ask the user a question, save memory, read an article of knowledge, list agents, and read a
+ * skill that the agent may use. Every other tool is refused, also a tool that the app gets later
+ * (spec 007).
  */
 export const READ_ONLY_TOOLS: readonly string[] = [
   "list_files",
@@ -126,6 +127,7 @@ export const READ_ONLY_TOOLS: readonly string[] = [
   "save_memory",
   "read_article",
   "list_agents",
+  "read_skill",
 ]
 
 /**

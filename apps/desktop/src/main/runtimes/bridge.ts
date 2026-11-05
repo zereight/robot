@@ -35,6 +35,12 @@ export const FOLLOW_UP_TOOL_NAME = "wait_until"
 export const SEARCH_TOOL_NAME = "search_chats"
 
 /**
+ * The tool that reads the instructions of one skill (spec 017, flow 8). A runtime gets it like an
+ * API agent: the turn refuses it outside a direct chat or a thread.
+ */
+export const READ_SKILL_TOOL_NAME = "read_skill"
+
+/**
  * The tools to work with other agents (spec 007, "Working with other agents"). The app checks
  * each send, so the hand-off rule of spec 030 holds for a vendor program as for an API agent.
  */
@@ -45,6 +51,7 @@ export const BRIDGE_TOOL_NAMES = [
   FOLLOW_UP_TOOL_NAME,
   ...BROWSER_TOOL_NAMES,
   SEARCH_TOOL_NAME,
+  READ_SKILL_TOOL_NAME,
   ...AGENT_TOOL_NAMES,
 ] as const
 
