@@ -16,6 +16,7 @@ import {
   type AgentFileSkillOut,
   type AgentModel,
   type AgentPick,
+  agentsForSkill,
   CHANNEL_INSTRUCTIONS_MAX,
   CHANNEL_NAME_MAX,
   CHANNEL_TOPIC_MAX,
@@ -23,6 +24,7 @@ import {
   channelNameKey,
   channelsForFile,
   faceFromName,
+  givingByAgent,
   HANDBOOK_FROM_FILE,
   HANDBOOK_MAX,
   ignoredAgentFields,
@@ -231,12 +233,14 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         const fileName = new Map(chosen.map((a, i) => [a.id, names[i] ?? a.name]))
         const picked = new Set(chosen.map((a) => a.id))
 
+        const listed = yield* channels.list(input.serverId)
+        const giving = givingByAgent(listed, [...picked])
         // "Channels of these agents": each channel whose members are all among the picked agents.
         let channelParts: AgentFileChannelOut[] | undefined
         /** The name the file gives a channel, so a skill can name it (spec 030). */
         const exportedChannelName = new Map<string, string>()
         if (input.channels) {
-          const found = channelsForFile(yield* channels.list(input.serverId), picked)
+          const found = channelsForFile(listed, picked)
           if (found.length > AGENT_FILE_MAX_CHANNELS)
             return yield* new AppError({
               code: "agent_file_too_many_channels",
@@ -275,7 +279,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
         // agents is written for the picked agents only.
         let skillParts: AgentFileSkillOut[] | undefined
         if (input.skills) {
-          const found = skillsForFile(yield* skills.list(input.serverId), picked)
+          const found = skillsForFile(yield* skills.list(input.serverId), picked, giving)
           if (found.length > AGENT_FILE_MAX_SKILLS)
             return yield* new AppError({
               code: "agent_file_too_many_skills",
@@ -291,9 +295,7 @@ export class AgentFiles extends Context.Service<AgentFiles, AgentFilesService>()
             name: skillNames[i] ?? k.name,
             description: clip(hide(k.description), SKILL_DESCRIPTION_MAX),
             instructions: hide(k.instructions),
-            agents: chosen
-              .filter((a) => k.agentIds === null || k.agentIds.includes(a.id))
-              .map((a) => fileName.get(a.id) ?? a.name),
+            agents: agentsForSkill(k, chosen, giving).map((a) => fileName.get(a.id) ?? a.name),
             channels: k.channelIds.flatMap((id) => {
               const name = exportedChannelName.get(id)
               return name ? [name] : []

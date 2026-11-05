@@ -3,6 +3,8 @@
  * before an import"): which of them an export holds, and what an import makes from the ticks.
  */
 import type { AgentFilePreview } from "./agentFile.ts"
+import { givingChannels, mayUseTool } from "./channelTools.ts"
+import type { TreeChannel } from "./channelTree.ts"
 import type { NotImported } from "./importReview.ts"
 
 /**
@@ -16,18 +18,67 @@ export const channelsForFile = <C extends { readonly memberIds: readonly string[
 ): C[] =>
   channels.filter((c) => c.memberIds.length > 0 && c.memberIds.every((id) => picked.has(id)))
 
+/** A channel, enough to say which channels give their tools to a member (spec 030). */
+export interface FileChannel extends TreeChannel {
+  readonly memberIds: readonly string[]
+}
+
 /**
- * The skills that an export holds for the picked agents: each skill that one of them may use. A
- * skill for all agents counts when at least one agent is picked. `agentIds` is null for a skill
- * for all agents.
+ * The channels that give their tools to each agent: the channels it belongs to, and their higher
+ * channels (spec 030). The same rule as a turn.
  */
-export const skillsForFile = <S extends { readonly agentIds: readonly string[] | null }>(
+export const givingByAgent = (
+  channels: readonly FileChannel[],
+  agentIds: readonly string[],
+): Map<string, readonly string[]> => {
+  const tree = channels.map((c) => ({
+    id: c.id,
+    parentId: c.parentId,
+    ...(c.archived ? { archived: true } : {}),
+  }))
+  return new Map(
+    agentIds.map((id) => [
+      id,
+      givingChannels(
+        tree,
+        channels.filter((c) => c.memberIds.includes(id)).map((c) => c.id),
+      ),
+    ]),
+  )
+}
+
+/**
+ * The skills that an export holds for the picked agents: each skill that one of them may use,
+ * also through a channel (spec 002, 030). A skill for all agents counts when at least one agent
+ * is picked. `agentIds` is null for a skill for all agents. `giving` is what `givingByAgent` gave.
+ */
+export const skillsForFile = <
+  S extends {
+    readonly agentIds: readonly string[] | null
+    readonly channelIds?: readonly string[]
+  },
+>(
   skills: readonly S[],
   picked: ReadonlySet<string>,
+  giving: ReadonlyMap<string, readonly string[]> = new Map(),
 ): S[] =>
-  skills.filter((s) =>
-    s.agentIds === null ? picked.size > 0 : s.agentIds.some((id) => picked.has(id)),
-  )
+  skills.filter((skill) => {
+    const audience = { agentIds: skill.agentIds, channelIds: skill.channelIds ?? [] }
+    for (const agentId of picked) {
+      if (mayUseTool(audience, agentId, giving.get(agentId) ?? [])) return true
+    }
+    return false
+  })
+
+/** The picked agents who may use this skill, in the order of `agents` (spec 002, 030). */
+export const agentsForSkill = <A extends { readonly id: string }>(
+  skill: { readonly agentIds: readonly string[] | null; readonly channelIds?: readonly string[] },
+  agents: readonly A[],
+  giving: ReadonlyMap<string, readonly string[]>,
+): A[] => {
+  const audience = { agentIds: skill.agentIds, channelIds: skill.channelIds ?? [] }
+  return agents.filter((agent) => mayUseTool(audience, agent.id, giving.get(agent.id) ?? []))
+}
 
 /** What the user ticked among the channels, skills and the handbook of a file. */
 export interface TeamTicks {

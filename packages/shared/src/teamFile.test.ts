@@ -48,6 +48,20 @@ describe("skillsForFile", () => {
   test("holds nothing when no agent is picked", () => {
     expect(skillsForFile(all, picked())).toEqual([])
   })
+
+  test("holds a skill that a picked agent may use only through a channel", () => {
+    const channelSkill = { id: "notes", agentIds: [] as string[], channelIds: ["product"] }
+    const giving = new Map<string, readonly string[]>([["a", ["docs", "product"]]])
+    expect(skillsForFile([...all, channelSkill], picked("a"), giving).map((s) => s.id)).toEqual([
+      "everyone",
+      "ada",
+      "notes",
+    ])
+    expect(skillsForFile([...all, channelSkill], picked("b"), giving).map((s) => s.id)).toEqual([
+      "everyone",
+      "bob-cy",
+    ])
+  })
 })
 
 describe("planTeam", () => {
