@@ -1392,6 +1392,14 @@ export const migrations: readonly string[] = [
   -- organization (019), and an export holds it (014).
   ALTER TABLE org_unit ADD COLUMN goal TEXT NOT NULL DEFAULT '';
   `,
+  `
+  -- The owner of a workflow (spec 010, "Owner and participants"): the kind ('organization' or
+  -- 'agent') and the id of that organization or agent, or both empty for a shared workflow. No
+  -- foreign key: an owner that is gone counts as no owner when the row is read, here and after a
+  -- sync, so no delete has to find the workflows. It syncs with the workflow (019).
+  ALTER TABLE workflow ADD COLUMN owner_kind TEXT;
+  ALTER TABLE workflow ADD COLUMN owner_id TEXT;
+  `,
 ]
 
 /**

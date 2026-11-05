@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import type { Edge, Step, Trigger } from "@robot/shared"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
+import { Organizations } from "./Organizations.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
 import { testRuntime } from "./testing.ts"
@@ -331,5 +332,180 @@ describe("workflows", () => {
     )
     const detail = await s.finished((await s.start(wf.id)).id)
     expect(states(detail)).toEqual({ a: "failed", b: "done" })
+  })
+})
+
+// The owner of a workflow and the agents that may work in it (spec 010, "Owner and participants").
+describe("the owner of a workflow", () => {
+  /** "Docs" has the lead Ada and the member Cy. "Ops" has the lead Bo. */
+  const owned = async () => {
+    const s = await setup()
+    const cy = await s.run(
+      Agents.use((a) =>
+        a.create({
+          serverId: s.local.id,
+          name: "Cy",
+          role: "",
+          instructions: "Work.",
+          model: s.ada.model,
+        }),
+      ),
+    )
+    const org = (name: string, memberIds: string[], leadId: string) =>
+      s.run(Organizations.use((o) => o.create({ serverId: s.local.id, name, memberIds, leadId })))
+    const docs = await org("Docs", [s.ada.id, cy.id], s.ada.id)
+    const ops = await org("Ops", [s.bo.id], s.bo.id)
+    const makeOwned = (
+      steps: Step[],
+      owner: { kind: "organization" | "agent"; id: string } | null,
+      edges: Edge[] = [],
+    ) =>
+      s.run(
+        Workflows.use((w) =>
+          w.create({
+            serverId: s.local.id,
+            name: "Weekly",
+            trigger: { kind: "manual" },
+            steps,
+            edges,
+            owner,
+          }),
+        ),
+      )
+    return { ...s, cy, docs, ops, makeOwned }
+  }
+
+  test("a workflow keeps its owner, and no owner is the default", async () => {
+    const s = await owned()
+    const shared = await s.create([s.post("a", "x")], [])
+    expect(shared.owner).toBeNull()
+    const wf = await s.makeOwned([s.post("a", "x")], { kind: "organization", id: s.docs.id })
+    expect(wf.owner).toEqual({ kind: "organization", id: s.docs.id })
+    const listed = await s.run(Workflows.use((w) => w.list(s.local.id)))
+    expect(listed.find((x) => x.id === wf.id)?.owner).toEqual({
+      kind: "organization",
+      id: s.docs.id,
+    })
+    const moved = await s.run(
+      Workflows.use((w) => w.update(wf.id, { owner: { kind: "agent", id: s.ada.id } })),
+    )
+    expect(moved.owner).toEqual({ kind: "agent", id: s.ada.id })
+    const cleared = await s.run(Workflows.use((w) => w.update(wf.id, { owner: null })))
+    expect(cleared.owner).toBeNull()
+  })
+
+  test("an owner that does not exist is refused", async () => {
+    const s = await owned()
+    const refused = await s
+      .makeOwned([s.post("a", "x")], { kind: "organization", id: "nope" })
+      .then(
+        () => "ok",
+        (e) => e,
+      )
+    expect(refused).toMatchObject({ code: "owner_not_found" })
+  })
+
+  test("a member, and the lead of another organization, work; an outsider fails with no task", async () => {
+    const s = await owned()
+    const wf = await s.makeOwned(
+      [s.agentStep("member", s.cy.id, "Member"), s.agentStep("lead", s.bo.id, "Lead of Ops")],
+      { kind: "organization", id: s.docs.id },
+    )
+    const ok = await s.finished((await s.start(wf.id)).id)
+    expect(states(ok)).toEqual({ member: "done", lead: "done" })
+
+    const strange = await s.run(
+      Agents.use((a) =>
+        a.create({
+          serverId: s.local.id,
+          name: "Eve",
+          role: "",
+          instructions: "Work.",
+          model: s.ada.model,
+        }),
+      ),
+    )
+    const out = await s.makeOwned([s.agentStep("outsider", strange.id, "Outsider")], {
+      kind: "organization",
+      id: s.docs.id,
+    })
+    const failed = await s.finished((await s.start(out.id)).id)
+    expect(failed.run.state).toBe("failed")
+    const step = failed.steps.find((x) => x.stepId === "outsider")
+    expect(step).toMatchObject({ state: "failed", error: "not_participant", taskId: null })
+    expect(asked.some((q) => q.includes("Outsider"))).toBe(false)
+  })
+
+  test("a step with Continue on failure goes on after a step that is not a participant", async () => {
+    const s = await owned()
+    const wf = await s.makeOwned(
+      [s.agentStep("a", s.ada.id, "x", true), s.agentStep("b", s.cy.id, "y")],
+      { kind: "agent", id: s.cy.id },
+      [s.edge("a", "b")],
+    )
+    const detail = await s.finished((await s.start(wf.id)).id)
+    expect(states(detail)).toEqual({ a: "failed", b: "done" })
+  })
+
+  test("a workflow of an agent takes that agent only", async () => {
+    const s = await owned()
+    const wf = await s.makeOwned(
+      [s.agentStep("own", s.ada.id, "Own"), s.agentStep("other", s.cy.id, "Other", true)],
+      { kind: "agent", id: s.ada.id },
+    )
+    const detail = await s.finished((await s.start(wf.id)).id)
+    expect(states(detail)).toEqual({ own: "done", other: "failed" })
+    expect(detail.steps.find((x) => x.stepId === "other")?.error).toBe("not_participant")
+  })
+
+  test("a change of the group counts at the next run with no edit of a step", async () => {
+    const s = await owned()
+    const wf = await s.makeOwned([s.agentStep("a", s.cy.id, "Cy")], {
+      kind: "organization",
+      id: s.docs.id,
+    })
+    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "done" })
+    await s.run(
+      Organizations.use((o) => o.update(s.docs.id, { memberIds: [s.ada.id], leadId: s.ada.id })),
+    )
+    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "failed" })
+    await s.run(Organizations.use((o) => o.update(s.docs.id, { memberIds: [s.ada.id, s.cy.id] })))
+    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "done" })
+  })
+
+  test("a deleted owner leaves the workflow shared, with its runs", async () => {
+    const s = await owned()
+    const wf = await s.makeOwned([s.agentStep("a", s.bo.id, "Bo")], {
+      kind: "organization",
+      id: s.docs.id,
+    })
+    // Bo is the lead of "Ops", so Bo works in a workflow of "Docs". Make Bo no lead first.
+    await s.run(Organizations.use((o) => o.update(s.ops.id, { leadId: null })))
+    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "failed" })
+    await s.run(Organizations.use((o) => o.remove(s.docs.id)))
+    const listed = await s.run(Workflows.use((w) => w.list(s.local.id)))
+    expect(listed.find((x) => x.id === wf.id)?.owner).toBeNull()
+    expect(states(await s.finished((await s.start(wf.id)).id))).toEqual({ a: "done" })
+    const runs = await s.run(Workflows.use((w) => w.runs(wf.id)))
+    expect(runs).toHaveLength(2)
+  })
+
+  test("the owner cannot change while the workflow runs", async () => {
+    const s = await owned()
+    const wf = await s.create(
+      [{ id: "ok", kind: "approval", name: "ok", x: 0, y: 0, message: "" }],
+      [],
+    )
+    const run = await s.start(wf.id)
+    const refused = await s
+      .run(
+        Workflows.use((w) => w.update(wf.id, { owner: { kind: "organization", id: s.docs.id } })),
+      )
+      .then(
+        () => "ok",
+        (e) => e,
+      )
+    expect(refused).toMatchObject({ code: "workflow_running" })
+    await s.run(Workflows.use((w) => w.stop(run.id)))
   })
 })
