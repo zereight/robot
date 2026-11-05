@@ -102,6 +102,7 @@ export const FirstRunDialog = () => {
             data-direction={direction()}
             data-testid="first-run-agent"
           >
+            <h3>{t("firstRun.agent.title")}</h3>
             <p>{t("firstRun.agent.body")}</p>
             <AgentForm
               onCancel={finish}
