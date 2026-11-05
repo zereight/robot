@@ -419,6 +419,13 @@ const partCheck = (v: unknown): boolean => {
       // for your review." travel with the name (spec 018).
       if (v.note === "connection_down" || v.note === "connection_held")
         return shape(["kind", "note", "name"])(v) && str(CONNECTION_NAME_MAX * 4, 1)(v.name)
+      // The muted line "Setup failed: <name>" travels with the name and the reason (spec 035, 019).
+      if (v.note === "setup_failed")
+        return (
+          shape(["kind", "note", "name", "code"])(v) &&
+          str(80, 1)(v.name) &&
+          oneOf(["exit", "timeout", "spawn"])(v.code)
+        )
       // The muted line "Handed over to <name>" travels with the ids of the new thread (spec 003, 019).
       if (v.note === "handed_over")
         return (

@@ -341,6 +341,41 @@
   color: var(--c-text);
 }
 
+/* The menu of setup actions (spec 035). The name stays on one line. */
+.setupRun {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 16em;
+  min-width: 0;
+  flex-shrink: 0;
+  border: 1px solid var(--c-border);
+  background: transparent;
+  color: var(--c-text);
+  font-size: var(--text-xs);
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+}
+
+.setupRun:hover,
+.setupRun:focus-visible {
+  background: var(--c-hover);
+  outline: none;
+}
+
+.setupRun span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setupUnread {
+  color: var(--c-text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
 .start {
   padding: 32px 16px 8px;
   display: flex;

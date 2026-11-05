@@ -158,6 +158,7 @@ import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { Sections } from "./Sections.ts"
 import { SettingsStore } from "./Settings.ts"
+import { prepareTurn } from "./setupRun.ts"
 import { closing, quietReporter, turnWatch } from "./silence.ts"
 import { stepWatch } from "./stepWatch.ts"
 import { Tasks } from "./Tasks.ts"
@@ -328,6 +329,7 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
     Channels,
     Effect.gen(function* () {
       const db = yield* Database
+      const dataDir = (yield* Platform).dataDir
       const bus = yield* EventBus
       const providers = yield* Providers
       const holds = yield* ModelHolds
@@ -888,6 +890,23 @@ export class Channels extends Context.Service<Channels, ChannelsService>()("robo
                 parts.push({ kind: "note", note: "connection_held", name })
               save("streaming")
               emitMessage(id)
+            }
+            // Setup actions of the workspace run before the model (spec 035).
+            if (attempt === "first" && !keeping) {
+              const failures = yield* Effect.promise(() =>
+                prepareTurn(dataDir, o.agent.workspace, { signal: controller.signal }),
+              )
+              if (!controller.signal.aborted && failures.length > 0) {
+                for (const failure of failures)
+                  parts.push({
+                    kind: "note",
+                    note: "setup_failed",
+                    name: failure.name,
+                    code: failure.code,
+                  })
+                save("streaming")
+                emitMessage(id)
+              }
             }
             const changePart = (
               callId: string,

@@ -113,9 +113,11 @@ import { nextMessageTime } from "./messageTime.ts"
 import { Notifier } from "./Notifier.ts"
 import { Organization } from "./Organization.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
+import { Platform } from "./Platform.ts"
 import { Providers, storedFailure, toAppError } from "./Providers.ts"
 import { SettingsStore } from "./Settings.ts"
 import { Skills } from "./Skills.ts"
+import { prepareTurn } from "./setupRun.ts"
 import { closing, quietReporter, turnWatch } from "./silence.ts"
 import { stepWatch } from "./stepWatch.ts"
 import { type RetryOptions, Tasks } from "./Tasks.ts"
@@ -576,6 +578,7 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
     Chat,
     Effect.gen(function* () {
       const db = yield* Database
+      const dataDir = (yield* Platform).dataDir
       const bus = yield* EventBus
       const providers = yield* Providers
       const activity = yield* Activity
@@ -1406,6 +1409,24 @@ export class Chat extends Context.Service<Chat, ChatService>()("robot/main/Chat"
                 parts.push({ kind: "note", note: "connection_held", name })
               save("streaming")
               publish()
+            }
+            // Setup actions of the workspace run before the model (spec 035). A turn that goes on
+            // after a restart does not run them again.
+            if (attempt === "first" && !keeping && !resumed) {
+              const failures = yield* Effect.promise(() =>
+                prepareTurn(dataDir, agent.workspace, { signal: controller.signal }),
+              )
+              if (!controller.signal.aborted && failures.length > 0) {
+                for (const failure of failures)
+                  parts.push({
+                    kind: "note",
+                    note: "setup_failed",
+                    name: failure.name,
+                    code: failure.code,
+                  })
+                save("streaming")
+                publish()
+              }
             }
             // At 85 percent or more of the context, the app compacts first (spec 003). A turn that
             // goes on after a restart does not: its request is made already.

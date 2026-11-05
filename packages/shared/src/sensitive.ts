@@ -216,6 +216,8 @@ export const makePlaces = (env: PlaceEnv): Places => {
     control: (path) => {
       const target = folded(env.real(path))
       if (controls.some((root) => startsWith(target, root))) return true
+      // The file robot.json lists setup actions, so a write of it starts a command later (035).
+      if (target[target.length - 1] === "robot.json") return true
       // The hook folder and the settings file of a Git repository, in any folder.
       // A submodule keeps its own repository in `.git/modules`.
       for (let git = target.indexOf(".git"); git >= 0; git = target.indexOf(".git", git + 1)) {

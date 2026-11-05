@@ -91,6 +91,7 @@ import { SkillDrafts } from "./services/SkillDrafts.ts"
 import { Skills } from "./services/Skills.ts"
 import { Starters } from "./services/Starters.ts"
 import { Sync } from "./services/Sync.ts"
+import { listSetup, runNamed, setSetupAllowed } from "./services/setupRun.ts"
 import { Tasks } from "./services/Tasks.ts"
 import { Teach } from "./services/Teach.ts"
 import { TeamsLink } from "./services/TeamsLink.ts"
@@ -1655,6 +1656,38 @@ export const handlers: Handlers = {
     decode(ByThread)(input).pipe(
       Effect.flatMap((i) => Chat.use((c) => c.compact(placeOf(i)))),
       done,
+    ),
+  "setup.list": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String }))(input).pipe(
+      Effect.flatMap(({ agentId }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return listSetup((yield* Platform).dataDir, agent.workspace)
+        }),
+      ),
+    ),
+  "setup.run": (input) =>
+    decode(
+      Schema.Struct({
+        agentId: Schema.String,
+        name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ agentId, name }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return yield* Effect.promise(() => runNamed(agent.workspace, name))
+        }),
+      ),
+    ),
+  "setup.allow": (input) =>
+    decode(Schema.Struct({ agentId: Schema.String, on: Schema.Boolean }))(input).pipe(
+      Effect.flatMap(({ agentId, on }) =>
+        Effect.gen(function* () {
+          const agent = yield* Agents.use((a) => a.get(agentId))
+          return setSetupAllowed((yield* Platform).dataDir, agent.workspace, on)
+        }),
+      ),
     ),
   "chat.threads": (input) =>
     decode(ByAgent)(input).pipe(

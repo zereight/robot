@@ -32,6 +32,7 @@ import {
   createBrowserView,
 } from "./BrowserPane.tsx"
 import { Face } from "./Face.tsx"
+import { SetupMenu } from "./SetupMenu.tsx"
 import {
   closeTeachForm,
   DraftCard,
@@ -184,6 +185,10 @@ const Header = (props: { agent: Agent; picking: boolean; setPicking: (on: boolea
       <Show when={!ui.linked()}>
         <ThreadList agentId={props.agent.id} />
         <ContextMeter agentId={props.agent.id} threadId={openThreadOf(props.agent.id)} />
+      </Show>
+      {/* Setup actions run on this computer only (spec 035). */}
+      <Show when={!ui.linked()}>
+        <SetupMenu agentId={props.agent.id} />
       </Show>
       {/* "Teach a task" needs the browser of this computer: a client has no menu (spec 017). */}
       <Show when={!ui.linked()}>

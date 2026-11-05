@@ -42,6 +42,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 032 | [Test devices: the downloaded program of another vendor, its panel in the window, the built-in connection, and the rules and cards of a device step](032-test-devices.md) | Draft |
 | 033 | [Logs and measurements of test devices: what an agent may read, redaction, the limits, CPU and memory, Display FPS](033-test-device-logs-and-measurements.md) | Draft |
 | 034 | [App data, screen map and performance files: stores and changes, erase steps, the screen map and the screen walk of a project, the analysis of a file](034-app-data-and-performance-files.md) | Draft |
+| 035 | [Setup actions: commands a repository names, run from the chat, at the start of a turn, and on the first turn in an own copy](035-setup-actions.md) | Draft |
 
 ## Milestones
 

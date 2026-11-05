@@ -510,6 +510,7 @@ name these places. The app compares real paths, as for rules (see "Permission ru
   - the SSH folder in the home folder, which holds the file of allowed keys,
   - the hosts file and the sudo settings in the system,
   - the hook folder and the settings file of a Git repository, in any folder,
+  - the file `robot.json`, in any folder, which lists setup actions (035),
   - the settings folders in the home folder of other agent programs (for example Claude Code,
     Codex, Cursor and Gemini), and their files that list MCP servers.
 - Files with project secrets, for example `.env` files, are not in the lists. Developers read

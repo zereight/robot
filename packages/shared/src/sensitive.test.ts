@@ -159,6 +159,13 @@ describe("control places", () => {
       expect(places.control(path)).toBe(true)
   })
 
+  test("the file robot.json, in any folder", () => {
+    expect(places.control(join(root, "project", "robot.json"))).toBe(true)
+    expect(places.control(join(home, "ROBOT.JSON"))).toBe(true)
+    expect(places.control(join(root, "project", "robot.json.bak"))).toBe(false)
+    expect(places.control(join(root, "project", "my-robot.json"))).toBe(false)
+  })
+
   test("the hook folder and the settings file of a Git repository, in any folder", () => {
     expect(places.control(join(home, "project", ".git", "hooks", "pre-commit"))).toBe(true)
     expect(places.control(join(root, "anywhere", ".git", "config"))).toBe(true)
