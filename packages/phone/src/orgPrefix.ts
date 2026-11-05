@@ -42,3 +42,14 @@ export const phoneShownName = (
   agentId: string,
   name: string,
 ): ShownName => shownName(name, orgs && Object.hasOwn(orgs, agentId) ? orgs[agentId] : null, on)
+
+/**
+ * The title of a card of "Needs you" is the name of the agent, and " · <computer>" after it when
+ * the request came from another computer. This gives the part after the name, or null when the
+ * title does not start with the name. The phone then draws the name with its prefix and keeps
+ * the rest as it is.
+ */
+export const titleAfterName = (title: string, agentName: string): string | null => {
+  if (title === agentName) return ""
+  return title.startsWith(`${agentName} · `) ? title.slice(agentName.length) : null
+}

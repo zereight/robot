@@ -5,6 +5,7 @@ import {
   groupParts,
   type MessagePart,
   type PartSegment,
+  shownName,
 } from "@robot/shared"
 import { memo, type ReactNode, useState } from "react"
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native"
@@ -14,6 +15,7 @@ import { useApp } from "../state/context.tsx"
 import { radius, space, text } from "../theme/palette.ts"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
 import { Face } from "../ui/Face.tsx"
+import { ShownText } from "../ui/names.tsx"
 import type { RowMessage } from "./rows.ts"
 import { ToolCard } from "./ToolCard.tsx"
 
@@ -48,6 +50,11 @@ export const MessageRow = memo(
     readonly message: ShownMessage
     readonly head: boolean
     readonly agent: Agent | undefined
+    /**
+     * The whole name of the organization that the prefix of the agent shows (spec 035, 011), or
+     * null for no prefix (no organization, or the switch of this phone is off).
+     */
+    readonly organization: string | null
     readonly quoted: { readonly name: string; readonly text: string } | null
     readonly flash: boolean
     /** The name of this phone: its own messages have no "from" line (spec 012). */
@@ -59,6 +66,7 @@ export const MessageRow = memo(
     const segments = groupParts(message.parts, !prefs.showToolSteps)
     const isAgent = message.author === "agent"
     const name = isAgent ? (agent?.name ?? "?") : t("chat.you")
+    const shown = shownName(name, isAgent ? props.organization : null, true)
     const time = new Date(message.createdAt).toLocaleTimeString(locale, {
       hour: "numeric",
       minute: "2-digit",
@@ -87,9 +95,11 @@ export const MessageRow = memo(
         <View style={styles.main}>
           {props.head ? (
             <View style={styles.header}>
-              <Text style={[styles.name, { color: palette.text }]} numberOfLines={1}>
-                {name}
-              </Text>
+              <ShownText
+                shown={shown}
+                numberOfLines={1}
+                style={[styles.name, { color: palette.text }]}
+              />
               {isAgent ? (
                 <View style={[styles.bot, { borderColor: palette.border }]}>
                   <Text style={[styles.botText, { color: palette.textMuted }]}>

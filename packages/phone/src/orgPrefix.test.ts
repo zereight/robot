@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { agentOrgNames, phoneShownName } from "./orgPrefix.ts"
+import { agentOrgNames, phoneShownName, titleAfterName } from "./orgPrefix.ts"
 
 const org = (id: string, name: string, memberIds: string[], parentId: string | null = null) => ({
   id,
@@ -65,5 +65,18 @@ describe("the shown name on the phone (spec 035)", () => {
   test("an agent id that is a name of Object does not find an organization", () => {
     expect(phoneShownName({}, true, "constructor", "X").prefix).toBeNull()
     expect(phoneShownName({}, true, "toString", "X").prefix).toBeNull()
+  })
+})
+
+describe("the title of a card of Needs you (spec 035, 011)", () => {
+  test("the name alone, or the name and the computer, gives the rest after the name", () => {
+    expect(titleAfterName("Ada", "Ada")).toBe("")
+    expect(titleAfterName("Ada · Studio", "Ada")).toBe(" · Studio")
+  })
+
+  test("a title that does not start with the name is kept as it is", () => {
+    expect(titleAfterName("Ada L", "Ada")).toBeNull()
+    expect(titleAfterName("Bo", "Ada")).toBeNull()
+    expect(titleAfterName("", "Ada")).toBeNull()
   })
 })

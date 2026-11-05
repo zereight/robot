@@ -275,6 +275,7 @@ export const en = {
   "settings.theme.light": "Light",
   "settings.chat": "Chat",
   "settings.showToolSteps": "Show tool steps",
+  "settings.showOrgPrefix": "Show the organization before an agent name",
   "settings.notifications": "Notifications",
   "settings.notify.reply": "Replies in a direct chat",
   "settings.notify.mention": "Mentions in a channel",

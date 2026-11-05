@@ -24,6 +24,7 @@ import { useApp, useHubState, useServer } from "../../../../src/state/context.ts
 import { radius, space, text } from "../../../../src/theme/palette.ts"
 import { ChannelMark } from "../../../../src/ui/ChannelMark.tsx"
 import { Button, ErrorLine, Notice } from "../../../../src/ui/kit.tsx"
+import { useShownName } from "../../../../src/ui/names.tsx"
 import { Sheet } from "../../../../src/ui/Sheet.tsx"
 import { stateText } from "../../../../src/ui/states.ts"
 
@@ -44,6 +45,8 @@ export default function Conversation() {
   const id = params.id
   const { hub, t, palette, locale, errorLine } = useApp()
   const view = useServer(link)
+  // The organization prefix of an agent (spec 035): the header, the quote lines and the lists.
+  const shownName = useShownName(link)
   const deviceName = useHubState().deviceName
   const insets = useSafeAreaInsets()
   const list = useRef<FlatList<Row<ShownMessage>>>(null)
@@ -90,9 +93,20 @@ export default function Conversation() {
   // The list is drawn upside down, so the newest row is at the bottom and stays in view.
   const rows = useMemo(() => buildRows(messages).reverse(), [messages])
   const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages])
-  const title = kind === "agent" ? (agent?.name ?? "") : channel ? `#${channel.name}` : ""
-  const nameOf = (m: ShownMessage | undefined) =>
-    !m ? "" : m.author === "user" ? t("chat.you") : (agentOf(m.agentId)?.name ?? "?")
+  const title =
+    kind === "agent"
+      ? agent
+        ? shownName(agent.id, agent.name).text
+        : ""
+      : channel
+        ? `#${channel.name}`
+        : ""
+  const nameOf = (m: ShownMessage | undefined) => {
+    if (!m) return ""
+    if (m.author === "user") return t("chat.you")
+    const sender = agentOf(m.agentId)
+    return sender ? shownName(sender.id, sender.name).text : "?"
+  }
   // The turn of this place that shows no sign of life (spec 005, "Quiet line"). A channel has no
   // working line on the phone, so the first quiet part of the channel stands for it.
   const quietTurn: QuietTurn | undefined =
@@ -163,6 +177,11 @@ export default function Conversation() {
         : view.state === "update_app"
           ? t("chat.updateBox")
           : t("chat.offlineBox", { name: view.link.name })
+  /** The whole name of the organization that the prefix of an agent shows, or null. */
+  const organizationOf = (agentId: string | null) => {
+    const sender = agentOf(agentId)
+    return sender ? shownName(sender.id, sender.name).organization : null
+  }
   // The members in the order of the channel (spec 004), as on the computer.
   const members = channel
     ? channel.memberIds.flatMap((memberId) => agents.find((a) => a.id === memberId) ?? [])
@@ -262,6 +281,7 @@ export default function Conversation() {
                 message={item.message}
                 head={item.head}
                 agent={agentOf(item.message.agentId)}
+                organization={organizationOf(item.message.agentId)}
                 quoted={
                   item.message.replyTo
                     ? {
@@ -277,6 +297,7 @@ export default function Conversation() {
               {kind === "channel" && (item.message as unknown as ChannelMessage).awaiting ? (
                 <Pick
                   members={members}
+                  shownName={shownName}
                   onPick={(agentId) =>
                     void hub
                       .assign(link, id, item.message.id, agentId)
@@ -325,7 +346,13 @@ export default function Conversation() {
               : t("chat.placeholder.channel", { name: channel?.name ?? "" })
           }
           canAttach={kind === "agent"}
-          mentions={kind === "channel" ? members.filter((a) => !a.archived) : undefined}
+          mentions={
+            kind === "channel"
+              ? members
+                  .filter((a) => !a.archived)
+                  .map((a) => ({ ...a, organization: shownName(a.id, a.name).organization }))
+              : undefined
+          }
           working={!!working}
           blocked={blocked}
           reply={reply ? { name: nameOf(reply), text: quoteText(reply) } : null}
@@ -394,6 +421,7 @@ export default function Conversation() {
 /** "Who takes this job?" under a channel message that waits for a pick (spec 004). */
 const Pick = (props: {
   readonly members: readonly Agent[]
+  readonly shownName: ReturnType<typeof useShownName>
   readonly onPick: (agentId: string) => void
 }) => {
   const { t, palette } = useApp()
@@ -404,7 +432,12 @@ const Pick = (props: {
       </Text>
       <View style={styles.pickRow}>
         {props.members.map((m) => (
-          <Button key={m.id} kind="secondary" label={m.name} onPress={() => props.onPick(m.id)} />
+          <Button
+            key={m.id}
+            kind="secondary"
+            label={props.shownName(m.id, m.name).text}
+            onPress={() => props.onPick(m.id)}
+          />
         ))}
       </View>
     </View>

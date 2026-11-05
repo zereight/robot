@@ -273,6 +273,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.theme.light": "라이트",
   "settings.chat": "채팅",
   "settings.showToolSteps": "도구 단계 표시",
+  "settings.showOrgPrefix": "에이전트 이름 앞에 조직 표시",
   "settings.notifications": "알림",
   "settings.notify.reply": "개인 대화의 답장",
   "settings.notify.mention": "채널에서 나를 언급할 때",

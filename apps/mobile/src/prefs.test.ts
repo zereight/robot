@@ -37,6 +37,20 @@ describe("the settings of the phone", () => {
     expect((await readPrefs(storage)).showToolSteps).toBe(false)
   })
 
+  test("the organization prefix shows at first, and the choice is kept (spec 035, 011)", async () => {
+    expect(defaultPrefs.showOrgPrefix).toBe(true)
+    const storage = new MemoryStorage()
+    // An old file without the switch still reads, and the prefix shows.
+    await storage.write("prefs.json", JSON.stringify({ language: "ko" }))
+    expect((await readPrefs(storage)).showOrgPrefix).toBe(true)
+    await storage.write("prefs.json", JSON.stringify({ showOrgPrefix: false }))
+    expect((await readPrefs(storage)).showOrgPrefix).toBe(false)
+    await storage.write("prefs.json", JSON.stringify({ showOrgPrefix: "no" }))
+    expect((await readPrefs(storage)).showOrgPrefix).toBe(true)
+    await writePrefs(storage, { ...defaultPrefs, showOrgPrefix: false })
+    expect((await readPrefs(storage)).showOrgPrefix).toBe(false)
+  })
+
   test("settings are saved and read back", async () => {
     const storage = new MemoryStorage()
     const prefs = {
