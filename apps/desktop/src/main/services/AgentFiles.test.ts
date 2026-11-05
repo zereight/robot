@@ -1161,6 +1161,46 @@ describe("team file: channels, skills and the handbook", () => {
     expect(skill.channelIds).toEqual([productId])
   })
 
+  test("a skill that a member may use only through a channel is in the file", async () => {
+    const source = await setup()
+    const ada = await source.make("Ada")
+    const bob = await source.make("Bob")
+    const product = await source.run(
+      Channels.use((c) =>
+        c.create({
+          serverId: source.server.id,
+          name: "Product",
+          topic: "",
+          memberIds: [ada.id],
+          leadId: null,
+        }),
+      ),
+    )
+    await source.run(
+      Skills.use((k) =>
+        k.create(
+          source.server.id,
+          { name: "Release notes", description: "Notes", instructions: "Write the notes." },
+          [],
+          [product.id],
+        ),
+      ),
+    )
+    const adaPath = join(source.dataDir, "ada-skill.json")
+    await exportTeam(source, adaPath, [ada.id], { skills: true })
+    const adaSkills = JSON.parse(readFileSync(adaPath, "utf8")).skills as {
+      name: string
+      agents: string[]
+    }[]
+    expect(adaSkills.map((s) => [s.name, s.agents])).toEqual([["Release notes", ["Ada"]]])
+
+    const bobPath = join(source.dataDir, "bob-skill.json")
+    await exportTeam(source, bobPath, [bob.id], { skills: true })
+    const bobFile = JSON.parse(readFileSync(bobPath, "utf8")) as { skills?: { name: string }[] }
+    expect(bobFile.skills ?? []).toEqual([])
+  })
+
+
   test("a parent that is not in the file is left out", async () => {
     const source = await setup()
     const { ada, bob } = await team(source)

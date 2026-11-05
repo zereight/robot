@@ -8,6 +8,7 @@ import {
   agentCounts,
   agentPicks,
   channelsForFile,
+  givingByAgent,
   handbookPreview,
   type MessageKey,
   type NotImported,
@@ -73,7 +74,8 @@ export const ExportAgentsDialog = (props: { onClose: () => void }) => {
   const tooMany = () => picked().size > AGENT_FILE_MAX_AGENTS
   /** The channels and skills that the file would hold for the agents that are picked now. */
   const channelCount = () => channelsForFile(channels.channels(), picked()).length
-  const skillCount = () => skillsForFile(skills(), picked()).length
+  const skillCount = () =>
+    skillsForFile(skills(), picked(), givingByAgent(channels.channels(), [...picked()])).length
   const tooManyChannels = () => withChannels() && channelCount() > AGENT_FILE_MAX_CHANNELS
   const tooManySkills = () => withSkills() && skillCount() > AGENT_FILE_MAX_SKILLS
   const handbookEmpty = () => (handbook()?.text ?? "").trim() === ""
