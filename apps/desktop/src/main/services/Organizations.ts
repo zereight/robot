@@ -38,9 +38,6 @@ import { Servers } from "./Servers.ts"
 // organization holds beyond tools (the daily token limit and the hand-off range) is stored here and
 // read by later steps.
 
-/** The value that the form of an organization can set for a tool in this version. */
-export type OrgToolSetting = Extract<OrgToolChoice, "on" | "inherit">
-
 export interface OrganizationsService {
   /** The organizations of a server, in the order of their names (ignoring case). */
   list(serverId: string): Effect.Effect<readonly Org[]>
@@ -73,7 +70,7 @@ export interface OrganizationsService {
     orgId: string,
     kind: "skill" | "connection",
     id: string,
-    choice: OrgToolSetting,
+    choice: OrgToolChoice,
   ): Effect.Effect<readonly OrgToolRow[], AppError>
   /** The skills and connections that an agent has from organizations (the lines "From <organization>"). */
   toolsOfAgent(agentId: string): Effect.Effect<readonly AgentOrgTool[]>
@@ -361,7 +358,7 @@ export class Organizations extends Context.Service<Organizations, OrganizationsS
         orgId: string,
         kind: "skill" | "connection",
         id: string,
-        choice: OrgToolSetting,
+        choice: OrgToolChoice,
       ) =>
         Effect.gen(function* () {
           const org = yield* need(orgId)

@@ -832,13 +832,13 @@ export interface RpcMethods {
   "organizations.delete": { input: { id: string }; output: undefined }
   /** The part "Tools" of the form of an organization: the skills and connections with its value. */
   "orgTools.list": { input: { orgId: string }; output: readonly OrgToolRow[] }
-  /** Sets the value of an organization for a skill or a connection ("On" or "Inherit" for now). */
+  /** Sets the value of an organization for a skill or a connection: "Inherit", "On" or "Off". */
   "orgTools.set": {
     input: {
       orgId: string
       kind: "skill" | "connection"
       id: string
-      choice: Extract<OrgToolChoice, "on" | "inherit">
+      choice: OrgToolChoice
     }
     output: readonly OrgToolRow[]
   }

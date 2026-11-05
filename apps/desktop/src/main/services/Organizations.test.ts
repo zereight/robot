@@ -209,6 +209,101 @@ describe("tools", () => {
     ])
   })
 
+  test("'Off' is a value of its own: the row shows it, 'Inherit' takes it out of the list", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    const team = await s.org("Team", [ada.id])
+    const own = await s.skill("Own", [ada.id])
+    const choice = async () =>
+      (await s.run(Organizations.use((o) => o.tools(team.id)))).find((r) => r.id === own.id)?.choice
+    const stored = async () =>
+      (await s.run(Skills.use((k) => k.list(s.local.id)))).find((k) => k.id === own.id)
+        ?.organizations
+    await s.run(Organizations.use((o) => o.setTool(team.id, "skill", own.id, "off")))
+    expect(await choice()).toBe("off")
+    expect(await stored()).toEqual([{ id: team.id, value: "off" }])
+    await s.run(Organizations.use((o) => o.setTool(team.id, "skill", own.id, "on")))
+    expect(await choice()).toBe("on")
+    await s.run(Organizations.use((o) => o.setTool(team.id, "skill", own.id, "inherit")))
+    expect(await choice()).toBe("inherit")
+    expect(await stored()).toEqual([])
+  })
+
+  describe("who may use a skill (spec 030 acceptance: Product, Docs, Site)", () => {
+    // Product > Docs > Site. Ada is in Site, Bo in Docs and Product, Cy in Product, Di in none.
+    const world = async () => {
+      const s = await setup()
+      const ada = await s.agent("Ada")
+      const bo = await s.agent("Bo")
+      const cy = await s.agent("Cy")
+      const di = await s.agent("Di")
+      const product = await s.org("Product", [bo.id, cy.id])
+      const docs = await s.org("Docs", [bo.id], { parentId: product.id })
+      const site = await s.org("Site", [ada.id], { parentId: docs.id })
+      // A list of one agent that is nobody of the four, so only organizations give the skill.
+      const owner = await s.agent("Owner")
+      const notes = await s.skill("Release notes", [owner.id])
+      const set = (org: { id: string }, choice: "on" | "off" | "inherit") =>
+        s.run(Organizations.use((o) => o.setTool(org.id, "skill", notes.id, choice)))
+      const has = async (agent: { id: string }) =>
+        (await s.run(Skills.use((k) => k.forAgent(agent.id)))).some((k) => k.id === notes.id)
+      const from = async (agent: { id: string }) =>
+        (await s.run(Organizations.use((o) => o.toolsOfAgent(agent.id)))).flatMap((t) =>
+          t.organizations.map((g) => g.name),
+        )
+      return { s, ada, bo, cy, di, product, docs, site, notes, set, has, from }
+    }
+
+    test("'On' in Product reaches Site through Docs, also in the next turn; the profile names Product", async () => {
+      const w = await world()
+      expect(await w.has(w.ada)).toBe(false)
+      await w.set(w.product, "on")
+      expect(await w.has(w.ada)).toBe(true)
+      expect(await w.from(w.ada)).toEqual(["Product"])
+      expect(await w.has(w.di)).toBe(false)
+    })
+
+    test("'Off' in Docs takes it from Docs and Site, not from Product; 'On' in Site gives it back", async () => {
+      const w = await world()
+      await w.set(w.product, "on")
+      await w.set(w.docs, "off")
+      expect(await w.has(w.ada)).toBe(false)
+      expect(await w.has(w.cy)).toBe(true)
+      // Bo is a member of Docs and of Product: Product still gives it.
+      expect(await w.has(w.bo)).toBe(true)
+      await w.set(w.site, "on")
+      expect(await w.has(w.ada)).toBe(true)
+      expect(await w.from(w.ada)).toEqual(["Site"])
+    })
+
+    test("a member that leaves Site loses the skill in its next turn", async () => {
+      const w = await world()
+      await w.set(w.product, "on")
+      expect(await w.has(w.ada)).toBe(true)
+      await w.s.run(Organizations.use((o) => o.update(w.site.id, { memberIds: [] })))
+      expect(await w.has(w.ada)).toBe(false)
+    })
+
+    test("'All agents' stays on: 'Off' in Docs takes nothing away", async () => {
+      const w = await world()
+      const everyone = await w.s.skill("Everyone", null)
+      await w.s.run(Organizations.use((o) => o.setTool(w.docs.id, "skill", everyone.id, "off")))
+      expect(
+        (await w.s.run(Skills.use((k) => k.forAgent(w.ada.id)))).some((k) => k.id === everyone.id),
+      ).toBe(true)
+    })
+
+    test("the own entry of the agent stays when its organization is 'Off'", async () => {
+      const w = await world()
+      const mine = await w.s.skill("Mine", [w.ada.id])
+      await w.s.run(Organizations.use((o) => o.setTool(w.product.id, "skill", mine.id, "on")))
+      await w.s.run(Organizations.use((o) => o.setTool(w.site.id, "skill", mine.id, "off")))
+      expect(
+        (await w.s.run(Skills.use((k) => k.forAgent(w.ada.id)))).some((k) => k.id === mine.id),
+      ).toBe(true)
+    })
+  })
+
   test("a deleted organization leaves the list of the skill", async () => {
     const s = await setup()
     const ada = await s.agent("Ada")

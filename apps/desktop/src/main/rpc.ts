@@ -860,7 +860,7 @@ export const handlers: Handlers = {
         orgId: Schema.String,
         kind: Schema.Literals(["skill", "connection"]),
         id: Schema.String,
-        choice: Schema.Literals(["on", "inherit"]),
+        choice: Schema.Literals(["inherit", "on", "off"]),
       }),
     )(input).pipe(
       Effect.flatMap(({ orgId, kind, id, choice }) =>
