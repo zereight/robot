@@ -563,10 +563,10 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               db.run(
                 `INSERT INTO tool_connection
                    (id, server_id, name, name_key, kind, command, args, folder, env, address, headers,
-                    agents, channels, organizations, enabled, state, failure, tools, tools_more,
+                    agents, organizations, enabled, state, failure, tools, tools_more,
                     tools_off, created_at)
                  SELECT id, ?, name, name_key, kind, command, args, folder, env, address, headers,
-                        agents, channels, organizations, 0, 'untested', NULL, '[]', 0, tools_off, created_at
+                        agents, organizations, 0, 'untested', NULL, '[]', 0, tools_off, created_at
                  FROM imp.tool_connection`,
                 local.id,
               )

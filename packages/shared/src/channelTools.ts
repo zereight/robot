@@ -1,92 +1,9 @@
-// The tools of a channel and its daily token limit (spec 030, "Channel tools" and "Daily token
-// limit"). These are plain functions. The skills (017) and the connections (018) hold a list of
-// agents and channels that may use them. A channel limit counts the tokens of the tasks of a day.
+// The daily token limit of a channel (spec 030, "Daily token limit"). These are plain functions. A
+// channel limit counts the tokens of the tasks of a day. The next step moves the limit to the
+// organizations (`orgLimit.ts`), and this file goes with it. The tools are in `orgTools.ts`.
 
 import { higherChannels, type TreeChannel } from "./channelTree.ts"
 import { limitState } from "./taskUsage.ts"
-
-// ---------------------------------------------------------------------------------------------
-// Who may use a skill or a connection
-// ---------------------------------------------------------------------------------------------
-
-/**
- * The agents and channels that may use a skill or a connection. `agentIds` is `null` for "All
- * agents". Else the list holds the agents in `agentIds` and the channels in `channelIds`. A list
- * has at least one entry in all (spec 017, 018).
- */
-export interface ToolAudience {
-  readonly agentIds: readonly string[] | null
-  readonly channelIds: readonly string[]
-}
-
-/** "All agents". */
-export const ALL_AGENTS: ToolAudience = { agentIds: null, channelIds: [] }
-
-/**
- * The channels that give their tools to an agent that is a member of the channels `memberOf`: each
- * of those channels that is not archived, and each higher channel of it (spec 030, "Channel
- * tools"). An archived channel gives nothing: not as a member channel, and not as a higher channel
- * (an archived parent counts as no parent, so the tree already leaves it out). The nearest channels
- * come first.
- */
-export const givingChannels = (
-  channels: readonly TreeChannel[],
-  memberOf: readonly string[],
-): string[] => {
-  const live = new Set(channels.filter((c) => !c.archived).map((c) => c.id))
-  const out: string[] = []
-  const add = (id: string) => {
-    if (live.has(id) && !out.includes(id)) out.push(id)
-  }
-  for (const id of memberOf) add(id)
-  for (const id of memberOf) {
-    if (!live.has(id)) continue
-    for (const higher of higherChannels(channels, id)) add(higher)
-  }
-  return out
-}
-
-/**
- * The channels of the list that give the tool to this agent, nearest first. `giving` is what
- * `givingChannels` gave for the agent.
- */
-export const channelsThatGive = (audience: ToolAudience, giving: readonly string[]): string[] =>
-  giving.filter((id) => audience.channelIds.includes(id))
-
-/**
- * Whether an agent may use a skill or a connection (spec 030): "All agents" is on, or the list holds
- * the agent, or a channel that gives it. The skill or connection must also be on: the callers check
- * that.
- */
-export const mayUseTool = (
-  audience: ToolAudience,
-  agentId: string,
-  giving: readonly string[],
-): boolean =>
-  audience.agentIds === null ||
-  audience.agentIds.includes(agentId) ||
-  channelsThatGive(audience, giving).length > 0
-
-/**
- * The list of a skill or a connection after the channel `channelId` is switched on or off in
- * "Tools of this channel" (spec 030). A skill for "All agents" is not a list: the switch of a
- * channel has no effect on it, and the row shows it as on, read only. A list with the channel and
- * no other entry loses its last entry when the switch goes off: the caller must refuse that, or
- * keep the skill for no one. The agents of the list stay in place.
- */
-export const withChannelSwitch = (
-  audience: ToolAudience,
-  channelId: string,
-  on: boolean,
-): ToolAudience => {
-  if (audience.agentIds === null) return audience
-  const rest = audience.channelIds.filter((id) => id !== channelId)
-  return { agentIds: audience.agentIds, channelIds: on ? [...rest, channelId] : rest }
-}
-
-/** True when the list names no agent and no channel. Such a list gives the tool to no one. */
-export const emptyAudience = (audience: ToolAudience): boolean =>
-  audience.agentIds !== null && audience.agentIds.length === 0 && audience.channelIds.length === 0
 
 // ---------------------------------------------------------------------------------------------
 // The daily token limit of a channel
@@ -172,26 +89,6 @@ export const limitViewOf = (limit: number | null, used: number): ChannelLimitVie
 // ---------------------------------------------------------------------------------------------
 // What the window shows
 // ---------------------------------------------------------------------------------------------
-
-/** One row of the part "Tools of this channel": a skill or a connection of this computer. */
-export interface ChannelToolRow {
-  readonly kind: "skill" | "connection"
-  readonly id: string
-  readonly name: string
-  /** The switch: the list of the skill or connection holds this channel, or holds "All agents". */
-  readonly on: boolean
-  /** True when the skill or connection is for "All agents": the switch is on and cannot change. */
-  readonly all: boolean
-}
-
-/** A skill or a connection that an agent has from channels, for the lines "From <channel>". */
-export interface AgentChannelTool {
-  readonly kind: "skill" | "connection"
-  readonly id: string
-  readonly name: string
-  /** The channels that give it, nearest first. */
-  readonly channels: readonly { readonly id: string; readonly name: string }[]
-}
 
 /** What a channel shows about its limit today. */
 export interface ChannelLimitInfo extends ChannelLimitView {

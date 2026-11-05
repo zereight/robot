@@ -156,8 +156,6 @@ const ConnectionInputSchema = Schema.Struct({
     Schema.Literal("all"),
     Schema.Array(Schema.String).check(Schema.isMaxLength(1000)),
   ]),
-  /** The channels in the list of the connection (spec 018, 030). */
-  channels: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
   /** The organizations in the list of the connection (spec 018, 030). */
   organizations: Schema.optionalKey(OrgEntriesSchema),
 })
@@ -1322,12 +1320,11 @@ export const handlers: Handlers = {
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
         agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
-        channelIds: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
         organizations: Schema.optionalKey(OrgEntriesSchema),
       }),
     )(input).pipe(
-      Effect.flatMap(({ serverId, agentIds, channelIds, organizations, ...skill }) =>
-        Skills.use((s) => s.create(serverId, skill, agentIds, channelIds, organizations)),
+      Effect.flatMap(({ serverId, agentIds, organizations, ...skill }) =>
+        Skills.use((s) => s.create(serverId, skill, agentIds, organizations)),
       ),
     ),
   "skills.update": (input) =>
@@ -1338,12 +1335,11 @@ export const handlers: Handlers = {
         description: Schema.String.check(Schema.isMaxLength(10_000)),
         instructions: Schema.String.check(Schema.isMaxLength(100_000)),
         agentIds: Schema.NullOr(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
-        channelIds: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isMaxLength(1000))),
         organizations: Schema.optionalKey(OrgEntriesSchema),
       }),
     )(input).pipe(
-      Effect.flatMap(({ id, agentIds, channelIds, organizations, ...skill }) =>
-        Skills.use((s) => s.update(id, skill, agentIds, channelIds, organizations)),
+      Effect.flatMap(({ id, agentIds, organizations, ...skill }) =>
+        Skills.use((s) => s.update(id, skill, agentIds, organizations)),
       ),
     ),
   "skills.duplicate": (input) =>
@@ -1534,27 +1530,6 @@ export const handlers: Handlers = {
     ),
   // The tools of a channel and its daily token limit (spec 030). A linked device reads the first
   // three with the link only; its input is checked as strictly as any request of a client.
-  "channelTools.list": (input) =>
-    strict(Schema.Struct({ channelId: Id }))(input).pipe(
-      Effect.flatMap(({ channelId }) => ChannelTools.use((c) => c.forChannel(channelId))),
-    ),
-  "channelTools.set": (input) =>
-    decode(
-      Schema.Struct({
-        channelId: Schema.String,
-        kind: Schema.Literals(["skill", "connection"]),
-        id: Schema.String,
-        on: Schema.Boolean,
-      }),
-    )(input).pipe(
-      Effect.flatMap(({ channelId, kind, id, on }) =>
-        ChannelTools.use((c) => c.set(channelId, kind, id, on)),
-      ),
-    ),
-  "channelTools.forAgent": (input) =>
-    strict(Schema.Struct({ agentId: Id }))(input).pipe(
-      Effect.flatMap(({ agentId }) => ChannelTools.use((c) => c.forAgent(agentId))),
-    ),
   "channels.limit": (input) =>
     strict(Schema.Struct({ channelId: Id }))(input).pipe(
       Effect.flatMap(({ channelId }) => ChannelTools.use((c) => c.limit(channelId))),

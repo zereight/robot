@@ -1248,6 +1248,14 @@ export const migrations: readonly string[] = [
   ALTER TABLE skill ADD COLUMN organizations TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE tool_connection ADD COLUMN organizations TEXT NOT NULL DEFAULT '[]';
   `,
+  `
+  -- The channels leave the agent lists of skills and connections (spec 017, 018, 030 "Tools"). The
+  -- step that made the organizations has copied the tool of each channel as the value "On" of its
+  -- organization, so the column of channel ids has no use. An archive made before this step is
+  -- refused by its schema number, so no file carries the column.
+  ALTER TABLE skill DROP COLUMN channels;
+  ALTER TABLE tool_connection DROP COLUMN channels;
+  `,
 ]
 
 /**

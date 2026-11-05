@@ -759,7 +759,7 @@ describe("export and import", () => {
     })
   })
 
-  test("the daily token limit and the channels in the lists of skills and connections come back (spec 030, 014)", async () => {
+  test("the daily token limit of a channel comes back (spec 030, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-channel-tools.zip")
     const a = app({ save: out })
     const local = await a.run(Servers.use((s) => s.local))
@@ -775,7 +775,7 @@ describe("export and import", () => {
         }),
       ),
     )
-    const docs = await a.run(
+    await a.run(
       Channels.use((c) =>
         c.create({
           serverId: local.id,
@@ -787,24 +787,6 @@ describe("export and import", () => {
         }),
       ),
     )
-    const skill = await a.run(
-      Skills.use((s) =>
-        s.create(
-          local.id,
-          { name: "Release notes", description: "", instructions: "Do it." },
-          [],
-          [product.id],
-        ),
-      ),
-    )
-    const db = await a.run(Database.use((d) => Effect.succeed(d)))
-    db.run(
-      `INSERT INTO tool_connection
-         (id, server_id, name, name_key, kind, command, agents, channels, enabled, state, created_at)
-       VALUES ('c1', ?, 'Notes', 'notes', 'program', 'notes-server', '[]', ?, 1, 'connected', 1)`,
-      local.id,
-      JSON.stringify([docs.id]),
-    )
     await a.run(Data.use((d) => d.export()))
 
     const b = app({ open: out })
@@ -814,12 +796,6 @@ describe("export and import", () => {
     expect(channels.map((c) => [c.name, c.dailyTokenLimit]).sort()).toEqual([
       ["Docs", null],
       ["Product", 50_000],
-    ])
-    const skills = await b.run(Skills.use((s) => s.list(bLocal.id)))
-    expect(skills.find((x) => x.id === skill.id)?.channelIds).toEqual([product.id])
-    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
-    expect(bDb.all("SELECT id, agents, channels, enabled FROM tool_connection")).toEqual([
-      { id: "c1", agents: "[]", channels: JSON.stringify([docs.id]), enabled: 0 },
     ])
   })
 
@@ -857,6 +833,16 @@ describe("export and import", () => {
       ),
     )
     await a.run(Organizations.use((o) => o.setTool(support.id, "skill", skill.id, "on")))
+    await a.run(Organizations.use((o) => o.setTool(company.id, "skill", skill.id, "off")))
+    // A connection: the value of an organization is a column of its row, as for a skill (spec 018).
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    db.run(
+      `INSERT INTO tool_connection
+         (id, server_id, name, name_key, kind, command, agents, organizations, enabled, state, created_at)
+       VALUES ('c1', ?, 'Notes', 'notes', 'program', 'notes-server', '[]', ?, 1, 'connected', 1)`,
+      local.id,
+      JSON.stringify([{ id: support.id, value: "off" }]),
+    )
     await a.run(Data.use((d) => d.export()))
 
     const b = app({ open: out })
@@ -874,6 +860,11 @@ describe("export and import", () => {
     const skills = await b.run(Skills.use((s) => s.list(bLocal.id)))
     expect(skills.find((x) => x.id === skill.id)?.organizations).toEqual([
       { id: support.id, value: "on" },
+      { id: company.id, value: "off" },
+    ])
+    const bDb = await b.run(Database.use((d) => Effect.succeed(d)))
+    expect(bDb.all("SELECT id, organizations, enabled FROM tool_connection")).toEqual([
+      { id: "c1", organizations: JSON.stringify([{ id: support.id, value: "off" }]), enabled: 0 },
     ])
   })
 

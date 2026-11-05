@@ -69,8 +69,6 @@ export interface ToolConnectionInput {
   readonly headers: readonly ConnectionEntryInput[]
   /** "all", or the ids of the agents that may use the connection. */
   readonly agents: "all" | readonly string[]
-  /** The channels in the list of the connection (spec 018, 030). Absent counts as none. */
-  readonly channels?: readonly string[]
   /**
    * The organizations in the list of the connection with the value "On" or "Off" (spec 018, 030).
    * Absent counts as none.
@@ -132,8 +130,6 @@ export interface ToolConnection {
   readonly address: string
   readonly headers: readonly ConnectionEntryView[]
   readonly agents: "all" | readonly string[]
-  /** The channels in the list of the connection (spec 018, 030). Empty for "all". */
-  readonly channels: readonly string[]
   /** The organizations in the list of the connection (spec 018, 030). Empty for "all". */
   readonly organizations: readonly OrgToolEntry[]
   readonly state: ConnectionState

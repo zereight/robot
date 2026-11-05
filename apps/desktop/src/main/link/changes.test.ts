@@ -776,21 +776,13 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ).dailyTokenLimit,
     ).toBeNull()
 
-    // The part "Tools of this channel", the lines "From <channel>" and the limit are read only.
-    for (const method of ["channelTools.list", "channels.limit"] as const) {
-      expect(codeOf(await p.ask(method, { channelId: channel.id }))).toBe("ok")
-    }
-    expect(codeOf(await p.ask("channelTools.forAgent", { agentId: a.id }))).toBe("ok")
+    // The limit is read only.
+    expect(codeOf(await p.ask("channels.limit", { channelId: channel.id }))).toBe("ok")
     expect(codeOf(await p.ask("channels.limit", { channelId: channel.id, extra: 1 }))).toBe(
       "invalid_input",
     )
-    // A client cannot change the tools of a channel, and it has no usage page (spec 012).
-    for (const [method, input] of [
-      ["channelTools.set", { channelId: channel.id, kind: "skill", id: "x", on: true }],
-      ["usage.channels", { serverId: p.serverId }],
-    ] as const) {
-      expect(await p.raw(method, input)).toBe("not_allowed")
-    }
+    // A client has no usage page (spec 012).
+    expect(await p.raw("usage.channels", { serverId: p.serverId })).toBe("not_allowed")
   })
 
   test("it sets the switch Read the handbook and the instructions of a channel, with the same limits as the server (spec 002, 004, 012)", async () => {

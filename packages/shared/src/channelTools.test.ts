@@ -1,22 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import {
-  ALL_AGENTS,
-  channelsThatGive,
   DAILY_LIMIT_MAX,
   DAILY_LIMIT_MIN,
-  emptyAudience,
-  givingChannels,
   type LimitChannel,
   limitViewOf,
-  mayUseTool,
   stoppingChannel,
   usedWithLower,
   validDailyLimit,
-  withChannelSwitch,
 } from "./channelTools.ts"
 import type { TreeChannel } from "./channelTree.ts"
 
-// Spec 030, "Channel tools" and "Daily token limit".
+// Spec 030, "Daily token limit" (the limit of a channel, until the limit moves to the organizations).
 
 const ch = (id: string, parentId: string | null = null, archived = false): TreeChannel => ({
   id,
@@ -26,80 +20,6 @@ const ch = (id: string, parentId: string | null = null, archived = false): TreeC
 
 // Product > Docs > Site, and Ops alone.
 const tree = [ch("product"), ch("docs", "product"), ch("site", "docs"), ch("ops")]
-
-describe("who may use a skill or a connection", () => {
-  test("a member of a lower channel gets what a higher channel gives", () => {
-    expect(givingChannels(tree, ["site"])).toEqual(["site", "docs", "product"])
-    expect(givingChannels(tree, ["docs"])).toEqual(["docs", "product"])
-    expect(givingChannels(tree, ["product"])).toEqual(["product"])
-  })
-
-  test("a member of a higher channel gets nothing from a lower channel", () => {
-    const giving = givingChannels(tree, ["product"])
-    expect(mayUseTool({ agentIds: [], channelIds: ["site"] }, "a", giving)).toBe(false)
-    expect(mayUseTool({ agentIds: [], channelIds: ["docs"] }, "a", giving)).toBe(false)
-  })
-
-  test("the nearest channel comes first, and a channel is listed once", () => {
-    expect(givingChannels(tree, ["site", "docs"])).toEqual(["site", "docs", "product"])
-    expect(givingChannels(tree, ["ops", "site"])).toEqual(["ops", "site", "docs", "product"])
-  })
-
-  test("an agent in no channel gets nothing from a channel", () => {
-    expect(givingChannels(tree, [])).toEqual([])
-    expect(mayUseTool({ agentIds: [], channelIds: ["product"] }, "a", [])).toBe(false)
-  })
-
-  test("an archived channel gives nothing: as a member channel, and as a higher channel", () => {
-    const archivedMember = [ch("product"), ch("docs", "product", true)]
-    expect(givingChannels(archivedMember, ["docs"])).toEqual([])
-    // The parent is archived: the sub-channel is a top channel, so it gets nothing from the parent.
-    const archivedParent = [ch("product", null, true), ch("docs", "product")]
-    expect(givingChannels(archivedParent, ["docs"])).toEqual(["docs"])
-    expect(mayUseTool({ agentIds: [], channelIds: ["product"] }, "a", ["docs"])).toBe(false)
-    // A restore brings the right back.
-    const restored = [ch("product"), ch("docs", "product")]
-    expect(givingChannels(restored, ["docs"])).toEqual(["docs", "product"])
-  })
-
-  test("a channel in the list, the agent itself, or All agents", () => {
-    const giving = givingChannels(tree, ["site"])
-    expect(mayUseTool(ALL_AGENTS, "x", [])).toBe(true)
-    expect(mayUseTool({ agentIds: ["x"], channelIds: [] }, "x", [])).toBe(true)
-    expect(mayUseTool({ agentIds: ["y"], channelIds: [] }, "x", [])).toBe(false)
-    expect(mayUseTool({ agentIds: [], channelIds: ["product"] }, "x", giving)).toBe(true)
-    expect(mayUseTool({ agentIds: ["y"], channelIds: ["ops"] }, "x", giving)).toBe(false)
-  })
-
-  test("the channels that give a tool are named nearest first, for the line 'From <channel>'", () => {
-    const giving = givingChannels(tree, ["site"])
-    expect(
-      channelsThatGive({ agentIds: [], channelIds: ["product", "docs", "ops"] }, giving),
-    ).toEqual(["docs", "product"])
-    expect(channelsThatGive(ALL_AGENTS, giving)).toEqual([])
-  })
-
-  test("the switch of a channel adds or removes the channel and keeps the agents", () => {
-    const list = { agentIds: ["a"], channelIds: ["ops"] }
-    expect(withChannelSwitch(list, "product", true)).toEqual({
-      agentIds: ["a"],
-      channelIds: ["ops", "product"],
-    })
-    expect(
-      withChannelSwitch({ agentIds: ["a"], channelIds: ["product"] }, "product", false),
-    ).toEqual({ agentIds: ["a"], channelIds: [] })
-    // Turning on twice adds the channel once.
-    expect(withChannelSwitch(withChannelSwitch(list, "product", true), "product", true)).toEqual({
-      agentIds: ["a"],
-      channelIds: ["ops", "product"],
-    })
-    // A skill for all agents is not a list.
-    expect(withChannelSwitch(ALL_AGENTS, "product", false)).toEqual(ALL_AGENTS)
-    expect(emptyAudience({ agentIds: [], channelIds: [] })).toBe(true)
-    expect(emptyAudience({ agentIds: [], channelIds: ["product"] })).toBe(false)
-    expect(emptyAudience(ALL_AGENTS)).toBe(false)
-  })
-})
 
 describe("the daily token limit", () => {
   test("it takes a whole number from 10,000 to 100,000,000", () => {

@@ -1,43 +1,19 @@
 import {
   type ChannelLimitView,
   dayBounds,
-  givingChannels,
   type LimitChannel,
   limitViewOf,
-  mayUseTool,
   stoppingChannel,
-  type ToolAudience,
   tokensOf,
   usedWithLower,
 } from "@robot/shared"
 import type { DatabaseService } from "./Database.ts"
-import { orgGiversFor } from "./orgData.ts"
 
-// The channel side of the tools of a channel and of its daily token limit (spec 030). These are
-// plain functions on the database, so that the skills, the connections, the channels and the usage
-// page share one reading of the tree. A channel has no archive state in the data of today, so no
-// channel counts as archived here; the functions of `@robot/shared` already leave an archived
-// channel out when the data gets one.
-
-/** A JSON list of ids. A text that holds no list gives an empty one. */
-export const idList = (text: string | null | undefined): string[] => {
-  if (text === null || text === undefined) return []
-  try {
-    const parsed: unknown = JSON.parse(text)
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []
-  } catch {
-    return []
-  }
-}
-
-/** The agents and channels of a stored list: the two columns `agents` and `channels`. */
-export const audienceOf = (row: {
-  readonly agents: string | null
-  readonly channels: string | null
-}): ToolAudience => ({
-  agentIds: row.agents === null ? null : idList(row.agents),
-  channelIds: idList(row.channels),
-})
+// The channel side of the daily token limit (spec 030). These are plain functions on the database,
+// so that the channels and the usage page share one reading of the tree. The tools of an
+// organization are decided in `orgData.ts` (`mayUseRow`). A channel has no archive state in the
+// data of today, so no channel counts as archived here; the functions of `@robot/shared` already
+// leave an archived channel out when the data gets one.
 
 interface ChannelLine {
   id: string
@@ -53,28 +29,6 @@ export const limitChannels = (db: DatabaseService, serverId: string): LimitChann
       serverId,
     )
     .map((c) => ({ id: c.id, parentId: c.parent_channel_id, dailyLimit: c.daily_token_limit }))
-
-/**
- * The channels that give their tools to an agent now (spec 030, "Channel tools"): the channels it
- * is a member of, and their higher channels, nearest first.
- */
-export const givingFor = (db: DatabaseService, agentId: string): string[] => {
-  const serverId = db.get<{ server_id: string }>(
-    "SELECT server_id FROM agent WHERE id = ?",
-    agentId,
-  )?.server_id
-  if (serverId === undefined) return []
-  const member = db
-    .all<{ channel_id: string }>(
-      `SELECT m.channel_id AS channel_id FROM channel_member m
-       JOIN channel c ON c.id = m.channel_id WHERE m.agent_id = ? AND c.server_id = ?`,
-      agentId,
-      serverId,
-    )
-    .map((m) => m.channel_id)
-  if (member.length === 0) return []
-  return givingChannels(limitChannels(db, serverId), member)
-}
 
 // ---------------------------------------------------------------------------------------------
 // The daily token limit
@@ -162,20 +116,3 @@ export const limitView = (
   const limit = channels.find((c) => c.id === channelId)?.dailyLimit ?? null
   return limitViewOf(limit, used.get(channelId) ?? 0)
 }
-
-/**
- * Whether an agent may use the skill or the connection of a stored row (spec 030): "All agents" is
- * on, or the list holds the agent, or a channel that gives it, or an organization of the agent holds
- * the value "On" (itself or from a higher organization). The caller checks that the row is on.
- */
-export const mayUseRow = (
-  db: DatabaseService,
-  row: {
-    readonly agents: string | null
-    readonly channels: string | null
-    readonly organizations?: string | null
-  },
-  agentId: string,
-): boolean =>
-  mayUseTool(audienceOf(row), agentId, givingFor(db, agentId)) ||
-  (row.agents !== null && orgGiversFor(db, row, agentId).length > 0)

@@ -1,4 +1,5 @@
 import {
+  agentMayUse,
   type HandOffRange,
   type Org,
   type OrgToolEntry,
@@ -116,4 +117,45 @@ export const orgEntriesOnServer = (
       out.push(entry)
   }
   return out
+}
+
+/** A JSON list of ids. A text that holds no list gives an empty one. */
+export const idList = (text: string | null | undefined): string[] => {
+  if (text === null || text === undefined) return []
+  try {
+    const parsed: unknown = JSON.parse(text)
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Whether an agent may use the skill or the connection of a stored row (spec 030, "Tools"): "All
+ * agents" is on, or the list holds the agent, or an organization of the agent has the value "On"
+ * (its own, or the value of a higher organization). This is the one place that decides it: the
+ * lists of skills and connections, a turn, and a direct chat all ask it. The caller checks that the
+ * row is on.
+ */
+export const mayUseRow = (
+  db: DatabaseService,
+  row: { readonly agents: string | null; readonly organizations?: string | null },
+  agentId: string,
+): boolean => {
+  if (row.agents === null) return true
+  const agents = idList(row.agents)
+  if (agents.includes(agentId)) return true
+  const entries = orgEntriesOf(row)
+  if (entries.length === 0) return false
+  const serverId = db.get<{ server_id: string }>(
+    "SELECT server_id FROM agent WHERE id = ?",
+    agentId,
+  )?.server_id
+  if (serverId === undefined) return false
+  return agentMayUse(
+    { agentIds: agents, entries },
+    agentId,
+    orgTreeOf(db, serverId),
+    orgIdsOfAgent(db, agentId),
+  )
 }

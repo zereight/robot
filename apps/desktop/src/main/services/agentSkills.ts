@@ -10,7 +10,6 @@ import { orgEntriesOf } from "./orgData.ts"
 interface SkillAgentsRow {
   id: string
   agents: string | null
-  channels: string
   organizations: string
 }
 
@@ -38,19 +37,17 @@ const plan = (db: DatabaseService, agentId: string) => {
   )?.server_id
   if (serverId === undefined) return { serverId, steps: [] }
   const exists = (id: string) => Boolean(db.get("SELECT 1 FROM agent WHERE id = ?", id))
-  const channelExists = (id: string) => Boolean(db.get("SELECT 1 FROM channel WHERE id = ?", id))
   const orgExists = (id: string) => Boolean(db.get("SELECT 1 FROM org_unit WHERE id = ?", id))
   const steps: { id: string; after: SkillAfterAgentDelete }[] = []
   for (const row of db.all<SkillAgentsRow>(
-    "SELECT id, agents, channels, organizations FROM skill WHERE server_id = ? AND agents IS NOT NULL",
+    "SELECT id, agents, organizations FROM skill WHERE server_id = ? AND agents IS NOT NULL",
     serverId,
   )) {
     const ids = idsOf(row)
     if (!ids) continue
-    // A channel or an organization in the list that is still there keeps the skill (spec 030).
-    const channelsLeft = (listOf(row.channels) ?? []).filter(channelExists).length
+    // An organization in the list that is still there keeps the skill (spec 030).
     const orgsLeft = orgEntriesOf(row).filter((o) => o.value === "on" && orgExists(o.id)).length
-    const after = skillAfterAgentDelete(ids, agentId, exists, channelsLeft + orgsLeft)
+    const after = skillAfterAgentDelete(ids, agentId, exists, orgsLeft)
     if (after.kind !== "same") steps.push({ id: row.id, after })
   }
   return { serverId, steps }

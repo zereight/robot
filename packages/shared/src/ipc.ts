@@ -9,12 +9,7 @@ import type {
   ChannelMessage,
   ChannelPatch,
 } from "./channels.ts"
-import type {
-  AgentChannelTool,
-  ChannelLimitInfo,
-  ChannelToolRow,
-  ChannelUsageRow,
-} from "./channelTools.ts"
+import type { ChannelLimitInfo, ChannelUsageRow } from "./channelTools.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
 import type { Handbook, HandbookVersion } from "./handbook.ts"
@@ -707,15 +702,14 @@ export interface RpcMethods {
   /** The skills that are only for this agent. A delete of the agent deletes them too (002, 017). */
   "skills.onlyFor": { input: { agentId: string }; output: { count: number } }
   /**
-   * `agentIds` is the list of agents that may use the skill, or `null` for all agents. `channelIds`
-   * are the channels in the list (spec 017, 030); they count only when `agentIds` is a list.
+   * `agentIds` is the list of agents that may use the skill, or `null` for all agents.
+   * `organizations` are the organizations in the list (spec 017, 030); they count only when
+   * `agentIds` is a list.
    */
   "skills.create": {
     input: SkillInput & {
       serverId: string
       agentIds: readonly string[] | null
-      channelIds?: readonly string[]
-      /** The organizations in the list (spec 017, 030), with the value "On" or "Off". */
       organizations?: readonly OrgToolEntry[]
     }
     output: Skill
@@ -725,7 +719,6 @@ export interface RpcMethods {
     input: SkillInput & {
       id: string
       agentIds: readonly string[] | null
-      channelIds?: readonly string[]
       organizations?: readonly OrgToolEntry[]
     }
     output: Skill
@@ -801,18 +794,6 @@ export interface RpcMethods {
   "island.dismissResult": { input: { id: number }; output: undefined }
   /** The size that the island content needs, in px. The island window takes this size. */
   "island.fit": { input: { width: number; height: number }; output: undefined }
-  /**
-   * The part "Tools of this channel" (spec 030): the skills and connections of this computer, with
-   * the switch of the channel. A linked device reads it and does not change it (spec 012).
-   */
-  "channelTools.list": { input: { channelId: string }; output: readonly ChannelToolRow[] }
-  /** Turns a skill or a connection on or off for a channel. This computer only (spec 012, 030). */
-  "channelTools.set": {
-    input: { channelId: string; kind: "skill" | "connection"; id: string; on: boolean }
-    output: readonly ChannelToolRow[]
-  }
-  /** The skills and connections that an agent has from channels: the lines "From <channel>". */
-  "channelTools.forAgent": { input: { agentId: string }; output: readonly AgentChannelTool[] }
   /** The daily token limit of a channel and the tokens used today (spec 030). */
   "channels.limit": { input: { channelId: string }; output: ChannelLimitInfo }
   /** The channels with a daily token limit, with the tokens used today (spec 006, 030). */

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { DatabaseSync } from "node:sqlite"
 import { migrate } from "./Database.ts"
-import { migrations } from "./migrations.ts"
+import { dataSteps, migrations } from "./migrations.ts"
 
 // Spec 030, "Migration": the first start makes an organization from each channel that has a parent
 // channel, a sub-channel, a tool or a daily token limit. The channel keeps its fields (the later
@@ -20,6 +20,18 @@ const before = (setup: (db: DatabaseSync) => void) => {
   )
   setup(db)
   return db
+}
+
+/** Runs the steps from the version of the database up to and with the step at `index`. */
+const migrateThrough = (db: DatabaseSync, index: number) => {
+  const { user_version } = db.prepare("PRAGMA user_version").get() as { user_version: number }
+  for (let version = user_version; version <= index; version++) {
+    db.exec("BEGIN")
+    db.exec(migrations[version] ?? "")
+    dataSteps[version]?.(db)
+    db.exec(`PRAGMA user_version = ${version + 1}`)
+    db.exec("COMMIT")
+  }
 }
 
 const agent = (db: DatabaseSync, id: string) =>
@@ -69,6 +81,10 @@ const orgs = (db: DatabaseSync) =>
         daily_token_limit AS limit_ FROM org_unit ORDER BY name`,
     )
     .all() as Record<string, unknown>[]
+const columns = (db: DatabaseSync, table: string) =>
+  (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as { name: string }[]).map(
+    (c) => c.name,
+  )
 const dirty = (db: DatabaseSync) =>
   db.prepare("SELECT kind, id FROM sync_dirty WHERE kind = 'orgunit'").all()
 const members = (db: DatabaseSync, orgId: string) =>
@@ -179,9 +195,10 @@ describe("the migration of channels (spec 030, Migration)", () => {
     expect(
       db.prepare("SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = 'Docs'").get(),
     ).toEqual({ n: 2 })
-    expect(db.prepare("SELECT channels FROM skill WHERE id = 'sk'").get()).toEqual({
-      channels: '["Docs"]',
-    })
+    // The list columns of channels are gone once the organizations hold their value (spec 030,
+    // "Tools", S120): see "the step that removes the channels from the agent lists".
+    expect(columns(db, "skill")).not.toContain("channels")
+    expect(columns(db, "tool_connection")).not.toContain("channels")
     expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })
   })
 
@@ -250,7 +267,8 @@ describe("the migration of channels (spec 030, Migration)", () => {
       d.exec(`INSERT INTO skill (id, server_id, name, name_key, instructions, agents, channels, enabled, created_at)
         VALUES ('sk', 's', 'Notes', 'notes', 'x', '[]', '["Docs"]', 1, 1)`)
     })
-    migrate(db)
+    // Only up to the step of the organizations: the next step removes the column that it reads.
+    migrateThrough(db, STEP)
     const snapshot = JSON.stringify([
       orgs(db),
       members(db, "org-Docs"),
@@ -266,5 +284,53 @@ describe("the migration of channels (spec 030, Migration)", () => {
       ]),
     ).toBe(snapshot)
     expect(orgs(db)).toHaveLength(2)
+  })
+})
+
+describe("the step that removes the channels from the agent lists (spec 030, 'Tools')", () => {
+  const AFTER = migrations.findIndex((sql) => sql.includes("DROP COLUMN channels"))
+
+  test("it comes after the step that makes the organizations", () => {
+    expect(AFTER).toBeGreaterThan(STEP)
+  })
+
+  test("an old database: the organizations hold the tools first, then the channels leave the lists", () => {
+    const db = before((d) => {
+      for (const a of ["P", "D"]) agent(d, a)
+      channel(d, "Product", { members: ["P"], lead: "P", created: 1 })
+      channel(d, "Docs", { parent: "Product", members: ["P", "D"], created: 2 })
+      d.exec(`
+        INSERT INTO skill (id, server_id, name, name_key, instructions, agents, channels, enabled, created_at)
+          VALUES ('sk', 's', 'Notes', 'notes', 'x', '["P"]', '["Docs","Product"]', 1, 1),
+                 ('sk2', 's', 'Plain', 'plain', 'x', NULL, '[]', 1, 1);
+        INSERT INTO tool_connection (id, server_id, name, name_key, kind, agents, channels, enabled, created_at)
+          VALUES ('cn', 's', 'Wiki', 'wiki', 'program', '["P"]', '["Docs"]', 0, 1);
+      `)
+    })
+    // Run the step that makes the organizations, and stop before the removal.
+    migrateThrough(db, STEP)
+    const list = (table: string, id: string) =>
+      db.prepare(`SELECT organizations FROM ${table} WHERE id = ?`).get(id) as {
+        organizations: string
+      }
+    // The tool of each channel is now the value "On" of its organization.
+    expect(JSON.parse(list("skill", "sk").organizations)).toEqual([
+      { id: "org-Docs", value: "on" },
+      { id: "org-Product", value: "on" },
+    ])
+    expect(JSON.parse(list("tool_connection", "cn").organizations)).toEqual([
+      { id: "org-Docs", value: "on" },
+    ])
+    expect(columns(db, "skill")).toContain("channels")
+
+    migrate(db)
+
+    expect(columns(db, "skill")).not.toContain("channels")
+    expect(columns(db, "tool_connection")).not.toContain("channels")
+    // The organizations keep their value, "All agents" stays as it was, and the rows stay.
+    expect(JSON.parse(list("skill", "sk").organizations)).toHaveLength(2)
+    expect(JSON.parse(list("tool_connection", "cn").organizations)).toHaveLength(1)
+    expect(db.prepare("SELECT COUNT(*) AS n FROM skill").get()).toEqual({ n: 2 })
+    expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })
   })
 })
