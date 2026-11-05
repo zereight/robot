@@ -1,8 +1,9 @@
-import { afterAll, afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, it, test } from "bun:test"
 import { join } from "node:path"
-import { messageText, type TaskProgress, taskTimes } from "@robot/shared"
+import { type MessagePart, messageText, type TaskProgress, taskTimes } from "@robot/shared"
 import { Effect, Exit, Layer, ManagedRuntime } from "effect"
 import { appLayer } from "../layers.ts"
+import { BUSY_WAIT_MS, busyClock } from "../providers/busyRetry.ts"
 import { Activity } from "./Activity.ts"
 import { Agents } from "./Agents.ts"
 import { Chat } from "./Chat.ts"
@@ -21,6 +22,8 @@ const KEY = "sk-chat-test"
 let failNext = true
 /** The last message of each request that reached the model. */
 const asked: string[] = []
+/** How many of the next "busy" or "flood" requests the stand-in fails before it answers. */
+let busyLeft = 0
 /** The system text of each request that reached the model. */
 const systems: string[] = []
 /** What the server saw of the requests that it holds with no answer. */
@@ -83,6 +86,12 @@ const server = Bun.serve({
         { status: 429, headers: { "retry-after": "60" } },
       )
     }
+    if ((last.endsWith("busy") || last.endsWith("flood")) && busyLeft > 0) {
+      busyLeft -= 1
+      const message = last.endsWith("flood") ? "Too many requests" : "The engine is overloaded"
+      const status = last.endsWith("flood") ? 429 : 503
+      return Response.json({ error: { message } }, { status })
+    }
     if (last.endsWith("slow")) {
       return sse([
         ...Array.from({ length: 40 }, (_, i) => ({ delay: 25, data: delta(`w${i} `) })),
@@ -124,7 +133,11 @@ const until = async (check: () => Promise<boolean>, ms = 3000) => {
   throw new Error("timed out")
 }
 
-afterEach(() => useClockForTests(undefined))
+afterEach(() => {
+  useClockForTests(undefined)
+  busyLeft = 0
+  busyClock.waitsMs = [...BUSY_WAIT_MS]
+})
 
 const setup = async () => {
   const t = testRuntime()
@@ -871,5 +884,64 @@ describe("messages during a turn (spec 003)", () => {
     expect((await t.send("hello")).queued).toBe(false)
     await t.settled()
     expect((await t.history()).messages.map((m) => m.unread)).toEqual([undefined, undefined])
+  })
+})
+
+const busyNotes = (parts: readonly MessagePart[]) =>
+  parts.filter(
+    (p): p is Extract<MessagePart, { kind: "note"; note: "busy_retry" }> =>
+      p.kind === "note" && p.note === "busy_retry",
+  )
+
+describe("When the provider is busy", () => {
+  describe("with no output yet", () => {
+    it("should show a muted line for each wait and then answer", async () => {
+      busyClock.waitsMs = [0, 0, 0]
+      busyLeft = 2
+      const t = await setup()
+      await t.send("please busy")
+      await t.settled()
+      const reply = (await t.history()).messages[1]
+      expect(busyNotes(reply?.parts ?? []).map((part) => [part.n, part.of])).toEqual([
+        [1, 3],
+        [2, 3],
+      ])
+      expect(reply?.status).toBe("done")
+    })
+
+    it("should fail with the provider reason after the third try", async () => {
+      busyClock.waitsMs = [0, 0, 0]
+      busyLeft = 9
+      const t = await setup()
+      await t.send("please busy")
+      await t.settled()
+      const reply = (await t.history()).messages[1]
+      expect(reply?.error?.code).toBe("provider_busy")
+      expect(busyNotes(reply?.parts ?? []).map((part) => part.n)).toEqual([1, 2, 3])
+    })
+
+    it("should stop when the user ends the wait", async () => {
+      busyClock.waitsMs = [60_000, 60_000, 60_000]
+      busyLeft = 4
+      const before = asked.length
+      const t = await setup()
+      await t.send("please busy")
+      await until(async () => busyNotes((await t.history()).messages[1]?.parts ?? []).length > 0)
+      await t.run(Chat.use((c) => c.stop(t.agent.id)))
+      await t.settled()
+      expect((await t.history()).messages[1]?.status).toBe("stopped")
+      expect(asked.length - before).toBe(1)
+    })
+
+    it("should try again when the provider gets too many requests", async () => {
+      busyClock.waitsMs = [0, 0, 0]
+      busyLeft = 1
+      const t = await setup()
+      await t.send("please flood")
+      await t.settled()
+      const reply = (await t.history()).messages[1]
+      expect(busyNotes(reply?.parts ?? []).map((part) => part.n)).toEqual([1])
+      expect(reply?.status).toBe("done")
+    })
   })
 })

@@ -84,6 +84,8 @@ export const MARKDOWN_REPLY = [
 ].join("\n")
 
 const failedOnce = new Set<string>()
+/** How many busy answers are left for a message, before the stand-in answers. */
+const busyLeft = new Map<string, number>()
 
 /** Parts of the stream "stream parts": one every 50 ms for 10 seconds (docs/performance.md). */
 export const STREAM_PARTS = 200
@@ -362,6 +364,14 @@ const answer = (body: ChatBody): Plan => {
   }
   // The word "limit" asks for a rate limit, unless it only quotes the reply of another agent.
   if (text.includes("limit") && !last.startsWith("Reply from the agent")) return { status: 429 }
+  // "model busy": the provider is overloaded twice, then it answers (spec 006).
+  if (text.includes("model busy")) {
+    const left = busyLeft.get(text) ?? 2
+    if (left > 0) {
+      busyLeft.set(text, left - 1)
+      return { status: 503 }
+    }
+  }
   return { chunks: ["Hello! ", "You said: ", text], delay: 30 }
 }
 
@@ -786,6 +796,7 @@ const openAiReply = async (
     res.writeHead(429, { "content-type": "application/json", "retry-after": "120" })
     return res.end(JSON.stringify({ error: { message: "rate limited" } }))
   }
+  if (p.status === 503) return json(res, 503, { error: { message: "The engine is overloaded" } })
   if (p.status) return json(res, p.status, { error: { message: "mock server error" } })
   res.writeHead(200, { "content-type": "text/event-stream" })
   const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`)

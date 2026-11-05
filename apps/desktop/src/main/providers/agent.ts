@@ -1,4 +1,5 @@
 import type { ListedStep, RefusalReason } from "@robot/shared"
+import { withBusyRetries } from "./busyRetry.ts"
 import {
   type ChatRequest,
   type ReplyBlock,
@@ -100,7 +101,18 @@ export async function* runAgent(
       // the next request starts from nothing. `spent` says what the request used since the last
       // report, so a task adds up all the requests of a turn (spec 005, "Usage of a task").
       const spend = spendTracker()
-      for await (const event of streamChat({ ...req, turns, ...(tools ? { tools } : {}) })) {
+      const hook = req.busy
+      const open = () => streamChat({ ...req, turns, ...(tools ? { tools } : {}) })
+      // A busy provider is tried again only for an agent that uses the tools of the app, and only
+      // for a request that has made no output yet (spec 006). A vendor runtime sets no hook.
+      const events = hook
+        ? withBusyRetries(open, {
+            signal: req.signal,
+            onWait: (n) => hook.wait(n),
+            onTry: () => hook.again(),
+          })
+        : open()
+      for await (const event of events) {
         if (event.type === "usage") {
           yield event
           const spent = spend(event)

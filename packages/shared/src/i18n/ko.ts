@@ -425,6 +425,7 @@ export const ko: Record<MessageKey, string> = {
   "backup.useMain": "지금 {model} 쓰기",
   "backup.header": "백업 모델 {model}",
   "chat.note.keptGoing": "이어서 진행했어요 ({n}/{of})",
+  "chat.note.busyRetry": "모델이 바빠요. 다시 시도하는 중 ({n}/{of}).",
   "chat.note.backupGoesOn": "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}",
   "chat.note.backupGoesOnUntil":
     "{main}의 한도에 도달했어요. 이어서 하는 모델: {backup}. 한도는 {time}에 풀려요.",

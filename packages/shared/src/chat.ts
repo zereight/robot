@@ -88,6 +88,11 @@ export type MessagePart =
    */
   | { readonly kind: "note"; readonly note: "kept_going"; readonly n: number; readonly of: number }
   /**
+   * The muted line "The model is busy. Trying again (1 of 3)." (spec 006, "Busy provider"). `n` is
+   * the try, from 1, and `of` is 3. The model never reads it.
+   */
+  | { readonly kind: "note"; readonly note: "busy_retry"; readonly n: number; readonly of: number }
+  /**
    * The muted line "The parent channel was cleared. The tree would have a loop." (or "... more than
    * 3 levels.") in the channel whose parent field the app cleared to repair the tree (spec 030,
    * "Repair"). `why` says what the tree would have had. It makes no notification and has no Undo.

@@ -427,6 +427,7 @@ export const en = {
   "backup.useMain": "Use {model} now",
   "backup.header": "Backup model {model}",
   "chat.note.keptGoing": "Kept going ({n} of {of})",
+  "chat.note.busyRetry": "The model is busy. Trying again ({n} of {of}).",
   "chat.note.backupGoesOn": "{main} reached its limit. {backup} goes on.",
   "chat.note.backupGoesOnUntil":
     "{main} reached its limit. {backup} goes on. The limit resets at {time}.",

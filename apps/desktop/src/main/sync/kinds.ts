@@ -412,6 +412,9 @@ const partCheck = (v: unknown): boolean => {
       // The muted line "Kept going (1 of 8)" travels with the two numbers (spec 005, 019).
       if (v.note === "kept_going")
         return shape(["kind", "note", "n", "of"])(v) && int(v.n) && int(v.of)
+      // The muted line "The model is busy. Trying again (1 of 3)." (spec 006).
+      if (v.note === "busy_retry")
+        return shape(["kind", "note", "n", "of"])(v) && int(v.n) && int(v.of)
       // The muted line of a repaired channel tree travels with its reason (spec 030, "Repair", 019).
       if (v.note === "tree_repaired")
         return shape(["kind", "note", "why"])(v) && oneOf(["loop", "levels"])(v.why)

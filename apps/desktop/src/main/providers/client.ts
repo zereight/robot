@@ -85,21 +85,30 @@ const errorMessage = async (response: Response) => {
   }
 }
 
+/** The provider says that it is busy, or that it gets too many requests (spec 006). */
+const BUSY_WORDS = /overloaded|too many requests/i
+
+export function isBusyText(message: string) {
+  return BUSY_WORDS.test(message)
+}
+
+function reportsUsageLimit(status: number) {
+  return status === 400 || status === 402 || status === 429 || status === 503 || status === 529
+}
+
 /** Turns a failed HTTP response into a `ProviderFailure`. */
 export const failureFrom = async (response: Response): Promise<ProviderFailure> => {
   const message = await errorMessage(response)
   if (response.status === 401 || response.status === 403)
     return new ProviderFailure("provider_auth", message)
-  if (response.status === 429) return limitFailure(message, resetTime(response))
-  // A spent credit or quota can come with another status (spec 006, "Backup model").
-  if (
-    (response.status === 400 || response.status === 402) &&
-    (["credit", "quota"].includes(limitReasonOf(message) ?? "") || /usage limits?/i.test(message))
-  )
+  // A usage limit is not a busy provider, even on 429, 503 or 529 (spec 006).
+  if (reportsUsageLimit(response.status) && limitReasonOf(message))
     return limitFailure(message, resetTime(response))
   // 503 is the status of an overloaded OpenAI model; 529 is the status that Anthropic uses.
-  if (response.status === 503 || response.status === 529 || /overloaded/i.test(message))
+  // A plain 429 stays a usage limit (see docs/spec-questions.md).
+  if (response.status === 503 || response.status === 529 || isBusyText(message))
     return new ProviderFailure("provider_busy", message)
+  if (response.status === 429) return limitFailure(message, resetTime(response))
   return new ProviderFailure("provider_error", `${response.status} ${message}`)
 }
 

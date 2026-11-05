@@ -896,6 +896,8 @@ describe("a handover syncs as messages and a thread do (spec 003, 007, 019)", ()
       expect(opOf(fields, [{ kind: "note", note, name: "Notes" }]), note).toBeDefined()
     // The muted line "Kept going (1 of 8)" (spec 005): two numbers and nothing else.
     expect(opOf(fields, [{ kind: "note", note: "kept_going", n: 1, of: 8 }])).toBeDefined()
+    expect(opOf(fields, [{ kind: "note", note: "busy_retry", n: 1, of: 3 }])).toBeDefined()
+    expect(opOf(fields, [{ kind: "note", note: "busy_retry", n: 1 }])).toBeUndefined()
     for (const bad of [
       { kind: "note", note: "kept_going", n: 1 },
       { kind: "note", note: "kept_going", n: "1", of: 8 },
