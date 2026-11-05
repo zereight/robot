@@ -2843,14 +2843,7 @@ export const ko: Record<MessageKey, string> = {
   "error.hand_off_path": "{detail}은(는) 보낼 수 있는 경로에 없어요. {next}에게 보내세요.",
   "error.hand_off_none":
     "{detail}은(는) 보낼 수 있는 경로에 없고, 대신 전달해 줄 에이전트도 없어요. 사용자에게 알리세요.",
-  "orgs.title": "조직",
-  "orgs.hint":
-    "조직은 리드가 있는 에이전트 모임이에요. 다른 조직 안에 둘 수 있고, 최대 3단계예요. 채널이 아니에요. 채널은 작업을 하는 곳이에요.",
   "orgs.new": "새 조직",
-  "orgs.empty": "아직 조직이 없어요.",
-  "orgs.noMembers": "멤버가 없어요.",
-  "orgs.open": "{name} 편집",
-  "orgs.sub": "{parent} 안",
   "orgs.create.title": "새 조직",
   "orgs.edit.title": "조직",
   "orgs.name": "이름",

@@ -155,51 +155,6 @@
   flex: 1;
 }
 
-/* The list of organizations in the settings, until the org chart opens the form (spec 029). */
-.listHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  list-style: none;
-  margin: 8px 0;
-  padding: 0;
-}
-.listRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
-  width: 100%;
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-s);
-  background: var(--c-elevated);
-  color: var(--c-text);
-  padding: 6px 10px;
-  text-align: start;
-  font: inherit;
-  cursor: pointer;
-  transition: background var(--motion-fast) var(--ease-out);
-}
-.listRow:hover {
-  background: var(--c-hover);
-}
-.listRow:focus-visible {
-  outline: 2px solid var(--c-focus);
-  outline-offset: 1px;
-}
-.listName {
-  font-weight: 500;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 /* The row "Organizations" in the profile of an agent. */
 .profileRow {
   display: flex;

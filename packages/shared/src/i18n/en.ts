@@ -2864,14 +2864,7 @@ export const en = {
   "error.hand_off_path": "{detail} is not on your path. Send it to {next}.",
   "error.hand_off_none":
     "{detail} is not on your path, and no agent can pass it on. Tell the user.",
-  "orgs.title": "Organizations",
-  "orgs.hint":
-    "An organization is a group of agents with a lead. It can sit inside another organization, three levels at most. It is not a channel: a channel is the place where a job is done.",
   "orgs.new": "New organization",
-  "orgs.empty": "No organizations yet.",
-  "orgs.noMembers": "No members.",
-  "orgs.open": "Edit {name}",
-  "orgs.sub": "In {parent}",
   "orgs.create.title": "New organization",
   "orgs.edit.title": "Organization",
   "orgs.name": "Name",
