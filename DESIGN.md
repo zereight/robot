@@ -38,17 +38,17 @@ typography:
     lineHeight: 1.35
   body:
     fontFamily: "system-ui, -apple-system, Segoe UI, Apple SD Gothic Neo, Malgun Gothic, Noto Sans KR, sans-serif"
-    fontSize: "0.9375rem"
+    fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.55
   label:
     fontFamily: "system-ui, -apple-system, Segoe UI, Apple SD Gothic Neo, Malgun Gothic, Noto Sans KR, sans-serif"
-    fontSize: "0.8125rem"
+    fontSize: "0.875rem"
     fontWeight: 500
     lineHeight: 1.4
   mono:
     fontFamily: "ui-monospace, SF Mono, Menlo, Consolas, monospace"
-    fontSize: "0.8125rem"
+    fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.5
 rounded:
@@ -215,24 +215,33 @@ selected row, 600 for a heading or a section name. Nothing above 600. Nothing be
 
 ### Hierarchy
 
-- **Display** (600, 1.75rem, line-height 1.2, tracking -0.02em): A page title only. Today,
+- **Display** (600, 1.875rem, line-height 1.2, tracking -0.02em): A page title only. Today,
   Workflows, Tasks. At most one per screen.
 - **Headline** (600, 1.5rem, line-height 1.3, tracking -0.015em): The name of a thing being
   edited, such as an agent or a workflow step.
-- **Title** (600, 1.125rem, line-height 1.35): A section name inside a page, a dialog title.
-- **Body** (400, 0.9375rem, line-height 1.55): Everything the user actually reads: a message, a
-  description, a paragraph of a handbook. Capped at 68ch.
-- **Label** (500, 0.8125rem, line-height 1.4): A control's text, a place row's name, a table
-  column head. Never used for a sentence.
-- **Mono** (400, 0.8125rem, line-height 1.5): A command, a file path, a shortcut key.
+- **Title** (600, 1.25rem, line-height 1.35): A section name inside a page, a dialog title.
+- **Body** (400, 1rem, line-height 1.55): Everything the user actually reads: a message, a
+  description, a paragraph of a handbook, a code block, an error line, a reason that explains a
+  state. Capped at 68ch.
+- **Label** (500, 0.875rem, line-height 1.4): A control's text, a place row's name, a table
+  column head, a count, a tag, a timestamp. Never used for a sentence.
+- **Mono** (400, 0.875rem, line-height 1.5): A command, a file path, a shortcut key.
 
 The root size is 14 px by default and the user can set 13 px or 16 px. Every step above is a
-rem value against that root, so one setting moves the whole interface.
+rem value against that root, so one setting moves the whole interface. The smallest step is
+0.875rem, which is 12.25 px at the default root and 11.4 px at the small one: that is the
+floor at which a Korean syllable still reads. Two neighbouring steps are always at least 1.11
+apart.
 
 ### Named Rules
 
-**The Prose Rule.** A sentence the user must read is never smaller than `body`. If a message, a
-description or an explanation is set at `label` size, that is a defect, not a tight layout.
+**The Prose Rule.** A sentence the user must read is never smaller than `body`. This covers a
+code block, an error line and a reason that explains a state, not only a message. If one of
+them is set at `label` size, that is a defect, not a tight layout. `label` is for a word: a
+count, a tag, a timestamp, a column head, a place name.
+
+**The Floor Rule.** No text step goes below 0.875rem, because at the small text size that is
+11.4 px, where a Korean syllable starts to blur.
 
 **The Three-Weight Rule.** 400, 500, 600. Nothing lighter, nothing heavier, and no italic in the
 interface chrome. Emphasis inside a message uses 600 or a real semantic element.
@@ -322,7 +331,7 @@ dot. It means "working", never "done" and never "good".
   meaning-bearing glyph at 3:1. `theme/tokens.test.ts` is the source of truth, not the eye.
 - **Do** keep two adjacent surface steps at 1.06:1 or more, so a panel is visible without a
   border.
-- **Do** set a sentence at `body` size (0.9375rem) or larger, always.
+- **Do** set a sentence at `body` size (1rem) or larger, always.
 - **Do** use `{colors.accent-ink}` for accent text on dark surfaces and `{colors.accent}` only
   as a fill.
 - **Do** keep every motion under 300 ms and give each one a reduced-motion answer.

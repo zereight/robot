@@ -39,10 +39,43 @@ test("the window follows DESIGN.md", async () => {
       expect((steps[i] as number) / (steps[i - 1] as number)).toBeGreaterThanOrEqual(1.1)
     }
 
+    // DESIGN.md, "The Floor Rule". At the small text size the smallest step still reads, so a
+    // Korean syllable does not blur. 13 px is the root of that setting.
+    expect((steps[0] as number) * 13).toBeGreaterThanOrEqual(11)
+
+    // The label step is bigger than the text around a smaller one: a label is not a caption.
+    const label = await page.evaluate(() => {
+      const probe = document.createElement("span")
+      probe.style.font = "var(--text-s)"
+      document.body.append(probe)
+      const size = Number.parseFloat(getComputedStyle(probe).fontSize)
+      probe.remove()
+      return size
+    })
+    expect(label).toBeGreaterThanOrEqual(14)
+
     // The four surfaces of the ladder are four different colours, so a panel is visible without
     // a border (DESIGN.md, "Elevation").
     for (const surface of tokens.surfaces) expect(surface).toMatch(/^#[0-9a-f]{6}$/i)
     expect(new Set(tokens.surfaces).size).toBe(tokens.surfaces.length)
+
+    // The claim of this rule is about the small text size, so set it and read the real pixels of
+    // a label. The root moves to 13 px, and the smallest step must stay legible on screen.
+    await page.getByTestId("open-settings").click()
+    await page.getByTestId("settings-nav-appearance").click()
+    await page.getByTestId("setting-text-size").locator('label[data-value="small"]').click()
+    await page.getByTestId("settings-close").click()
+    await expect(page.getByTestId("settings")).toHaveCount(0)
+
+    const smallLabel = await page.evaluate(() => {
+      const probe = document.createElement("span")
+      probe.style.fontSize = "var(--text-xs)"
+      document.body.append(probe)
+      const size = Number.parseFloat(getComputedStyle(probe).fontSize)
+      probe.remove()
+      return size
+    })
+    expect(smallLabel).toBeGreaterThanOrEqual(11)
   } finally {
     await app.close()
   }
