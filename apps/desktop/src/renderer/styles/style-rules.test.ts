@@ -14,7 +14,8 @@ import { palettes } from "../theme/tokens.ts"
 
 const root = join(import.meta.dir, "..")
 
-// The status island is its own window. It does not load global.css, so it cannot use the tokens.
+// The status island is its own window with a fixed dark look that ignores the theme, so it has
+// no theme colours. It loads the motion tokens alone (motion.css), and the test below checks them.
 const skipped = new Set(["island/island.css"])
 
 type Declaration = { file: string; line: number; prop: string; value: string }
@@ -276,3 +277,19 @@ rule(
     ),
   [],
 )
+
+describe("status island motion", () => {
+  const css = readFileSync(join(root, "island/island.css"), "utf8")
+
+  test("it loads the shared motion tokens", () => {
+    expect(css).toContain('@import "../styles/motion.css"')
+  })
+
+  test("its motion times and curves are tokens", () => {
+    const lines = css
+      .split("\n")
+      .filter((l) => /^\s*animation:\s*\S+\s/.test(l) && !l.includes("none"))
+    expect(lines.length).toBeGreaterThan(0)
+    for (const l of lines) expect(l).toMatch(/var\(--motion-[a-z]+\)\s+var\(--ease-[a-z-]+\)/)
+  })
+})
