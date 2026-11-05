@@ -30,8 +30,8 @@ const failKey = (code: SetupFailCode): MessageKey => {
 const empty: SetupList = { actions: [], allowed: false, unreadable: false }
 
 /**
- * The menu "Run <name>" for the setup actions of this agent's workspace (spec 035). It is absent
- * when the workspace has no list. A linked computer does not mount it.
+ * The setup entry for the setup actions of this agent's workspace (spec 035). With no list it
+ * opens the empty editor. A linked computer does not mount it.
  */
 export const SetupMenu = (props: { agentId: string }) => {
   const { t } = useApp()
@@ -140,6 +140,16 @@ export const SetupMenu = (props: { agentId: string }) => {
             <ChevronDown size={14} />
           </button>
         )}
+      </Show>
+      <Show when={!list().unreadable && !first()}>
+        <button
+          type="button"
+          class={styles.setupRun}
+          onClick={() => setEditing(true)}
+          data-testid="setup-manage"
+        >
+          <span>{t("setup.manage")}</span>
+        </button>
       </Show>
       <Show when={open()}>
         {(at) => (
