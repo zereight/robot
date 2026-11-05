@@ -259,6 +259,28 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
     ])
   })
 
+  test("an older file may hold a parent channel, a daily token limit or tools for a channel: the reading ignores them (spec 030, 'Migration')", () => {
+    const plain = parseAgentFile(file(two, { channels: [channel()] }))
+    const older = parseAgentFile(
+      file(two, {
+        channels: [
+          channel({
+            parent: "Product",
+            parentChannel: "Product",
+            dailyTokenLimit: 50_000,
+            tools: ["Summarise"],
+            organizations: ["Docs"],
+          }),
+        ],
+      }),
+    )
+    if (!plain.ok || !older.ok) throw new Error("refused")
+    expect(older.file.channels).toEqual(plain.file.channels)
+    expect(Object.keys(older.file.channels[0] ?? {}).sort()).toEqual(
+      ["instructions", "lead", "members", "name", "reviewParts", "topic"].sort(),
+    )
+  })
+
   test("a channel needs a name; the other fields get defaults", () => {
     const result = parseAgentFile(file(two, { channels: [{ name: "  Plain ", members: ["Bob"] }] }))
     if (!result.ok) throw new Error("refused")
