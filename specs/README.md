@@ -46,6 +46,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | 036 | [Organization prefix: the name of the deepest organization before the name of an agent, "[Docs] Ada", with a switch in Appearance](036-organization-prefix.md) | Draft |
 | 037 | [Manage tools: the main agent and an outside program make and change agents, channels and routines, each change a request that the user allows](037-manage-tools.md) | Draft |
 | 038 | [Events: what arrived from a schedule, a watch, a web hook, an outside program or Teams, which place took it, and the reason when nothing did](038-events.md) | Draft |
+| 039 | [Looping motion: spinners and pulses that show running work move at one pace and stop with reduce motion](039-looping-motion.md) | Draft |
 
 ## Milestones
 
