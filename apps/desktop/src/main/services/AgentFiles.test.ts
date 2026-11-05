@@ -350,6 +350,31 @@ describe("import", () => {
     expect(await app.list()).toEqual([])
   })
 
+  test("the file holds no switch 'Main agent', and an import never takes the flag from the main agent or gives it (spec 002, 'Agent file')", async () => {
+    const app = await setup()
+    const ada = await app.make("Ada")
+    await app.run(Agents.use((a) => a.update(ada.id, { isMain: true })))
+    const path = join(app.dataDir, "main.json")
+    await app.exportTo(path, [ada.id])
+    const text = readFileSync(path, "utf8")
+    expect(text.toLowerCase()).not.toContain("main")
+    expect(JSON.parse(text).agents[0]).not.toHaveProperty("isMain")
+
+    // A file that names the flag anyway is read as any other unknown field: it reaches no agent.
+    const forged = app.write(
+      "forged.json",
+      file([{ name: "Zed", role: "", instructions: "", isMain: true, main: true }]),
+    )
+    await app.importFile(path)
+    await app.importFile(forged)
+    const agents = await app.list()
+    expect(agents.map((a) => [a.name, a.isMain])).toEqual([
+      ["Ada", true],
+      ["Ada 2", false],
+      ["Zed", false],
+    ])
+  })
+
   test("import makes new agents only: an agent that exists is not changed", async () => {
     const path = await twoAgents()
     const app = await setup()

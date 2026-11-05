@@ -78,16 +78,6 @@ export interface AppLayerOptions {
   readonly clock?: Clock
   /** The limits and the way to reach a connection (spec 018). Only tests set them. */
   readonly connections?: ConnectionsOptions
-  /**
-   * The main agent of a server (spec 002). The app has no switch for it yet, so it is none; only
-   * tests set it, for the hand-off rule (spec 030).
-   */
-  readonly mainAgent?: (serverId: string) => string | null
-  /**
-   * The name of the main agent, for the end-to-end run only (spec 002): the agent of that name
-   * counts as the main agent, because the app has no switch for it yet. Only a test run sets it.
-   */
-  readonly mainAgentName?: string
 }
 
 /** Every main process service, wired together. */
@@ -111,10 +101,7 @@ export const appLayer = (options: AppLayerOptions) => {
     ModelHolds.layer,
   ).pipe(Layer.provideMerge(base))
   // The part "Organization" reads the server, so it comes after the stores (spec 030).
-  const organization = Organization.layer({
-    ...(options.mainAgent ? { mainAgent: options.mainAgent } : {}),
-    ...(options.mainAgentName ? { mainAgentName: options.mainAgentName } : {}),
-  }).pipe(Layer.provideMerge(stores))
+  const organization = Organization.layer().pipe(Layer.provideMerge(stores))
   // After the stores: it reads the setting, the agents that work and the routines.
   const keepAwake = KeepAwake.layer.pipe(Layer.provideMerge(organization))
   const devices = Devices.layer({

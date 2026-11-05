@@ -278,6 +278,43 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM permission_rule")?.n).toBe(0)
   })
 
+  test("it sees the switch 'Main agent' but cannot set it; a copy of the main agent is not the main agent (spec 002, 012)", async () => {
+    for (const canChange of [true, false]) {
+      const p = await pair(canChange)
+      const writer = value<Agent>(await p.onServer("agents.create", make(p.serverId, "Writer")))
+      expect(writer.isMain).toBe(false)
+      await p.onServer("agents.update", { id: writer.id, patch: { isMain: true } })
+      // A client reads the state with the link only: in the list, and in one agent.
+      const listed = value<Agent[]>(
+        await p.ask("agents.list", { serverId: p.serverId, archived: false }),
+      )
+      expect(listed.find((a) => a.id === writer.id)?.isMain).toBe(true)
+      expect(value<Agent>(await p.ask("agents.get", { id: writer.id })).isMain).toBe(true)
+    }
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    // No request of a client names the switch, whether it makes or changes an agent.
+    expect(
+      codeOf(await p.ask("agents.create", make(p.serverId, "Planner", { isMain: true }))),
+    ).toBe("invalid_input")
+    expect(codeOf(await p.ask("agents.update", { id: created.id, patch: { isMain: true } }))).toBe(
+      "invalid_input",
+    )
+    expect(codeOf(await p.ask("agents.update", { id: created.id, patch: { isMain: false } }))).toBe(
+      "invalid_input",
+    )
+    expect(value<Agent>(await p.onServer("agents.get", { id: created.id })).isMain).toBe(false)
+    await p.onServer("agents.update", { id: created.id, patch: { isMain: true } })
+    const copy = value<Agent>(await p.ask("agents.duplicate", { id: created.id, suffix: " copy" }))
+    expect(copy.isMain).toBe(false)
+    expect(value<Agent>(await p.onServer("agents.get", { id: created.id })).isMain).toBe(true)
+    // A change of another field by the client leaves the switch as it was.
+    const edited = value<Agent>(
+      await p.ask("agents.update", { id: created.id, patch: { role: "Editor" } }),
+    )
+    expect(edited.isMain).toBe(true)
+  })
+
   test("a model that the server does not offer is refused; an offered one works", async () => {
     const p = await pair(true)
     const unknown = [

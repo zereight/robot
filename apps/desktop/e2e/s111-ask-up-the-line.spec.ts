@@ -30,7 +30,6 @@ const start = async (env: Record<string, string> = {}, on = true) => {
     ROBOT_SYSTEM_LOCALE: "en-US",
     ROBOT_TEST_NOTIFY_LOG: noticeLog,
     ROBOT_TEST_UNFOCUSED: "1",
-    ROBOT_TEST_MAIN_AGENT: "Max",
     ...env,
   })
   await resizeWindow(app, 1300, 900)
@@ -44,6 +43,8 @@ const start = async (env: Record<string, string> = {}, on = true) => {
     archived: false,
   })
   const id = (name: string) => agents.find((a) => a.name === name)?.id as string
+  // Max is the main agent: the switch in the profile (spec 002, flow 7), as the page sets it.
+  await rpc(page, "agents.update", { id: id("Max"), patch: { isMain: true } })
   const product = await rpc<{ id: string }>(page, "channels.create", {
     serverId: server,
     name: "Product",

@@ -1193,4 +1193,15 @@ export const migrations: readonly string[] = [
   -- The look of an agent on the line is a task with the source "question" (spec 030, 005): the
   -- source column holds text, so no other change is needed.
   `,
+  `
+  -- The switch "Main agent" of an agent (spec 002, flow 7): 0 (off) is the default, as every agent
+  -- was before this step. At most one agent on a server has 1. The app keeps this in one step: it
+  -- turns the flag off on the old main agent when it turns it on for another one. The column has
+  -- no unique index, because a sync (019) can bring two flags before the check at the end of the
+  -- sync clears the older one. An archived agent keeps its flag and counts as no main agent while
+  -- it is archived (spec 029). The flag syncs with the agent (the dirty trigger of the agent
+  -- watches every column), and an export keeps it (the archive is the database). An agent file
+  -- holds no flag (spec 002, "Agent file").
+  ALTER TABLE agent ADD COLUMN is_main INTEGER NOT NULL DEFAULT 0 CHECK (is_main IN (0, 1));
+  `,
 ]

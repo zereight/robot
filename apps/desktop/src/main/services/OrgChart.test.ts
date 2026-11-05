@@ -189,6 +189,31 @@ describe("agents, channels and states", () => {
     expect(buildChart(await s.snapshot()).empty).toBe(true)
   })
 
+  test("the root is the main agent; with none, or when it is archived, the root is 'You' (spec 029, 002)", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    const bo = await s.agent("Bo")
+    expect((await s.snapshot()).mainAgentId).toBeNull()
+    expect(buildChart(await s.snapshot()).root).toBeNull()
+
+    await s.run(Agents.use((a) => a.update(ada.id, { isMain: true })))
+    expect((await s.snapshot()).mainAgentId).toBe(ada.id)
+    expect(buildChart(await s.snapshot()).root?.agentId).toBe(ada.id)
+
+    // Turn it on for Bo: the root moves to Bo in the same step.
+    await s.run(Agents.use((a) => a.update(bo.id, { isMain: true })))
+    expect((await s.snapshot()).mainAgentId).toBe(bo.id)
+
+    // An archived main agent leaves the chart: the root is "You". A restore brings the root back.
+    await s.run(Agents.use((a) => a.archive(bo.id)))
+    expect((await s.snapshot()).mainAgentId).toBeNull()
+    await s.run(Agents.use((a) => a.restore(bo.id)))
+    expect((await s.snapshot()).mainAgentId).toBe(bo.id)
+
+    await s.run(Agents.use((a) => a.update(bo.id, { isMain: false })))
+    expect((await s.snapshot()).mainAgentId).toBeNull()
+  })
+
   test("an agent that is archived is not in the snapshot", async () => {
     const s = await setup()
     const ada = await s.agent("Ada", "Writes docs")
@@ -398,6 +423,19 @@ describe("pushing the chart", () => {
     await s.run(OrgChart.use((o) => o.check(NOW)))
     expect(s.pushed()).toHaveLength(1)
     expect(s.pushed()[0]?.agents.map((a) => a.name)).toEqual(["Ada Lovelace"])
+  })
+
+  test("the switch 'Main agent' moves the root and is pushed once to the window and to the linked devices (spec 029, 012)", async () => {
+    const s = await setup()
+    const ada = await s.agent("Ada")
+    await s.snapshot()
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    expect(s.pushed()).toHaveLength(0)
+    await s.run(Agents.use((a) => a.update(ada.id, { isMain: true })))
+    await s.run(OrgChart.use((o) => o.check(NOW)))
+    expect(s.pushed()).toHaveLength(1)
+    expect(s.pushed()[0]?.mainAgentId).toBe(ada.id)
+    expect(s.toLinked.at(-1)?.root?.agentId).toBe(ada.id)
   })
 
   test("a hand-off that leaves the window of 7 days is pushed as gone at the next look", async () => {

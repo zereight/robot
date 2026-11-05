@@ -4,10 +4,14 @@ import {
   AGENT_NAME_MAX,
   AGENT_NAMES,
   AgentCreate,
+  AgentPatch,
+  ClientAgentCreate,
+  ClientAgentPatch,
   charLength,
   copyName,
   faceFromName,
   filterAgents,
+  mainAgentOf,
   nameKey,
   suggestName,
 } from "./agents.ts"
@@ -134,5 +138,30 @@ describe("agents", () => {
         )
       })
     }
+  })
+
+  test("the patch of an agent can set the switch 'Main agent', and only with a true or false (spec 002)", () => {
+    expect(Schema.is(AgentPatch)({ isMain: true })).toBe(true)
+    expect(Schema.is(AgentPatch)({ isMain: false })).toBe(true)
+    expect(Schema.is(AgentPatch)({ isMain: "yes" })).toBe(false)
+  })
+
+  test("a request of a linked device cannot name the switch 'Main agent' (spec 002, 012)", () => {
+    const patch = Schema.decodeUnknownSync(ClientAgentPatch, { onExcessProperty: "error" })
+    expect(patch({ role: "Lead" })).toEqual({ role: "Lead" })
+    expect(() => patch({ isMain: true })).toThrow()
+    const create = Schema.decodeUnknownSync(ClientAgentCreate, { onExcessProperty: "error" })
+    const base = { serverId: "s", name: "A", role: "", instructions: "" }
+    expect(create(base)).toEqual(base)
+    expect(() => create({ ...base, isMain: true })).toThrow()
+  })
+
+  test("the main agent of a list is the one that is on and not archived; none when none is", () => {
+    const row = (id: string, isMain: boolean, archived = false) => ({ id, isMain, archived })
+    expect(mainAgentOf([row("a", false), row("b", true), row("c", false)])?.id).toBe("b")
+    expect(mainAgentOf([row("a", false), row("b", false)])).toBeNull()
+    // An archived main agent counts as none (spec 029).
+    expect(mainAgentOf([row("a", true, true), row("b", false)])).toBeNull()
+    expect(mainAgentOf([])).toBeNull()
   })
 })

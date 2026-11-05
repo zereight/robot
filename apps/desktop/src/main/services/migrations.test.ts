@@ -1299,3 +1299,44 @@ describe("the step of the tools and the daily token limit of a channel (spec 030
     ])
   })
 })
+
+describe('the step of the switch "Main agent" (spec 002, 019)', () => {
+  const MAIN = migrations.findIndex((sql) => sql.includes("ALTER TABLE agent ADD COLUMN is_main"))
+  const agent = (id: string, name: string) => `
+    INSERT INTO agent (id, server_id, name, name_key, role, instructions, face_shape, face_hue,
+      workspace, section, created_at, updated_at)
+      VALUES ('${id}', 's', '${name}', '${name.toLowerCase()}', '', '', 0, 0, '/w', 'agents', 1, 1);`
+  const server = `INSERT INTO server (id, name, kind, position, created_at) VALUES ('s', 'S', 'local', 0, 0);`
+
+  test("it only adds a column that has a default, and it is the newest step", () => {
+    expect(MAIN).toBeGreaterThan(0)
+    const sql = migrations[MAIN] ?? ""
+    expect(sql).toContain("is_main INTEGER NOT NULL DEFAULT 0")
+    expect(sql).not.toContain("DROP")
+  })
+
+  test("a database from before it has no main agent, and keeps its agents", () => {
+    const db = upTo(MAIN)
+    db.exec(server)
+    db.exec(agent("a", "Ada"))
+    db.exec(agent("b", "Bo"))
+    db.exec(migrations[MAIN] as string)
+    expect(db.prepare("SELECT id, name, is_main FROM agent ORDER BY id").all()).toEqual([
+      { id: "a", name: "Ada", is_main: 0 },
+      { id: "b", name: "Bo", is_main: 0 },
+    ])
+  })
+
+  test("a change of the flag marks the agent for sync", () => {
+    const db = upTo(MAIN + 1)
+    db.exec(server)
+    db.exec(agent("a", "Ada"))
+    db.exec(`INSERT INTO sync_pair (id, peer_id, peer_name, role, mode, phase, started_at)
+      VALUES (1, 'p', 'P', 'a', 'merge', 'copy', 1);`)
+    db.exec("DELETE FROM sync_dirty")
+    db.exec("UPDATE agent SET is_main = 1 WHERE id = 'a'")
+    expect(db.prepare("SELECT kind, id FROM sync_dirty").all()).toEqual([
+      { kind: "agent", id: "a" },
+    ])
+  })
+})

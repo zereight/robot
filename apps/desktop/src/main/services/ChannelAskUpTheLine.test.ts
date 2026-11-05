@@ -217,8 +217,7 @@ const setup = async (options: Options = {}) => {
       },
     ],
   })
-  let mainId: string | null = null
-  const t = testRuntime({ mainAgent: () => mainId })
+  const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
     Providers.use((p) =>
@@ -251,7 +250,8 @@ const setup = async (options: Options = {}) => {
     agent("Max", "Main agent"),
     agent("Ann", "Writes text"),
   ])
-  if (!options.noMain) mainId = max.id
+  // The real switch "Main agent" (spec 002, flow 7), as the profile sets it.
+  if (!options.noMain) await run(Agents.use((a) => a.update(max.id, { isMain: true })))
   const channel = (name: string, leadId: string, memberIds: string[], parentId?: string) =>
     run(
       Channels.use((c) =>

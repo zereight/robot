@@ -37,7 +37,8 @@ export const CHAIN_LIMIT_TEXT = `The chain of agent messages is at its limit (${
 
 /**
  * Told to every agent that has the tool "send message" (spec 007). The main agent is the one
- * that sends the most, but this app has no flag for it yet, so every agent reads the rule.
+ * that sends the most, but every agent has the tool, so every agent reads the rule (see
+ * `docs/spec-questions.md`, 007 and 002).
  */
 export const CHAIN_LIMIT_RULE =
   "When the tool send_message fails because the chain of agent messages is at its limit, do not look for another way to pass the same work on. Tell the user what stopped."

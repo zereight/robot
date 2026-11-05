@@ -822,6 +822,32 @@ describe("export and import", () => {
     ])
   })
 
+  test("the main agent comes back with the archive: the switch is on for the same agent (spec 002, 014)", async () => {
+    const out = join(testPlatform().dataDir, "export-main.zip")
+    const a = app({ save: out })
+    const localA = await a.run(Servers.use((s) => s.local))
+    const ada = await a.run(
+      Agents.use((x) => x.create({ serverId: localA.id, name: "Ada", role: "", instructions: "" })),
+    )
+    await a.run(
+      Agents.use((x) => x.create({ serverId: localA.id, name: "Bo", role: "", instructions: "" })),
+    )
+    await a.run(Agents.use((x) => x.update(ada.id, { isMain: true })))
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const localB = await b.run(Servers.use((s) => s.local))
+    const restored = await b.run(Agents.use((x) => x.list(localB.id, false)))
+    expect(restored.map((x) => [x.name, x.isMain])).toEqual([
+      ["Ada", true],
+      ["Bo", false],
+    ])
+    expect(await b.run(Organization.use((o) => Effect.sync(() => o.mainAgent(localB.id))))).toBe(
+      ada.id,
+    )
+  })
+
   test("the hand-off rule comes back with the archive (spec 030, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-rule.zip")
     const a = app({ save: out })

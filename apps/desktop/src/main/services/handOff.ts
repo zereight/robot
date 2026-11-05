@@ -21,6 +21,23 @@ export const readAskUpTheLine = (db: DatabaseService): boolean =>
   )?.ask_up_the_line === 1
 
 /**
+ * The main agent (spec 002, flow 7): the agent with the switch on that is not archived, or null.
+ * An archived main agent counts as none (spec 029, 030), so this is the one place that says it.
+ * `serverId` limits the look to one server. The sync check keeps one flag at most; if two are on
+ * for a moment, the agent that was made first answers, so every reader gets the same one.
+ */
+export const readMainAgent = (db: DatabaseService, serverId?: string): string | null =>
+  (serverId === undefined
+    ? db.get<{ id: string }>(
+        "SELECT id FROM agent WHERE is_main = 1 AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
+      )
+    : db.get<{ id: string }>(
+        "SELECT id FROM agent WHERE server_id = ? AND is_main = 1 AND archived_at IS NULL ORDER BY created_at, id LIMIT 1",
+        serverId,
+      )
+  )?.id ?? null
+
+/**
  * The agents and channels of one server as the hand-off rule reads them (spec 030). It reads the
  * database at the time of the send, so a change of a member, of a lead or of a parent channel
  * counts from the next send. The app has no archived channel yet, so no channel is archived here;

@@ -14,7 +14,7 @@ import { Context, Effect, Layer } from "effect"
 import { Activity } from "./Activity.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
-import { readHandOffRule } from "./handOff.ts"
+import { readHandOffRule, readMainAgent } from "./handOff.ts"
 import { Providers } from "./Providers.ts"
 
 export interface OrgChartService {
@@ -168,10 +168,10 @@ export class OrgChart extends Context.Service<OrgChart, OrgChartService>()("robo
           oldest == null
             ? now + REFRESH_MS
             : Math.min(now + REFRESH_MS, oldest + ORG_HANDOFF_WINDOW_MS)
-        // The main agent (spec 002, flow 7) has no switch in the app yet, so the root is "You".
+        // The root is the main agent (spec 029). With none, or an archived one, it is "You".
         return {
           snapshot: {
-            mainAgentId: null,
+            mainAgentId: readMainAgent(db),
             agents,
             channels,
             handoffs,

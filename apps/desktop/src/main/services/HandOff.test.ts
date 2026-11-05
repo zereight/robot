@@ -106,8 +106,7 @@ type ToolPart = Extract<MessagePart, { kind: "tool" }>
 
 const setup = async (options: { main?: boolean } = {}) => {
   const main = options.main ?? true
-  let mainId: string | null = null
-  const t = testRuntime(main ? { mainAgent: () => mainId } : {})
+  const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
     Providers.use((p) =>
@@ -140,7 +139,8 @@ const setup = async (options: { main?: boolean } = {}) => {
     agents.set(name, agent)
   }
   const agent = (name: string) => agents.get(name) as NonNullable<ReturnType<typeof agents.get>>
-  if (main) mainId = agent("M").id
+  // The real switch "Main agent" (spec 002, flow 7), as the profile sets it.
+  if (main) await run(Agents.use((a) => a.update(agent("M").id, { isMain: true })))
   const channel = (
     name: string,
     memberIds: string[],
@@ -299,6 +299,31 @@ describe('rule "Along the channels"', () => {
     )
     expect(refused.reason).toEqual({ code: "hand_off_none", detail: "A" })
     expect(await none.received("A")).toHaveLength(0)
+  })
+
+  test("the switch 'Main agent' counts from the next send: turned off, X cannot reach A; turned on for A, X reaches A (rules 2 and 3)", async () => {
+    const s = await setup()
+    await s.rule("channels")
+    const off = async (name: string) =>
+      s.run(Agents.use((a) => a.update(s.agent(name).id, { isMain: false })))
+    const on = async (name: string) =>
+      s.run(Agents.use((a) => a.update(s.agent(name).id, { isMain: true })))
+    // Rule 2: every agent may send to the main agent. Rule 3: the main agent may send to every agent.
+    const m = await s.call("X", "send_message", { to: "M", text: "one" })
+    expect(m.state).toBe("done")
+    await off("M")
+    const refused = await s.call("X", "send_message", { to: "M", text: "two" })
+    expect(refused.state).toBe("failed")
+    expect(refused.reason).toMatchObject({ code: "hand_off_none", detail: "M" })
+    // A is the main agent now: X reaches A, and M, which lost the flag, is a plain agent again.
+    await on("A")
+    const toA = await s.call("X", "send_message", { to: "A", text: "three" })
+    expect(toA.state).toBe("done")
+    const toM = await s.call("X", "send_message", { to: "M", text: "four" })
+    expect(toM.state).toBe("failed")
+    // Rule 3: A, now the main agent, sends to P, which no shared channel links to A.
+    const fromA = await s.call("A", "send_message", { to: "P", text: "five" })
+    expect(fromA.state).toBe("done")
   })
 
   test("a refused send writes one line to the channel log, with no text of the message", async () => {
@@ -501,7 +526,7 @@ describe("the main agent", () => {
     expect(systems.some((x) => x.includes(MAIN_AGENT_HAND_OFF_RULE))).toBe(false)
   })
 
-  test("with no main agent switch (this version), nobody is told", async () => {
+  test("with no main agent, nobody is told", async () => {
     const s = await setup({ main: false })
     await s.rule("channels")
     expect(await s.run(Organization.use((o) => Effect.succeed(o.told(s.agent("M").id))))).toBe("")
