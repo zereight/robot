@@ -552,7 +552,7 @@ test("org chart: an organization with no member says so, and a channel does not 
     await rpc(page, "organizations.create", { serverId, name: "Ops", memberIds: [], leadId: null })
     await expect(orgOf(page, "Ops")).toHaveCount(1)
     await expect(orgOf(page, "Ops").getByTestId("org-unit-empty")).toHaveText("No members.")
-    await shot(page, "s119-org-chart-empty-organization")
+    await shot(page, "s127-org-chart-empty-organization")
 
     // In Korean the line is Korean.
     await rpc(page, "settings.update", { language: "ko" })

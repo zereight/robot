@@ -231,7 +231,7 @@ const PlaceRow = (props: {
 }) => {
   const { t, palette } = useApp()
   const { place } = props
-  // An agent shows its organization prefix before the name (spec 035). The accessible name adds
+  // An agent shows its organization prefix before the name (spec 036). The accessible name adds
   // the whole organization name. A channel has none.
   const shownName = useShownName(props.linkId)
   const shown =

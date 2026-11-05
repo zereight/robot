@@ -193,7 +193,7 @@ test("hand-off: the field 'Hand-off range' has four values, the line 'Now', and 
       width: number
     }
     expect(controlBox.x + controlBox.width).toBeLessThanOrEqual(480)
-    await shot(page, "s121-00-part-narrow")
+    await shot(page, "s129-00-part-narrow")
     await page.getByTestId("organization-hand-off").locator('label[data-value="any"]').click()
     await resizeWindow(app, 1300, 900)
 
@@ -213,7 +213,7 @@ test("hand-off: the field 'Hand-off range' has four values, the line 'Now', and 
     )
     // Under "Inherit" a top organization up the line gives "Own organization".
     await expect(page.getByTestId("org-range-now")).toHaveText("Now: Own organization")
-    await shot(page, "s121-01-range-any-rule")
+    await shot(page, "s129-01-range-any-rule")
     await closeForm(page)
 
     // "Product" gets "Own and lower organizations". "Docs" shows what it gets from "Product".
@@ -231,7 +231,7 @@ test("hand-off: the field 'Hand-off range' has four values, the line 'Now', and 
     // The rule "Along the organizations": the line for "Any agent" goes.
     await rpc(page, "organization.setHandOff", { rule: "organizations" })
     await expect(page.getByTestId("org-range-any")).toHaveCount(0)
-    await shot(page, "s121-02-range-inherit-now")
+    await shot(page, "s129-02-range-inherit-now")
     // The own value of "Docs" is saved, and "Inherit" back is saved too.
     await range.selectOption("all")
     await saveForm(page)
@@ -259,7 +259,7 @@ test("hand-off: the field 'Hand-off range' has four values, the line 'Now', and 
     expect(box.x + box.width).toBeLessThanOrEqual(480)
     const shell = page.locator("[role=dialog]").last()
     expect(await shell.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
-    await shot(page, "s121-03-range-narrow")
+    await shot(page, "s129-03-range-narrow")
     await closeForm(page)
   } finally {
     await app.close().catch(() => {})
@@ -362,7 +362,7 @@ test("hand-off: along the organizations, each send is checked with the reason, t
       "Ann is not on your path, and no agent can pass it on. Tell the user.",
     )
     await expect(none.getByTestId("tool-reason")).toHaveAttribute("data-code", "hand_off_none")
-    await shot(page, "s121-04-refused-send")
+    await shot(page, "s129-04-refused-send")
   } finally {
     await app.close().catch(() => {})
     await mock.close()
@@ -437,7 +437,7 @@ test("hand-off: in Korean the part, the field, the values and the reasons are Ko
       .locator('label[data-value="organizations"]')
       .click()
     await expect(page.getByTestId("organization-hand-off-now")).toContainText("같은 조직의")
-    await shot(page, "s121-05-part-korean")
+    await shot(page, "s129-05-part-korean")
 
     await openForm(page, "Docs")
     await expect(page.getByTestId("org-range-field")).toContainText("전달 범위")
@@ -451,7 +451,7 @@ test("hand-off: in Korean the part, the field, the values and the reasons are Ko
     await page.getByTestId("org-range").selectOption("own_lower")
     await saveForm(page)
     await openForm(page, "Docs")
-    await shot(page, "s121-06-range-korean")
+    await shot(page, "s129-06-range-korean")
     await closeForm(page)
     // The rule "Any agent": the muted line is Korean.
     await rpc(page, "organization.setHandOff", { rule: "any" })
@@ -587,7 +587,7 @@ for (const canChange of [true, false]) {
           .toBe("all")
       } else {
         await expect(range).toBeDisabled()
-        await shot(one.page, "s121-07-linked-range-read-only")
+        await shot(one.page, "s129-07-linked-range-read-only")
         await closeForm(one.page)
         expect(
           await ask(one.page, serverId, "organizations.update", {

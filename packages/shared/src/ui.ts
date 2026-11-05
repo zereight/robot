@@ -163,7 +163,7 @@ export const summarize = (places: readonly Place[]): SectionSummary => ({
 
 /**
  * True when the typed text is a part of the name of the place, or, for an agent, a part of its
- * role line or of the whole name of its deepest organization (spec 035), ignoring case. A channel
+ * role line or of the whole name of its deepest organization (spec 036), ignoring case. A channel
  * has no role line and no organization, so only its name counts. `organization` is absent when the
  * switch "Show the organization before an agent name" is off.
  */

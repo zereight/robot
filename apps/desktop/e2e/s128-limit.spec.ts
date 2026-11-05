@@ -22,7 +22,7 @@ import {
   turnOnSync,
 } from "./sync-helpers.ts"
 
-// Spec 030, "Daily token limit" (S120b), with 005 ("Blocked"), 006 (the usage page), 012, 014, 019
+// Spec 030, "Daily token limit" (S128b), with 005 ("Blocked"), 006 (the usage page), 012, 014, 019
 // and 021 (Today): the daily token limit of an organization. The field in the form, the line at
 // 80%, a task that the limit stops ends as Blocked with no turn, Retry after a raise, the limit of
 // a higher organization, a direct chat that is never stopped but counts, the usage page, a linked
@@ -182,7 +182,7 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
     await expect(page.getByTestId("org-submit")).toBeDisabled()
     await page.getByTestId("org-limit").fill("12.5")
     await expect(page.getByTestId("org-submit")).toBeDisabled()
-    await shot(page, "s120-limit-01-invalid")
+    await shot(page, "s128-limit-01-invalid")
     await page.getByTestId("org-limit").fill("50,000")
     await expect(page.getByTestId("org-limit-error")).toHaveCount(0)
     await page.getByTestId("org-submit").click()
@@ -204,7 +204,7 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
     await expect(limitLine(page)).toHaveText("80% of the daily token limit is used.", {
       timeout: 15_000,
     })
-    await shot(page, "s120-limit-02-line-80")
+    await shot(page, "s128-limit-02-line-80")
     await closeDialog(page)
     expect(notices(notified)).toHaveLength(before)
     expect((await tasksOf(page)).some((t) => t.state === "blocked")).toBe(false)
@@ -217,7 +217,7 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
     await expect(limitLine(page)).toHaveText("The daily token limit of Docs is used.", {
       timeout: 15_000,
     })
-    await shot(page, "s120-limit-03-used")
+    await shot(page, "s128-limit-03-used")
     await closeDialog(page)
 
     // The next part ends at once as Blocked, with the reason and no model call.
@@ -251,13 +251,13 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
       .locator("[data-testid=today-row][data-kind=task_blocked]")
     await expect(wrong).toHaveCount(1)
     await expect(wrong.getByTestId("today-line")).toContainText("write the third part")
-    await shot(page, "s120-limit-04-today")
+    await shot(page, "s128-limit-04-today")
     await wrong.click()
     await expect(page.getByTestId("task-detail-state")).toHaveAttribute("data-state", "blocked")
     await expect(page.getByTestId("task-error")).toContainText(
       "The daily token limit of Docs is used.",
     )
-    await shot(page, "s120-limit-05-reason")
+    await shot(page, "s128-limit-05-reason")
     await page.keyboard.press("Escape")
 
     // The usage page: one row for Docs with its limit and the tokens used today (the tokens of the
@@ -267,7 +267,7 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
     const row = page.locator("[data-testid=usage-org-row][data-org=Docs]")
     await expect(row.getByTestId("usage-org-limit")).toHaveText("50,000")
     await expect(row.getByTestId("usage-org-used")).toHaveText("92,310")
-    await shot(page, "s120-limit-06-usage")
+    await shot(page, "s128-limit-06-usage")
 
     // Retry while the limit is used: blocked again. Raise the limit to 100,000, press Retry: it runs.
     await page.getByTestId("page-tasks").click()
@@ -307,7 +307,7 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
     await expect(page.getByTestId("org-daily-limit")).toBeVisible()
     await expect(page.getByTestId("org-limit-switch")).toHaveAttribute("aria-checked", "false")
     await closeDialog(page)
-    await shot(page, "s120-limit-07-higher-organization")
+    await shot(page, "s128-limit-07-higher-organization")
 
     // The limit goes off again: the field is empty and the row leaves the usage page.
     await setLimitInForm(page, "Docs", null)
@@ -332,7 +332,7 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
     await expect(limitLine(page)).toHaveText("Docs의 하루 토큰 한도를 모두 사용했어요.", {
       timeout: 15_000,
     })
-    await shot(page, "s120-limit-08-form-ko")
+    await shot(page, "s128-limit-08-form-ko")
     await closeDialog(page)
     await page.getByTestId("page-tasks").click()
     await page.getByTestId("tasks-filter-state").selectOption("blocked")
@@ -350,12 +350,12 @@ test("the daily token limit: the field, the line at 80%, Blocked at the limit, R
     await resizeWindow(app, 480, 800)
     await openOrg(page, "Docs")
     await expect(page.getByTestId("org-limit")).toBeVisible()
-    await shot(page, "s120-limit-09-narrow-form-ko")
+    await shot(page, "s128-limit-09-narrow-form-ko")
     await closeDialog(page)
     await page.getByTestId("page-usage").click()
     await expect(page.getByTestId("usage-org-row")).toHaveCount(1)
     await page.getByTestId("usage-orgs").scrollIntoViewIfNeeded()
-    await shot(page, "s120-limit-10-narrow-usage-ko")
+    await shot(page, "s128-limit-10-narrow-usage-ko")
   } finally {
     await app.close().catch(() => {})
     await mock.close()
@@ -401,7 +401,7 @@ test("the limit stops a part of a lead job that would start, and the lead job: b
     await page.getByTestId(`place-channel-${docs.id}`).click()
     await expect(page.locator("[data-kind=summary]")).toHaveCount(0)
     await expect(page.locator("[data-testid=part-chip][data-state=blocked]")).toHaveCount(1)
-    await shot(page, "s120-limit-11-part-blocked")
+    await shot(page, "s128-limit-11-part-blocked")
     // Today shows the blocked job of the lead as it shows other blocked work: one row.
     await page.getByTestId("page-today").click()
     const wrong = page
@@ -508,7 +508,7 @@ test("a linked computer with the switch changes the limit; with the switch off i
     await expect(one.page.getByTestId("org-limit")).toHaveJSProperty("readOnly", true)
     await expect(one.page.getByTestId("org-limit-switch")).toBeDisabled()
     await expect(one.page.getByTestId("org-submit")).toHaveCount(0)
-    await shot(one.page, "s120-limit-12-linked-read-only")
+    await shot(one.page, "s128-limit-12-linked-read-only")
     await closeDialog(one.page)
     // The limit that MacBook 1 set is still on MacBook 2.
     expect((await orgByName(two.page, "Docs")).dailyTokenLimit).toBe(20_000)
@@ -561,7 +561,7 @@ test("sync: the limit goes to the other computer and counts there; an export and
         .locator("[data-testid=usage-org-row][data-org=Product]")
         .getByTestId("usage-org-used"),
     ).toHaveText("41,000")
-    await shot(two.page, "s120-limit-13-synced-usage")
+    await shot(two.page, "s128-limit-13-synced-usage")
 
     // Export on MacBook 1 and restore into an empty app: the tree and the limits come back.
     await one.page.getByTestId("open-settings").click()

@@ -17,7 +17,7 @@ export interface Prefs {
   readonly closed: Readonly<Record<string, readonly string[]>>
   /** When false, finished plain tool steps fold into one line per run. */
   readonly showToolSteps: boolean
-  /** "Show the organization before an agent name" (spec 035): the switch of this phone. */
+  /** "Show the organization before an agent name" (spec 036): the switch of this phone. */
   readonly showOrgPrefix: boolean
 }
 

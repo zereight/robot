@@ -44,7 +44,7 @@ The user follows and directs agents from an iPhone or Android phone while away f
    the switch "Can create and change agents" of that computer (012).
 7. **Settings**: language, theme, chat, notifications, unpair. The chat part holds the
    switch "Show tool steps", on at first, and the switch "Show the organization before an agent
-   name" (035), on at first.
+   name" (036), on at first.
 8. **Org chart**: a read-only list of the main agent, the organizations with their members and
    leads (a sub-organization indented under its parent, 030), the state of each agent, and the work
    that agents handed to each other in the last 7 days. It is a list, not a canvas (see 029,
@@ -90,7 +90,7 @@ shows works.
 ## Same as the computer
 
 The phone follows the computer in these points: the `@all` mention in channels (004), the random
-name button and the role list for agents (002, 013), the role badge on the row of an agent (001), the organization prefix of an agent (035),
+name button and the role list for agents (002, 013), the role badge on the row of an agent (001), the organization prefix of an agent (036),
 the word "archived" for channels (004), the context meter (003), "Mark as unread" (003), the
 command list (003), the main agent switch (002), the end of a request (004), the search of messages (001), and the
 line that tells how far a failed turn went, with the button "Send again" (003, 005), the box

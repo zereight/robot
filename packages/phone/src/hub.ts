@@ -84,7 +84,7 @@ export interface ServerData {
   readonly agents: readonly Agent[] | null
   readonly channels: readonly Channel[] | null
   /**
-   * The whole name of the deepest organization of each agent (spec 035, 011): the data of the
+   * The whole name of the deepest organization of each agent (spec 036, 011): the data of the
    * prefix "[Docs] Ada". It is held like the role line of a place, so it shows from the cache while
    * the server is offline. Null until the phone has read it once; an older server gives none.
    */
@@ -745,7 +745,7 @@ export class PhoneHub {
     } else if (event === "channels.changed") {
       this.#refreshSoon(linkId, "channels")
     } else if (event === "organizations.changed") {
-      // A member or a name changed: the prefixes follow at the next read (spec 035, 011).
+      // A member or a name changed: the prefixes follow at the next read (spec 036, 011).
       this.#refreshSoon(linkId, "orgs")
     } else if (event === "tasks.changed") {
       this.#refreshSoon(linkId, "attention")

@@ -1,12 +1,12 @@
 import { charLength, nameKey } from "./agents.ts"
 import { orgLevels, orgParents, type TreeOrg } from "./orgTree.ts"
 
-// The organization prefix "[Docs] Ada" (spec 035). These functions hold every rule of it: which
+// The organization prefix "[Docs] Ada" (spec 036). These functions hold every rule of it: which
 // organization an agent shows, the prefix text, the shown name, and the match of a search text
 // against the organization name. The computer, a linked computer and the phone read them, so they
 // cannot disagree. Nothing here is stored.
 
-/** The prefix text holds at most this many characters of the organization name (spec 035). */
+/** The prefix text holds at most this many characters of the organization name (spec 036). */
 export const ORG_PREFIX_MAX = 16
 
 /** What the deepest organization needs of an organization. */
@@ -54,7 +54,7 @@ export const orgPrefixText = (organization: string): string =>
     ? `${[...organization].slice(0, ORG_PREFIX_MAX).join("")}…`
     : organization
 
-/** An agent name as the window shows it (spec 035, "Shown name"). */
+/** An agent name as the window shows it (spec 036, "Shown name"). */
 export interface ShownName {
   /** The text "[<organization>]" with the cut name, or null when no prefix shows. */
   readonly prefix: string | null
@@ -92,7 +92,7 @@ export const shownName = (
 }
 
 /**
- * True when the typed text is a part of the whole organization name, ignoring case (spec 035,
+ * True when the typed text is a part of the whole organization name, ignoring case (spec 036,
  * "Search of places", "Mention"). The text that is cut in the prefix still counts. An empty text
  * matches nothing: a list that shows every entry for an empty text decides that itself.
  */

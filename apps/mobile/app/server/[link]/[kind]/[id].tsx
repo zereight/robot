@@ -45,7 +45,7 @@ export default function Conversation() {
   const id = params.id
   const { hub, t, palette, locale, errorLine } = useApp()
   const view = useServer(link)
-  // The organization prefix of an agent (spec 035): the header, the quote lines and the lists.
+  // The organization prefix of an agent (spec 036): the header, the quote lines and the lists.
   const shownName = useShownName(link)
   const deviceName = useHubState().deviceName
   const insets = useSafeAreaInsets()

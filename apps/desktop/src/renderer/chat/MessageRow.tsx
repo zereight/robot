@@ -1462,7 +1462,7 @@ const FullMessageRow = (props: MessageRowProps) => {
   }
   const isAgent = () => props.message.author === "agent"
   const name = () => (isAgent() ? props.agent.name : t("chat.you"))
-  /** The name for a screen reader: with the prefix on, "<name>, <whole organization name>" (spec 035). */
+  /** The name for a screen reader: with the prefix on, "<name>, <whole organization name>" (spec 036). */
   const label = () => (isAgent() ? orgs.shown(props.agent.id, props.agent.name).label : name())
   const time = () => formatTime(app.locale(), props.message.createdAt)
   /** The name of the sender, as the window shows it: an agent has its organization prefix. */
@@ -1525,7 +1525,7 @@ const FullMessageRow = (props: MessageRowProps) => {
               data-testid="reply-link"
             >
               <Reply size={12} />
-              {/* The sender of the quoted message: an agent has its organization prefix (spec 035). */}
+              {/* The sender of the quoted message: an agent has its organization prefix (spec 036). */}
               {quoted().author === "agent" ? (
                 <AgentInLine
                   line={(name) =>

@@ -121,7 +121,7 @@ test("the dialog of a channel has no 'Parent channel', and the header has no par
   await expect(page.getByTestId("channel-parent")).toHaveCount(0)
   await expect(page.getByTestId("channel-dialog")).not.toContainText("Parent channel")
   await expect(page.getByTestId("channel-dialog")).not.toContainText("sub-channel")
-  await shot(page, "s121-parent-01-new-channel-dialog")
+  await shot(page, "s129-parent-01-new-channel-dialog")
   await page.keyboard.press("Escape")
   await expect(page.getByTestId("channel-dialog")).toBeHidden()
 
@@ -137,13 +137,13 @@ test("the dialog of a channel has no 'Parent channel', and the header has no par
   // The fields that stay are still there.
   for (const id of ["channel-name", "channel-topic", "channel-lead", "channel-instructions"])
     await expect(page.getByTestId(id)).toBeVisible()
-  await shot(page, "s121-parent-02-channel-dialog")
+  await shot(page, "s129-parent-02-channel-dialog")
 
   // The narrowest window: the dialog has no cut field.
   await resizeWindow(app, 480, 700)
   await expect(page.getByTestId("channel-dialog")).toBeVisible()
   await expect(page.getByTestId("channel-parent")).toHaveCount(0)
-  await shot(page, "s121-parent-03-channel-dialog-narrow")
+  await shot(page, "s129-parent-03-channel-dialog-narrow")
   await page.keyboard.press("Escape")
 
   // The service does not know a parent channel any more: a field of that name changes nothing, and
@@ -189,7 +189,7 @@ test("an old database with parent channels starts: the organizations show the tr
   await expect(page.getByTestId("channel-header-name")).toHaveText("Docs")
   await expect(page.getByTestId("channel-header-parent")).toHaveCount(0)
   await expect(page.getByText("The docs are due on Friday.")).toBeVisible()
-  await shot(page, "s121-parent-04-old-database-channel")
+  await shot(page, "s129-parent-04-old-database-channel")
 
   // The place list shows the four channels as places: no tree, no indent, no parent line.
   for (const channel of channels)
@@ -201,7 +201,7 @@ test("an old database with parent channels starts: the organizations show the tr
   await expect(page.getByTestId("org-canvas")).toBeVisible()
   for (const name of ["Product", "Docs", "Site"])
     await expect(page.getByTestId("org-unit").filter({ hasText: name }).first()).toBeVisible()
-  await shot(page, "s121-parent-05-old-database-org-chart")
+  await shot(page, "s129-parent-05-old-database-org-chart")
   await app.close()
 
   // The second start changes nothing: the migration runs once.
@@ -235,9 +235,9 @@ test("the words are Korean in the Korean interface: no 'Parent channel' (상위 
   await expect(page.getByTestId("channel-parent")).toHaveCount(0)
   await expect(page.getByTestId("channel-dialog")).not.toContainText("상위 채널")
   await expect(page.getByTestId("channel-dialog")).not.toContainText("하위 채널")
-  await shot(page, "s121-parent-06-korean-dialog")
+  await shot(page, "s129-parent-06-korean-dialog")
   await resizeWindow(app, 480, 700)
   await expect(page.getByTestId("channel-dialog")).toBeVisible()
-  await shot(page, "s121-parent-07-korean-dialog-narrow")
+  await shot(page, "s129-parent-07-korean-dialog-narrow")
   await app.close()
 })

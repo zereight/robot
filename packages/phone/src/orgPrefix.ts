@@ -1,6 +1,6 @@
 import { deepestOrgIndex, type PrefixOrg, type ShownName, shownName } from "@robot/shared"
 
-// The organization prefix on the phone (spec 035, 011). The phone reads the organizations of a
+// The organization prefix on the phone (spec 036, 011). The phone reads the organizations of a
 // server (a read needs the link only), keeps the whole name of the deepest organization of each
 // agent in its cache, and draws "[Docs] Ada" from it. The rule that picks the organization is the
 // one of the computer (`deepestOrgIndex`), so both show the same prefix.

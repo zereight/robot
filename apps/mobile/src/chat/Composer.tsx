@@ -176,7 +176,7 @@ export const Composer = (props: {
           {entries.map((entry) => {
             const name = entry.kind === "all" ? "all" : entry.member.name
             // With a prefix the line shows "[Docs] Ada"; the pick still puts "@Ada" in the box
-            // (spec 035, "Mention"). Without one it shows "@Ada" as before.
+            // (spec 036, "Mention"). Without one it shows "@Ada" as before.
             const shown =
               entry.kind === "member" && entry.member.organization
                 ? shownName(entry.member.name, entry.member.organization, true)

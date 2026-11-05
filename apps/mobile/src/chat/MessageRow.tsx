@@ -51,7 +51,7 @@ export const MessageRow = memo(
     readonly head: boolean
     readonly agent: Agent | undefined
     /**
-     * The whole name of the organization that the prefix of the agent shows (spec 035, 011), or
+     * The whole name of the organization that the prefix of the agent shows (spec 036, 011), or
      * null for no prefix (no organization, or the switch of this phone is off).
      */
     readonly organization: string | null

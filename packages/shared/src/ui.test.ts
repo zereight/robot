@@ -250,7 +250,7 @@ describe("the filter of places by role line", () => {
   })
 })
 
-describe("the filter of places by organization name (spec 035, Rules)", () => {
+describe("the filter of places by organization name (spec 036, Rules)", () => {
   const list = (): PlaceSection[] => [
     {
       id: "channels",

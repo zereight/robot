@@ -19,7 +19,7 @@ export const ArchiveSection = () => {
   const ui = useUi()
   const devices = useDevices()
   // The archive is the list of this computer, so its prefixes come from the organizations of the
-  // local server, also while a linked server is on screen (spec 035).
+  // local server, also while a linked server is on screen (spec 036).
   const orgs = createOrgs(() => ui.localServer()?.id)
   const [archived, { refetch }] = createResource(
     () => ui.localServer()?.id,

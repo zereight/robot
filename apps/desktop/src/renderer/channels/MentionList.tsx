@@ -46,7 +46,7 @@ export const MentionList = (props: {
               <>
                 <Face face={entry.member.face} image={entry.member.faceImage} size={20} />
                 {/* With a prefix the line shows "[Docs] Ada"; the pick still puts "@Ada" in the box
-                    (spec 035, "Mention"). Without one it shows "@Ada" as before. */}
+                    (spec 036, "Mention"). Without one it shows "@Ada" as before. */}
                 <span class={styles.mentionName}>
                   <Show when={orgs.prefixOrg(entry.member.id)} fallback={<>@{entry.member.name}</>}>
                     <AgentName id={entry.member.id} name={entry.member.name} />

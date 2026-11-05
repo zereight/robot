@@ -535,7 +535,7 @@ describe("the phone on a real computer", () => {
     expect(again.orgs[0]?.nodes[0]?.name).toBe("Ada L")
     expect(view(phone, link.id).state).toBe("online")
   }, 30_000)
-  test("the phone reads the deepest organization of each agent, follows a rename, and keeps it in the cache (spec 035, 011)", async () => {
+  test("the phone reads the deepest organization of each agent, follows a rename, and keeps it in the cache (spec 036, 011)", async () => {
     const pc = await computer("Studio")
     const storage = new MemoryStorage()
     const secrets = memorySecrets()

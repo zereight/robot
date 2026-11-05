@@ -119,7 +119,7 @@ test("insert: the result is a mention that the channel reads, also with a space 
   }
 })
 
-test("entries: an agent matches on the whole name of its organization (spec 035)", () => {
+test("entries: an agent matches on the whole name of its organization (spec 036)", () => {
   const members = [
     { name: "Ada", organization: "Docs" },
     { name: "Bo", organization: "Research and Development Group" },

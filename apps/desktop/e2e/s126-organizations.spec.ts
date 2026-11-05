@@ -14,7 +14,7 @@ import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, openDevices, rpc, setName } from "./sync-helpers.ts"
 
 // Spec 030, "Flows" 1, 2, 4 and 5, "Organization tree" and the part "Tools" (the value "Off" and the
-// line "Now" are in s120-tools.spec.ts), with 002 (the row "Organizations"), 017 and 018 (the pickers), and 012
+// line "Now" are in s128-tools.spec.ts), with 002 (the row "Organizations"), 017 and 018 (the pickers), and 012
 // (a linked computer with and without the switch "Can create and change agents"). The form opens
 // from the org chart (029): the button "New organization" and a click on an organization node.
 
@@ -133,7 +133,7 @@ test("organizations: make them with the form, the tree rules show their reasons,
     await expect(orgRow(page, "Product")).toHaveAttribute("data-parent", "")
     expect(product.leadId).toBe(await agentIdOf(page, "Ada"))
     expect((await orgByName(page, "Site"))?.parentId).toBe((await orgByName(page, "Docs"))?.id)
-    await shot(page, "s118-01-list")
+    await shot(page, "s126-01-list")
 
     // --- The parent field of "Product" shows "Docs" and "Site" muted with the reason ------------
     await orgRow(page, "Product").click()
@@ -145,7 +145,7 @@ test("organizations: make them with the form, the tree rules show their reasons,
       await expect(option).toContainText("This is a sub-organization of this organization.")
     }
     await expect(page.getByTestId("org-parent")).toHaveValue("")
-    await shot(page, "s118-02-parent-reasons")
+    await shot(page, "s126-02-parent-reasons")
     await closeDialog(page)
 
     // --- A fourth level is refused with its reason ---------------------------------------
@@ -209,7 +209,7 @@ test("organizations: make them with the form, the tree rules show their reasons,
     await expect(page.getByTestId("org-delete-confirm")).toContainText(
       "The access that this organization gives is gone.",
     )
-    await shot(page, "s118-03-delete-confirm")
+    await shot(page, "s126-03-delete-confirm")
     await page.getByTestId("org-delete-go").click()
     await expect(dialog(page)).toHaveCount(0)
     await expect(orgRow(page, "Docs")).toHaveCount(0)
@@ -258,7 +258,7 @@ test("organizations: the profile lists the organizations of an agent and the too
     await expect(value("inherit").locator("input")).toBeChecked()
     await value("on").click()
     await expect(value("on").locator("input")).toBeChecked()
-    await shot(page, "s118-04-tools-on")
+    await shot(page, "s126-04-tools-on")
     await closeDialog(page)
     // The member of "Site" (two levels below) has the skill from "Product" (spec 030, Acceptance).
     const forCy = await rpc<{ name: string; organizations: { name: string }[] }[]>(
@@ -280,11 +280,11 @@ test("organizations: the profile lists the organizations of an agent and the too
     await expect(page.getByTestId("org-tool-line")).toContainText("Release notes")
     await expect(page.getByTestId("org-tool-from")).toHaveText("From Product")
     await page.getByTestId("org-tools-lines").scrollIntoViewIfNeeded()
-    await shot(page, "s118-05-profile")
-    await page.getByTestId("agent-orgs").screenshot({ path: `${shotsDir}/s118-05b-orgs-row.png` })
+    await shot(page, "s126-05-profile")
+    await page.getByTestId("agent-orgs").screenshot({ path: `${shotsDir}/s126-05b-orgs-row.png` })
     await page
       .getByTestId("org-tools-lines")
-      .screenshot({ path: `${shotsDir}/s118-05c-tool-lines.png` })
+      .screenshot({ path: `${shotsDir}/s126-05c-tool-lines.png` })
     // A click on the name opens the form. Escape closes the form and leaves the profile.
     await page.getByTestId("agent-org").click()
     await expect(dialog(page)).toBeVisible()
@@ -313,7 +313,7 @@ test("organizations: the profile lists the organizations of an agent and the too
       "organization",
     ])
     const skillOrg = (name: string) => page.locator(`[data-testid=skill-org][data-org='${name}']`)
-    // Each organization shows its value as one of three (spec 030, "Tools"): S120 widened the picker.
+    // Each organization shows its value as one of three (spec 030, "Tools"): S128 widened the picker.
     const skillValue = (name: string, v: string) =>
       skillOrg(name).locator(`[data-testid=skill-org-value] label[data-value=${v}] input`)
     await expect(skillValue("Product", "on")).toBeChecked()
@@ -321,7 +321,7 @@ test("organizations: the profile lists the organizations of an agent and the too
     // Save keeps the list as it is.
     await skillOrg("Docs").locator("[data-testid=skill-org-value] label[data-value=on]").click()
     await expect(skillValue("Docs", "on")).toBeChecked()
-    await shot(page, "s118-06-skill-picker")
+    await shot(page, "s126-06-skill-picker")
     await page.getByTestId("skill-save").click()
     await expect(page.getByTestId("skill-form-dialog")).toHaveCount(0)
     await expect(page.getByTestId("skill-row-agents")).toContainText("Di")
@@ -407,7 +407,7 @@ test("organizations: the form works with the keyboard at the narrowest window an
     }
     await fits(dialog(page))
     await fits(page.getByTestId("org-submit"))
-    await shot(page, "s118-07-narrow")
+    await shot(page, "s126-07-narrow")
 
     // Tab goes on from the name to the search, then the members; Enter in the name saves.
     await page.keyboard.type("Keys")
@@ -442,7 +442,7 @@ test("organizations: the form works with the keyboard at the narrowest window an
     await page.keyboard.press("Enter")
     await expect(page.getByTestId("org-delete-back")).toBeFocused()
     await fits(page.getByTestId("org-delete-go"))
-    await shot(page, "s118-08-narrow-confirm")
+    await shot(page, "s126-08-narrow-confirm")
     await page.keyboard.press("Escape")
     await expect(page.getByTestId("org-delete-confirm")).toHaveCount(0)
     await closeDialog(page)
@@ -492,7 +492,7 @@ test("organizations: in Korean the form, the list, the profile row and the confi
       "하위 조직 1개가 최상위 조직이 돼요.",
     )
     expect(await latinWords(page, "[data-testid=org-dialog]")).toEqual([])
-    await shot(page, "s118-09-korean-confirm")
+    await shot(page, "s126-09-korean-confirm")
     await page.keyboard.press("Escape")
     await expect(page.getByTestId("org-delete-confirm")).toHaveCount(0)
     await closeDialog(page)
@@ -624,7 +624,7 @@ test("organizations on a linked computer: with the switch it makes and edits the
         choice: "on",
       }),
     ).toBe("not_allowed")
-    await shot(one.page, "s118-10-linked-with-switch")
+    await shot(one.page, "s126-10-linked-with-switch")
     await closeDialog(one.page)
     // The delete goes to the server.
     await orgRow(one.page, "Docs 2").click()
@@ -661,7 +661,7 @@ test("organizations on a linked computer without the switch: the list and the fo
     await expect(one.page.getByTestId("org-member-Ada")).toBeDisabled()
     await expect(one.page.getByTestId("org-submit")).toHaveCount(0)
     await expect(one.page.getByTestId("org-delete")).toHaveCount(0)
-    await shot(one.page, "s118-11-linked-read-only")
+    await shot(one.page, "s126-11-linked-read-only")
     await closeDialog(one.page)
     // A caller that skips the form gets "not allowed" with the name of the server.
     const serverId = await linkedServerId(one.page)

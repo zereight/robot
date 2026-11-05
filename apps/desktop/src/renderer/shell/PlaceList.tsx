@@ -180,7 +180,7 @@ export const PlaceList = (props: PlaceListProps) => {
    */
   const readOnly = () => ui.linked()
 
-  // The search also matches the whole name of the organization of an agent, with the prefix on (spec 035).
+  // The search also matches the whole name of the organization of an agent, with the prefix on (spec 036).
   const sections = createMemo(() =>
     filterPlaces(ui.sections(), query(), (place) =>
       place.kind === "agent" ? orgs.prefixOrg(place.id) : null,
@@ -377,7 +377,7 @@ export const PlaceList = (props: PlaceListProps) => {
   const roleOf = (place: Place) =>
     place.kind === "agent" && place.role?.trim() ? place.role.trim() : undefined
 
-  /** The name of a row for a screen reader: the prefix adds the whole organization name (spec 035). */
+  /** The name of a row for a screen reader: the prefix adds the whole organization name (spec 036). */
   const labelOf = (place: Place) =>
     place.kind === "agent" ? orgs.shown(place.id, place.name).label : place.name
 

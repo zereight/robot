@@ -53,7 +53,7 @@ describe("settings", () => {
     expect(Schema.is(SettingsPatch)({ showToolSteps: "no" })).toBe(false)
   })
 
-  test("the organization prefix shows at first, and the switch takes true or false (spec 035)", () => {
+  test("the organization prefix shows at first, and the switch takes true or false (spec 036)", () => {
     expect(defaultSettings.showOrgPrefix).toBe(true)
     expect(Schema.is(SettingsPatch)({ showOrgPrefix: false })).toBe(true)
     expect(Schema.is(SettingsPatch)({ showOrgPrefix: "no" })).toBe(false)

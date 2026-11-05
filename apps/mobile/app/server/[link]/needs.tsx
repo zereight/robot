@@ -78,7 +78,7 @@ export default function NeedsYou() {
 
 /**
  * The title of a card is the name of the agent, and "· <computer>" when the request came from
- * another computer. The name shows with its organization prefix (spec 035, 011).
+ * another computer. The name shows with its organization prefix (spec 036, 011).
  */
 const NoticeTitle = (props: {
   readonly notice: WireNotice

@@ -197,7 +197,7 @@ describe("the migration of channels (spec 030, Migration)", () => {
       db.prepare("SELECT COUNT(*) AS n FROM channel_member WHERE channel_id = 'Docs'").get(),
     ).toEqual({ n: 2 })
     // The list columns of channels are gone once the organizations hold their value (spec 030,
-    // "Tools", S120): see "the step that removes the channels from the agent lists".
+    // "Tools", S128): see "the step that removes the channels from the agent lists".
     expect(columns(db, "skill")).not.toContain("channels")
     expect(columns(db, "tool_connection")).not.toContain("channels")
     expect(db.prepare("PRAGMA user_version").get()).toEqual({ user_version: migrations.length })

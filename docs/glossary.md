@@ -121,10 +121,10 @@ A new word goes here in the same pull request as the spec that brings it.
 | Sub-organization | An organization with a parent organization (030). | 하위 조직 | sub-team, child organization |
 | Top organization | An organization with no parent organization (030). | 최상위 조직 | root organization |
 | On one line | Two organizations are on one line when one is a higher organization of the other. An agent can be a member only of organizations that are on one line (030). | 한 줄에 있어요 | same branch, parent and child |
-| Deepest organization | The lowest of the organizations of an agent. They are on one line, so there is one (030, 035). | 가장 낮은 조직 | main organization, primary team |
-| Organization prefix | The text "[Docs]" in front of the name of an agent that is in the organization "Docs" (035). | 조직 말머리 (proposed) | tag, label, BOT tag (that is the small mark on a message, 003) |
-| Shown name | The prefix and the name of an agent, for example "[Docs] Ada" (035). | 보이는 이름 (proposed) | display name, nickname |
-| Show the organization before an agent name | The switch in Settings → Appearance and in the settings of the phone that turns the organization prefix on or off (035, 013, 011). | 에이전트 이름 앞에 조직 표시 | show team tag, name prefix |
+| Deepest organization | The lowest of the organizations of an agent. They are on one line, so there is one (030, 036). | 가장 낮은 조직 | main organization, primary team |
+| Organization prefix | The text "[Docs]" in front of the name of an agent that is in the organization "Docs" (036). | 조직 말머리 (proposed) | tag, label, BOT tag (that is the small mark on a message, 003) |
+| Shown name | The prefix and the name of an agent, for example "[Docs] Ada" (036). | 보이는 이름 (proposed) | display name, nickname |
+| Show the organization before an agent name | The switch in Settings → Appearance and in the settings of the phone that turns the organization prefix on or off (036, 013, 011). | 에이전트 이름 앞에 조직 표시 | show team tag, name prefix |
 | Access | What an organization gives to its members and to its lower organizations: tools, a daily token limit and a hand-off range (030). | 권한 | permission, permission level (that is 007) |
 | Inherit | The value of a tool or of the hand-off range that takes the value of the parent organization. The other values are "On" and "Off", and for the range "Own organization", "Own and lower organizations" and "All agents" (030). | 상속, 켬, 끔 | default, copy |
 | Hand-off rules | The settings part with the hand-off rule and "Ask up the line" (030, 013). | 전달 규칙 | organization, Teams (that is the link of 028) |

@@ -123,7 +123,7 @@ export const Settings = Schema.Struct({
    */
   showToolSteps: Schema.Boolean,
   /**
-   * "Show the organization before an agent name" (Appearance, spec 035): when on, the name of an
+   * "Show the organization before an agent name" (Appearance, spec 036): when on, the name of an
    * agent in an organization shows as "[Docs] Ada". A setting of this computer. A setting saved
    * before this existed has none, and the switch is on.
    */

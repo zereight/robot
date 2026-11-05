@@ -13,7 +13,7 @@ const org = (id: string, name: string, memberIds: string[], parentId: string | n
   createdAt: 1,
 })
 
-describe("the organization of each agent, for the cache (spec 035, 011)", () => {
+describe("the organization of each agent, for the cache (spec 036, 011)", () => {
   test("each member gets the whole name of its deepest organization", () => {
     const names = agentOrgNames([
       org("p", "Product", ["ada", "bo"]),
@@ -45,7 +45,7 @@ describe("the organization of each agent, for the cache (spec 035, 011)", () => 
   })
 })
 
-describe("the shown name on the phone (spec 035)", () => {
+describe("the shown name on the phone (spec 036)", () => {
   const names = { ada: "Research and Development Group" }
 
   test("with the switch on: prefix, note text and accessible name", () => {
@@ -68,7 +68,7 @@ describe("the shown name on the phone (spec 035)", () => {
   })
 })
 
-describe("the title of a card of Needs you (spec 035, 011)", () => {
+describe("the title of a card of Needs you (spec 036, 011)", () => {
   test("the name alone, or the name and the computer, gives the rest after the name", () => {
     expect(titleAfterName("Ada", "Ada")).toBe("")
     expect(titleAfterName("Ada · Studio", "Ada")).toBe(" · Studio")

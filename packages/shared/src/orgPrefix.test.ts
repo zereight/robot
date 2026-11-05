@@ -15,7 +15,7 @@ const org = (id: string, name: string, memberIds: string[], parentId: string | n
   parentId,
 })
 
-describe("the deepest organization (spec 035 Concepts, spec 030 One line)", () => {
+describe("the deepest organization (spec 036 Concepts, spec 030 One line)", () => {
   test("an agent in no organization has none", () => {
     expect(deepestOrg([], "ada")).toBeNull()
     expect(deepestOrg([org("d", "Docs", ["bo"])], "ada")).toBeNull()
@@ -99,7 +99,7 @@ describe("the deepest organization (spec 035 Concepts, spec 030 One line)", () =
   })
 })
 
-describe("the prefix text (spec 035 Concepts)", () => {
+describe("the prefix text (spec 036 Concepts)", () => {
   test("a name of 16 characters or fewer shows whole", () => {
     expect(ORG_PREFIX_MAX).toBe(16)
     expect(orgPrefixText("Docs")).toBe("Docs")
@@ -118,7 +118,7 @@ describe("the prefix text (spec 035 Concepts)", () => {
   })
 })
 
-describe("the shown name (spec 035 Concepts)", () => {
+describe("the shown name (spec 036 Concepts)", () => {
   test("an organization and the switch on: prefix, name, note and accessible name", () => {
     expect(shownName("Ada", "Docs", true)).toEqual({
       prefix: "[Docs]",
@@ -146,7 +146,7 @@ describe("the shown name (spec 035 Concepts)", () => {
   })
 })
 
-describe("the match against the organization name (spec 035 Rules)", () => {
+describe("the match against the organization name (spec 036 Rules)", () => {
   test("the text matches a part of the whole name, ignoring case", () => {
     expect(orgNameMatches("Docs", "doc")).toBe(true)
     expect(orgNameMatches("Research and Development Group", "development")).toBe(true)

@@ -109,7 +109,7 @@ const applied = (orgs: readonly OneLineOrg[], changes: readonly OrgLineChange[])
  *    conflicting organization in the order of names.
  * 2. A new place in the tree must not put the organizations of an agent off one line. The first
  *    agent and the first pair of its organizations in the order of names are named. A pair that
- *    was off the line before is not named: a repair removes it (S122b), a new change does not
+ *    was off the line before is not named: a repair removes it (S130b), a new change does not
  *    cause it. A removal is never refused.
  */
 export const orgLineRefusal = (

@@ -174,7 +174,7 @@ test("one line in the form: an agent that cannot be added is muted with 'In <oth
     // Bo is in no organization: it can be ticked, and it has no line.
     await expect(page.getByTestId("org-member-Bo")).toBeEnabled()
     await expect(page.getByTestId("org-member-line-Bo")).toHaveCount(0)
-    await shot(page, "s122-01-form-members-muted")
+    await shot(page, "s130-01-form-members-muted")
 
     // --- A save of a form that went stale shows the long line, and nothing changes ---------------
     await page.getByTestId("org-member-Dee").check()
@@ -189,7 +189,7 @@ test("one line in the form: an agent that cannot be added is muted with 'In <oth
     )
     await expect(dialog(page)).toBeVisible()
     expect((await orgByName(page, "Ops")).memberIds).toEqual([])
-    await shot(page, "s122-02-form-save-refused")
+    await shot(page, "s130-02-form-save-refused")
     await closeDialog(page)
 
     // --- The field "Parent organization" of Docs: Ops would split the line of Ada ---------------
@@ -200,7 +200,7 @@ test("one line in the form: an agent that cannot be added is muted with 'In <oth
     await expect(opsOption).toContainText("Would split the line of Ada.")
     // Press is not muted: Docs under Press keeps Ada on one line (Product > Press > Docs).
     await expect(parentOption(page, "Press")).not.toHaveAttribute("disabled", "")
-    await shot(page, "s122-03-form-parent-muted")
+    await shot(page, "s130-03-form-parent-muted")
     await closeDialog(page)
 
     // --- A save is one change: the new parent and the member together ----------------------------
@@ -244,7 +244,7 @@ test("one line on the chart: the lists mute what the line refuses, a move is che
       await expect(menu(page).getByTestId(`org-menu-add-to-${id}`)).toBeDisabled()
       await expect(reason(`org-menu-add-to-${id}`)).toHaveText("Not on one line with Docs.")
     }
-    await shot(page, "s122-04-menu-add-muted")
+    await shot(page, "s130-04-menu-add-muted")
     await page.keyboard.press("Escape")
     await expect(menu(page)).toHaveCount(0)
 
@@ -260,7 +260,7 @@ test("one line on the chart: the lists mute what the line refuses, a move is che
     await expect
       .poll(() => teams(page))
       .toEqual(["Docs: Ada", "Ops: ", "Press: Cy", "Product: Ada, Cy"])
-    await shot(page, "s122-05-moved-after-leave")
+    await shot(page, "s130-05-moved-after-leave")
 
     // --- "Add member…" of Ops: Ada is muted with 'In Docs.', Bo is not -------------------------
     await unit(page, ops.id).click({ button: "right" })
@@ -277,7 +277,7 @@ test("one line on the chart: the lists mute what the line refuses, a move is che
     await expect(menu(page).getByTestId(`org-menu-under-${ops.id}`)).toBeDisabled()
     await expect(reason(`org-menu-under-${ops.id}`)).toHaveText("Would split the line of Ada.")
     await expect(menu(page).getByTestId(`org-menu-under-${press.id}`)).toBeEnabled()
-    await shot(page, "s122-06-menu-put-under-muted")
+    await shot(page, "s130-06-menu-put-under-muted")
     await page.keyboard.press("Escape")
     await expect(menu(page)).toHaveCount(0)
 
@@ -289,7 +289,7 @@ test("one line on the chart: the lists mute what the line refuses, a move is che
     )
     await expect(page.getByTestId("org-notice")).toHaveAttribute("data-kind", "refused")
     await expect(page.getByTestId("org-undo")).toHaveCount(0)
-    await shot(page, "s122-07-refused-line")
+    await shot(page, "s130-07-refused-line")
     expect((await orgByName(page, "Docs")).parentId).toBe(product.id)
 
     // --- A stale menu: the entry was allowed when the menu opened; the server refuses it ---------
@@ -312,7 +312,7 @@ test("one line on the chart: the lists mute what the line refuses, a move is che
     await drag(page, docsHandle, await center(unit(page, ops.id)), async () => {
       await expect(unit(page, ops.id)).toHaveAttribute("data-ring", "false")
       await expect(unit(page, press.id)).toHaveAttribute("data-ring", "true")
-      await shot(page, "s122-08-drag-no-ring")
+      await shot(page, "s130-08-drag-no-ring")
     })
     expect((await orgByName(page, "Docs")).parentId).toBe(product.id)
     // An agent drag: Bo from "No organization" onto Ops is allowed (Bo is in no organization).
@@ -340,7 +340,7 @@ test("one line on the chart: the lists mute what the line refuses, a move is che
     await menu(page).getByTestId(`org-menu-under-${ops.id}`).click()
     await expect(notice(page)).toHaveText("Put Docs under Ops.")
     expect((await orgByName(page, "Docs")).parentId).toBe(ops.id)
-    await shot(page, "s122-09-put-under-works")
+    await shot(page, "s130-09-put-under-works")
   } finally {
     await app.close().catch(() => {})
     await mock.close()
@@ -373,7 +373,7 @@ test("delete: the confirm counts the direct sub-organizations and names the pare
     await expect(page.getByTestId("org-delete-confirm")).toContainText(
       "The access that this organization gives is gone.",
     )
-    await shot(page, "s122-10-delete-moves-up")
+    await shot(page, "s130-10-delete-moves-up")
     await page.getByTestId("org-delete-go").click()
     await expect(dialog(page)).toHaveCount(0)
     await expect
@@ -389,7 +389,7 @@ test("delete: the confirm counts the direct sub-organizations and names the pare
     await expect(page.getByTestId("org-delete-lower")).toHaveText(
       "3 sub-organizations become top organizations.",
     )
-    await shot(page, "s122-11-delete-becomes-top")
+    await shot(page, "s130-11-delete-becomes-top")
     await page.getByTestId("org-delete-go").click()
     await expect(dialog(page)).toHaveCount(0)
     await expect.poll(() => parentsOf(page)).toEqual(["Blog>-", "Press>-", "Site>-"])
@@ -448,7 +448,7 @@ test("one line in Korean and in the narrowest window: the lines, the reasons and
     await expect(notice(page)).toHaveText(
       "Ada는 Docs과(와) Product에 속해 있어서 한 줄에 있지 않게 돼요.",
     )
-    await shot(page, "s122-12-korean-refused-line")
+    await shot(page, "s130-12-korean-refused-line")
 
     // The confirm of a delete: the sub-organization moves up to the parent.
     await openForm(page, "Docs")
@@ -456,7 +456,7 @@ test("one line in Korean and in the narrowest window: the lines, the reasons and
     await expect(page.getByTestId("org-delete-lower")).toHaveText(
       "하위 조직 1개가 Product 아래로 올라가요.",
     )
-    await shot(page, "s122-13-korean-delete-confirm")
+    await shot(page, "s130-13-korean-delete-confirm")
     await page.keyboard.press("Escape")
     await closeDialog(page)
 
@@ -470,7 +470,7 @@ test("one line in Korean and in the narrowest window: the lines, the reasons and
     const width = await page.evaluate(() => window.innerWidth)
     const box = (await row.boundingBox()) as { x: number; width: number }
     expect(box.x + box.width).toBeLessThanOrEqual(width)
-    await shot(page, "s122-14-narrow-korean")
+    await shot(page, "s130-14-narrow-korean")
     await closeDialog(page)
   } finally {
     await app.close().catch(() => {})
@@ -567,7 +567,7 @@ for (const canChange of [true, false]) {
       await expect(dialog(one.page)).toBeVisible()
       await expect(one.page.getByTestId("org-member-Ada")).toBeDisabled()
       await expect(one.page.getByTestId("org-member-line-Ada")).toHaveText("In Docs.")
-      await shot(one.page, `s122-15-linked-${canChange ? "with" : "without"}-switch`)
+      await shot(one.page, `s130-15-linked-${canChange ? "with" : "without"}-switch`)
       await closeDialog(one.page)
 
       if (canChange) {

@@ -256,7 +256,7 @@ export const ChannelView = (props: { channel: Channel }) => {
     const open = mention()
     if (!open) return []
     // Each member brings the whole name of its organization, so the list also matches it (spec
-    // 035). With the switch off `prefixOrg` is null and the organization never matches.
+    // 036). With the switch off `prefixOrg` is null and the organization never matches.
     const available = members()
       .filter((a) => !a.archived)
       .map((a) => ({ ...a, organization: orgs.prefixOrg(a.id) }))

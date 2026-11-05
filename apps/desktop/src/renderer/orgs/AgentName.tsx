@@ -3,7 +3,7 @@ import { type OrgsState, useOrgs } from "../state/orgs.tsx"
 import styles from "./prefix.module.css"
 
 /**
- * The name of an agent as a label (spec 035): the organization prefix "[Docs]" in front of the
+ * The name of an agent as a label (spec 036): the organization prefix "[Docs]" in front of the
  * stored name. The prefix is muted and has a note with the whole name of the organization. A screen
  * reader reads "<name>, <whole organization name>" (the span is one image with that name, so the
  * text is not read twice and a copy of the text holds the shown name only). An agent in no
@@ -61,7 +61,7 @@ export const AgentInLine = (props: {
 
 /**
  * The shown name of an agent as plain text, for a place that cannot hold a styled label, such as an
- * `<option>` of a list (spec 035). Call it once in a component and use the function in the view.
+ * `<option>` of a list (spec 036). Call it once in a component and use the function in the view.
  */
 export const useShownText = () => {
   const orgs = useOrgs()

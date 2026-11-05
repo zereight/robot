@@ -21,7 +21,7 @@ import {
   turnOnSync,
 } from "./sync-helpers.ts"
 
-// Spec 030, "Access" and "Tools" (S120), with 017, 018, 002 (flow 12), 007 and 012: the tools of an
+// Spec 030, "Access" and "Tools" (S128), with 017, 018, 002 (flow 12), 007 and 012: the tools of an
 // organization with the values "Inherit", "On" and "Off", the muted line "Now: <value> from
 // <organization>", the pickers of the skill form and the connection form, "From <organization>" in
 // the profile, and the rule that "Off" takes away only what the organization would get from above.
@@ -186,7 +186,7 @@ test("tools by organizations: Inherit, On and Off with the line Now, the pickers
     }
     await page.locator("[data-testid=skill-agent][data-agent=Di]").check()
     await pickerRow("Docs").scrollIntoViewIfNeeded()
-    await shot(page, "s120-01-skill-picker")
+    await shot(page, "s128-01-skill-picker")
     await page.getByTestId("skill-save").click()
     await expect(page.getByTestId("skill-form-dialog")).toHaveCount(0)
     const skillRow = page.locator("[data-testid=skill-row][data-skill='Release notes']")
@@ -225,7 +225,7 @@ test("tools by organizations: Inherit, On and Off with the line Now, the pickers
     await expect(toolRow(page, "Release notes").getByTestId("org-tool-now")).toHaveText(
       "Now: On from Product",
     )
-    await shot(page, "s120-02-site-now-on-from-product")
+    await shot(page, "s128-02-site-now-on-from-product")
     await closeDialog(page)
     await openOrg(page, "Docs")
     await expect(toolRow(page, "Release notes").getByTestId("org-tool-now")).toHaveText(
@@ -255,7 +255,7 @@ test("tools by organizations: Inherit, On and Off with the line Now, the pickers
     await expect(lines.first()).toContainText("Release notes")
     await expect(lines.first().getByTestId("org-tool-from")).toHaveText("From Product")
     await page.getByTestId("agent-profile").getByTestId("org-tools-lines").scrollIntoViewIfNeeded()
-    await shot(page, "s120-03-profile-from-product")
+    await shot(page, "s128-03-profile-from-product")
     await page.keyboard.press("Escape")
     await expect(page.getByTestId("agent-profile")).toHaveCount(0)
     // It uses the skill as its own: the chip, and the instructions reach the model.
@@ -286,7 +286,7 @@ test("tools by organizations: Inherit, On and Off with the line Now, the pickers
     await openOrg(page, "Docs")
     await setValue(page, "Release notes", "off")
     await expect(toolRow(page, "Release notes").getByTestId("org-tool-now")).toHaveCount(0)
-    await shot(page, "s120-04-docs-off")
+    await shot(page, "s128-04-docs-off")
     await closeDialog(page)
     await openOrg(page, "Site")
     await expect(toolRow(page, "Release notes").getByTestId("org-tool-now")).toHaveText(
@@ -380,7 +380,7 @@ test("tools by organizations: Inherit, On and Off with the line Now, the pickers
     await expect(connValue("Docs", "inherit").locator("input")).toBeChecked()
     await connValue("Docs", "on").click()
     await expect(connValue("Docs", "on").locator("input")).toBeChecked()
-    await shot(page, "s120-05-connection-picker")
+    await shot(page, "s128-05-connection-picker")
     await page.getByTestId("connection-test").click()
     await expect(page.getByTestId("connection-test-result")).toContainText("Connected. Tools: 8.")
     await page.getByTestId("connection-confirm").check()
@@ -409,7 +409,7 @@ test("tools by organizations: Inherit, On and Off with the line Now, the pickers
     const ask = page.getByTestId("ask-card")
     await expect(ask).toBeVisible({ timeout: 15_000 })
     await expect(ask).toContainText("Notes · echo")
-    await shot(page, "s120-06-approval-card")
+    await shot(page, "s128-06-approval-card")
     await page.getByTestId("ask-deny").click()
     await idle(page)
     // "Off" for the connection in Docs takes it away from the next turn.
@@ -471,7 +471,7 @@ test("tools in Korean and in the narrowest window: the values, the line Now and 
     await setValue(page, "Release notes", "off")
     await expect(release.getByTestId("org-tool-now")).toHaveCount(0)
     await release.scrollIntoViewIfNeeded()
-    await shot(page, "s120-07-korean-narrow-tools")
+    await shot(page, "s128-07-korean-narrow-tools")
     // The box fits the window: nothing sticks out on the right.
     const width = await page.evaluate(() => window.innerWidth)
     for (const row of await page.getByTestId("org-tool-row").all()) {
@@ -498,7 +498,7 @@ test("tools in Korean and in the narrowest window: the values, the line Now and 
         .locator("[data-testid=skill-org-value] label"),
     ).toHaveText(["상속", "켬", "끔"])
     await page.getByTestId("skill-org").first().scrollIntoViewIfNeeded()
-    await shot(page, "s120-08-korean-narrow-picker")
+    await shot(page, "s128-08-korean-narrow-picker")
     const rect = (await page.getByTestId("skill-org").first().boundingBox()) as {
       x: number
       width: number
@@ -612,7 +612,7 @@ for (const canChange of [true, false]) {
       const docsRow = toolRow(one.page, "Release notes")
       await expect(rowValue(docsRow, "off").locator("input")).toBeChecked()
       await expect(docsRow.getByTestId("org-tool-now")).toHaveCount(0)
-      await shot(one.page, `s120-09-linked-${canChange ? "with" : "without"}-switch`)
+      await shot(one.page, `s128-09-linked-${canChange ? "with" : "without"}-switch`)
       await closeDialog(one.page)
 
       // The server refuses a change of a tool from a link, also with the switch.
@@ -739,7 +739,7 @@ test("sync and export: the tree goes to the other computer, the tools of an orga
         )
       await expect(value("Product", "on")).toBeChecked()
       await expect(value("Docs", "off")).toBeChecked()
-      await shot(third.page, "s120-10-restored-picker")
+      await shot(third.page, "s128-10-restored-picker")
     } finally {
       await third.app.close().catch(() => {})
     }

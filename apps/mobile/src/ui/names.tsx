@@ -5,7 +5,7 @@ import { type StyleProp, Text, type TextStyle } from "react-native"
 import { useApp, useServer } from "../state/context.tsx"
 
 /**
- * The name of an agent as the phone shows it (spec 035, 011): the organization prefix, muted, then
+ * The name of an agent as the phone shows it (spec 036, 011): the organization prefix, muted, then
  * the stored name. The switch is the one of this phone, and the organization names are the ones
  * that the phone holds for the server (from the cache while the server is offline).
  */
@@ -22,7 +22,7 @@ export const useShownName = (linkId: string) => {
 
 /**
  * The shown name as a `Text`: a muted prefix, a space and the name. The name keeps the style that
- * the caller gives. The accessible name is `shown.label` (spec 035).
+ * the caller gives. The accessible name is `shown.label` (spec 036).
  */
 export const ShownText = (props: {
   readonly shown: ShownName

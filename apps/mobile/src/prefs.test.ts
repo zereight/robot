@@ -37,7 +37,7 @@ describe("the settings of the phone", () => {
     expect((await readPrefs(storage)).showToolSteps).toBe(false)
   })
 
-  test("the organization prefix shows at first, and the choice is kept (spec 035, 011)", async () => {
+  test("the organization prefix shows at first, and the choice is kept (spec 036, 011)", async () => {
     expect(defaultPrefs.showOrgPrefix).toBe(true)
     const storage = new MemoryStorage()
     // An old file without the switch still reads, and the prefix shows.

@@ -23,7 +23,7 @@ The user sets the app up the way they like in one place.
   the default is on), which folds each run of finished plain tool steps into one muted line with
   the count when off (see 003, "Folded tool steps"), and "Show the organization before an agent
   name" (on or off; the default is on), which writes "[Docs]" before the name of an agent that is
-  in the organization "Docs" (see 035).
+  in the organization "Docs" (see 036).
 - **Test devices**: the switch "Test devices", off by default. When it is on, the section shows the
   state of the download, of the server and of each tool that a test device needs, the version, the
   size, the source, "Download", "Delete", "Check for a new version" and "Update", and "Delete all

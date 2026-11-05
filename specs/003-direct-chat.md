@@ -8,7 +8,7 @@ The user gives an agent work in plain language and sees what the agent does whil
 
 - A row starts with the sender's avatar at the left (see 002, "Avatars"): the face of an agent, or
   the mark of the user. Then comes a header line: name (an agent
-  shows its organization prefix before the name, see 035), a small "BOT" tag for agents, and the
+  shows its organization prefix before the name, see 036), a small "BOT" tag for agents, and the
   time. Rows from the same sender within 5 minutes join under one header.
 - Day changes show as a centred date line.
 - Agent replies render Markdown: headings, lists, tables, code blocks with copy buttons, links,

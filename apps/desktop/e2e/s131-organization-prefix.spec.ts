@@ -12,7 +12,7 @@ import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { freePortPair } from "./ports.ts"
 import { closeSettings, envFor, openDevices, rpc, setName } from "./sync-helpers.ts"
 
-// Spec 035: the organization prefix "[Docs] Ada". The prefix comes from the deepest organization of
+// Spec 036: the organization prefix "[Docs] Ada". The prefix comes from the deepest organization of
 // an agent. It shows in the places of the window, it follows the organizations at once, and the
 // stored name does not change. One test runs on one computer in English, one in Korean with the
 // narrowest window, and one on a linked computer that has its own switch (012).
@@ -122,7 +122,7 @@ test("organization prefix: row, switch and restart, membership, rename, long nam
   await expect(page.getByTestId("agent-name")).toHaveValue("Ada")
   await page.keyboard.press("Escape")
   await expect(page.getByTestId("agent-profile")).toHaveCount(0)
-  await shot(page, "s123-01-row-and-header")
+  await shot(page, "s131-01-row-and-header")
 
   // The note on the prefix shows the whole name of the organization (a title). The row names the
   // organization for a screen reader.
@@ -133,7 +133,7 @@ test("organization prefix: row, switch and restart, membership, rename, long nam
   await setSwitch(page, false)
   await expect(prefixOf(page, "Ada")).toHaveCount(0)
   await expect(page.getByTestId("chat-header-agent")).not.toContainText("[Docs]")
-  await shot(page, "s123-02-switch-off")
+  await shot(page, "s131-02-switch-off")
   await setSwitch(page, true)
   await expect(prefixOf(page, "Ada")).toHaveText("[Docs]")
   await setSwitch(page, false)
@@ -191,7 +191,7 @@ test("organization prefix: row, switch and restart, membership, rename, long nam
   await expect(agentMessage.getByTestId("message-name")).toContainText("[Documentation] Ada", {
     timeout: 1500,
   })
-  await shot(page, "s123-03-renamed")
+  await shot(page, "s131-03-renamed")
   expect(mock.requests.filter((r) => r.path === CHAT).length).toBe(requests)
   expect(
     (await rpc<unknown[]>(page, "tasks.list", { serverId: await localServerId(page) })).length,
@@ -215,7 +215,7 @@ test("organization prefix: row, switch and restart, membership, rename, long nam
     "aria-label",
     "Ada, Research and Development Group",
   )
-  await shot(page, "s123-04-long-name")
+  await shot(page, "s131-04-long-name")
   await rpc(page, "organizations.update", {
     id: (await orgByName(page, "Research and Development Group")).id,
     patch: { name: "Docs" },
@@ -254,7 +254,7 @@ test("organization prefix: row, switch and restart, membership, rename, long nam
   await expect(options).toHaveCount(1)
   await expect(options.first()).toContainText("[Docs] Ada")
   await expect(options.first()).toHaveAttribute("data-member", "Ada")
-  await shot(page, "s123-05-mention")
+  await shot(page, "s131-05-mention")
   await input.press("Enter")
   await expect(input).toHaveValue("@Ada ")
   await input.fill("")
@@ -327,7 +327,7 @@ test("organization prefix: row, switch and restart, membership, rename, long nam
   await expect(docsNode.getByTestId("org-unit-members")).toHaveText("1 member")
   await expect(page.getByTestId("org-page").getByTestId("org-prefix")).toHaveCount(0)
   await expect(page.getByTestId("org-page")).not.toContainText("[Docs]")
-  await shot(page, "s123-06-org-chart")
+  await shot(page, "s131-06-org-chart")
   await page.getByTestId("page-chats").click()
 
   // The archive list shows the prefix too.
@@ -335,7 +335,7 @@ test("organization prefix: row, switch and restart, membership, rename, long nam
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-archive").click()
   await expect(page.getByTestId(`archived-${ada.id}`)).toContainText("[Docs] Ada")
-  await shot(page, "s123-07-archive")
+  await shot(page, "s131-07-archive")
   await app.close()
   await mock.close()
 })
@@ -362,20 +362,20 @@ test("organization prefix: Korean words, the narrowest window, and a cut name ne
   const toggle = page.getByTestId("setting-show-org-prefix")
   await expect(toggle).toHaveAttribute("aria-label", "에이전트 이름 앞에 조직 표시")
   await expect(toggle).toHaveAttribute("aria-checked", "true")
-  await shot(page, "s123-ko-01-switch")
+  await shot(page, "s131-ko-01-switch")
   await page.getByTestId("settings-close").click()
   await expect(prefixOf(page, "Ada")).toHaveText("[Research and Dev…]")
   await expect(prefixOf(page, "Bo")).toHaveText("[문서팀]")
   await expect(row(page, "Ada")).toHaveAccessibleName(/^Ada, Research and Development Group, /)
   await expect(row(page, "Bo")).toHaveAccessibleName(/^Bo, 문서팀, /)
-  await shot(page, "s123-ko-02-rows")
+  await shot(page, "s131-ko-02-rows")
 
   // The narrowest window: the role badge hides first, then the name is cut, and the prefix stays.
   await resizeWindow(app, 480, 400)
   await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThanOrEqual(500)
   await expect(prefixOf(page, "Ada")).toBeVisible()
   await expect(prefixOf(page, "Ada")).toHaveText("[Research and Dev…]")
-  await shot(page, "s123-ko-03-narrow")
+  await shot(page, "s131-ko-03-narrow")
   await resizeWindow(app, 1300, 900)
 
   // Compact list, and the switch off at the narrowest window.
@@ -386,7 +386,7 @@ test("organization prefix: Korean words, the narrowest window, and a cut name ne
   await page.getByTestId("settings-close").click()
   await expect(prefixOf(page, "Ada")).toHaveCount(0)
   await resizeWindow(app, 480, 400)
-  await shot(page, "s123-ko-04-narrow-off")
+  await shot(page, "s131-ko-04-narrow-off")
   await app.close()
   await mock.close()
 })
@@ -457,7 +457,7 @@ test("organization prefix: a linked computer shows the prefixes of the server wi
     await expect(row(one.page, "Ada")).toBeVisible()
     await expect(prefixOf(one.page, "Ada")).toHaveText("[Docs]")
     await expect(prefixOf(one.page, "Bo")).toHaveCount(0)
-    await shot(one.page, "s123-linked-01-prefix")
+    await shot(one.page, "s131-linked-01-prefix")
 
     // A rename on MacBook 2 reaches MacBook 1.
     await rpc(two.page, "organizations.update", {
@@ -470,7 +470,7 @@ test("organization prefix: a linked computer shows the prefixes of the server wi
     await setSwitch(one.page, false)
     await expect(prefixOf(one.page, "Ada")).toHaveCount(0)
     await expect(row(one.page, "Ada")).toContainText("Ada")
-    await shot(one.page, "s123-linked-02-switch-off")
+    await shot(one.page, "s131-linked-02-switch-off")
     await expect(prefixOf(two.page, "Ada")).toHaveText("[Articles]")
     await setSwitch(one.page, true)
     await expect(prefixOf(one.page, "Ada")).toHaveText("[Articles]")

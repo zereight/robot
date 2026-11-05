@@ -37,7 +37,7 @@ export type MentionEntry<T> =
 /**
  * The lines of the list for a query. The members come first, in the order of the channel: the
  * names that start with the query, then the names that hold it or whose whole organization name
- * holds it (spec 035; a member with no `organization` has none to match). The letter case does
+ * holds it (spec 036; a member with no `organization` has none to match). The letter case does
  * not count.
  * `@all` is in the list when `withAll` holds and the query starts the word "all". It is the last
  * line, so that a bare `@` and Enter never call every member by chance. When the query is the

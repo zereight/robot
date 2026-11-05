@@ -49,13 +49,13 @@ export const createOrgs = (serverId: () => string | undefined) => {
     }),
   )
   const orgs = () => store.list
-  // The deepest organization of each agent (spec 035). One decision in one place: every label of an
+  // The deepest organization of each agent (spec 036). One decision in one place: every label of an
   // agent reads it. It follows the list, so a rename or a new member shows at once.
   const deepest = createMemo(() => deepestOrgIndex(store.list))
   /**
    * The whole name of the organization that the prefix of an agent shows, or null when the agent is
    * in none or when the switch "Show the organization before an agent name" is off. A search of
-   * names reads it too, so with the switch off the organization never matches (spec 035).
+   * names reads it too, so with the switch off the organization never matches (spec 036).
    */
   const prefixOrg = (agentId: string): string | null =>
     app.settings.showOrgPrefix ? (deepest().get(agentId)?.name ?? null) : null
