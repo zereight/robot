@@ -105,6 +105,7 @@ These are in the code today and the specs now say something else.
 | 002 | The spec said of the role line "the model gets it as before". No prompt held it, so the words named no behaviour. | The text of a direct chat or thread holds the handbook and the instructions of the agent, and no role line. A model reads the role line in three places only: the check of the lead (004), the fast pick (004) and the answer of the settings tool. A channel turn names the agent and its members, and no role line. A change of the role line changes the badge, the filter of places, the Roles page, a check of the lead and a fast pick. It changes no answer of a direct chat. |
 | 035, 007, 025 | A turn and a new own copy start with no command from the repository. | A repository can list setup actions in `robot.json`. The user runs one from the chat. After the user allows the list, a turn runs the actions marked for a turn, and the first turn in a linked worktree runs the actions marked for an own copy. Writing `robot.json` is a control place. |
 | 035, 013 | The user edits `robot.json` by hand. | The user makes and changes the list in the app: "Manage setup actions" in the chat menu, and the section "Setup actions" in Settings with the agents of this computer. The editor names the file it writes. A save clears the allow, so the user allows the list again. |
+| 035 | The chat header shows nothing when the workspace has no list. | The header always shows the setup entry. With no list it shows "Manage setup actions", which opens the empty editor. |
 
 ## Slices
 
@@ -214,6 +215,7 @@ These are in the code today and the specs now say something else.
 | S121 | Diagram: the control "Diagram" on the workflow editor, the Mermaid text of the open graph (a condition is a diamond, a branch is `yes` or `no`, a note is absent), Copy, and no picture and no send. The phone has no control in this version. | 010, 011 |
 | S122 | Setup actions: `robot.json`, the menu "Run <name>", allow and stop, the actions of a turn, the first turn in a linked worktree, the muted line of a failure, and `robot.json` as a control place. The menu is on the computer that holds the workspace. | 035, 007, 025, 003, 019 |
 | S123 | Setup editor: "Manage setup actions" in the chat menu, the section "Setup actions" in Settings with the agents of this computer, the editor with the path of the file, add and delete, the limits that block a save, "Cancel", the replace of an unreadable file that asks first, and the cleared allow after a save. The editor is on the computer that holds the workspace. | 035, 013 |
+| S124 | Setup entry always in the chat header: with no list it shows "Manage setup actions" and opens the empty editor. | 035 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.

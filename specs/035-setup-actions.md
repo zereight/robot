@@ -27,11 +27,12 @@ absent otherwise.
 
 ## Flows
 
-1. The file holds at least one action. The chat header of an agent whose workspace uses that file
-   shows "Run <name>" for the first action. The menu lists every action. The pointer on a row
-   shows its command. The user picks one. The command runs in the workspace. A success shows
-   "Ran <name>". A failure shows "Setup failed: <name>", or the same line with the reason when
-   the command did not start or took too long.
+1. The chat header of an agent always shows the setup entry. When the workspace has a file
+   with at least one action, it shows "Run <name>" for the first action. The menu lists every
+   action. The pointer on a row shows its command. The user picks one. The command runs in the
+   workspace. A success shows "Ran <name>". A failure shows "Setup failed: <name>", or the same
+   line with the reason when the command did not start or took too long. When the workspace has
+   no list, the header shows "Manage setup actions", which opens the empty editor of flow 5.
 2. Allow: the menu has "Allow automatic setup" while the list is not allowed and an action is
    marked. The pointer on it shows the commands that would run by themselves. The user picks it.
    "Stop automatic setup" removes the allow.
@@ -52,11 +53,12 @@ absent otherwise.
    picks one. It shows the path of the file of its workspace, or that a save will make the
    file there, the same editor, and the allow with "Allow automatic setup" or "Stop automatic
    setup". A workspace with no file starts with an empty editor, so the first action is made
-   here. The chat menu shows nothing for it until the file holds an action.
+   here or in the chat header.
 
 ## States
 
-- **No file**: the header shows nothing about setup. Settings makes the first action.
+- **No file**: the header shows "Manage setup actions", which opens the empty editor. The
+  first action is made here or in Settings.
 - **Unreadable**: the file is there but is not a setup list. The header shows "Setup actions could
   not be read." No command runs. The editor shows the same line and offers "Replace with a new
   list". It asks first and names the file. On confirm the editor starts empty and "Save" writes
@@ -93,8 +95,9 @@ absent otherwise.
   automatic setup", "Manage setup actions" in that menu, and the section "Setup actions" in
   Settings.
 - **Ways out**: "Stop automatic setup". "Cancel" leaves the file unchanged. Deleting the file
-  removes the menu. There is no undo for a command that already changed files, or for a save
-  that replaced the list. Replacing an unreadable file asks first.
+  leaves the header entry, which opens the empty editor. There is no undo for a command that
+  already changed files, or for a save that replaced the list. Replacing an unreadable file
+  asks first.
 - **Devices**: the menu and the editor are on the computer that holds the workspace. A linked
   computer and the phone show neither, also with the switch "Can create and change agents".
   The muted line of a failure is part of the reply, so they show it.
@@ -139,3 +142,6 @@ absent otherwise.
 - A row with no name blocks "Save" and says why. "Cancel" leaves the file unchanged.
 - The file is not JSON. The editor offers "Replace with a new list", asks first with the path,
   and on confirm a save writes the new list.
+- A workspace with no file shows "Manage setup actions" in the chat header. It opens the empty
+  editor. The user adds one action and saves. The file is made, and the header shows
+  "Run <name>".
