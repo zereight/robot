@@ -4,6 +4,29 @@
   gap: 16px;
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.tab {
+  border: none;
+  background: none;
+  color: var(--c-text-muted);
+  font-size: var(--text-s);
+  padding: 6px 12px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color var(--motion-s) var(--ease);
+}
+
+.tab[data-selected="true"] {
+  color: var(--c-text);
+  border-bottom-color: var(--c-accent);
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;

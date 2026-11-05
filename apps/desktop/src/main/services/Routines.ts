@@ -35,6 +35,7 @@ import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
 import { Database } from "./Database.ts"
 import { EventBus } from "./EventBus.ts"
+import { Events } from "./Events.ts"
 import { AppError } from "./errors.ts"
 import { Notifier } from "./Notifier.ts"
 import { Platform } from "./Platform.ts"
@@ -157,6 +158,7 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
       const notifier = yield* Notifier
       const settings = yield* SettingsStore
       const platform = yield* Platform
+      const events = yield* Events
 
       const localeNow = (): Locale =>
         resolveLocale(Effect.runSync(settings.get).language, platform.systemLocale())
@@ -310,10 +312,53 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
         if (!row(task.sourceId)) return false
         if (task.state === "done") clearFailures(task.sourceId)
         // A blocked run is a failed run for the pause, with the reason of the block (spec 009).
-        else if (task.state === "failed" || task.state === "blocked")
+        else if (task.state === "failed" || task.state === "blocked") {
+          // The event that started this run shows "Failed" with the reason (spec 038).
+          Effect.runFork(
+            events.failLatestOfPlace(task.sourceId, task.error?.detail || task.error?.code || ""),
+          )
           return addFailure(task.sourceId, task.error ?? { code: "unknown", detail: "" })
+        }
         return false
       })
+
+      /**
+       * Records one arrival of this routine on the Events tab (spec 038). It never starts work and
+       * never fails the run: the record is for the user.
+       */
+      const recordEvent = (
+        r: Row,
+        input: {
+          readonly source: "schedule" | "watch"
+          readonly type: string
+          readonly summary: string
+          readonly detail?: string
+          readonly result: "routed" | "skipped" | "failed"
+          readonly reason?: string | null
+          readonly taskId?: string | null
+          readonly got?: string
+          readonly why: string
+        },
+      ) =>
+        events
+          .add({
+            serverId: r.server_id,
+            source: input.source,
+            type: input.type,
+            subject: r.name,
+            summary: input.summary,
+            detail: input.detail ?? "",
+            agentId: r.agent_id,
+            placeId: r.id,
+            placeIsRoutine: true,
+            placeName: r.name,
+            why: input.why,
+            got: input.got ?? "",
+            taskId: input.taskId ?? null,
+            result: input.result,
+            reason: input.reason ?? null,
+          })
+          .pipe(Effect.catchCause(() => Effect.void))
 
       /** Starts a run. `text` is the prompt with what the run gets with it. */
       /** `retryOf`: the task that this run tries again, so that its agent reads the retry note (spec 005). */
@@ -364,9 +409,32 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
             db.run("UPDATE routine SET last_checked_at = ? WHERE id = ?", now, r.id)
             for (const m of missed) skip(r.id, m, "missed")
             if (at !== null) {
-              if (active(r.id)) skip(r.id, at, "skipped")
-              // A run that starts more than 15 minutes late gets both times.
-              else yield* startOrFail(r, at, runText(r.prompt, at, now))
+              if (active(r.id)) {
+                skip(r.id, at, "skipped")
+                // The run of the same routine still goes (spec 009). The event is Skipped.
+                yield* recordEvent(r, {
+                  source: "schedule",
+                  type: "planned run",
+                  summary: `Planned run of ${r.name}`,
+                  result: "skipped",
+                  reason: "A run of this routine still goes.",
+                  why: `The routine ${r.name} had a run that still goes.`,
+                })
+              } else {
+                // A run that starts more than 15 minutes late gets both times.
+                yield* startOrFail(r, at, runText(r.prompt, at, now)).pipe(
+                  Effect.andThen(
+                    recordEvent(r, {
+                      source: "schedule",
+                      type: "planned run",
+                      summary: `Planned run of ${r.name}`,
+                      got: runText(r.prompt, at, now),
+                      result: "routed",
+                      why: `The routine ${r.name} runs at its planned time.`,
+                    }),
+                  ),
+                )
+              }
             }
             if (at !== null || missed.length > 0) changed(r.server_id)
           }
@@ -393,6 +461,15 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
           if (!outcome.ok) {
             skip(r.id, now, "failed", outcome.reason)
             addFailure(r.id, outcome.reason)
+            yield* recordEvent(r, {
+              source: "watch",
+              type: "check",
+              summary: `Check of ${r.name} failed`,
+              detail: outcome.reason.detail ?? "",
+              result: "failed",
+              reason: outcome.reason.detail ?? "",
+              why: `The check of ${r.name} could not read its target.`,
+            })
             changed(r.server_id)
             return
           }
@@ -417,7 +494,19 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               return
             }
             const text = watchRunText(r.prompt, change)
-            yield* startOrFail(current, now, text, { kind: "routine", name: r.name })
+            yield* startOrFail(current, now, text, { kind: "routine", name: r.name }).pipe(
+              Effect.andThen(
+                recordEvent(current, {
+                  source: "watch",
+                  type: "change",
+                  summary: `Change in ${r.name}`,
+                  detail: change,
+                  got: text,
+                  result: "routed",
+                  why: `The watch of ${r.name} saw a change.`,
+                }),
+              ),
+            )
             changed(r.server_id)
             return
           }

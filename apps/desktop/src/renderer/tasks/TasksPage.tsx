@@ -44,6 +44,7 @@ import { Button } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
 import { showToast } from "../ui/toast.ts"
+import { EventsTab } from "./EventsTab.tsx"
 import { TaskStateText } from "./TaskStateText.tsx"
 import { TaskUsageView } from "./TaskUsageView.tsx"
 import styles from "./tasks.module.css"
@@ -567,6 +568,14 @@ export const TasksPage = () => {
   const devices = useDevices()
   const [filter, setFilter] = createSignal<TaskFilter>({})
   const [openId, setOpenId] = createSignal<string>()
+  // The page holds two tabs (spec 038). The choice stays after a restart.
+  const [tab, setTab] = createSignal<"tasks" | "events">(
+    ui.ui.tasksTab === "events" ? "events" : "tasks",
+  )
+  const pickTab = (next: "tasks" | "events") => {
+    setTab(next)
+    void call("ui.update", { tasksTab: next }).catch(() => undefined)
+  }
   // The Today page asks for a task: its detail opens at once.
   createEffect(() => {
     if (openTarget()?.kind !== "task") return
@@ -614,167 +623,198 @@ export const TasksPage = () => {
 
   return (
     <div class={`${shell.page} ${styles.page}`} data-testid="tasks-page">
-      <div class={styles.filters}>
-        <label class={styles.filter}>
-          <span>{t("tasks.filter.state")}</span>
-          <select
-            class={styles.select}
-            onChange={(e) => set("state", e.currentTarget.value as TaskFilter["state"] | "")}
-            data-testid="tasks-filter-state"
-          >
-            <option value="">{t("tasks.filter.all")}</option>
-            <For each={TASK_STATES}>
-              {(s) => <option value={s}>{t(`tasks.state.${s}` as MessageKey)}</option>}
-            </For>
-          </select>
-        </label>
-        <label class={styles.filter}>
-          <span>{t("tasks.filter.agent")}</span>
-          <select
-            class={styles.select}
-            onChange={(e) => set("agentId", e.currentTarget.value)}
-            data-testid="tasks-filter-agent"
-          >
-            <option value="" selected={!filter().agentId}>
-              {t("tasks.filter.all")}
-            </option>
-            <For each={agents.agents()}>
-              {(a) => (
-                <option value={a.id} selected={filter().agentId === a.id}>
-                  {shownText(a.id, a.name)}
-                </option>
-              )}
-            </For>
-          </select>
-        </label>
-        <label class={styles.filter}>
-          <span>{t("tasks.filter.source")}</span>
-          <select
-            class={styles.select}
-            onChange={(e) => set("source", e.currentTarget.value as TaskFilter["source"] | "")}
-            data-testid="tasks-filter-source"
-          >
-            <option value="">{t("tasks.filter.all")}</option>
-            <For each={TASK_SOURCES}>
-              {(s) => <option value={s}>{t(`tasks.source.${s}` as MessageKey)}</option>}
-            </For>
-          </select>
-        </label>
-        <Show when={showComputers()}>
+      <div class={styles.tabs} role="tablist" aria-label={t("events.tab")}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab() === "tasks"}
+          class={styles.tab}
+          data-selected={tab() === "tasks"}
+          onClick={() => pickTab("tasks")}
+          data-testid="tasks-tab"
+        >
+          {t("events.tasksTab")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab() === "events"}
+          class={styles.tab}
+          data-selected={tab() === "events"}
+          onClick={() => pickTab("events")}
+          data-testid="events-tab"
+        >
+          {t("events.tab")}
+        </button>
+      </div>
+
+      <Show when={tab() === "events"}>
+        <EventsTab t={t} />
+      </Show>
+
+      <Show when={tab() === "tasks"}>
+        <div class={styles.filters}>
           <label class={styles.filter}>
-            <span>{t("tasks.filter.computer")}</span>
+            <span>{t("tasks.filter.state")}</span>
             <select
               class={styles.select}
-              onChange={(e) => setComputer(e.currentTarget.value)}
-              data-testid="tasks-filter-computer"
+              onChange={(e) => set("state", e.currentTarget.value as TaskFilter["state"] | "")}
+              data-testid="tasks-filter-state"
             >
               <option value="">{t("tasks.filter.all")}</option>
-              <option value="here">{t("tasks.computer.here")}</option>
-              <For each={computers()}>
-                {(name) => (
-                  <option value={`name:${name}`}>{name || t("sync.anotherComputer")}</option>
+              <For each={TASK_STATES}>
+                {(s) => <option value={s}>{t(`tasks.state.${s}` as MessageKey)}</option>}
+              </For>
+            </select>
+          </label>
+          <label class={styles.filter}>
+            <span>{t("tasks.filter.agent")}</span>
+            <select
+              class={styles.select}
+              onChange={(e) => set("agentId", e.currentTarget.value)}
+              data-testid="tasks-filter-agent"
+            >
+              <option value="" selected={!filter().agentId}>
+                {t("tasks.filter.all")}
+              </option>
+              <For each={agents.agents()}>
+                {(a) => (
+                  <option value={a.id} selected={filter().agentId === a.id}>
+                    {shownText(a.id, a.name)}
+                  </option>
                 )}
               </For>
             </select>
           </label>
-        </Show>
-        <input
-          class={styles.search}
-          type="search"
-          placeholder={t("tasks.search")}
-          aria-label={t("tasks.search")}
-          onInput={(e) => set("query", e.currentTarget.value)}
-          data-testid="tasks-search"
-        />
-      </div>
+          <label class={styles.filter}>
+            <span>{t("tasks.filter.source")}</span>
+            <select
+              class={styles.select}
+              onChange={(e) => set("source", e.currentTarget.value as TaskFilter["source"] | "")}
+              data-testid="tasks-filter-source"
+            >
+              <option value="">{t("tasks.filter.all")}</option>
+              <For each={TASK_SOURCES}>
+                {(s) => <option value={s}>{t(`tasks.source.${s}` as MessageKey)}</option>}
+              </For>
+            </select>
+          </label>
+          <Show when={showComputers()}>
+            <label class={styles.filter}>
+              <span>{t("tasks.filter.computer")}</span>
+              <select
+                class={styles.select}
+                onChange={(e) => setComputer(e.currentTarget.value)}
+                data-testid="tasks-filter-computer"
+              >
+                <option value="">{t("tasks.filter.all")}</option>
+                <option value="here">{t("tasks.computer.here")}</option>
+                <For each={computers()}>
+                  {(name) => (
+                    <option value={`name:${name}`}>{name || t("sync.anotherComputer")}</option>
+                  )}
+                </For>
+              </select>
+            </label>
+          </Show>
+          <input
+            class={styles.search}
+            type="search"
+            placeholder={t("tasks.search")}
+            aria-label={t("tasks.search")}
+            onInput={(e) => set("query", e.currentTarget.value)}
+            data-testid="tasks-search"
+          />
+        </div>
 
-      <Show
-        when={tasks().length > 0}
-        fallback={
-          <p class={styles.muted} data-testid="tasks-empty">
-            {t("tasks.empty")}
-          </p>
-        }
-      >
         <Show
-          when={shown().length > 0}
+          when={tasks().length > 0}
           fallback={
-            <p class={styles.muted} data-testid="tasks-no-match">
-              {t("tasks.noMatch")}
+            <p class={styles.muted} data-testid="tasks-empty">
+              {t("tasks.empty")}
             </p>
           }
         >
-          <table class={styles.table} data-testid="tasks-table">
-            <thead>
-              <tr>
-                <th scope="col">{t("tasks.col.agent")}</th>
-                <th scope="col">{t("tasks.col.label")}</th>
-                <th scope="col">{t("tasks.col.source")}</th>
-                <Show when={showComputers()}>
-                  <th scope="col">{t("tasks.col.computer")}</th>
-                </Show>
-                <th scope="col">{t("tasks.col.state")}</th>
-                <th scope="col" class={styles.num}>
-                  {t("tasks.col.duration")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={shown()}>
-                {(task) => (
-                  <tr data-testid="task-row" data-state={task.state}>
-                    <td>
-                      <AgentName id={task.agentId} name={task.agentName} />
-                    </td>
-                    <th scope="row">
-                      <button
-                        type="button"
-                        class={styles.rowButton}
-                        onClick={() => setOpenId(task.id)}
-                        data-testid="task-open"
-                      >
-                        {taskTitle(task, t)}
-                      </button>
-                    </th>
-                    <td>{sourceWords(task, t)}</td>
-                    <Show when={showComputers()}>
-                      <td data-testid="task-computer">{computerOf(task)}</td>
-                    </Show>
-                    <td>
-                      <span class={styles.state} data-state={task.state} data-testid="task-state">
-                        <StateIcon state={task.state} />
-                        <TaskStateText task={task} />
-                      </span>
-                      <Show when={task.waitsFor}>
-                        {(name) => (
-                          <div class={styles.muted} data-testid="task-waits">
-                            {t("tasks.waitsFor", { name: name() })}
-                          </div>
-                        )}
-                      </Show>
-                      <BehindLine task={task} testid="task-behind" class={styles.muted} />
-                      <Show when={canRunNext(task, ui.linked())}>
+          <Show
+            when={shown().length > 0}
+            fallback={
+              <p class={styles.muted} data-testid="tasks-no-match">
+                {t("tasks.noMatch")}
+              </p>
+            }
+          >
+            <table class={styles.table} data-testid="tasks-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t("tasks.col.agent")}</th>
+                  <th scope="col">{t("tasks.col.label")}</th>
+                  <th scope="col">{t("tasks.col.source")}</th>
+                  <Show when={showComputers()}>
+                    <th scope="col">{t("tasks.col.computer")}</th>
+                  </Show>
+                  <th scope="col">{t("tasks.col.state")}</th>
+                  <th scope="col" class={styles.num}>
+                    {t("tasks.col.duration")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <For each={shown()}>
+                  {(task) => (
+                    <tr data-testid="task-row" data-state={task.state}>
+                      <td>
+                        <AgentName id={task.agentId} name={task.agentName} />
+                      </td>
+                      <th scope="row">
                         <button
                           type="button"
                           class={styles.rowButton}
-                          onClick={() =>
-                            void call("tasks.runNext", { id: task.id }).catch((e: unknown) => {
-                              const error = describeError(e)
-                              showToast("error", error.key, error.params)
-                            })
-                          }
-                          data-testid="task-run-next"
+                          onClick={() => setOpenId(task.id)}
+                          data-testid="task-open"
                         >
-                          {t("tasks.runNext")}
+                          {taskTitle(task, t)}
                         </button>
+                      </th>
+                      <td>{sourceWords(task, t)}</td>
+                      <Show when={showComputers()}>
+                        <td data-testid="task-computer">{computerOf(task)}</td>
                       </Show>
-                    </td>
-                    <td class={styles.num}>{duration(task)}</td>
-                  </tr>
-                )}
-              </For>
-            </tbody>
-          </table>
+                      <td>
+                        <span class={styles.state} data-state={task.state} data-testid="task-state">
+                          <StateIcon state={task.state} />
+                          <TaskStateText task={task} />
+                        </span>
+                        <Show when={task.waitsFor}>
+                          {(name) => (
+                            <div class={styles.muted} data-testid="task-waits">
+                              {t("tasks.waitsFor", { name: name() })}
+                            </div>
+                          )}
+                        </Show>
+                        <BehindLine task={task} testid="task-behind" class={styles.muted} />
+                        <Show when={canRunNext(task, ui.linked())}>
+                          <button
+                            type="button"
+                            class={styles.rowButton}
+                            onClick={() =>
+                              void call("tasks.runNext", { id: task.id }).catch((e: unknown) => {
+                                const error = describeError(e)
+                                showToast("error", error.key, error.params)
+                              })
+                            }
+                            data-testid="task-run-next"
+                          >
+                            {t("tasks.runNext")}
+                          </button>
+                        </Show>
+                      </td>
+                      <td class={styles.num}>{duration(task)}</td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+          </Show>
         </Show>
       </Show>
       <Presence when={openId()}>

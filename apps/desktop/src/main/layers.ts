@@ -16,6 +16,7 @@ import { Database } from "./services/Database.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { Events } from "./services/Events.ts"
 import { FollowUps } from "./services/FollowUps.ts"
 import { Handbook } from "./services/Handbook.ts"
 import { Handover } from "./services/Handover.ts"
@@ -135,8 +136,10 @@ export const appLayer = (options: AppLayerOptions) => {
   const knowledge = Knowledge.layer.pipe(Layer.provideMerge(agentSettings))
   const tools = Tools.layer.pipe(Layer.provideMerge(knowledge))
   const tasks = Tasks.layer.pipe(Layer.provideMerge(tools))
+  // The events are a record that the routines and the workflows write to (spec 038).
+  const events = Events.layer.pipe(Layer.provideMerge(tasks))
   // The follow-up starts a turn through the chat service, which is built after it (spec 005).
-  const followUps = FollowUps.layer.pipe(Layer.provideMerge(tasks))
+  const followUps = FollowUps.layer.pipe(Layer.provideMerge(events))
   const agents = Layer.mergeAll(Chat.layer, Usage.layer, Organizations.layer).pipe(
     Layer.provideMerge(followUps),
   )

@@ -12,6 +12,7 @@ import type {
 } from "./channels.ts"
 import type { ChatHistory, ChatMessage, ChatSend, QueuedMessage, QueueHold } from "./chat.ts"
 import type { DecisionKeys, DecisionStatus, DecisionTestResult } from "./decision.ts"
+import type { EventResult, RobotEvent } from "./events.ts"
 import type { FollowUp } from "./followUp.ts"
 import type { Handbook, HandbookVersion } from "./handbook.ts"
 import type { HandoverOpen, HandoverState } from "./handover.ts"
@@ -485,6 +486,32 @@ export interface RpcMethods {
   "followups.list": { input: { taskId: string }; output: readonly FollowUp[] }
   /** Deletes one follow-up. No task starts for it. A linked device may call it (spec 005, 012). */
   "followups.remove": { input: { id: string }; output: undefined }
+  /**
+   * The events of a server, newest first, in pages of 50 (spec 038). `result` hides the other
+   * results, and `offset` skips the rows of the pages before.
+   */
+  "events.list": {
+    input: { serverId: string; result?: EventResult; offset?: number }
+    output: readonly RobotEvent[]
+  }
+  "events.get": { input: { id: string }; output: RobotEvent | null }
+  /**
+   * A test of a trigger form (spec 038, "Check where this goes"). It records one event with the
+   * result "would_go" and starts nothing.
+   */
+  "events.test": {
+    input: {
+      serverId: string
+      source: "schedule" | "watch" | "web_hook"
+      type: string
+      subject?: string | null
+      summary: string
+      detail?: string
+      why: string
+      got?: string
+    }
+    output: RobotEvent
+  }
   "channels.list": { input: { serverId: string }; output: readonly Channel[] }
   "channels.create": { input: ChannelCreate; output: Channel }
   "channels.update": { input: { id: string; patch: ChannelPatch }; output: Channel }
@@ -995,6 +1022,8 @@ export interface RpcEvents {
   "memory.changed": { agentId: string }
   /** A follow-up of an agent was made, deleted, or started its task (spec 005, "Follow-up"). */
   "followups.changed": { agentId: string }
+  /** An event of a server was recorded, or the test events of it were trimmed (spec 038). */
+  "events.changed": { serverId: string }
   /** The handbook of a server was saved or restored, here or by sync or a linked device (spec 002). */
   "handbook.changed": { serverId: string }
   "actionLog.changed": Record<string, never>

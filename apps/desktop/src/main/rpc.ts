@@ -11,6 +11,7 @@ import {
   CONNECTION_TOOLS_MAX,
   DEVICE_NAME_MAX,
   DecisionKeys,
+  EVENT_RESULTS,
   HAND_OFF_RULES,
   isClientMethod,
   MEMORY_MODES,
@@ -63,6 +64,7 @@ import { Data } from "./services/Data.ts"
 import { Decision } from "./services/Decision.ts"
 import { Devices } from "./services/Devices.ts"
 import { EventBus } from "./services/EventBus.ts"
+import { Events } from "./services/Events.ts"
 import { AppError } from "./services/errors.ts"
 import { FollowUps } from "./services/FollowUps.ts"
 import { Handbook } from "./services/Handbook.ts"
@@ -825,6 +827,54 @@ export const handlers: Handlers = {
     decode(ById)(input).pipe(
       Effect.flatMap(({ id }) => FollowUps.use((f) => f.remove(id))),
       done,
+    ),
+  "events.list": (input) =>
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        result: Schema.optionalKey(Schema.Literals(EVENT_RESULTS)),
+        offset: Schema.optionalKey(Schema.Number),
+      }),
+    )(input).pipe(
+      Effect.flatMap(({ serverId, result, offset }) =>
+        Events.use((e) =>
+          e.list(serverId, {
+            ...(result ? { result } : {}),
+            ...(offset != null ? { offset } : {}),
+          }),
+        ),
+      ),
+    ),
+  "events.get": (input) =>
+    decode(ById)(input).pipe(Effect.flatMap(({ id }) => Events.use((e) => e.get(id)))),
+  "events.test": (input) =>
+    decode(
+      Schema.Struct({
+        serverId: Schema.String,
+        source: Schema.Literals(["schedule", "watch", "web_hook"]),
+        type: Schema.String,
+        subject: Schema.optionalKey(Schema.NullOr(Schema.String)),
+        summary: Schema.String,
+        detail: Schema.optionalKey(Schema.String),
+        why: Schema.String,
+        got: Schema.optionalKey(Schema.String),
+      }),
+    )(input).pipe(
+      Effect.flatMap((data) =>
+        Events.use((e) =>
+          e.add({
+            serverId: data.serverId,
+            source: data.source,
+            type: data.type,
+            subject: data.subject ?? null,
+            summary: data.summary,
+            detail: data.detail ?? "",
+            why: data.why,
+            got: data.got ?? "",
+            result: "would_go",
+          }),
+        ),
+      ),
     ),
   "channels.list": (input) =>
     decode(Schema.Struct({ serverId: Schema.String }))(input).pipe(

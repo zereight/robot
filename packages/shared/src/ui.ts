@@ -63,6 +63,8 @@ export const UiState = Schema.Struct({
   workflowSideWidth: Schema.Number.check(
     Schema.isBetween({ minimum: WORKFLOW_SIDE_MIN, maximum: WORKFLOW_SIDE_MAX }),
   ),
+  /** The open tab of the Tasks page: the tasks, or the events (spec 038). */
+  tasksTab: Schema.Literals(["tasks", "events"]),
 })
 export type UiState = typeof UiState.Type
 
@@ -78,6 +80,7 @@ export const defaultUiState: UiState = {
   activityPanel: true,
   placeListWidth: PLACE_LIST_DEFAULT,
   workflowSideWidth: WORKFLOW_SIDE_DEFAULT,
+  tasksTab: "tasks",
 }
 
 export const clampPlaceListWidth = (width: number) =>

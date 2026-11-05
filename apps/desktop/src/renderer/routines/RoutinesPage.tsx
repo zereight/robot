@@ -44,6 +44,7 @@ import { Confirm } from "../ui/Confirm.tsx"
 import { Button, Segmented, Switch } from "../ui/controls.tsx"
 import { Dialog } from "../ui/Dialog.tsx"
 import { Presence } from "../ui/Presence.tsx"
+import { showToast } from "../ui/toast.ts"
 import styles from "./routines.module.css"
 import { ScheduleFields } from "./ScheduleFields.tsx"
 import { useIntervalWords, WatchFields } from "./WatchFields.tsx"
@@ -163,6 +164,48 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
     triggerValid() &&
     (!ownModel() || model() !== null) &&
     !busy()
+
+  /**
+   * Records one test event for the trigger of the form, and shows its result (spec 038, "Check
+   * where this goes"). It starts no run and changes no field.
+   */
+  const checkWhereThisGoes = async () => {
+    const serverId = ui.server()?.id
+    if (!serverId) return
+    const w = watch()
+    const kind = trigger() === "watch" ? "watch" : "schedule"
+    const placeText =
+      place() === "agent" ? t("routines.place.agent") : (channels.byId(place())?.name ?? "")
+    const paused = props.routine !== undefined && props.routine.enabled === false
+    try {
+      await call("events.test", {
+        serverId,
+        source: kind,
+        type: kind === "watch" ? "change" : "planned run",
+        subject: name().trim() || null,
+        summary:
+          kind === "watch"
+            ? `Change in ${name().trim() || t("routines.field.name")}`
+            : `Planned run of ${name().trim() || t("routines.field.name")}`,
+        detail:
+          kind === "watch" && w
+            ? w.target.kind === "path"
+              ? w.target.path
+              : w.target.kind === "command"
+                ? w.target.command
+                : `${w.target.connection} · ${w.target.tool}`
+            : "",
+        why: t("events.test.wouldGo", { place: placeText }),
+        got: prompt().trim(),
+      })
+      showToast("success", paused ? "events.test.routinePaused" : "events.test.wouldGo", {
+        place: placeText,
+      })
+    } catch (e) {
+      const error = describeError(e)
+      showToast("error", error.key, error.params)
+    }
+  }
 
   const save = async () => {
     const serverId = ui.server()?.id
@@ -309,6 +352,17 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
             }}
           />
         </Show>
+
+        {/* A test event that starts nothing (spec 038, "Check where this goes"). */}
+        <div class={styles.field}>
+          <Button
+            variant="default"
+            onClick={() => void checkWhereThisGoes()}
+            data-testid="routine-check-where"
+          >
+            {t("events.check")}
+          </Button>
+        </div>
 
         <div class={styles.field}>
           <span>{t("routines.model")}</span>
