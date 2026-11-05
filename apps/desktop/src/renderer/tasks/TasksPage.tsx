@@ -2,6 +2,7 @@ import {
   behindWords,
   catalogues,
   filterTasks,
+  followUpActionKey,
   isActive,
   type MessageKey,
   type Moment,
@@ -201,6 +202,9 @@ const FollowUpRows = (props: { taskId: string }) => {
           {(row) => (
             <li class={styles.followUp} data-testid="task-follow-up">
               <span class={styles.text}>{row.reason}</span>
+              <span class={styles.joinedTime} data-testid="task-follow-up-action">
+                {t(followUpActionKey(row.action))}
+              </span>
               <time class={styles.joinedTime}>{formatTime(app.locale(), row.at)}</time>
               <Show
                 when={deleting() === row.id}

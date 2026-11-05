@@ -3,6 +3,8 @@ import {
   FOLLOW_UP_REASON_MAX,
   FOLLOW_UP_REPLIES,
   FOLLOW_UPS_PER_AGENT_MAX,
+  type FollowUpAction,
+  messageText,
   newTurnMark,
 } from "@robot/shared"
 import { Effect } from "effect"
@@ -25,12 +27,16 @@ const saved: Record<string, string | undefined> = {}
 beforeAll(() => {
   fake = makeFakeRuntimes()
   saved.ROBOT_CLAUDE_BIN = process.env.ROBOT_CLAUDE_BIN
+  saved.ROBOT_CODEX_BIN = process.env.ROBOT_CODEX_BIN
   process.env.ROBOT_CLAUDE_BIN = fake.claude
+  process.env.ROBOT_CODEX_BIN = fake.codex
   fake.setClaude({ loggedIn: true, authMethod: "claude.ai", email: "a@b.c", plan: "max" })
 })
 afterAll(() => {
   if (saved.ROBOT_CLAUDE_BIN === undefined) delete process.env.ROBOT_CLAUDE_BIN
   else process.env.ROBOT_CLAUDE_BIN = saved.ROBOT_CLAUDE_BIN
+  if (saved.ROBOT_CODEX_BIN === undefined) delete process.env.ROBOT_CODEX_BIN
+  else process.env.ROBOT_CODEX_BIN = saved.ROBOT_CODEX_BIN
 })
 
 const until = async (check: () => Promise<boolean> | boolean, ms = 30_000) => {
@@ -42,11 +48,12 @@ const until = async (check: () => Promise<boolean> | boolean, ms = 30_000) => {
   throw new Error("timed out")
 }
 
-const setup = async () => {
+const setup = async (kind: "claude_code" | "codex" = "claude_code") => {
+  if (kind === "codex") fake.setCodex({ loggedIn: true, method: "chatgpt" })
   const t = testRuntime()
   const run = t.runtime.runPromise
   const account = await run(
-    Providers.use((p) => p.connect({ kind: "claude_code", name: "Claude" })),
+    Providers.use((p) => p.connect({ kind, name: kind === "codex" ? "Codex" : "Claude" })),
   )
   const local = await run(Servers.use((s) => s.local))
   const ada = await run(
@@ -56,7 +63,11 @@ const setup = async () => {
         name: "Ada",
         role: "",
         instructions: "You are Ada.",
-        model: { accountId: account.id, model: "sonnet", effort: null },
+        model: {
+          accountId: account.id,
+          model: kind === "codex" ? "gpt-x" : "sonnet",
+          effort: null,
+        },
       }),
     ),
   )
@@ -75,19 +86,29 @@ const setup = async () => {
   /** The follow-ups that wait for this agent. */
   const pending = () => run(FollowUps.use((f) => f.list(ada.id)))
   /** Records a follow-up as the tool does. */
-  const follow = async (minutes: number, reason = "CI of the deploy") => {
+  const follow = async (
+    minutes: number,
+    reason = "CI of the deploy",
+    action: FollowUpAction = "queue",
+  ) => {
     const tasks = await run(Tasks.use((x) => x.list(local.id)))
     const task = tasks.at(-1)
     if (!task) throw new Error("no task")
     await run(
       FollowUps.use((f) =>
-        f.add({ agentId: ada.id, threadId: null, taskId: task.id, reason, minutes }),
+        f.add({ agentId: ada.id, threadId: null, taskId: task.id, reason, minutes, action }),
       ),
     )
   }
+  const streaming = (threadId: string | null = null) =>
+    until(async () =>
+      (await run(Chat.use((c) => c.history(ada.id, threadId)))).messages.some(
+        (m) => m.status === "streaming",
+      ),
+    )
   /** The clock of a look, `minutes` from now, as after the app was off for that time. */
   const later = (minutes: number) => Date.now() + minutes * 60_000
-  return { t, run, local, ada, history, send, settled, pending, follow, later }
+  return { t, run, local, ada, history, send, settled, pending, follow, later, streaming }
 }
 describe("follow-up (spec 005)", () => {
   describe("when an agent asks to look again later", () => {
@@ -200,6 +221,7 @@ describe("follow-up (spec 005)", () => {
               taskId,
               reason: "again",
               minutes: 5,
+              action: "queue",
             }),
           ),
         )
@@ -207,6 +229,106 @@ describe("follow-up (spec 005)", () => {
       await expect(add()).rejects.toThrow()
       expect(await s.pending()).toHaveLength(FOLLOW_UPS_PER_AGENT_MAX)
     })
+  })
+})
+
+describe("When a follow-up is due", () => {
+  describe("with steer while this chat works", () => {
+    test("should join that turn and start no second task", async () => {
+      const s = await setup()
+      await s.send("WAIT 8000")
+      await s.streaming()
+      await s.follow(1, "CI of the deploy", "steer")
+      await s.run(FollowUps.use((f) => f.check(s.later(2))))
+      const note = (await s.history()).messages.find((m) => m.author === "user" && m.unread)
+      expect(note ? messageText(note) : "").toContain("CI of the deploy")
+      await s.settled()
+      const tasks = await s.run(Tasks.use((x) => x.list(s.local.id)))
+      expect(tasks.some((task) => task.source === "follow_up")).toBe(false)
+    }, 30_000)
+  })
+
+  describe("with steer while this chat is idle", () => {
+    test("should start a new turn", async () => {
+      const s = await setup()
+      await s.send("Deploy, then look again.")
+      await s.settled()
+      await s.follow(5, "CI of the deploy", "steer")
+      expect((await s.pending())[0]?.action).toBe("steer")
+      await s.run(FollowUps.use((f) => f.check(s.later(6))))
+      await s.settled()
+      const tasks = await s.run(Tasks.use((x) => x.list(s.local.id)))
+      expect(tasks.some((task) => task.source === "follow_up" && task.state === "done")).toBe(true)
+    })
+  })
+
+  describe("with queue while this chat works", () => {
+    test("should wait and start a new turn after this one", async () => {
+      const s = await setup()
+      await s.send("WAIT 8000")
+      await s.streaming()
+      await s.follow(1, "CI of the deploy", "queue")
+      await s.run(FollowUps.use((f) => f.check(s.later(2))))
+      expect((await s.history()).messages.some((m) => m.unread)).toBe(false)
+      await s.run(Chat.use((c) => c.stop(s.ada.id)))
+      await s.settled()
+      const tasks = await s.run(Tasks.use((x) => x.list(s.local.id)))
+      expect(tasks.some((task) => task.source === "follow_up")).toBe(true)
+    }, 30_000)
+  })
+
+  describe("with steer while another thread works", () => {
+    test("should start a new turn for this chat and not join the other thread", async () => {
+      const s = await setup()
+      const thread = await s.run(Chat.use((c) => c.createThread(s.ada.id)))
+      await s.run(
+        Chat.use((c) =>
+          c.send({ agentId: s.ada.id, text: "WAIT 8000", replyTo: null, threadId: thread.id }),
+        ),
+      )
+      await s.streaming(thread.id)
+      const running = (await s.run(Tasks.use((x) => x.list(s.local.id)))).find(
+        (task) => task.state === "running",
+      )
+      if (!running) throw new Error("no running task")
+      await s.run(
+        FollowUps.use((f) =>
+          f.add({
+            agentId: s.ada.id,
+            threadId: null,
+            taskId: running.id,
+            reason: "CI of the deploy",
+            minutes: 1,
+            action: "steer",
+          }),
+        ),
+      )
+      await s.run(FollowUps.use((f) => f.check(s.later(2))))
+      const main = await s.history()
+      expect(main.messages.some((m) => m.unread)).toBe(false)
+      const queued = (await s.run(Tasks.use((x) => x.list(s.local.id)))).find(
+        (task) => task.source === "follow_up",
+      )
+      expect(queued?.state).toBe("queued")
+      await s.run(Chat.use((c) => c.stop(s.ada.id, thread.id)))
+      await s.settled()
+    }, 30_000)
+  })
+
+  describe("with steer while the program takes no input", () => {
+    test("should wait for a new turn and not join", async () => {
+      const s = await setup("codex")
+      await s.send("SLOW")
+      await s.streaming()
+      await s.follow(1, "CI of the deploy", "steer")
+      await s.run(FollowUps.use((f) => f.check(s.later(2))))
+      expect((await s.history()).messages.some((m) => m.unread)).toBe(false)
+      const [waiting] = (await s.history()).queue
+      expect(waiting?.text).toContain("CI of the deploy")
+      // The note waits in the queue. Remove it before Stop, so the next turn does not read SLOW.
+      if (waiting) await s.run(Chat.use((c) => c.removeQueued(s.ada.id, waiting.id)))
+      await s.run(Chat.use((c) => c.stop(s.ada.id)))
+    }, 30_000)
   })
 })
 
@@ -232,7 +354,9 @@ describe("follow-up의 시간이 지났을 때", () => {
 describe("the tool wait until (spec 007)", () => {
   const exec = (
     runtime: ReturnType<typeof testRuntime>["runtime"],
-    onFollowUp: ((callId: string, reason: string, minutes: number) => string | null) | undefined,
+    onFollowUp:
+      | ((callId: string, reason: string, minutes: number, action: FollowUpAction) => string | null)
+      | undefined,
     args: object,
   ) => {
     const ctx = {
@@ -259,17 +383,17 @@ describe("the tool wait until (spec 007)", () => {
 
   test("it records the follow-up and ends the call", async () => {
     const t = testRuntime()
-    const calls: { reason: string; minutes: number }[] = []
+    const calls: { reason: string; minutes: number; action: FollowUpAction }[] = []
     const outcome = await exec(
       t.runtime,
-      (_callId, reason, minutes) => {
-        calls.push({ reason, minutes })
+      (_callId, reason, minutes, action) => {
+        calls.push({ reason, minutes, action })
         return null
       },
       { reason: "  CI of\n the deploy ", minutes: 15 },
     )
     expect(outcome.failed).toBe(false)
-    expect(calls).toEqual([{ reason: "CI of the deploy", minutes: 15 }])
+    expect(calls).toEqual([{ reason: "CI of the deploy", minutes: 15, action: "queue" }])
     expect(outcome.output).toContain("15 minutes")
   })
 
@@ -282,6 +406,33 @@ describe("the tool wait until (spec 007)", () => {
       })
       expect(outcome.failed).toBe(true)
     }
+  })
+
+  test("steer is recorded, and the reply names both ways", async () => {
+    const t = testRuntime()
+    const calls: FollowUpAction[] = []
+    const outcome = await exec(
+      t.runtime,
+      (_callId, _reason, _minutes, action) => {
+        calls.push(action)
+        return null
+      },
+      { reason: "later", minutes: 5, action: "steer" },
+    )
+    expect(outcome.failed).toBe(false)
+    expect(calls).toEqual(["steer"])
+    expect(outcome.output).toContain("joins that turn")
+  })
+
+  test("an action that is not queue or steer fails the step", async () => {
+    const t = testRuntime()
+    const outcome = await exec(t.runtime, () => null, {
+      reason: "later",
+      minutes: 5,
+      action: "join",
+    })
+    expect(outcome.failed).toBe(true)
+    expect(outcome.output).toBe(FOLLOW_UP_REPLIES.action)
   })
 
   test("a place with no follow-up gets the refusal", async () => {

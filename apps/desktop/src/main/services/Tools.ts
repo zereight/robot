@@ -22,6 +22,8 @@ import {
   connectionCallIsRisky,
   connectionToolLabel,
   FOLLOW_UP_REPLIES,
+  type FollowUpAction,
+  followUpAction,
   type GuardedStep,
   guardDecision,
   HAND_OFF_LIST_EMPTY,
@@ -209,7 +211,12 @@ export interface ToolContext {
    * follow-up is recorded, or the reason of a failure for the step. Absent in a place where a
    * follow-up does not work: a channel, a routine or a workflow step.
    */
-  readonly onFollowUp?: (callId: string, reason: string, minutes: number) => string | null
+  readonly onFollowUp?: (
+    callId: string,
+    reason: string,
+    minutes: number,
+    action: FollowUpAction,
+  ) => string | null
 }
 
 /** What "send message" needs from the chat service, which is built after the tools. */
@@ -423,7 +430,7 @@ const DEFS: Record<string, ToolDef> = {
   wait_until: {
     name: "wait_until",
     description:
-      "Come back to check one thing later, without waiting now. Use it for work that finishes by itself, such as a deploy or a CI run. End your turn after the call. Ask the user with ask_user for a decision.",
+      "Come back to check one thing later, without waiting now. Use it for work that finishes by itself, such as a deploy or a CI run. End your turn after the call. Ask the user with ask_user for a decision. Set action to queue to start a new turn, or steer to join this chat when it is working. Leave action out to start a new turn.",
     schema: object(
       {
         reason: str("What you will look at, in one line."),
@@ -432,6 +439,12 @@ const DEFS: Record<string, ToolDef> = {
           minimum: 1,
           maximum: 1440,
           description: "How many minutes to wait, from 1 to 1440.",
+        },
+        action: {
+          type: "string",
+          enum: ["queue", "steer"],
+          description:
+            "queue starts a new turn. steer joins this chat when it is working, and starts a new turn when it is not.",
         },
       },
       ["reason", "minutes"],
@@ -2384,12 +2397,14 @@ export class Tools extends Context.Service<Tools, ToolsService>()("robot/main/To
             const minutes = args.minutes
             if (!validFollowUpMinutes(minutes))
               return { output: FOLLOW_UP_REPLIES.minutes, failed: true }
+            const action = followUpAction(args.action)
+            if (action === null) return { output: FOLLOW_UP_REPLIES.action, failed: true }
             // A place that is not a direct chat has no follow-up (spec 005). A channel, a routine
             // and a workflow step already have their own way to run work again.
             if (!ctx.onFollowUp) return { output: FOLLOW_UP_REPLIES.place, failed: true }
-            const problem = ctx.onFollowUp(call.id, reason, minutes)
+            const problem = ctx.onFollowUp(call.id, reason, minutes, action)
             if (problem !== null) return { output: problem, failed: true }
-            return { output: FOLLOW_UP_REPLIES.recorded(minutes, reason), failed: false }
+            return { output: FOLLOW_UP_REPLIES.recorded(minutes, reason, action), failed: false }
           }
           case "browser_open":
           case "browser_read":

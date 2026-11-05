@@ -182,9 +182,10 @@ the user gets a card only when the check is sure that the user asked for the ste
 The tool "wait until" lets an agent come back to work that takes time, such as a deploy or a CI
 run, without holding a process open and without the user setting a routine (see 005, "Follow-up").
 
-- The call takes the reason, one line of up to 200 characters, and the delay in minutes.
-- The call records a follow-up and ends at once. It shows a tool card with the reason and the time.
-  It starts no wait, no card and no turn.
+- The call takes the reason, one line of up to 200 characters, the delay in minutes, and an
+  action. The action is "queue" or "steer". No action means "queue" (see 005, "Follow-up").
+- The call records a follow-up and ends at once. It shows a tool card with the reason, the delay,
+  and the action when the agent gave one. It starts no wait, no card that waits, and no turn.
 - Every agent gets the tool, on an API account and on a vendor runtime, because a follow-up is a
   change inside the app and nothing outside it.
 - It is not a step of "Read only": that level lists the tools that it lets run, and this tool is not

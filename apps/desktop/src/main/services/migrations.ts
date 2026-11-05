@@ -1210,4 +1210,11 @@ export const migrations: readonly string[] = [
   CREATE INDEX follow_up_at ON follow_up (at);
   CREATE INDEX follow_up_agent ON follow_up (agent_id);
   `,
+  `
+  -- The action of a follow-up (spec 005, "Follow-up"): "queue" starts a new turn, and "steer"
+  -- joins the running turn of that conversation when the program can take it. Rows from before
+  -- this step start a new turn, which is what every follow-up did. The table does not sync.
+  ALTER TABLE follow_up ADD COLUMN action TEXT NOT NULL DEFAULT 'queue'
+    CHECK (action IN ('queue', 'steer'));
+  `,
 ]

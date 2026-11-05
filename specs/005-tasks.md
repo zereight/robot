@@ -186,40 +186,62 @@ so the user does not need to sit by it.
 
 ## Follow-up
 
-An agent finishes its turn and asks to look at one thing again later. The app starts a new turn
-at that time, so that the agent can check the result of work that takes time, for example a
-deploy or a CI run, without holding a process open and without the user setting a routine.
+An agent finishes its turn and asks to look at one thing again later. The app comes back at that
+time, so that the agent can check the result of work that takes time, for example a deploy or a
+CI run, without holding a process open and without the user setting a routine.
 
-- **Tool**: "wait until" (007). The agent gives the reason, one line of up to 200 characters, and
-  a delay. The delay is a whole number of minutes, from 1 to 1440.
+- **Tool**: "wait until" (007). The agent gives the reason, one line of up to 200 characters, a
+  delay, and an action. The delay is a whole number of minutes, from 1 to 1440. The action is
+  "queue" or "steer". When the agent gives no action, the action is "queue".
+- An action that is not "queue" or "steer" fails the call. The words are "The action must be
+  queue or steer." The turn goes on.
 - The call starts no wait. It records the follow-up and ends the call at once. The agent then
   ends its turn as it does without the call.
 - **A follow-up is a row of its own**: the agent, the conversation (a direct chat or one of its
-  threads), the reason, the time, and the id of the task that made it. It shows in the details of
-  that task and in "Next 24 hours" of the Today page (021).
+  threads), the reason, the action, the time, and the id of the task that made it. It shows in the
+  details of that task and in "Next 24 hours" of the Today page (021). The details name the
+  action: "Starts a new turn" for "queue", and "Joins this chat if it is working" for "steer".
 - A follow-up works in a direct chat and its threads only. A call in a channel, in a workflow step
   or in a routine fails with the reason "A follow-up works in a direct chat." and the turn goes
   on. A channel already has routines (009), and a part of a channel job belongs to a job (004).
-- When the time comes, the app makes a task with the source "follow-up". Its agent is the agent of
-  the follow-up and its place is the same conversation. Its prompt holds the reason and the time
-  of the follow-up, and says that the agent asked for it itself in an earlier turn.
+- The setting "While an agent works, new messages" (003) does not change the action. The action
+  is the choice of the agent.
+- **When the time comes**, the app does what the action says. Then the follow-up is gone. It does
+  one of these, and never both.
+  - **queue**: the app makes a task with the source "follow-up". Its agent is the agent of the
+    follow-up and its place is the same conversation. Its prompt holds the reason and the time
+    of the follow-up, and says that the agent asked for it itself in an earlier turn.
+  - **steer**: when that same conversation has a running turn, and the program of the agent
+    accepts input during a turn (003), the follow-up joins that turn. The text is the same
+    prompt. It shows as a message of the user, with the line "Read at the next step". No second
+    task starts. The agent reads it at the next step, as it reads a message of the user that
+    joins a turn (003). It does not answer a question card. While a question card or an approval
+    card waits, the agent reads it after the user answers the card, or after Stop. A message
+    that the agent did not read when the turn ends starts the next turn (003).
+  - **steer, when it cannot join**: the app makes the task of "queue" instead. This holds when
+    that conversation has no running turn, when the running turn is in another thread, when the
+    running turn is a message from Teams (028), when the user runs a compact, and when the
+    program takes no input during a turn. The message then waits as a "queue" follow-up waits.
 - The task shows in the conversation as a turn, as a run of a routine does (009): the prompt of the
   task is a row of the user, and the reply of the agent follows it. Its label in the Tasks page is
   "Look again: <reason>" (005).
-- The follow-up is deleted when its task is made. A follow-up makes at most one task.
-- **The limits of the request hold**: a follow-up is a new task of its source, so the queue of the
-  agent applies (see "Queue"), the step limit applies, and the chain limit applies. It starts no
-  task while the agent runs another task.
+- The follow-up is deleted when its task is made, or when it joins a turn. A follow-up makes at
+  most one task, or it joins one turn.
+- **The limits of the request hold** for a follow-up that makes a task. It is a new task of its
+  source, so the queue of the agent applies (see "Queue"), the step limit applies, and the chain
+  limit applies. It starts no task while the agent runs another task. A follow-up that joins a
+  turn makes no task, so these limits do not apply to the join.
 - **A blocked follow-up**: when the queue of the agent is full, the task is made as Failed with the
   reason of the queue, as a routine run is (009). The follow-up is gone, and the user sees the
-  failed task. The app makes no second try.
-- **While the app does not run**: no task starts. On the next start, the app makes the task of
-  every follow-up whose time has passed, oldest first. A follow-up that is more than 12 hours late
-  is dropped with no task. A follow-up that is 12 hours late or less starts, and its prompt says
-  how late it is.
+  failed task. The app makes no second try. A follow-up that joins a turn does not meet this case.
+- **While the app does not run**: nothing starts. On the next start, the app handles every
+  follow-up whose time has passed, oldest first. A follow-up that is more than 12 hours late is
+  dropped with no task and no message. A follow-up that is 12 hours late or less is handled, and
+  its prompt says how late it is. A steer follow-up uses the same rules as at any other time.
 - **Stop and delete**: Stop on the task that made the follow-up does not delete it: the call
-  already ended. The user can delete a follow-up in the details of that task, and the app makes no
-  task for it. The delete asks first.
+  already ended. The user can delete a follow-up in the details of that task. The app then makes
+  no task for it and it joins no turn. The delete asks first. The ask says "Delete this? Nothing
+  starts for it."
 - **One agent holds at most 20 follow-ups.** The 21st call fails with the reason "This agent has
   20 follow-ups that wait. Try again later." The turn goes on.
 - A follow-up makes no notification of its own. The task that it starts follows the rules of its
