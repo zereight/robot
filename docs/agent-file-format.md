@@ -100,6 +100,7 @@ same when they differ only in case or in spaces at both ends.
 | `reviewParts` | boolean | no | `false` | The setting "Review parts" of the channel. |
 | `members` | array of strings | yes | | The names of the agents of the file that are members. At least one. A name that appears twice counts once. Every name must be the name of an agent of the file. |
 | `lead` | string or `null` | no | `null` | The name of one of the members. |
+| `parent` | string or `null` | no | `null` | The name of another channel of this file. Absent or `null` means no parent channel. A name that is not a channel of the file, or the channel's own name, is refused. |
 
 The file has no field for a message, a section or a memory note of the channel. The file may not
 hold two channels of one name (ROBot ignores case and spaces at both ends when it compares).
@@ -125,7 +126,7 @@ The export dialog has three tick boxes. All are off at the start.
 
 | Tick box | What the file holds |
 | --- | --- |
-| Channels of these agents | Each channel with at least one member whose members are all among the picked agents. The channel keeps its name, topic, instructions, `reviewParts`, members (in their order) and lead. |
+| Channels of these agents | Each channel with at least one member whose members are all among the picked agents. The channel keeps its name, topic, instructions, `reviewParts`, members (in their order), lead, and the parent channel when that channel is in the file too. |
 | Skills of these agents | Each skill that at least one picked agent may use, on or off, also a skill for all agents. A skill is written with the picked agents that may use it. |
 | Handbook | The text of the handbook of the server. A handbook that is empty is not written. |
 
