@@ -54,6 +54,7 @@ import { outsideSourceText } from "../lib/outside.ts"
 import { call } from "../lib/rpc.ts"
 import { sensitiveLabelText } from "../lib/sensitive.ts"
 import { AgentInLine, AgentName } from "../orgs/AgentName.tsx"
+import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useDevices } from "../state/devices.tsx"
 import { openMemory } from "../state/memoryLink.ts"
@@ -1511,9 +1512,24 @@ export const MessageRow = (props: MessageRowProps) => (
   </Show>
 )
 
+/** The agent who wrote a quoted message, when that agent is still known. */
+function quotedSpeaker(
+  quoted: ChatMessage,
+  current: Agent,
+  lookup: (id: string) => Agent | undefined,
+) {
+  if (quoted.author !== "agent") return undefined
+  const id = quoted.speakerId ?? quoted.agentId
+  const found = lookup(id)
+  if (found) return { id: found.id, name: found.name }
+  if (id === current.id) return { id: current.id, name: current.name }
+  return undefined
+}
+
 const FullMessageRow = (props: MessageRowProps) => {
   const app = useApp()
   const { t } = app
+  const agents = useAgents()
   const orgs = useOrgs()
   const devices = useDevices()
   const [editing, setEditing] = createSignal(false)
@@ -1589,20 +1605,23 @@ const FullMessageRow = (props: MessageRowProps) => {
             >
               <Reply size={12} />
               {/* The sender of the quoted message: an agent has its organization prefix (spec 036). */}
-              {quoted().author === "agent" ? (
-                <AgentInLine
-                  line={(name) =>
-                    t("chat.repliesTo", { name, excerpt: messageText(quoted()).slice(0, 80) })
-                  }
-                  id={props.agent.id}
-                  name={props.agent.name}
-                />
-              ) : (
-                t("chat.repliesTo", {
-                  name: t("chat.you"),
+              <Show
+                when={quotedSpeaker(quoted(), props.agent, (id) => agents.byId(id))}
+                fallback={t("chat.repliesTo", {
+                  name: quoted().author === "agent" ? t("channels.removedAgent") : t("chat.you"),
                   excerpt: messageText(quoted()).slice(0, 80),
-                })
-              )}
+                })}
+              >
+                {(speaker) => (
+                  <AgentInLine
+                    line={(name) =>
+                      t("chat.repliesTo", { name, excerpt: messageText(quoted()).slice(0, 80) })
+                    }
+                    id={speaker().id}
+                    name={speaker().name}
+                  />
+                )}
+              </Show>
             </button>
           )}
         </Show>

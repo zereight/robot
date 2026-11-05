@@ -86,6 +86,11 @@ export interface Agent {
    */
   readonly hold?: ModelHold | null
   readonly workspace: string
+  /**
+   * The name of the caller of a manage tool that made this agent (spec 037, "Made by"). Null for
+   * an agent that the user made. It syncs with the agent (spec 019).
+   */
+  readonly madeBy?: string | null
   /** The built-in section. The user section is `sectionId`. */
   readonly section: "agents"
   /** The user section of the Agents list that holds the agent, or null for "No section". */

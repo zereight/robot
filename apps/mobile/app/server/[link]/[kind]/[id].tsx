@@ -85,7 +85,11 @@ export default function Conversation() {
   const messages: readonly ShownMessage[] = useMemo(
     () =>
       kind === "agent"
-        ? (chat?.messages ?? [])
+        ? (chat?.messages ?? []).map((message) =>
+            message.author === "agent" && message.speakerId
+              ? { ...message, agentId: message.speakerId }
+              : message,
+          )
         : ((data?.channelMessages[id] as readonly ChannelMessage[] | undefined) ?? []),
     [kind, chat, data, id],
   )
@@ -351,8 +355,11 @@ export default function Conversation() {
               ? members
                   .filter((a) => !a.archived)
                   .map((a) => ({ ...a, organization: shownName(a.id, a.name).organization }))
-              : undefined
+              : agents
+                  .filter((a) => !a.archived && a.id !== id)
+                  .map((a) => ({ ...a, organization: shownName(a.id, a.name).organization }))
           }
+          everyone={kind === "channel"}
           working={!!working}
           blocked={blocked}
           reply={reply ? { name: nameOf(reply), text: quoteText(reply) } : null}

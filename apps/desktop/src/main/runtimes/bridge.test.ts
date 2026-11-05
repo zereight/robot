@@ -308,6 +308,12 @@ describe("names of the tools", () => {
     expect(bridgeToolName("Robot-browser_close")).toBe("browser_close")
   })
 
+  test("the manage tools of the main agent show the same way (spec 037)", () => {
+    expect(bridgeToolName("make_agent")).toBe("make_agent")
+    expect(bridgeToolName("mcp__robot__read_agent")).toBe("read_agent")
+    expect(bridgeToolName("mcp__other__make_agent")).toBeNull()
+  })
+
   test("other tools and other servers do not match", () => {
     expect(bridgeToolName("bash")).toBeNull()
     expect(bridgeToolName("mcp__other__browser_open")).toBeNull()

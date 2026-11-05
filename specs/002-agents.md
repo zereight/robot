@@ -154,7 +154,8 @@ The user can ask an agent in plain words to change itself, for example "use a fa
 - The agent cannot change these, from the chat or in any other way: its permission level, the
   rules (007), the workspace folder, computer use, the main agent switch, the memory switch, the
   connections and skills that it may use, saved secrets (020), sync, devices, archive and delete,
-  the fields of other agents, the handbook, the switch "Read the handbook", the memory check
+  the fields of other agents (the main agent can ask for them with the manage tools, 037, and the user
+  allows each change), the handbook, the switch "Read the handbook", the memory check
   (008), the instructions of a channel (004), and the Teams link (028). When the user asks for one
   of these, the agent
   says where in the profile or in settings the user can change it.

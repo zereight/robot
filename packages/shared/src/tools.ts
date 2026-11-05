@@ -114,8 +114,9 @@ export const levelNeedsConfirm = (level: PermissionLevel) => level === "full"
 
 /**
  * The tools of the app that "Read only" lets run: read, list and search files, fetch a web page,
- * ask the user a question, save memory, read an article of knowledge, and list agents. Every other
- * tool is refused, also a tool that the app gets later (spec 007).
+ * ask the user a question, save memory, read an article of knowledge, list and read agents, and
+ * read a skill that the agent may use. Every other tool is refused, also a tool that the app gets
+ * later (spec 007).
  */
 export const READ_ONLY_TOOLS: readonly string[] = [
   "list_files",
@@ -126,19 +127,22 @@ export const READ_ONLY_TOOLS: readonly string[] = [
   "save_memory",
   "read_article",
   "list_agents",
+  "read_agent",
+  "read_skill",
 ]
 
 /**
  * The tools that "Read only" hands to the guard of spec 007 ("Outside content"). The guard decides:
  * it refuses a request for a new secret and a request with a saved secret that uses a method other
- * than GET, and a change of the agent's own settings, and it writes the entry of the action log
- * with the level as the one who decided. A request with a saved secret that uses GET runs, and so
- * does a call of the settings tool that only reads.
+ * than GET, a change of the agent's own settings, and a manage tool (spec 037), and it writes the
+ * entry of the action log with the level as the one who decided. A request with a saved secret that
+ * uses GET runs, and so does a call of the settings tool that only reads.
  */
 export const READ_ONLY_GUARDED_TOOLS: readonly string[] = [
   "ask_secret",
   "secret_request",
   "settings",
+  "make_agent",
 ]
 
 /** True when the level is "Read only" and the tool of the app is not one that it lets run. */

@@ -148,7 +148,7 @@ test("agents by organization: the view, the order, no prefix, read only, rename,
   expect(await blocks(page)).toEqual(["org-section", "org-section", "no-org-section"])
   await expect(prefixes(page)).toHaveCount(0)
   await expect(row(page, "Ada")).toHaveAttribute("draggable", "false")
-  await shot(page, "s132-01-by-organization")
+  await shot(page, "s138-01-by-organization")
 
   // Read only: "New section" is off with its reason, and so is "Move to section" of an agent.
   await page.getByTestId("agents-menu").click()
@@ -218,7 +218,7 @@ test("agents by organization: the view, the order, no prefix, read only, rename,
     page.getByTestId("user-section").locator('[data-place-row][data-place-name="Cy"]'),
   ).toBeVisible()
   await expect(prefixes(page)).toHaveCount(2)
-  await shot(page, "s132-02-my-sections")
+  await shot(page, "s138-02-my-sections")
 
   await app.close()
   await mock.close()

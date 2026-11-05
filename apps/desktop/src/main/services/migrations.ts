@@ -1336,6 +1336,18 @@ export const migrations: readonly string[] = [
     agent_name TEXT NOT NULL
   );
   `,
+  `
+  -- The agent who wrote a reply in another agent's chat (spec 003, "Mention another agent").
+  -- Null means the chat's own agent. The id stays after that agent is deleted, so the row can
+  -- still show a removed face. It syncs with the message (019). An export holds it (014).
+  ALTER TABLE message ADD COLUMN speaker_id TEXT;
+  `,
+  `
+  -- The mark "Made by" (spec 037): the name of the caller of a manage tool that made the agent, as
+  -- it was when the user allowed the request. NULL for an agent that the user made. It syncs with
+  -- the agent (spec 019) and stays after later edits.
+  ALTER TABLE agent ADD COLUMN made_by TEXT;
+  `,
 ]
 
 /**

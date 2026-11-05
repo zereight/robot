@@ -38,6 +38,20 @@ const ChangedBy = (props: { agent: Agent }) => {
   )
 }
 
+/** "Made by <caller>", when a manage tool made the agent (spec 037). It stays after later edits. */
+const MadeBy = (props: { agent: Agent }) => {
+  const app = useApp()
+  return (
+    <Show when={props.agent.madeBy}>
+      {(name) => (
+        <span class={styles.hint} data-testid="agent-made-by">
+          {app.t("agents.madeBy", { name: name() })}
+        </span>
+      )}
+    </Show>
+  )
+}
+
 /**
  * A client sends only what the user changed. A field that did not change is left out, so a
  * stale value cannot make the level looser, and a model whose account was disconnected on the
@@ -249,6 +263,7 @@ export const AgentProfileDialog = (props: { agent: Agent; onClose: () => void })
             </span>
           </Show>
           <ChangedBy agent={props.agent} />
+          <MadeBy agent={props.agent} />
         </div>
         <Show when={error()}>
           {(err) => (

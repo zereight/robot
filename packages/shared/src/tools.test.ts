@@ -115,11 +115,18 @@ describe("permission levels (spec 007)", () => {
     expect(READ_ONLY_TOOLS).toEqual(
       expect.arrayContaining(["read_file", "list_files", "search_files", "fetch_url", "ask_user"]),
     )
-    expect(READ_ONLY_TOOLS).toEqual(expect.arrayContaining(["save_memory", "list_agents"]))
+    expect(READ_ONLY_TOOLS).toEqual(
+      expect.arrayContaining(["save_memory", "list_agents", "read_agent"]),
+    )
   })
 
   test("the tools of saved secrets go to the guard, which refuses a new secret and a method other than GET", () => {
-    expect(READ_ONLY_GUARDED_TOOLS).toEqual(["ask_secret", "secret_request", "settings"])
+    expect(READ_ONLY_GUARDED_TOOLS).toEqual([
+      "ask_secret",
+      "secret_request",
+      "settings",
+      "make_agent",
+    ])
     for (const tool of READ_ONLY_GUARDED_TOOLS)
       expect(readOnlyRefuses("read_only", tool)).toBe(false)
     // Forgetting a secret is a change that nothing hands to the guard: it is refused.

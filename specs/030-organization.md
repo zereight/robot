@@ -288,9 +288,10 @@ More rules:
     can pass it on. Tell the user."
 - A refused send is not a hand-off of the org chart (029). It counts for no limit of 005.
 - The reply of a receiver always comes back to the sender (007). A reply is not a send.
-- The rule does not touch the work that the user gives: a direct chat, a channel job, a mention,
-  `@all`, the fast pick, a routine, a workflow, a card of the board, and the parts that a lead
-  gives in its own channel. Channels give no right to send.
+- The rule does not touch the work that the user gives: a direct chat, a channel job, a mention
+  in a channel or in a direct chat (003, 004), `@all`, the fast pick, a routine, a workflow, a
+  card of the board, and the parts that a lead gives in its own channel. Channels give no right
+  to send.
 - **List agents**: with "Along the organizations", the tool "list agents" (007) gives only the
   agents that the sender may send to. Each row also gives the organization that gives the right
   (the shared one, the one of the lead, or the one of the range), or the words "main agent". The

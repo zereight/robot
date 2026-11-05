@@ -26,7 +26,8 @@ export type TaskState = (typeof TASK_STATES)[number]
  * line"): its source id is the channel of the question, its depth is the depth of the part that
  * asks, and it is a normal source in the queue. "follow_up" is the turn that an agent asked for
  * itself to look at one thing again later (spec 005, "Follow-up"): its depth is 0, and it is a
- * background source.
+ * background source. "mention" is a name in a direct chat (spec 003): its depth is 0, its source
+ * id is the chat's own agent, and the user reads the reply in that chat.
  */
 export const TASK_SOURCES = [
   "chat",
@@ -39,6 +40,7 @@ export const TASK_SOURCES = [
   "memory_check",
   "question",
   "follow_up",
+  "mention",
 ] as const
 export type TaskSource = (typeof TASK_SOURCES)[number]
 

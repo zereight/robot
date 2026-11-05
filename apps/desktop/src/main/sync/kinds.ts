@@ -773,6 +773,7 @@ interface AgentRow {
   sensitive_mark: string | null
   outside_mark: string | null
   read_handbook: number
+  made_by: string | null
   is_main: number
 }
 
@@ -871,6 +872,8 @@ const agent: KindDef = {
     // The switch "Read the handbook" (spec 002, 019). A computer of an older step has none, and the
     // switch counts as on.
     readHandbook: { check: bool },
+    // The mark "Made by" (spec 037, 019). A computer of an older step has none.
+    madeBy: { check: nullable(str(40, 1)) },
     // The switch "Main agent" (spec 002, flow 7, 019). At most one agent on a server has it: when
     // two computers turn it on for two agents while apart, the check at the end of the sync clears
     // the older change (`SyncEngine.repairMain`). A computer of an older step has none, and the
@@ -908,6 +911,7 @@ const agent: KindDef = {
             ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
             : null,
         readHandbook: r.read_handbook === 1,
+        madeBy: r.made_by,
         isMain: r.is_main === 1,
         archived: r.archived_at !== null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
@@ -942,6 +946,7 @@ const agent: KindDef = {
       permission: "ask_all",
       memory_enabled: 1,
       read_handbook: f.readHandbook === false ? 0 : 1,
+      made_by: typeof f.madeBy === "string" ? f.madeBy : null,
       is_main: f.isMain === true ? 1 : 0,
       archived_at: f.archived === true ? now : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
@@ -964,6 +969,7 @@ const agent: KindDef = {
     if (f.role !== undefined) columns.role = (f.role as string).trim()
     if (f.instructions !== undefined) columns.instructions = f.instructions
     if (typeof f.readHandbook === "boolean") columns.read_handbook = f.readHandbook ? 1 : 0
+    if (f.madeBy !== undefined) columns.made_by = typeof f.madeBy === "string" ? f.madeBy : null
     if (typeof f.isMain === "boolean") columns.is_main = f.isMain ? 1 : 0
     if (f.face !== undefined) {
       const face = f.face as { shape: number; hue: number }
@@ -1494,6 +1500,7 @@ interface MessageRow {
   program_mark: string | null
   outside_mark: string | null
   teams_sender: string | null
+  speaker_id: string | null
 }
 
 const errorOf = (r: {
@@ -1546,6 +1553,9 @@ const message: KindDef = {
     // The name of the sender of a message from Teams, as the Teams page showed it (spec 028). It is
     // stored with the message, as the text is. A computer of an older step has none.
     teamsSender: { check: nullable(str(TEAMS_SENDER_MAX * 4)) },
+    // The agent who wrote a reply in another agent's chat (spec 003). Null is the chat's own
+    // agent. A computer of an older step has none.
+    speakerId: { check: nullable(str(100, 1)) },
   },
   required: [
     "agentId",
@@ -1561,7 +1571,16 @@ const message: KindDef = {
     "sender",
     "origin",
   ],
-  fixed: ["agentId", "author", "createdAt", "sender", "origin", "threadId", "teamsSender"],
+  fixed: [
+    "agentId",
+    "author",
+    "createdAt",
+    "sender",
+    "origin",
+    "threadId",
+    "teamsSender",
+    "speakerId",
+  ],
   count: (db) => q.count(db, "message"),
   ids: (db, after, limit) => q.ids(db, "message", after, limit),
   read: (ctx, id) => {
@@ -1585,6 +1604,7 @@ const message: KindDef = {
         programMark: parseOutsideSource(r.program_mark),
         outsideMark: parseOutsideSource(r.outside_mark),
         teamsSender: r.teams_sender,
+        speakerId: r.speaker_id,
       },
       parent: { kind: "agent", id: r.agent_id },
       wall: Math.max(r.created_at, r.finished_at ?? 0, r.edited_at ?? 0),
@@ -1626,6 +1646,7 @@ const message: KindDef = {
       program_mark: markColumn(f.programMark),
       outside_mark: markColumn(f.outsideMark),
       teams_sender: (f.teamsSender as string | null | undefined) ?? null,
+      speaker_id: typeof f.speakerId === "string" ? f.speakerId : null,
     })
     return true
   },

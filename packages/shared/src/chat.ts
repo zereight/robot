@@ -329,6 +329,11 @@ export interface ChatMessage {
    */
   readonly fromTeams?: string
   /**
+   * The agent who wrote this reply in another agent's chat (spec 003, "Mention another agent").
+   * Absent when the chat's own agent wrote it.
+   */
+  readonly speakerId?: string
+  /**
    * A message that the user sent into a running turn and that the agent did not read yet (spec
    * 003): "waiting" can still be deleted, "handed" went to the program already. Null otherwise.
    */
@@ -438,10 +443,16 @@ export const pictureType = (name: string): string | undefined =>
 export const GROUP_WINDOW_MS = 5 * 60 * 1000
 
 /** True when `message` starts a new header group after `previous`. */
+/** The agent a row speaks as: the named agent, or the owner of the chat. */
+const speakerOf = (message: ChatMessage) => message.speakerId ?? message.agentId
+
 export const startsGroup = (previous: ChatMessage | undefined, message: ChatMessage) =>
   !previous ||
   handoverOf(previous) !== undefined ||
   previous.author !== message.author ||
+  (previous.author === "agent" &&
+    message.author === "agent" &&
+    speakerOf(previous) !== speakerOf(message)) ||
   message.createdAt - previous.createdAt > GROUP_WINDOW_MS ||
   !sameDay(previous.createdAt, message.createdAt) ||
   message.replyTo !== null
