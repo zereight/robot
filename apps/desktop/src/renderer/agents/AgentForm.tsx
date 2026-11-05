@@ -79,6 +79,12 @@ export interface AgentFormValues {
   /** Only when an existing agent is edited. */
   memoryEnabled?: boolean
   /**
+   * The switch "Main agent" (spec 002, flow 7). Only when the user changed it in the profile of an
+   * agent on this computer: a stale value cannot take the flag from another agent. A linked
+   * server gets none (spec 012).
+   */
+  isMain?: boolean
+  /**
    * Set when the user picked a starter on this computer that makes more than the three fields: the
    * strings of its routine and its skill, in the language of the pick. The app makes them on
    * Create (spec 002). A linked server gets the three fields only, so a form there sends none.
@@ -139,6 +145,7 @@ export const AgentForm = (props: AgentFormProps) => {
   )
   const [memoryEnabled, setMemoryEnabled] = createSignal(props.agent?.memoryEnabled ?? true)
   const [readHandbook, setReadHandbook] = createSignal(props.agent?.readHandbook ?? true)
+  const [isMain, setIsMain] = createSignal(props.agent?.isMain ?? false)
 
   // What the model is: an API provider, or a vendor program. It decides which line shows under the
   // level, and whether "Read only" can be picked (spec 007).
@@ -340,6 +347,9 @@ export const AgentForm = (props: AgentFormProps) => {
         ...(remote()
           ? {}
           : { sectionId: ui.hasSection("agent", sectionId()) ? sectionId() : null }),
+        ...(props.agent && !remote() && isMain() !== props.agent.isMain
+          ? { isMain: isMain() }
+          : {}),
         ...(props.agent && !remote()
           ? { permission: permission(), memoryEnabled: memoryEnabled() }
           : props.agent || !remote()
@@ -529,6 +539,28 @@ export const AgentForm = (props: AgentFormProps) => {
         </div>
         <span class={styles.hint}>{t("agents.field.handbook.hint")}</span>
       </div>
+      {/* The switch "Main agent" is in the profile of an agent that exists (spec 002, flow 7). A
+          linked computer sees the state and cannot change it (spec 012). */}
+      <Show when={props.agent}>
+        <div class={styles.field}>
+          <div class={styles.switchRow}>
+            <span class={styles.label}>{t("agents.field.main")}</span>
+            <Switch
+              label={t("agents.field.main")}
+              checked={isMain()}
+              onChange={setIsMain}
+              disabled={remote()}
+              testId="agent-main"
+            />
+          </div>
+          <span class={styles.hint}>{t("agents.field.main.hint")}</span>
+          <Show when={remote()}>
+            <span class={styles.hint} data-testid="agent-main-server">
+              {t("agents.field.main.server", { name: ui.server()?.name ?? "" })}
+            </span>
+          </Show>
+        </div>
+      </Show>
 
       <hr class={styles.divider} />
 

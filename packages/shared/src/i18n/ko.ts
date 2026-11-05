@@ -258,6 +258,7 @@ export const ko: Record<MessageKey, string> = {
   "error.agent_not_found": "이 에이전트는 더 이상 없어요.",
   "error.agent_working": "삭제하기 전에 에이전트를 멈춰 주세요.",
   "error.agent_not_archived": "삭제하기 전에 에이전트를 보관해 주세요.",
+  "error.main_agent_archived": "메인 에이전트로 정하기 전에 에이전트를 복원해 주세요.",
   "error.face_image_invalid": "이 파일은 사진으로 쓸 수 없어요.",
   "error.face_image_too_large": "사진이 너무 커요.",
   "error.workspace_failed": "작업 폴더를 만들지 못했어요.",
@@ -1013,6 +1014,12 @@ export const ko: Record<MessageKey, string> = {
   "agents.field.handbook": "핸드북 읽기",
   "agents.field.handbook.hint":
     "켜면 이 에이전트의 모든 턴이 지침보다 먼저 핸드북으로 시작해요. 핸드북을 받으면 안 되는 에이전트는 꺼 주세요.",
+  "agents.field.main": "메인 에이전트",
+  "agents.field.main.hint":
+    "메인 에이전트는 하나뿐이에요. 조직도의 맨 위에 와요. 전달 규칙이 일을 보낼 수 있는 상대를 제한해도, 모든 에이전트는 메인 에이전트에게 일을 보낼 수 있고 메인 에이전트는 모든 에이전트에게 일을 보낼 수 있어요. 여기서 켜면 이전 메인 에이전트는 꺼져요.",
+  "agents.field.main.on": "켜짐",
+  "agents.field.main.off": "꺼짐",
+  "agents.field.main.server": "{name}에서 바꿔 주세요.",
   "channels.instructions": "지침",
   "channels.instructions.hint":
     "모든 멤버와 리드가 이 채널의 모든 턴에서 자기 지침 다음에 이 글을 읽어요. 최대 4,000자까지 쓸 수 있어요.",

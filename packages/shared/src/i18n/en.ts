@@ -258,6 +258,7 @@ export const en = {
   "error.agent_not_found": "This agent does not exist any more.",
   "error.agent_working": "Stop the agent before you delete it.",
   "error.agent_not_archived": "Archive the agent before you delete it.",
+  "error.main_agent_archived": "Restore the agent before you make it the main agent.",
   "error.face_image_invalid": "ROBot cannot use this file as a picture.",
   "error.face_image_too_large": "The picture is too large.",
   "error.workspace_failed": "ROBot could not make the workspace folder.",
@@ -1025,6 +1026,12 @@ export const en = {
   "agents.field.handbook": "Read the handbook",
   "agents.field.handbook.hint":
     "On: each turn of this agent starts with the handbook, before its instructions. Turn it off for an agent that must not get it.",
+  "agents.field.main": "Main agent",
+  "agents.field.main.hint":
+    "Only one agent is the main agent. It is the top of the org chart. When the hand-off rule limits who may send work to whom, every agent can still send work to the main agent, and the main agent can send work to every agent. Turn it on here, and the old main agent loses it.",
+  "agents.field.main.on": "On",
+  "agents.field.main.off": "Off",
+  "agents.field.main.server": "Change this on {name}.",
   "channels.instructions": "Instructions",
   "channels.instructions.hint":
     "Every member and the lead read these in each turn of this channel, after their own instructions. Up to 4,000 characters.",

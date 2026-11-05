@@ -94,6 +94,10 @@ const AgentProfileView = (props: { agent: Agent; onClose: () => void }) => {
         )}
       </Show>
       {line("agents.field.instructions", props.agent.instructions, "agent-view-instructions")}
+      {/* The state of the switch "Main agent" shows when it is on, as the role does (spec 002). */}
+      <Show when={props.agent.isMain}>
+        {line("agents.field.main", t("agents.field.main.on"), "agent-view-main")}
+      </Show>
       {line(
         "agents.field.model",
         props.agent.model?.model ?? t("agents.noModel"),

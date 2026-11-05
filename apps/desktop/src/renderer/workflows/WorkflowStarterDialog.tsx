@@ -1,6 +1,7 @@
 import {
   buildTlaStarter,
   defaultStarterAgent,
+  mainAgentOf,
   starterWorkflowName,
   WORKFLOW_STARTERS,
   type Workflow,
@@ -33,14 +34,16 @@ export const WorkflowStarterDialog = (props: {
   const ui = useUi()
   const agents = useAgents()
   const [starter, setStarter] = createSignal<WorkflowStarterId>(WORKFLOW_STARTERS[0])
-  const [picked, setPicked] = createSignal(defaultStarterAgent(agents.agents()))
+  // The field starts with the main agent (spec 010, 002), or the first agent when there is none.
+  const startAgent = () =>
+    defaultStarterAgent(agents.agents(), mainAgentOf(agents.agents())?.id ?? null)
+  const [picked, setPicked] = createSignal(startAgent())
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<ErrorText>()
   const agentFieldId = "wf-starter-agent-field"
 
   /** The agent that Create uses. An agent that left the list while the box was open does not count. */
-  const agentId = () =>
-    agents.agents().some((a) => a.id === picked()) ? picked() : defaultStarterAgent(agents.agents())
+  const agentId = () => (agents.agents().some((a) => a.id === picked()) ? picked() : startAgent())
 
   const submit = async (event: SubmitEvent) => {
     event.preventDefault()
