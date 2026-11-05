@@ -1306,10 +1306,11 @@ export class Sync extends Context.Service<Sync, SyncService>()("robot/main/Sync"
         // A first copy is checked when it is whole. Changes made since: the check waits for the
         // end of the flow of batches.
         if (parsed.snap === undefined) {
-          // The channel tree (spec 030) and the main agent (spec 002) are checked after the last batch.
+          // The organization tree and the lines (spec 030) and the main agent (spec 002) are
+          // checked after the last batch.
           if (
             result.touches.some(
-              (t) => (t.kind === "channel" || t.kind === "agent") && t.action !== "deleted",
+              (t) => (t.kind === "orgunit" || t.kind === "agent") && t.action !== "deleted",
             )
           )
             repairDue = true
