@@ -217,6 +217,18 @@
   background: transparent;
 }
 
+.menuItemIcon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menuIcon {
+  display: flex;
+  flex: none;
+  color: var(--c-text-muted);
+}
+
 /* Why an item is off. It stands under the item, apart from the button, so the dimmed look of a
    disabled button does not fade it. */
 .menuReason {

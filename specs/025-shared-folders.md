@@ -70,8 +70,9 @@ of a Git repository.
   use, and the error of Git.
 - **Start**: the app makes the copy from the commit that the repository has checked out at that
   moment, on the branch of the part. Changes in the folder that are not committed are not in the
-  copy. The part prompt tells the member that it works in an own copy, the name of the branch,
-  and this fact.
+  copy. The copy is a linked Git worktree, so the first turn in it runs the setup actions marked
+  for an own copy (035) before the member is called. The part prompt tells the member that it
+  works in an own copy, the name of the branch, and this fact.
 - **Where**: in a folder for copies under the default folder for workspaces (013). Never inside
   the repository, and never inside the data folder of ROBot (014).
 - **During the part**: the copy is the workspace of the turn. The workspace of the member counts as

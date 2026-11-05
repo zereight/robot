@@ -69,6 +69,7 @@ import type { SearchPage } from "./search.ts"
 import type { SavedSecret } from "./secrets.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
+import type { SetupList, SetupRunResult } from "./setupActions.ts"
 import type { SkillDraftResult, SkillSourceRef } from "./skillDraft.ts"
 import type { Skill, SkillInput } from "./skills.ts"
 import type { AgentStarterCreate } from "./starters.ts"
@@ -897,6 +898,12 @@ export interface RpcMethods {
   "chat.meter": { input: ThreadRef; output: ChatMeter }
   /** Runs a manual compact of the thread (spec 003, "Compact"). It ends when the compact ends. */
   "chat.compact": { input: ThreadRef; output: undefined }
+  /** The setup actions of the agent's workspace (spec 035). This computer only. */
+  "setup.list": { input: { agentId: string }; output: SetupList }
+  /** Runs the named action in that workspace. The user picked it. */
+  "setup.run": { input: { agentId: string; name: string }; output: SetupRunResult }
+  /** Allows or stops automatic runs of the list in that workspace. */
+  "setup.allow": { input: { agentId: string; on: boolean }; output: SetupList }
   /** The threads of an agent, for the list in the chat header (spec 003, "Threads"). */
   "chat.threads": { input: { agentId: string }; output: ChatThreads }
   "chat.thread.create": { input: { agentId: string }; output: ChatThread }

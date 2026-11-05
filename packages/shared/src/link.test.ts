@@ -251,6 +251,10 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     "workflowFile.export",
     "workflowFile.open",
     "workflowFile.apply",
+    // Setup actions run on the computer that holds the workspace (spec 035).
+    "setup.list",
+    "setup.run",
+    "setup.allow",
   ]
 
   test("no method of sections, knowledge or files is on the list of a client", () => {
@@ -261,7 +265,7 @@ describe("what a client cannot reach: sections, knowledge and files (spec 001, 0
     // Nothing that starts like them is on the list either.
     for (const method of CLIENT_METHODS) {
       expect(method).not.toMatch(
-        /^(sections|browserProfiles|teams|knowledge|agentFile|workflowFile)\./,
+        /^(sections|browserProfiles|teams|knowledge|agentFile|workflowFile|setup)\./,
       )
     }
   })
