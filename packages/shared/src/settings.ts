@@ -2,7 +2,7 @@ import { Schema, Struct } from "effect"
 import { DECISION_CHOICES, DECISION_MODEL_DEFAULT, DECISION_MODEL_MAX } from "./decision.ts"
 import { KEEP_AWAKE_DEFAULT, KEEP_AWAKE_MODES } from "./keepAwake.ts"
 import { DEVICE_NAME_MAX } from "./link.ts"
-import { ISLAND_MODES } from "./notifications.ts"
+import { ISLAND_MODES, ISLAND_WIDTHS } from "./notifications.ts"
 import { STEP_LIMIT_DEFAULT, STEP_LIMIT_MAX, STEP_LIMIT_MIN } from "./steps.ts"
 
 /** "While an agent works, new messages": join the current turn, or wait in a queue. */
@@ -78,6 +78,8 @@ export const Settings = Schema.Struct({
   }),
   /** The status island of macOS. */
   island: Schema.Literals(ISLAND_MODES),
+  /** "Island bar width" (spec 015): "compact" or "wide". A setting of this computer. */
+  islandWidth: Schema.Literals(ISLAND_WIDTHS),
   /** The name that linked devices see. Empty means the name of the computer (spec 012). */
   deviceName: Schema.String.check(Schema.isMaxLength(DEVICE_NAME_MAX)),
   /** "Let other devices connect". Off at first start. */
@@ -157,6 +159,7 @@ export const defaultSettings: Settings = {
     teams_link: true,
   },
   island: "always",
+  islandWidth: "compact",
   deviceName: "",
   acceptLinks: false,
   linkPort: 0,

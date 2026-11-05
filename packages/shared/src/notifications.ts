@@ -18,6 +18,10 @@ export type NotifyKind = (typeof NOTIFY_KINDS)[number]
 export const ISLAND_MODES = ["off", "attention", "always"] as const
 export type IslandMode = (typeof ISLAND_MODES)[number]
 
+/** The width choices of the island bar (spec 015, "Island bar width"). */
+export const ISLAND_WIDTHS = ["compact", "wide"] as const
+export type IslandWidth = (typeof ISLAND_WIDTHS)[number]
+
 export const MUTE_CHOICES = ["off", "1h", "8h", "1d", "forever"] as const
 export type MuteChoice = (typeof MUTE_CHOICES)[number]
 
@@ -253,6 +257,9 @@ export const ISLAND_COUNT_WIDTH = 24
 /** The space at each side of the bar. It is the padding of `.island` in `island.css`. */
 export const ISLAND_PADDING = 14
 
+/** The room that the choice "Wide" adds to each wing of the bar. */
+export const ISLAND_WIDE_EXTRA = 24
+
 /** The place that the mark needs inside a wing of the notch. */
 const markWing = ISLAND_MARK_WIDTH
 
@@ -277,11 +284,19 @@ export const islandWingWidth = (shown: number = ISLAND_WORKING_MAX): number =>
  * behind the notch. The padding at the two sides of the bar is outside the wings. A screen with
  * no notch keeps 340 px.
  */
-export const islandBarWidth = (notchWidth: number, shown: number = ISLAND_WORKING_MAX): number => {
-  if (!(notchWidth > 0)) return ISLAND_BAR_WIDTH
-  return Math.max(
-    ISLAND_BAR_WIDTH,
-    Math.ceil(notchWidth) + islandWingWidth(shown) * 2 + ISLAND_PADDING * 2,
+export const islandBarWidth = (
+  notchWidth: number,
+  shown: number = ISLAND_WORKING_MAX,
+  width: IslandWidth = "compact",
+): number => {
+  // The choice "Wide" adds room to each of the two wings.
+  const extra = width === "wide" ? ISLAND_WIDE_EXTRA * 2 : 0
+  if (!(notchWidth > 0)) return ISLAND_BAR_WIDTH + extra
+  return (
+    Math.max(
+      ISLAND_BAR_WIDTH,
+      Math.ceil(notchWidth) + islandWingWidth(shown) * 2 + ISLAND_PADDING * 2,
+    ) + extra
   )
 }
 

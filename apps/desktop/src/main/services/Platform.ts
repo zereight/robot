@@ -1,4 +1,4 @@
-import type { IslandShape, TeachEvent } from "@robot/shared"
+import type { IslandShape, IslandWidth, TeachEvent } from "@robot/shared"
 import { Context } from "effect"
 import type { TeamsSurface } from "../teams/surface.ts"
 import type { Resolver } from "../web/fetch.ts"
@@ -165,6 +165,8 @@ export interface PlatformService {
   showWindow(): void
   /** The shape of the status island on macOS. Other systems ignore it. */
   setIslandShape(shape: IslandShape): void
+  /** The width choice of the island bar (spec 015). Other systems ignore it. */
+  setIslandWidth(width: IslandWidth): void
   /** The island window takes the size of its content, in px. It stays at the top centre. */
   fitIsland(size: { width: number; height: number }): void
   /** The browser page of an agent. The same agent always gets the same page object. */

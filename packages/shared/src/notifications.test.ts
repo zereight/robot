@@ -244,6 +244,12 @@ describe("When the island bar has a camera notch", () => {
     test("treats a width below zero as no notch", () => {
       expect(islandBarWidth(-10)).toBe(ISLAND_BAR_WIDTH)
     })
+
+    test('"wide" adds 24 px to each wing, with a notch and without one', () => {
+      expect(islandBarWidth(185, undefined, "wide")).toBe(islandBarWidth(185) + 48)
+      expect(islandBarWidth(0, undefined, "wide")).toBe(ISLAND_BAR_WIDTH + 48)
+      expect(islandBarWidth(185, undefined, "compact")).toBe(islandBarWidth(185))
+    })
   })
 })
 
