@@ -190,8 +190,9 @@ export const MessageRow = memo(
 )
 
 /**
- * A run of finished plain tool steps as one muted line, when the switch "Show tool steps" is
- * off. A tap opens it to read the cards. A folded run never holds a card that waits.
+ * A run of plain tool steps as one muted line, when the switch "Show tool steps" is off. A tap
+ * opens it to read the cards. A step that runs is in the run, so the line keeps its place while
+ * the turn goes on (spec 003, 011).
  */
 const ToolsFolded = (props: { readonly tools: readonly ToolPart[] }) => {
   const { t, palette } = useApp()

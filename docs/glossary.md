@@ -164,8 +164,8 @@ A new word goes here in the same pull request as the spec that brings it.
 | Thinking sheet | The sheet on the phone that lists all thoughts of a turn (011). | 생각 보기 (proposed) | log |
 | Share to an agent | The target of the share sheet of the phone that sends an item to an agent (011). | 에이전트에게 공유 (proposed) | export |
 | Find in the chat | The bar of Cmd+F that finds text in the chat that is open (003). | 대화에서 찾기 (proposed) | search (search is Cmd+K, 001) |
-| Folded tool steps | The one line that stands for a run of finished tool steps when the switch "Show tool steps" is off. The user opens it to read the cards (003, 011). | "도구 단계 N개" (proposed) | — |
-| Show tool steps | The switch in Appearance (013) and in the Chat settings of the phone (011). When it is off, finished tool steps fold into one line per run (003). | "도구 단계 표시" (proposed) | — |
+| Folded tool steps | The one line that stands for a run of plain tool steps when the switch "Show tool steps" is off. A step joins the run while it runs, so the line keeps its place. The user opens it to read the cards (003, 011). | "도구 단계 N개" (proposed) | — |
+| Show tool steps | The switch in Appearance (013) and in the Chat settings of the phone (011). When it is off, plain tool steps fold into one line per run (003). | "도구 단계 표시" (proposed) | — |
 | Thought line | The one muted line of a reply that lists every thought of that reply, in order, whether "Show tool steps" is on or off. A model that thinks before each step gives many thoughts; they still show as one line (003, 011). | "생각" | thinking, reasoning |
 | Sound when a task ends | The setting for the sound of a result (015). | 작업이 끝날 때 소리 (proposed) | alert |
 | Keep phones quiet | The setting that holds notices to phones while the user works at the computer (015). | 일하는 동안 폰 알림 보류 (proposed) | focus mode |

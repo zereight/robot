@@ -60,7 +60,7 @@ export const ko: Record<MessageKey, string> = {
   "settings.compactPlaces": "목록 좁게 보기",
   "settings.compactPlaces.hint": "행 높이를 줄여 더 많은 항목을 보여줘요.",
   "settings.showToolSteps": "도구 단계 표시",
-  "settings.showToolSteps.hint": "끄면 끝난 단계를 한 줄로 접어요.",
+  "settings.showToolSteps.hint": "끄면 도구 단계를 묶음마다 한 줄로 접어요.",
   "settings.showOrgPrefix": "에이전트 이름 앞에 조직 표시",
   "settings.showOrgPrefix.hint": "켜면 조직에 속한 에이전트 이름 앞에 그 조직의 이름을 보여줘요.",
   "settings.reduceMotion": "움직임 줄이기",

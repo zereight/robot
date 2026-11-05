@@ -97,6 +97,93 @@ test("tool steps: the switch folds finished steps into one line", async () => {
   await shot(page, "tool-fold-04-dark-folded")
 })
 
+test("tool steps: a run keeps its place and its open line while the turn makes steps", async () => {
+  test.setTimeout(120_000)
+  const mock = await startMockProvider()
+  const { page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  await connectMock(page, mock.openaiUrl, GOOD_KEY)
+  await createAgent(page, "Ada")
+
+  // Off: the run folds. Two steps of 1 second each keep the turn going long enough to look at it.
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("settings-nav-appearance").click()
+  await page.getByTestId("setting-show-tool-steps").click()
+  await expect(page.getByTestId("setting-show-tool-steps")).toHaveAttribute("aria-checked", "false")
+  await page.getByTestId("settings-close").click()
+
+  // The reply is watched for as long as the turn runs: the rows of its body and its height.
+  await page.evaluate(() => {
+    const seen: { rows: string; height: number; open: number }[] = []
+    const stop = window.setInterval(() => {
+      const reply = document.querySelector<HTMLElement>(
+        '[data-testid="message"][data-author="agent"]:last-of-type',
+      )
+      const body = reply?.querySelector<HTMLElement>(":scope > div")
+      if (!reply || !body) return
+      const entry = {
+        rows: [...body.children]
+          .map((el) => el.getAttribute("data-testid") ?? el.tagName.toLowerCase())
+          .join("<"),
+        height: Math.round(reply.getBoundingClientRect().height),
+        open: reply.querySelectorAll("[open]").length,
+      }
+      const last = seen.at(-1)
+      if (
+        !last ||
+        last.rows !== entry.rows ||
+        last.height !== entry.height ||
+        last.open !== entry.open
+      )
+        seen.push(entry)
+    }, 20)
+    ;(window as unknown as { __watch: { seen: typeof seen; stop: number } }).__watch = {
+      seen,
+      stop,
+    }
+  })
+
+  await send(
+    page,
+    `TOOLS ${JSON.stringify([
+      { name: "run_command", args: { command: "sleep 1" } },
+      { name: "run_command", args: { command: "sleep 1" } },
+    ])}`,
+  )
+  // The first step runs, inside the line of the run: the line opens to show it.
+  await expect(page.getByTestId("tools-folded-line")).toBeVisible({ timeout: 20_000 })
+  await page.getByTestId("tools-folded-line").click()
+  await expect(page.getByTestId("tools-folded")).toHaveAttribute("open", "")
+  await settled(page)
+
+  const seen = await page.evaluate(() => {
+    const watch = (window as unknown as { __watch: { seen: unknown[]; stop: number } }).__watch
+    window.clearInterval(watch.stop)
+    return watch.seen as { rows: string; height: number; open: number }[]
+  })
+  // No card of a step of the run ever stood alone: a card that shows and then goes into the line
+  // is what moved the reply on every step of a long turn.
+  expect(seen.filter((entry) => entry.rows.endsWith("tool-card")).length).toBe(0)
+  // One thought line, and one line of a run, from the first step to the last.
+  const rowsAtEnd = seen.at(-1)?.rows ?? ""
+  expect(rowsAtEnd.match(/tools-folded/g) ?? []).toHaveLength(1)
+
+  // The line that the user opened is still open, with the two cards in it.
+  await expect(page.getByTestId("tools-folded")).toHaveAttribute("open", "")
+  await expect(page.locator('[data-testid="tool-card"]:visible')).toHaveCount(2)
+  await shot(page, "tool-fold-08-run-keeps-its-line")
+
+  // A change of the theme draws the chat again. The line stays open, because the row of a place is
+  // not made again (spec 003).
+  await page.getByTestId("open-settings").click()
+  await page.getByTestId("settings-nav-appearance").click()
+  await page.getByTestId("setting-theme").locator('label[data-value="dark"]').click()
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+  await page.getByTestId("settings-close").click()
+  await expect(page.getByTestId("tools-folded")).toHaveAttribute("open", "")
+  await expect(page.locator('[data-testid="tool-card"]:visible')).toHaveCount(2)
+  await shot(page, "tool-fold-09-run-open-dark")
+})
+
 test("tool steps: a reply that thinks before every step shows one thought and one run", async () => {
   test.setTimeout(120_000)
   const mock = await startMockProvider()

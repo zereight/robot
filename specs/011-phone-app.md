@@ -30,9 +30,10 @@ The user follows and directs agents from an iPhone or Android phone while away f
    user sections, also when the computer shows that view (001, "Agents by organization").
 3. **Conversation**: message rows as on desktop, Markdown, tool cards (tap for details), the
    message box with attach (photos, files), stop, and reply. When the switch "Show tool steps"
-   in Settings is off, each run of finished plain tool steps shows as one muted line with the
-   count, and a tap opens it to read the cards. A step that runs, waits, failed, was refused, or
-   carries a note always shows as its own card (003, "Folded tool steps").
+   in Settings is off, each run of plain tool steps shows as one muted line with the count, and a
+   tap opens it to read the cards. A step that runs joins its run, so the line keeps its place
+   while the turn goes on. A step that waits, failed, was refused, or carries a note shows as its
+   own card (003, "Folded tool steps").
 4. **Approvals**: approval and question cards can be answered in the conversation or from a
    notification. A question card shows the look of the lead, its pass line and "Answered by
    <lead>" with the reason (004). The button "Correct" is on the computer only in this version.
@@ -186,6 +187,7 @@ start a handover (003) and does not make a skill from work (017). It shows the m
 - Open the screen "Org chart": it lists the main agent, each organization with its members and
   lead, and the hand-offs of the last 7 days. A tap on an agent opens its chat. With the computer
   off, the screen says so and shows no list (029).
-- Turn off "Show tool steps" in Settings: a reply with finished steps shows one folded line per
-  run, and a tap opens the cards. A step that waits still shows as its own card. A reply that
-  thinks before each of its steps shows one thought line, and its steps fold as one run.
+- Turn off "Show tool steps" in Settings: a reply with plain steps shows one folded line per run,
+  and a tap opens the cards. A step that waits still shows as its own card. A step that runs
+  joins its run, and the line keeps its place while the turn goes on. A reply that thinks before
+  each of its steps shows one thought line, and its steps fold as one run.

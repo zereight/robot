@@ -59,7 +59,7 @@ export const en = {
   "settings.compactPlaces": "Compact place list",
   "settings.compactPlaces.hint": "Show more places with shorter rows.",
   "settings.showToolSteps": "Show tool steps",
-  "settings.showToolSteps.hint": "When off, finished steps fold into one line.",
+  "settings.showToolSteps.hint": "When off, tool steps fold into one line for each run.",
   "settings.showOrgPrefix": "Show the organization before an agent name",
   "settings.showOrgPrefix.hint": "When on, an agent in an organization shows as [Docs] Ada.",
   "settings.reduceMotion": "Reduce motion",
