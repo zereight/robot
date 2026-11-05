@@ -415,8 +415,9 @@ describe("at the limit", () => {
     const s = await setup()
     const ada = await s.agent("Ada")
     const bo = await s.agent("Bo")
-    await s.org("zeta", [ada.id], { dailyTokenLimit: 10_000 })
-    await s.org("Alpha", [ada.id, bo.id], { dailyTokenLimit: 10_000 })
+    // Ada is in two organizations, so they are on one line (spec 030, "One line"): zeta is under Alpha.
+    const alpha = await s.org("Alpha", [ada.id, bo.id], { dailyTokenLimit: 10_000 })
+    await s.org("zeta", [ada.id], { parentId: alpha.id, dailyTokenLimit: 10_000 })
     await s.mention("Ada", 20_000)
     expect((await s.mention("Ada", 5))?.error?.detail).toBe("Alpha")
     // Bo is only in Alpha, which counts the tokens of Ada too.
@@ -427,8 +428,9 @@ describe("at the limit", () => {
     const s = await setup()
     const ada = await s.agent("Ada")
     const bo = await s.agent("Bo")
-    await s.org("Docs", [ada.id], { dailyTokenLimit: 50_000 })
-    await s.org("Ops", [ada.id, bo.id], { dailyTokenLimit: 10_000 })
+    // Docs is under Ops, so Ada can be in both (spec 030, "One line").
+    const ops = await s.org("Ops", [ada.id, bo.id], { dailyTokenLimit: 10_000 })
+    await s.org("Docs", [ada.id], { parentId: ops.id, dailyTokenLimit: 50_000 })
     await s.mention("Bo", 12_000)
     expect((await s.mention("Ada", 5))?.error?.detail).toBe("Ops")
   })
@@ -464,7 +466,8 @@ describe("the usage page", () => {
     const bo = await s.agent("Bo")
     const product = await s.org("Product", [ada.id], { dailyTokenLimit: 100_000 })
     const docs = await s.org("Docs", [bo.id], { parentId: product.id, dailyTokenLimit: 50_000 })
-    await s.org("Ops", [bo.id])
+    // Bo is in Docs, so it cannot be in the top organization Ops (spec 030, "One line").
+    await s.org("Ops", [])
     await s.mention("Bo", 20_000)
     expect(await s.usage()).toEqual([
       { orgId: docs.id, name: "Docs", used: 20_000, limit: 50_000 },
