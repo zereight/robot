@@ -13,6 +13,12 @@
   --radius-s: 4px;
   --radius-m: 8px;
   --radius-l: 12px;
+  /* Space steps for padding, gap and margin (DESIGN.md, "spacing"). */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
   /* Text steps. The root size scales all of them (see Settings).
      Two neighbouring steps are always at least 1.11 apart, so a heading reads as a heading.
      The smallest step is a label, and it stays readable at the small setting: 0.875rem is
