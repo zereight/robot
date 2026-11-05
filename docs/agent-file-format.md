@@ -114,6 +114,7 @@ hold two channels of one name (ROBot ignores case and spaces at both ends when i
 | `description` | string | no | `""` | At most 140 characters after ROBot removes spaces at both ends. |
 | `instructions` | string | yes | | 1 to 20 000 characters, not only spaces. |
 | `agents` | array of strings | yes | | The names of the agents of the file that may use the skill. At least one. Every name must be the name of an agent of the file. |
+| `channels` | array of strings | no | none | The names of channels of this file that are in the skill's list. A name that is not a channel of the file is refused. A name that appears twice counts once. Absent means the skill names no channel. |
 
 A skill that every agent may use has no special form in the file: ROBot writes the names of the
 agents of the file. The file never says "all agents", so an import cannot give a skill to an agent
@@ -128,7 +129,7 @@ The export dialog has three tick boxes. All are off at the start.
 | Tick box | What the file holds |
 | --- | --- |
 | Channels of these agents | Each channel with at least one member whose members are all among the picked agents. The channel keeps its name, topic, instructions, `reviewParts`, members (in their order), lead, the daily token limit when it is on, and the parent channel when that channel is in the file too. |
-| Skills of these agents | Each skill that at least one picked agent may use, on or off, also a skill for all agents. A skill is written with the picked agents that may use it. |
+| Skills of these agents | Each skill that at least one picked agent may use, on or off, also a skill for all agents. A skill is written with the picked agents that may use it, and with the channels of its list that are in the file. |
 | Handbook | The text of the handbook of the server. A handbook that is empty is not written. |
 
 A channel that is archived stays out of the file (a channel cannot be archived in this version of

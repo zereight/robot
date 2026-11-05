@@ -1117,6 +1117,50 @@ describe("team file: channels, skills and the handbook", () => {
     expect(imported.map((c) => [c.name, c.dailyTokenLimit])).toEqual([["Duo", 50_000]])
   })
 
+  test("a skill keeps the channels of its list that are in the file", async () => {
+    const source = await setup()
+    const { ada, bob } = await team(source)
+    const product = await source.run(
+      Channels.use((c) =>
+        c.create({
+          serverId: source.server.id,
+          name: "Product",
+          topic: "",
+          memberIds: [ada.id, bob.id],
+          leadId: null,
+        }),
+      ),
+    )
+    const trio = (await channelsOf(source)).find((c) => c.name === "Trio")
+    if (!trio) throw new Error("no channel")
+    await source.run(
+      Skills.use((k) =>
+        k.create(
+          source.server.id,
+          { name: "Release notes", description: "Notes", instructions: "Write the notes." },
+          [ada.id],
+          [product.id, trio.id],
+        ),
+      ),
+    )
+    const path = join(source.dataDir, "skill-channels.json")
+    await exportTeam(source, path, [ada.id, bob.id], { channels: true, skills: true })
+    const written = JSON.parse(readFileSync(path, "utf8")).skills as {
+      name: string
+      channels?: string[]
+    }[]
+    expect(written.find((k) => k.name === "Release notes")?.channels).toEqual(["Product"])
+
+    const app = await setup()
+    const result = await importTeam(app, path)
+    expect(Exit.isSuccess(result)).toBe(true)
+    const importedChannels = await channelsOf(app)
+    const productId = importedChannels.find((c) => c.name === "Product")?.id
+    const skill = (await skillsOf(app)).find((k) => k.name === "Release notes")
+    if (!productId || !skill) throw new Error("missing")
+    expect(skill.channelIds).toEqual([productId])
+  })
+
   test("a parent that is not in the file is left out", async () => {
     const source = await setup()
     const { ada, bob } = await team(source)

@@ -367,6 +367,19 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
     })
   })
 
+  test("a skill keeps channel names that are channels of the file", () => {
+    const text = file(two, {
+      channels: [channel({ name: "Product" })],
+      skills: [skill({ channels: [" product ", "Product"] })],
+    })
+    const result = parseAgentFile(text)
+    if (!result.ok) throw new Error("refused")
+    expect(result.file.skills[0]?.channels).toEqual(["product"])
+    expect(refused(file(two, { skills: [skill({ channels: ["Missing"] })] })).detail).toBe(
+      "skills[0].channels[0]",
+    )
+  })
+
   test("reads a skill with the agents of the file that may use it", () => {
     const result = parseAgentFile(
       file(two, { skills: [skill({ name: "/Summarise ", agents: ["bob", "Ada"] })] }),
@@ -378,6 +391,7 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
         description: "Short summary",
         instructions: "Summarise the text.",
         agents: [1, 0],
+        channels: [],
       },
     ])
   })
@@ -392,6 +406,8 @@ describe("parseAgentFile, version 2: channels, skills and the handbook", () => {
     )
     expect(refused(skills({ instructions: 5 })).code).toBe("agent_file_field")
     expect(refused(skills({ agents: [] })).detail).toBe("skills[0].agents")
+    expect(refused(skills({ channels: "Product" })).detail).toBe("skills[0].channels")
+    expect(refused(skills({ channels: [""] })).detail).toBe("skills[0].channels[0]")
     expect(refused(skills({ agents: ["Zed"] }))).toEqual({
       ok: false,
       code: "agent_file_member",

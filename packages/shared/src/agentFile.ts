@@ -71,6 +71,11 @@ export interface AgentFileSkill {
   readonly instructions: string
   /** The agents of the file that may use the skill. At least one. */
   readonly agents: readonly number[]
+  /**
+   * The names of the channels of this file that are in the skill's list (spec 030). Empty when
+   * the skill names none, or when those channels are not in the file.
+   */
+  readonly channels: readonly string[]
 }
 
 export interface AgentFile {
@@ -319,6 +324,8 @@ const readSkill = (value: unknown, path: string, keys: readonly string[]): Step<
   if (problem) return fail("agent_file_field", `${path}.${problem.field}`)
   const readAgents = readAgentNames(value.agents, keys, `${path}.agents`)
   if (!readAgents.ok) return readAgents
+  const readChannels = readSkillChannels(value.channels, `${path}.channels`)
+  if (!readChannels.ok) return readChannels
   return {
     ok: true,
     value: {
@@ -326,8 +333,28 @@ const readSkill = (value: unknown, path: string, keys: readonly string[]): Step<
       description: (description ?? "").trim(),
       instructions,
       agents: readAgents.value,
+      channels: readChannels.value,
     },
   }
+}
+
+/** Channel names on a skill. Absent means none. A name that is listed twice counts once. */
+const readSkillChannels = (value: unknown, path: string): Step<string[]> => {
+  if (value === undefined) return { ok: true, value: [] }
+  if (!Array.isArray(value)) return fail("agent_file_field", path)
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (const [k, entry] of value.entries()) {
+    if (typeof entry !== "string") return fail("agent_file_field", `${path}[${k}]`)
+    const name = entry.trim()
+    if (name === "" || charLength(name) > CHANNEL_NAME_MAX)
+      return fail("agent_file_field", `${path}[${k}]`)
+    const key = channelNameKey(name)
+    if (seen.has(key)) continue
+    seen.add(key)
+    names.push(name)
+  }
+  return { ok: true, value: names }
 }
 
 /** Reads a list of a file that is absent or an array, with a limit on its length. */
@@ -417,6 +444,13 @@ export const parseAgentFile = (text: string): AgentFileParse => {
     if (key === channelNameKey(channel.name) || !channelKeys.has(key))
       return fail("agent_file_field", `channels[${i}].parent`)
   }
+  // A channel on a skill must be a channel of this file (spec 030).
+  for (const [i, skill] of skills.value.entries()) {
+    for (const [j, name] of skill.channels.entries()) {
+      if (!channelKeys.has(channelNameKey(name)))
+        return fail("agent_file_field", `skills[${i}].channels[${j}]`)
+    }
+  }
   const skillKeys = new Set<string>()
   for (const skill of skills.value) {
     const key = skillNameKey(skill.name)
@@ -465,6 +499,8 @@ export interface AgentFileSkillOut {
   readonly description: string
   readonly instructions: string
   readonly agents: readonly string[]
+  /** Channel names in this file. Absent or empty: the skill names no channel. */
+  readonly channels?: readonly string[]
 }
 
 /** The parts that a file holds besides its agents. A part that is absent is not written. */
@@ -520,6 +556,7 @@ export const writeAgentFile = (
               description: k.description,
               instructions: k.instructions,
               agents: k.agents,
+              ...(k.channels && k.channels.length > 0 ? { channels: k.channels } : {}),
             })),
           }
         : {}),
