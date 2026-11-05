@@ -13,7 +13,7 @@ new user knows where to look.
   order of pairing. A linked tile shows the first letter of the computer's name and the
   connection state (012).
 - **Page buttons**: under the servers, icon buttons open whole pages: agents and chats, Today
-  (see 021), workflows, tasks, the board (see 024), the org chart (see 029), usage. At the bottom: help and settings, then the profile button
+  (see 021), workflows, tasks, the board (see 024), the org chart (see 029), test devices (see 032), usage. At the bottom: help and settings, then the profile button
   when the computer has two or more profiles (see 022). The Today button shows a badge with the
   number of items in "Needs you" (021). The badge hides at 0, and it reads "99+"
   above 99. It hides when a linked server is on the screen.
@@ -25,7 +25,15 @@ new user knows where to look.
 - **User section**: a group that the user makes inside Channels or inside Agents. It holds places
   of that one kind. See "User sections".
 - **Conversation**: the main area. A header line, the messages, and the message box at the bottom.
-- **Activity panel**: an optional column at the right. In a channel it shows who works on what.
+- **Activity panel**: a panel that shows who works on what in a channel, and the running tasks of a
+  direct chat. It uses the panel column.
+- **Panel column**: an optional column at the right of the window, used by one panel at a time: the
+  activity panel, or the panel of the test devices connection (032). Each panel keeps its own width
+  and its own open state. The user drags the left edge of the column to change its width, between 320
+  and 720 px. The header buttons switch between the two panels.
+- **Frame**: the part of the window that shows a panel of a program of another vendor (018, 032). It
+  has a thin border, it fills the column, and it has no address of its own: the app gives it the
+  addresses it may reach.
 
 ## Flows
 
@@ -37,7 +45,8 @@ new user knows where to look.
    role line matches, and a group of matching messages (see "Message search"). Escape clears
    it.
 4. The user collapses a section by clicking its name. The app remembers this per section.
-5. The user hides or shows the activity panel with a header button. The app remembers this.
+5. The user hides or shows the panel column with a header button. The app remembers this, and which
+   panel it holds.
 6. The user drags the edge of the place list to change its width, between 200 and 400 px.
 7. The user clicks the add button on the rail. A dialog opens: "Connect to a computer" (012).
    The user can also remove a linked tile with its context menu.
@@ -199,8 +208,10 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 ## Header
 
-- Direct chat: the agent's face, name, model, the context meter (see 003), and the list of threads.
+- Direct chat: the agent's face, name, model, the context meter (see 003), the list of threads, and
+  the "Device" button (see 032).
 - Channel: `#`, the name, a thin divider, then the topic in muted text. The topic truncates.
+- A conversation on a linked computer (012) shows no "Device" button.
 
 ## States
 
@@ -211,7 +222,9 @@ The Channels section holds channel sections. The Agents section holds agent sect
 
 ## Rules
 
-- Window width under 800 px: the rail narrows to 56 px and the activity panel closes.
+- Window width under 800 px: the rail narrows to 56 px, and the panel column closes.
+- The panel column shows one panel. A press on a header button of the other panel switches to it.
+  The app remembers which one is open.
 - The rail leaves room for the window buttons at the top left.
 - The rail, the place list, the pages and the selection belong to the open profile. A switch of
   profile changes all of them, and each profile keeps its own selection (022).
@@ -231,7 +244,7 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - Selecting a server, then a place, opens the right conversation; the selection survives a
   restart. This also holds for a linked computer.
 - The add button opens the connect dialog.
-- At 760 px width, the activity panel is hidden and the rail is 56 px wide.
+- At 760 px width, the panel column is closed and the rail is 56 px wide.
 - Make the agent section "Research", then use "Move to section" on one agent: the agent shows
   under "Research" and not among the other agents. After a restart, it still does.
 - Make the agent section "Research" again, with another case ("research"): the app refuses it. Make

@@ -22,6 +22,12 @@ The user sets the app up the way they like in one place.
   list on/off, reduce motion (follow the system by default), and "Show tool steps" (on or off;
   the default is on), which folds each run of finished plain tool steps into one muted line with
   the count when off (see 003, "Folded tool steps").
+- **Test devices**: the switch "Test devices", off by default. When it is on, the section shows the
+  state of the download, of the server and of each tool that a test device needs, the version, the
+  size, the source, "Download", "Delete", "Check for a new version" and "Update", and "Delete all
+  measurements, screen maps and performance files", which asks first (see 032 to 034). One muted
+  line says that the program is from another vendor, that it runs with the rights of the user, and
+  what its panel does not do (032, "Rules").
 - **Providers**: see 006.
 - **Decision model**: the fast model for channel picks, computer use and permission checks. See
   "Decision model".
@@ -32,7 +38,8 @@ The user sets the app up the way they like in one place.
   secrets, and the switch "Allow saved secrets on this computer and the local network" (see
   020).
 - **Skills**: the saved instructions that the user calls with a slash. See 017.
-- **Connections**: the outside tools that agents can use. See 018.
+- **Connections**: the outside tools that agents can use. See 018. A built-in connection has no row
+  here; its feature holds its page and its switch.
 - **Outside programs**: programs on this computer that may read and send work in ROBot. See 023.
 - **Organization**: the hand-off rule ("Any agent" or "Along the channels") and the switch "Ask
   up the line", off at first. See 030. These two sync like the handbook (019).

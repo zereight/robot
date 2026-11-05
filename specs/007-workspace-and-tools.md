@@ -13,7 +13,8 @@ Each agent works in its own folder with real tools, and the user stays in contro
   window, ask the user a question, message other agents, read and run workflows (see 010), search
   and read past chats (see "Searching past chats"), use the computer (see "Computer use"), use
   the tools of the connections that the user added (see 018), read and change its own settings
-  (see 002, "Changes from the chat"), and ask for and use saved secrets (see 020).
+  (see 002, "Changes from the chat"), ask for and use saved secrets (see 020), and use the tools of
+  the built-in connection "Test devices" (see 032 to 034).
 - **Permission level** per agent: "Read only", "Ask for everything", "Ask for risky steps"
   (default), "Ask when unsure", or "Full access". The list goes from the strictest to the loosest
   level. A linked
@@ -72,6 +73,9 @@ Each agent works in its own folder with real tools, and the user stays in contro
   runtime of that agent, for example which mode of the program the app sets. For an agent that
   uses the tools of the app, it tells that the app decides each step.
 - A linked device can set "Read only" and every other stricter level (012).
+- Test device steps (032 to 034) follow the table in 032, "Rules", and not the rules of this section
+  for other steps. At "Read only", reads run, and every change and erase step is refused. Their
+  cards never offer "Always allow", and no Allow rule covers them.
 
 ## Ask when unsure
 
@@ -89,7 +93,10 @@ the user gets a card only when the check is sure that the user asked for the ste
   - a change to a control place, and a fetch of a local address (see "Sensitive places").
 - **Checked steps** are the other risky steps (see "Rules"): commands that use the network to send
   data, installing software, and a call of a tool of a connection (018). A step that is not risky
-  runs with no question, as at "Ask for risky steps".
+  runs with no question, as at "Ask for risky steps". A step of the built-in connection "Test
+  devices" (032) is never a checked step: the check reads the words of the user and the kind of the
+  step, and never the arguments of a tool of a connection, so it cannot see which test device or
+  which app the step would change.
 - A checked step goes to the check only when all of these are true. Otherwise it asks the user
   with the normal approval card, and the decision model gets no request:
   - the turn holds no outside content (see "Outside content"). Outside text can steer what the
@@ -352,7 +359,8 @@ at all.
 
 ## Action log
 
-The action log lets the user see what the agents did, and why a step ran or did not run.
+The action log lets the user see what the agents did, and why a step ran or did not run. Device
+steps (032 to 034) have entries too.
 
 - One entry for each step of the four kinds in "Permission rules". An entry holds: the time, the
   agent, the step kind, a short target, who decided, and the result.
@@ -390,6 +398,8 @@ text is in the turn.
   - the text that an agent wrote on a card of the board (024),
   - a message of an outside program (023),
   - a message from Teams (028),
+  - the text that a test device shows or logs (032 to 034), such as a screen snapshot, a log line or a
+    value of app data,
   - a hit of "search chats", or a message in a result of "read chat" (see "Searching past
     chats"), when the user did not write that message. A line for a tool step in such a result is
     not outside content, because it holds no text of the step.
@@ -470,6 +480,9 @@ name these places. The app compares real paths, as for rules (see "Permission ru
   - "Keychain": the keychains of the user.
   - "Browser data": the profile folders of web browsers.
   - "ROBot data": the data folder of ROBot (014).
+  - "Test app data": the data of an installed app on a test device, which the app reads through the
+    tool of 034. It is not a folder of this Mac, so the app does not compare a path for it; the label
+    is the same.
 - **Control places**:
   - the start files of shells in the home folder,
   - the folders of login items and background items (LaunchAgents and LaunchDaemons), in the home
@@ -488,10 +501,14 @@ name these places. The app compares real paths, as for rules (see "Permission ru
   - a file step that reads a file in a credential place, or lists or searches such a folder,
   - a shell command whose text names a credential place, with `~`, `$HOME` or the full path, or
     that runs the program `security` with a subcommand that prints a password or dumps a
-    keychain.
+    keychain,
+  - a device step that reads app data (034). It is the only step of this kind that is not a file
+    step or a command, because the data is not on this Mac.
 - The app looks at the text of the command. A command can hide a path, for example in a variable.
-  So the mark helps, but it is not a wall. The browser, the tools of a connection and the messages
-  to other agents are not covered in this version.
+  So the mark helps, but it is not a wall. The browser, the tools of a connection that the user adds
+  and the messages to other agents are not covered in this version. A device step of 032 that reads
+  app data is covered, and so is a device step that opens a link with an address that the agent
+  writes.
 - A turn **holds a sensitive read** from the first such step until the turn ends. A later turn
   holds it by the same rules as outside content: an earlier turn that the agent still sees, a
   compact, a fork, a channel, a part of a job, and "The mark of a place" with "Clear" (see "Outside
@@ -501,9 +518,11 @@ name these places. The app compares real paths, as for rules (see "Permission ru
 - In a turn that holds a sensitive read:
   - A step that sends data out asks the user with an approval card, also when an Allow rule
     matches. This holds at "Read only", "Ask for everything", "Ask for risky steps" and "Ask when
-    unsure". These steps are a command that uses the network to send data, and a fetch of a web
-    page. The card has Allow once and Deny only, and the line "This turn read a place with keys
-    or logins." A Deny rule still refuses the step. At "Read only", the commands stay refused.
+    unsure". These steps are a command that uses the network to send data, a fetch of a web page, and
+    a device step that opens a link with an address that the agent writes (032). The last one can
+    carry a value of app data to another site in the address. The card has Allow once and Deny only,
+    and the line "This turn read a place with keys or logins." A Deny rule still refuses the step. At
+    "Read only", the commands stay refused.
   - No step goes to the check of "Ask when unsure".
   - At "Full access", these steps run with no question.
 - The action log says, in the entry of each step, whether the turn held a sensitive read.

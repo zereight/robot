@@ -50,11 +50,16 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   sign-in is in a browser profile of this computer. It gives access to the account, so it is
   handled as a secret: an export does not hold it, and sync does not carry it.
 - The app sends no usage events and no failure reports. It has no analytics at all.
+- A download that the user starts, for a vendor runtime (006) or for test devices (032), is one more
+  exception. It sends no content of the user. Test device data (032 to 034) stays on this computer,
+  per profile, in the data folder of the profile, and is not in an export. The export holds the
+  switch "Test devices" only.
 - Voice (027) keeps no sound. Recognition runs on the device. The web hook of a workflow (010)
   listens on this computer only. Its secret is in the keychain, and the file of a workflow and an
   export hold none.
 - The app does not ask other sites for icons or other assets. Every request goes to a service that
-  the user set up or to a page that an agent visits.
+  the user set up, to a page that an agent visits, or to a download that the user starts (see the
+  download exception below).
 - Secrets (keys, tokens, secret values of environment variables, secret values of a connection)
   are in the system keychain. Logs and exports redact anything that looks like a secret. A text
   looks like a secret when it equals a stored key, or holds a key or token of a known form: for

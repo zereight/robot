@@ -72,6 +72,10 @@ tag, so the user reads their work as they read messages from colleagues.
 - A picture from the web in a Markdown text does not load by itself. The user presses "Load image"
   for each picture (see 003, "Pictures from the web"). A picture can carry data in its address.
 - The app sends no analytics and no failure reports.
+- The program of the test devices connection (032) is from another vendor, and it can report by
+  itself. The app starts it with those reports off, and the panel of that program sends nothing,
+  because the app gives the panel no address other than this computer. The only request that the
+  app makes for test devices is a download that the user starts (032, 014).
 - Secrets never appear in logs, exports or diagnostics.
 - ROBot does not train or change a model. An agent gets better at its job only through things that
   the user can see and edit: its instructions (002), its memory (008), its knowledge (016), and the
