@@ -89,7 +89,9 @@ tag, so the user reads their work as they read messages from colleagues.
   accent violet shows where the user is and what can be pressed. The mint glow shows an agent, a
   channel or a task that works now. The surfaces of the window are told apart by their lightness,
   so a panel shows as its own plane and not as a box with a line around it. A sentence that the
-  user reads is set at the body text size, never at the size of a label.
+  user reads is set at the body text size, never at the size of a label. A code block, an error
+  line and a reason that explains a state are sentences for this rule. At the small text size
+  the smallest step of text still reads: no step of the scale goes below 11 px at that setting.
 - A block shows what kind it is by the tint of its surface or by a mark at its start. It does not
   carry a stripe of colour on its side.
 - A **danger button** deletes or removes something that exists: a workflow or a step of one, a

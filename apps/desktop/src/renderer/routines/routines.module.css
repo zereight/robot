@@ -206,7 +206,7 @@
   margin: 4px 0 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: var(--text-xs);
+  font-size: var(--text-s);
 }
 
 .confirm {

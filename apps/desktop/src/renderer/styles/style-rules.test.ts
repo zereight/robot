@@ -92,6 +92,42 @@ rule(
   ],
 )
 
+// DESIGN.md, "The Prose Rule". The step scale is what carries the hierarchy, so the scale itself
+// is checked: the smallest step must stay readable when the user picks the small text size, and
+// two neighbouring steps must stay far enough apart for a heading to read as a heading. The root
+// sizes come from theme/apply.ts: small 13 px, default 14 px, large 16 px.
+describe("text scale", () => {
+  const steps = textSteps()
+  const SMALL_ROOT = 13
+  // A Korean syllable stops being readable below about 11 px at 100 percent zoom.
+  const FLOOR = 11
+
+  test("the smallest step stays readable at the small text size", () => {
+    expect((steps[0] as number) * SMALL_ROOT).toBeGreaterThanOrEqual(FLOOR)
+  })
+
+  test("two neighbouring steps keep a gap a heading can stand on", () => {
+    for (let i = 1; i < steps.length; i += 1) {
+      expect((steps[i] as number) / (steps[i - 1] as number)).toBeGreaterThanOrEqual(1.1)
+    }
+  })
+
+  test("the scale has a middle step that the sheets actually use", () => {
+    const uses = all.filter((d) => d.value === "var(--text-m)").length
+    expect(uses).toBeGreaterThan(0)
+  })
+})
+
+/** The rem values of --text-xs to --text-2xl, in the order they are written in global.css. */
+function textSteps(): number[] {
+  const css = readFileSync(join(root, "styles/global.css"), "utf8")
+  return ["xs", "s", "m", "l", "xl", "2xl"].map((name) => {
+    const found = css.match(new RegExp(`--text-${name}:\\s*([0-9.]+)rem`))
+    if (!found) throw new Error(`--text-${name} is missing from global.css`)
+    return Number.parseFloat(found[1] as string)
+  })
+}
+
 rule(
   "radius",
   "Use var(--radius-s), var(--radius-m) or var(--radius-l).",
