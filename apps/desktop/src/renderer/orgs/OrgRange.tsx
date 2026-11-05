@@ -51,7 +51,7 @@ export const OrgRange = (props: {
   }
 
   return (
-    <label class={styles.field} data-testid="org-range-field">
+    <label class={`${styles.field} ${styles.accessField}`} data-testid="org-range-field">
       <span class={styles.label}>{t("orgs.range")}</span>
       <select
         class={styles.input}

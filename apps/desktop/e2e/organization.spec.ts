@@ -3,9 +3,10 @@ import { connectMock, createAgent, freshUserData, launch, resizeWindow } from ".
 import { GOOD_KEY, startMockProvider } from "./mock-provider.ts"
 import { rpc } from "./sync-helpers.ts"
 
-// The settings part "Organization" (spec 030, 013): the hand-off rule, "Any agent" by default.
-// With "Along the channels" a send of one agent to another that no channel links fails with a
-// reason, makes no task, and the legend of the org chart says that hand-offs follow the organizations.
+// The settings part "Hand-off rules" (spec 030, 013): the hand-off rule, "Any agent" by default.
+// With "Along the organizations" a send of one agent to another that no organization links fails
+// with a reason, makes no task, and the legend of the org chart says that hand-offs follow the
+// organizations.
 
 test("organization: the hand-off rule is set in settings and kept after a restart", async () => {
   test.setTimeout(90_000)
@@ -15,6 +16,8 @@ test("organization: the hand-off rule is set in settings and kept after a restar
   await resizeWindow(first.app, 1300, 860)
   await first.page.getByTestId("open-settings").click()
   await first.page.getByTestId("settings-nav-organization").click()
+  // The part is called "Hand-off rules" (spec 013).
+  await expect(first.page.getByTestId("settings-nav-organization")).toHaveText("Hand-off rules")
 
   const rule = (page: typeof first.page, value: string) =>
     page.getByTestId("organization-hand-off").locator(`label[data-value="${value}"] input`)
@@ -29,11 +32,11 @@ test("organization: the hand-off rule is set in settings and kept after a restar
 
   await first.page
     .getByTestId("organization-hand-off")
-    .locator('label[data-value="channels"]')
+    .locator('label[data-value="organizations"]')
     .click()
-  await expect(rule(first.page, "channels")).toBeChecked()
+  await expect(rule(first.page, "organizations")).toBeChecked()
   await expect(first.page.getByTestId("organization-hand-off-now")).toContainText(
-    "An agent can send a message to the agents of its channels",
+    "An agent can send a message to the members of its organizations",
   )
   await first.app.close()
 
@@ -42,7 +45,7 @@ test("organization: the hand-off rule is set in settings and kept after a restar
   await resizeWindow(second.app, 1300, 860)
   await second.page.getByTestId("open-settings").click()
   await second.page.getByTestId("settings-nav-organization").click()
-  await expect(rule(second.page, "channels")).toBeChecked()
+  await expect(rule(second.page, "organizations")).toBeChecked()
   await second.app.close()
 })
 
@@ -51,7 +54,7 @@ const send = async (page: Page, text: string) => {
   await page.getByTestId("composer-input").press("Enter")
 }
 
-test("organization: with Along the channels a send that no channel links is refused with its reason, in English and Korean", async () => {
+test("organization: with Along the organizations a send that no organization links is refused with its reason, in English and Korean", async () => {
   test.setTimeout(120_000)
   const mock = await startMockProvider()
   const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
@@ -70,16 +73,19 @@ test("organization: with Along the channels a send that no channel links is refu
   // Turn the rule on in the settings. The legend shows the line at once.
   await page.getByTestId("open-settings").click()
   await page.getByTestId("settings-nav-organization").click()
-  await page.getByTestId("organization-hand-off").locator('label[data-value="channels"]').click()
+  await page
+    .getByTestId("organization-hand-off")
+    .locator('label[data-value="organizations"]')
+    .click()
   await expect(
-    page.getByTestId("organization-hand-off").locator('label[data-value="channels"] input'),
+    page.getByTestId("organization-hand-off").locator('label[data-value="organizations"] input'),
   ).toBeChecked()
   await page.getByTestId("settings-close").click()
   await expect(page.getByTestId("org-legend-rule")).toHaveText(
     "Hand-offs follow the organizations.",
   )
 
-  // Ada and Cy share no channel, and no main agent exists: the send fails, and no agent can pass
+  // Ada and Cy share no organization, and no main agent exists: the send fails, and no agent can pass
   // it on. The step shows the reason, and the turn of Ada goes on to its end.
   await page.getByTestId("page-chats").click()
   await page.locator("[data-testid^=place-agent-]").filter({ hasText: "Ada" }).click()
