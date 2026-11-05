@@ -16,6 +16,7 @@ import { Face } from "../agents/Face.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { squarePicture } from "../lib/image.ts"
 import { call } from "../lib/rpc.ts"
+import { AgentName, useShownText } from "../orgs/AgentName.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
@@ -35,6 +36,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
   const ui = useUi()
   const devices = useDevices()
   const agents = useAgents()
+  const shownText = useShownText()
   const channels = useChannels()
   const [name, setName] = createSignal(props.channel?.name ?? "")
   const [topic, setTopic] = createSignal(props.channel?.topic ?? "")
@@ -274,7 +276,9 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
                           data-testid={`channel-member-${agent.name}`}
                         />
                         <Face face={agent.face} image={agent.faceImage} size={20} />
-                        <span class={styles.memberName}>{agent.name}</span>
+                        <span class={styles.memberName}>
+                          <AgentName id={agent.id} name={agent.name} />
+                        </span>
                         <Show when={agent.role}>
                           <span class={styles.memberRole}>{agent.role}</span>
                         </Show>
@@ -308,7 +312,7 @@ export const ChannelDialog = (props: { channel?: Channel; onClose: () => void })
             <For each={agents.agents().filter((a) => members().includes(a.id))}>
               {(a) => (
                 <option value={a.id} selected={leadId() === a.id}>
-                  {a.name}
+                  {shownText(a.id, a.name)}
                 </option>
               )}
             </For>

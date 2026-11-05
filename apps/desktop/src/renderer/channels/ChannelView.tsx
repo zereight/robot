@@ -28,6 +28,7 @@ import { PlaceMarksLine } from "../chat/PlaceMarksLine.tsx"
 import { shapeOf } from "../chat/shape.ts"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { AgentInLine, AgentName } from "../orgs/AgentName.tsx"
 import { useRetry } from "../retry/RetryNote.tsx"
 import { useEndRequest, useReview } from "../review/Review.tsx"
 import review from "../review/review.module.css"
@@ -36,6 +37,7 @@ import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
 import { originFor, setSearchOrigin, useFocusMessage } from "../state/focus.ts"
+import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { ChannelMark } from "../ui/ChannelMark.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -245,6 +247,7 @@ export const ChannelView = (props: { channel: Channel }) => {
   const { t } = app
   const ui = useUi()
   const agents = useAgents()
+  const orgs = useOrgs()
   const messages = createChannelChat(props.channel.id, () =>
     ui.linked() ? ui.server()?.id : undefined,
   )
@@ -276,7 +279,11 @@ export const ChannelView = (props: { channel: Channel }) => {
   const mentionable = createMemo(() => {
     const open = mention()
     if (!open) return []
-    const available = members().filter((a) => !a.archived)
+    // Each member brings the whole name of its organization, so the list also matches it (spec
+    // 035). With the switch off `prefixOrg` is null and the organization never matches.
+    const available = members()
+      .filter((a) => !a.archived)
+      .map((a) => ({ ...a, organization: orgs.prefixOrg(a.id) }))
     // `@all` is offered when two or more members can answer (spec 004, "Everyone mention").
     return mentionEntries(available, open.query, available.length >= 2)
   })
@@ -559,7 +566,7 @@ export const ChannelView = (props: { channel: Channel }) => {
                               }
                               data-testid={`pick-${a.name}`}
                             >
-                              {a.name}
+                              <AgentName id={a.id} name={a.name} />
                             </Button>
                           )}
                         </For>
@@ -610,7 +617,11 @@ export const ChannelView = (props: { channel: Channel }) => {
           {(quoted) => (
             <div class={chat.quote} data-testid="channel-reply-quote">
               <span class={chat.quoteText}>
-                {t("chat.replyingTo", { name: agentFor(quoted()).name })}
+                <AgentInLine
+                  line={(name) => t("chat.replyingTo", { name })}
+                  id={agentFor(quoted()).id}
+                  name={agentFor(quoted()).name}
+                />
                 {": "}
                 {messageText(asChat(quoted())).slice(0, 80)}
               </span>

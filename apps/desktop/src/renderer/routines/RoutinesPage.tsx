@@ -30,6 +30,7 @@ import {
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { showRevealed } from "../lib/reveal.ts"
 import { call } from "../lib/rpc.ts"
+import { useShownText } from "../orgs/AgentName.tsx"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
@@ -93,6 +94,7 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
   const { t } = useApp()
   const ui = useUi()
   const agents = useAgents()
+  const shownText = useShownText()
   const channels = useChannels()
   const providers = useProviders()
   const _format = useFormat()
@@ -244,7 +246,9 @@ const RoutineDialog = (props: { routine?: Routine; full?: boolean; onClose: () =
             }}
             data-testid="routine-agent"
           >
-            <For each={agents.agents()}>{(a: Agent) => <option value={a.id}>{a.name}</option>}</For>
+            <For each={agents.agents()}>
+              {(a: Agent) => <option value={a.id}>{shownText(a.id, a.name)}</option>}
+            </For>
           </select>
         </label>
         <label class={styles.field}>

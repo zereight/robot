@@ -33,6 +33,7 @@ import { ChecklistCard, useChecklistRows } from "../imports/ImportChecklist.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { isForView } from "../lib/events.ts"
 import { call } from "../lib/rpc.ts"
+import { useShownText } from "../orgs/AgentName.tsx"
 import { ModelPicker } from "../providers/ModelPicker.tsx"
 import { ScheduleFields } from "../routines/ScheduleFields.tsx"
 import { useAgents } from "../state/agents.tsx"
@@ -112,6 +113,7 @@ export const WorkflowEditor = (props: {
   const forView = (from: string | undefined) =>
     isForView(ui.linked() ? ui.server()?.id : undefined, from)
   const agents = useAgents()
+  const shownText = useShownText()
   const channels = useChannels()
   const [saved, setSaved] = createSignal<Workflow | null>(props.workflow)
   const [name, setName] = createSignal(props.workflow?.name ?? "")
@@ -988,7 +990,7 @@ export const WorkflowEditor = (props: {
                             <For each={agents.agents()}>
                               {(x) => (
                                 <option value={x.id} selected={x.id === a().agentId}>
-                                  {x.name}
+                                  {shownText(x.id, x.name)}
                                 </option>
                               )}
                             </For>

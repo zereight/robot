@@ -20,6 +20,7 @@ import { X } from "lucide-solid"
 import { createEffect, createSignal, For, Index, on, Show } from "solid-js"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
@@ -511,7 +512,9 @@ export const ConnectionFormDialog = (props: {
                         data-testid="connection-agent"
                         data-agent={agent.name}
                       />
-                      <span>{agent.name}</span>
+                      <span>
+                        <AgentName id={agent.id} name={agent.name} />
+                      </span>
                     </label>
                   </li>
                 )}

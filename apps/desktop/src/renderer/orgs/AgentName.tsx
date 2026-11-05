@@ -30,3 +30,35 @@ export const AgentName = (props: { id: string; name: string }) => {
     </Show>
   )
 }
+
+/** A mark that stands for the name in a translated line, to cut the line around it. */
+const NAME_MARK = "\u0001"
+
+/**
+ * A translated line that holds the name of an agent, for example the quote line "Reply to Ada:
+ * ...". `line` makes the text from the mark that it puts in the place of the name. The name then
+ * shows with its prefix, and the rest of the line stays as the translation has it.
+ */
+export const AgentInLine = (props: {
+  line: (mark: string) => string
+  id: string
+  name: string
+}) => {
+  const parts = () => props.line(NAME_MARK).split(NAME_MARK)
+  return (
+    <>
+      {parts()[0]}
+      <AgentName id={props.id} name={props.name} />
+      {parts()[1]}
+    </>
+  )
+}
+
+/**
+ * The shown name of an agent as plain text, for a place that cannot hold a styled label, such as an
+ * `<option>` of a list (spec 035). Call it once in a component and use the function in the view.
+ */
+export const useShownText = () => {
+  const orgs = useOrgs()
+  return (id: string, name: string) => orgs.shown(id, name).text
+}

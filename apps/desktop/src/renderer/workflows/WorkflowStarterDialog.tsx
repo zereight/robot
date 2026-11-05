@@ -12,6 +12,7 @@ import { createSignal, For, Show } from "solid-js"
 import styles from "../agents/agents.module.css"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
+import { useShownText } from "../orgs/AgentName.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useUi } from "../state/ui.tsx"
@@ -33,6 +34,7 @@ export const WorkflowStarterDialog = (props: {
   const { t } = app
   const ui = useUi()
   const agents = useAgents()
+  const shownText = useShownText()
   const [starter, setStarter] = createSignal<WorkflowStarterId>(WORKFLOW_STARTERS[0])
   // The field starts with the main agent (spec 010, 002), or the first agent when there is none.
   const startAgent = () =>
@@ -117,7 +119,7 @@ export const WorkflowStarterDialog = (props: {
             <For each={agents.agents()}>
               {(a) => (
                 <option value={a.id} selected={a.id === agentId()}>
-                  {a.name}
+                  {shownText(a.id, a.name)}
                 </option>
               )}
             </For>

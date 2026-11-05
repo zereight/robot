@@ -2,7 +2,9 @@ import type { Agent, MentionEntry } from "@robot/shared"
 import { Users } from "lucide-solid"
 import { For, Show } from "solid-js"
 import { Face } from "../agents/Face.tsx"
+import { AgentName } from "../orgs/AgentName.tsx"
 import { useApp } from "../state/app.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import styles from "./channels.module.css"
 
 /**
@@ -16,6 +18,7 @@ export const MentionList = (props: {
   onPick: (entry: MentionEntry<Agent>) => void
 }) => {
   const { t } = useApp()
+  const orgs = useOrgs()
   return (
     <div class={styles.mentions} role="listbox" aria-label={props.label} data-testid="mention-list">
       <For each={props.entries}>
@@ -42,7 +45,13 @@ export const MentionList = (props: {
             ) : (
               <>
                 <Face face={entry.member.face} image={entry.member.faceImage} size={20} />
-                <span class={styles.mentionName}>@{entry.member.name}</span>
+                {/* With a prefix the line shows "[Docs] Ada"; the pick still puts "@Ada" in the box
+                    (spec 035, "Mention"). Without one it shows "@Ada" as before. */}
+                <span class={styles.mentionName}>
+                  <Show when={orgs.prefixOrg(entry.member.id)} fallback={<>@{entry.member.name}</>}>
+                    <AgentName id={entry.member.id} name={entry.member.name} />
+                  </Show>
+                </span>
                 <Show when={entry.member.role}>
                   <span class={styles.mentionRole}>{entry.member.role}</span>
                 </Show>

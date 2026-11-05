@@ -10,6 +10,7 @@ import { createSignal, For, onMount, Show } from "solid-js"
 import styles from "../agents/agents.module.css"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, RpcFailure } from "../lib/rpc.ts"
+import { AgentName } from "../orgs/AgentName.tsx"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
 import { useChannels } from "../state/channels.tsx"
@@ -294,7 +295,9 @@ export const SkillFormDialog = (props: { open: SkillFormOpen; onClose: () => voi
                           data-testid="skill-agent"
                           data-agent={agent.name}
                         />
-                        <span>{agent.name}</span>
+                        <span>
+                          <AgentName id={agent.id} name={agent.name} />
+                        </span>
                       </label>
                     </li>
                   )}
