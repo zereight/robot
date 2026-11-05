@@ -5,8 +5,10 @@ import { describeError } from "../lib/errors.ts"
 import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { type MenuItem, PopupMenu } from "../ui/Menu.tsx"
+import { Presence } from "../ui/Presence.tsx"
 import { showToast } from "../ui/toast.ts"
 import styles from "./agents.module.css"
+import { SetupEditorDialog } from "./SetupEditor.tsx"
 
 const MENU_WIDTH = 320
 
@@ -36,6 +38,7 @@ export const SetupMenu = (props: { agentId: string }) => {
   const [list, setList] = createSignal<SetupList>(empty)
   const [busy, setBusy] = createSignal(false)
   const [open, setOpen] = createSignal<{ top: number; left: number }>()
+  const [editing, setEditing] = createSignal(false)
   let trigger: HTMLButtonElement | undefined
 
   const load = () => {
@@ -82,13 +85,19 @@ export const SetupMenu = (props: { agentId: string }) => {
       testId: "setup-action",
       onSelect: () => run(action.name),
     }))
-    if (!automatic()) return rows
-    const marked = now.actions.filter((action) => action.onOwnCopy || action.onTurnStart)
+    if (automatic()) {
+      const marked = now.actions.filter((action) => action.onOwnCopy || action.onTurnStart)
+      rows.push({
+        label: now.allowed ? t("setup.stop") : t("setup.allow"),
+        title: marked.map((action) => action.command).join("\n"),
+        testId: now.allowed ? "setup-stop" : "setup-allow",
+        onSelect: () => allow(!now.allowed),
+      })
+    }
     rows.push({
-      label: now.allowed ? t("setup.stop") : t("setup.allow"),
-      title: marked.map((action) => action.command).join("\n"),
-      testId: now.allowed ? "setup-stop" : "setup-allow",
-      onSelect: () => allow(!now.allowed),
+      label: t("setup.manage"),
+      testId: "setup-manage",
+      onSelect: () => setEditing(true),
     })
     return rows
   }
@@ -107,9 +116,14 @@ export const SetupMenu = (props: { agentId: string }) => {
   return (
     <>
       <Show when={list().unreadable}>
-        <span class={styles.setupUnread} data-testid="setup-unreadable">
-          {t("setup.unreadable")}
-        </span>
+        <button
+          type="button"
+          class={styles.setupRun}
+          onClick={() => setEditing(true)}
+          data-testid="setup-unreadable"
+        >
+          <span>{t("setup.unreadable")}</span>
+        </button>
       </Show>
       <Show when={first()}>
         {(action) => (
@@ -143,6 +157,18 @@ export const SetupMenu = (props: { agentId: string }) => {
           />
         )}
       </Show>
+      <Presence when={editing()}>
+        {() => (
+          <SetupEditorDialog
+            agentId={props.agentId}
+            onClose={() => setEditing(false)}
+            onSaved={(next) => {
+              setList(next)
+              setEditing(false)
+            }}
+          />
+        )}
+      </Presence>
     </>
   )
 }

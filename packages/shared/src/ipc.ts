@@ -69,7 +69,13 @@ import type { SearchPage } from "./search.ts"
 import type { SavedSecret } from "./secrets.ts"
 import type { MoveDirection, SectionCreate, UserSection } from "./sections.ts"
 import type { Settings, SettingsPatch } from "./settings.ts"
-import type { SetupList, SetupRunResult } from "./setupActions.ts"
+import type {
+  SetupActionInput,
+  SetupFileView,
+  SetupList,
+  SetupRunResult,
+  SetupSaveResult,
+} from "./setupActions.ts"
 import type { SkillDraftResult, SkillSourceRef } from "./skillDraft.ts"
 import type { Skill, SkillInput } from "./skills.ts"
 import type { AgentStarterCreate } from "./starters.ts"
@@ -904,6 +910,13 @@ export interface RpcMethods {
   "setup.run": { input: { agentId: string; name: string }; output: SetupRunResult }
   /** Allows or stops automatic runs of the list in that workspace. */
   "setup.allow": { input: { agentId: string; on: boolean }; output: SetupList }
+  /** The file the editor shows for that workspace: the shared file, or one to make. */
+  "setup.file": { input: { agentId: string }; output: SetupFileView }
+  /** Writes the list from the editor. `replace` confirms an unreadable file goes away. */
+  "setup.save": {
+    input: { agentId: string; actions: readonly SetupActionInput[]; replace: boolean }
+    output: SetupSaveResult
+  }
   /** The threads of an agent, for the list in the chat header (spec 003, "Threads"). */
   "chat.threads": { input: { agentId: string }; output: ChatThreads }
   "chat.thread.create": { input: { agentId: string }; output: ChatThread }

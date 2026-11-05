@@ -44,6 +44,8 @@ The user sets the app up the way they like in one place.
 - **Organization**: the hand-off rule ("Any agent" or "Along the channels") and the switch "Ask
   up the line", off at first. See 030. These two sync like the handbook (019).
 - **Teams**: the link to one Microsoft Teams chat, off at first. See 028.
+- **Setup actions**: the agents of this computer, the setup list of the picked agent, and its
+  allow. See 035. It shows on the computer only.
 - **Devices**: this device's name, the "Let other devices connect" switch, pairing, the devices
   that can open this computer, with the switch "Can create and change agents" for each, and the
   computers this computer can open, see 012. Each linked computer has a sync row, see 019.

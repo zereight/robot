@@ -76,6 +76,15 @@ const mark = (item: object, key: string): boolean | undefined => {
   return undefined
 }
 
+const textProblem = (
+  trimmedName: string,
+  trimmedCommand: string,
+): "name" | "command" | undefined => {
+  if (trimmedName.length < 1 || trimmedName.length > SETUP_NAME_MAX) return "name"
+  if (trimmedCommand.length < 1 || trimmedCommand.length > SETUP_COMMAND_MAX) return "command"
+  return undefined
+}
+
 const parseAction = (item: unknown): SetupAction | undefined => {
   if (typeof item !== "object" || item === null || Array.isArray(item)) return undefined
   const name = readField(item, "name")
@@ -83,8 +92,7 @@ const parseAction = (item: unknown): SetupAction | undefined => {
   if (typeof name !== "string" || typeof command !== "string") return undefined
   const trimmedName = name.trim()
   const trimmedCommand = command.trim()
-  if (trimmedName.length < 1 || trimmedName.length > SETUP_NAME_MAX) return undefined
-  if (trimmedCommand.length < 1 || trimmedCommand.length > SETUP_COMMAND_MAX) return undefined
+  if (textProblem(trimmedName, trimmedCommand)) return undefined
   const onOwnCopy = mark(item, "onOwnCopy")
   const onTurnStart = mark(item, "onTurnStart")
   if (onOwnCopy === undefined || onTurnStart === undefined) return undefined
@@ -137,3 +145,81 @@ export function setupInfo(actions: readonly SetupAction[]): readonly SetupAction
     onTurnStart: action.onTurnStart,
   }))
 }
+
+/** One row of the editor. The marks are unchecked until the save. */
+export interface SetupActionInput {
+  readonly name: string
+  readonly command: string
+  readonly onOwnCopy: unknown
+  readonly onTurnStart: unknown
+}
+
+/** Which field of a row breaks the limits. */
+export type SetupRowProblem = "name" | "command" | "marks"
+
+/** The first problem of one row, or nothing when the row is fine. */
+export function setupRowProblem(row: SetupActionInput): SetupRowProblem | undefined {
+  const text = textProblem(row.name.trim(), row.command.trim())
+  if (text) return text
+  if (typeof row.onOwnCopy !== "boolean" || typeof row.onTurnStart !== "boolean") return "marks"
+  return undefined
+}
+
+/** Why a save is refused. */
+export type SetupFormatError =
+  | { readonly reason: "unreadable" }
+  | { readonly reason: "too-many" }
+  | { readonly reason: "row"; readonly index: number; readonly problem: SetupRowProblem }
+
+/**
+ * The text of `robot.json` after a save. `existing` is undefined when the workspace has no file.
+ * Other fields of the file stay as they are. A file that is not a setup list is unreadable: the
+ * caller passes undefined for it only after the user has confirmed the replace.
+ */
+export function formatSetupFile(
+  existing: string | undefined,
+  actions: readonly SetupActionInput[],
+):
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly error: SetupFormatError } {
+  if (actions.length > SETUP_ACTIONS_MAX) return { ok: false, error: { reason: "too-many" } }
+  const clean: SetupAction[] = []
+  for (const [index, row] of actions.entries()) {
+    const problem = setupRowProblem(row)
+    if (problem) return { ok: false, error: { reason: "row", index, problem } }
+    clean.push({
+      name: row.name.trim(),
+      command: row.command.trim(),
+      onOwnCopy: row.onOwnCopy === true,
+      onTurnStart: row.onTurnStart === true,
+    })
+  }
+  if (existing === undefined)
+    return { ok: true, text: `${JSON.stringify({ setupActions: clean }, null, 2)}\n` }
+  let kept: object
+  try {
+    const value: unknown = JSON.parse(existing)
+    if (typeof value !== "object" || value === null || Array.isArray(value))
+      return { ok: false, error: { reason: "unreadable" } }
+    kept = value
+  } catch {
+    return { ok: false, error: { reason: "unreadable" } }
+  }
+  if (!parseSetupFile(existing).ok) return { ok: false, error: { reason: "unreadable" } }
+  return { ok: true, text: `${JSON.stringify({ ...kept, setupActions: clean }, null, 2)}\n` }
+}
+
+/** What the editor shows for one file. */
+export interface SetupFileView {
+  readonly path: string
+  readonly exists: boolean
+  readonly unreadable: boolean
+  readonly actions: readonly SetupActionInfo[]
+}
+
+/** What a save from the editor ends as. */
+export type SetupSaveResult =
+  | { readonly status: "saved"; readonly list: SetupList }
+  | { readonly status: "unreadable" }
+  | { readonly status: "invalid" }
+  | { readonly status: "missing" }

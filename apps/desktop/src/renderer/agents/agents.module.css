@@ -370,10 +370,93 @@
   white-space: nowrap;
 }
 
-.setupUnread {
+/* The editor of setup actions (spec 035). */
+
+.setupForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.setupPath {
   color: var(--c-text-muted);
-  font-size: var(--text-xs);
-  white-space: nowrap;
+  font-size: var(--text-s);
+  overflow-wrap: anywhere;
+}
+
+.setupRows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setupRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-m);
+  padding: 12px;
+}
+
+.setupField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.setupLabel {
+  font-size: var(--text-s);
+  color: var(--c-text-muted);
+}
+
+.setupInput {
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-s);
+  background: var(--c-elevated);
+  color: var(--c-text);
+  padding: 5px 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.setupInput[aria-invalid="true"] {
+  border-color: var(--c-danger);
+}
+
+.setupCommand {
+  font-family: var(--font-mono);
+}
+
+.setupMarks {
+  display: flex;
+  align-items: center;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.setupMark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-s);
+}
+
+.setupFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.setupError {
+  color: var(--c-danger);
+  font-size: var(--text-s);
 }
 
 .start {
