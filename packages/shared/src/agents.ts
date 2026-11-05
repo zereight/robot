@@ -57,6 +57,12 @@ export interface Agent {
    * (spec 019).
    */
   readonly readHandbook: boolean
+  /**
+   * The switch "Main agent" (spec 002, flow 7). At most one agent on a server has it. An archived
+   * agent keeps the flag but counts as no main agent while it is archived (spec 029). It syncs with
+   * the agent (spec 019).
+   */
+  readonly isMain: boolean
   readonly face: Face
   /** A data URL of the uploaded picture, when there is one. */
   readonly faceImage: string | null
@@ -135,6 +141,12 @@ export const AgentPatch = Schema.Struct({
   role: Schema.optionalKey(AgentRole),
   instructions: Schema.optionalKey(Schema.String),
   readHandbook: Schema.optionalKey(Schema.Boolean),
+  /**
+   * The switch "Main agent". On takes the flag from the old main agent in the same step. Only the
+   * profile on this computer sets it: a linked device cannot (spec 012), and nor can the agent
+   * itself (spec 002).
+   */
+  isMain: Schema.optionalKey(Schema.Boolean),
   face: Schema.optionalKey(Face),
   model: Schema.optionalKey(Schema.NullOr(AgentModel)),
   backupModel: Schema.optionalKey(Schema.NullOr(AgentModel)),
@@ -197,6 +209,14 @@ export const faceFromName = (name: string): Face => {
   }
   return { shape: hash % FACE_SHAPES, hue: (hash >>> 8) % FACE_HUES }
 }
+
+/**
+ * The main agent of a list of agents (spec 002, flow 7): the one with the switch on that is not
+ * archived. An archived main agent counts as none, and so does a list with no flag (spec 029).
+ */
+export const mainAgentOf = <A extends { readonly isMain: boolean; readonly archived: boolean }>(
+  agents: readonly A[],
+): A | null => agents.find((a) => a.isMain && !a.archived) ?? null
 
 /** The key that makes names unique on a server: trimmed, NFC, ignoring case. */
 export const nameKey = (name: string) => name.trim().normalize("NFC").toLocaleLowerCase()

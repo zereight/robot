@@ -1,10 +1,13 @@
 import { LEAD_ANSWER_MAX, LEAD_LOOK_MS, LEAD_REASON_MAX, type QuestionPass } from "./leadAnswers.ts"
+import { deepestOrg, type PrefixOrg } from "./orgPrefix.ts"
+import { higherOrgs } from "./orgTree.ts"
 
 // ---------------------------------------------------------------------------------------------
 // Ask up the line (spec 030, "Ask up the line"). A question that the lead of a channel passes can
-// go to higher agents before it goes to the user. These are pure functions: the app reads the
-// facts, these functions decide. `readerAfterPass` is the one place that says who looks at a
-// question after an agent passed it.
+// go to higher agents before it goes to the user. The line goes up the organizations of the member
+// that asks, not up the channels. These are pure functions: the app reads the facts, these
+// functions decide. `lineLeadIds` says which leads can be on the line, and `readerAfterPass` is
+// the one place that says who looks at a question after an agent passed it.
 // ---------------------------------------------------------------------------------------------
 
 /** The line has at most this many agents after the lead (spec 030). */
@@ -13,7 +16,8 @@ export const LINE_AGENTS_MAX = 3
 export const LINE_MS = 300_000
 
 /**
- * An agent that can be on the line: the lead of a higher channel, or the main agent. The facts say
+ * An agent that can be on the line: the lead of an organization above the member, or the main
+ * agent. The facts say
  * what is true now; the line skips an agent that is archived or blocked by a usage limit.
  */
 export interface LineAgent {
@@ -50,9 +54,9 @@ export interface AfterPassFacts {
   /** The agent that asks. */
   readonly asker: string
   /**
-   * The agents that may be on the line, in the order of the line: the lead of each higher channel,
-   * from the nearest to the top channel, then the main agent. A channel with no lead and a missing
-   * main agent are not in the list.
+   * The agents that may be on the line, in the order of the line: the lead of each organization on
+   * the way up from the deepest organization of the asker (`lineLeadIds`), then the main agent. An
+   * organization with no lead and a missing main agent are not in the list.
    */
   readonly candidates: readonly LineAgent[]
   /** The passes so far, oldest first. The first one is the pass of the lead. Not empty. */
@@ -63,11 +67,37 @@ export interface AfterPassFacts {
   readonly lineMs?: number
 }
 
+/** What the line needs of an organization: what the prefix needs, and the lead. */
+export interface LineOrg extends PrefixOrg {
+  /** The lead as stored. It may be null, or an agent that is no member (no lead then). */
+  readonly leadId: string | null
+}
+
+/**
+ * The leads that can be on the line of a member (spec 030, "Ask up the line"), in order: the lead
+ * of its deepest organization (spec 030, "One line"), then the lead of the parent of that
+ * organization, and so on up to the top organization. An organization shows once on the way, an
+ * organization with no lead gives nobody, and an agent that leads two of them shows once. The
+ * member that asks and the other skips are the work of `lineAfter`. A member in no organization
+ * has none: only the main agent is left for it.
+ */
+export const lineLeadIds = (orgs: readonly LineOrg[], asker: string): string[] => {
+  const deepest = deepestOrg(orgs, asker)
+  if (deepest === null) return []
+  const byId = new Map(orgs.map((o) => [o.id, o]))
+  const way = [deepest.id, ...higherOrgs(orgs, deepest.id)]
+  const leads = way.flatMap((id) => {
+    const lead = byId.get(id)?.leadId
+    return lead ? [lead] : []
+  })
+  return [...new Set(leads)]
+}
+
 /**
  * The agents that look after the passes so far, in order, at most 3 after the lead. An agent is
  * skipped when it is archived, blocked by a usage limit, the member that asks, or an agent that
  * already looked at this question (the lead of the channel counts, and so does an agent that is
- * the lead of two higher channels). Agents after the third are skipped.
+ * the lead of two organizations on the line). Agents after the third are skipped.
  */
 export const lineAfter = (
   f: Pick<AfterPassFacts, "asker" | "candidates" | "passes">,

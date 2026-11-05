@@ -4,9 +4,9 @@ import {
   type ChartModel,
   copyKey,
   EMPTY_ORG_SNAPSHOT,
-  ORG_CHANNEL_NODES_MAX,
+  ORG_NODES_MAX,
   type OrgAgent,
-  type OrgChannel,
+  type OrgChartOrg,
   type OrgHandoff,
   type OrgSnapshot,
   ROOT_KEY,
@@ -44,7 +44,7 @@ const agent = (id: string, extra: Partial<OrgAgent> = {}): OrgAgent => ({
   task: null,
   ...extra,
 })
-const channel = (id: string, memberIds: string[], extra: Partial<OrgChannel> = {}): OrgChannel => ({
+const org = (id: string, memberIds: string[], extra: Partial<OrgChartOrg> = {}): OrgChartOrg => ({
   id,
   name: id,
   createdAt: 1,
@@ -99,7 +99,7 @@ const faults = (model: ChartModel, layout: ChartLayout): string[] => {
   // Every node of the model has a place, and so has every tile.
   const expected = [
     ROOT_KEY,
-    ...model.channels.flatMap((c) => [
+    ...model.orgs.flatMap((c) => [
       c.key,
       ...c.nodes.map((n) => n.key),
       ...(c.more.length > 0 ? [moreKey(c.key)] : []),
@@ -109,7 +109,7 @@ const faults = (model: ChartModel, layout: ChartLayout): string[] => {
   if (nodes.length !== expected.length)
     found.push(`${nodes.length} nodes, ${expected.length} expected`)
 
-  // The page order: the root first, then each channel node and what hangs from it.
+  // The page order: the root first, then each organization node and what hangs from it.
   if (nodes.map((n) => n.key).join("|") !== expected.join("|"))
     found.push("the nodes are not in the order of the page")
 
@@ -186,10 +186,7 @@ const sixAgents = () => {
   return snap({
     mainAgentId: "a00",
     agents: a.map((id) => agent(id)),
-    channels: [
-      channel("Docs", ["a00", "a01", "a02"], { leadId: "a01" }),
-      channel("Ops", ["a02", "a03"]),
-    ],
+    orgs: [org("Docs", ["a00", "a01", "a02"], { leadId: "a01" }), org("Ops", ["a02", "a03"])],
     handoffs: [
       { from: "a00", to: "a01", count: 3, newest: 1 },
       { from: "a01", to: "a00", count: 1, newest: 2 },
@@ -211,21 +208,21 @@ const fortyAgents = () => {
         i % 7 === 0 ? { state: "working", task: { label: `Task ${i}`, state: "running" } } : {},
       ),
     ),
-    channels: [
-      channel("Alpha", members(0, 10), { leadId: "a00" }),
-      channel("Beta", members(8, 20), { leadId: "a09" }),
-      channel("Gamma", members(18, 29)),
-      channel("Delta", members(28, 36), { leadId: "a30" }),
+    orgs: [
+      org("Alpha", members(0, 10), { leadId: "a00" }),
+      org("Beta", members(8, 20), { leadId: "a09" }),
+      org("Gamma", members(18, 29)),
+      org("Delta", members(28, 36), { leadId: "a30" }),
     ],
     handoffs: handoffsOf(a, 40, 7),
   })
 }
 
-const twelveInAChannel = () => {
+const twelveInAnOrg = () => {
   const a = ids("m", 15)
   return snap({
     agents: a.map((id) => agent(id)),
-    channels: [channel("Big", a, { leadId: "m07" })],
+    orgs: [org("Big", a, { leadId: "m07" })],
     handoffs: [
       { from: "m07", to: "m01", count: 4, newest: 1 },
       { from: "m02", to: "m11", count: 2, newest: 2 },
@@ -233,14 +230,14 @@ const twelveInAChannel = () => {
   })
 }
 
-const twentyChannels = () => {
+const twentyOrgs = () => {
   const next = random(11)
   const a = ids("a", 40)
-  const channels = Array.from({ length: 20 }, (_, i) => {
+  const orgs = Array.from({ length: 20 }, (_, i) => {
     const size = 1 + Math.floor(next() * 4)
     const start = Math.floor(next() * (a.length - size))
     const members = a.slice(start, start + size)
-    return channel(
+    return org(
       `Ch${String(i).padStart(2, "0")}`,
       members,
       i % 3 === 0 ? { leadId: members[0] as string } : {},
@@ -248,7 +245,7 @@ const twentyChannels = () => {
   })
   return snap({
     agents: a.map((id) => agent(id)),
-    channels,
+    orgs,
     handoffs: handoffsOf(a, 40, 3),
   })
 }
@@ -259,12 +256,12 @@ const threeLevels = () => {
   return snap({
     mainAgentId: "a00",
     agents: a.map((id) => agent(id)),
-    channels: [
-      channel("Product", []),
-      channel("Docs", ["a01", "a02", "a03"], { leadId: "a01", parentId: "Product" }),
-      channel("Site", ["a04", "a05"], { parentId: "Docs" }),
-      channel("Blog", ["a06"], { parentId: "Docs" }),
-      channel("Ops", ["a07", "a08", "a01"], { leadId: "a07" }),
+    orgs: [
+      org("Product", []),
+      org("Docs", ["a01", "a02", "a03"], { leadId: "a01", parentId: "Product" }),
+      org("Site", ["a04", "a05"], { parentId: "Docs" }),
+      org("Blog", ["a06"], { parentId: "Docs" }),
+      org("Ops", ["a07", "a08", "a01"], { leadId: "a07" }),
     ],
     handoffs: [
       { from: "a00", to: "a01", count: 3, newest: 1 },
@@ -274,26 +271,45 @@ const threeLevels = () => {
   })
 }
 
-/** The 20 channel nodes, each of the later ones under an earlier one, up to 3 levels. */
+/** The 20 organization nodes, each of the later ones under an earlier one, up to 3 levels. */
 const twentyInATree = () => {
-  const base = twentyChannels()
+  const base = twentyOrgs()
   const next = random(29)
   return snap({
     ...base,
-    channels: base.channels.map((c, i) =>
-      i < 4 ? c : { ...c, parentId: base.channels[Math.floor(next() * i)]?.id ?? null },
+    orgs: base.orgs.map((c, i) =>
+      i < 4 ? c : { ...c, parentId: base.orgs[Math.floor(next() * i)]?.id ?? null },
     ),
   })
 }
 
+/** Organizations with no member among the others (spec 029, "Organization node"). */
+const withEmptyOrgs = () =>
+  snap({
+    agents: ids("a", 5).map((id) => agent(id)),
+    orgs: [
+      org("Product", []),
+      org("Docs", ["a01", "a02"], { leadId: "a01", parentId: "Product" }),
+      org("Empty", [], { parentId: "Product" }),
+      org("Ops", ["a03"]),
+      org("Void", []),
+    ],
+  })
+
+/** No agent, only organizations: the root "You" and the organization nodes. */
+const onlyOrgs = () =>
+  snap({ orgs: [org("Product", []), org("Docs", [], { parentId: "Product" }), org("Ops", [])] })
+
 const cases: [string, () => OrgSnapshot][] = [
   ["1 agent", oneAgent],
   ["a tree of 3 levels", threeLevels],
-  ["20 channel nodes in a tree", twentyInATree],
+  ["20 organization nodes in a tree", twentyInATree],
   ["6 agents", sixAgents],
   ["40 agents", fortyAgents],
-  ["a channel node of 12 agents and a tile", twelveInAChannel],
-  ["20 channel nodes", twentyChannels],
+  ["an organization node of 12 agents and a tile", twelveInAnOrg],
+  ["20 organization nodes", twentyOrgs],
+  ["organizations with no member", withEmptyOrgs],
+  ["only organizations, no agent", onlyOrgs],
 ]
 
 describe("the layout never overlaps", () => {
@@ -307,9 +323,9 @@ describe("the layout never overlaps", () => {
     }
   }
 
-  test("the chart with 40 hand-off lines, 40 agents and 20 channel nodes at once", () => {
+  test("the chart with 40 hand-off lines, 40 agents and 20 organization nodes at once", () => {
     const a = ids("a", 40)
-    const base = twentyChannels()
+    const base = twentyOrgs()
     const model = buildChart(snap({ ...base, mainAgentId: "a05", handoffs: handoffsOf(a, 60, 21) }))
     expect(model.lines.filter((l) => l.kind === "handoff")).toHaveLength(
       Math.min(40, model.lines.filter((l) => l.kind === "handoff").length),
@@ -337,19 +353,19 @@ describe("random charts", () => {
       const next = random(seed * 977)
       const count = 1 + Math.floor(next() * 45)
       const a = ids("a", count)
-      const channels = Array.from({ length: Math.floor(next() * 22) }, (_, i) => {
+      const orgs = Array.from({ length: Math.floor(next() * 22) }, (_, i) => {
         const size = 1 + Math.floor(next() * (next() < 0.2 ? 20 : 6))
         const picked = new Set<string>()
         for (let k = 0; k < size; k++) picked.add(a[Math.floor(next() * a.length)] as string)
         const members = [...picked]
-        return channel(`Ch${i}`, members, next() < 0.5 ? { leadId: members[0] as string } : {})
+        return org(`Ch${i}`, members, next() < 0.5 ? { leadId: members[0] as string } : {})
       })
       const handoffCount = Math.min(Math.floor(next() * 60), count * (count - 1))
       const model = buildChart(
         snap({
           mainAgentId: next() < 0.5 ? (a[0] as string) : null,
           agents: a.map((id) => agent(id)),
-          channels,
+          orgs,
           handoffs: count > 1 ? handoffsOf(a, handoffCount, seed) : [],
         }),
       )
@@ -376,13 +392,13 @@ describe("what the layout depends on", () => {
     const b = buildChart({
       ...reversed,
       agents: [...reversed.agents].reverse(),
-      channels: [...reversed.channels].reverse(),
+      orgs: [...reversed.orgs].reverse(),
     })
     expect(layoutChart(b, 14)).toEqual(layoutChart(a, 14))
   })
 
-  test("a row is never wider than 1,600 px, and channel nodes that do not fit go to the next row", () => {
-    const model = buildChart(twentyChannels())
+  test("a row is never wider than 1,600 px, and organization nodes that do not fit go to the next row", () => {
+    const model = buildChart(twentyOrgs())
     const layout = layoutChart(model, 16)
     expect(layout.rows.length).toBeGreaterThan(1)
     for (const row of layout.rows) expect(row.w).toBeLessThanOrEqual(ROW_MAX_PX)
@@ -414,56 +430,56 @@ describe("the parts of the page", () => {
   const layout = layoutChart(model, 14)
   const place = (key: string) => layout.nodes.find((n) => n.key === key)?.rect as Rect
 
-  test("the root is at the top, above every channel node", () => {
+  test("the root is at the top, above every organization node", () => {
     const root = place(ROOT_KEY)
-    for (const c of model.channels) expect(place(c.key).y).toBeGreaterThan(root.y + root.h)
+    for (const c of model.orgs) expect(place(c.key).y).toBeGreaterThan(root.y + root.h)
   })
 
-  test("the agents of a channel node sit under it, and the lead sits above the others", () => {
-    const docs = place("c:Docs")
-    const lead = place(copyKey("c:Docs", "a01"))
-    const other = place(copyKey("c:Docs", "a02"))
+  test("the agents of an organization node sit under it, and the lead sits above the others", () => {
+    const docs = place("o:Docs")
+    const lead = place(copyKey("o:Docs", "a01"))
+    const other = place(copyKey("o:Docs", "a02"))
     expect(lead.y).toBeGreaterThanOrEqual(docs.y + docs.h)
     expect(other.y).toBeGreaterThanOrEqual(lead.y + lead.h)
   })
 
-  test("the lead is in the middle under its channel node", () => {
-    const docs = place("c:Docs")
-    const lead = place(copyKey("c:Docs", "a01"))
+  test("the lead is in the middle under its organization node", () => {
+    const docs = place("o:Docs")
+    const lead = place(copyKey("o:Docs", "a01"))
     expect(lead.x + lead.w / 2).toBe(docs.x + docs.w / 2)
   })
 
-  test("an agent in two channel nodes has two nodes that do not meet", () => {
-    const a = place(copyKey("c:Docs", "a02"))
-    const b = place(copyKey("c:Ops", "a02"))
+  test("an agent in two organization nodes has two nodes that do not meet", () => {
+    const a = place(copyKey("o:Docs", "a02"))
+    const b = place(copyKey("o:Ops", "a02"))
     expect(overlaps(a, b)).toBe(false)
   })
 
-  test("a lead line ends on the left side of its member, and runs in the lane of the channel node", () => {
+  test("a lead line ends on the left side of its member, and runs in the lane of the organization node", () => {
     const line = layout.lines.find(
-      (l) => l.id === `l:${copyKey("c:Docs", "a01")}>${copyKey("c:Docs", "a02")}`,
+      (l) => l.id === `l:${copyKey("o:Docs", "a01")}>${copyKey("o:Docs", "a02")}`,
     )
-    const member = place(copyKey("c:Docs", "a02"))
+    const member = place(copyKey("o:Docs", "a02"))
     const last = line?.points.at(-1) as Point
     expect(last.x).toBe(member.x)
     expect(last.y).toBe(member.y + (member.h - CELL) / 2 + CELL / 2)
   })
 
-  test("the tile '+<n> more' takes the place after the last agent of its channel node", () => {
-    const big = buildChart(twelveInAChannel())
+  test("the tile '+<n> more' takes the place after the last agent of its organization node", () => {
+    const big = buildChart(twelveInAnOrg())
     const l = layoutChart(big, 14)
-    const channelNode = big.channels[0]
-    expect(channelNode?.nodes).toHaveLength(ORG_CHANNEL_NODES_MAX)
-    const tile = l.nodes.find((n) => n.key === moreKey("c:Big"))
+    const orgNode = big.orgs[0]
+    expect(orgNode?.nodes).toHaveLength(ORG_NODES_MAX)
+    const tile = l.nodes.find((n) => n.key === moreKey("o:Big"))
     expect(tile).toBeDefined()
     expect(tile?.kind).toBe("more")
-    // The tile is the last of the nodes of that channel node in the order of the page.
-    expect(l.nodes.at(-1)?.key).toBe(moreKey("c:Big"))
+    // The tile is the last of the nodes of that organization node in the order of the page.
+    expect(l.nodes.at(-1)?.key).toBe(moreKey("o:Big"))
   })
 
-  test("a chart with one agent has the root, one channel node and one agent", () => {
+  test("a chart with one agent has the root, one organization node and one agent", () => {
     const one = layoutChart(buildChart(oneAgent()), 14)
-    expect(one.nodes.map((n) => n.kind)).toEqual(["root", "channel", "agent"])
+    expect(one.nodes.map((n) => n.kind)).toEqual(["root", "org", "agent"])
     expect(one.lines.map((l) => l.kind)).toEqual(["structure", "structure"])
   })
 
@@ -477,53 +493,67 @@ describe("the parts of the page", () => {
   })
 })
 
-describe("sub-channels (spec 030)", () => {
-  test("a sub-channel node sits under the node of its parent, one level lower", () => {
+describe("sub-organizations (spec 030)", () => {
+  test("a sub-organization node sits under the node of its parent, one level lower", () => {
     const model = buildChart(threeLevels())
     const layout = layoutChart(model, 14)
     const rect = (key: string) => layout.nodes.find((n) => n.key === key)?.rect as Rect
-    const bottomOf = (channelKey: string) =>
+    const bottomOf = (orgKey: string) =>
       Math.max(
         ...layout.nodes
-          .filter((n) => n.key === channelKey || n.parent === channelKey)
+          .filter((n) => n.key === orgKey || n.parent === orgKey)
           .map((n) => n.rect.y + n.rect.h),
       )
     // Docs is under all of Product, Site and Blog under all of Docs, side by side.
-    expect(rect("c:Docs").y).toBeGreaterThanOrEqual(bottomOf("c:Product"))
-    expect(rect("c:Site").y).toBeGreaterThanOrEqual(bottomOf("c:Docs"))
-    expect(rect("c:Site").y).toBe(rect("c:Blog").y)
-    // Ops is a top channel: in the row of Product.
-    expect(rect("c:Ops").y).toBe(rect("c:Product").y)
-    // The lines that belong to the tree: root to the top channels, a parent to its sub-channels.
+    expect(rect("o:Docs").y).toBeGreaterThanOrEqual(bottomOf("o:Product"))
+    expect(rect("o:Site").y).toBeGreaterThanOrEqual(bottomOf("o:Docs"))
+    expect(rect("o:Site").y).toBe(rect("o:Blog").y)
+    // Ops is a top organization: in the row of Product.
+    expect(rect("o:Ops").y).toBe(rect("o:Product").y)
+    // The lines that belong to the tree: root to the top orgs, a parent to its sub-organizations.
     const structure = layout.lines.filter((l) => l.kind === "structure").map((l) => l.id)
-    expect(structure).toContain("s:c:Product>c:Docs")
-    expect(structure).toContain("s:c:Docs>c:Site")
-    expect(structure).toContain("s:c:Docs>c:Blog")
-    expect(structure).not.toContain("s:root>c:Docs")
+    expect(structure).toContain("s:o:Product>o:Docs")
+    expect(structure).toContain("s:o:Docs>o:Site")
+    expect(structure).toContain("s:o:Docs>o:Blog")
+    expect(structure).not.toContain("s:root>o:Docs")
   })
 
-  test("the order of the page: a channel node, its agents, then its sub-channels", () => {
+  test("the order of the page: an organization node, its agents, then its sub-organizations", () => {
     const model = buildChart(threeLevels())
-    expect(model.channels.map((c) => c.key)).toEqual([
-      "c:Ops",
-      "c:Product",
-      "c:Docs",
-      "c:Blog",
-      "c:Site",
-      // The main agent is in no channel: "No channel" is last.
-      "c:none",
+    expect(model.orgs.map((c) => c.key)).toEqual([
+      "o:Ops",
+      "o:Product",
+      "o:Docs",
+      "o:Blog",
+      "o:Site",
+      // The main agent is in no organization: "No organization" is last.
+      "o:none",
     ])
   })
 })
 
-describe("the lines of a channel node to its members stay in its lanes with sub-channels", () => {
-  test("a member line ends on the left side of the member, also beside a sub-channel line", () => {
+describe("the lines of an organization node to its members stay in its lanes with sub-organizations", () => {
+  test("a member line ends on the left side of the member, also beside a sub-organization line", () => {
     const model = buildChart(threeLevels())
     const layout = layoutChart(model, 14)
-    for (const id of ["s:c:Site>c:Site/a04", "s:c:Blog>c:Blog/a06"]) {
+    for (const id of ["s:o:Site>o:Site/a04", "s:o:Blog>o:Blog/a06"]) {
       const placed = layout.lines.find((l) => l.id === id)
       const member = layout.nodes.find((n) => n.key === id.split(">")[1])?.rect as Rect
       expect(placed?.points.at(-1)?.x).toBe(member.x)
     }
+  })
+})
+
+describe("organization nodes with no member (spec 029)", () => {
+  test("an organization node with no member is the header alone, with the lines to its place", () => {
+    const model = buildChart(withEmptyOrgs())
+    const layout = layoutChart(model, 14)
+    const empty = layout.nodes.find((n) => n.key === "o:Empty")
+    const docs = layout.nodes.find((n) => n.key === "o:Docs")
+    expect(empty?.kind).toBe("org")
+    expect(layout.nodes.filter((n) => n.parent === "o:Empty")).toEqual([])
+    // It sits in the row of its sibling, one level under Product.
+    expect(empty?.rect.y).toBe(docs?.rect.y)
+    expect(layout.lines.some((l) => l.id === "s:o:Product>o:Empty")).toBe(true)
   })
 })

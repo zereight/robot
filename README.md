@@ -170,7 +170,7 @@ bun run check        # lint, typecheck, unit tests and the host checks in one go
 bun run host:check   # host: rustfmt, clippy and cargo test
 bun run e2e          # build, then Playwright drives the real app
 bun run dist         # package for this computer into dist/desktop
-bun run sizes        # size of the built files against the baseline (docs/performance.md)
+bun run sizes        # size of the built files against the baseline, by hand (docs/performance.md)
 bun run perf         # times, CPU use and memory by hand (docs/performance.md)
 ```
 

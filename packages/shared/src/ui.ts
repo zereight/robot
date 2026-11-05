@@ -1,5 +1,6 @@
 import { Schema, Struct } from "effect"
 import type { LinkState } from "./link.ts"
+import { orgNameMatches } from "./orgPrefix.ts"
 
 export const PlaceKind = Schema.Literals(["agent", "channel"])
 export type PlaceKind = typeof PlaceKind.Type
@@ -178,23 +179,33 @@ export const summarize = (places: readonly Place[]): SectionSummary => ({
 
 /**
  * True when the typed text is a part of the name of the place, or, for an agent, a part of its
- * role line, ignoring case. A channel has no role line, so only its name counts.
+ * role line or of the whole name of its deepest organization (spec 036), ignoring case. A channel
+ * has no role line and no organization, so only its name counts. `organization` is absent when the
+ * switch "Show the organization before an agent name" is off.
  */
-export const placeMatches = (place: Place, query: string) => {
+export const placeMatches = (place: Place, query: string, organization?: string | null) => {
   const q = query.trim().toLocaleLowerCase()
   if (!q) return true
   if (place.name.toLocaleLowerCase().includes(q)) return true
-  return place.kind === "agent" && !!place.role && place.role.toLocaleLowerCase().includes(q)
+  if (place.kind !== "agent") return false
+  if (place.role?.toLocaleLowerCase().includes(q)) return true
+  return orgNameMatches(organization, q)
 }
 
 /**
- * Keeps places whose name contains the query, or, for an agent, whose role line contains it,
- * ignoring case. A user section with no match leaves the list. The order of sections and places
- * does not change.
+ * Keeps places whose name contains the query, or, for an agent, whose role line or organization
+ * name contains it, ignoring case. `organizationOf` gives the whole name of the deepest
+ * organization of an agent place; leave it out when no prefix shows. A user section with no match
+ * leaves the list. The order of sections and places does not change.
  */
-export const filterPlaces = (sections: readonly PlaceSection[], query: string) => {
+export const filterPlaces = (
+  sections: readonly PlaceSection[],
+  query: string,
+  organizationOf?: (place: Place) => string | null | undefined,
+) => {
   if (!query.trim()) return sections
-  const keep = (places: readonly Place[]) => places.filter((p) => placeMatches(p, query))
+  const keep = (places: readonly Place[]) =>
+    places.filter((p) => placeMatches(p, query, organizationOf?.(p)))
   return sections.map(
     (s): PlaceSection => ({
       ...s,

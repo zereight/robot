@@ -1,4 +1,4 @@
-import type { ChartModel } from "@robot/shared"
+import { type ChartModel, isOrgModel } from "@robot/shared"
 
 // Where the org chart on the phone comes from (spec 029, "Phone"; spec 011; spec 012). The server
 // sends a ready model, as the answer to one request and as a push whenever the chart changes. The
@@ -63,13 +63,14 @@ export class OrgFeed {
   pushed(model: ChartModel) {
     if (this.#phase.kind === "off") return
     this.#pushed = true
-    this.#set({ kind: "ready", model })
+    // A server of an older step sends a chart of channels: the screen says so, as for an unknown request.
+    this.#set(isOrgModel(model) ? { kind: "ready", model } : { kind: "unsupported" })
   }
 
   /** The answer to question `question`. Returns true when it was shown. */
   answered(question: number, model: ChartModel): boolean {
     if (question !== this.#question || this.#pushed) return false
-    this.#set({ kind: "ready", model })
+    this.#set(isOrgModel(model) ? { kind: "ready", model } : { kind: "unsupported" })
     return true
   }
 

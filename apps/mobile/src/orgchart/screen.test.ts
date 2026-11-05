@@ -19,7 +19,7 @@ const agent = (id: string, state: AgentState = "idle"): OrgAgent => ({
   task: null,
 })
 const model = (snapshot: Partial<OrgSnapshot> = {}): ChartModel =>
-  buildChart({ mainAgentId: null, agents: [], channels: [], handoffs: [], ...snapshot })
+  buildChart({ mainAgentId: null, agents: [], orgs: [], handoffs: [], ...snapshot })
 const withAgent = model({ agents: [agent("Ada")] })
 
 const STATES: readonly LinkState[] = [

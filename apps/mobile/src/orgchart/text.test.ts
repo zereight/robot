@@ -33,8 +33,8 @@ const row = (extra: Partial<OrgAgentRow> = {}): OrgAgentRow => ({
   ...extra,
 })
 const block = (extra: Partial<OrgBlock> = {}): OrgBlock => ({
-  key: "c:x",
-  channelId: "x",
+  key: "o:x",
+  orgId: "x",
   name: "Docs",
   memberCount: 5,
   counts: [
@@ -58,9 +58,9 @@ describe("the words of the screen Org chart", () => {
     )
   })
 
-  test('the block "No channel" takes its name from the catalogue', () => {
-    expect(blockName(en, block({ channelId: null, name: "" }))).toBe("No channel")
-    expect(blockName(ko, block({ channelId: null, name: "" }))).toBe("채널 없음")
+  test('the block "No organization" takes its name from the catalogue', () => {
+    expect(blockName(en, block({ orgId: null, name: "" }))).toBe("No organization")
+    expect(blockName(ko, block({ orgId: null, name: "" }))).toBe("조직 없음")
     expect(blockName(en, block())).toBe("Docs")
   })
 
@@ -86,8 +86,8 @@ describe("the words of the screen Org chart", () => {
     expect(moreLabel(en, block({ more: [{} as never, {} as never, {} as never] }))).toBe(
       "3 more members of Docs",
     )
-    expect(moreLabel(ko, block({ channelId: null, name: "", more: [{} as never] }))).toBe(
-      "채널 없음의 다른 멤버 1명",
+    expect(moreLabel(ko, block({ orgId: null, name: "", more: [{} as never] }))).toBe(
+      "조직 없음의 다른 멤버 1명",
     )
   })
 

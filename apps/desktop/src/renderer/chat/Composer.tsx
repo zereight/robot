@@ -39,9 +39,11 @@ import {
 import { MentionList } from "../channels/MentionList.tsx"
 import { describeError, type ErrorText } from "../lib/errors.ts"
 import { call, stageFile } from "../lib/rpc.ts"
+import { AgentInLine } from "../orgs/AgentName.tsx"
 import skillStyles from "../skills/skills.module.css"
 import { useAgents } from "../state/agents.tsx"
 import { useApp } from "../state/app.tsx"
+import { useOrgs } from "../state/orgs.tsx"
 import { useProviders } from "../state/providers.tsx"
 import { useUi } from "../state/ui.tsx"
 import { Button, IconButton } from "../ui/controls.tsx"
@@ -245,6 +247,7 @@ export const Composer = (props: ComposerProps) => {
   const [dismissed, setDismissed] = createSignal(false)
   // The `@` list (spec 003, "Mention another agent"). It has no `@all`.
   const agents = useAgents()
+  const orgs = useOrgs()
   const [caret, setCaret] = createSignal(0)
   const [mentionHighlight, setMentionHighlight] = createSignal(0)
   const [mentionDismissed, setMentionDismissed] = createSignal(false)
@@ -252,7 +255,11 @@ export const Composer = (props: ComposerProps) => {
   const mentionable = createMemo(() => {
     const open = mention()
     if (!open) return []
-    const others = agents.agents().filter((agent) => agent.id !== props.agent.id)
+    // Each agent brings the whole name of its organization, so the list also matches it (spec 036).
+    const others = agents
+      .agents()
+      .filter((agent) => agent.id !== props.agent.id)
+      .map((agent) => ({ ...agent, organization: orgs.prefixOrg(agent.id) }))
     return mentionEntries(others, open.query, false)
   })
   const mentionOpen = () => mentionable().length > 0 && !mentionDismissed()
@@ -740,9 +747,15 @@ export const Composer = (props: ComposerProps) => {
           {(quoted) => (
             <div class={styles.quote} data-testid="reply-quote">
               <span class={styles.quoteText}>
-                {t("chat.replyingTo", {
-                  name: quoted().author === "agent" ? props.agent.name : t("chat.you"),
-                })}
+                {quoted().author === "agent" ? (
+                  <AgentInLine
+                    line={(name) => t("chat.replyingTo", { name })}
+                    id={props.agent.id}
+                    name={props.agent.name}
+                  />
+                ) : (
+                  t("chat.replyingTo", { name: t("chat.you") })
+                )}
                 {": "}
                 {messageText(quoted()).slice(0, 80)}
               </span>

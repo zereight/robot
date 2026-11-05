@@ -14,6 +14,7 @@ import {
   ENDED_AS,
   FACE_HUES,
   FACE_SHAPES,
+  HAND_OFF_RANGES,
   HAND_OFF_RULES,
   HANDBOOK_MAX,
   HANDBOOK_SOURCES,
@@ -29,6 +30,7 @@ import {
   MEMORY_USER_TEXT_MAX,
   NoteSchema,
   nameKey,
+  ORG_NAME_MAX,
   parseOutsideSource,
   parsePlaceOutside,
   placeOutsideText,
@@ -415,7 +417,9 @@ const partCheck = (v: unknown): boolean => {
       // The muted line "The model is busy. Trying again (1 of 3)." (spec 006).
       if (v.note === "busy_retry")
         return shape(["kind", "note", "n", "of"])(v) && int(v.n) && int(v.of)
-      // The muted line of a repaired channel tree travels with its reason (spec 030, "Repair", 019).
+      // The old muted line of a repaired channel tree travels with its reason. A version before the
+      // organizations posted it (spec 030, "Migration"); no version posts it now, but it stays in
+      // the history, and a computer that was not updated can still send one (spec 019).
       if (v.note === "tree_repaired")
         return shape(["kind", "note", "why"])(v) && oneOf(["loop", "levels"])(v.why)
       // The muted lines "The connection NAME is not available." and "Tools of the connection NAME wait
@@ -683,6 +687,15 @@ interface OrganizationRow {
 }
 
 /**
+ * The value "Along the channels" moved to "Along the organizations" (spec 030, "Migration"). A
+ * computer of an older version still sends the old value. It counts as the new one, so its change
+ * of the rule still arrives. This computer never sends the old value.
+ */
+const LEGACY_HAND_OFF = "channels"
+const handOffOf = (value: unknown): string =>
+  value === LEGACY_HAND_OFF ? "organizations" : String(value)
+
+/**
  * The part "Organization" of the settings (spec 013, 030, 019): the hand-off rule and the switch
  * "Ask up the line". It is data of the agents, like the handbook: a change on one computer counts
  * on the other after it syncs, and the later change wins. The profile has one row, always with the
@@ -695,7 +708,7 @@ const org: KindDef = {
   kind: "org",
   rank: 0,
   fields: {
-    handOff: { check: oneOf(HAND_OFF_RULES) },
+    handOff: { check: oneOf([...HAND_OFF_RULES, LEGACY_HAND_OFF]) },
     askUpTheLine: { check: bool },
   },
   required: ["handOff"],
@@ -716,7 +729,7 @@ const org: KindDef = {
     ctx.db.run(
       "INSERT OR REPLACE INTO organization (id, hand_off, ask_up_the_line, changed_at) VALUES (?, ?, ?, ?)",
       id,
-      f.handOff as string,
+      handOffOf(f.handOff),
       f.askUpTheLine === true ? 1 : 0,
       ctx.now(),
     )
@@ -724,7 +737,7 @@ const org: KindDef = {
   },
   write: (ctx, id, f) => {
     if (f.handOff !== undefined)
-      ctx.db.run("UPDATE organization SET hand_off = ? WHERE id = ?", f.handOff as string, id)
+      ctx.db.run("UPDATE organization SET hand_off = ? WHERE id = ?", handOffOf(f.handOff), id)
     if (typeof f.askUpTheLine === "boolean")
       ctx.db.run(
         "UPDATE organization SET ask_up_the_line = ? WHERE id = ?",
@@ -760,6 +773,7 @@ interface AgentRow {
   sensitive_mark: string | null
   outside_mark: string | null
   read_handbook: number
+  is_main: number
 }
 
 const readFace = (ctx: Ctx, file: string | null) => {
@@ -857,6 +871,11 @@ const agent: KindDef = {
     // The switch "Read the handbook" (spec 002, 019). A computer of an older step has none, and the
     // switch counts as on.
     readHandbook: { check: bool },
+    // The switch "Main agent" (spec 002, flow 7, 019). At most one agent on a server has it: when
+    // two computers turn it on for two agents while apart, the check at the end of the sync clears
+    // the older change (`SyncEngine.repairMain`). A computer of an older step has none, and the
+    // switch counts as off.
+    isMain: { check: bool },
     archived: { check: bool },
     // The mark of a sensitive read of the chat (spec 007). A computer of an older step has none.
     sensitive: { check: nullable(isSensitiveLabel) },
@@ -889,6 +908,7 @@ const agent: KindDef = {
             ? { accountId: r.backup_account_id, model: r.backup_model, effort: r.backup_effort }
             : null,
         readHandbook: r.read_handbook === 1,
+        isMain: r.is_main === 1,
         archived: r.archived_at !== null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
@@ -922,6 +942,7 @@ const agent: KindDef = {
       permission: "ask_all",
       memory_enabled: 1,
       read_handbook: f.readHandbook === false ? 0 : 1,
+      is_main: f.isMain === true ? 1 : 0,
       archived_at: f.archived === true ? now : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
@@ -943,6 +964,7 @@ const agent: KindDef = {
     if (f.role !== undefined) columns.role = (f.role as string).trim()
     if (f.instructions !== undefined) columns.instructions = f.instructions
     if (typeof f.readHandbook === "boolean") columns.read_handbook = f.readHandbook ? 1 : 0
+    if (typeof f.isMain === "boolean") columns.is_main = f.isMain ? 1 : 0
     if (f.face !== undefined) {
       const face = f.face as { shape: number; hue: number }
       columns.face_shape = face.shape
@@ -998,8 +1020,6 @@ interface ChannelRow {
   picture: string | null
   sensitive_mark: string | null
   outside_mark: string | null
-  parent_channel_id: string | null
-  daily_token_limit: number | null
   created_at: number
   updated_at: number
   last_read_at: number
@@ -1017,6 +1037,18 @@ const setMembers = (ctx: Ctx, channelId: string, members: readonly string[]) => 
       position++,
     )
   }
+}
+
+/**
+ * The fields that a channel had before the organizations (spec 030, "Migration", "What the channel
+ * loses"): the parent channel and the daily token limit. They moved to the organizations. A
+ * computer of an older version still sends them with a channel. They are checked and then ignored,
+ * so its other changes of the channel still arrive. This computer never sends them. This is the
+ * one place for both.
+ */
+const LEGACY_CHANNEL_FIELDS: Readonly<Record<string, FieldDef>> = {
+  parentChannel: { check: nullable(str(100, 1)) },
+  dailyTokenLimit: { check: nullable(validDailyLimit) },
 }
 
 const channel: KindDef = {
@@ -1050,13 +1082,7 @@ const channel: KindDef = {
     // The outside content that the next turns of the channel hold, with the program mark (spec 007).
     // A computer of an older step has none.
     outside: { check: nullable(isPlaceOutside) },
-    // The parent channel (spec 030). A computer of an older step has none, and leaves the field as
-    // it is. A parent that has not come yet, or is gone, counts as no parent, so the row needs no
-    // order of its own.
-    parentChannel: { check: nullable(str(100, 1)) },
-    // The daily token limit (spec 030, 019): off (null) or a whole number in the range. A computer
-    // of an older step has none, and leaves the field as it is.
-    dailyTokenLimit: { check: nullable(validDailyLimit) },
+    ...LEGACY_CHANNEL_FIELDS,
     members: {
       check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
     },
@@ -1081,8 +1107,6 @@ const channel: KindDef = {
         picture: isChannelPicture(r.picture) ? r.picture : null,
         sensitive: isSensitiveLabel(r.sensitive_mark) ? r.sensitive_mark : null,
         outside: parsePlaceOutside(r.outside_mark),
-        parentChannel: r.parent_channel_id,
-        dailyTokenLimit: r.daily_token_limit,
         members: ctx.db
           .all<{ agent_id: string }>(
             "SELECT agent_id FROM channel_member WHERE channel_id = ? ORDER BY position",
@@ -1111,8 +1135,6 @@ const channel: KindDef = {
       picture: isChannelPicture(f.picture) ? f.picture : null,
       sensitive_mark: isSensitiveLabel(f.sensitive) ? f.sensitive : null,
       outside_mark: placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null),
-      parent_channel_id: typeof f.parentChannel === "string" ? f.parentChannel : null,
-      daily_token_limit: validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null,
       created_at: f.createdAt,
       updated_at: now,
       last_read_at: typeof f.readAt === "number" ? f.readAt : 0,
@@ -1138,10 +1160,6 @@ const channel: KindDef = {
       columns.sensitive_mark = isSensitiveLabel(f.sensitive) ? f.sensitive : null
     if (f.outside !== undefined)
       columns.outside_mark = placeOutsideText(isPlaceOutside(f.outside) ? f.outside : null)
-    if (f.parentChannel !== undefined)
-      columns.parent_channel_id = typeof f.parentChannel === "string" ? f.parentChannel : null
-    if (f.dailyTokenLimit !== undefined)
-      columns.daily_token_limit = validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null
     if (typeof f.readAt === "number") columns.last_read_at = Math.max(row.last_read_at, f.readAt)
     columns.updated_at = ctx.now()
     update(ctx.db, "channel", "id = ?", [id], columns)
@@ -1152,6 +1170,123 @@ const channel: KindDef = {
     // the removal of each note too, and makes no history row here (spec 019).
     ctx.db.run("DELETE FROM memory WHERE channel_id = ?", id)
     ctx.db.run("DELETE FROM channel WHERE id = ?", id)
+  },
+  label: (f) => String(f.name ?? ""),
+}
+
+// ------------------------------------------------------------------------------ organization
+
+interface OrgUnitRow {
+  id: string
+  name: string
+  lead_agent_id: string | null
+  parent_id: string | null
+  hand_off_range: string
+  daily_token_limit: number | null
+  created_at: number
+  updated_at: number
+}
+
+const setOrgMembers = (ctx: Ctx, orgId: string, members: readonly string[]) => {
+  ctx.db.run("DELETE FROM org_member WHERE org_id = ?", orgId)
+  let position = 0
+  for (const agentId of members) {
+    if (!has(ctx.db, "agent", agentId)) continue
+    ctx.db.run(
+      "INSERT OR IGNORE INTO org_member (org_id, agent_id, position) VALUES (?, ?, ?)",
+      orgId,
+      agentId,
+      position++,
+    )
+  }
+}
+
+/**
+ * An organization (spec 030, 019): its name, members, lead, parent organization, hand-off range and
+ * daily token limit. The tools of an organization do not sync, because skills and connections do
+ * not. A parent that has not come yet, or is gone, counts as no parent, so the row needs no order of
+ * its own. After a sync the tree is checked (`repairOrgs` of the engine).
+ */
+const orgunit: KindDef = {
+  kind: "orgunit",
+  rank: 2,
+  fields: {
+    name: {
+      check: (v) => {
+        if (typeof v !== "string") return false
+        const n = charLength(v.trim())
+        return n >= 1 && n <= ORG_NAME_MAX
+      },
+    },
+    lead: { check: nullable(str(100, 1)) },
+    parent: { check: nullable(str(100, 1)) },
+    members: {
+      check: (v) => Array.isArray(v) && v.length <= 500 && v.every(str(100, 1)),
+    },
+    handOffRange: { check: oneOf(HAND_OFF_RANGES) },
+    dailyTokenLimit: { check: nullable(validDailyLimit) },
+    createdAt: { check: int },
+  },
+  required: ["name", "lead", "parent", "members", "handOffRange", "dailyTokenLimit", "createdAt"],
+  fixed: ["createdAt"],
+  count: (db) => q.count(db, "org_unit"),
+  ids: (db, after, limit) => q.ids(db, "org_unit", after, limit),
+  read: (ctx, id) => {
+    const r = ctx.db.get<OrgUnitRow>("SELECT * FROM org_unit WHERE id = ?", id)
+    if (!r) return undefined
+    return {
+      fields: {
+        name: r.name,
+        lead: r.lead_agent_id,
+        parent: r.parent_id,
+        members: ctx.db
+          .all<{ agent_id: string }>(
+            "SELECT agent_id FROM org_member WHERE org_id = ? ORDER BY position",
+            id,
+          )
+          .map((m) => m.agent_id),
+        handOffRange: r.hand_off_range,
+        dailyTokenLimit: r.daily_token_limit,
+        createdAt: r.created_at,
+      },
+      parent: null,
+      wall: r.updated_at,
+    }
+  },
+  create: (ctx, id, f) => {
+    insert(ctx.db, "org_unit", {
+      id,
+      server_id: ctx.localServerId(),
+      name: (f.name as string).trim(),
+      name_key: nameKey(f.name as string),
+      lead_agent_id: f.lead,
+      parent_id: typeof f.parent === "string" ? f.parent : null,
+      hand_off_range: f.handOffRange,
+      daily_token_limit: validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null,
+      created_at: f.createdAt,
+      updated_at: ctx.now(),
+    })
+    setOrgMembers(ctx, id, f.members as string[])
+    return true
+  },
+  write: (ctx, id, f) => {
+    if (!has(ctx.db, "org_unit", id)) return
+    const columns: Record<string, unknown> = {}
+    if (f.name !== undefined) {
+      columns.name = (f.name as string).trim()
+      columns.name_key = nameKey(f.name as string)
+    }
+    if (f.lead !== undefined) columns.lead_agent_id = f.lead
+    if (f.parent !== undefined) columns.parent_id = typeof f.parent === "string" ? f.parent : null
+    if (typeof f.handOffRange === "string") columns.hand_off_range = f.handOffRange
+    if (f.dailyTokenLimit !== undefined)
+      columns.daily_token_limit = validDailyLimit(f.dailyTokenLimit) ? f.dailyTokenLimit : null
+    columns.updated_at = ctx.now()
+    update(ctx.db, "org_unit", "id = ?", [id], columns)
+    if (f.members !== undefined) setOrgMembers(ctx, id, f.members as string[])
+  },
+  remove: (ctx, id) => {
+    ctx.db.run("DELETE FROM org_unit WHERE id = ?", id)
   },
   label: (f) => String(f.name ?? ""),
 }
@@ -2511,6 +2646,7 @@ export const KINDS: Readonly<Record<SyncKind, KindDef>> = {
   org,
   agent,
   channel,
+  orgunit,
   memory,
   message,
   thread,

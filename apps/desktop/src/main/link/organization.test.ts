@@ -63,7 +63,7 @@ const pair = async (canChange: boolean) => {
     if (!result.ok) throw new Error(`request failed: ${result.error.code}`)
     return result.value as OrganizationState
   }
-  const set = (value: "any" | "channels") =>
+  const set = (value: "any" | "organizations") =>
     server.runtime.runPromise(Organization.use((o) => o.setHandOff(value)))
   return { server, client, serverId, ask, read, set }
 }
@@ -95,8 +95,8 @@ describe('a client and the part "Organization" of a server (spec 030, 012)', () 
   test("a client reads the rule of the server, and a later change reaches it as a push", async () => {
     const p = await pair(false)
     expect(await p.read()).toEqual({ handOff: "any", askUpTheLine: false })
-    await p.set("channels")
-    expect(await p.read()).toEqual({ handOff: "channels", askUpTheLine: false })
+    await p.set("organizations")
+    expect(await p.read()).toEqual({ handOff: "organizations", askUpTheLine: false })
     // The window of the client hears that the part changed on that server.
     const pushes = await waitFor(
       () =>
@@ -111,7 +111,7 @@ describe('a client and the part "Organization" of a server (spec 030, 012)', () 
   test("the switch makes no difference: a client with it cannot change the rule either", async () => {
     for (const canChange of [false, true]) {
       const p = await pair(canChange)
-      expect(codeOf(await p.ask("organization.setHandOff", { rule: "channels" }))).toBe(
+      expect(codeOf(await p.ask("organization.setHandOff", { rule: "organizations" }))).toBe(
         "not_allowed",
       )
       expect(await p.read()).toEqual({ handOff: "any", askUpTheLine: false })
@@ -147,14 +147,14 @@ describe('a client and the part "Organization" of a server (spec 030, 012)', () 
   test("the chart that the server sends names the rule for the legend", async () => {
     const p = await pair(false)
     // The chart is empty without an agent, and the rule still goes with it.
-    await p.set("channels")
+    await p.set("organizations")
     const model = await waitFor(
       async () => {
         const result = await p.ask("orgChart.model", { serverId: p.serverId })
         return result.ok ? (result.value as { handOffRule?: string }) : {}
       },
-      (m) => m.handOffRule === "channels",
+      (m) => m.handOffRule === "organizations",
     )
-    expect(model.handOffRule).toBe("channels")
+    expect(model.handOffRule).toBe("organizations")
   })
 })

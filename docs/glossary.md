@@ -13,7 +13,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Term | Meaning | Korean | Avoid |
 | --- | --- | --- | --- |
 | Agent | A member that does work, with a face, name, role line, model, workspace and memory (002). | 에이전트 | bot (except the bot tag), assistant, employee, coworker |
-| Main agent | The one agent that can split work across the others (002). | — | boss, manager |
+| Main agent | The one agent that can split work across the others (002). It is the switch "Main agent" in the profile of an agent, and at most one agent has it. It is the root of the org chart (029). | 메인 에이전트 | boss, manager |
 | Role line | The short line under the name of an agent. It works as a label: the user picks it from a list, adds a new one, or removes it (002). | 역할 | job title |
 | Role badge | The small label that shows the role line of an agent in a row of the place list (001). Not shown as a word in the interface. | — | — |
 | Instructions | The text that an agent follows in every turn (002). | 지침 | prompt, soul, persona |
@@ -79,7 +79,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Slot | One of the tasks that can run at the same time, set by "Agents working at once" (005, 013). | 실행 자리 | place, worker |
 | Agents working at once | The setting for the number of slots (013). | 동시에 일하는 에이전트 수 | concurrency, workers |
 | Channel | A conversation of the user and several agents (004). | 채널 | room, group |
-| Lead | The agent that splits a channel job (004). | 리드 | foreman, manager |
+| Lead | The agent that splits a channel job (004), or the one member that leads an organization (030). | 리드 | foreman, manager |
 | Part | One piece of a channel job, for one member (004). | 부분 | subtask, ticket |
 | Done test | The check that the lead writes for a part (004). | 완료 기준 | acceptance criteria |
 | Verdict | The judgement of the lead on a done test (004). | 판정 | score, grade |
@@ -113,18 +113,34 @@ A new word goes here in the same pull request as the spec that brings it.
 | Work card | A card that the board makes by itself for a task that has no card (024). | 진행 중인 작업 카드 (proposed) | planned card, ticket |
 | Backlog, To do, Doing, Done | The four columns of the board (024). Agents leave "Backlog" alone. | 백로그, 할 일, 진행 중, 완료 (proposed) | In progress, Review |
 | Mine | The switch of a card that the user does alone. Agents do not see it (024). | 내가 할 일 (proposed) | Human, private |
-| Org chart | The page that draws the main agent, the channels with their members and leads, the state of each agent, and the work that agents handed to each other (029). It shows teams and hand-offs, and the tree of channels (030). It is no tree of bosses. | 조직도 | hierarchy, boss tree, employee tree, reporting line |
+| Org chart | The page that draws the main agent, the organizations with their members and leads, the state of each agent, and the work that agents handed to each other (029). It shows organizations and hand-offs, and the tree of organizations (030). It is no tree of bosses. | 조직도 | hierarchy, boss tree, employee tree, reporting line |
 | Handed work | A task that one agent sent to another with "send message" in the last 7 days. The org chart draws it as a dashed line with a number (029, 007). | 넘긴 작업 | delegation, assignment |
-| Legend words of the org chart | The three kinds of line, named in the legend (029): "Gives parts" for the lead line, "Handed work in the last 7 days" for the hand-off line, "Belongs to" for the structure line. | 부분을 나눠 줘요, 최근 7일간 넘긴 작업, 소속 | boss, manager, reports to |
+| Legend words of the org chart | The three kinds of line, named in the legend (029): "Leads" for the lead line, "Handed work in the last 7 days" for the hand-off line, "Belongs to" for the structure line. | 이끌어요, 최근 7일간 넘긴 작업, 소속 | boss, manager, reports to, gives parts |
+| No organization | The node of the org chart, and the drop area, for agents that are in no organization (029, 030). | 조직 없음 | unassigned, ungrouped |
+| No members. | The line of an organization node that has no member (029). | 멤버가 없어요. | empty, nobody |
+| Also in | The line of the org chart that names the other organization of an agent that shows in more than one node (029). | {organization}에도 있어요 | duplicate, copy of |
 | Fit to view | The button and the key "0" that frame the whole org chart with room around it (029). | 화면에 맞추기 | reset, zoom to 100% |
-| Parent channel | The channel that a channel sits inside (030). | 상위 채널 (proposed) | parent team, department |
-| Sub-channel | A channel with a parent channel (030). | 하위 채널 (proposed) | sub-team, child channel |
-| Top channel | A channel with no parent channel (030). | 최상위 채널 (proposed) | root channel |
-| Organization | The settings part with the hand-off rule and "Ask up the line" (030, 013). | 조직 (proposed) | company, Teams (that is the link of 028) |
-| Hand-off rule | The rule of who may send work to whom with "send message" (030). Values: "Any agent", "Along the channels". | 전달 규칙, 아무 에이전트에게, 채널을 따라 (proposed) | chain of command, reporting line |
-| Ask up the line | The switch that sends a question that the lead passes to the higher leads and the main agent before the user (030). | 위로 물어보기 (proposed) | escalate, auto answer |
-| Tools of this channel | The skills and connections that a channel gives to its members and to the members of its lower channels (030). | 이 채널의 도구 (proposed) | team permissions, inherited tools |
-| Daily token limit | The most tokens that the tasks of a channel and its lower channels may use in one day (030). | 하루 토큰 한도 (proposed) | budget, quota |
+| Organization | A group of agents with a lead, a parent organization and access. It is not a channel (030). | 조직 | company, department, team (Teams is the link of 028), channel |
+| Parent organization | The organization that an organization sits inside (030). | 상위 조직 | parent team, department |
+| Sub-organization | An organization with a parent organization (030). | 하위 조직 | sub-team, child organization |
+| Top organization | An organization with no parent organization (030). | 최상위 조직 | root organization |
+| On one line | Two organizations are on one line when one is a higher organization of the other. An agent can be a member only of organizations that are on one line (030). | 한 줄에 있어요 | same branch, parent and child |
+| Deepest organization | The lowest of the organizations of an agent. They are on one line, so there is one (030, 036). | 가장 낮은 조직 | main organization, primary team |
+| Remove from an organization | What the user does with a menu or the form, and what the app does when it repairs a line: the agent stays an agent and stays a member of the other organizations (030). | 조직에서 빼요 | delete, kick out, fire |
+| Organization prefix | The text "[Docs]" in front of the name of an agent that is in the organization "Docs" (036). | 조직 말머리 (proposed) | tag, label, BOT tag (that is the small mark on a message, 003) |
+| Shown name | The prefix and the name of an agent, for example "[Docs] Ada" (036). | 보이는 이름 (proposed) | display name, nickname |
+| Show the organization before an agent name | The switch in Settings → Appearance and in the settings of the phone that turns the organization prefix on or off (036, 013, 011). | 에이전트 이름 앞에 조직 표시 | show team tag, name prefix |
+| Access | What an organization gives to its members and to its lower organizations: tools, a daily token limit and a hand-off range (030). | 권한 | permission, permission level (that is 007) |
+| Inherit | The value of a tool or of the hand-off range that takes the value of the parent organization. The other values are "On" and "Off", and for the range "Own organization", "Own and lower organizations" and "All agents" (030). | 상속, 켬, 끔 | default, copy |
+| Hand-off rules | The settings part with the hand-off rule and "Ask up the line" (030, 013). | 전달 규칙 | organization, Teams (that is the link of 028) |
+| Hand-off rule | The rule of who may send work to whom with "send message" (030). Values: "Any agent", "Along the organizations". | 전달 규칙, 아무 에이전트에게, 조직을 따라 | chain of command, reporting line |
+| Hand-off range | The field of an organization that says to whom its members may send work when the rule is "Along the organizations": "Inherit", "Own organization", "Own and lower organizations", "All agents" (030). | 전달 범위, 자기 조직, 자기 조직과 하위 조직, 모든 에이전트, 상속 | scope, reach |
+| Ask up the line | The switch that sends a question that the lead of a channel passes to the leads of the organizations of the member and to the main agent before the user (030). | 위로 물어보기 (proposed) | escalate, auto answer |
+| Tools | The skills and connections that an organization gives to its members and to the members of its lower organizations, with the values "Inherit", "On" and "Off" (030). | 도구 | team permissions, inherited tools |
+| Organization mark | The small word "organization" beside an organization in the list of who may use a skill or a connection, (017, 018, 030). | 조직 | group mark |
+| Tools from organizations | The block of an agent profile that lists each skill and connection that the agent has from an organization, each with the line "From <organization>" (002, 030). | 조직에서 받은 도구, {organization}에서 받음 | inherited tools |
+| Now (the muted line) | The line under the value "Inherit" in the part "Tools" of the form of an organization: "Now: <value> from <organization>", or "Now: none" when no organization above gives a value (030). | 지금: {value}, {organization}에서 받음 / 지금: 없음 (proposed) | current, effective |
+| Daily token limit | The most tokens that the tasks of the members of an organization and of its lower organizations may use in one day (030). | 하루 토큰 한도 | budget, quota |
 | Decision model | A small, fast model that the user sets up for quick choices (013). | — | classifier, router |
 | Sync | Two computers that hold the same data (019). | 동기화 | backup, mirror |
 | Keep going | The app asks an agent to go on when a turn ends with open steps (005). | 이어서 진행 (proposed) | autopilot, auto-run |

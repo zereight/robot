@@ -300,8 +300,6 @@ export const testRuntime = (
     chat?: FakeChat
     /** How connections are reached, and their time limits (spec 018). */
     connections?: ConnectionsOptions
-    /** The main agent of a server, for the hand-off rule (spec 030). The app has no switch yet. */
-    mainAgent?: (serverId: string) => string | null
   } = {},
 ) => {
   const {
@@ -340,7 +338,6 @@ export const testRuntime = (
       ...(options.decisionUrl ? { decisionUrl: options.decisionUrl } : {}),
       ...(options.cacheHosts ? { cacheHosts: options.cacheHosts } : {}),
       ...(options.connections ? { connections: options.connections } : {}),
-      ...(options.mainAgent ? { mainAgent: options.mainAgent } : {}),
     }),
   )
   // The requests of linked devices run the real handlers, as in the app.

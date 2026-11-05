@@ -278,6 +278,43 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     expect(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM permission_rule")?.n).toBe(0)
   })
 
+  test("it sees the switch 'Main agent' but cannot set it; a copy of the main agent is not the main agent (spec 002, 012)", async () => {
+    for (const canChange of [true, false]) {
+      const p = await pair(canChange)
+      const writer = value<Agent>(await p.onServer("agents.create", make(p.serverId, "Writer")))
+      expect(writer.isMain).toBe(false)
+      await p.onServer("agents.update", { id: writer.id, patch: { isMain: true } })
+      // A client reads the state with the link only: in the list, and in one agent.
+      const listed = value<Agent[]>(
+        await p.ask("agents.list", { serverId: p.serverId, archived: false }),
+      )
+      expect(listed.find((a) => a.id === writer.id)?.isMain).toBe(true)
+      expect(value<Agent>(await p.ask("agents.get", { id: writer.id })).isMain).toBe(true)
+    }
+    const p = await pair(true)
+    const created = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    // No request of a client names the switch, whether it makes or changes an agent.
+    expect(
+      codeOf(await p.ask("agents.create", make(p.serverId, "Planner", { isMain: true }))),
+    ).toBe("invalid_input")
+    expect(codeOf(await p.ask("agents.update", { id: created.id, patch: { isMain: true } }))).toBe(
+      "invalid_input",
+    )
+    expect(codeOf(await p.ask("agents.update", { id: created.id, patch: { isMain: false } }))).toBe(
+      "invalid_input",
+    )
+    expect(value<Agent>(await p.onServer("agents.get", { id: created.id })).isMain).toBe(false)
+    await p.onServer("agents.update", { id: created.id, patch: { isMain: true } })
+    const copy = value<Agent>(await p.ask("agents.duplicate", { id: created.id, suffix: " copy" }))
+    expect(copy.isMain).toBe(false)
+    expect(value<Agent>(await p.onServer("agents.get", { id: created.id })).isMain).toBe(true)
+    // A change of another field by the client leaves the switch as it was.
+    const edited = value<Agent>(
+      await p.ask("agents.update", { id: created.id, patch: { role: "Editor" } }),
+    )
+    expect(edited.isMain).toBe(true)
+  })
+
   test("a model that the server does not offer is refused; an offered one works", async () => {
     const p = await pair(true)
     const unknown = [
@@ -459,26 +496,23 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       codeOf(await p.ask("channels.update", { id: channel.id, patch: { reviewParts: true } })),
     ).toBe("invalid_input")
 
-    // The parent channel (spec 030, 012): set at the start and changed, with the rules of the tree.
-    const site = value<{ id: string; parentId: string | null }>(
-      await p.ask("channels.create", {
-        serverId: p.serverId,
-        name: "Site",
-        topic: "",
-        memberIds: [a.id],
-        leadId: null,
-        parentId: channel.id,
-      }),
-    )
-    expect(site.parentId).toBe(channel.id)
+    // A channel has no parent channel (spec 004, 030). A client that names one is refused, as it is
+    // for any other field that it may not set (spec 012).
     expect(
-      codeOf(await p.ask("channels.update", { id: channel.id, patch: { parentId: site.id } })),
-    ).toBe("parent_loop")
+      codeOf(
+        await p.ask("channels.create", {
+          serverId: p.serverId,
+          name: "Site",
+          topic: "",
+          memberIds: [a.id],
+          leadId: null,
+          parentId: channel.id,
+        }),
+      ),
+    ).toBe("invalid_input")
     expect(
-      value<{ parentId: string | null }>(
-        await p.ask("channels.update", { id: site.id, patch: { parentId: null } }),
-      ).parentId,
-    ).toBeNull()
+      codeOf(await p.ask("channels.update", { id: channel.id, patch: { parentId: null } })),
+    ).toBe("invalid_input")
     // The picture of a channel (spec 004, 012): a square PNG of at most 256 px, with the switch.
     const bytes = new Uint8Array(100)
     bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52])
@@ -530,6 +564,148 @@ describe("a linked device that may create and change agents (spec 012)", () => {
       ["user", "edited"],
       ["user", "added"],
     ])
+  })
+
+  test("it makes, changes and deletes organizations, with the rules of the tree (spec 012, 030)", async () => {
+    const p = await pair(true)
+    const a = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
+    const b = value<Agent>(await p.ask("agents.create", make(p.serverId, "Planner")))
+    type Org = {
+      id: string
+      name: string
+      leadId: string | null
+      parentId: string | null
+      memberIds: string[]
+      handOffRange: string
+      dailyTokenLimit: number | null
+    }
+    const company = value<Org>(
+      await p.ask("organizations.create", {
+        serverId: p.serverId,
+        name: "Company",
+        memberIds: [a.id],
+        leadId: a.id,
+        handOffRange: "own_lower",
+        dailyTokenLimit: 50_000,
+      }),
+    )
+    expect(company).toMatchObject({
+      name: "Company",
+      leadId: a.id,
+      memberIds: [a.id],
+      handOffRange: "own_lower",
+      dailyTokenLimit: 50_000,
+    })
+    const support = value<Org>(
+      await p.ask("organizations.create", {
+        serverId: p.serverId,
+        name: "Support",
+        memberIds: [b.id],
+        leadId: null,
+        parentId: company.id,
+      }),
+    )
+    expect(support.parentId).toBe(company.id)
+    // A client with the switch reads the list too, and sets every field of the form.
+    const listed = value<Org[]>(await p.ask("organizations.list", { serverId: p.serverId }))
+    expect(listed.map((o) => o.name)).toEqual(["Company", "Support"])
+    const changed = value<Org>(
+      await p.ask("organizations.update", {
+        id: support.id,
+        patch: { name: "Help", leadId: b.id, dailyTokenLimit: null, handOffRange: "all" },
+      }),
+    )
+    expect(changed).toMatchObject({ name: "Help", leadId: b.id, handOffRange: "all" })
+
+    // The rules of the server hold for a client: a loop, a name that is taken, a field that is not
+    // known, and a limit out of range.
+    expect(
+      codeOf(
+        await p.ask("organizations.update", { id: company.id, patch: { parentId: support.id } }),
+      ),
+    ).toBe("org_parent_loop")
+    expect(
+      codeOf(
+        await p.ask("organizations.create", {
+          serverId: p.serverId,
+          name: "company",
+          memberIds: [],
+          leadId: null,
+        }),
+      ),
+    ).toBe("org_name_taken")
+    expect(
+      codeOf(await p.ask("organizations.update", { id: company.id, patch: { archived: true } })),
+    ).toBe("invalid_input")
+    expect(
+      codeOf(
+        await p.ask("organizations.update", { id: company.id, patch: { dailyTokenLimit: 5 } }),
+      ),
+    ).toBe("invalid_daily_limit")
+
+    // One line (spec 030, 012): a client gets the same refusal as the form, with the names.
+    const ops = value<Org>(
+      await p.ask("organizations.create", {
+        serverId: p.serverId,
+        name: "Ops",
+        memberIds: [],
+        leadId: null,
+      }),
+    )
+    const refused = await p.ask("organizations.update", {
+      id: ops.id,
+      patch: { memberIds: [a.id] },
+    })
+    expect(codeOf(refused)).toBe("org_line_member")
+    expect(JSON.parse(refused.ok ? "{}" : refused.error.message)).toEqual({
+      agent: "Writer",
+      other: "Company",
+      organization: "Ops",
+    })
+    expect(codeOf(await p.ask("organizations.delete", { id: ops.id }))).toBe("ok")
+
+    // The delete moves the organizations under it up to its parent (here: none, so they are top).
+    expect(codeOf(await p.ask("organizations.delete", { id: company.id }))).toBe("ok")
+    const after = value<Org[]>(await p.onServer("organizations.list", { serverId: p.serverId }))
+    expect(after.map((o) => [o.name, o.parentId])).toEqual([["Help", null]])
+  })
+
+  test("without the switch a client reads organizations and their tools, and changes none (spec 012, 030)", async () => {
+    const p = await pair(false)
+    const org = value<{ id: string }>(
+      await p.onServer("organizations.create", {
+        serverId: p.serverId,
+        name: "Company",
+        memberIds: [],
+        leadId: null,
+      }),
+    )
+    expect(codeOf(await p.ask("organizations.list", { serverId: p.serverId }))).toBe("ok")
+    expect(codeOf(await p.ask("orgTools.list", { orgId: org.id }))).toBe("ok")
+    // It reads the daily token limit too, and cannot change it (spec 030, 012).
+    expect(codeOf(await p.ask("organizations.limit", { id: org.id }))).toBe("ok")
+    expect(
+      await p.raw("organizations.update", { id: org.id, patch: { dailyTokenLimit: 20_000 } }),
+    ).toBe("change_off")
+    // The switch is off: each request that changes an organization is refused for that reason.
+    for (const [method, input] of [
+      [
+        "organizations.create",
+        { serverId: p.serverId, name: "Other", memberIds: [], leadId: null },
+      ],
+      ["organizations.update", { id: org.id, patch: { name: "Other" } }],
+      ["organizations.delete", { id: org.id }],
+    ] as const) {
+      expect({ method, code: await p.raw(method, input) }).toEqual({ method, code: "change_off" })
+    }
+    // The tools of an organization change on the computer that owns them only.
+    expect(
+      await p.raw("orgTools.set", { orgId: org.id, kind: "skill", id: "x", choice: "on" }),
+    ).toBe("not_allowed")
+    const kept = value<{ name: string }[]>(
+      await p.onServer("organizations.list", { serverId: p.serverId }),
+    )
+    expect(kept.map((o) => o.name)).toEqual(["Company"])
   })
 
   test("it filters the items, lists the channels, and moves a channel note (spec 008, 012)", async () => {
@@ -594,50 +770,45 @@ describe("a linked device that may create and change agents (spec 012)", () => {
     expect(rows.filter((r) => r.kind === "moved").map((r) => r.actor)).toEqual(["user", "user"])
   })
 
-  test("it sets the daily token limit of a channel and reads the tools and the limit; it never changes the tools of a channel (spec 030, 012)", async () => {
+  test("it sets the daily token limit of an organization and reads the limit (spec 030, 012)", async () => {
     const p = await pair(true)
-    const a = value<Agent>(await p.ask("agents.create", make(p.serverId, "Writer")))
-    const channel = value<{ id: string; dailyTokenLimit: number | null }>(
-      await p.ask("channels.create", {
+    type Limit = { limit: number | null; used: number; state: string }
+    const org = value<{ id: string; dailyTokenLimit: number | null }>(
+      await p.ask("organizations.create", {
         serverId: p.serverId,
         name: "Docs",
-        topic: "",
-        memberIds: [a.id],
+        memberIds: [],
         leadId: null,
         dailyTokenLimit: 20_000,
       }),
     )
-    expect(channel.dailyTokenLimit).toBe(20_000)
+    expect(org.dailyTokenLimit).toBe(20_000)
     expect(
       value<{ dailyTokenLimit: number | null }>(
-        await p.ask("channels.update", { id: channel.id, patch: { dailyTokenLimit: 60_000 } }),
+        await p.ask("organizations.update", { id: org.id, patch: { dailyTokenLimit: 60_000 } }),
       ).dailyTokenLimit,
     ).toBe(60_000)
     // The same checks as on the server: a number out of range changes nothing.
     expect(
-      codeOf(await p.ask("channels.update", { id: channel.id, patch: { dailyTokenLimit: 5 } })),
+      codeOf(await p.ask("organizations.update", { id: org.id, patch: { dailyTokenLimit: 5 } })),
     ).toBe("invalid_daily_limit")
-    expect(
-      value<{ dailyTokenLimit: number | null }>(
-        await p.ask("channels.update", { id: channel.id, patch: { dailyTokenLimit: null } }),
-      ).dailyTokenLimit,
-    ).toBeNull()
 
-    // The part "Tools of this channel", the lines "From <channel>" and the limit are read only.
-    for (const method of ["channelTools.list", "channels.limit"] as const) {
-      expect(codeOf(await p.ask(method, { channelId: channel.id }))).toBe("ok")
-    }
-    expect(codeOf(await p.ask("channelTools.forAgent", { agentId: a.id }))).toBe("ok")
-    expect(codeOf(await p.ask("channels.limit", { channelId: channel.id, extra: 1 }))).toBe(
+    // The limit with the tokens of today is read only.
+    expect(value<Limit>(await p.ask("organizations.limit", { id: org.id }))).toEqual({
+      limit: 60_000,
+      used: 0,
+      state: "ok",
+    })
+    expect(codeOf(await p.ask("organizations.limit", { id: org.id, extra: 1 }))).toBe(
       "invalid_input",
     )
-    // A client cannot change the tools of a channel, and it has no usage page (spec 012).
-    for (const [method, input] of [
-      ["channelTools.set", { channelId: channel.id, kind: "skill", id: "x", on: true }],
-      ["usage.channels", { serverId: p.serverId }],
-    ] as const) {
-      expect(await p.raw(method, input)).toBe("not_allowed")
-    }
+    expect(
+      value<{ dailyTokenLimit: number | null }>(
+        await p.ask("organizations.update", { id: org.id, patch: { dailyTokenLimit: null } }),
+      ).dailyTokenLimit,
+    ).toBeNull()
+    // A client has no usage page (spec 012).
+    expect(await p.raw("usage.organizations", { serverId: p.serverId })).toBe("not_allowed")
   })
 
   test("it sets the switch Read the handbook and the instructions of a channel, with the same limits as the server (spec 002, 004, 012)", async () => {

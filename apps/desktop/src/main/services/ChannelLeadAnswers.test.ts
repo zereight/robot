@@ -6,7 +6,9 @@ import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { asOldShape } from "./channelTurns.testing.ts"
+import { Database } from "./Database.ts"
 import { Notifier } from "./Notifier.ts"
+import { Organizations } from "./Organizations.ts"
 import { PlaceMarks } from "./PlaceMarks.ts"
 import { Providers } from "./Providers.ts"
 import { Servers } from "./Servers.ts"
@@ -826,6 +828,60 @@ describe("the setting", () => {
     expect((await s.cards())[0]?.state).toBe("waiting")
     await until(() => s.log().length === 1)
     expect(s.log()[0]).toMatchObject({ result: "stopped", why: "setting_off" })
+    await s.answer((await s.cards())[0]?.id ?? "", "Yes")
+    await s.finished()
+  })
+})
+
+describe("the daily token limit of the organization of the lead (spec 030, 'At the limit')", () => {
+  test("the lead looks at no question: the question goes to the user with the reason as a pass line", async () => {
+    const s = await setup()
+    // Lia has used 9,995 tokens of the 10,000 of the organization "Shop crew". Her plan adds 10, so
+    // the limit is used when the part asks. The job of the lead started before that.
+    await s.run(
+      Organizations.use((o) =>
+        o.create({
+          serverId: s.local.id,
+          name: "Shop crew",
+          memberIds: [s.lead.id],
+          leadId: null,
+          dailyTokenLimit: 10_000,
+        }),
+      ),
+    )
+    const made = await s.run(
+      Tasks.use((x) =>
+        x.create({ agentId: s.lead.id, prompt: "old", source: "routine", sourceId: null }),
+      ),
+    )
+    await s.run(
+      Database.use((d) =>
+        Effect.sync(() =>
+          d.run(
+            "UPDATE task SET state = 'done', started_at = ?, input_tokens = 9995, output_tokens = 0 WHERE id = ?",
+            Date.now() - 60_000,
+            made.id,
+          ),
+        ),
+      ),
+    )
+    await s.send("split sizes")
+    await until(async () => (await s.waiting()).length === 1)
+    // The lead made no look: the model got no request for it, and the log has no look.
+    expect(lookRequests).toHaveLength(0)
+    expect(s.log()).toEqual([])
+    const ask = askOf((await s.cards())[0])
+    expect(ask?.lead).toBeUndefined()
+    expect(ask?.passed).toEqual({
+      agentId: s.lead.id,
+      name: "Lia",
+      kind: "not_sure",
+      reason: "The daily token limit of Shop crew is used.",
+    })
+    expect(ask?.passes).toHaveLength(1)
+    expect(ask?.passes?.[0]).toEqual(ask?.passed)
+    // It is a normal question now, with one notification.
+    expect(s.t.shell.notices).toHaveLength(1)
     await s.answer((await s.cards())[0]?.id ?? "", "Yes")
     await s.finished()
   })

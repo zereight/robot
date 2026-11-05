@@ -4,7 +4,7 @@ import {
   buildChart,
   type ChartModel,
   type OrgAgent,
-  type OrgChannel,
+  type OrgChartOrg,
   type OrgHandoff,
   type OrgSnapshot,
 } from "@robot/shared"
@@ -22,11 +22,11 @@ const agent = (
   task: null,
   ...extra,
 })
-const channel = (
+const org = (
   id: string,
   members: readonly string[],
-  extra: Partial<Omit<OrgChannel, "id" | "memberIds">> = {},
-): OrgChannel => ({
+  extra: Partial<Omit<OrgChartOrg, "id" | "memberIds">> = {},
+): OrgChartOrg => ({
   id,
   name: id,
   createdAt: 1,
@@ -44,7 +44,7 @@ const handoff = (from: string, to: string, count = 1, newest = 1): OrgHandoff =>
 const snapshot = (parts: Partial<OrgSnapshot>): OrgSnapshot => ({
   mainAgentId: null,
   agents: [],
-  channels: [],
+  orgs: [],
   handoffs: [],
   ...parts,
 })
@@ -66,7 +66,7 @@ describe("the list of the org chart on the phone", () => {
     expect(list.root).toEqual({ kind: "you" })
   })
 
-  test("the root is the main agent, with its state and task, and it keeps a copy in its channel", () => {
+  test("the root is the main agent, with its state and task, and it keeps a copy in its organization", () => {
     const list = listOf({
       mainAgentId: "Ada",
       agents: [
@@ -77,7 +77,7 @@ describe("the list of the org chart on the phone", () => {
         }),
         agent("Bo"),
       ],
-      channels: [channel("Docs", ["Ada", "Bo"])],
+      orgs: [org("Docs", ["Ada", "Bo"])],
     })
     expect(list.root).toMatchObject({
       kind: "main",
@@ -87,31 +87,41 @@ describe("the list of the org chart on the phone", () => {
     expect(list.blocks[0]?.rows.map((r) => r.name)).toEqual(["Ada", "Bo"])
   })
 
-  test('one block for each channel in the order of the page, and "No channel" is last', () => {
+  test('one block for each organization in the order of the page, and "No organization" is last', () => {
     const list = listOf({
       agents: [agent("a"), agent("b"), agent("c"), agent("z")],
-      channels: [
-        channel("zeta", ["a"]),
-        channel("Alpha", ["b"], { createdAt: 5 }),
-        channel("alpha", ["c"], { createdAt: 2 }),
+      orgs: [
+        org("zeta", ["a"]),
+        org("Alpha", ["b"], { createdAt: 5 }),
+        org("alpha", ["c"], { createdAt: 2 }),
       ],
     })
-    // Without case, and the older channel first when the names are the same.
-    expect(list.blocks.map((b) => [b.key, b.name, b.channelId])).toEqual([
-      ["c:alpha", "alpha", "alpha"],
-      ["c:Alpha", "Alpha", "Alpha"],
-      ["c:zeta", "zeta", "zeta"],
-      ["c:none", "", null],
+    // Without case, and the older organization first when the names are the same.
+    expect(list.blocks.map((b) => [b.key, b.name, b.orgId])).toEqual([
+      ["o:alpha", "alpha", "alpha"],
+      ["o:Alpha", "Alpha", "Alpha"],
+      ["o:zeta", "zeta", "zeta"],
+      ["o:none", "", null],
     ])
     expect(list.blocks.at(-1)?.rows.map((r) => r.name)).toEqual(["z"])
   })
 
-  test("a channel with no member that is not archived has no block", () => {
+  test("an organization with no member that is not archived still has a block, with no rows", () => {
     const list = listOf({
       agents: [agent("a")],
-      channels: [channel("Empty", ["gone"]), channel("Real", ["a"])],
+      orgs: [org("Empty", ["gone"]), org("Real", ["a"])],
     })
-    expect(list.blocks.map((b) => b.name)).toEqual(["Real"])
+    expect(list.blocks.map((b) => [b.name, b.memberCount, b.rows.length])).toEqual([
+      ["Empty", 0, 0],
+      ["Real", 1, 1],
+    ])
+  })
+
+  test("a profile with an organization but no agent has a list with the block and no root agent", () => {
+    const list = listOf({ agents: [], orgs: [org("Docs", [])] })
+    expect(list.empty).toBe(false)
+    expect(list.root).toEqual({ kind: "you" })
+    expect(list.blocks.map((b) => b.name)).toEqual(["Docs"])
   })
 
   test("the header gives the number of members and the counts in the order of the page", () => {
@@ -123,7 +133,7 @@ describe("the list of the org chart on the phone", () => {
         agent("d", { state: "idle" }),
         agent("e", { state: "waiting", task: { label: "y", state: "waiting" } }),
       ],
-      channels: [channel("Docs", ["a", "b", "c", "d", "e"])],
+      orgs: [org("Docs", ["a", "b", "c", "d", "e"])],
     })
     const docs = list.blocks[0]
     expect(docs?.memberCount).toBe(5)
@@ -138,7 +148,7 @@ describe("the list of the org chart on the phone", () => {
   test("a state that no member has is not in the counts", () => {
     const list = listOf({
       agents: [agent("a"), agent("b")],
-      channels: [channel("Docs", ["a", "b"])],
+      orgs: [org("Docs", ["a", "b"])],
     })
     expect(list.blocks[0]?.counts).toEqual([{ state: "idle", count: 2 }])
   })
@@ -146,7 +156,7 @@ describe("the list of the org chart on the phone", () => {
   test("the lead is first and has the mark; the others follow by name without case", () => {
     const list = listOf({
       agents: [agent("bo"), agent("Cy"), agent("Ada"), agent("Zed")],
-      channels: [channel("Docs", ["bo", "Cy", "Ada", "Zed"], { leadId: "Zed" })],
+      orgs: [org("Docs", ["bo", "Cy", "Ada", "Zed"], { leadId: "Zed" })],
     })
     const rows = list.blocks[0]?.rows ?? []
     expect(rows.map((r) => [r.name, r.isLead])).toEqual([
@@ -160,7 +170,7 @@ describe("the list of the org chart on the phone", () => {
   test("a lead that is archived counts as no lead", () => {
     const list = listOf({
       agents: [agent("a"), agent("b")],
-      channels: [channel("Docs", ["a", "b"], { leadId: "gone" })],
+      orgs: [org("Docs", ["a", "b"], { leadId: "gone" })],
     })
     expect(list.blocks[0]?.rows.map((r) => r.isLead)).toEqual([false, false])
   })
@@ -179,7 +189,7 @@ describe("the list of the org chart on the phone", () => {
         agent("c", { state: "idle" }),
         agent("d", { state: "offline" }),
       ],
-      channels: [channel("Docs", ["a", "b", "c", "d"])],
+      orgs: [org("Docs", ["a", "b", "c", "d"])],
     })
     expect(list.blocks[0]?.rows.map((r) => [r.name, r.state, r.label])).toEqual([
       ["a", "working", "Draft the release notes"],
@@ -194,19 +204,19 @@ describe("the list of the org chart on the phone", () => {
       agents: [
         agent("a", { state: "working", task: { label: "x".repeat(100), state: "running" } }),
       ],
-      channels: [channel("Docs", ["a"])],
+      orgs: [org("Docs", ["a"])],
     })
     const label = list.blocks[0]?.rows[0]?.label ?? ""
     expect([...label]).toHaveLength(90)
     expect(label.endsWith("…")).toBe(true)
   })
 
-  test('a channel of 15 members has 12 rows and 3 behind "+3 more", in the order of the page', () => {
+  test('an organization of 15 members has 12 rows and 3 behind "+3 more", in the order of the page', () => {
     const names = Array.from({ length: 15 }, (_, i) => `m${String(i + 1).padStart(2, "0")}`)
     const list = listOf({
       agents: names.map((n) => agent(n)),
       // The lead is the last by name: it is still the first row.
-      channels: [channel("Big", names, { leadId: "m15" })],
+      orgs: [org("Big", names, { leadId: "m15" })],
     })
     const big = list.blocks[0]
     expect(big?.memberCount).toBe(15)
@@ -221,7 +231,7 @@ describe("the list of the org chart on the phone", () => {
     const names = Array.from({ length: 12 }, (_, i) => `m${i}`)
     const list = listOf({
       agents: names.map((n) => agent(n)),
-      channels: [channel("Twelve", names)],
+      orgs: [org("Twelve", names)],
     })
     expect(list.blocks[0]?.rows).toHaveLength(12)
     expect(list.blocks[0]?.more).toEqual([])
@@ -233,11 +243,11 @@ describe("the list of the org chart on the phone", () => {
       agents: names.map((n, i) =>
         agent(n, { face: { shape: 2, hue: i }, state: n === "m12" ? "offline" : "idle" }),
       ),
-      channels: [channel("Big", names)],
+      orgs: [org("Big", names)],
     })
     expect(list.blocks[0]?.more).toEqual([
       {
-        key: "c:Big/more/m12",
+        key: "o:Big/more/m12",
         agentId: "m12",
         name: "m12",
         face: { shape: 2, hue: 12 },
@@ -250,36 +260,36 @@ describe("the list of the org chart on the phone", () => {
     const base = buildChart(
       snapshot({
         agents: [agent("a"), agent("b")],
-        channels: [channel("Docs", ["a", "b"], { leadId: "b" })],
+        orgs: [org("Docs", ["a", "b"], { leadId: "b" })],
       }),
     )
-    const first = base.channels[0]
-    if (!first) throw new Error("no channel")
+    const first = base.orgs[0]
+    if (!first) throw new Error("no organization")
     const node = (i: number, isLead = false) => ({
       ...(first.nodes[0] as NonNullable<(typeof first.nodes)[0]>),
-      key: `c:Docs/n${i}`,
+      key: `o:Docs/n${i}`,
       agentId: `n${i}`,
       name: `n${i}`,
       isLead,
     })
     const nodes = Array.from({ length: 14 }, (_, i) => node(i, i === 13))
-    const model: ChartModel = { ...base, channels: [{ ...first, nodes, more: [] }] }
+    const model: ChartModel = { ...base, orgs: [{ ...first, nodes, more: [] }] }
     const list = buildOrgList(model)
     expect(list.blocks[0]?.rows).toHaveLength(12)
     expect(list.blocks[0]?.rows[0]?.name).toBe("n13")
     expect(list.blocks[0]?.more.map((m) => m.agentId)).toEqual(["n11", "n12"])
   })
 
-  test("an agent in two channels has a row in each block, with its own key", () => {
+  test("an agent in two organizations has a row in each block, with its own key", () => {
     const list = listOf({
       agents: [
         agent("Ada", { state: "working", task: { label: "T", state: "running" } }),
         agent("Bo"),
       ],
-      channels: [channel("Docs", ["Ada", "Bo"]), channel("Ops", ["Ada"])],
+      orgs: [org("Docs", ["Ada", "Bo"]), org("Ops", ["Ada"])],
     })
     const copies = list.blocks.flatMap((b) => b.rows.filter((r) => r.agentId === "Ada"))
-    expect(copies.map((r) => r.key)).toEqual(["c:Docs/Ada", "c:Ops/Ada"])
+    expect(copies.map((r) => r.key)).toEqual(["o:Docs/Ada", "o:Ops/Ada"])
     // Both copies show the same state and task.
     expect(copies.map((r) => [r.state, r.label])).toEqual([
       ["working", "T"],
@@ -291,7 +301,7 @@ describe("the list of the org chart on the phone", () => {
   test("the role line comes with the row", () => {
     const list = listOf({
       agents: [agent("Ada", { role: "Writes the release notes and checks every link in them" })],
-      channels: [channel("Docs", ["Ada"])],
+      orgs: [org("Docs", ["Ada"])],
     })
     expect(list.blocks[0]?.rows[0]?.role).toBe(
       "Writes the release notes and checks every link in them",
@@ -301,7 +311,7 @@ describe("the list of the org chart on the phone", () => {
   test("hand-offs: one row for each line, the busiest first, a tie by the newest", () => {
     const list = listOf({
       agents: [agent("Ada"), agent("Bo"), agent("Cy")],
-      channels: [channel("Docs", ["Ada", "Bo", "Cy"])],
+      orgs: [org("Docs", ["Ada", "Bo", "Cy"])],
       handoffs: [
         handoff("Ada", "Bo", 3, 10),
         handoff("Bo", "Ada", 1, 99),
@@ -321,7 +331,7 @@ describe("the list of the org chart on the phone", () => {
   test("both directions are two rows", () => {
     const list = listOf({
       agents: [agent("Ada"), agent("Bo")],
-      channels: [channel("Docs", ["Ada", "Bo"])],
+      orgs: [org("Docs", ["Ada", "Bo"])],
       handoffs: [handoff("Ada", "Bo", 2), handoff("Bo", "Ada", 4)],
     })
     expect(list.handoffs.map((h) => `${h.from}>${h.to}:${h.count}`)).toEqual([
@@ -331,7 +341,7 @@ describe("the list of the org chart on the phone", () => {
   })
 
   test("no hand-off: no row and no cap line", () => {
-    const list = listOf({ agents: [agent("a")], channels: [channel("Docs", ["a"])] })
+    const list = listOf({ agents: [agent("a")], orgs: [org("Docs", ["a"])] })
     expect(list.handoffs).toEqual([])
     expect(list.handoffsCapped).toBe(false)
   })
@@ -345,14 +355,14 @@ describe("the list of the org chart on the phone", () => {
         i + 1,
       ),
     )
-    // Many small channels, so that every agent has a node that is drawn.
-    const channels = Array.from({ length: 41 }, (_, i) =>
-      channel(`c${String(i).padStart(2, "0")}`, [
+    // Many small orgs, so that every agent has a node that is drawn.
+    const orgs = Array.from({ length: 41 }, (_, i) =>
+      org(`c${String(i).padStart(2, "0")}`, [
         `a${String(i * 2).padStart(2, "0")}`,
         `a${String(i * 2 + 1).padStart(2, "0")}`,
       ]),
     )
-    const list = listOf({ agents, channels, handoffs })
+    const list = listOf({ agents, orgs, handoffs })
     expect(list.handoffs).toHaveLength(40)
     expect(list.handoffs[0]?.count).toBe(41)
     // The pair with the number 1 is the one that is left out.
@@ -369,13 +379,13 @@ describe("the list of the org chart on the phone", () => {
         i + 1,
       ),
     )
-    const channels = Array.from({ length: 40 }, (_, i) =>
-      channel(`c${String(i).padStart(2, "0")}`, [
+    const orgs = Array.from({ length: 40 }, (_, i) =>
+      org(`c${String(i).padStart(2, "0")}`, [
         `a${String(i * 2).padStart(2, "0")}`,
         `a${String(i * 2 + 1).padStart(2, "0")}`,
       ]),
     )
-    const list = listOf({ agents, channels, handoffs })
+    const list = listOf({ agents, orgs, handoffs })
     expect(list.handoffs).toHaveLength(40)
     expect(list.handoffsCapped).toBe(false)
   })
@@ -385,7 +395,7 @@ describe("the list of the org chart on the phone", () => {
     const names = Array.from({ length: 12 }, (_, i) => `a${String(i).padStart(2, "0")}`)
     const list = listOf({
       agents: [...names, "zz-last"].map((n) => agent(n)),
-      channels: [channel("Big", [...names, "zz-last"])],
+      orgs: [org("Big", [...names, "zz-last"])],
       handoffs: [handoff("a00", "zz-last", 5), handoff("a00", "a01", 2)],
     })
     expect(list.handoffs.map((h) => [h.from, h.to])).toEqual([["a00", "a01"]])
@@ -395,7 +405,7 @@ describe("the list of the org chart on the phone", () => {
     const base = buildChart(
       snapshot({
         agents: [agent("a"), agent("b")],
-        channels: [channel("Docs", ["a", "b"])],
+        orgs: [org("Docs", ["a", "b"])],
         handoffs: [handoff("a", "b", 1)],
       }),
     )
@@ -418,7 +428,7 @@ describe("the list of the org chart on the phone", () => {
   test("lines of the chart that are not hand-offs are not rows", () => {
     const parts = {
       agents: [agent("a"), agent("b")],
-      channels: [channel("Docs", ["a", "b"], { leadId: "a" })],
+      orgs: [org("Docs", ["a", "b"], { leadId: "a" })],
     }
     // The model has structure lines and a lead line. None of them is a row.
     expect(buildChart(snapshot(parts)).lines.length).toBeGreaterThan(0)
@@ -426,16 +436,16 @@ describe("the list of the org chart on the phone", () => {
   })
 })
 
-describe("sub-channels (spec 029, 030)", () => {
-  test("the block of a sub-channel is one level under the block of its parent", () => {
+describe("sub-organizations (spec 029, 030)", () => {
+  test("the block of a sub-organization is one level under the block of its parent", () => {
     const list = buildOrgList(
       buildChart({
         ...snapshot({}),
         agents: [agent("a"), agent("b"), agent("c")],
-        channels: [
-          channel("product", ["a"]),
-          channel("docs", ["b"], { parentId: "product" }),
-          channel("site", ["c"], { parentId: "docs" }),
+        orgs: [
+          org("product", ["a"]),
+          org("docs", ["b"], { parentId: "product" }),
+          org("site", ["c"], { parentId: "docs" }),
         ],
       }),
     )
@@ -450,7 +460,7 @@ describe("sub-channels (spec 029, 030)", () => {
     const model = buildChart(snapshot({ agents: [agent("a")] }))
     const old = {
       ...model,
-      channels: model.channels.map(({ level: _level, parentKey: _parent, ...rest }) => rest),
+      orgs: model.orgs.map(({ level: _level, parentKey: _parent, ...rest }) => rest),
     } as unknown as ChartModel
     expect(buildOrgList(old).blocks.map((b) => b.level)).toEqual([1])
   })

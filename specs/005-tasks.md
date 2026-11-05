@@ -118,8 +118,9 @@ cost of many tasks.
 
 ## Blocked
 
-- The app itself ends a task of a channel as Blocked, with no turn, when the daily token limit of
-  that channel or of a higher channel is used (030). The reason names that channel.
+- The app itself ends a task as Blocked, with no turn, when the daily token limit of an
+  organization that its agent is a member of, or of a higher organization of it, is used (030). The
+  reason names that organization. A task from a direct chat is never ended in this way.
 
 - A task from a part of a plan, a message of another agent, a routine or a workflow tells its
   agent this: if you could not do the work, end the reply with a last line that starts with

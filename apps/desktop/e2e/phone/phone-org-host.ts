@@ -9,8 +9,8 @@ import { freeNearbyPort, freePortPair } from "../ports.ts"
 import { rpc } from "../sync-helpers.ts"
 
 // The computer of the end-to-end run of the screen "Org chart" on the phone (spec 029, 011). It is
-// the host of phone-host.ts with a team: four agents (Ada leads the channel "Docs", Bo has a long
-// role line, Dee is in no channel), a channel "Team" with 14 members, and one hand-off from Bo to
+// the host of phone-host.ts with a team: four agents (Ada leads the organization "Docs", Bo has a long
+// role line, Dee is in no organization), an organization "Team" with 14 members, and one hand-off from Bo to
 // Cy. Set PHONE_E2E_HOST=phone-org-host.ts to use it. The phone flow drives the computer through
 // a small control address (CONTROL in the host file): it starts a long task, stops it, and turns
 // "Let other devices connect" off and on. The computer writes when each step happened, so that the
@@ -129,23 +129,24 @@ test("a computer for the phone app, with an org chart", async () => {
     await make("Bo", LONG_ROLE)
     await make("Cy", "Checks facts")
     await make("Dee", "Keeps the calendar")
+    // Ada and Bo are in "Docs", a top organization, so they cannot be in "Team" too (spec 030, "One
+    // line"). Two other agents come first in "Team", so the rows "Team 11" and "Team 12" are still
+    // the ones behind "+2 more".
     const team = Array.from({ length: 12 }, (_, i) => `Team ${String(i + 1).padStart(2, "0")}`)
-    for (const name of team) await make(name, "")
+    for (const name of ["Eli", "Fay", ...team]) await make(name, "")
     const idOf = async (name: string) => (await list()).find((a) => a.name === name)?.id as string
     const [ada, bo, cy] = await Promise.all(["Ada", "Bo", "Cy"].map(idOf))
-    await rpc(page, "channels.create", {
+    await rpc(page, "organizations.create", {
       serverId: server,
       name: "Docs",
-      topic: "",
       memberIds: [ada, bo, cy],
       leadId: ada,
     })
     // "Team" has 14 members, so the phone shows 12 rows and the row "+2 more".
-    await rpc(page, "channels.create", {
+    await rpc(page, "organizations.create", {
       serverId: server,
       name: "Team",
-      topic: "",
-      memberIds: [ada, bo, ...(await Promise.all(team.map(idOf)))],
+      memberIds: await Promise.all(["Eli", "Fay", ...team].map(idOf)),
       leadId: null,
     })
     // One hand-off: Bo sends a message to Cy with the tool "send message".

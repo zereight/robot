@@ -92,14 +92,14 @@ client shows it and sends commands.
 
 | Can do | Cannot do (open it on the server) |
 | --- | --- |
-| See places in the sections of the server, unread counts, working dots; see the org chart (029) | Delete or restore agents and channels |
+| See places in the sections of the server, unread counts, working dots; see the org chart (029); see the organization prefix of agents (036) | Delete or restore agents and channels |
 | Read messages, search places and messages | Change model accounts, skills, connections and settings. Review the tools of a connection (018). Make a skill from work (017). Hand over a chat (003) |
 | Send, stop, reply, edit the last message, retry | Make the permission level of an agent looser, or add, edit or delete a permission rule (007) |
 | Attach files and download files from messages | Choose a workspace folder |
 | Answer approval cards and questions | Routines, usage page, the action log, knowledge of an agent (016), check, download or repair an agent runtime (006) |
 | See the task list and task details; stop a task | Browser "Take control"; accept or request changes on a part in review (004); the Today page (021); memory proposals and memory history (008) |
 | See the workflow list, open a canvas, see run history, run details and live run state; run and stop a workflow; answer an approval step of a run | The workflow assistant panel; export and import of workflow files; the workflows log (014) |
-| Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels, also the parent channel and the daily token limit (030), and edits on the org chart (029); edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
+| Only with "Can create and change agents": create, edit, duplicate and archive agents; create and edit channels; make, edit and delete organizations, also the parent organization, the hand-off range and the daily token limit (030), and edits on the org chart (029); edit memory; create, edit, duplicate, turn on or off and delete workflows | Export and import of data |
 
 A client sees the user sections and the pinned places of the server (001). It cannot make,
 rename, order or delete a section, move a place into another section, or pin or unpin a place.
@@ -218,8 +218,8 @@ means a profile on a computer.
   send message, stop, edit, retry, mark a place as read, approve, answer question, upload
   attachment, download attachment, task list, task details, stop a task, workflow list, one
   workflow, run history, run details, create, update, delete and turn on or off a workflow, run a
-  workflow, stop a run, the org chart (029), and the changes of the org chart: members, the lead and
-  the parent channel (029, 030). A client reads the part "Organization" and the tools of a channel
+  workflow, stop a run, the org chart (029), and the changes of the org chart: a new organization, and its members, lead
+  and parent (029, 030). A client reads the part "Hand-off rules" and the tools of an organization
   (030), and does not change them.
 - The phone app (011) may ask for more: end a request (see 004). The aim of 011 is that the phone
   can do whatever the user can do in a conversation on the computer. Start and fork a thread,
@@ -332,7 +332,7 @@ accept connections, this is the same computer.
   shows with no edit control. An agent of MacBook 2 starts a task: its node shows "working" on
   MacBook 1 within 1 second. Turn MacBook 2 off: the page shows "MacBook 2 is offline." and no
   chart (029).
-- Turn the switch on and drag an agent of MacBook 2 to another channel on MacBook 1: the member
+- Turn the switch on and drag an agent of MacBook 2 to another organization on MacBook 1: the member
   moves on MacBook 2, and the line with "Undo" shows on MacBook 1 (029).
 - Type a wrong code 5 times: the code ends. Wait 5 minutes: the code ends.
 - Pair a computer with itself: a plain error shows.

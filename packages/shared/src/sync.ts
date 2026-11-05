@@ -21,6 +21,7 @@ export const SYNC_KINDS = [
   "hversion",
   "thread",
   "org",
+  "orgunit",
 ] as const
 export type SyncKind = (typeof SYNC_KINDS)[number]
 
@@ -42,6 +43,7 @@ export interface SyncCounts {
 export const COUNTED_KINDS: readonly SyncKind[] = [
   "agent",
   "channel",
+  "orgunit",
   "memory",
   "message",
   "cmessage",

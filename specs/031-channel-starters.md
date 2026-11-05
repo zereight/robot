@@ -183,8 +183,9 @@ starter with the same job. The language follows the interface at the moment of t
 
 ### Seeing the state
 
-- After Create, the new channel shows in the Channels list at once. The org chart (see 029) shows it
-  within 1 second, with the mark "Lead" on the lead.
+- After Create, the new channel shows in the Channels list at once. It makes no organization, so
+  the org chart (see 029) does not show it. The agents show in "No organization" until the user
+  puts them in an organization (030).
 - The agents show their state as any new agent does (see 002).
 - After a restart, the same channel and agents show.
 
@@ -247,8 +248,8 @@ starter with the same job. The language follows the interface at the moment of t
 14. Type a goal and close the dialog. Restart the app, open the dialog again, and export the
     profile: the dialog is empty, and the export holds no goal text.
 15. Type a goal with network monitoring on: no request is made.
-16. Create "Research" and open the org chart: the channel node shows the mark "Lead" on Researcher,
-    and a solid line runs from Researcher to Briefer and to Assistant (see 029).
+16. Create "Research" and open the org chart: it shows no node for the channel, and Researcher,
+    Briefer and Assistant are in "No organization" (see 029, 030).
 17. On a linked computer, the New agent form has no "From a goal…" choice, and "Start from" lists the
     five agent starters, as in 002.
 18. In the Korean interface, the choice, the dialog, and the channel names and topics are in Korean.
