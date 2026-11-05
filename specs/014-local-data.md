@@ -106,9 +106,10 @@ The user owns their data. It lives on their computer, it is easy to back up, and
   the connections without their secret values.
 - The cards of the board and their comments (024) are in the archive, with their numbers and
   their links to tasks. An import restores them.
-- The org chart (029) holds no data of its own. It is drawn from agents, organizations and tasks,
-  which the archive holds. So the archive has no part for it, and an import into an empty profile draws
-  the same chart.
+- The org chart (029) is drawn from agents, organizations and tasks, which the archive holds. So an
+  import into an empty profile draws the same chart. The positions that the user set with "Arrange"
+  are the layout of one computer and are not in the archive, so the imported chart starts with the
+  computed places.
 - The organizations (030) are in the archive: each one with its name, members, lead, parent, hand-off
   range and daily token limit, the hand-off rule, the switch "Ask up the line", and the
   organizations in the agent lists of skills and connections. An import restores them.

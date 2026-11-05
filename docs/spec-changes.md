@@ -237,6 +237,10 @@ These are in the code today and the specs now say something else.
 | S137 | Manage tools for outside programs: the third access on the row of an entry, the request that waits for the user without a turn, the card in the list "Waits for you", expiry after 24 hours, the limit of 5 waiting requests, "Wait for a request", the logs. Needs S68 and S133. | 037, 023, 021, 015 |
 | S138 | Agents by organization: the choice "My sections" and "By organization" in the menu of the Agents header, a flat organization section for each deepest organization in the order of names, "No organization" last, the read-only headers, "New section" and "Move to section" off with their reason, no prefix under an organization section, and the choice and the open state of each section kept by the device. The menu of Agents on a linked computer holds only the choice of view. The phone and the user sections do not change. Needs S131 (the deepest organization). | 001, 036, 011 |
 | S139 | Events: the tab "Events" of the Tasks page and its rows, the seven results, the detail with "Why" and "What the agent got", the filter, "Check where this goes" on the three trigger forms, the id of a call for duplicates, one at a time for the messages of one subject, 2000 events kept, and the mark "Holds outside content". The events of a schedule and a watch come with S43 and S29. The events of a web hook come with S92. The events of an outside program come with S68. Needs S39 (outside content) and S48 (the four groups of Today, which stays as it is). | 038, 001, 005, 009, 010, 023, 028 |
+| S140 | Org chart, arrange: the switch "Arrange", the move of the root and of organization nodes with the pointer and the arrow keys, the saved positions for each profile, the button "Re-layout", and the rule that a drag moves a node only while "Arrange" is on. | 029, 014, 019 |
+| S141 | Org chart, outlines: the switch "Outlines" (off at each start) and the outline with the name of each top organization and the organizations under it. | 029 |
+| S142 | Org chart, details: the button "Show details" on an agent node and the read-only panel with the model, the skills and the connections. | 029 |
+| S143 | Org chart, step: the fixed step line under the task label with the name of the tool step or "Failed: <reason>", and its accessible name. | 029 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -311,6 +315,15 @@ S133 needs the permission rules and approval cards of S30 and the main agent of 
 | 006 | "Remove" of an account and disconnect both change the row at once. | "Remove" asks first and says that its agents show "Provider not connected". Disconnect only shows in the danger colour. |
 | 012 | "Remove access" and "Remove" of a link act at once. | Each asks first and names the device and what the link takes with it. |
 | 016 | Delete of a source happens at once. | It asks first and says that the articles stay, and that "Check knowledge" then counts them as having no source. |
+
+## Org chart reading (M40): behaviour that changes
+
+| Spec | Before | Now |
+| --- | --- | --- |
+| 029 | The chart stores nothing. A node always sits where the layout puts it. | The user can move the root and organization nodes with "Arrange". The chart stores those positions for one computer. "Re-layout" removes them. They do not sync and are not in the archive (019, 014). |
+| 029 | A drag on the chart always changes data. | A drag changes data only while "Arrange" is off. With "Arrange" on, a drag moves nodes and changes no data. |
+| 029 | No outline around teams. | The switch "Outlines" draws an outline around each top organization with the organizations under it. It is off at each start. |
+| 029 | An agent node shows the state and the task label only. | It also has a "Show details" panel (model, skills, connections) and a step line (the tool step that runs, or "Failed: <reason>"). |
 
 ## Decided against
 

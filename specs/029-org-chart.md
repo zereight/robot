@@ -48,6 +48,8 @@ one, and change its members, its lead and its parent organization (see "Edit on 
 ## The page
 
 - A header line: the title "Org chart", the button "New organization" (see "Edit on the chart"),
+  the switches "Arrange" and "Outlines" and the button "Re-layout" (see "Arrange, outlines, details
+  and steps"),
   and a small legend that names the three kinds of line: "Leads" (lead line), "Handed work in the
   last 7 days" (hand-off line), and "Belongs to" (structure line). With the hand-off rule "Along the
   organizations" (030), the legend ends with the muted line "Hand-offs follow the organizations."
@@ -67,7 +69,8 @@ one, and change its members, its lead and its parent organization (see "Edit on 
   the node "No organization" do nothing. A click on a line does nothing.
 - Pointing at a hand-off line shows the text "<sender> handed <n> tasks to <receiver> in the last 7
   days."
-- A node stays where the layout puts it. A drag (see "Edit on the chart") changes the data, and the
+- A node stays where the layout puts it, or where the user put it with "Arrange". A drag with
+  "Arrange" off (see "Edit on the chart") changes the data, and the
   layout then puts the node in its new place.
 
 ### Edit on the chart
@@ -229,10 +232,92 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
   40 agents, with an organization node of 12 agents, and with 20 organization nodes.
 - Organization nodes that do not fit in one row go to the next row. A row is at most 1,600 px wide at
   zoom 100%.
-- The same data gives the same layout, also on two computers (019).
+- The same data gives the same layout, also on two computers (019). Saved positions (see "Arrange,
+  outlines, details and steps") change only what the user sees on one computer. They are not part
+  of the layout.
 - Hand-off lines: when there are more than 40, the chart draws the 40 with the highest count. A tie
   goes to the line with the newest hand-off. Then the legend ends with the muted line "Showing the
   40 busiest hand-offs."
+
+### Arrange, outlines, details and steps
+
+Four things help the user read a big chart. None of them changes organizations, members or leads.
+
+**Arrange (move nodes)**
+
+- The header has the switch "Arrange". It is off each time the page opens. While it is off, a drag
+  does what "Edit on the chart" says. While it is on, a drag moves nodes, and no drag changes data.
+  The menus, "New organization" and Undo work in both states.
+- The root and each organization node can move. An organization node takes its agent nodes and its
+  "+<n> more" tile with it. An agent node alone cannot move.
+- A moved node stays where it is dropped. Lines follow. The zoom does not change, and the view does
+  not move by itself. Escape ends a drag with no change.
+- With the keyboard, on a focused node and with "Arrange" on: the arrow keys move the node 16 px,
+  and Shift with an arrow moves it 64 px.
+- The app saves the position of each moved node (see "Data"). A node with no saved position stays
+  where the layout puts it. A saved position of a node that is gone is ignored and removed at the
+  next save. A new node has none.
+- A saved position holds only for the node as the layout drew it. When a node that was moved gets
+  more members or sub-organizations, its parts keep their places relative to the node.
+- The rule "No face, name, … covers another" of "Layout" holds for the places that the layout
+  computes. A node that the user moved can cover another. The user chose that place, and the
+  button "Re-layout" puts every node back.
+- The header has the button "Re-layout". It is off when no position is saved. It removes every saved
+  position of this chart at once, and the nodes go back to the places that the layout computes.
+  It has no confirm and no Undo.
+- "Fit to view" frames the nodes where they are now, including moved nodes.
+- A linked computer (012) can arrange its own view with no switch, because a position is not data of
+  the server. The phone has no canvas.
+
+**Outlines (teams)**
+
+- The header has the switch "Outlines". It is off each time the page opens, and it is not saved.
+- On, the chart draws a thin outline around each top organization node together with every
+  organization node under it and their agent nodes. The outline of a sub-organization lies inside
+  the outline of its parent. The outline carries the name of the organization on its top edge. The
+  node "No organization" and the root have no outline.
+- An outline follows its nodes when they move. It has no fill, takes no click, and does not change
+  the layout, the focus order or the dim of a search. It is not read by a screen reader, because the
+  organization nodes already give the structure.
+- Pointing at an outline name dims the rest, as pointing at a node does. The nodes inside stay.
+
+**Details of an agent**
+
+- An agent node has a small button "Show details". A click on the node still opens the profile
+  (see "The page"). The button opens a panel next to the node, and a second press, Escape, or a
+  click on another place closes it. One panel is open at a time. The key is Enter or Space on the
+  focused button, and the button is a stop in the focus order after its node.
+- The panel lists, in three rows:
+  - **Model**: the provider and the model of the agent, and its effort level when it has one (002,
+    006). A held model shows its mark, as the profile does.
+  - **Skills**: the names of the skills that the agent may use now, from its own entry, from its
+    organizations and from "All agents" (017, 030).
+  - **Connections**: the names of the connections that the agent may use now (018, 030).
+- A row shows at most 4 names. With more, it ends with the tile "+<n> more", and a click on it lists
+  the other names in the panel. A row with no name reads "None".
+- The panel is read only. It shows no secret, no value of a connection, and no text of a skill. A
+  click on a name does nothing.
+- The panel is drawn over the canvas. It may cover other nodes while it is open, and it never
+  changes the layout. It is closed when the node it belongs to is gone, and it follows the node
+  when the data changes.
+- A linked computer shows the details of the server. The phone shows none.
+
+**Step bubble (what a working agent does now)**
+
+- Under the task label, an agent node has one line for the **step**. It is empty unless the agent
+  is working, or its last task failed. The line has a fixed place in every agent node, so a step
+  that comes or goes moves no node.
+- A working agent shows the tool step that runs now, as the tool steps of the chat show it (007),
+  for example "Reading a file" or "Sending to Ada". It shows only the name of the step and, for a
+  send, the name of the receiver. It never shows the words of the agent, its thinking, a message,
+  the content of a file, a path, or the arguments of a tool. It is at most 60 characters, cut with
+  "…". Between two steps it shows the last step until the next one starts.
+- An agent whose last task failed shows "Failed: <short reason>" with the reason of 005, in the
+  state colour of an error. It stays until the agent starts another task.
+- The step shows only for a task that runs on this computer. A task of the other computer of a
+  sync pair shows its task label only, as before.
+- The line is part of the accessible name of the node (see "Keyboard and screen reader"). It
+  changes within 1 second, as the state does.
 
 ### Empty and small states
 
@@ -261,6 +346,11 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
   that count above zero.
 - The accessible name of an organization node gives the name of the organization, the number of
   members, and the counts by state.
+- The accessible name of an agent node adds the step ("Now: <step>") or the failure ("Failed:
+  <reason>") when the line shows one.
+- The switches "Arrange" and "Outlines" and the button "Re-layout" are in the header, before the
+  nodes, and have names. With "Arrange" on, the arrow keys move the focused organization node or
+  the root, and an agent node ignores them.
 - A focus ring shows on the focused node. The focus is never lost when the page changes.
 
 ## Motion
@@ -285,7 +375,9 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
   only organizations (030), and only when the user edits: a new organization, and the members, the
   lead and the parent organization (see "Edit on the chart").
 - The chart shows no message text. It shows the names and role lines of agents, the names of
-  organizations, states, and the labels of running tasks, which the board (024) already shows.
+  organizations, states, the labels of running tasks, which the board (024) already shows, the name
+  of the tool step that runs, the short reason of a failed task, and in the details panel the model,
+  the names of skills and the names of connections. It never shows a secret.
 - Text on the page comes from the translation catalogue, in English and Korean (013). Names, role
   lines and task labels are text of the user and are not translated.
 - The page makes no notification (015).
@@ -323,17 +415,24 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
 
 ## Data
 
-The chart stores nothing of its own. It is drawn from agents, organizations and tasks. An edit on
-the chart changes organizations only (030).
+The chart stores one thing of its own: the positions that the user set with "Arrange". Everything
+else is drawn from agents, organizations and tasks. An edit on the chart changes organizations only
+(030).
 
-- **Sync (019)**: agents, organizations and tasks sync (030), so nothing is added to the lists
-  "Syncs" and "Does not sync". Each computer draws the chart from its own copy. Two computers that
+- **Positions**: for each moved node, its id (the organization or the root) and its place. A
+  position is the layout of one computer, as the sections of the place list are (001). It is kept
+  for each profile (022). A linked computer keeps its own positions for each server. The switches
+  "Arrange" and "Outlines" are not saved.
+
+- **Sync (019)**: agents, organizations and tasks sync (030). The saved positions do not sync (see
+  the list "Does not sync" in 019). Each computer draws the chart from its own copy. Two computers that
   are up to date draw the same organization nodes, leads, lines and counts. Tasks of both computers count in the
   hand-offs. A task of the other computer counts when it has synced. The state "offline" of an agent
   (its model account is not connected here) can differ between the two computers.
 - **Export (014)**: the archive holds agents, organizations and tasks, so an import into an empty
   profile draws the same chart. The archive has no part of its own for the chart. The positions are
-  computed, so none is saved.
+  computed, and the positions that the user set are the layout of one computer and are not in the
+  archive.
 - **Agent file (002)**: the file holds no organization (030), so an import makes no node on the
   chart. The agents show in "No organization". The file holds no task, so the chart shows no
   hand-off from the file.
@@ -374,8 +473,11 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
 - Channels on the chart, and a picture of an organization (030).
 - A reporting line: "reports to" on an agent, or a tree of bosses. The glossary avoids these words.
   The tree of the chart is the tree of organizations (030).
-- Saved positions, a layout of the user, a radial layout, outlines around teams, a minimap, a lock.
-- Skills, connections and the model around a node.
+- A radial layout, a minimap, a lock, a separate saved layout for each user or a name for a layout,
+  and positions that sync.
+- Details of an agent that open on a click on a name (a skill or a connection), and a change of
+  a model, a skill or a connection from the panel.
+- The words of an agent, its thinking, or the arguments of a tool in the step line.
 - An activity feed or a browser view on the chart. The activity panel (001), Today (021) and the
   board (024) do this.
 - A window other than 7 days, or a setting for it.
@@ -478,5 +580,25 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
 - Put "Docs" under "Product" on the chart. Then delete "Docs" in its form and press "Undo" on the
   line that still shows: Undo is refused with a reason.
 - A linked computer with "Can create and change agents": a move on the chart works.
+- Turn on "Arrange" and drag the organization node "Docs" to a new place: its agents and "+<n> more"
+  tile move with it, the lines follow, and no member, lead or parent changed. Close the page and
+  open it again: "Docs" is in the new place, and "Arrange" is off. Press "Re-layout": every node is
+  back in the computed place, and the button is off.
+- With "Arrange" on, drag an agent node: it does not move, and no data changes. With "Arrange" off,
+  drag it onto an organization node: it moves to that organization, as before.
+- Move "Docs", then add a member to it from another place: the new agent node shows inside "Docs"
+  in its new place. Delete "Docs" in its form: its saved position is gone at the next save.
+- Turn on "Outlines": each top organization has an outline with its name, around itself and all
+  organizations under it. Move a node: the outline follows. Search for a name: the dim is the same
+  as with outlines off. Close and open the page: "Outlines" is off.
+- Press "Show details" on an agent node: the panel lists its model, its skills and its connections,
+  with "None" for a row with no name, and "+<n> more" after 4 names. It shows no secret. Press
+  Escape: it closes. Open it on another agent: the first one closes.
+- Make an agent work and let it read a file: its node shows "Reading a file" within 1 second, with
+  no path. Let it send to Ada: the node shows "Sending to Ada". Let a task fail: the node shows
+  "Failed: <reason>" until the agent starts another task.
+- Check that no node changed its size or place when a step line came or went.
+- On a linked computer without the switch "Can create and change agents": "Arrange", "Outlines"
+  and "Show details" still work, and no change of data is possible.
 - Switch to the Korean interface: the title, the legend, the counts, the marks and the lines of the
   empty states are Korean. Names and task labels do not change.

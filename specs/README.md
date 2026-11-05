@@ -90,6 +90,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M37 | 037, and the changes to 002, 004, 007, 009 and 023 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S133 to S137: make an agent for the main agent, tools for agents, tools for channels, tools for routines, manage tools for outside programs |
 | M38 | The changes to 001, 011 and 036 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S138: agents by organization |
 | M39 | 038, and the changes to 001, 005, 009, 010, 023 and 028 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S139: the tab "Events" and "Check where this goes" |
+| M40 | The changes to 014, 019 and 029 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S140 to S143: org chart arrange, outlines, details and step |
 
 ## Surfaces check
 

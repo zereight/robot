@@ -55,6 +55,7 @@ service holds it.
 | Knowledge of an agent: articles, sources and the change list (016) | They are files in a folder of the agent, like the workspace. A synced agent starts with no knowledge on the other computer. |
 | The view of the board: the switch "Work of agents" and the dismissed work cards (024) | They are the layout of one computer, like settings. The board shows the tasks of both computers; a dismiss hides a card on one computer only. |
 | User sections of the place list and the section of each place (001) | They are the layout of one computer, like settings. A synced agent or channel arrives with no section. An agent then shows in "Unassigned". |
+| The positions that the user set on the org chart (029) | They are the layout of one computer, like sections. Two computers draw the chart from the same data, each with its own positions. |
 | Pinned places (001) | They are part of the layout of one computer, like sections. |
 | The hold of a model (006) | It is a state of one computer. Each computer learns its own limits. |
 | The secret of a web hook (010) | It is in the keychain of one computer, like a saved secret. |
@@ -214,7 +215,7 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
 - Only a linked computer that the user set to sync can send changes. Turning "Let other devices
   connect" off, or removing the link, stops the flow at once.
 - The tasks page lists tasks of both computers, with the name of the origin and a filter.
-- The org chart (029) stores nothing, so it adds nothing to "Syncs". Each computer draws it from
+- The org chart (029) adds nothing to "Syncs". Each computer draws it from
   its own copy of agents, organizations and tasks. The hand-offs count the tasks of both computers.
   Two computers that are up to date draw the same chart, except for the state "offline" of an
   agent, which depends on the model accounts of each computer.
