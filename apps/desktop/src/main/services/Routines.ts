@@ -383,14 +383,20 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               .pipe(Effect.asVoid)
       }
 
-      /** A run that cannot start fails, with the reason (spec 009). It counts as a failed run. */
+      /**
+       * A run that cannot start fails, with the reason (spec 009). It counts as a failed run, and
+       * its event says Failed (spec 038). The result tells the caller which way it went, so that
+       * the event does not claim that a run started when none did.
+       */
       const startOrFail = (r: Row, at: number, text: string, outside?: OutsideSource) =>
         start(r, text, outside).pipe(
+          Effect.map(() => ({ ok: true as const })),
           Effect.catch((e: AppError) =>
             Effect.sync(() => {
               const reason = { code: e.code, detail: e.detail ?? "" }
               skip(r.id, at, "failed", reason)
               addFailure(r.id, reason)
+              return { ok: false as const, reason }
             }),
           ),
         )
@@ -422,18 +428,20 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
                 })
               } else {
                 // A run that starts more than 15 minutes late gets both times.
-                yield* startOrFail(r, at, runText(r.prompt, at, now)).pipe(
-                  Effect.andThen(
-                    recordEvent(r, {
-                      source: "schedule",
-                      type: "planned run",
-                      summary: `Planned run of ${r.name}`,
-                      got: runText(r.prompt, at, now),
-                      result: "routed",
-                      why: `The routine ${r.name} runs at its planned time.`,
-                    }),
-                  ),
-                )
+                const text = runText(r.prompt, at, now)
+                const ran = yield* startOrFail(r, at, text)
+                // The event says what happened: a run that could not start made no task.
+                yield* recordEvent(r, {
+                  source: "schedule",
+                  type: "planned run",
+                  summary: `Planned run of ${r.name}`,
+                  got: text,
+                  result: ran.ok ? "routed" : "failed",
+                  reason: ran.ok ? null : ran.reason.detail || ran.reason.code,
+                  why: ran.ok
+                    ? `The routine ${r.name} runs at its planned time.`
+                    : `The routine ${r.name} could not start its planned run.`,
+                })
               }
             }
             if (at !== null || missed.length > 0) changed(r.server_id)
@@ -494,19 +502,23 @@ export class Routines extends Context.Service<Routines, RoutinesService>()("robo
               return
             }
             const text = watchRunText(r.prompt, change)
-            yield* startOrFail(current, now, text, { kind: "routine", name: r.name }).pipe(
-              Effect.andThen(
-                recordEvent(current, {
-                  source: "watch",
-                  type: "change",
-                  summary: `Change in ${r.name}`,
-                  detail: change,
-                  got: text,
-                  result: "routed",
-                  why: `The watch of ${r.name} saw a change.`,
-                }),
-              ),
-            )
+            const ran = yield* startOrFail(current, now, text, {
+              kind: "routine",
+              name: r.name,
+            })
+            // The event says what happened: a run that could not start made no task.
+            yield* recordEvent(current, {
+              source: "watch",
+              type: "change",
+              summary: `Change in ${r.name}`,
+              detail: change,
+              got: text,
+              result: ran.ok ? "routed" : "failed",
+              reason: ran.ok ? null : ran.reason.detail || ran.reason.code,
+              why: ran.ok
+                ? `The watch of ${r.name} saw a change.`
+                : `The watch of ${r.name} saw a change, and its run could not start.`,
+            })
             changed(r.server_id)
             return
           }

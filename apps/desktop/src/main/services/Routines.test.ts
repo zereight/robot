@@ -7,6 +7,7 @@ import { Effect } from "effect"
 import { Agents } from "./Agents.ts"
 import { Channels } from "./Channels.ts"
 import { Chat } from "./Chat.ts"
+import { Events } from "./Events.ts"
 import { Notifier } from "./Notifier.ts"
 import { Providers } from "./Providers.ts"
 import { Routines } from "./Routines.ts"
@@ -833,5 +834,33 @@ describe("a routine that pauses itself (spec 009, Repeated failure)", () => {
     } finally {
       blockReplies = false
     }
+  })
+})
+
+describe("the events of a routine (spec 038)", () => {
+  test("a run that starts shows Routed with what the agent got", async () => {
+    const s = await setup()
+    const routine = await s.create("daily check")
+    await s.tick(routine.createdAt + 2 * MIN + 1000)
+    await s.idle()
+    const events = await s.run(Events.use((e) => e.list(s.local.id)))
+    expect(events).toHaveLength(1)
+    expect(events[0]?.source).toBe("schedule")
+    expect(events[0]?.result).toBe("routed")
+    expect(events[0]?.placeName).toBe("Check")
+    expect(events[0]?.got).toContain("daily check")
+  })
+
+  test("a run that cannot start does not show Routed", async () => {
+    const s = await setup()
+    const routine = await s.create("daily check", 2, {
+      model: { accountId: "gone-account", model: "other", effort: null },
+    })
+    await s.tick(routine.createdAt + 2 * MIN + 1000)
+    const events = await s.run(Events.use((e) => e.list(s.local.id)))
+    expect(events).toHaveLength(1)
+    // The run made no task, so the event must not say that it was routed.
+    expect(events[0]?.result).not.toBe("routed")
+    expect(events[0]?.result).toBe("failed")
   })
 })

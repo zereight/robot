@@ -13,6 +13,7 @@ import { call } from "../lib/rpc.ts"
 import { useApp } from "../state/app.tsx"
 import { setOpenTarget } from "../state/target.ts"
 import { useUi } from "../state/ui.tsx"
+import { Dialog } from "../ui/Dialog.tsx"
 import styles from "./tasks.module.css"
 
 /**
@@ -108,8 +109,12 @@ export const EventsTab = (props: {
       <Show
         when={(rows()?.length ?? 0) > 0}
         fallback={
-          <p class={styles.muted} data-testid="events-empty">
-            {t("events.empty")}
+          // A filter or a search that hides every row is not an empty page (spec 038).
+          <p
+            class={styles.muted}
+            data-testid={result() || query().trim() ? "events-no-match" : "events-empty"}
+          >
+            {result() || query().trim() ? t("events.noMatch") : t("events.empty")}
           </p>
         }
       >
@@ -148,7 +153,7 @@ export const EventsTab = (props: {
                       >
                         {line(event)}
                       </button>
-                      <Show when={event.placeName && event.result === "routed"}>
+                      <Show when={event.placeName}>
                         <div class={styles.muted} data-testid="event-place">
                           {event.placeName}
                         </div>
@@ -183,72 +188,79 @@ export const EventsTab = (props: {
 
       <Show when={open()}>
         {(event) => (
-          <div class={styles.detail} data-testid="event-detail">
-            <h2>{t("events.detail.title")}</h2>
-            <dl>
-              <dt>{t("events.col.source")}</dt>
-              <dd>{t(eventSourceKey(event().source) as MessageKey)}</dd>
-              <dt>{t("events.col.type")}</dt>
-              <dd>{event().type}</dd>
-              <Show when={event().subject}>
-                {(subject) => (
-                  <>
-                    <dt>{t("events.detail.subject")}</dt>
-                    <dd>{subject()}</dd>
-                  </>
-                )}
-              </Show>
-              <Show when={event().callId}>
-                {(id) => (
-                  <>
-                    <dt>{t("events.detail.id")}</dt>
-                    <dd>{id()}</dd>
-                  </>
-                )}
-              </Show>
-              <dt>{t("events.col.result")}</dt>
-              <dd>{t(eventResultKey(event().result) as MessageKey)}</dd>
-              <Show when={event().reason}>
-                {(reason) => (
-                  <>
-                    <dt>{t("tasks.error")}</dt>
-                    <dd>{reason()}</dd>
-                  </>
-                )}
-              </Show>
-              <dt>{t("events.detail.why")}</dt>
-              <dd data-testid="event-why">{event().why}</dd>
-              <Show when={event().got}>
-                <dt>{t("events.detail.got")}</dt>
-                <dd data-testid="event-got">{event().got}</dd>
-              </Show>
-              <Show when={event().detail}>
-                <dt>{t("tasks.prompt")}</dt>
-                <dd>{event().detail}</dd>
-              </Show>
-            </dl>
-            <Show when={event().result === "routed" && event().agentId}>
-              <button
-                type="button"
-                class={styles.rowButton}
-                onClick={() => {
-                  setOpenTarget({ kind: "agentTasks", id: event().agentId ?? "" })
-                  setOpenId(null)
-                }}
-                data-testid="event-open-place"
-              >
-                {t("events.detail.openPlace")}
-              </button>
-            </Show>
-            <button
-              type="button"
-              class={styles.rowButton}
-              onClick={() => setOpenId(null)}
-              data-testid="event-close"
-            >
-              {t("events.detail.close")}
-            </button>
-          </div>
+          <Dialog
+            label={t("events.detail.title")}
+            onClose={() => setOpenId(null)}
+            testId="event-detail"
+          >
+            <div class={styles.eventDetail}>
+              <dl class={styles.fields}>
+                <dt>{t("events.col.source")}</dt>
+                <dd>{t(eventSourceKey(event().source) as MessageKey)}</dd>
+                <dt>{t("events.col.type")}</dt>
+                <dd>{event().type}</dd>
+                <Show when={event().subject}>
+                  {(subject) => (
+                    <>
+                      <dt>{t("events.detail.subject")}</dt>
+                      <dd>{subject()}</dd>
+                    </>
+                  )}
+                </Show>
+                <Show when={event().callId}>
+                  {(id) => (
+                    <>
+                      <dt>{t("events.detail.id")}</dt>
+                      <dd>{id()}</dd>
+                    </>
+                  )}
+                </Show>
+                <dt>{t("events.col.result")}</dt>
+                <dd>{t(eventResultKey(event().result) as MessageKey)}</dd>
+                <Show when={event().reason}>
+                  {(reason) => (
+                    <>
+                      <dt>{t("tasks.error")}</dt>
+                      <dd>{reason()}</dd>
+                    </>
+                  )}
+                </Show>
+                <dt>{t("events.detail.why")}</dt>
+                <dd data-testid="event-why">{event().why}</dd>
+                <Show when={event().got}>
+                  <dt>{t("events.detail.got")}</dt>
+                  <dd data-testid="event-got">{event().got}</dd>
+                </Show>
+                <Show when={event().detail}>
+                  <dt>{t("tasks.prompt")}</dt>
+                  <dd>{event().detail}</dd>
+                </Show>
+              </dl>
+              <div class={styles.actions}>
+                <Show when={event().result === "routed" && event().agentId}>
+                  <button
+                    type="button"
+                    class={styles.rowButton}
+                    onClick={() => {
+                      setOpenTarget({ kind: "agentTasks", id: event().agentId ?? "" })
+                      setOpenId(null)
+                    }}
+                    data-testid="event-open-place"
+                  >
+                    {t("events.detail.openPlace")}
+                  </button>
+                </Show>
+                <button
+                  type="button"
+                  class={styles.rowButton}
+                  onClick={() => setOpenId(null)}
+                  data-testid="event-close"
+                >
+                  {t("events.detail.close")}
+                </button>
+              </div>
+            </div>
+          </Dialog>
         )}
       </Show>
     </div>
