@@ -11,7 +11,7 @@ import { loadHandOffModel, readAskUpTheLine, readHandOffRule, readMainAgent } fr
 import { Servers } from "./Servers.ts"
 
 export interface OrganizationService {
-  /** The part "Organization" of this profile (spec 013, 030). */
+  /** The part "Hand-off rules" of this profile (spec 013, 030). */
   readonly get: Effect.Effect<OrganizationState>
   /**
    * Sets the hand-off rule (spec 030). A change counts from the next send: a send that started
@@ -38,11 +38,11 @@ export interface OrganizationService {
    * on. An archived main agent counts as none.
    */
   mainAgent(serverId: string): string | null
-  /** The agents and channels of a server, as the hand-off rule reads them, at this moment. */
+  /** The agents and organizations of a server, as the hand-off rule reads them, at this moment. */
   model(serverId: string): HandOffModel
   /**
    * What the app tells an agent about the hand-off rule in its instructions: the text for the main
-   * agent while the rule is "Along the channels", else an empty text (spec 030, "Main agent").
+   * agent while the rule is "Along the organizations", else an empty text (spec 030, "Main agent").
    */
   told(agentId: string): string
 }
@@ -116,7 +116,7 @@ export class Organization extends Context.Service<Organization, OrganizationServ
           mainAgent,
           model: (serverId) => loadHandOffModel(db, serverId, mainAgent(serverId)),
           told: (agentId) => {
-            if (readHandOffRule(db) !== "channels") return ""
+            if (readHandOffRule(db) !== "organizations") return ""
             const row = db.get<{ server_id: string }>(
               "SELECT server_id FROM agent WHERE id = ?",
               agentId,

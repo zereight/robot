@@ -941,7 +941,7 @@ describe("export and import", () => {
   test("the hand-off rule comes back with the archive (spec 030, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-rule.zip")
     const a = app({ save: out })
-    await a.run(Organization.use((o) => o.setHandOff("channels")))
+    await a.run(Organization.use((o) => o.setHandOff("organizations")))
     await a.run(Data.use((d) => d.export()))
 
     // An empty profile holds the default until it imports the archive.
@@ -952,7 +952,7 @@ describe("export and import", () => {
     })
     await b.run(Data.use((d) => d.import()))
     expect(await b.run(Organization.use((o) => o.get))).toEqual({
-      handOff: "channels",
+      handOff: "organizations",
       askUpTheLine: false,
     })
   })

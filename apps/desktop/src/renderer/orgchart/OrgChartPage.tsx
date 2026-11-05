@@ -832,7 +832,7 @@ export const OrgChartPage = () => {
             {/* The header line: the legend of the lines and the button "New organization". */}
             <div class={styles.head} data-testid="org-head">
               <Show when={!m().empty}>
-                <Legend capped={m().handoffsCapped} follows={m().handOffRule === "channels"} />
+                <Legend capped={m().handoffsCapped} follows={m().handOffRule === "organizations"} />
               </Show>
               <Show when={edit.canEdit()}>
                 <span class={styles.headButton}>

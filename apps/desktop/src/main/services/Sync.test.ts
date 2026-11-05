@@ -1285,7 +1285,7 @@ describe("two computers that were apart", () => {
         rt,
         Organization.use((o) => o.get),
       ).then((x) => x.handOff)
-    const set = (rt: Rt, value: "any" | "channels") =>
+    const set = (rt: Rt, value: "any" | "organizations") =>
       run(
         rt,
         Organization.use((o) => o.setHandOff(value)),
@@ -1294,13 +1294,13 @@ describe("two computers that were apart", () => {
     expect(await rule(b)).toBe("any")
 
     // The rule that is set on one computer counts on the other after it syncs.
-    await set(a, "channels")
+    await set(a, "organizations")
     expect(
       await waitFor(
         () => rule(b),
-        (v) => v === "channels",
+        (v) => v === "organizations",
       ),
-    ).toBe("channels")
+    ).toBe("organizations")
     // The window of the other computer hears of it.
     expect(b.events.some((e) => e.event === "organization.changed")).toBe(true)
 
@@ -1309,23 +1309,23 @@ describe("two computers that were apart", () => {
     await set(b, "any")
     await settle()
     await settle()
-    await set(a, "channels")
+    await set(a, "organizations")
     await set(a, "any")
     await settle()
-    await set(b, "channels")
+    await set(b, "organizations")
     await together(a, b)
     expect(
       await waitFor(
         () => rule(a),
-        (v) => v === "channels",
+        (v) => v === "organizations",
       ),
-    ).toBe("channels")
+    ).toBe("organizations")
     expect(
       await waitFor(
         () => rule(b),
-        (v) => v === "channels",
+        (v) => v === "organizations",
       ),
-    ).toBe("channels")
+    ).toBe("organizations")
   })
 
   test("the switch 'Ask up the line' crosses like the rule; the later change wins; the rule stays (spec 030, 019)", async () => {
@@ -1357,14 +1357,14 @@ describe("two computers that were apart", () => {
     // A change of the rule on the other computer leaves the switch as it is.
     await run(
       b,
-      Organization.use((o) => o.setHandOff("channels")),
+      Organization.use((o) => o.setHandOff("organizations")),
     )
     expect(
       await waitFor(
         () => state(a),
-        (v) => v.handOff === "channels",
+        (v) => v.handOff === "organizations",
       ),
-    ).toEqual({ handOff: "channels", askUpTheLine: true })
+    ).toEqual({ handOff: "organizations", askUpTheLine: true })
 
     // Both change it while apart: the later change wins on both computers. Computer 2 turns it
     // off first; computer 1 turns it off and on again later, so its change is the later one.
