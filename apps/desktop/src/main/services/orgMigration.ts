@@ -1,4 +1,4 @@
-import type { DatabaseSync } from "node:sqlite"
+import type { DatabaseSync, SQLInputValue } from "node:sqlite"
 import {
   type MigrationChannel,
   nameKey,
@@ -6,6 +6,7 @@ import {
   planOrgMigration,
   withOrgSwitch,
 } from "@robot/shared"
+import { repairOrgLines } from "./orgRepair.ts"
 
 // The first start of this version makes an organization from each channel that has a parent
 // channel, a sub-channel, a tool or a daily token limit (spec 030, "Migration"). The channel keeps
@@ -135,4 +136,29 @@ export const migrateChannelsToOrganizations = (db: DatabaseSync): void => {
         run(`UPDATE ${table} SET organizations = ? WHERE id = ?`, JSON.stringify(after), row.id)
     }
   }
+}
+
+/**
+ * The repair of a line after the migration (spec 030, "Migration", "Agents in channels that do not
+ * make one line"). The organizations that the step above made can hold an agent in organizations
+ * that are not on one line: the agent was in two channels with no parent between them. Each such
+ * agent leaves the organization that it joined last, and the channel that was made first counts as
+ * the one that it joined first: a migration has no time of change, so the tie order decides (the
+ * organization that was made later, then the later id; an organization takes the time and the id
+ * of its channel). The agent stays a member of the channel. Each removal waits in `org_line_note`
+ * for the line of the organization log. It runs in the transaction of its step, and it changes
+ * nothing when the lines are right.
+ */
+export const repairLinesAfterMigration = (db: DatabaseSync): void => {
+  const repairs = repairOrgLines(
+    {
+      all: <T>(sql: string, ...params: SQLInputValue[]) => db.prepare(sql).all(...params) as T[],
+      run: (sql, ...params) => void db.prepare(sql).run(...params),
+    },
+    { changed: new Map() },
+  )
+  for (const r of repairs)
+    db.prepare(
+      "INSERT INTO org_line_note (org_id, org_name, agent_id, agent_name) VALUES (?, ?, ?, ?)",
+    ).run(r.orgId, r.orgName, r.agentId, r.agentName)
 }

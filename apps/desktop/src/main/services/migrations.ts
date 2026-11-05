@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite"
-import { migrateChannelsToOrganizations } from "./orgMigration.ts"
+import { migrateChannelsToOrganizations, repairLinesAfterMigration } from "./orgMigration.ts"
 
 /**
  * Triggers that mark a row as changed, so sync can find it (spec 019). They only write while the
@@ -1321,6 +1321,21 @@ export const migrations: readonly string[] = [
   -- table is not rebuilt for one column; nothing reads it or syncs it.
   UPDATE channel SET parent_channel_id = NULL WHERE parent_channel_id IS NOT NULL;
   `,
+  `
+  -- The repair of a line after the migration (spec 030, "Migration", "Agents in channels that do not
+  -- make one line"). The step in code removes an agent from the organizations that are not on one
+  -- line with the organization that it joined first, with the channel that was made first as the
+  -- one that it joined first. A migration has no data folder, so each removal waits here until the
+  -- app starts and writes its line to the organization log (spec 014). The table is local: it has
+  -- no sync trigger, and an import does not read it.
+  CREATE TABLE org_line_note (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    org_id TEXT NOT NULL,
+    org_name TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    agent_name TEXT NOT NULL
+  );
+  `,
 ]
 
 /**
@@ -1331,4 +1346,8 @@ export const dataSteps: Readonly<Record<number, (db: DatabaseSync) => void>> = {
   // The organizations from the channels (spec 030, "Migration", S126).
   [migrations.findIndex((sql) => sql.includes("CREATE TABLE org_unit"))]:
     migrateChannelsToOrganizations,
+  // The lines of the organizations that the step above made (spec 030, "Migration", S130b). It
+  // follows the steps that clear the old channel fields, so an older profile gets it too.
+  [migrations.findIndex((sql) => sql.includes("CREATE TABLE org_line_note"))]:
+    repairLinesAfterMigration,
 }

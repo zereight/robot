@@ -885,6 +885,54 @@ describe("export and import", () => {
     ])
   })
 
+  test("an archive with an agent in two organizations that are not on one line comes back repaired, with the tie order and a line in the organization log (spec 030, 'One line', Repair)", async () => {
+    const out = join(testPlatform().dataDir, "export-broken-line.zip")
+    const a = app({ save: out })
+    const local = await a.run(Servers.use((s) => s.local))
+    const ada = await a.run(
+      Agents.use((x) => x.create({ serverId: local.id, name: "Ada", role: "", instructions: "" })),
+    )
+    const make = (name: string, parentId: string | null) =>
+      a.run(
+        Organizations.use((o) =>
+          o.create({ serverId: local.id, name, memberIds: [], leadId: null, parentId }),
+        ),
+      )
+    const product = await make("Product", null)
+    const docs = await make("Docs", product.id)
+    const ops = await make("Ops", null)
+    const db = await a.run(Database.use((d) => Effect.succeed(d)))
+    // The app refuses this, but an archive can hold it: the data is changed by hand. "Ops" was made
+    // last, so it loses the agent, and the lead of "Ops" goes with it.
+    db.run("UPDATE org_unit SET created_at = 1000 WHERE id = ?", product.id)
+    db.run("UPDATE org_unit SET created_at = 2000 WHERE id = ?", docs.id)
+    db.run("UPDATE org_unit SET created_at = 3000 WHERE id = ?", ops.id)
+    for (const id of [product.id, docs.id, ops.id])
+      db.run("INSERT INTO org_member (org_id, agent_id, position) VALUES (?, ?, 0)", id, ada.id)
+    db.run("UPDATE org_unit SET lead_agent_id = ? WHERE id = ?", ada.id, ops.id)
+    await a.run(Data.use((d) => d.export()))
+
+    const b = app({ open: out })
+    await b.run(Data.use((d) => d.import()))
+    const bLocal = await b.run(Servers.use((s) => s.local))
+    const list = await b.run(Organizations.use((o) => o.list(bLocal.id)))
+    expect(list.map((o) => [o.name, o.memberIds.length, o.leadId]).sort()).toEqual([
+      ["Docs", 1, null],
+      ["Ops", 0, null],
+      ["Product", 1, null],
+    ])
+    const log = readFileSync(join(b.dataDir, "logs", "organizations.log"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map(
+        (line) =>
+          JSON.parse(line) as { event: string; organization: string; agent: string; kind: string },
+      )
+    expect(log.map((l) => [l.event, l.organization, l.agent, l.kind])).toEqual([
+      ["line_repaired", "Ops", "Ada", "line"],
+    ])
+  })
+
   test("the main agent comes back with the archive: the switch is on for the same agent (spec 002, 014)", async () => {
     const out = join(testPlatform().dataDir, "export-main.zip")
     const a = app({ save: out })

@@ -31,7 +31,14 @@ import { DECISION_KEY } from "./Decision.ts"
 import { EventBus } from "./EventBus.ts"
 import { AppError } from "./errors.ts"
 import { migrations } from "./migrations.ts"
-import { logOrgRepairs, type OrgRepaired, repairOrgTree } from "./orgRepair.ts"
+import {
+  type LineRepaired,
+  logLineRepairs,
+  logOrgRepairs,
+  type OrgRepaired,
+  repairOrgLines,
+  repairOrgTree,
+} from "./orgRepair.ts"
 import { Platform } from "./Platform.ts"
 import { Providers, secretKey } from "./Providers.ts"
 import { SavedSecrets } from "./SavedSecrets.ts"
@@ -485,6 +492,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
         writeFileSync(copy, dbFile)
         let counts = { agents: 0, messages: 0 }
         let orgRepairs: OrgRepaired[] = []
+        let lineRepairs: LineRepaired[] = []
         try {
           // The archive is untrusted: it is read through SQL only, and only known tables are used.
           db.run("ATTACH DATABASE ? AS imp", copy)
@@ -529,6 +537,9 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
               copyToServer("org_unit")
               db.run("INSERT INTO org_member SELECT * FROM imp.org_member")
               orgRepairs = repairOrgTree(db, { mode: "import" })
+              // Then the lines (spec 030, "One line", "Repair"). An import carries no time of
+              // change, so the tie order decides: the organization that was made later loses.
+              lineRepairs = repairOrgLines(db, { changed: new Map() })
               db.run("INSERT INTO channel_message SELECT * FROM imp.channel_message")
               db.run("INSERT INTO provider_account SELECT * FROM imp.provider_account")
               // The models that the user turned off, and the fields of the custom models, come back
@@ -673,6 +684,7 @@ export class Data extends Context.Service<Data, DataService>()("robot/main/Data"
         }
 
         logOrgRepairs(platform.dataDir, orgRepairs)
+        logLineRepairs(platform.dataDir, lineRepairs)
         const next = yield* settings.get
         platform.setThemeSource(next.theme)
         bus.emit("settings.changed", next)

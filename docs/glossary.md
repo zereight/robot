@@ -126,6 +126,7 @@ A new word goes here in the same pull request as the spec that brings it.
 | Top organization | An organization with no parent organization (030). | 최상위 조직 | root organization |
 | On one line | Two organizations are on one line when one is a higher organization of the other. An agent can be a member only of organizations that are on one line (030). | 한 줄에 있어요 | same branch, parent and child |
 | Deepest organization | The lowest of the organizations of an agent. They are on one line, so there is one (030, 036). | 가장 낮은 조직 | main organization, primary team |
+| Remove from an organization | What the user does with a menu or the form, and what the app does when it repairs a line: the agent stays an agent and stays a member of the other organizations (030). | 조직에서 빼요 | delete, kick out, fire |
 | Organization prefix | The text "[Docs]" in front of the name of an agent that is in the organization "Docs" (036). | 조직 말머리 (proposed) | tag, label, BOT tag (that is the small mark on a message, 003) |
 | Shown name | The prefix and the name of an agent, for example "[Docs] Ada" (036). | 보이는 이름 (proposed) | display name, nickname |
 | Show the organization before an agent name | The switch in Settings → Appearance and in the settings of the phone that turns the organization prefix on or off (036, 013, 011). | 에이전트 이름 앞에 조직 표시 | show team tag, name prefix |
