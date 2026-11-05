@@ -23,7 +23,7 @@ service holds it.
 
 | Item | Notes |
 | --- | --- |
-| Agents | Face, name, role line, instructions, the switch "Read the handbook", model choice, backup model choice, archive state. |
+| Agents | Face, name, role line, instructions, the switch "Read the handbook", the switch "Main agent", model choice, backup model choice, archive state. |
 | Handbook | The text and its history (002). A change on one computer counts on the other from its next turn. When both computers change it before they sync, the later change wins, and the other text stays in the handbook history. |
 | Model accounts | Name, vendor and address only. Each computer connects the account itself. |
 | Channels | Name, topic, instructions, members, lead, the settings "Review parts", "The lead answers questions" and "Own copies for parts", picture, archive state. |
@@ -179,6 +179,9 @@ The Denied case shows "<name> did not allow the sync." and returns the row to Of
   different agents with one name meet in a merge, the one that comes in gets the name of its
   origin computer in brackets, for example "Writer (MacBook 2)". The same holds for channels.
   Model accounts with the same name, vendor and address are one account.
+- **One main agent**: at most one agent on a server has the switch "Main agent" (002). When two
+  computers turn it on for two different agents while apart, the agent whose change is the later
+  one keeps it after the sync, and the other loses it on both computers. A user sees no notice.
 - **Delete**: deleting an agent or a channel deletes it on the other computer too. The delete
   dialog says so. Sync never deletes files: the workspace folder of an agent that sync removes
   stays on disk, and the change list shows its path. If one sync would delete 5 or more agents
