@@ -234,6 +234,7 @@ These are in the code today and the specs now say something else.
 | S135 | Tools for channels: make, change and archive a channel, with members and lead only. | 037, 004 |
 | S136 | Tools for routines: "List routines", "Read a routine", make (paused), change, "Pause" with no request, "Resume" and "Run now" as requests. | 037, 009 |
 | S137 | Manage tools for outside programs: the third access on the row of an entry, the request that waits for the user without a turn, the card in the list "Waits for you", expiry after 24 hours, the limit of 5 waiting requests, "Wait for a request", the logs. Needs S68 and S133. | 037, 023, 021, 015 |
+| S138 | Agents by organization: the choice "My sections" and "By organization" in the menu of the Agents header, a flat organization section for each deepest organization in the order of names, "No organization" last, the read-only headers, "New section" and "Move to section" off with their reason, no prefix under an organization section, and the choice and the open state of each section kept by the device. The menu of Agents on a linked computer holds only the choice of view. The phone and the user sections do not change. Needs S131 (the deepest organization). | 001, 036, 011 |
 
 S18 first: it is the largest gain for channels. S20 needs threads before fork can work. S70 and S71 follow S20. S72 follows S71. S32 needs S30. S37 needs S35. S40, S41 and S43 need S39.
 S46 to S49 do not depend on each other, except that S47 follows S35. S46 and S47 give the largest gain for the effort. A slice that adds a data step takes the next free number at the time it merges.
@@ -296,6 +297,7 @@ S133 needs the permission rules and approval cards of S30 and the main agent of 
 | 030 | A sub-channel can be archived and restored with its parent. | An organization has no archive. It is deleted with a confirm and no Undo. |
 | 002 | The agent file holds the daily token limit and the parent channel of a channel. | It holds neither. An older file that holds them is imported without them. |
 | 030 | A channel in the tree has the line "In <parent channel>" and a confirm that names the sub-channels. | These are gone. The organization form has the field "Parent organization". |
+| 001, 036, 011 | The Agents section holds the user sections and "Unassigned". Its rows show the organization prefix. | The menu of the Agents header can switch to "By organization": a flat section for each deepest organization, and "No organization" last. The sections are read only. The rows under them show no prefix. The phone keeps the user sections. |
 
 ## Danger buttons: behaviour that changes
 

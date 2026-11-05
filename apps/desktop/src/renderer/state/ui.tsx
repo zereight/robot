@@ -1,4 +1,5 @@
 import {
+  type AgentView,
   builtInSection,
   listPage,
   type MoveDirection,
@@ -160,6 +161,11 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
           : [...ui.collapsed, sectionId],
       }),
     toggleActivityPanel: () => update({ activityPanel: !ui.activityPanel }),
+    /** Picks the view of Agents. The view "By organization" has no new section, so its name box closes. */
+    setAgentView: (agentView: AgentView) => {
+      setNewSectionKind(undefined)
+      update({ agentView })
+    },
     newSectionKind,
     /** True when the section still exists in the list of its kind. */
     hasSection: (kind: PlaceKind, sectionId: string | null) =>
@@ -170,6 +176,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
     /** Opens the name box of a new section in the list of a kind. It opens a closed list first. */
     startNewSection: (kind: PlaceKind) => {
       if (server()?.kind === "linked") return
+      // The sections of the view "By organization" come from the organizations (spec 001).
+      if (kind === "agent" && ui.agentView === "organization") return
       const builtIn = builtInSection(kind)
       if (ui.collapsed.includes(builtIn))
         update({ collapsed: ui.collapsed.filter((id) => id !== builtIn) })

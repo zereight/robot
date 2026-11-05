@@ -133,6 +133,10 @@ export const en = {
   "sections.none": "No section",
   "sections.unassigned": "Unassigned",
   "sections.field": "Section",
+  "sections.view.mine": "My sections",
+  "sections.view.organization": "By organization",
+  "sections.byOrganization.reason": "Switch to My sections to change sections.",
+  "sections.byOrganization.none": "Every agent is in an organization.",
 
   "panel.show": "Show activity panel",
   "panel.hide": "Hide activity panel",

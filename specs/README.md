@@ -87,6 +87,7 @@ implementation (see [AGENTS.md](../AGENTS.md)).
 | M35 | The changes to 002, 004, 005, 006, 007, 011, 012, 013, 014, 017, 018, 019, 029, 030 and 031 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S126 to S129: organizations replace the channel tree, the org chart of organizations, access with inherited values, and the hand-off rule and ask up the line by organizations |
 | M36 | 036, and the changes to 001, 003, 004, 011, 012, 013, 019, 029 and 030 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S130 and S131: one line of organizations for the members of an agent, and the organization prefix |
 | M37 | 037, and the changes to 002, 004, 007, 009 and 023 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slices S133 to S137: make an agent for the main agent, tools for agents, tools for channels, tools for routines, manage tools for outside programs |
+| M38 | The changes to 001, 011 and 036 listed in [docs/spec-changes.md](../docs/spec-changes.md) | Slice S138: agents by organization |
 
 ## Surfaces check
 

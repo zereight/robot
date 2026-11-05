@@ -26,7 +26,8 @@ The user follows and directs agents from an iPhone or Android phone while away f
    phone remembers this for itself. In this version the phone cannot make, rename, order or
    delete a section, and it cannot move a place to a section, and it cannot pin or unpin a place.
    The user does this on the computer. The phone shows the group "Pinned" and the sections inside
-   sections (001).
+   sections (001). The phone has no view "By organization" of Agents in this version. It shows the
+   user sections, also when the computer shows that view (001, "Agents by organization").
 3. **Conversation**: message rows as on desktop, Markdown, tool cards (tap for details), the
    message box with attach (photos, files), stop, and reply. When the switch "Show tool steps"
    in Settings is off, each run of finished plain tool steps shows as one muted line with the

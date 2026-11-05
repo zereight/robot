@@ -27,6 +27,9 @@ new user knows where to look.
   delete or move them.
 - **User section**: a group that the user makes inside Channels or inside Agents. It holds places
   of that one kind. See "User sections".
+- **Organization section**: a group of the view "By organization" of Agents. It holds the agents
+  whose deepest organization (036) is one organization. The app makes it. The user does not. See
+  "Agents by organization".
 - **Conversation**: the main area. A header line, the messages, and the message box at the bottom.
 - **Activity panel**: a panel that shows who works on what in a channel, and the running tasks of a
   direct chat. It uses the panel column.
@@ -144,6 +147,48 @@ The Channels section holds channel sections. The Agents section holds agent sect
   levels.
 - The phone shows the tree and cannot change it, as for sections (011).
 
+### Agents by organization
+
+The menu of the Agents header has a choice of view: "My sections" and "By organization". The
+choice that is on shows a mark. "My sections" is the view that "User sections" above describes. It
+is on at first.
+
+- **By organization**: Agents holds one organization section for each organization that is the
+  deepest organization (036) of at least one agent that shows in Agents. The sections are flat: no
+  section holds another. An agent shows once, in the section of its deepest organization. A pinned
+  agent shows in "Pinned" and not in its section (see "Pinned places"). An organization that is
+  the deepest organization of no agent that shows has no section.
+- **Order**: the organization sections follow the names of the organizations, ignoring case. After
+  them, the section "No organization" holds the agents that are in no organization. It is always
+  last. It shows when Agents holds an agent. When none of them shows in it, it shows a short muted
+  line. When Agents holds no agent, the list shows the empty line and no section. The user cannot
+  rename it, and the user can collapse it. The agents inside a section keep the order that
+  "My sections" shows them in: the agents of the user sections first, then the agents of
+  "Unassigned".
+- **Header**: it looks like the header of a user section: a chevron and the name, muted, 12 px
+  further in, and the places 12 px further in too. The name of an organization section is the name
+  of the organization. It is text of the user and is not translated. A long name is cut with "…",
+  and the whole name shows in a note when the pointer rests on it. A collapsed header shows the
+  unread sum and the working dot, as a user section does (see "Layout").
+- **Read only**: the app makes and keeps these sections from the organizations (030). A header has
+  no menu, and it does not accept a drag. "New section" in the menu of the Agents header and "Move
+  to section" in the menu of an agent are off in this view, with the reason "Switch to My sections
+  to change sections." The user sections do not change, and they show again when the user picks
+  "My sections".
+- **At once**: the sections change when an agent joins or leaves an organization, when an
+  organization is renamed or deleted, and when the deepest organization of an agent changes.
+- **Prefix**: a row of an agent under an organization section shows no organization prefix (036),
+  because the header names the organization. A row in "Pinned" shows it.
+- **Filter**: the filter of places works as "Rules" below says. The organization name of an agent
+  is one of the texts it matches. A section with a match opens, also when it is collapsed.
+- **What belongs to the device**: the choice of view, and the open or closed state of each
+  organization section. They belong to the open profile (022) on this computer. They do not sync.
+- **Linked computer**: the view groups the agents by the organizations of that computer (012). The
+  menu of the Agents header shows on a linked computer too, and it holds only the choice of view.
+- **Phone**: the phone has no choice of view in this version. It shows "My sections" (011).
+- **Cost**: the sections come from data that the app has. They add no request to a model, no task
+  and no sync.
+
 ## Pinned places
 
 - "Pin" in the menu of a place (right click, or a long press) puts the place in a group "Pinned"
@@ -194,7 +239,8 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - One line, 34 px high: a 24 px avatar (see 002, "Avatars"): the face for an agent, or the
   picture or the `#` mark for a channel, then the name.
 - An agent that is in an organization shows the organization prefix before the name (036), for
-  example "[Docs] Ada". It is a part of the name for the cut below: the prefix is cut last.
+  example "[Docs] Ada". It is a part of the name for the cut below: the prefix is cut last. Under
+  an organization section it does not show (see "Agents by organization").
 - An agent with a role line shows it as a **role badge** after the name: a small, muted label with
   the role line on one line. An agent with no role line, and a channel, show no badge. The badge
   is text of the user and is not translated.
@@ -309,6 +355,22 @@ The Channels section holds channel sections. The Agents section holds agent sect
 - Pin an agent and archive it: it leaves the group. Type part of the name of a pinned agent in the
   search field: the agent shows in the filtered list.
 - On a stand-in phone and a stand-in linked computer, the menu of a place has no "Pin".
+- Give the agent Ada the organization "Docs". Give the agent Bob the organizations "Docs" and
+  "API" ("API" is under "Docs"), and leave the agent Cy in no organization. Pick "By
+  organization" in the menu of the Agents header: the sections are "API" with Bob, "Docs" with Ada,
+  and "No organization" with Cy, in this order, and no section is inside another. No row shows a
+  prefix. After a restart the view is still "By organization". Pick "My sections": the user
+  sections and "Unassigned" show as before.
+- In "By organization", an organization with no agent has no section. Pin Ada: "Docs" has no
+  section, and the row of Ada in "Pinned" shows "[Docs] Ada". Unpin Ada: "Docs" shows again.
+- In "By organization", the headers have no menu, a drag of an agent onto a header does nothing,
+  "New section" in the menu of the Agents header is off with its reason, and "Move to section" in
+  the menu of Ada is off with its reason.
+- In "By organization", rename "Docs" to "Manuals": the section shows the new name at once, in its
+  new place in the order. Remove Ada from the organization: she moves to "No organization".
+- In "By organization", collapse "Docs" while Ada has 2 unread messages: the header shows the badge
+  2. Type "api" in the search field: the section "API" opens and shows Bob, and "Docs" hides.
+- On a stand-in phone, the Places list shows the user sections and has no choice of view.
 - Press Cmd+F on the Today page: nothing happens. Hold Cmd+Q for 1 second while an agent works: the
   app quits. Close the window while an agent works: the agent goes on, and the Dock icon opens the
   window again.
