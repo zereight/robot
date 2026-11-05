@@ -19,6 +19,8 @@ import {
   type OrgHandoff,
   type OrgOutcome,
   type OrgSnapshot,
+  orgSearchEmpty,
+  orgSearchHits,
   outcomeList,
   ROOT_KEY,
 } from "./orgChart.ts"
@@ -655,5 +657,49 @@ describe("the outcome of an organization node", () => {
     )
     expect(model.orgs[0]?.key).toBe(NO_ORG_KEY)
     expect(model.orgs[0]?.outcome).toEqual({ done: 4, blocked: 0, met: 0, notMet: 2 })
+  })
+})
+
+describe("the search of the page (spec 029, Search and the list)", () => {
+  const model = buildChart(
+    snap({
+      agents: [agent("ada", { role: "Writer" }), agent("bo", { role: "Checker" }), agent("cy")],
+      orgs: [org("Docs", ["ada", "bo"], { goal: "Ship the Docs site." }), org("Ops", ["cy"])],
+    }),
+  )
+
+  test("an empty text matches nothing, so the page shows no dim", () => {
+    expect(orgSearchHits(model, "").size).toBe(0)
+    expect(orgSearchHits(model, "   ").size).toBe(0)
+    expect(orgSearchEmpty(model, "")).toBe(false)
+  })
+
+  test("the name of an organization matches it with its members", () => {
+    const hits = orgSearchHits(model, "doc")
+    expect(hits.has("o:Docs")).toBe(true)
+    expect(hits.has(copyKey("o:Docs", "ada"))).toBe(true)
+    expect(hits.has("o:Ops")).toBe(false)
+  })
+
+  test("the goal of an organization matches it", () => {
+    expect(orgSearchHits(model, "site").has("o:Docs")).toBe(true)
+  })
+
+  test("the name and the role line of an agent match, and its organization stays lit", () => {
+    const hits = orgSearchHits(model, "checker")
+    expect(hits.has(copyKey("o:Docs", "bo"))).toBe(true)
+    // The organization node stays lit, so a matched agent is not shown without the chart.
+    expect(hits.has("o:Docs")).toBe(true)
+    // The other member of that organization does not match on its own.
+    expect(hits.has(copyKey("o:Docs", "ada"))).toBe(false)
+  })
+
+  test("a text that matches nothing empties the chart, and one that matches does not", () => {
+    expect(orgSearchEmpty(model, "zzz")).toBe(true)
+    expect(orgSearchEmpty(model, "doc")).toBe(false)
+  })
+
+  test("the search is blind to the case", () => {
+    expect(orgSearchHits(model, "DOCS").has("o:Docs")).toBe(true)
   })
 })

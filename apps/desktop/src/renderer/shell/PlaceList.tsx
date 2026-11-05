@@ -45,6 +45,7 @@ import { AgentName } from "../orgs/AgentName.tsx"
 import { useApp } from "../state/app.tsx"
 import { setFocusMessage, setSearchOrigin } from "../state/focus.ts"
 import { linkEpoch } from "../state/link.ts"
+import { setOrgFilter } from "../state/orgFilter.ts"
 import { useOrgs } from "../state/orgs.tsx"
 import { useUi } from "../state/ui.tsx"
 import { AvatarMark } from "../ui/AvatarMark.tsx"
@@ -192,6 +193,24 @@ export const PlaceList = (props: PlaceListProps) => {
   )
   const searching = () => query().trim().length > 0
   const anyMatch = () => sections().some((s) => allPlaces(s).length > 0)
+  /**
+   * The organizations of this computer that the text matches (spec 029, "Ways in"). The chart of a
+   * linked server is not kept here, so its organizations are not in this list.
+   */
+  const orgHits = createMemo(() => {
+    if (!searching() || ui.linked()) return []
+    const q = query().trim().toLocaleLowerCase()
+    return orgs
+      .orgs()
+      .filter((o) => o.name.toLocaleLowerCase().includes(q))
+      .slice(0, 5)
+  })
+  /** Opens the org chart with the organization in its search field. */
+  const openOrgHit = (name: string) => {
+    setOrgFilter(name)
+    ui.selectPage("orgchart")
+    setQuery("")
+  }
 
   // The view "By organization" of Agents (spec 001): the matching agents, in the section of their
   // deepest organization. It does not follow the switch of the prefix.
@@ -1031,6 +1050,30 @@ export const PlaceList = (props: PlaceListProps) => {
           <div class={styles.sectionEmpty} role="status" data-testid="search-offline">
             {t("search.offline", { name: ui.server()?.name ?? "" })}
           </div>
+        </Show>
+        {/* The organizations of this computer that match (spec 029, "Ways in"). A click opens the
+            org chart with the organization in its search field. */}
+        <Show when={orgHits().length > 0}>
+          <section data-testid="search-orgs" aria-label={t("search.orgs")}>
+            <div class={styles.sectionTop}>
+              <span class={styles.groupHeader}>{t("search.orgs")}</span>
+            </div>
+            <For each={orgHits()}>
+              {(org) => (
+                <button
+                  type="button"
+                  class={styles.place}
+                  onClick={() => openOrgHit(org.name)}
+                  data-testid="search-org-hit"
+                  data-org-name={org.name}
+                >
+                  <span class={styles.hitPlace} data-testid="search-org-name">
+                    {org.name}
+                  </span>
+                </button>
+              )}
+            </For>
+          </section>
         </Show>
         {/* A section with no match hides itself while the user searches. */}
         <For each={sections()}>{renderSection}</For>

@@ -465,3 +465,40 @@ describe("sub-organizations (spec 029, 030)", () => {
     expect(buildOrgList(old).blocks.map((b) => b.level)).toEqual([1])
   })
 })
+
+describe("the goal and the outcome of a block (spec 030, Goal; spec 029)", () => {
+  test("the block carries the whole goal of its organization, and none for No organization", () => {
+    const list = buildOrgList(
+      buildChart({
+        ...snapshot({}),
+        agents: [agent("a")],
+        orgs: [org("docs", ["a"], { goal: "Ship the Docs site." })],
+      }),
+    )
+    expect(list.blocks[0]?.goal).toBe("Ship the Docs site.")
+  })
+
+  test("an organization with no goal gives null, so the screen shows no line", () => {
+    const list = buildOrgList(
+      buildChart({ ...snapshot({}), agents: [agent("a")], orgs: [org("docs", ["a"])] }),
+    )
+    expect(list.blocks[0]?.goal).toBeNull()
+  })
+
+  test("the outcome of a block is the line of its members in the last 7 days", () => {
+    const list = buildOrgList(
+      buildChart({
+        ...snapshot({}),
+        agents: [agent("a")],
+        orgs: [org("docs", ["a"])],
+        outcomes: [{ agentId: "a", done: 12, blocked: 2, met: 9, notMet: 1 }],
+      }),
+    )
+    expect(list.blocks[0]?.outcome).toEqual([
+      { word: "done", count: 12 },
+      { word: "blocked", count: 2 },
+      { word: "met", count: 9 },
+      { word: "not_met", count: 1 },
+    ])
+  })
+})

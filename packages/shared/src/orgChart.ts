@@ -594,3 +594,45 @@ export const countList = (counts: StateCounts) =>
  */
 export const isOrgModel = (model: unknown): model is ChartModel =>
   typeof model === "object" && model !== null && Array.isArray((model as ChartModel).orgs)
+
+// ---------------------------------------------------------------------------------------------
+// The search of the page (spec 029, "Search and the list")
+// ---------------------------------------------------------------------------------------------
+
+const has = (text: string | null | undefined, query: string) =>
+  text !== null && text !== undefined && text.toLocaleLowerCase().includes(query)
+
+/**
+ * The nodes that the typed text of the search matches, as the keys of the model (spec 029,
+ * "Search and the list"). An empty text matches nothing, and the page then shows a chart with no
+ * dim. The search looks at the name of an organization, its goal, and the name and role line of an
+ * agent; for an organization it also matches when one of its members matches, so a matched agent
+ * stays under its organization node.
+ *
+ * It gives no positions and removes nothing: the caller dims the nodes that the result does not
+ * hold, and the layout of the whole chart stays.
+ */
+export const orgSearchHits = (model: ChartModel, text: string): Set<string> => {
+  const q = text.trim().toLocaleLowerCase()
+  const hits = new Set<string>()
+  if (q === "") return hits
+  for (const org of model.orgs) {
+    const own = has(org.name, q) || has(org.goalFull, q)
+    const members = org.nodes.filter((n) => has(n.name, q) || has(n.role, q))
+    if (!own && members.length === 0) continue
+    // The organization node stays lit for a matched member, so a matched agent is never shown
+    // without the chart that holds it. An organization that matches by its own text keeps all of
+    // its members, as the node does.
+    hits.add(org.key)
+    for (const node of own ? org.nodes : members) hits.add(node.key)
+  }
+  // The root matches through the agent that it holds, and it stays lit for a hit under it, so a
+  // matched agent is not shown without the chart that holds it.
+  const rootHit = model.root !== null && (has(model.root.name, q) || has(model.root.role, q))
+  if (rootHit && model.root) hits.add(model.root.key)
+  return hits
+}
+
+/** True when the search found nothing: the page shows the whole chart dimmed and one muted line. */
+export const orgSearchEmpty = (model: ChartModel, text: string): boolean =>
+  text.trim() !== "" && orgSearchHits(model, text).size === 0

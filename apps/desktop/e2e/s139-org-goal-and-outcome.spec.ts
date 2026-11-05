@@ -23,6 +23,13 @@ const orgsOf = async (page: Page) =>
   rpc<OrgInfo[]>(page, "organizations.list", { serverId: await serverIdOf(page) })
 const orgByName = async (page: Page, name: string) =>
   (await orgsOf(page)).find((o) => o.name === name)
+const agentIdOf = async (page: Page, name: string) =>
+  (
+    await rpc<{ id: string; name: string }[]>(page, "agents.list", {
+      serverId: await serverIdOf(page),
+      archived: false,
+    })
+  ).find((a) => a.name === name)?.id as string
 const orgRow = (page: Page, name: string) =>
   page
     .getByTestId("org-unit")
@@ -117,6 +124,128 @@ test("the goal of an organization: the form, the node, the length limit and the 
     // "Ops" has no member, so it has no outcome line.
     await expect(orgRow(page, "Ops").getByTestId("org-unit-outcome")).toHaveCount(0)
     await shot(page, "s139-04-outcome")
+  } finally {
+    await mock.close()
+    await app.close()
+  }
+})
+
+test("search and the list view: a search dims and never moves a node, the list is the phone list, and a hit in the place list opens it", async () => {
+  test.setTimeout(240_000)
+  const mock = await startMockProvider()
+  const { app, page } = await launch(freshUserData(), { ROBOT_SYSTEM_LOCALE: "en-US" })
+  try {
+    await resizeWindow(app, 1300, 900)
+    await connectMock(page, mock.openaiUrl, GOOD_KEY)
+    await createAgent(page, "Ada")
+    await createAgent(page, "Bo")
+    await openOrgChart(page)
+    // Two organizations with a goal, made through the link: the form is covered by the first test.
+    const serverId = await serverIdOf(page)
+    const adaId = await agentIdOf(page, "Ada")
+    const boId = await agentIdOf(page, "Bo")
+    const docs = await rpc<OrgInfo>(page, "organizations.create", {
+      serverId,
+      name: "Docs",
+      goal: "Ship the Docs site.",
+      memberIds: [adaId],
+      leadId: null,
+    })
+    await rpc(page, "organizations.create", {
+      serverId,
+      name: "Ops",
+      goal: "Keep the site up.",
+      memberIds: [boId],
+      leadId: null,
+    })
+    await expect(orgRow(page, "Docs")).toBeVisible()
+    await expect(orgRow(page, "Ops")).toBeVisible()
+
+    // --- The positions before the search ---------------------------------------------------
+    const before = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>("[data-node]")].map((el) => [
+        el.dataset.key ?? "",
+        el.style.left,
+        el.style.top,
+      ]),
+    )
+    const zoom = () => page.getByTestId("org-surface").getAttribute("data-zoom")
+    const zoomBefore = await zoom()
+
+    // --- A search dims, and never moves a node ---------------------------------------------
+    await page.getByTestId("org-search").fill("doc")
+    await expect(orgRow(page, "Docs")).toHaveAttribute("data-dim", "false")
+    await expect(orgRow(page, "Ops")).toHaveAttribute("data-dim", "true")
+    // No node moved, and the zoom is the one before the search.
+    expect(
+      await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>("[data-node]")].map((el) => [
+          el.dataset.key ?? "",
+          el.style.left,
+          el.style.top,
+        ]),
+      ),
+    ).toEqual(before)
+    expect(await zoom()).toBe(zoomBefore)
+    await shot(page, "s139-05-search")
+
+    // --- A text that matches nothing shows the muted line -----------------------------------
+    await page.getByTestId("org-search").fill("zzz")
+    await expect(page.getByTestId("org-search-empty")).toBeVisible()
+    await expect(orgRow(page, "Docs")).toHaveAttribute("data-dim", "true")
+    // Escape clears the search, as it does in the place list.
+    await page.getByTestId("org-search").press("Escape")
+    await expect(page.getByTestId("org-search")).toHaveValue("")
+    await expect(page.getByTestId("org-search-empty")).toHaveCount(0)
+    await expect(orgRow(page, "Ops")).toHaveAttribute("data-dim", "false")
+
+    // --- The list view is the list of the phone, with the goal and the outcome --------------
+    await page.getByTestId("org-view-list").click()
+    await expect(page.getByTestId("org-list")).toBeVisible()
+    await expect(page.getByTestId("org-canvas")).toHaveCount(0)
+    const docsBlock = page
+      .getByTestId("org-list-block")
+      .filter({ has: page.getByTestId("org-list-block-head").getByText("Docs", { exact: true }) })
+    await expect(docsBlock.getByTestId("org-list-goal")).toHaveText("Ship the Docs site.")
+    await shot(page, "s139-06-list")
+    // A row of an organization opens its form, and the list stays behind it.
+    await docsBlock.getByTestId("org-list-block-head").click()
+    await expect(page.getByTestId("org-dialog")).toBeVisible()
+    await expect(page.getByTestId("org-form").getByTestId("org-goal")).toHaveValue(
+      "Ship the Docs site.",
+    )
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("org-dialog")).toHaveCount(0)
+    // A row of an agent opens its profile, as a click on its node of the canvas does.
+    await docsBlock.getByTestId("org-list-agent").filter({ hasText: "Ada" }).click()
+    await expect(page.getByTestId("agent-profile")).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("agent-profile")).toHaveCount(0)
+
+    // --- A hit in the place list opens the page with the organization in the search ---------
+    await page.getByTestId("page-chats").click()
+    await page.getByTestId("place-search").fill("Ops")
+    const hit = page.getByTestId("search-org-hit").filter({ hasText: "Ops" })
+    await expect(hit).toBeVisible()
+    await hit.click()
+    await expect(page.getByTestId("org-page")).toBeVisible()
+    await expect(page.getByTestId("org-search")).toHaveValue("Ops")
+    // The page opens in the view that the user left it in, and the search dims in both views.
+    await expect(page.getByTestId("org-list")).toBeVisible()
+    await expect(docsBlock).toHaveAttribute("data-dim", "true")
+    await shot(page, "s139-07-hit")
+    // The same hit in the canvas view dims the other organization and keeps the one that matched.
+    await page.getByTestId("org-view-chart").click()
+    await expect(page.getByTestId("org-canvas")).toBeVisible()
+    await expect(orgRow(page, "Ops")).toHaveAttribute("data-dim", "false")
+    await expect(orgRow(page, "Docs")).toHaveAttribute("data-dim", "true")
+    // The hit is one organization of this computer, and the form opens on it.
+    await orgRow(page, "Ops").click()
+    await expect(page.getByTestId("org-dialog")).toBeVisible()
+    await expect(page.getByTestId("org-form").getByTestId("org-goal")).toHaveValue(
+      "Keep the site up.",
+    )
+    expect(docs.goal).toBe("Ship the Docs site.")
   } finally {
     await mock.close()
     await app.close()

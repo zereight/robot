@@ -4,6 +4,7 @@ import {
   listPage,
   type MoveDirection,
   NARROW_WIDTH,
+  type OrgView,
   type Page,
   type PlaceKind,
   type PlaceRef,
@@ -166,6 +167,8 @@ const createUiState = (initial: UiState, initialServers: readonly Server[]) => {
       setNewSectionKind(undefined)
       update({ agentView })
     },
+    /** Picks the view of the org chart: the canvas, or the list (spec 029). */
+    setOrgView: (orgView: OrgView) => update({ orgView }),
     newSectionKind,
     /** True when the section still exists in the list of its kind. */
     hasSection: (kind: PlaceKind, sectionId: string | null) =>

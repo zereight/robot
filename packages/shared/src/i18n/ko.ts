@@ -110,6 +110,7 @@ export const ko: Record<MessageKey, string> = {
   "places.menu.channels": "채널 메뉴",
   "places.menu.agents": "에이전트 메뉴",
 
+  "search.orgs": "조직",
   "search.messages": "메시지",
   "search.hit": "{place}의 메시지, {time}: {text}",
   "search.more": "더 보기",
@@ -2866,6 +2867,11 @@ export const ko: Record<MessageKey, string> = {
   "orgchart.legend.structure": "소속",
   "orgchart.legend.capped": "가장 많이 넘긴 작업 40개만 보여요.",
   "orgchart.empty": "아직 에이전트가 없어요.",
+  "orgchart.search": "조직과 에이전트 검색",
+  "orgchart.search.empty": "찾는 것이 없어요.",
+  "orgchart.view": "보기",
+  "orgchart.view.chart": "차트",
+  "orgchart.view.list": "목록",
   "orgchart.canvas.hint":
     "Tab 키로 노드를 지나가요. 더하기와 빼기로 확대하고 축소해요. 0은 화면에 맞춰요.",
   "orgchart.you": "나",

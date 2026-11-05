@@ -168,6 +168,38 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
 - The members that are not drawn have no line. A hand-off from or to an agent whose home node is not
   drawn is not drawn.
 
+### Search and the list
+
+- **Search field**: the header line of the page has one, beside the legend. It looks at the names
+  of the organizations, the names of the agents, their role lines and their goals, in the same way
+  as the filter of the place list (001, "Rules"): a place matches when the typed text is a part of
+  one of those texts, ignoring case. Enter does nothing, and Escape clears the field.
+- A node that the text does not match dims as a node that the pointer does not point at. **No node
+  moves and no node goes**: the layout is the layout of the whole chart, so a search never changes
+  the positions, the zoom or the view.
+- What matches, exactly:
+  - an organization matches by its name or by its goal; every agent node of it then stays lit;
+  - an agent node matches by its name or by its role line; the organization node that holds it
+    stays lit too, so a matched agent never shows without the chart that holds it, but the other
+    agents of that organization dim.
+- A line stays lit when both of its ends are lit.
+- The root stays lit when the agent that it holds matches. In every other search it dims, so the
+  chart still shows where the matched work sits.
+- **The view**: a choice of "Chart" and "List" in the header. "Chart" is the canvas, and it is the
+  view at first. The choice belongs to this device, as the choice of view of the place list does
+  (001), and a change of the server keeps it.
+- **The list** is the list of the phone (see "Phone"), with the same rows in the same order: the
+  root, one block for each organization node with its members, and the block of hand-offs. A row of
+  an agent opens its profile; a row of an organization opens its form. The list adds what the
+  canvas has and a list needs: the goal of an organization, and its outcome line.
+- The search dims the rows of the list too. A block whose organization, goal or members match stays
+  at full contrast, and the others dim.
+- With no agent, both views show the empty state (see "Empty and small states").
+- The keyboard: the search field is the first stop of the header. Tab goes from it to the choice of
+  view. In the list, Tab and the arrow keys move through the rows in the order of the page, as the
+  nodes of the canvas do.
+
+
 ### Order
 
 - Organization nodes on one level under one parent are in the order of the organization names,
@@ -212,7 +244,8 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
   agents.
 - One agent: the root and one organization node. If the one agent is the main agent, the node shows
   its copy.
-- The chart is not split by a filter, and it has no search in this version.
+- The chart is not split by a filter: a search dims, it never removes (see "Search and the list").
+  Nothing found by the search shows the whole chart dimmed and the muted line "Nothing matches."
 
 ## Keyboard and screen reader
 
@@ -262,9 +295,9 @@ rules. The form also renames, sets access and deletes. The menus and the drags o
 
 ## Surfaces
 
-- **Ways in**: the page button "Org chart" (001), and no other. The search of the place list (Cmd+K)
-  does not list the page in this version. There is no key for it. A channel header and an agent
-  profile have no link to it.
+- **Ways in**: the page button "Org chart" (001), and the search of the place list (Cmd+K): an
+  organization of this computer shows as a hit, and a click opens the page with that organization
+  in the search field. A channel header and an agent profile have no link to the page.
 - **Devices**: the computer shows the full chart. A linked computer (012) shows the same full chart
   of its server. It needs only the link to read it. It can edit only with the switch "Can create
   and change agents". Without it, the chart has no "New organization" button, no menu items that
@@ -347,7 +380,8 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
   board (024) do this.
 - A window other than 7 days, or a setting for it.
 - A chart for one channel beside its chat, or for one agent on its profile.
-- A tool for agents, a key, and an entry in the search of the place list.
+- A tool for agents, a key, and a group of results in the search of the place list. An organization
+  is one hit in that search, not a list of its own.
 - An image or text export of the chart.
 - A canvas on the phone.
 
@@ -416,6 +450,18 @@ The phone shows the chart as a list, in a screen "Org chart". It cannot draw the
   chart shows no organization node, and the agents are in "No organization".
 - Open and close the page many times: no turn starts, no task is made, and nothing is sent off the
   computer.
+- Search and the list: type "doc" in the search field of the page. The node "Docs" and its agents
+  stay at full contrast, and every other node dims. No node moves: the positions, the zoom and the
+  view are the ones before the search. Press Escape: every node is back. Type the role of one agent:
+  that agent and its organization node stay lit, and the other members of that organization dim.
+  Type text that matches nothing: the whole chart dims and the muted line "Nothing matches." shows.
+- Pick "List" in the header: the page shows the list of the phone, with the root, a block for each
+  organization with its goal and its outcome line, and the block of the hand-offs. A click on a row
+  of an agent opens its profile. A click on a row of an organization opens its form. Pick "Chart":
+  the canvas is back, with the same zoom and view as before. Restart the app: the view is still
+  "List".
+- In the place list, press Cmd+K and type the name of an organization: the hit opens the page with
+  that organization in the search field.
 - Organization "Docs" under "Product": the node of "Docs" sits under the node of "Product", with a
   structure line between them. The root has no line to "Docs".
 - Drag agent B from "Docs" onto "Ops", a sub-organization of "Product" that is not under "Docs": B
