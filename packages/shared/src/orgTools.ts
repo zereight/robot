@@ -82,6 +82,50 @@ export const orgGivers = (
 }
 
 /**
+ * What the muted line "Now: <value> from <organization>" under "Inherit" shows (spec 030, "Access"):
+ * the value that the nearest entry on the line above the organization gives, and the organization
+ * that holds it. The entry of the organization itself does not count, because the line shows only
+ * when the value of the organization is "Inherit". `null` is "Now: none": no organization above
+ * gives a value.
+ */
+export const orgToolNow = (
+  orgs: readonly TreeOrg[],
+  entries: readonly OrgToolEntry[],
+  orgId: string,
+): { readonly value: OrgToolValue; readonly from: string } | null => {
+  for (const at of higherOrgs(orgs, orgId)) {
+    const entry = entries.find((e) => e.id === at)
+    if (entry) return { value: entry.value, from: at }
+  }
+  return null
+}
+
+/** The agents and organizations that may use a skill or a connection (spec 017, 018). */
+export interface ToolList {
+  /** The agents of the list; `null` is "All agents". */
+  readonly agentIds: readonly string[] | null
+  /** The organizations of the list, each with the value "On" or "Off". */
+  readonly entries: readonly OrgToolEntry[]
+}
+
+/**
+ * Whether an agent may use a skill or a connection (spec 030, "Tools"): "All agents" is on, or the
+ * list holds the agent, or an organization that the agent is a member of has the value "On" (its own
+ * or the value of a higher organization). "Off" takes away only what the organization would get
+ * from above: it never takes a tool that comes from another organization, from the own entry of the
+ * agent, or from "All agents". The caller checks that the skill or connection is on.
+ */
+export const agentMayUse = (
+  list: ToolList,
+  agentId: string,
+  orgs: readonly TreeOrg[],
+  memberOf: readonly string[],
+): boolean =>
+  list.agentIds === null ||
+  list.agentIds.includes(agentId) ||
+  orgGivers(orgs, list.entries, memberOf).length > 0
+
+/**
  * The list after the value of an organization is set (spec 030): "Inherit" takes the organization
  * out of the list, "On" and "Off" put it in with that value. The other entries stay in place.
  */

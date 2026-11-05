@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { orgGivers, orgToolEntries, orgToolValue, withOrgSwitch } from "./orgTools.ts"
+import {
+  agentMayUse,
+  orgGivers,
+  orgToolEntries,
+  orgToolNow,
+  orgToolValue,
+  withOrgSwitch,
+} from "./orgTools.ts"
 import type { TreeOrg } from "./orgTree.ts"
 
 // Spec 030, "Tools": the list of a skill or a connection holds organizations with the value "On"
@@ -114,5 +121,72 @@ describe("the switch of an organization in a list", () => {
 
   test("Off changes the value of an organization that is in the list", () => {
     expect(withOrgSwitch([on("docs")], "docs", "off")).toEqual([off("docs")])
+  })
+})
+
+describe("whether an agent may use a skill or a connection", () => {
+  const may = (
+    agentIds: readonly string[] | null,
+    entries: ReturnType<typeof on>[],
+    agentId: string,
+    memberOf: string[],
+  ) => agentMayUse({ agentIds, entries }, agentId, tree, memberOf)
+
+  test("a member of Site gets the skill that Product turns on", () => {
+    expect(may([], [on("product")], "a", ["site"])).toBe(true)
+    expect(may([], [on("product")], "a", [])).toBe(false)
+    expect(may([], [on("product")], "a", ["ops"])).toBe(false)
+  })
+
+  test('"Off" in Docs takes it from the members of Docs and Site, not from Product', () => {
+    const list = [on("product"), off("docs")]
+    expect(may([], list, "a", ["docs"])).toBe(false)
+    expect(may([], list, "a", ["site"])).toBe(false)
+    expect(may([], list, "a", ["product"])).toBe(true)
+  })
+
+  test('"On" in Site gives it back to the members of Site', () => {
+    expect(may([], [on("product"), off("docs"), on("site")], "a", ["site"])).toBe(true)
+  })
+
+  test('a member of Docs and Product keeps it when Docs is "Off"', () => {
+    expect(may([], [on("product"), off("docs")], "a", ["docs", "product"])).toBe(true)
+  })
+
+  test('"All agents" is on: "Off" takes nothing away', () => {
+    expect(may(null, [off("docs")], "a", ["docs"])).toBe(true)
+    expect(may(null, [], "a", [])).toBe(true)
+  })
+
+  test('the own entry of the agent stays when its organization is "Off"', () => {
+    expect(may(["a"], [on("product"), off("docs")], "a", ["docs"])).toBe(true)
+    expect(may(["b"], [on("product"), off("docs")], "a", ["docs"])).toBe(false)
+  })
+
+  test("a member that leaves Site loses the skill", () => {
+    expect(may([], [on("product")], "a", ["site"])).toBe(true)
+    expect(may([], [on("product")], "a", [])).toBe(false)
+  })
+})
+
+describe('the muted line "Now" under "Inherit"', () => {
+  test("it names the value and the organization that the nearest entry on the line gives", () => {
+    expect(orgToolNow(tree, [on("product")], "site")).toEqual({ value: "on", from: "product" })
+    expect(orgToolNow(tree, [on("product"), off("docs")], "site")).toEqual({
+      value: "off",
+      from: "docs",
+    })
+  })
+
+  test("it is null when nobody on the line gives a value", () => {
+    expect(orgToolNow(tree, [], "site")).toBeNull()
+    expect(orgToolNow(tree, [on("ops")], "site")).toBeNull()
+  })
+
+  test("it skips the own entry of the organization: the line is for 'Inherit'", () => {
+    expect(orgToolNow(tree, [on("site"), off("docs")], "site")).toEqual({
+      value: "off",
+      from: "docs",
+    })
   })
 })
